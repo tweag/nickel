@@ -11,7 +11,7 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
-use crate::term::MetaValue;
+use crate::term::{record, MetaValue};
 use crate::term::{record::RecordData, MergePriority};
 
 use crate::{
@@ -2592,6 +2592,91 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     } else {
                         Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))), pos_op))
                     }
+                }
+            }
+            NAryOp::RecordSealTail() => {
+                let mut args = args.into_iter();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a1,
+                                pos: pos1,
+                            },
+                        ..
+                    },
+                    fst_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a2,
+                                pos: pos2,
+                            },
+                        ..
+                    },
+                    snd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a3,
+                                pos: pos3,
+                            },
+                        env: env3,
+                    },
+                    thd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body: RichTerm { term: a4, .. },
+                        env: env4,
+                    },
+                    _,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                match (&*a1, &*a2, &*a3, &*a4) {
+                    (Term::SealingKey(s), Term::Lbl(label), Term::Record(r), tail) => {
+                        let mut r = r.clone();
+                        let mut env = env3;
+
+                        let tail_as_var = RichTerm::from(tail.clone()).closurize(&mut env, env4);
+                        r.sealed_tail =
+                            Some(record::SealedTail::new(*s, label.clone(), tail_as_var));
+
+                        let body = RichTerm::from(Term::Record(r));
+                        Ok(Closure { body, env })
+                    }
+                    (Term::SealingKey(_), Term::Lbl(_), _, _) => Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_seal_tail%, 3rd arg"),
+                        thd_pos,
+                        RichTerm {
+                            term: a3,
+                            pos: pos3,
+                        },
+                    )),
+                    (Term::SealingKey(_), _, _, _) => Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("%record_seal_tail%, 2nd arg"),
+                        snd_pos,
+                        RichTerm {
+                            term: a2,
+                            pos: pos2,
+                        },
+                    )),
+                    (_, _, _, _) => Err(EvalError::TypeError(
+                        String::from("SealingKey"),
+                        String::from("%record_seal_tail%, 1st arg"),
+                        fst_pos,
+                        RichTerm {
+                            term: a1,
+                            pos: pos1,
+                        },
+                    )),
                 }
             }
         }

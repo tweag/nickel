@@ -199,6 +199,8 @@ pub enum NormalToken<'input> {
     RecordRemove,
     #[token("%record_empty_with_tail%")]
     RecordEmptyWithTail,
+    #[token("%record_seal_tail%")]
+    RecordSealTail,
     #[token("%seq%")]
     Seq,
     #[token("%deep_seq%")]

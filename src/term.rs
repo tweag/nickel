@@ -1530,6 +1530,15 @@ pub enum NAryOp {
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
+    /// Seals one record into the tail of another. Used to ensure that functions
+    /// using polymorphic record contracts do not violate parametricity.
+    ///
+    /// Takes four arguments:
+    ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
+    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is attempted,
+    ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
+    ///   - the [term](Term) that we wish to seal.
+    RecordSealTail(),
 }
 
 impl NAryOp {
@@ -1539,6 +1548,7 @@ impl NAryOp {
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
             | NAryOp::MergeContract() => 3,
+            NAryOp::RecordSealTail() => 4,
         }
     }
 
@@ -1554,6 +1564,7 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
             NAryOp::MergeContract() => write!(f, "mergeContract"),
+            NAryOp::RecordSealTail() => write!(f, "%record_seal_tail%"),
         }
     }
 }

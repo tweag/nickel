@@ -379,6 +379,16 @@ pub fn get_nop_type(
             vec![mk_uniftype::str(), mk_uniftype::num(), mk_uniftype::num()],
             mk_uniftype::str(),
         ),
+        // Dyn -> Dyn -> Dyn -> Dyn -> Dyn
+        NAryOp::RecordSealTail() => (
+            vec![
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+            ],
+            mk_uniftype::dynamic(),
+        ),
         // This should not happen, as Switch() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
     })
