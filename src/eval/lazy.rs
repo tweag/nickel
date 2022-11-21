@@ -1,5 +1,5 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{Closure, IdentKind};
+use super::{Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
     term::{FieldDeps, RichTerm, Term},
@@ -31,6 +31,13 @@ pub enum ThunkState {
 pub struct ThunkData {
     inner: InnerThunkData,
     state: ThunkState,
+}
+
+/// The two different kind of thunks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThunkType {
+    Standard,
+    Revertible,
 }
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
@@ -124,11 +131,9 @@ impl ThunkData {
 
     /// Create new revertible thunk data.
     pub fn new_rev(orig: Closure, deps: FieldDeps) -> Self {
-        let rc = Rc::new(orig);
-
         ThunkData {
             inner: InnerThunkData::Revertible {
-                orig: rc.clone(),
+                orig: Rc::new(orig),
                 cached: None,
                 deps,
             },
@@ -136,22 +141,24 @@ impl ThunkData {
         }
     }
 
-    /// Build the cached value of a revertible thunk in a given recursive environment.
+    /// Initialize the cached value of a revertible thunk, given the recursive environment of the
+    /// corresponding record. This function is a no-op on a standard thunk.
     ///
     /// # Invariant
     ///
-    /// This function must be called **exactly once** on a revertible thunk, after the initial
+    /// **This function must be called exactly once** on a revertible thunk, after the initial
     /// construction. It's part of its initialization. Calling it on a revertible thunks a second
     /// time, with a `cached` value which is not set to `None`, will panic.
     ///
     /// Non-revertible thunks are not concerned: this function has no effect on them, even if
     /// called repeatedly.
     ///
-    /// This function is equivalent to calling TODO: FILL NAME, with generated variables pointing
-    /// to each thunk as arguments. The only difference is that `build_cached` avoid the creation
-    /// of an intermediate redex `(fun id1 .. id n => orig) %1 .. %n`, and perform the application
-    /// in one step.
-    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
+    /// This function is similar in spirit to setting the cached value to be the explicit function
+    /// application given as built by `saturate`, but applied to arguments taken
+    /// from `rec_env`. The major difference is that `build_cached` avoid the creation of the
+    /// intermediate redex `(fun id1 .. id n => orig) %1 .. %n` as well as the intermediate thunks
+    /// and terms, because we can compute the result application right away, in-place.
+    pub fn init_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         match self.inner {
             InnerThunkData::Standard(_) => (),
             InnerThunkData::Revertible {
@@ -171,7 +178,7 @@ impl ThunkData {
                     "tried to build the cached value of a revertible thunk, but was already set"
                 );
 
-                let mut new_cached = Closure::clone(&*orig);
+                let mut new_cached = Closure::clone(orig);
 
                 match deps {
                     Some(deps) if deps.is_empty() => (),
@@ -186,65 +193,37 @@ impl ThunkData {
         }
     }
 
-    //build_cached ~ cached = build_cached_as_app(self, rec_env.iter())
-
-    // build_cached(rev_thunk, rec_env ~ arguments) ~> "app" (rev_thunk, rec_env)
-    // build_cached_as_app(..)
-    // (fun x y z ... => (original expr of rev_thunk) (rec_env filter by thunk deps)
-    //
-    pub fn build_cached_as_app<
-        'a,
-        I: DoubleEndedIterator<Item = (&'a Ident, &'a RichTerm)> + Clone,
-    >(
-        &mut self,
-        args: I,
-    ) {
+    /// Revert a thunk and abstract over the provided arguments to get back a function. The result
+    /// is returned in a new, non-revertible, thunk.
+    ///
+    /// Used by [Thunk::saturate]. See the corresponding documentation for more
+    /// details.
+    ///
+    /// # Example
+    ///
+    /// If `orig` is `foo + bar + a` and `args` correspond to `bar, foo`, this functions returns a
+    /// standard thunk containing `fun bar foo => foo + bar + a`.
+    fn revthunk_as_explicit_fun<'a, I>(self, args: I) -> Self
+    where
+        I: DoubleEndedIterator<Item = &'a Ident>,
+    {
         match self.inner {
-            InnerThunkData::Standard(_) => (),
-            InnerThunkData::Revertible {
-                ref mut cached,
-                ref orig,
-                ref deps,
-            } => {
-                // `build_cached_app` must be called exactly once on a revertible thunk. This is an
-                // invariant that MUST be maintained by the interpreter.
-                //
-                // `cached` set to `None` solely exists because we need to first allocate all the
-                // revertible thunks corresponding to a recursive record, and only then we can
-                // patch them (build the cached value) in a second step, but they should be
-                // logically seen as one construction operation.
-                assert!(
-                    cached.is_none(),
-                    "tried to build the applied version of cached value of a revertible thunk, but was already set"
-                );
-
-                let Closure { body, env } = Closure::clone(orig);
-
-                // Only keep arguments that actually appear free in the revertible thunk's body.
-                //
-                // It would be better to have the `match` outside of the filtering closure, because
-                // it is independent from the identifier, but Rust's closures make this hard to
-                // type (require dyn trait objects or boxing). Given the size of `deps`, and the
-                // overhead of dyn trait objects, it doesn't seem worth the trouble.
-                let filtered = args.filter(|(ident, _)| match deps {
-                    Some(deps) if deps.is_empty() => false,
-                    Some(deps) => deps.contains(ident),
-                    None => true,
-                });
+            InnerThunkData::Standard(_) => self,
+            InnerThunkData::Revertible { orig, .. } => {
+                let Closure { body, env } =
+                    Rc::try_unwrap(orig).unwrap_or_else(|rc| Closure::clone(&rc));
 
                 // Build a list of the arguments that the function will need in the same order as
                 // the original iterator. If the identifiers inside `args` are `a`, `b` and `c`, in
                 // that order, we want to build `fun a => (fun b (fun c => body))`. We thus need a
                 // reverse fold.
-                let as_function = filtered.clone().map(|(id, _)| id).rfold(body, |built, id| {
-                    RichTerm::from(Term::Fun(id.clone(), built))
-                });
-                // Apply the freshly built function to the corresponding arguments.
-                let applied = filtered.fold(as_function, |built, (_, rt)| {
-                    RichTerm::from(Term::App(built, rt.clone()))
-                });
+                let as_function =
+                    args.rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
 
-                *cached = Some(Closure { body: applied, env });
+                ThunkData::new(Closure {
+                    body: as_function,
+                    env,
+                })
             }
         }
     }
@@ -370,6 +349,13 @@ impl ThunkData {
                 .unwrap_or(ThunkDeps::Unknown),
         }
     }
+
+    pub fn typ(&self) -> ThunkType {
+        match self.inner {
+            InnerThunkData::Standard(_) => ThunkType::Standard,
+            InnerThunkData::Revertible { .. } => ThunkType::Revertible,
+        }
+    }
 }
 
 /// A thunk.
@@ -382,7 +368,8 @@ impl ThunkData {
 /// revertible thunks. Most expressions don't need revertible thunks as their evaluation will
 /// always give the same result, but some others, such as the ones containing recursive references
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
-/// expression. Those aspects are mainly handled in [InnerThunkData].
+/// expression. Those aspects are mainly handled and discussed into more details in
+/// [InnerThunkData].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
@@ -473,7 +460,92 @@ impl Thunk {
     }
 
     pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
-        self.data.borrow_mut().build_cached(rec_env)
+        self.data.borrow_mut().init_cached(rec_env)
+    }
+
+    /// Revert a thunk, abstract over its dependencies to get back a function, and apply the
+    /// function to the given variables. The function part is allocated in a new fresh thunk,
+    /// stored as a generated variable, with the same environment as the original expression.
+    ///
+    /// Recall that revertible thunks are just a memoization mechanism) for function application.
+    /// The original expression (`orig`) and the dependencies (`deps`) are a representation of a
+    /// function. Most of the time, we don't have to go through an explicit function, and just
+    /// manipulate the body of the function directly (which is what is stored inside the `orig`
+    /// field).
+    ///
+    /// However, in the general case of merging two record fields which may be both recursive (i.e.
+    /// which may contain a revertible thunk), we have to use the explicit function representation
+    /// and apply it to variables, which correspond to the fields of the recursive record being
+    /// built by merging.
+    ///
+    /// `saturate`:
+    /// - abstract the original expression of the underlying revertible thunk, forming a function.
+    /// - store this function in a fresh standard thunk
+    /// - return the application of this function to the provided record field names (as variables)
+    ///
+    /// Field names are taken as an iterator over identifiers.
+    ///
+    /// # Parameters
+    ///
+    /// - `env`: the environment in which the explicit function expression is closurized. When
+    ///   performing recursive overriding, this is the local environment of the final merged field.
+    /// - `fields`: the fields of the resulting recursive record being built by merging. `fields` is used for two
+    ///   purposes:
+    ///     - to impose a fixed order on the arguments of the function. The particular order is not
+    ///       important but it must be the same used for forming the function and forming the
+    ///       application, to avoid a mismatch like `(fun foo bar => ...) bar foo`
+    ///     - to know what parameters to use for reverting a thunk whose dependencies are unknown.
+    ///       In that case, we must be conservative and abstract over all the fields of the
+    ///       recursive record, but we can't get this information from `self` alone
+    ///
+    /// # Standard thunks (non-revertible)
+    ///
+    /// Non revertible thunks can be seen as a special case of revertible thunks with no
+    /// dependencies. Thus the abstraction and application are zero-ary, and the result is just the
+    /// current thunk closurized in `env` as a fresh variable.
+    ///
+    /// # Example
+    ///
+    /// If `orig` is `foo + bar + a` where `foo` and `bar` are thunk dependencies (hence are free
+    /// variables) and `a` is bound in the environment. Say the iterator represents the fields
+    /// `bar, b, foo` in that order. Then `rev_thunk_as_explicit_app`:
+    ///
+    /// - stores `fun bar foo => foo + bar + a` in a fresh thunk with the same environment as
+    ///   `self` (in particular, `a` is bound)
+    /// - allocates a fresh variable, say `%1`, and binds it to the previous thunk in `env`
+    /// - returns the term `%1 foo bar`
+    pub fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+        self,
+        env: &mut Environment,
+        fields: I,
+    ) -> RichTerm {
+        let deps = self.deps();
+        let inner = Rc::try_unwrap(self.data)
+            .map(RefCell::into_inner)
+            .unwrap_or_else(|rc| rc.borrow().clone());
+
+        let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match deps {
+            ThunkDeps::Empty => Box::new(|_: &&Ident| false),
+            ThunkDeps::Known(deps) => Box::new(move |id: &&Ident| deps.contains(id)),
+            ThunkDeps::Unknown => Box::new(|_: &&Ident| true),
+        };
+
+        let thunk_as_function = Thunk {
+            data: Rc::new(RefCell::new(
+                inner.revthunk_as_explicit_fun(fields.clone().filter(&mut deps_filter)),
+            )),
+            ident_kind: self.ident_kind,
+        };
+
+        let fresh_var = Ident::fresh();
+        env.insert(fresh_var, thunk_as_function);
+
+        let as_function = RichTerm::from(Term::Var(fresh_var));
+        let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
+
+        args.fold(as_function, |partial_app, arg| {
+            RichTerm::from(Term::App(partial_app, arg))
+        })
     }
 
     /// Map a function over the content of the thunk to create a new, fresh independent thunk. If
@@ -502,6 +574,10 @@ impl Thunk {
     /// [`crate::transform::free_vars`].
     pub fn deps(&self) -> ThunkDeps {
         self.data.borrow().deps()
+    }
+
+    pub fn typ(&self) -> ThunkType {
+        self.data.borrow().typ()
     }
 }
 
