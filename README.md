@@ -67,7 +67,7 @@ The motivating use cases are in particular:
     a specification of the dependency graph.
 
 Most aforementioned projects have their own bespoke configuration language. See
-[Related projects and inspirations](#related-projects-and-inspirations). In
+[Comparison](#comparison). In
 general, application-specific languages might suffer from feature creep, lack of
 abstractions or just feel ad hoc. Nickel buys you more for less.
 
@@ -208,7 +208,7 @@ to be used in production. The next steps we plan to work on are:
   [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
 - Performance improvements
 
-## Related projects and inspirations
+## Comparison
 
 - [CUE](https://cuelang.org/) is a configuration language with a focus on data
     validation. It introduces a new constraint system backed by a solid theory
@@ -242,4 +242,16 @@ to be used in production. The next steps we plan to work on are:
     forbidden, making it not Turing-complete.
 
 See [RATIONALE.md](./RATIONALE.md) for the design rationale and a more detailed
-comparison with a selection of these languages.
+comparison with these languages.
+
+### Comparison with other configuration languages
+<!-- Intentionally duplicated in `RATIONALE.md`, please update the other one for any change done here -->
+
+| Language | Typing                        | Recursion  | Evaluation | Side-effects                                      |
+|----------|-------------------------------|------------|------------|---------------------------------------------------|
+| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained)                                 |
+| Starlark | Dynamic                       | No         | Strict     | No                                                |
+| Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management  |
+| Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                                |
+| CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer  |
+| Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                                |

@@ -347,16 +347,20 @@ The main difference between Jsonnet and Nickel are types. Jsonnet does not
 feature static types, contracts or enriched values, and thus can't type library
 code and has no principled approach to data validation.
 
-### Summary
+### Comparison with other configuration languages
+<!-- Intentionally duplicated in `README.md`, please update the other one for any change done here -->
 
-| Language | Typing                        | Recursion  | Evaluation | Side-effects                                      |
-|----------|-------------------------------|------------|------------|---------------------------------------------------|
-| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained)                                 |
-| Starlark | Dynamic                       | No         | Strict     | No                                                |
-| Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management  |
-| Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                                |
-| CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer  |
-| Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                                |
+| Language | Typing                        | Recursion  | Evaluation | Side-effects                                     |
+|----------|-------------------------------|------------|------------|--------------------------------------------------|
+| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained, planned)                       |
+| Starlark | Dynamic                       | No         | Strict     | No                                               |
+| Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management |
+| Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                               |
+| CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer |
+| Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                               |
+| JSON     | None                          | No         | Strict     | No                                               |
+| YAML     | None                          | No         | N/A        | No                                               |
+| TOML     | None                          | No         | N/A        | No                                               |
 
 ## Conclusion
 
