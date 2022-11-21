@@ -391,6 +391,7 @@
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { optimize = false; };
+        inherit vscodeExtension;
         pre-commit = pre-commit-builder { isHermetic = true; };
       } // (forEachRustChannel (channel:
         {
