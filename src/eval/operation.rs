@@ -2144,7 +2144,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 env2,
                 pos_op,
                 MergeMode::Standard,
-                &self.call_stack,
+                &mut self.call_stack,
             ),
 
             BinaryOp::Hash() => {
@@ -2586,7 +2586,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 env3,
                                 pos_op,
                                 MergeMode::Contract(lbl),
-                                &self.call_stack
+                                &mut self.call_stack
                             )
                         }
                     } else {

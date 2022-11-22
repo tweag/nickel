@@ -55,7 +55,7 @@ use super::*;
 use crate::error::EvalError;
 use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::record::RecordData;
+use crate::term::record::{self, RecordData};
 use crate::term::{
     make as mk_term, BinaryOp, Contract, FieldDeps, MetaValue, RecordAttrs, RichTerm, SharedTerm,
     Term,
@@ -93,7 +93,7 @@ pub fn merge(
     env2: Environment,
     pos_op: TermPos,
     mode: MergeMode,
-    call_stack: &CallStack,
+    call_stack: &mut CallStack,
 ) -> Result<Closure, EvalError> {
     // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
     // new metavalue (with no attribute set excepted the value), and then merging the two
@@ -368,6 +368,15 @@ pub fn merge(
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
         (Term::Record(r1), Term::Record(r2)) => {
+            // While it wouldn't be impossible to merge records with sealed tails,
+            // working out how to do so in a "sane" way that preserves parametricity
+            // is non-trivial. It's also not entirely clear that this is something
+            // users will generally have reason to do, so in the meantime we've
+            // decided to just prevent this entirely
+            if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
+                return Err(EvalError::BlameError(label, std::mem::take(call_stack)));
+            }
+
             let hashmap::SplitResult {
                 left,
                 center,
