@@ -837,6 +837,12 @@ impl Cache {
         Some(file)
     }
 
+    /// Retrieve the FileIds for all the stdlib modules
+    pub fn get_all_submodules_file_id(&self) -> Option<Vec<FileId>> {
+        let ids = self.stdlib_ids.as_ref()?;
+        Some(ids.values().copied().collect())
+    }
+
     /// Load and parse the standard library in the cache.
     pub fn load_stdlib(&mut self) -> Result<CacheOp<()>, Error> {
         if self.stdlib_ids.is_some() {

@@ -16,12 +16,15 @@ use lsp_types::{
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
-use nickel_lang::cache::{Cache, ErrorTolerance};
+use nickel_lang::{
+    cache::{Cache, ErrorTolerance},
+    identifier::Ident,
+};
 use nickel_lang::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
-    linearization::completed::Completed,
+    linearization::{completed::Completed, interface::TermKind, Environment},
     requests::{completion, goto, hover, symbols},
     trace::Trace,
 };
@@ -33,6 +36,7 @@ pub struct Server {
     pub cache: Cache,
     pub lin_cache: HashMap<FileId, Completed>,
     pub initial_ctxt: Context,
+    pub initial_env: Environment,
 }
 
 impl Server {
@@ -71,7 +75,29 @@ impl Server {
             cache,
             lin_cache,
             initial_ctxt,
+            initial_env: Environment::new(),
         }
+    }
+
+    pub fn initialize_stdlib_environment(&mut self) -> Option<()> {
+        let mut initial = Environment::new();
+        let modules = stdlib::modules();
+        for module in modules {
+            let name: Ident = module.into();
+            let file_id = self.cache.get_submodule_file_id(module)?;
+            let lin = self.lin_cache_get(&file_id).ok()?;
+            // We're using the ID 0 here because the stdlib is represented by a 
+            // single record which would have an ID of 0
+            let id = match lin.get_item(0).map(|item| &item.kind) {
+                Some(TermKind::Record(table)) => table.get(&name),
+                _ => None,
+            }?;
+            let key = (name, file_id);
+            initial.insert(key, *id);
+        }
+
+        self.initial_env = initial;
+        Some(())
     }
 
     pub(crate) fn reply(&mut self, response: Response) {
@@ -115,7 +141,12 @@ impl Server {
         for module in modules {
             let file_id = cache.get_submodule_file_id(module).unwrap();
             cache
-                .typecheck_with_analysis(file_id, &self.initial_ctxt, &mut self.lin_cache)
+                .typecheck_with_analysis(
+                    file_id,
+                    &self.initial_ctxt,
+                    &self.initial_env,
+                    &mut self.lin_cache,
+                )
                 .unwrap();
         }
         Ok(())
@@ -124,6 +155,7 @@ impl Server {
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
         self.linearize_stdlib()?;
+        self.initialize_stdlib_environment().unwrap();
         while let Ok(msg) = self.connection.receiver.recv() {
             trace!("Message: {:#?}", msg);
             match msg {

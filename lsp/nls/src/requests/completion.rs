@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use codespan::ByteIndex;
+use codespan::{ByteIndex, FileId};
 use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
@@ -233,30 +233,26 @@ fn collect_record_info(linearization: &Completed, id: usize, path: &mut Vec<Iden
         .unwrap_or_default()
 }
 
-/// Generate completion for a stdlib identifier.
-fn stdlib_completion(server: &Server, name: Ident, path: &mut Vec<Ident>) -> Option<Vec<Ident>> {
+// Stdlib completion just gets the FileId of the selected stdlib module and
+// delegates to the normal record completion.
+fn std_complete(
+    item: &LinearizationItem<Types>,
+    name: Ident,
+    server: &Server,
+    path: &mut Vec<Ident>,
+) -> Option<Vec<Ident>> {
     let module = StdlibModule::try_from(name).ok()?;
-    let file_id = server.cache.get_submodule_file_id(module)?;
-    let lin = server.lin_cache_get(&file_id).ok()?;
-
-    // Stdlib modules are represented by a record with a single field which is named
-    // after the module name. Here, we try to get the ID of the
-    // `TermKind::RecordField {..}` associated with that field, which defines the module.
-    // Also, because of the way the linearization algorithm works, we can be almost sure that
-    // the ID of this field is `1`, which will give us constant time access to it, but
-    // this might not always be the case (the algorithm can change), so we have to settle
-    // for a linear search here.
-    let id = lin.linearization.iter().find_map(|item| match &item.kind {
-        TermKind::Record(table) => table.get(&name),
-        _ => None,
-    })?;
-    Some(collect_record_info(lin, *id, path))
+    let file = server.cache.get_submodule_file_id(module)?;
+    let lin = server.lin_cache_get(&file).ok()?;
+    let key = (name, file);
+    let result = item.env.get(&key);
+    result.map(|id| collect_record_info(lin, *id, path))
 }
-
 /// Generate possible completion identifiers given a source text, its linearization
 /// and the current item the cursor points at.
 fn get_completion_identifiers(
     source: &str,
+    file: FileId,
     trigger: Option<&str>,
     linearization: &Completed,
     item: &LinearizationItem<Types>,
@@ -268,11 +264,13 @@ fn get_completion_identifiers(
         linearization: &Completed,
         server: &Server,
         path: &mut Vec<Ident>,
+        file: FileId,
     ) -> Vec<Ident> {
+        let key = (name, file);
         item.env
-            .get(&name)
+            .get(&key)
             .map(|id| collect_record_info(linearization, *id, path))
-            .or_else(|| stdlib_completion(server, name, path))
+            .or_else(|| std_complete(item, name, server, path))
             .unwrap_or_default()
     }
 
@@ -294,7 +292,7 @@ fn get_completion_identifiers(
                     // unwrap is safe here because we are guaranteed by `get_identifier_path`
                     // that it will return a non-empty vector
                     let name = path.pop().unwrap();
-                    complete(item, name, linearization, server, &mut path)
+                    complete(item, name, linearization, server, &mut path, file)
                 })
                 .unwrap_or_default()
         }
@@ -307,7 +305,7 @@ fn get_completion_identifiers(
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
-                complete(item, name, linearization, server, &mut path)
+                complete(item, name, linearization, server, &mut path, file)
             } else {
                 // variable name completion
                 linearization
@@ -366,8 +364,14 @@ pub fn handle_completion(
                 .as_ref()
                 .and_then(|context| context.trigger_character.as_deref());
 
-            let in_scope =
-                get_completion_identifiers(&text[..start], trigger, linearization, item, &server)?;
+            let in_scope = get_completion_identifiers(
+                &text[..start],
+                file_id,
+                trigger,
+                linearization,
+                item,
+                &server,
+            )?;
 
             Some(in_scope)
         }

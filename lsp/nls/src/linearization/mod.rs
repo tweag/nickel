@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use codespan::ByteIndex;
+use codespan::{ByteIndex, FileId};
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
@@ -24,7 +24,7 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
+pub type Environment = nickel_lang::environment::Environment<(Ident, FileId), usize>;
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -45,6 +45,7 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
 pub struct AnalysisHost {
+    file: FileId,
     env: Environment,
     meta: Option<MetaValue>,
     /// Indexing a record will store a reference to the record as
@@ -67,15 +68,10 @@ pub struct AnalysisHost {
 }
 
 impl AnalysisHost {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl Default for AnalysisHost {
-    fn default() -> Self {
+    pub fn from(file: FileId, env: Environment) -> Self {
         Self {
-            env: Environment::new(),
+            file,
+            env,
             meta: Default::default(),
             record_fields: Default::default(),
             let_binding: Default::default(),
@@ -179,7 +175,8 @@ impl Linearizer for AnalysisHost {
                     };
 
                     let id = id_gen.get_and_advance();
-                    self.env.insert(ident.to_owned(), id);
+                    let key = (ident.to_owned(), self.file);
+                    self.env.insert(key, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -192,7 +189,8 @@ impl Linearizer for AnalysisHost {
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
                     let id = id_gen.get_and_advance();
-                    self.env.insert(ident.to_owned(), id);
+                    let key = (ident, self.file);
+                    self.env.insert(key, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -236,7 +234,8 @@ impl Linearizer for AnalysisHost {
                     }
                     _ => unreachable!(),
                 };
-                self.env.insert(ident.to_owned(), id_gen.get());
+                let key = (ident.to_owned(), self.file);
+                self.env.insert(key, id_gen.get());
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: id_gen.get(),
@@ -254,16 +253,17 @@ impl Linearizer for AnalysisHost {
                     ident, self.access
                 );
 
+                let key = (ident.to_owned(), self.file);
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
                     ty: UnifType::Concrete(TypeF::Dyn),
-                    kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
+                    kind: TermKind::Usage(UsageState::from(self.env.get(&key).copied())),
                     meta: self.meta.take(),
                 });
 
-                if let Some(referenced) = self.env.get(ident) {
+                if let Some(referenced) = self.env.get(&key) {
                     lin.add_usage(*referenced, root_id)
                 }
 
@@ -296,7 +296,7 @@ impl Linearizer for AnalysisHost {
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(&record.fields, id, &mut self.env);
+                lin.register_fields(&record.fields, id, &mut self.env, self.file);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
@@ -423,6 +423,7 @@ impl Linearizer for AnalysisHost {
 
     fn scope(&mut self) -> Self {
         AnalysisHost {
+            file: self.file,
             env: self.env.clone(),
             meta: self.meta.clone(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
@@ -435,6 +436,7 @@ impl Linearizer for AnalysisHost {
 
     fn scope_meta(&mut self) -> Self {
         AnalysisHost {
+            file: self.file,
             env: self.env.clone(),
             // Metadata must be attached to the original scope of the value (`self`), while the new
             // scope for metadata should be clean.
@@ -454,9 +456,10 @@ impl Linearizer for AnalysisHost {
         ident: &Ident,
         new_type: UnifType,
     ) {
+        let key = (ident.to_owned(), self.file);
         if let Some(item) = self
             .env
-            .get(ident)
+            .get(&key)
             .and_then(|index| lin.linearization.get_mut(*index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);

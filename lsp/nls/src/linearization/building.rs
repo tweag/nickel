@@ -1,5 +1,6 @@
 use std::{collections::HashMap, mem};
 
+use codespan::FileId;
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
@@ -60,6 +61,7 @@ impl Building {
         record_fields: &HashMap<Ident, RichTerm>,
         record: usize,
         env: &mut Environment,
+        file: FileId,
     ) {
         for (ident, value) in record_fields.iter() {
             let id = self.id_gen().get_and_advance();
@@ -83,7 +85,8 @@ impl Building {
                     _ => None,
                 },
             });
-            env.insert(*ident, id);
+            let key = (*ident, file);
+            env.insert(key, id);
             self.add_record_field(record, (*ident, id))
         }
     }
