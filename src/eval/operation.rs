@@ -615,6 +615,19 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                 match_sharedterm! {t, with {
                         Term::Record(record) => {
+                            // While it's certainly possible to allow mapping over
+                            // a record with a sealed tail, it's not entirely obvious
+                            // how that should behave. It's also not clear that this
+                            // is something users will actually need to do, so we've
+                            // decided to prevent this until we have a clearer idea
+                            // of potential use-cases.
+                            if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                                return Err(EvalError::BlameError(
+                                    label,
+                                    std::mem::take(&mut self.call_stack),
+                                ))
+                            }
+
                             let mut shared_env = Environment::new();
                             let f_as_var = f.body.closurize(&mut env, f.env);
 
