@@ -3,7 +3,7 @@ use super::{TypeF, UnifType};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
-macro_rules! mk_tyw_arrow {
+macro_rules! mk_uty_arrow {
     ($left:expr, $right:expr) => {
         $crate::typecheck::UnifType::Concrete(
             $crate::types::TypeF::Arrow(
@@ -13,14 +13,14 @@ macro_rules! mk_tyw_arrow {
         )
     };
     ( $fst:expr, $snd:expr , $( $types:expr ),+ ) => {
-        mk_tyw_arrow!($fst, mk_tyw_arrow!($snd, $( $types ),+))
+        mk_uty_arrow!($fst, mk_uty_arrow!($snd, $( $types ),+))
     };
 }
 
 /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_tyw_enum_row!(id1, .., idn; tail)` correspond to `<id1, .., idn | tail>.
+/// `mk_uty_enum_row!(id1, .., idn; tail)` correspond to `<id1, .., idn | tail>.
 #[macro_export]
-macro_rules! mk_tyw_enum_row {
+macro_rules! mk_uty_enum_row {
     () => {
         $crate::typecheck::UnifEnumRows::Concrete(EnumRowsF::Empty)
     };
@@ -31,17 +31,17 @@ macro_rules! mk_tyw_enum_row {
         $crate::typecheck::UnifEnumRows::Concrete(
             $crate::types::EnumRowsF::Extend {
                 row: Ident::from($id),
-                tail: Box::new(mk_tyw_enum_row!($( $ids ),* $(; $tail)?))
+                tail: Box::new(mk_uty_enum_row!($( $ids ),* $(; $tail)?))
             }
         )
     };
 }
 
 /// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_tyw_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
+/// `mk_uty_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
 /// tail}. The tail can be omitted, in which case the empty row is uses as a tail instead.
 #[macro_export]
-macro_rules! mk_tyw_row {
+macro_rules! mk_uty_row {
     () => {
         $crate::typecheck::UnifRecordRows::Concrete(RecordRowsF::Empty)
     };
@@ -55,31 +55,31 @@ macro_rules! mk_tyw_row {
                     id: Ident::from($id),
                     types: Box::new($ty.into()),
                 },
-                tail: Box::new(mk_tyw_row!($(($ids, $tys)),* $(; $tail)?)),
+                tail: Box::new(mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),
             }
         )
     };
 }
 
-/// Wrapper around `mk_tyw_enum_row!` to build an enum type from an enum row.
+/// Wrapper around `mk_uty_enum_row!` to build an enum type from an enum row.
 #[macro_export]
-macro_rules! mk_tyw_enum {
+macro_rules! mk_uty_enum {
     ($( $ids:expr ),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::Concrete(
             $crate::types::TypeF::Enum(
-                mk_tyw_enum_row!($( $ids ),* $(; $tail)?)
+                mk_uty_enum_row!($( $ids ),* $(; $tail)?)
             )
         )
     };
 }
 
-/// Wrapper around `mk_tyw_record!` to build a record type from a record row.
+/// Wrapper around `mk_uty_record!` to build a record type from a record row.
 #[macro_export]
-macro_rules! mk_tyw_record {
+macro_rules! mk_uty_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::Concrete(
             $crate::types::TypeF::Record(
-                mk_tyw_row!($(($ids, $tys)),* $(; $tail)?)
+                mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
             )
         )
     };

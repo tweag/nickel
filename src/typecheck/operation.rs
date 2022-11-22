@@ -5,7 +5,7 @@ use crate::{
     term::{BinaryOp, NAryOp, UnaryOp},
     types::TypeF,
 };
-use crate::{mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row};
+use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row};
 
 /// Type of unary operations.
 pub fn get_uop_type(
@@ -18,37 +18,36 @@ pub fn get_uop_type(
             let branches = UnifType::UnifVar(state.table.fresh_type_var_id());
 
             (
-                mk_typewrapper::bool(),
-                mk_tyw_arrow!(branches.clone(), branches.clone(), branches),
+                mk_uniftype::bool(),
+                mk_uty_arrow!(branches.clone(), branches.clone(), branches),
             )
         }
         // Dyn -> [| `Num, `Bool, `Str, `Enum, `Fun, `Array, `Record, `Lbl, `Other |]
         UnaryOp::Typeof() => (
-            mk_typewrapper::dynamic(),
-            mk_tyw_enum!("Num", "Bool", "Str", "Enum", "Fun", "Array", "Record", "Lbl", "Other"),
+            mk_uniftype::dynamic(),
+            mk_uty_enum!("Num", "Bool", "Str", "Enum", "Fun", "Array", "Record", "Lbl", "Other"),
         ),
         // Bool -> Bool -> Bool
-        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => (
-            mk_typewrapper::bool(),
-            mk_tyw_arrow!(TypeF::Bool, TypeF::Bool),
-        ),
+        UnaryOp::BoolAnd() | UnaryOp::BoolOr() => {
+            (mk_uniftype::bool(), mk_uty_arrow!(TypeF::Bool, TypeF::Bool))
+        }
         // Bool -> Bool
-        UnaryOp::BoolNot() => (mk_typewrapper::bool(), mk_typewrapper::bool()),
+        UnaryOp::BoolNot() => (mk_uniftype::bool(), mk_uniftype::bool()),
         // forall a. Dyn -> a
         UnaryOp::Blame() => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            (mk_typewrapper::dynamic(), res)
+            (mk_uniftype::dynamic(), res)
         }
         // Dyn -> Bool
-        UnaryOp::Pol() => (mk_typewrapper::dynamic(), mk_typewrapper::bool()),
+        UnaryOp::Pol() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
         // forall rows. < | rows> -> <id | rows>
         UnaryOp::Embed(id) => {
             let row_var_id = state.table.fresh_erows_var_id();
             let row = UnifEnumRows::UnifVar(row_var_id);
 
-            let domain = mk_tyw_enum!(; row.clone());
-            let codomain = mk_tyw_enum!(*id; row);
+            let domain = mk_uty_enum!(; row.clone());
+            let codomain = mk_uty_enum!(*id; row);
 
             // The codomain is the only type which can impose a constraint on the fresh row
             // unification variable, namely that it can't contain `id`.
@@ -59,34 +58,34 @@ pub fn get_uop_type(
         UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
         // Dyn -> Dyn
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoArray() => {
-            (mk_typewrapper::dynamic(), mk_typewrapper::dynamic())
+            (mk_uniftype::dynamic(), mk_uniftype::dynamic())
         }
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
             let rows = state.table.fresh_rrows_uvar();
             let res = state.table.fresh_type_uvar();
 
-            (mk_tyw_record!((*id, res.clone()); rows), res)
+            (mk_uty_record!((*id, res.clone()); rows), res)
         }
         // forall a b. Array a -> (a -> b) -> Array b
         UnaryOp::ArrayMap() => {
             let a = UnifType::UnifVar(state.table.fresh_type_var_id());
             let b = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            let f_type = mk_tyw_arrow!(a.clone(), b.clone());
+            let f_type = mk_uty_arrow!(a.clone(), b.clone());
             (
-                mk_typewrapper::array(a),
-                mk_tyw_arrow!(f_type, mk_typewrapper::array(b)),
+                mk_uniftype::array(a),
+                mk_uty_arrow!(f_type, mk_uniftype::array(b)),
             )
         }
         // forall a. Num -> (Num -> a) -> Array a
         UnaryOp::ArrayGen() => {
             let a = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            let f_type = mk_tyw_arrow!(TypeF::Num, a.clone());
+            let f_type = mk_uty_arrow!(TypeF::Num, a.clone());
             (
-                mk_typewrapper::num(),
-                mk_tyw_arrow!(f_type, mk_typewrapper::array(a)),
+                mk_uniftype::num(),
+                mk_uty_arrow!(f_type, mk_uniftype::array(a)),
             )
         }
         // forall a b. { _ : a} -> (Str -> a -> b) -> { _ : b }
@@ -97,10 +96,10 @@ pub fn get_uop_type(
             let a = UnifType::UnifVar(state.table.fresh_type_var_id());
             let b = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            let f_type = mk_tyw_arrow!(TypeF::Str, a.clone(), b.clone());
+            let f_type = mk_uty_arrow!(TypeF::Str, a.clone(), b.clone());
             (
-                mk_typewrapper::dyn_record(a),
-                mk_tyw_arrow!(f_type, mk_typewrapper::dyn_record(b)),
+                mk_uniftype::dyn_record(a),
+                mk_uty_arrow!(f_type, mk_uniftype::dyn_record(b)),
             )
         }
         // forall a b. a -> b -> b
@@ -108,93 +107,90 @@ pub fn get_uop_type(
             let fst = UnifType::UnifVar(state.table.fresh_type_var_id());
             let snd = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            (fst, mk_tyw_arrow!(snd.clone(), snd))
+            (fst, mk_uty_arrow!(snd.clone(), snd))
         }
         // forall a. Array a -> a
         UnaryOp::ArrayHead() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            (mk_typewrapper::array(ty_elt.clone()), ty_elt)
+            (mk_uniftype::array(ty_elt.clone()), ty_elt)
         }
         // forall a. Array a -> Array a
         UnaryOp::ArrayTail() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_typewrapper::array(ty_elt.clone()),
-                mk_typewrapper::array(ty_elt),
+                mk_uniftype::array(ty_elt.clone()),
+                mk_uniftype::array(ty_elt),
             )
         }
         // forall a. Array a -> Num
         UnaryOp::ArrayLength() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            (mk_typewrapper::array(ty_elt), mk_typewrapper::num())
+            (mk_uniftype::array(ty_elt), mk_uniftype::num())
         }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
         // BEFORE: forall rows. { rows } -> Array
         // Dyn -> Array Str
         UnaryOp::FieldsOf() => (
-            mk_typewrapper::dynamic(),
-            //mk_tyw_record!(; TypeWrapper::Ptr(state.table.fresh_type_var_id())),
-            mk_typewrapper::array(TypeF::Str),
+            mk_uniftype::dynamic(),
+            //mk_uty_record!(; TypeWrapper::Ptr(state.table.fresh_type_var_id())),
+            mk_uniftype::array(TypeF::Str),
         ),
         // Dyn -> Array Dyn
-        UnaryOp::ValuesOf() => (mk_typewrapper::dynamic(), mk_typewrapper::array(TypeF::Dyn)),
+        UnaryOp::ValuesOf() => (mk_uniftype::dynamic(), mk_uniftype::array(TypeF::Dyn)),
         // Str -> Str
-        UnaryOp::StrTrim() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrTrim() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Array Str
-        UnaryOp::StrChars() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::array(mk_typewrapper::str()),
-        ),
+        UnaryOp::StrChars() => (mk_uniftype::str(), mk_uniftype::array(mk_uniftype::str())),
         // Str -> Num
-        UnaryOp::CharCode() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::CharCode() => (mk_uniftype::str(), mk_uniftype::num()),
         // Num -> Str
-        UnaryOp::CharFromCode() => (mk_typewrapper::num(), mk_typewrapper::str()),
+        UnaryOp::CharFromCode() => (mk_uniftype::num(), mk_uniftype::str()),
         // Str -> Str
-        UnaryOp::StrUppercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrUppercase() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Str
-        UnaryOp::StrLowercase() => (mk_typewrapper::str(), mk_typewrapper::str()),
+        UnaryOp::StrLowercase() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Num
-        UnaryOp::StrLength() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::StrLength() => (mk_uniftype::str(), mk_uniftype::num()),
         // Dyn -> Str
-        UnaryOp::ToStr() => (mk_typewrapper::dynamic(), mk_typewrapper::str()),
+        UnaryOp::ToStr() => (mk_uniftype::dynamic(), mk_uniftype::str()),
         // Str -> Num
-        UnaryOp::NumFromStr() => (mk_typewrapper::str(), mk_typewrapper::num()),
+        UnaryOp::NumFromStr() => (mk_uniftype::str(), mk_uniftype::num()),
         // Str -> < | a> for a rigid type variable a
         UnaryOp::EnumFromStr() => (
-            mk_typewrapper::str(),
-            mk_tyw_enum!(; state.table.fresh_erows_const()),
+            mk_uniftype::str(),
+            mk_uty_enum!(; state.table.fresh_erows_const()),
         ),
         // Str -> Str -> Bool
         UnaryOp::StrIsMatch() => (
-            mk_typewrapper::str(),
-            mk_tyw_arrow!(mk_typewrapper::str(), mk_typewrapper::bool()),
+            mk_uniftype::str(),
+            mk_uty_arrow!(mk_uniftype::str(), mk_uniftype::bool()),
         ),
         // Str -> Str -> {match: Str, index: Num, groups: Array Str}
         UnaryOp::StrMatch() => (
-            mk_typewrapper::str(),
-            mk_tyw_arrow!(
-                mk_typewrapper::str(),
-                mk_tyw_record!(
+            mk_uniftype::str(),
+            mk_uty_arrow!(
+                mk_uniftype::str(),
+                mk_uty_record!(
                     ("match", TypeF::Str),
                     ("index", TypeF::Num),
-                    ("groups", mk_typewrapper::array(TypeF::Str))
+                    ("groups", mk_uniftype::array(TypeF::Str))
                 )
             ),
         ),
         // Str -> Bool
-        UnaryOp::StrIsMatchCompiled(_) => (mk_typewrapper::str(), mk_typewrapper::bool()),
+        UnaryOp::StrIsMatchCompiled(_) => (mk_uniftype::str(), mk_uniftype::bool()),
         // Str -> {match: Str, index: Num, groups: Array Str}
         UnaryOp::StrMatchCompiled(_) => (
-            mk_typewrapper::str(),
-            mk_tyw_record!(
+            mk_uniftype::str(),
+            mk_uty_record!(
                 ("match", TypeF::Str),
                 ("index", TypeF::Num),
-                ("groups", mk_typewrapper::array(TypeF::Str))
+                ("groups", mk_uniftype::array(TypeF::Str))
             ),
         ),
         // Dyn -> Dyn
-        UnaryOp::Force(_) => (mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+        UnaryOp::Force(_) => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // forall a. a -> a
         UnaryOp::PushDefault() => {
             let ty = state.table.fresh_type_uvar();
@@ -219,70 +215,58 @@ pub fn get_bop_type(
         | BinaryOp::Sub()
         | BinaryOp::Mult()
         | BinaryOp::Div()
-        | BinaryOp::Modulo() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-        ),
+        | BinaryOp::Modulo() => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Seal() => (
-            mk_typewrapper::sym(),
-            mk_typewrapper::dynamic(),
-            mk_tyw_arrow!(TypeF::Dyn, TypeF::Dyn),
+            mk_uniftype::sym(),
+            mk_uniftype::dynamic(),
+            mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn),
         ),
         // Str -> Str -> Str
-        BinaryOp::StrConcat() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-        ),
+        BinaryOp::StrConcat() => (mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::str()),
         // Ideally: Contract -> Label -> Dyn -> Dyn
         // Currenty: Dyn -> Dyn -> (Dyn -> Dyn)
         BinaryOp::Assume() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-            mk_tyw_arrow!(mk_typewrapper::dynamic(), mk_typewrapper::dynamic()),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         ),
         // Sym -> Dyn -> Dyn -> Dyn
         BinaryOp::Unseal() => (
-            mk_typewrapper::sym(),
-            mk_typewrapper::dynamic(),
-            mk_tyw_arrow!(TypeF::Dyn, TypeF::Dyn),
+            mk_uniftype::sym(),
+            mk_uniftype::dynamic(),
+            mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn),
         ),
         // Str -> Dyn -> Dyn
         BinaryOp::Tag() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            mk_uniftype::str(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
         ),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => (
             UnifType::UnifVar(state.table.fresh_type_var_id()),
             UnifType::UnifVar(state.table.fresh_type_var_id()),
-            mk_typewrapper::bool(),
+            mk_uniftype::bool(),
         ),
         // Num -> Num -> Bool
         BinaryOp::LessThan()
         | BinaryOp::LessOrEq()
         | BinaryOp::GreaterThan()
-        | BinaryOp::GreaterOrEq() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::bool(),
-        ),
+        | BinaryOp::GreaterOrEq() => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::bool()),
         // Str -> Dyn -> Dyn
         BinaryOp::GoField() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            mk_uniftype::str(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
         ),
         // forall a. Str -> { _ : a} -> a
         BinaryOp::DynAccess() => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
 
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
+                mk_uniftype::str(),
+                mk_uniftype::dyn_record(res.clone()),
                 res,
             )
         }
@@ -290,98 +274,90 @@ pub fn get_bop_type(
         BinaryOp::DynExtend() => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_tyw_arrow!(res.clone(), mk_typewrapper::dyn_record(res)),
+                mk_uniftype::str(),
+                mk_uniftype::dyn_record(res.clone()),
+                mk_uty_arrow!(res.clone(), mk_uniftype::dyn_record(res)),
             )
         }
         // forall a. Str -> { _ : a } -> { _ : a}
         BinaryOp::DynRemove() => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(res.clone()),
-                mk_typewrapper::dyn_record(res),
+                mk_uniftype::str(),
+                mk_uniftype::dyn_record(res.clone()),
+                mk_uniftype::dyn_record(res),
             )
         }
         // forall a. Str -> {_: a} -> Bool
         BinaryOp::HasField() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_typewrapper::str(),
-                mk_typewrapper::dyn_record(ty_elt),
-                mk_typewrapper::bool(),
+                mk_uniftype::str(),
+                mk_uniftype::dyn_record(ty_elt),
+                mk_uniftype::bool(),
             )
         }
         // forall a. Array a -> Array a -> Array a
         BinaryOp::ArrayConcat() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            let ty_array = mk_typewrapper::array(ty_elt);
+            let ty_array = mk_uniftype::array(ty_elt);
             (ty_array.clone(), ty_array.clone(), ty_array)
         }
         // forall a. Array a -> Num -> a
         BinaryOp::ArrayElemAt() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_typewrapper::array(ty_elt.clone()),
-                mk_typewrapper::num(),
+                mk_uniftype::array(ty_elt.clone()),
+                mk_uniftype::num(),
                 ty_elt,
             )
         }
         // Dyn -> Dyn -> Dyn
         BinaryOp::Merge() => (
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
-            mk_typewrapper::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
         ),
         // <Md5, Sha1, Sha256, Sha512> -> Str -> Str
         BinaryOp::Hash() => (
-            mk_tyw_enum!("Md5", "Sha1", "Sha256", "Sha512"),
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
+            mk_uty_enum!("Md5", "Sha1", "Sha256", "Sha512"),
+            mk_uniftype::str(),
+            mk_uniftype::str(),
         ),
         // forall a. <Json, Yaml, Toml> -> a -> Str
         BinaryOp::Serialize() => {
             let ty_input = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
-                mk_tyw_enum!("Json", "Yaml", "Toml"),
+                mk_uty_enum!("Json", "Yaml", "Toml"),
                 ty_input,
-                mk_typewrapper::str(),
+                mk_uniftype::str(),
             )
         }
         // <Json, Yaml, Toml> -> Str -> Dyn
         BinaryOp::Deserialize() => (
-            mk_tyw_enum!("Json", "Yaml", "Toml"),
-            mk_typewrapper::str(),
-            mk_typewrapper::dynamic(),
+            mk_uty_enum!("Json", "Yaml", "Toml"),
+            mk_uniftype::str(),
+            mk_uniftype::dynamic(),
         ),
         // Num -> Num -> Num
-        BinaryOp::Pow() => (
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-            mk_typewrapper::num(),
-        ),
+        BinaryOp::Pow() => (mk_uniftype::num(), mk_uniftype::num(), mk_uniftype::num()),
         // Str -> Str -> Bool
-        BinaryOp::StrContains() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::bool(),
-        ),
+        BinaryOp::StrContains() => (mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::bool()),
         // Str -> Str -> Array Str
         BinaryOp::StrSplit() => (
-            mk_typewrapper::str(),
-            mk_typewrapper::str(),
-            mk_typewrapper::array(TypeF::Str),
+            mk_uniftype::str(),
+            mk_uniftype::str(),
+            mk_uniftype::array(TypeF::Str),
         ),
         // The first argument is a contract, the second is a label.
         // forall a. Dyn -> Dyn -> Array a -> Array a
         BinaryOp::ArrayLazyAssume() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            let ty_array = mk_typewrapper::array(ty_elt);
+            let ty_array = mk_uniftype::array(ty_elt);
             (
-                mk_typewrapper::dynamic(),
-                mk_typewrapper::dynamic(),
-                mk_tyw_arrow!(ty_array.clone(), ty_array),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uty_arrow!(ty_array.clone(), ty_array),
             )
         }
     })
@@ -394,21 +370,13 @@ pub fn get_nop_type(
     Ok(match op {
         // Str -> Str -> Str -> Str
         NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => (
-            vec![
-                mk_typewrapper::str(),
-                mk_typewrapper::str(),
-                mk_typewrapper::str(),
-            ],
-            mk_typewrapper::str(),
+            vec![mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::str()],
+            mk_uniftype::str(),
         ),
         // Str -> Num -> Num -> Str
         NAryOp::StrSubstr() => (
-            vec![
-                mk_typewrapper::str(),
-                mk_typewrapper::num(),
-                mk_typewrapper::num(),
-            ],
-            mk_typewrapper::str(),
+            vec![mk_uniftype::str(), mk_uniftype::num(), mk_uniftype::num()],
+            mk_uniftype::str(),
         ),
         // This should not happen, as Switch() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),

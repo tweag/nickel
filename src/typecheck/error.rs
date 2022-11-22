@@ -46,12 +46,12 @@ impl RowUnifError {
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
             RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
-            RowUnifError::RowKindMismatch(id, tyw1, tyw2) => {
-                UnifError::RowKindMismatch(id, tyw1, tyw2)
+            RowUnifError::RowKindMismatch(id, uty1, uty2) => {
+                UnifError::RowKindMismatch(id, uty1, uty2)
             }
             RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
-            RowUnifError::UnsatConstr(id, tyw) => UnifError::RowConflict(id, tyw, left, right),
-            RowUnifError::WithConst(c, tyw) => UnifError::WithConst(c, tyw),
+            RowUnifError::UnsatConstr(id, uty) => UnifError::RowConflict(id, uty, left, right),
+            RowUnifError::WithConst(c, uty) => UnifError::WithConst(c, uty),
             RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
             RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
         }
@@ -131,10 +131,10 @@ impl UnifError {
                 reporting::to_type(state.table, state.names, names, ty2),
                 pos_opt,
             ),
-            UnifError::RowMismatch(ident, tyw1, tyw2, err) => TypecheckError::RowMismatch(
+            UnifError::RowMismatch(ident, uty1, uty2, err) => TypecheckError::RowMismatch(
                 ident,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+                reporting::to_type(state.table, state.names, names, uty1),
+                reporting::to_type(state.table, state.names, names, uty2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
                 pos_opt,
             ),
@@ -160,31 +160,31 @@ impl UnifError {
             UnifError::IncomparableFlatTypes(rt1, rt2) => {
                 TypecheckError::IncomparableFlatTypes(rt1, rt2, pos_opt)
             }
-            UnifError::MissingRow(id, tyw1, tyw2) => TypecheckError::MissingRow(
+            UnifError::MissingRow(id, uty1, uty2) => TypecheckError::MissingRow(
                 id,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+                reporting::to_type(state.table, state.names, names, uty1),
+                reporting::to_type(state.table, state.names, names, uty2),
                 pos_opt,
             ),
-            UnifError::MissingDynTail(tyw1, tyw2) => TypecheckError::MissingDynTail(
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+            UnifError::MissingDynTail(uty1, uty2) => TypecheckError::MissingDynTail(
+                reporting::to_type(state.table, state.names, names, uty1),
+                reporting::to_type(state.table, state.names, names, uty2),
                 pos_opt,
             ),
-            UnifError::ExtraRow(id, tyw1, tyw2) => TypecheckError::ExtraRow(
+            UnifError::ExtraRow(id, uty1, uty2) => TypecheckError::ExtraRow(
                 id,
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+                reporting::to_type(state.table, state.names, names, uty1),
+                reporting::to_type(state.table, state.names, names, uty2),
                 pos_opt,
             ),
-            UnifError::ExtraDynTail(tyw1, tyw2) => TypecheckError::ExtraDynTail(
-                reporting::to_type(state.table, state.names, names, tyw1),
-                reporting::to_type(state.table, state.names, names, tyw2),
+            UnifError::ExtraDynTail(uty1, uty2) => TypecheckError::ExtraDynTail(
+                reporting::to_type(state.table, state.names, names, uty1),
+                reporting::to_type(state.table, state.names, names, uty2),
                 pos_opt,
             ),
-            UnifError::RowConflict(id, tyw, left, right) => TypecheckError::RowConflict(
+            UnifError::RowConflict(id, uty, left, right) => TypecheckError::RowConflict(
                 id,
-                tyw.map(|tyw| reporting::to_type(state.table, state.names, names, tyw)),
+                uty.map(|uty| reporting::to_type(state.table, state.names, names, uty)),
                 reporting::to_type(state.table, state.names, names, left),
                 reporting::to_type(state.table, state.names, names, right),
                 pos_opt,
@@ -230,16 +230,16 @@ impl UnifError {
         let mut path = ty_path::Path::new();
         // The original expected and actual type. They are just updated once, in the first
         // iteration of the loop below.
-        let mut tyws: Option<(UnifType, UnifType)> = None;
+        let mut utys: Option<(UnifType, UnifType)> = None;
 
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    tyw1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    tyw2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
                     err,
                 ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    utys = utys.or(Some((uty1, uty2)));
                     path.push(ty_path::Elem::Domain);
                     curr = *err;
                 }
@@ -247,20 +247,20 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    tyw1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    tyw2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
                     err,
                 ) => {
-                    tyws = tyws.or(Some((tyw1, tyw2)));
+                    utys = utys.or(Some((uty1, uty2)));
                     path.push(ty_path::Elem::Codomain);
                     curr = *err;
                 }
                 UnifError::CodomainMismatch(_, _, _) => panic!(
                     "typechecking::to_type_path(): codomain mismatch error on a non arrow type"
                 ),
-                // tyws equals to `None` iff we did not even enter the case above once, i.e. if
+                // utys equals to `None` iff we did not even enter the case above once, i.e. if
                 // `self` was indeed neither a `DomainMismatch` nor a `CodomainMismatch`
-                _ => break tyws.map(|(expd, actual)| (expd, actual, path, curr)),
+                _ => break utys.map(|(expd, actual)| (expd, actual, path, curr)),
             }
         }
     }

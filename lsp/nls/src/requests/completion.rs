@@ -427,13 +427,13 @@ mod tests {
 
     #[test]
     fn test_extract_ident_with_path() {
-        use nickel_lang::{mk_tyw_record, mk_tyw_row, types::RecordRowsF};
+        use nickel_lang::{mk_uty_record, mk_uty_row, types::RecordRowsF};
         use std::convert::TryInto;
 
         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
-        let c_record_type = mk_tyw_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
-        let b_record_type = mk_tyw_record!(("b", c_record_type));
-        let a_record_type = mk_tyw_row!(("a", b_record_type));
+        let c_record_type = mk_uty_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
+        let b_record_type = mk_uty_record!(("b", c_record_type));
+        let a_record_type = mk_uty_row!(("a", b_record_type));
 
         let mut path = vec![Ident::from("b"), Ident::from("a")];
         // unwrap: the conversion must succeed because we built a type without unification variable
