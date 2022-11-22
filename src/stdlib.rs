@@ -14,8 +14,8 @@ pub fn modules() -> [StdlibModule; 7] {
         StdlibModule::String,
         StdlibModule::Num,
         StdlibModule::Function,
-        // We don't include the Internals module here because it is not to be used by 
-        // the user. And it's structure of this module is different from other stdlib module's 
+        // We don't include the Internals module here because it is not to be used by
+        // the user. And it's structure of this module is different from other stdlib module's
         // structure, so if this is included, the initialization for the stdlib's env will fail.
         // StdlibModule::Internals,
     ]
