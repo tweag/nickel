@@ -90,20 +90,20 @@
           %blame% (%tag% "not a record" l),
 
   "$forall_tail" = fun sy pol acc l t =>
-      let magic_fld = "_%sealed" in
       if pol == (%polarity% l) then
-          if %has_field% magic_fld t then
-              let rest = %record_remove% magic_fld t in
-              if rest == {} then
-                  let fail = %blame% (%tag% "polymorphic tail mismatch" l) in
-                  let inner = %unseal% sy (t."%{magic_fld}") fail in
-                  acc & inner
-              else
-                  %blame% (%tag% "extra field `%{%head% (%fields% rest)}`" l)
+          if t == {} then
+            let tagged_l = %tag% "polymorphic tail mismatch" l in
+            let tail = %record_unseal_tail% sy tagged_l t in
+            acc & tail
           else
-              %blame% (%tag% "missing polymorphic part" l)
+            %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l)
       else
-          %record_insert% magic_fld acc (%seal% sy l t),
+          # Note: in order to correctly attribute blame, the polarity of `l`
+          # must match the polarity of the `forall` which introduced the
+          # polymorphic contract (i.e. `pol`). Since we know in this branch
+          # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
+          # we continue.
+          %record_seal_tail% sy (%chng_pol% l) acc t,
 
   "$dyn_tail" = fun acc l t => acc & t,
 
