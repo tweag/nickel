@@ -120,8 +120,8 @@ impl<C: Cache> FromEnv<C> for SimpleTermEnvironment {
     fn from_env(eval_env: eval::Environment<C>, cache: &C) -> Self {
         let generic_env: GenericEnvironment<_, _> = eval_env
             .iter_elems()
-            .map(|(id, thunk)| {
-                let borrowed = cache.get_then(thunk.clone(), |c| {
+            .map(|(id, idx)| {
+                let borrowed = cache.get_then(idx.clone(), |c| {
                     (c.body.clone(), Self::from_env(c.env.clone(), cache))
                 });
                 (*id, borrowed)

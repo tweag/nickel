@@ -1523,11 +1523,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Lbl(l) = &*t2 {
                     // Track the contract argument for better error reporting, and push back the label
                     // on the stack, so that it becomes the first argument of the contract.
-                    let thunk = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
+                    let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
                         EvalError::NotEnoughArgs(3, String::from("assume"), pos_op)
                     })?;
                     let mut l = l.clone();
-                    l.arg_pos = self.cache.get_then(thunk, |c| c.body.pos);
+                    l.arg_pos = self.cache.get_then(idx, |c| c.body.pos);
                     //l.arg_thunk = Some(thunk); TODO: This has to be fixed
                     l.arg_thunk = None;
 
@@ -2704,7 +2704,7 @@ impl PushPriority {
                 (!is_empty_optional(cache, &rt, env)).then(|| {
                     let pos = rt.pos;
 
-                    let thunk = match rt.as_ref() {
+                    let idx = match rt.as_ref() {
                         Term::Var(id) => {
                             let idx = env.get(id).unwrap();
                             cache.map_at_index(idx, |Closure { ref body, ref env }| Closure {
@@ -2723,7 +2723,7 @@ impl PushPriority {
                     };
 
                     let fresh_id = Ident::fresh();
-                    new_env.insert(fresh_id, thunk);
+                    new_env.insert(fresh_id, idx);
                     (id, RichTerm::new(Term::Var(fresh_id), pos))
                 })
             })

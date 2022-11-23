@@ -26,7 +26,7 @@ pub enum Marker<C: Cache> {
     /// In particular, contract arguments are tracked, in order to report the actual, evaluated offending term in case of blame.
     TrackedArg(C::Index, TermPos),
     /// A thunk, which is pointer to a mutable memory cell to be updated.
-    Thunk(C::UpdateIndex),
+    UpdateIndex(C::UpdateIndex),
     /// The continuation of a primitive operation.
     Cont(
         OperationCont<C>,
@@ -56,7 +56,7 @@ impl<C: Cache> std::fmt::Debug for Marker<C> {
             Marker::Eq(_, _) => write!(f, "Eq"),
             Marker::Arg(_, _) => write!(f, "Arg"),
             Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
-            Marker::Thunk(_) => write!(f, "Thunk"),
+            Marker::UpdateIndex(_) => write!(f, "UpdateIndex"),
             Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
             Marker::StrChunk(_) => write!(f, "StrChunk"),
             Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
@@ -70,8 +70,8 @@ impl<C: Cache> Marker<C> {
         matches!(*self, Marker::Arg(..) | Marker::TrackedArg(..))
     }
 
-    pub fn is_thunk(&self) -> bool {
-        matches!(*self, Marker::Thunk(..))
+    pub fn is_idx(&self) -> bool {
+        matches!(*self, Marker::UpdateIndex(..))
     }
 
     pub fn is_cont(&self) -> bool {
@@ -132,7 +132,7 @@ impl<C: Cache> Stack<C> {
     /// Pops all items in the stack and resets the state of the thunks it encounters.
     pub fn reset(&mut self, cache: &mut C) {
         while let Some(marker) = self.0.pop() {
-            if let Marker::Thunk(mut thunk) = marker {
+            if let Marker::UpdateIndex(mut thunk) = marker {
                 cache.reset_index_state(&mut thunk);
             }
         }
@@ -152,7 +152,7 @@ impl<C: Cache> Stack<C> {
     }
 
     pub fn push_update_index(&mut self, uidx: C::UpdateIndex) {
-        self.0.push(Marker::Thunk(uidx))
+        self.0.push(Marker::UpdateIndex(uidx))
     }
 
     pub fn push_op_cont(&mut self, cont: OperationCont<C>, len: usize, pos: TermPos) {
@@ -191,7 +191,7 @@ impl<C: Cache> Stack<C> {
     pub fn pop_arg(&mut self, cache: &C) -> Option<(Closure<C>, TermPos)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => Some((arg, pos)),
-            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((cache.get(arg_thunk), pos)),
+            Some(Marker::TrackedArg(arg_idx, pos)) => Some((cache.get(arg_idx), pos)),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -204,12 +204,12 @@ impl<C: Cache> Stack<C> {
     /// returned, the top element was not an argument and the stack is left unchanged.
     ///
     /// If the argument is not tracked, it is directly returned.
-    pub fn pop_arg_as_thunk(&mut self, cache: &mut C) -> Option<(C::Index, TermPos)> {
+    pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(C::Index, TermPos)> {
         match self.0.pop() {
             Some(Marker::Arg(arg, pos)) => {
                 Some((cache.add(arg, IdentKind::Lambda, BindingType::Normal), pos))
             }
-            Some(Marker::TrackedArg(arg_thunk, pos)) => Some((arg_thunk, pos)),
+            Some(Marker::TrackedArg(arg_idx, pos)) => Some((arg_idx, pos)),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -220,9 +220,9 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop a thunk from the top of the stack. If `None` is returned, the top element was
     /// not a thunk and the stack is left unchanged.
-    pub fn pop_thunk(&mut self) -> Option<C::UpdateIndex> {
+    pub fn pop_update_index(&mut self) -> Option<C::UpdateIndex> {
         match self.0.pop() {
-            Some(Marker::Thunk(uidx)) => Some(uidx),
+            Some(Marker::UpdateIndex(uidx)) => Some(uidx),
             Some(m) => {
                 self.0.push(m);
                 None
@@ -249,7 +249,7 @@ impl<C: Cache> Stack<C> {
             .0
             .iter()
             .rev()
-            .skip_while(|&marker| matches!(marker, Marker::Thunk(..)));
+            .skip_while(|&marker| matches!(marker, Marker::UpdateIndex(..)));
 
         match it.next() {
             Some(Marker::Cont(cont, _, _)) => Some(cont.clone()),
@@ -308,8 +308,8 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Check if the top element is a thunk.
-    pub fn is_top_thunk(&self) -> bool {
-        self.0.last().map(Marker::is_thunk).unwrap_or(false)
+    pub fn is_top_idx(&self) -> bool {
+        self.0.last().map(Marker::is_idx).unwrap_or(false)
     }
 
     /// Check if the top element is an operation continuation.
@@ -361,7 +361,7 @@ mod tests {
     impl Stack<EC> {
         /// Count the number of thunks at the top of the stack.
         pub fn count_thunks(&self) -> usize {
-            Stack::count(self, Marker::is_thunk)
+            Stack::count(self, Marker::is_idx)
         }
 
         /// Count the number of operation continuation at the top of the stack.
@@ -384,7 +384,7 @@ mod tests {
 
     fn some_thunk_marker() -> Marker<EC> {
         let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
-        Marker::Thunk(thunk.mk_update_frame().unwrap())
+        Marker::UpdateIndex(thunk.mk_update_frame().unwrap())
     }
 
     fn some_cont_marker() -> Marker<EC> {
@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn marker_differentiates() {
         assert!(some_arg_marker().is_arg());
-        assert!(some_thunk_marker().is_thunk());
+        assert!(some_thunk_marker().is_idx());
         assert!(some_cont_marker().is_cont());
     }
 
@@ -425,7 +425,7 @@ mod tests {
         s.push_update_index(thunk.mk_update_frame().unwrap());
 
         assert_eq!(2, s.count_thunks());
-        s.pop_thunk().expect("Already checked");
+        s.pop_update_index().expect("Already checked");
         assert_eq!(1, s.count_thunks());
     }
 

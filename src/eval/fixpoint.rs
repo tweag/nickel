@@ -13,11 +13,11 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a RichTerm)>, C: Cache>(
     bindings
         .map(|(id, rt)| match rt.as_ref() {
             Term::Var(ref var_id) => {
-                let thunk = env
+                let idx = env
                     .get(var_id)
                     .cloned()
                     .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
-                Ok((*id, thunk))
+                Ok((*id, idx))
             }
             _ => {
                 // If we are in this branch, `rt` must be a constant after the share normal form
@@ -47,20 +47,20 @@ pub fn patch_field<C: Cache>(
     env: &Environment<C>,
 ) -> Result<(), EvalError> {
     if let Term::Var(var_id) = &*rt.term {
-        let thunk = env
+        let idx = env
             .get(var_id)
             .cloned()
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
 
-        let deps = thunk.deps();
+        let deps = idx.deps();
 
         match deps {
-            ThunkDeps::Known(deps) => cache.patch(thunk, |t| {
+            ThunkDeps::Known(deps) => cache.patch(idx, |t| {
                 t.env
                     .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned())
             }),
 
-            ThunkDeps::Unknown => cache.patch(thunk, |t| t.env.extend(rec_env.iter().cloned())),
+            ThunkDeps::Unknown => cache.patch(idx, |t| t.env.extend(rec_env.iter().cloned())),
             ThunkDeps::Empty => (),
         };
     }

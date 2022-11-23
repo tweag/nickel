@@ -17,7 +17,6 @@ pub trait Cache: Clone {
         &mut self,
         idx: &mut Self::Index,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError>;
-    // TODO: This is strange and too CBN-minded
     fn add(&mut self, clos: Closure<Self>, kind: IdentKind, bty: BindingType) -> Self::Index
     where
         Self: Sized;

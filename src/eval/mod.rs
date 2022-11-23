@@ -313,7 +313,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
                     // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
                     // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
-                    update_thunks(&mut self.cache, &mut self.stack, &closure);
+                    update_at_indices(&mut self.cache, &mut self.stack, &closure);
                     match stack_item {
                         Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
                             self.continuate_operation(closure)?
@@ -381,10 +381,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
-                        let thunk_ = idx.clone();
-                        //idx.borrow_mut().env.insert(x.clone(), thunk_);
                         let idx_ = idx.clone();
-                        self.cache.patch(idx_, |cl| cl.env.insert(*x, thunk_));
+                        self.cache.patch(idx_.clone(), |cl| cl.env.insert(*x, idx_));
                     }
 
                     env.insert(*x, idx);
@@ -582,7 +580,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             },
                             env,
                         };
-                        update_thunks(&mut self.cache, &mut self.stack, &update_closure);
+                        update_at_indices(&mut self.cache, &mut self.stack, &update_closure);
 
                         let Closure {
                             body: RichTerm { term, .. },
@@ -665,7 +663,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return Err(EvalError::ParseError(parse_error.clone()));
                 }
                 // Continuation of operations and thunk update
-                _ if self.stack.is_top_thunk() || self.stack.is_top_cont() => {
+                _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
                         body: RichTerm {
                             term: shared_term,
@@ -673,8 +671,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                         env,
                     };
-                    if self.stack.is_top_thunk() {
-                        update_thunks(&mut self.cache, &mut self.stack, &clos);
+                    if self.stack.is_top_idx() {
+                        update_at_indices(&mut self.cache, &mut self.stack, &clos);
                         clos
                     } else {
                         self.continuate_operation(clos)?
@@ -682,9 +680,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // Function call
                 Term::Fun(x, t) => {
-                    if let Some((thunk, pos_app)) = self.stack.pop_arg_as_thunk(&mut self.cache) {
+                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(*x, thunk);
+                        env.insert(*x, idx);
                         Closure {
                             body: t.clone(),
                             env,
@@ -806,9 +804,9 @@ pub fn env_add<C: Cache>(
 }
 
 /// Pop and update all the thunks on the top of the stack with the given closure.
-fn update_thunks<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Closure<C>) {
-    while let Some(thunk) = stack.pop_thunk() {
-        cache.update(closure.clone(), thunk);
+fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Closure<C>) {
+    while let Some(idx) = stack.pop_update_index() {
+        cache.update(closure.clone(), idx);
     }
 }
 
@@ -825,9 +823,8 @@ pub fn subst<C: Cache>(
         Term::Var(id) => env
             .get(&id)
             .or_else(|| initial_env.get(&id))
-            .map(|thunk| {
-                //let closure = thunk.get_owned(); 
-                let closure = cache.get(thunk.clone());
+            .map(|idx| {
+                let closure = cache.get(idx.clone());
                 subst(cache, closure.body, initial_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),

@@ -379,8 +379,8 @@ pub fn merge<C: Cache>(
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the thunks
             // first.
-            rev_thunks::<_, C>(r1.fields.values_mut(), &mut env1);
-            rev_thunks::<_, C>(r2.fields.values_mut(), &mut env2);
+            rev_at_indices::<_, C>(r1.fields.values_mut(), &mut env1);
+            rev_at_indices::<_, C>(r2.fields.values_mut(), &mut env2);
 
             // We save the original fields before they are potentially merged in order to patch
             // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
@@ -527,7 +527,7 @@ fn merge_closurize<C: Cache>(
     body.closurize(cache, env, local_env)
 }
 
-fn rev_thunks<'a, I: Iterator<Item = &'a mut RichTerm>, C: Cache>(
+fn rev_at_indices<'a, I: Iterator<Item = &'a mut RichTerm>, C: Cache>(
     map: I,
     env: &mut Environment<C>,
 ) {
