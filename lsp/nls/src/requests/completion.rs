@@ -233,21 +233,6 @@ fn collect_record_info(linearization: &Completed, id: usize, path: &mut Vec<Iden
         .unwrap_or_default()
 }
 
-// Stdlib completion just gets the FileId of the selected stdlib module and
-// delegates to the normal record completion.
-fn std_complete(
-    item: &LinearizationItem<Types>,
-    name: Ident,
-    server: &Server,
-    path: &mut Vec<Ident>,
-) -> Option<Vec<Ident>> {
-    let module = StdlibModule::try_from(name).ok()?;
-    let file = server.cache.get_submodule_file_id(module)?;
-    let lin = server.lin_cache_get(&file).ok()?;
-    let key = (name, file);
-    let result = item.env.get(&key);
-    result.map(|id| collect_record_info(lin, *id, path))
-}
 /// Generate possible completion identifiers given a source text, its linearization
 /// and the current item the cursor points at.
 fn get_completion_identifiers(
@@ -265,13 +250,18 @@ fn get_completion_identifiers(
         server: &Server,
         path: &mut Vec<Ident>,
         file: FileId,
-    ) -> Vec<Ident> {
-        let key = (name, file);
+    ) -> Option<Vec<Ident>> {
         item.env
-            .get(&key)
-            .map(|id| collect_record_info(linearization, *id, path))
-            .or_else(|| std_complete(item, name, server, path))
-            .unwrap_or_default()
+            .get(&(name, file))
+            .map(|key| (key, linearization))
+            .or_else(|| {
+                // If we can't find in the file's scope, check it from the stdlib's scope.
+                let module = StdlibModule::try_from(name).ok()?;
+                let file = server.cache.get_submodule_file_id(module)?;
+                let lin = server.lin_cache_get(&file).ok()?;
+                item.env.get(&(name, file)).map(|key| (key, lin))
+            })
+            .map(|(id, lin)| collect_record_info(lin, *id, path))
     }
 
     /// Attach quotes to a non-ASCII string
@@ -287,7 +277,7 @@ fn get_completion_identifiers(
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
             get_identifier_path(source)
-                .map(|path| {
+                .and_then(|path| {
                     let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
                     // unwrap is safe here because we are guaranteed by `get_identifier_path`
                     // that it will return a non-empty vector
@@ -305,7 +295,7 @@ fn get_completion_identifiers(
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
-                complete(item, name, linearization, server, &mut path, file)
+                complete(item, name, linearization, server, &mut path, file).unwrap_or_default()
             } else {
                 // variable name completion
                 linearization
