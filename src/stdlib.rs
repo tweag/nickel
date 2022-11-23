@@ -4,7 +4,7 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-/// Return the list `(name, source_code)` of all the stdlib modules.
+/// This is an array containing all the Nickel standard library modules.
 pub fn modules() -> [StdlibModule; 8] {
     [
         StdlibModule::Builtin,
