@@ -19,6 +19,7 @@ use lsp_types::{
 use nickel_lang::{
     cache::{Cache, ErrorTolerance},
     identifier::Ident,
+    stdlib::StdlibModule,
 };
 use nickel_lang::{stdlib, typecheck::Context};
 
@@ -83,6 +84,11 @@ impl Server {
         let mut initial = Environment::new();
         let modules = stdlib::modules();
         for module in modules {
+            // This module has a different format from the rest of the stdlib items
+            // Also, users are not supposed to use the internal module directly
+            if module == StdlibModule::Internals {
+                continue;
+            }
             let name: Ident = module.into();
             let file_id = self.cache.get_submodule_file_id(module)?;
             let lin = self.lin_cache_get(&file_id).ok()?;

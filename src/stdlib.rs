@@ -5,7 +5,7 @@ use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
 /// Return the list `(name, source_code)` of all the stdlib modules.
-pub fn modules() -> [StdlibModule; 7] {
+pub fn modules() -> [StdlibModule; 8] {
     [
         StdlibModule::Builtin,
         StdlibModule::Contract,
@@ -14,10 +14,7 @@ pub fn modules() -> [StdlibModule; 7] {
         StdlibModule::String,
         StdlibModule::Num,
         StdlibModule::Function,
-        // We don't include the Internals module here because it is not to be used by
-        // the user. And it's structure of this module is different from other stdlib module's
-        // structure, so if this is included, the initialization for the stdlib's env will fail.
-        // StdlibModule::Internals,
+        StdlibModule::Internals,
     ]
 }
 
