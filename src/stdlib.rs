@@ -80,9 +80,9 @@ impl TryFrom<Ident> for StdlibModule {
     }
 }
 
-impl Into<Ident> for StdlibModule {
-    fn into(self) -> Ident {
-        let name = match self {
+impl From<StdlibModule> for Ident {
+    fn from(module: StdlibModule) -> Self {
+        let name = match module {
             StdlibModule::Builtin => "builtin",
             StdlibModule::Contract => "contract",
             StdlibModule::Array => "array",

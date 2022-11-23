@@ -143,8 +143,7 @@ impl Server {
     fn linearize_stdlib(&mut self) -> Result<()> {
         self.cache.load_stdlib().unwrap();
         let cache = &mut self.cache;
-        let modules: Vec<_> = stdlib::modules().iter().copied().collect();
-        for module in modules {
+        for module in stdlib::modules() {
             let file_id = cache.get_submodule_file_id(module).unwrap();
             cache
                 .typecheck_with_analysis(

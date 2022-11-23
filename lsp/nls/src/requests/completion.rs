@@ -216,8 +216,8 @@ fn collect_record_info(linearization: &Completed, id: usize, path: &mut Vec<Iden
                     find_fields_from_type(&rrows, path)
                 }
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
-                    find_fields_from_contract(&linearization, *body_id, path)
-                        .or_else(|| find_fields_from_term_kind(&linearization, id, path))
+                    find_fields_from_contract(linearization, *body_id, path)
+                        .or_else(|| find_fields_from_term_kind(linearization, id, path))
                         .unwrap_or_default()
                 }
                 (
@@ -226,7 +226,7 @@ fn collect_record_info(linearization: &Completed, id: usize, path: &mut Vec<Iden
                         ..
                     },
                     _,
-                ) => find_fields_from_term_kind(&linearization, *value, path).unwrap_or_default(),
+                ) => find_fields_from_term_kind(linearization, *value, path).unwrap_or_default(),
                 _ => Vec::new(),
             }
         })
@@ -302,7 +302,7 @@ fn get_completion_identifiers(
                     .get_in_scope(item)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ref ident, _, _) => Some(ident.clone()),
+                        TermKind::Declaration(ref ident, _, _) => Some(*ident),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -360,7 +360,7 @@ pub fn handle_completion(
                 trigger,
                 linearization,
                 item,
-                &server,
+                server,
             )?;
 
             Some(in_scope)
