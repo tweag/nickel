@@ -29,18 +29,63 @@ use crate::{
 // We follow the path by traversing a term, type or contract which represents a record
 // and stop when there is nothing else on the path
 
+#[derive(Eq, PartialEq, Debug, Ord, PartialOrd)]
+struct IdentWithMeta {
+    ident: Ident,
+    meta: Option<String>,
+}
+
+impl From<Ident> for IdentWithMeta {
+    fn from(ident: Ident) -> Self {
+        IdentWithMeta { ident, meta: None }
+    }
+}
+
+impl From<&str> for IdentWithMeta {
+    fn from(ident: &str) -> Self {
+        IdentWithMeta {
+            ident: Ident::from(ident),
+            meta: None,
+        }
+    }
+}
+
+impl IdentWithMeta {
+    fn to_lsp_completion_item(&self) -> CompletionItem {
+        /// Attach quotes to a non-ASCII string
+        fn adjust_name(name: &str) -> String {
+            if name.is_ascii() {
+                String::from(name)
+            } else {
+                format!("\"{}\"", name)
+            }
+        }
+        CompletionItem {
+            label: adjust_name(self.ident.label()),
+            detail: self.meta.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
-) -> Option<Vec<Ident>> {
+) -> Option<Vec<IdentWithMeta>> {
     let item = linearization.get_item(id)?;
     match item.kind {
         TermKind::Record(ref fields) => {
             if path.is_empty() {
-                Some(fields.keys().cloned().collect())
+                Some(
+                    fields
+                        .keys()
+                        .cloned()
+                        .map(|ident| IdentWithMeta { ident, meta: None })
+                        .collect(),
+                )
             } else {
                 let name = path.pop()?;
                 let new_id = fields.get(&name)?;
@@ -65,7 +110,7 @@ fn find_fields_from_contract(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
-) -> Option<Vec<Ident>> {
+) -> Option<Vec<IdentWithMeta>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
         Some(meta_value) => Some(find_fields_from_meta_value(meta_value, path)),
@@ -81,7 +126,10 @@ fn find_fields_from_contract(
 
 /// Find record field associated associated with a MetaValue.
 /// This can be gotten from the type or the contracts.
-fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) -> Vec<Ident> {
+fn find_fields_from_meta_value(
+    meta_value: &MetaValue,
+    path: &mut Vec<Ident>,
+) -> Vec<IdentWithMeta> {
     meta_value
         .contracts
         .iter()
@@ -95,7 +143,7 @@ fn find_fields_from_meta_value(meta_value: &MetaValue, path: &mut Vec<Ident>) ->
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident> {
+fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<IdentWithMeta> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
             RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.types.clone()),
@@ -115,20 +163,28 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
         rrows
             .iter()
             .filter_map(|item| match item {
-                RecordRowsIteratorItem::Row(row) => Some(row.id),
+                RecordRowsIteratorItem::Row(row) => Some((row.id, row.types)),
                 _ => None,
             })
-            .collect::<Vec<_>>()
+            .map(|(ident, types)| IdentWithMeta {
+                ident,
+                meta: Some(types.to_string()),
+            })
+            .collect()
     }
 }
 
 /// Extract record fields from a record term.
-fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<Ident>> {
+fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<IdentWithMeta>> {
     let current = path.pop();
     match (term.as_ref(), current) {
-        (Term::Record(data) | Term::RecRecord(data, ..), None) => {
-            Some(data.fields.keys().cloned().collect())
-        }
+        (Term::Record(data) | Term::RecRecord(data, ..), None) => Some(
+            data.fields
+                .keys()
+                .cloned()
+                .map(|ident| IdentWithMeta { ident, meta: None })
+                .collect(),
+        ),
         (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
             let term = data.fields.get(&name)?;
             find_fields_from_term(term, path)
@@ -202,7 +258,11 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 
 /// Search the linearization to find the record information associated with a
 /// partiular ID, and in the scope of a given linearization item.
-fn collect_record_info(linearization: &Completed, id: ItemId, path: &mut Vec<Ident>) -> Vec<Ident> {
+fn collect_record_info(
+    linearization: &Completed,
+    id: usize,
+    path: &mut Vec<Ident>,
+) -> Vec<IdentWithMeta> {
     linearization
         .get_item(id)
         .map(|item| {
@@ -214,6 +274,9 @@ fn collect_record_info(linearization: &Completed, id: ItemId, path: &mut Vec<Ide
                     find_fields_from_contract(linearization, *body_id, path)
                         .or_else(|| find_fields_from_term_kind(linearization, id, path))
                         .unwrap_or_default()
+                }
+                (TermKind::RecordField { .. }, Types(TypeF::Record(rrows))) => {
+                    find_fields_from_type(&rrows, path)
                 }
                 (
                     TermKind::RecordField {
@@ -248,15 +311,6 @@ fn get_completion_identifiers(
         Some(collect_record_info(lin, *item_id, path))
     }
 
-    /// Attach quotes to a non-ASCII string
-    fn adjust_name(name: String) -> String {
-        if name.is_ascii() {
-            name
-        } else {
-            format!("\"{}\"", name)
-        }
-    }
-
     let in_scope = match trigger {
         // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
@@ -286,7 +340,9 @@ fn get_completion_identifiers(
                     .get_in_scope(item)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ref ident, _, _) => Some(*ident),
+                        TermKind::Declaration(ident, _, _) => {
+                            Some(IdentWithMeta { ident, meta: None })
+                        }
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -296,10 +352,7 @@ fn get_completion_identifiers(
 
     let in_scope: Vec<_> = in_scope
         .iter()
-        .map(|ident| CompletionItem {
-            label: adjust_name(ident.into_label()),
-            ..Default::default()
-        })
+        .map(|ident_meta| ident_meta.to_lsp_completion_item())
         .collect();
     Ok(remove_duplicates(&in_scope))
 }
@@ -434,11 +487,8 @@ mod tests {
         // unwrap: the conversion must succeed because we built a type without unification variable
         // nor type constants
         let result = find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path);
-        let expected = vec![Ident::from("c1"), Ident::from("c2")];
-        assert_eq!(
-            result.iter().map(Ident::label).collect::<Vec<_>>(),
-            expected.iter().map(Ident::label).collect::<Vec<_>>()
-        )
+        let expected = vec![IdentWithMeta::from("c1"), IdentWithMeta::from("c2")];
+        assert_eq!(result, expected)
     }
 
     #[test]
@@ -512,8 +562,8 @@ mod tests {
         // which would give the expected output
         fn single_case<const N: usize>(
             linearization: Vec<LinearizationItem<Types>>,
-            ids: [ItemId; N],
-            mut expected: Vec<Ident>,
+            ids: [usize; N],
+            mut expected: Vec<IdentWithMeta>,
         ) {
             expected.sort();
             let completed = make_completed(linearization);
@@ -620,10 +670,10 @@ mod tests {
             TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 4 })),
         );
         let expected = vec![
-            Ident::from("one"),
-            Ident::from("two"),
-            Ident::from("three"),
-            Ident::from("four"),
+            IdentWithMeta::from("one"),
+            IdentWithMeta::from("two"),
+            IdentWithMeta::from("three"),
+            IdentWithMeta::from("four"),
         ];
         let linearization = vec![a, b, c, d, e, f, g, h, i];
         single_case(
