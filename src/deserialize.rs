@@ -674,7 +674,7 @@ mod tests {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A;
 
-        let mut p = Program::<CBNCache>::new_from_source(
+        let mut p = TestProgram::new_from_source(
             Cursor::new(br#"fun a b => a + b"#.to_vec()),
             "source",
         )
