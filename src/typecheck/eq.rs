@@ -419,31 +419,31 @@ fn type_eq_bounded<E: TermEnvironment>(
             | (TypeF::Bool, TypeF::Bool)
             | (TypeF::Sym, TypeF::Sym)
             | (TypeF::Str, TypeF::Str) => true,
-            (TypeF::Dict(tyw1), TypeF::Dict(tyw2)) | (TypeF::Array(tyw1), TypeF::Array(tyw2)) => {
-                type_eq_bounded(state, tyw1, env1, tyw2, env2)
+            (TypeF::Dict(uty1), TypeF::Dict(uty2)) | (TypeF::Array(uty1), TypeF::Array(uty2)) => {
+                type_eq_bounded(state, uty1, env1, uty2, env2)
             }
             (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
                 type_eq_bounded(state, s1, env1, s2, env2)
                     && type_eq_bounded(state, t1, env1, t2, env2)
             }
-            (TypeF::Enum(tyw1), TypeF::Enum(tyw2)) => {
-                let rows1 = rows_as_set(tyw1);
-                let rows2 = rows_as_set(tyw2);
+            (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
+                let rows1 = rows_as_set(uty1);
+                let rows2 = rows_as_set(uty2);
                 rows1.is_some() && rows2.is_some() && rows1 == rows2
             }
-            (TypeF::Record(tyw1), TypeF::Record(tyw2)) => {
+            (TypeF::Record(uty1), TypeF::Record(uty2)) => {
                 fn type_eq_bounded_wrapper<E: TermEnvironment>(
                     state: &mut State,
-                    tyw1: &&GenericUnifType<E>,
+                    uty1: &&GenericUnifType<E>,
                     env1: &E,
-                    tyw2: &&GenericUnifType<E>,
+                    uty2: &&GenericUnifType<E>,
                     env2: &E,
                 ) -> bool {
-                    type_eq_bounded(state, *tyw1, env1, *tyw2, env2)
+                    type_eq_bounded(state, *uty1, env1, *uty2, env2)
                 }
 
-                let map1 = rows_as_map(tyw1);
-                let map2 = rows_as_map(tyw2);
+                let map1 = rows_as_map(uty1);
+                let map2 = rows_as_map(uty2);
 
                 map1.zip(map2)
                     .map(|(m1, m2)| map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2))

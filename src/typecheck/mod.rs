@@ -57,7 +57,7 @@ use crate::{
     types::{
         EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types, VarKind,
     },
-    {mk_tyw_arrow, mk_tyw_enum, mk_tyw_enum_row, mk_tyw_record, mk_tyw_row},
+    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row},
 };
 
 use std::{
@@ -72,7 +72,7 @@ pub mod linearization;
 pub mod operation;
 pub mod reporting;
 #[macro_use]
-pub mod mk_typewrapper;
+pub mod mk_uniftype;
 pub mod eq;
 
 use eq::{SimpleTermEnvironment, TermEnvironment};
@@ -805,7 +805,7 @@ fn walk<L: Linearizer>(
         }
         Term::Fun(id, t) => {
             // The parameter of an un-annotated function is assigned the type `Dyn`.
-            ctxt.type_env.insert(*id, mk_typewrapper::dynamic());
+            ctxt.type_env.insert(*id, mk_uniftype::dynamic());
             walk(state, ctxt, lin, linearizer, t)
         }
         Term::FunPattern(id, pat, t) => {
@@ -1044,16 +1044,16 @@ fn type_check_<L: Linearizer>(
     match t.as_ref() {
         Term::ParseError(_) => Ok(()),
         // null is inferred to be of type Dyn
-        Term::Null => unify(state, &ctxt, ty, mk_typewrapper::dynamic())
+        Term::Null => unify(state, &ctxt, ty, mk_uniftype::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Bool(_) => unify(state, &ctxt, ty, mk_typewrapper::bool())
+        Term::Bool(_) => unify(state, &ctxt, ty, mk_uniftype::bool())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Num(_) => unify(state, &ctxt, ty, mk_typewrapper::num())
+        Term::Num(_) => unify(state, &ctxt, ty, mk_uniftype::num())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Str(_) => unify(state, &ctxt, ty, mk_typewrapper::str())
+        Term::Str(_) => unify(state, &ctxt, ty, mk_uniftype::str())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::StrChunks(chunks) => {
-            unify(state, &ctxt, ty, mk_typewrapper::str())
+            unify(state, &ctxt, ty, mk_uniftype::str())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             chunks
@@ -1067,7 +1067,7 @@ fn type_check_<L: Linearizer>(
                             lin,
                             linearizer.scope(),
                             t,
-                            mk_typewrapper::str(),
+                            mk_uniftype::str(),
                         ),
                     }
                 })
@@ -1077,7 +1077,7 @@ fn type_check_<L: Linearizer>(
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
-            let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            let arr = mk_uty_arrow!(src.clone(), trg.clone());
             linearizer.retype_ident(lin, x, src.clone());
 
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -1090,7 +1090,7 @@ fn type_check_<L: Linearizer>(
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
-            let arr = mk_tyw_arrow!(src.clone(), trg.clone());
+            let arr = mk_uty_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
                 ctxt.type_env.insert(*x, src);
@@ -1102,7 +1102,7 @@ fn type_check_<L: Linearizer>(
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar();
 
-            unify(state, &ctxt, ty, mk_typewrapper::array(ty_elts.clone()))
+            unify(state, &ctxt, ty, mk_uniftype::array(ty_elts.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             terms
@@ -1120,7 +1120,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::Lbl(_) => {
             // TODO implement lbl type
-            unify(state, &ctxt, ty, mk_typewrapper::dynamic())
+            unify(state, &ctxt, ty, mk_uniftype::dynamic())
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Let(x, re, rt, attrs) => {
@@ -1171,7 +1171,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::App(e, t) => {
             let src = state.table.fresh_type_uvar();
-            let arr = mk_tyw_arrow!(src.clone(), ty);
+            let arr = mk_uty_arrow!(src.clone(), ty);
 
             type_check_(state, ctxt.clone(), lin, linearizer.scope(), e, arr)?;
             type_check_(state, ctxt, lin, linearizer, t, src)
@@ -1200,13 +1200,13 @@ fn type_check_<L: Linearizer>(
                 None => cases.iter().try_fold(
                     EnumRowsF::Empty.into(),
                     |acc, x| -> Result<UnifEnumRows, TypecheckError> {
-                        Ok(mk_tyw_enum_row!(*x.0; acc))
+                        Ok(mk_uty_enum_row!(*x.0; acc))
                     },
                 )?,
             };
 
             unify(state, &ctxt, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, ctxt, lin, linearizer, exp, mk_tyw_enum!(; erows))
+            type_check_(state, ctxt, lin, linearizer, exp, mk_uty_enum!(; erows))
         }
         Term::Var(x) => {
             let x_ty = ctxt
@@ -1221,7 +1221,7 @@ fn type_check_<L: Linearizer>(
         }
         Term::Enum(id) => {
             let row = state.table.fresh_erows_uvar();
-            unify(state, &ctxt, ty, mk_tyw_enum!(*id; row))
+            unify(state, &ctxt, ty, mk_uty_enum!(*id; row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
@@ -1250,7 +1250,7 @@ fn type_check_<L: Linearizer>(
                     )
                 })?;
 
-            unify(state, &ctxt, ty, mk_typewrapper::dyn_record(ty_dict))
+            unify(state, &ctxt, ty, mk_uniftype::dyn_record(ty_dict))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Record(record) | Term::RecRecord(record, ..) => {
@@ -1284,7 +1284,7 @@ fn type_check_<L: Linearizer>(
                     })
             } else {
                 let rows = record.fields.iter().try_fold(
-                    mk_tyw_row!(),
+                    mk_uty_row!(),
                     |acc, (id, field)| -> Result<UnifRecordRows, TypecheckError> {
                         // In the case of a recursive record, new types (either type variables or
                         // annotations) have already be determined and put in the typing context,
@@ -1304,11 +1304,11 @@ fn type_check_<L: Linearizer>(
                             ty.clone(),
                         )?;
 
-                        Ok(mk_tyw_row!((*id, ty); acc))
+                        Ok(mk_uty_row!((*id, ty); acc))
                     },
                 )?;
 
-                unify(state, &ctxt, ty, mk_tyw_record!(; rows))
+                unify(state, &ctxt, ty, mk_uty_record!(; rows))
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))
             }
         }
@@ -1402,14 +1402,14 @@ fn type_check_<L: Linearizer>(
                 // TODO: we might have something to with the linearizer to clear the current
                 // metadata. It looks like it may be unduly attached to the next field definition,
                 // which is not critical, but still a bug.
-                _ => unify(state, &ctxt, ty, mk_typewrapper::dynamic())
+                _ => unify(state, &ctxt, ty, mk_uniftype::dynamic())
                     .map_err(|err| err.into_typecheck_err(state, rt.pos)),
             }
         }
-        Term::SealingKey(_) => unify(state, &ctxt, ty, mk_typewrapper::sym())
+        Term::SealingKey(_) => unify(state, &ctxt, ty, mk_uniftype::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Sealed(_, t, _) => type_check_(state, ctxt, lin, linearizer, t, ty),
-        Term::Import(_) => unify(state, &ctxt, ty, mk_typewrapper::dynamic())
+        Term::Import(_) => unify(state, &ctxt, ty, mk_uniftype::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
         // typecheck imports: this is the responsibility of the caller.
@@ -1810,12 +1810,12 @@ pub fn unify(
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
                 unify_erows(state, erows1.clone(), erows2.clone()).map_err(|err| {
-                    err.into_unif_err(mk_tyw_enum!(; erows1), mk_tyw_enum!(; erows2))
+                    err.into_unif_err(mk_uty_enum!(; erows1), mk_uty_enum!(; erows2))
                 })
             }
             (TypeF::Record(rrows1), TypeF::Record(rrows2)) => {
                 unify_rrows(state, ctxt, rrows1.clone(), rrows2.clone()).map_err(|err| {
-                    err.into_unif_err(mk_tyw_record!(; rrows1), mk_tyw_record!(; rrows2))
+                    err.into_unif_err(mk_uty_record!(; rrows1), mk_uty_record!(; rrows2))
                 })
             }
             (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, ctxt, *t1, *t2),
