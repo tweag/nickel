@@ -76,6 +76,7 @@ fn find_fields_from_term_kind(
     path: &mut Vec<Ident>,
 ) -> Option<Vec<IdentWithMeta>> {
     let item = linearization.get_item(id)?;
+    let (ty, _) = linearization.resolve_item_type_meta(item);
     match item.kind {
         TermKind::Record(ref fields) => {
             if path.is_empty() {
@@ -83,7 +84,7 @@ fn find_fields_from_term_kind(
                     fields
                         .keys()
                         .cloned()
-                        .map(|ident| IdentWithMeta { ident, meta: None })
+                        .map(|ident| IdentWithMeta { ident, meta: Some(ty.to_string()) })
                         .collect(),
                 )
             } else {
@@ -182,7 +183,7 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
             data.fields
                 .keys()
                 .cloned()
-                .map(|ident| IdentWithMeta { ident, meta: None })
+                .map(|ident| IdentWithMeta { ident, meta: Some(term.to_string())})
                 .collect(),
         ),
         (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
