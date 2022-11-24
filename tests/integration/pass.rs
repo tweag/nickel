@@ -132,3 +132,8 @@ fn quote_in_indentifier() {
 fn priorities() {
     check_file("priorities.ncl")
 }
+
+#[test]
+fn multiple_overrides() {
+    check_file("multiple-overrides.ncl")
+}

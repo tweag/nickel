@@ -215,7 +215,7 @@ impl ThunkData {
 
                 // Build a list of the arguments that the function will need in the same order as
                 // the original iterator. If the identifiers inside `args` are `a`, `b` and `c`, in
-                // that order, we want to build `fun a => (fun b (fun c => body))`. We thus need a
+                // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need a
                 // reverse fold.
                 let as_function =
                     args.rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));

@@ -396,6 +396,10 @@ pub fn merge(
                 _ => (),
             };
 
+            // We use field_names for saturating revertible thunks. The iterator order is important
+            // and must stay the same within this function. Because hashset are randomized, cloning
+            // field_names, inserting new values, etc. will change iteration order. Please don't do
+            // that.
             let field_names: Vec<_> = left
                 .keys()
                 .chain(center.keys())
