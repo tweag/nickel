@@ -104,18 +104,18 @@ fn find_fields_from_term_kind(
                                                 )
                                                 .collect::<Vec<_>>()
                                                 .join(",");
-                                            if result == "" {
+                                            if result.is_empty() {
                                                 None
                                             } else {
                                                 Some(result)
                                             }
                                         })
-                                        .unwrap_or(ty.to_string())
+                                        .unwrap_or_else(|| ty.to_string())
                                 })
-                                .unwrap_or(ty.to_string());
+                                .unwrap_or_else(|| ty.to_string());
                             IdentWithMeta {
                                 ident,
-                                meta: Some(detail.clone()),
+                                meta: Some(detail),
                             }
                         })
                         .collect(),
