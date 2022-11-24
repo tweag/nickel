@@ -367,18 +367,6 @@ pub fn merge(
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
         (Term::Record(r1), Term::Record(r2)) => {
-            /* Terms inside m1 and m2 may capture variables of resp. env1 and env2.  Morally, we
-             * need to store closures, or a merge of closures, inside the resulting record.  We use
-             * the same trick as in the evaluation of the operator DynExtend, and replace each such
-             * term by a variable bound to an appropriate closure in the environment
-             */
-
-            // We save the original fields before they are potentially merged in order to patch
-            // their environment in the final record (cf `fixpoint::patch_fields`). Note that we
-            // are only cloning shared terms (`Rc`s) here.
-            //let m1_values: Vec<_> = r1.fields.values().cloned().collect();
-            //let m2_values: Vec<_> = r2.fields.values().cloned().collect();
-
             let hashmap::SplitResult {
                 left,
                 center,
@@ -396,10 +384,6 @@ pub fn merge(
                 _ => (),
             };
 
-            // We use field_names for saturating revertible thunks. The iterator order is important
-            // and must stay the same within this function. Because hashset are randomized, cloning
-            // field_names, inserting new values, etc. will change iteration order. Please don't do
-            // that.
             let field_names: Vec<_> = left
                 .keys()
                 .chain(center.keys())
@@ -411,19 +395,21 @@ pub fn merge(
 
             // Merging recursive record is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the
-            // thunks.
+            // corresponding thunks to their original expression.
             //
-            // We do that for the left and the right part. The fields in the intersection (center)
-            // needs a more general treatment to correctly propagate the recursive values down each
-            // field.
+            // We do that for the left and the right part.
+            //
+            // The fields in the intersection (center) need a slightly more general treatment to
+            // correctly propagate the recursive values down each field: saturation. See
+            // [crate::eval::lazy::Thunk::saturate].
             m.extend(
                 left.into_iter()
-                    .map(|(field, t)| (field, rev_thunk_closurize(t, &mut env, &env1))),
+                    .map(|(field, t)| (field, revert_closurize(t, &mut env, &env1))),
             );
             m.extend(
                 right
                     .into_iter()
-                    .map(|(field, t)| (field, rev_thunk_closurize(t, &mut env, &env2))),
+                    .map(|(field, t)| (field, revert_closurize(t, &mut env, &env2))),
             );
 
             for (field, (t1, t2)) in center.into_iter() {
@@ -557,8 +543,8 @@ fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<ThunkDeps, EvalE
 /// thunk is (if one of the original value is overridable, then so is the merge of the two). In
 /// this case, the field dependencies are the union of the dependencies of each field.
 ///
-/// The fields are saturaed (see [saturate]) to properly propagate recursive dependencies to the
-/// other fields in the final, merged record.
+/// The fields are saturaed (see [saturate]) to properly propagate recursive dependencies down to
+/// the `t1` and `t2` in the final, merged record.
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     env: &mut Environment,
     t1: RichTerm,
@@ -615,7 +601,9 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 }
 
 /// Take the current environment, two terms with their local environment, and return a term which
-/// is the closurized merge of the two.
+/// is the closurized merge of the two. A simplified version of [fields_merge_closurize], when we
+/// are not merging recursive record fields and thus don't have to deal with revertible thunks and
+/// saturation.
 fn merge_closurize(
     env: &mut Environment,
     t1: RichTerm,
@@ -632,7 +620,8 @@ fn merge_closurize(
     body.closurize(env, local_env)
 }
 
-fn rev_thunk_closurize(rt: RichTerm, env: &mut Environment, local_env: &Environment) -> RichTerm {
+/// Revert the thunk inside the provided field (if any), and closurize the result inside `env`.
+fn revert_closurize(rt: RichTerm, env: &mut Environment, local_env: &Environment) -> RichTerm {
     if let Term::Var(id) = rt.as_ref() {
         // This create a fresh variable which is bound to a reverted copy of the original thunk
         let reverted = local_env.get(id).unwrap().revert();
