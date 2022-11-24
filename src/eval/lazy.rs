@@ -263,7 +263,7 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            // Nothing should access the cached value of a revertible thunks before the cached
+            // Nothing should access the cached value of a revertible thunk before the cached
             // value has been constructed. This is an invariant that MUST be maintained by the
             // interpreter
             //
@@ -467,7 +467,7 @@ impl Thunk {
     /// function to the given variables. The function part is allocated in a new fresh thunk,
     /// stored as a generated variable, with the same environment as the original expression.
     ///
-    /// Recall that revertible thunks are just a memoization mechanism) for function application.
+    /// Recall that revertible thunks are just a memoization mechanism for function application.
     /// The original expression (`orig`) and the dependencies (`deps`) are a representation of a
     /// function. Most of the time, we don't have to go through an explicit function, and just
     /// manipulate the body of the function directly (which is what is stored inside the `orig`
@@ -479,9 +479,9 @@ impl Thunk {
     /// built by merging.
     ///
     /// `saturate`:
-    /// - abstract the original expression of the underlying revertible thunk, forming a function.
-    /// - store this function in a fresh standard thunk
-    /// - return the application of this function to the provided record field names (as variables)
+    /// - abstracts the original expression of the underlying revertible thunk, forming a function.
+    /// - stores this function in a fresh standard thunk
+    /// - returns the application of this function to the provided record field names (as variables)
     ///
     /// Field names are taken as an iterator over identifiers.
     ///
@@ -508,7 +508,7 @@ impl Thunk {
     ///
     /// If `orig` is `foo + bar + a` where `foo` and `bar` are thunk dependencies (hence are free
     /// variables) and `a` is bound in the environment. Say the iterator represents the fields
-    /// `bar, b, foo` in that order. Then `rev_thunk_as_explicit_app`:
+    /// `bar, b, foo` in that order. Then `saturate`:
     ///
     /// - stores `fun bar foo => foo + bar + a` in a fresh thunk with the same environment as
     ///   `self` (in particular, `a` is bound)
