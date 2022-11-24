@@ -76,7 +76,6 @@ fn find_fields_from_term_kind(
     path: &mut Vec<Ident>,
 ) -> Option<Vec<IdentWithMeta>> {
     let item = linearization.get_item(id)?;
-    let (ty, _) = linearization.resolve_item_type_meta(item);
     match item.kind {
         TermKind::Record(ref fields) => {
             if path.is_empty() {
@@ -84,7 +83,41 @@ fn find_fields_from_term_kind(
                     fields
                         .keys()
                         .cloned()
-                        .map(|ident| IdentWithMeta { ident, meta: Some(ty.to_string()) })
+                        .map(|ident| {
+                            // These unwraps are safe
+                            let id = fields.get(&ident).unwrap();
+                            let item = linearization.get_item(*id).unwrap();
+                            let (ty, _) = linearization.resolve_item_type_meta(item);
+                            let detail = item
+                                .meta
+                                .as_ref()
+                                .map(|meta| {
+                                    meta.types
+                                        .as_ref()
+                                        .map(|ty| ty.types.to_string())
+                                        .or_else(|| {
+                                            let result = meta
+                                                .contracts
+                                                .iter()
+                                                .map(
+                                                    |contract| format!("{}", contract.label.types,),
+                                                )
+                                                .collect::<Vec<_>>()
+                                                .join(",");
+                                            if result == "" {
+                                                None
+                                            } else {
+                                                Some(result)
+                                            }
+                                        })
+                                        .unwrap_or(ty.to_string())
+                                })
+                                .unwrap_or(ty.to_string());
+                            IdentWithMeta {
+                                ident,
+                                meta: Some(detail.clone()),
+                            }
+                        })
                         .collect(),
                 )
             } else {
@@ -183,7 +216,10 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
             data.fields
                 .keys()
                 .cloned()
-                .map(|ident| IdentWithMeta { ident, meta: Some(term.to_string())})
+                .map(|ident| IdentWithMeta {
+                    ident,
+                    meta: Some(term.to_string()),
+                })
                 .collect(),
         ),
         (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
