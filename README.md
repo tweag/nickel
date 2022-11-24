@@ -249,7 +249,7 @@ comparison with these languages.
 
 | Language | Typing                        | Recursion  | Evaluation | Side-effects                                     |
 |----------|-------------------------------|------------|------------|--------------------------------------------------|
-| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained)                                |
+| Nickel   | Gradual (dynamic + static)    | Yes        | Lazy       | Yes (constrained, planned)                       |
 | Starlark | Dynamic                       | No         | Strict     | No                                               |
 | Nix      | Dynamic                       | Yes        | Lazy       | Predefined and specialized to package management |
 | Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                               |
