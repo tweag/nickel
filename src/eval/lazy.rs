@@ -33,13 +33,6 @@ pub struct ThunkData {
     state: ThunkState,
 }
 
-/// The two different kind of thunks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ThunkType {
-    Standard,
-    Revertible,
-}
-
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
 /// - A standard thunk, that is destructively updated once and for all
 /// - A revertible thunk, that can be restored to its original expression. Used to implement
@@ -349,13 +342,6 @@ impl ThunkData {
                 .unwrap_or(ThunkDeps::Unknown),
         }
     }
-
-    pub fn typ(&self) -> ThunkType {
-        match self.inner {
-            InnerThunkData::Standard(_) => ThunkType::Standard,
-            InnerThunkData::Revertible { .. } => ThunkType::Revertible,
-        }
-    }
 }
 
 /// A thunk.
@@ -574,10 +560,6 @@ impl Thunk {
     /// [`crate::transform::free_vars`].
     pub fn deps(&self) -> ThunkDeps {
         self.data.borrow().deps()
-    }
-
-    pub fn typ(&self) -> ThunkType {
-        self.data.borrow().typ()
     }
 }
 
