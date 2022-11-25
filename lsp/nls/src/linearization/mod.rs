@@ -502,7 +502,7 @@ impl Linearizer for AnalysisHost {
         if let Some(item) = self
             .env
             .get(&key)
-            .and_then(|index| lin.linearization.get_mut((*index).1))
+            .and_then(|index| lin.linearization.get_mut(index.1))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;

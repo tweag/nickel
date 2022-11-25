@@ -243,11 +243,10 @@ fn get_completion_identifiers(
         server: &Server,
         path: &mut Vec<Ident>,
     ) -> Option<Vec<Ident>> {
-        item.env.get(&name).and_then(|(file, id)| {
-            let lin = server.lin_cache_get(&file).unwrap();
+        item.env.get(&name).map(|(file, id)| {
+            let lin = server.lin_cache_get(file).unwrap();
             let id = (*file, *id);
-            let info = collect_record_info(lin, id, path);
-            Some(info)
+            collect_record_info(lin, id, path)
         })
     }
 

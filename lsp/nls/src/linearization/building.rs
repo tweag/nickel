@@ -135,7 +135,7 @@ impl Building {
                 }
                 // if declaration is a let binding resolve its value
                 TermKind::Declaration(_, _, ValueState::Known(value)) => {
-                    self.linearization.get((*value).1)
+                    self.linearization.get(value.1)
                 }
 
                 // if something else was referenced, stop.
@@ -156,7 +156,7 @@ impl Building {
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.linearization.get((*parent_accessor_id).1);
+            let parent_referenced = self.linearization.get(parent_accessor_id.1);
 
             if let Some(LinearizationItem {
                 kind: TermKind::Usage(UsageState::Deferred { .. }),
@@ -189,7 +189,7 @@ impl Building {
                 .and_then(|parent_declaration| match &parent_declaration.kind {
                     TermKind::Record(fields) => {
                         fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.linearization.get((*child_declaration_id).1)
+                            self.linearization.get(child_declaration_id.1)
                         })
                     }
                     _ => None,
@@ -198,7 +198,7 @@ impl Building {
             let referenced_declaration =
                 referenced_declaration.and_then(|referenced| match &referenced.kind {
                     TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.linearization.get((*pointed).1)
+                        self.linearization.get(pointed.1)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
@@ -211,12 +211,12 @@ impl Building {
                                     "parent referenced a nested record indirectly`: {:?}",
                                     fields
                                 );
-                                fields.get(child_ident).and_then(|accessor_id| {
-                                    self.linearization.get((*accessor_id).1)
-                                })
+                                fields
+                                    .get(child_ident)
+                                    .and_then(|accessor_id| self.linearization.get(accessor_id.1))
                             }
                             TermKind::Usage(UsageState::Resolved(pointed)) => {
-                                self.linearization.get((*pointed).1)
+                                self.linearization.get(pointed.1)
                             }
                             _ => None,
                         })
@@ -234,7 +234,7 @@ impl Building {
 
             {
                 let child: &mut LinearizationItem<UnifType> =
-                    self.linearization.get_mut((*child_item).1).unwrap();
+                    self.linearization.get_mut(child_item.1).unwrap();
                 child.kind = TermKind::Usage(UsageState::from(referenced_id));
             }
 
