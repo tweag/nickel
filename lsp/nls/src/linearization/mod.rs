@@ -68,7 +68,7 @@ pub struct AnalysisHost {
 }
 
 impl AnalysisHost {
-    pub fn from(file: FileId, env: Environment) -> Self {
+    pub fn new(file: FileId, env: Environment) -> Self {
         Self {
             file,
             env,

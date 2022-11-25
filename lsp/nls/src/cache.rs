@@ -50,7 +50,7 @@ impl CacheExt for Cache {
         if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            let host = AnalysisHost::from(file_id, initial_env.clone());
+            let host = AnalysisHost::new(file_id, initial_env.clone());
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host)?;
             self.update_state(file_id, EntryState::Typechecked);
