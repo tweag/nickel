@@ -148,7 +148,7 @@ impl ThunkData {
     ///
     /// This function is similar in spirit to setting the cached value to be the explicit function
     /// application given as built by `saturate`, but applied to arguments taken
-    /// from `rec_env`. The major difference is that `build_cached` avoid the creation of the
+    /// from `rec_env`. The major difference is that `init_cached` avoid the creation of the
     /// intermediate redex `(fun id1 .. id n => orig) %1 .. %n` as well as the intermediate thunks
     /// and terms, because we can compute the result application right away, in-place.
     pub fn init_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
