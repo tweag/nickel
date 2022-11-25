@@ -838,7 +838,7 @@ impl Cache {
     }
 
     /// Retrieve the FileIds for all the stdlib modules
-    pub fn get_all_submodules_file_id(&self) -> Option<Vec<FileId>> {
+    pub fn get_all_stdlib_modules_file_id(&self) -> Option<Vec<FileId>> {
         let ids = self.stdlib_ids.as_ref()?;
         Some(ids.values().copied().collect())
     }

@@ -15,16 +15,44 @@ use nickel_lang::{
 };
 
 use self::{
-    building::{Building, ID},
+    building::Building,
     completed::Completed,
     interface::{ResolutionState, TermKind, UsageState, ValueState},
 };
+
+// Still a WIP
+static mut CACHE: Option<HashMap<FileId, Linearization<Completed>>> = None;
+
+pub fn update_cache(file: FileId, lin: Linearization<Completed>) {
+    unsafe {
+        match CACHE {
+            None => {
+                let mut table = HashMap::new();
+                table.insert(file, lin);
+                CACHE = Some(table);
+            }
+            Some(ref mut cache) => {
+                cache.insert(file, lin);
+            }
+        }
+    }
+}
+
+pub fn get_from_cache(file: &FileId) -> Option<&mut Linearization<Completed>> {
+    unsafe {
+        match CACHE {
+            None => None,
+            Some(ref mut cache) => cache.get_mut(file),
+        }
+    }
+}
 
 pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang::environment::Environment<(Ident, FileId), usize>;
+pub type ItemID = (FileId, usize);
+pub type Environment = nickel_lang::environment::Environment<Ident, ItemID>;
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -33,7 +61,7 @@ pub type Environment = nickel_lang::environment::Environment<(Ident, FileId), us
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub env: Environment,
-    pub id: usize,
+    pub id: ItemID,
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
@@ -55,8 +83,8 @@ pub struct AnalysisHost {
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
-    record_fields: Option<(ID, Vec<(ID, Ident)>)>,
-    let_binding: Option<ID>,
+    record_fields: Option<(ItemID, Vec<(ItemID, Ident)>)>,
+    let_binding: Option<ItemID>,
     /// Accesses to nested records are recorded recursively.
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
@@ -116,7 +144,7 @@ impl Linearizer for AnalysisHost {
                     pos
                 });
 
-                if let Some(field) = lin.linearization.get_mut(record + offset) {
+                if let Some(field) = lin.linearization.get_mut(record.1 + offset.1) {
                     debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
@@ -130,7 +158,7 @@ impl Linearizer for AnalysisHost {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
-                            *value = ValueState::Known(id_gen.get() + usage_offset);
+                            *value = ValueState::Known((self.file, id_gen.get() + usage_offset));
                         }
                         // The linearization item of a record with n fields is expected to be
                         // followed by n linearization items representing each field
@@ -140,7 +168,7 @@ impl Linearizer for AnalysisHost {
             }
 
             if let Some(declaration) = self.let_binding.take() {
-                lin.inform_declaration(declaration, id_gen.get());
+                lin.inform_declaration(declaration, (self.file, id_gen.get()));
             }
         }
 
@@ -148,7 +176,7 @@ impl Linearizer for AnalysisHost {
             return;
         }
 
-        let id = id_gen.get();
+        let id = (self.file, id_gen.get());
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
@@ -161,7 +189,7 @@ impl Linearizer for AnalysisHost {
                             // stub object
                             lin.push(LinearizationItem {
                                 env: self.env.clone(),
-                                id: id_gen.get_and_advance(),
+                                id: (self.file, id_gen.get_and_advance()),
 
                                 ty: ty.clone(),
                                 pos: ident.pos,
@@ -169,13 +197,13 @@ impl Linearizer for AnalysisHost {
                                 meta: self.meta.take(),
                             });
 
-                            ValueState::Known(id_gen.get())
+                            ValueState::Known((self.file, id_gen.get()))
                         }
                         _ => unreachable!(),
                     };
 
-                    let id = id_gen.get_and_advance();
-                    let key = (ident.to_owned(), self.file);
+                    let id = (self.file, id_gen.get_and_advance());
+                    let key = ident.to_owned();
                     self.env.insert(key, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -188,8 +216,8 @@ impl Linearizer for AnalysisHost {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
-                    let id = id_gen.get_and_advance();
-                    let key = (ident, self.file);
+                    let id = (self.file, id_gen.get_and_advance());
+                    let key = ident;
                     self.env.insert(key, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -222,7 +250,7 @@ impl Linearizer for AnalysisHost {
                         // stub object
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
-                            id: id_gen.get_and_advance(),
+                            id: (self.file, id_gen.get_and_advance()),
 
                             ty: ty.clone(),
                             pos: ident.pos,
@@ -230,15 +258,15 @@ impl Linearizer for AnalysisHost {
                             meta: self.meta.take(),
                         });
 
-                        ValueState::Known(id_gen.get())
+                        ValueState::Known((self.file, id_gen.get()))
                     }
                     _ => unreachable!(),
                 };
-                let key = (ident.to_owned(), self.file);
-                self.env.insert(key, id_gen.get());
+                let key = ident.to_owned();
+                self.env.insert(key, (self.file, id_gen.get()));
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
-                    id: id_gen.get(),
+                    id: (self.file, id_gen.get()),
                     ty,
                     pos: ident.pos,
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
@@ -246,14 +274,14 @@ impl Linearizer for AnalysisHost {
                 });
             }
             Term::Var(ident) => {
-                let root_id = id_gen.get_and_advance();
+                let root_id = (self.file, id_gen.get_and_advance());
 
                 debug!(
                     "adding usage of variable {} followed by chain {:?}",
                     ident, self.access
                 );
 
-                let key = (ident.to_owned(), self.file);
+                let key = ident.to_owned();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: root_id,
@@ -271,14 +299,14 @@ impl Linearizer for AnalysisHost {
                     let chain: Vec<_> = chain.into_iter().rev().collect();
 
                     for accessor in chain.iter() {
-                        let id = id_gen.get_and_advance();
+                        let id = (self.file, id_gen.get_and_advance());
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id,
                             pos: accessor.pos,
                             ty: UnifType::Concrete(TypeF::Dyn),
                             kind: TermKind::Usage(UsageState::Deferred {
-                                parent: id - 1,
+                                parent: (self.file, id.1 - 1),
                                 child: accessor.to_owned(),
                             }),
                             meta: self.meta.take(),
@@ -300,8 +328,15 @@ impl Linearizer for AnalysisHost {
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
-                self.record_fields =
-                    Some((id + 1, field_names.into_iter().enumerate().rev().collect()));
+                self.record_fields = Some((
+                    (id.0, id.1 + 1),
+                    field_names
+                        .into_iter()
+                        .enumerate()
+                        .map(|(id, ident)| ((self.file, id), ident))
+                        .rev()
+                        .collect(),
+                ));
             }
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
@@ -352,7 +387,7 @@ impl Linearizer for AnalysisHost {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
-        let defers: Vec<(usize, usize, Ident)> = lin
+        let defers: Vec<(ItemID, ItemID, Ident)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -394,7 +429,7 @@ impl Linearizer for AnalysisHost {
             }
         }
         // resolve types
-        let lin_ = linearization
+        let lin_: Vec<_> = linearization
             .into_iter()
             .map(
                 |LinearizationItem {
@@ -418,7 +453,15 @@ impl Linearizer for AnalysisHost {
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, id_mapping))
+
+
+        // A bit hacky for now, still a WIP
+        let compl = Linearization::new(Completed::new(lin_.clone(), id_mapping.clone()));
+        let completed = Linearization::new(Completed::new(lin_, id_mapping));
+
+        update_cache(self.file, compl);
+
+        completed
     }
 
     fn scope(&mut self) -> Self {
@@ -456,11 +499,11 @@ impl Linearizer for AnalysisHost {
         ident: &Ident,
         new_type: UnifType,
     ) {
-        let key = (ident.to_owned(), self.file);
+        let key = ident.to_owned();
         if let Some(item) = self
             .env
             .get(&key)
-            .and_then(|index| lin.linearization.get_mut(*index))
+            .and_then(|index| lin.linearization.get_mut((*index).1))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;

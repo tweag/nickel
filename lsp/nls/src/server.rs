@@ -92,13 +92,14 @@ impl Server {
             let name: Ident = module.into();
             let file_id = self.cache.get_submodule_file_id(module)?;
             let lin = self.lin_cache_get(&file_id).ok()?;
-            // We're using the ID 0 here because the stdlib is represented by a
-            // single record which would have an ID of 0
-            let id = match lin.get_item(0).map(|item| &item.kind) {
+            // We're using the ID 0 here because a stdlib module is currently
+            // REQUIRED to be a record literal. The linearization ID of this
+            // record must thus be 0
+            let id = match lin.get_item((file_id, 0)).map(|item| &item.kind) {
                 Some(TermKind::Record(table)) => table.get(&name),
                 _ => None,
             }?;
-            let key = (name, file_id);
+            let key = name;
             initial.insert(key, *id);
         }
 
