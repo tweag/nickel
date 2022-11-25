@@ -504,8 +504,8 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 /// fields. See [crate::eval::lazy::Thunk::saturate].
 ///
 /// If the expression is not a variable referring to a thunk (this can happen e.g. for numeric
-/// constant), we just return the term as it is, which falls into the zero dependencies special
-/// case as well.
+/// constants), we just return the term as it is, which falls into the zero dependencies special
+/// case.
 fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     rt: RichTerm,
     env: &mut Environment,
@@ -544,7 +544,7 @@ fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<ThunkDeps, EvalE
 /// this case, the field dependencies are the union of the dependencies of each field.
 ///
 /// The fields are saturaed (see [saturate]) to properly propagate recursive dependencies down to
-/// the `t1` and `t2` in the final, merged record.
+/// `t1` and `t2` in the final, merged record.
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     env: &mut Environment,
     t1: RichTerm,

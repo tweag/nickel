@@ -225,7 +225,7 @@ impl ThunkData {
     pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            // Nothing should peek into a revertible thunks before the cached value has been
+            // Nothing should peek into a revertible thunk before the cached value has been
             // constructed by [`build_cached_value`]. This is an invariant that MUST be maintained
             // by the interpreter.
             //
