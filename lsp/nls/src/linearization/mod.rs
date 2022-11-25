@@ -454,7 +454,6 @@ impl Linearizer for AnalysisHost {
             })
             .collect();
 
-
         // A bit hacky for now, still a WIP
         let compl = Linearization::new(Completed::new(lin_.clone(), id_mapping.clone()));
         let completed = Linearization::new(Completed::new(lin_, id_mapping));
