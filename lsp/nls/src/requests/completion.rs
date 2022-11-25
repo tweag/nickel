@@ -359,231 +359,275 @@ pub fn handle_completion(
         })
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::linearization::Environment;
-//     use nickel_lang::position::TermPos;
-//     use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::linearization::Environment;
+    use codespan::Files;
+    use nickel_lang::position::TermPos;
+    use std::collections::{HashMap, HashSet};
 
-//     #[test]
-//     fn test_get_identifier_path() {
-//         let tests = [
-//             (
-//                 "Simple let binding with nested record index",
-//                 "let person = {} in \n    a.b.c.d",
-//                 vec!["a", "b", "c", "d"],
-//             ),
-//             ("Simple record index", "   ab.dec", vec!["ab", "dec"]),
-//             (
-//                 "Multiple let bindings with nested record index ",
-//                 r##"let name = { sdf.clue.add.bar = 10 } in
-//                 let other = name in
-//                 let another = other in
-//             name.sdf.clue.add.bar"##,
-//                 vec!["name", "sdf", "clue", "add", "bar"],
-//             ),
-//             (
-//                 "Incomplete record with nested record index",
-//                 r##"{
-//                     foo = let bar = {a.b.c.d = 10} in bar.a.b.c.d"##,
-//                 vec!["bar", "a", "b", "c", "d"],
-//             ),
-//             ("Simple record Index", "name.class", vec!["name", "class"]),
-//             (
-//                 "Simple record Index ending with a dot",
-//                 "name.class.",
-//                 vec!["name", "class"],
-//             ),
-//             ("Single record variable", "number", vec!["number"]),
-//             (
-//                 "Single record variable ending with a dot",
-//                 "number.",
-//                 vec!["number"],
-//             ),
-//             (
-//                 "Record binding with unicode string names for fields",
-//                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-//                 vec!["x", "fo京o", "foo"],
-//             ),
-//             (
-//                 "Typed record binding with nested record indexing",
-//                 r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
-//                     me.ca.cb"##,
-//                 vec!["me", "ca", "cb"],
-//             ),
-//         ];
-//         for (case_name, input, expected) in tests {
-//             let actual = get_identifier_path(input);
-//             let expected: Option<Vec<_>> =
-//                 Some(expected.iter().cloned().map(String::from).collect());
-//             assert_eq!(actual, expected, "test failed: {}", case_name)
-//         }
-//     }
+    #[test]
+    fn test_get_identifier_path() {
+        let tests = [
+            (
+                "Simple let binding with nested record index",
+                "let person = {} in \n    a.b.c.d",
+                vec!["a", "b", "c", "d"],
+            ),
+            ("Simple record index", "   ab.dec", vec!["ab", "dec"]),
+            (
+                "Multiple let bindings with nested record index ",
+                r##"let name = { sdf.clue.add.bar = 10 } in
+                let other = name in
+                let another = other in
+            name.sdf.clue.add.bar"##,
+                vec!["name", "sdf", "clue", "add", "bar"],
+            ),
+            (
+                "Incomplete record with nested record index",
+                r##"{
+                    foo = let bar = {a.b.c.d = 10} in bar.a.b.c.d"##,
+                vec!["bar", "a", "b", "c", "d"],
+            ),
+            ("Simple record Index", "name.class", vec!["name", "class"]),
+            (
+                "Simple record Index ending with a dot",
+                "name.class.",
+                vec!["name", "class"],
+            ),
+            ("Single record variable", "number", vec!["number"]),
+            (
+                "Single record variable ending with a dot",
+                "number.",
+                vec!["number"],
+            ),
+            (
+                "Record binding with unicode string names for fields",
+                r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
+                vec!["x", "fo京o", "foo"],
+            ),
+            (
+                "Typed record binding with nested record indexing",
+                r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
+                    me.ca.cb"##,
+                vec!["me", "ca", "cb"],
+            ),
+        ];
+        for (case_name, input, expected) in tests {
+            let actual = get_identifier_path(input);
+            let expected: Option<Vec<_>> =
+                Some(expected.iter().cloned().map(String::from).collect());
+            assert_eq!(actual, expected, "test failed: {}", case_name)
+        }
+    }
 
-//     #[test]
-//     fn test_extract_ident_with_path() {
-//         use nickel_lang::{mk_tyw_record, mk_tyw_row, types::RecordRowsF};
-//         use std::convert::TryInto;
+    #[test]
+    fn test_extract_ident_with_path() {
+        use nickel_lang::{mk_tyw_record, mk_tyw_row, types::RecordRowsF};
+        use std::convert::TryInto;
 
-//         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
-//         let c_record_type = mk_tyw_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
-//         let b_record_type = mk_tyw_record!(("b", c_record_type));
-//         let a_record_type = mk_tyw_row!(("a", b_record_type));
+        // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
+        let c_record_type = mk_tyw_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
+        let b_record_type = mk_tyw_record!(("b", c_record_type));
+        let a_record_type = mk_tyw_row!(("a", b_record_type));
 
-//         let mut path = vec![Ident::from("b"), Ident::from("a")];
-//         // unwrap: the conversion must succeed because we built a type without unification variable
-//         // nor type constants
-//         let result = find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path);
-//         let expected = vec![Ident::from("c1"), Ident::from("c2")];
-//         assert_eq!(
-//             result.iter().map(Ident::label).collect::<Vec<_>>(),
-//             expected.iter().map(Ident::label).collect::<Vec<_>>()
-//         )
-//     }
+        let mut path = vec![Ident::from("b"), Ident::from("a")];
+        // unwrap: the conversion must succeed because we built a type without unification variable
+        // nor type constants
+        let result = find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path);
+        let expected = vec![Ident::from("c1"), Ident::from("c2")];
+        assert_eq!(
+            result.iter().map(Ident::label).collect::<Vec<_>>(),
+            expected.iter().map(Ident::label).collect::<Vec<_>>()
+        )
+    }
 
-//     #[test]
-//     fn test_remove_duplicates() {
-//         fn completion_item(names: Vec<&str>) -> Vec<CompletionItem> {
-//             names
-//                 .iter()
-//                 .map(|name| CompletionItem {
-//                     label: String::from(*name),
-//                     ..Default::default()
-//                 })
-//                 .collect::<Vec<_>>()
-//         }
-//         fn single_test(actual: Vec<&str>, expected: Vec<&str>) {
-//             // We're using a Hashset, because we don't want to be
-//             // particular about the order of the completion items.
-//             let actual: HashSet<_> = remove_duplicates(&completion_item(actual))
-//                 .iter()
-//                 .map(|item| item.label.clone())
-//                 .collect();
+    #[test]
+    fn test_remove_duplicates() {
+        fn completion_item(names: Vec<&str>) -> Vec<CompletionItem> {
+            names
+                .iter()
+                .map(|name| CompletionItem {
+                    label: String::from(*name),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>()
+        }
+        fn single_test(actual: Vec<&str>, expected: Vec<&str>) {
+            // We're using a Hashset, because we don't want to be
+            // particular about the order of the completion items.
+            let actual: HashSet<_> = remove_duplicates(&completion_item(actual))
+                .iter()
+                .map(|item| item.label.clone())
+                .collect();
 
-//             let expected: HashSet<_> = expected.iter().cloned().map(String::from).collect();
+            let expected: HashSet<_> = expected.iter().cloned().map(String::from).collect();
 
-//             assert_eq!(actual, expected)
-//         }
+            assert_eq!(actual, expected)
+        }
 
-//         let test_cases = [
-//             (
-//                 vec!["foo", "bar", "bar", "baz", "bar"],
-//                 vec!["baz", "foo", "bar"],
-//             ),
-//             (vec![], vec![]),
-//             (vec!["c", "c", "c"], vec!["c"]),
-//             (
-//                 vec!["aaa", "aaa", "b", "b", "c", "c"],
-//                 vec!["aaa", "b", "c"],
-//             ),
-//             (vec!["foo"], vec!["foo"]),
-//             (vec!["foo", "bar"], vec!["foo", "bar"]),
-//             (vec!["a", "b", "c", "a"], vec!["a", "b", "c"]),
-//         ];
+        let test_cases = [
+            (
+                vec!["foo", "bar", "bar", "baz", "bar"],
+                vec!["baz", "foo", "bar"],
+            ),
+            (vec![], vec![]),
+            (vec!["c", "c", "c"], vec!["c"]),
+            (
+                vec!["aaa", "aaa", "b", "b", "c", "c"],
+                vec!["aaa", "b", "c"],
+            ),
+            (vec!["foo"], vec!["foo"]),
+            (vec!["foo", "bar"], vec!["foo", "bar"]),
+            (vec!["a", "b", "c", "a"], vec!["a", "b", "c"]),
+        ];
 
-//         for (actual, expected) in test_cases {
-//             single_test(actual, expected)
-//         }
-//     }
+        for (actual, expected) in test_cases {
+            single_test(actual, expected)
+        }
+    }
 
-//     #[test]
-//     fn test_find_record_fields() {
-//         fn make_linearization_item(id: usize, kind: TermKind) -> LinearizationItem<Types> {
-//             LinearizationItem {
-//                 env: Environment::new(),
-//                 id,
-//                 pos: TermPos::None,
-//                 ty: Types(TypeF::Dyn),
-//                 kind,
-//                 meta: None,
-//             }
-//         }
-//         fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
-//             let id_to_index: HashMap<_, _> = linearization
-//                 .iter()
-//                 .map(|item| item.id)
-//                 .enumerate()
-//                 .map(|(index, id)| (id, index))
-//                 .collect();
-//             Completed::new(linearization, id_to_index)
-//         }
+    #[test]
+    fn test_find_record_fields() {
+        fn make_linearization_item(id: ItemID, kind: TermKind) -> LinearizationItem<Types> {
+            LinearizationItem {
+                env: Environment::new(),
+                id,
+                pos: TermPos::None,
+                ty: Types(TypeF::Dyn),
+                kind,
+                meta: None,
+            }
+        }
+        fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
+            let id_to_index: HashMap<_, _> = linearization
+                .iter()
+                .map(|item| item.id)
+                .enumerate()
+                .map(|(index, id)| (id, index))
+                .collect();
+            Completed::new(linearization, id_to_index)
+        }
 
-//         // ids is an array of the ids from this linearization
-//         // which would give the expected output
-//         fn single_case<const N: usize>(
-//             linearization: Vec<LinearizationItem<Types>>,
-//             ids: [usize; N],
-//             mut expected: Vec<Ident>,
-//         ) {
-//             expected.sort();
-//             let completed = make_completed(linearization);
-//             for id in ids {
-//                 let mut actual = find_fields_from_term_kind(&completed, id, &mut Vec::new())
-//                     .expect("Expected Some");
-//                 actual.sort();
-//                 assert_eq!(actual, expected)
-//             }
-//         }
+        // ids is an array of the ids from this linearization
+        // which would give the expected output
+        fn single_case<const N: usize>(
+            linearization: Vec<LinearizationItem<Types>>,
+            ids: [ItemID; N],
+            mut expected: Vec<Ident>,
+        ) {
+            expected.sort();
+            let completed = make_completed(linearization);
+            for id in ids {
+                let mut actual = find_fields_from_term_kind(&completed, id, &mut Vec::new())
+                    .expect("Expected Some");
+                actual.sort();
+                assert_eq!(actual, expected)
+            }
+        }
 
-//         let a = make_linearization_item(
-//             0,
-//             TermKind::Declaration(Ident::from("a"), vec![3], ValueState::Known(1)),
-//         );
-//         let b = make_linearization_item(
-//             1,
-//             TermKind::Record(HashMap::from([
-//                 (Ident::from("foo"), 2),
-//                 (Ident::from("bar"), 2),
-//                 (Ident::from("baz"), 2),
-//             ])),
-//         );
-//         let c = make_linearization_item(2, TermKind::Structure);
-//         let d = make_linearization_item(
-//             3,
-//             TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(4)),
-//         );
-//         let e = make_linearization_item(4, TermKind::Usage(UsageState::Resolved(0)));
-//         let linearization = vec![a, b, c, d, e];
-//         let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
-//         single_case(linearization, [0, 3], expected);
+        let files = Files::new();
+        let file_id = files.add("test", "test");
 
-//         let a = make_linearization_item(
-//             0,
-//             TermKind::Declaration(Ident::from("a"), Vec::new(), ValueState::Known(1)),
-//         );
-//         let b = make_linearization_item(
-//             1,
-//             TermKind::Record(HashMap::from([
-//                 (Ident::from("one"), 2),
-//                 (Ident::from("two"), 2),
-//                 (Ident::from("three"), 2),
-//                 (Ident::from("four"), 2),
-//             ])),
-//         );
-//         let c = make_linearization_item(2, TermKind::Structure);
-//         let d = make_linearization_item(
-//             3,
-//             TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(13)),
-//         );
-//         let e = make_linearization_item(
-//             4,
-//             TermKind::Declaration(Ident::from("e"), Vec::new(), ValueState::Known(14)),
-//         );
-//         let f = make_linearization_item(
-//             5,
-//             TermKind::Declaration(Ident::from("f"), Vec::new(), ValueState::Known(15)),
-//         );
-//         let g = make_linearization_item(13, TermKind::Usage(UsageState::Resolved(0)));
-//         let h = make_linearization_item(14, TermKind::Usage(UsageState::Resolved(3)));
-//         let i = make_linearization_item(15, TermKind::Usage(UsageState::Resolved(4)));
-//         let expected = vec![
-//             Ident::from("one"),
-//             Ident::from("two"),
-//             Ident::from("three"),
-//             Ident::from("four"),
-//         ];
-//         let linearization = vec![a, b, c, d, e, f, g, h, i];
-//         single_case(linearization, [0, 3, 4, 5], expected);
-//     }
-// }
+        let a = make_linearization_item(
+            (file_id, 0),
+            TermKind::Declaration(
+                Ident::from("a"),
+                vec![(file_id, 3)],
+                ValueState::Known((file_id, 1)),
+            ),
+        );
+        let b = make_linearization_item(
+            (file_id, 1),
+            TermKind::Record(HashMap::from([
+                (Ident::from("foo"), (file_id, 2)),
+                (Ident::from("bar"), (file_id, 2)),
+                (Ident::from("baz"), (file_id, 2)),
+            ])),
+        );
+        let c = make_linearization_item((file_id, 2), TermKind::Structure);
+        let d = make_linearization_item(
+            (file_id, 3),
+            TermKind::Declaration(
+                Ident::from("d"),
+                Vec::new(),
+                ValueState::Known((file_id, 4)),
+            ),
+        );
+        let e = make_linearization_item(
+            (file_id, 4),
+            TermKind::Usage(UsageState::Resolved((file_id, 0))),
+        );
+        let linearization = vec![a, b, c, d, e];
+        let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
+        single_case(linearization, [(file_id, 0), (file_id, 3)], expected);
+
+        let a = make_linearization_item(
+            (file_id, 0),
+            TermKind::Declaration(
+                Ident::from("a"),
+                Vec::new(),
+                ValueState::Known((file_id, 1)),
+            ),
+        );
+        let b = make_linearization_item(
+            (file_id, 1),
+            TermKind::Record(HashMap::from([
+                (Ident::from("one"), (file_id, 2)),
+                (Ident::from("two"), (file_id, 2)),
+                (Ident::from("three"), (file_id, 2)),
+                (Ident::from("four"), (file_id, 2)),
+            ])),
+        );
+        let c = make_linearization_item((file_id, 2), TermKind::Structure);
+        let d = make_linearization_item(
+            (file_id, 3),
+            TermKind::Declaration(
+                Ident::from("d"),
+                Vec::new(),
+                ValueState::Known((file_id, 13)),
+            ),
+        );
+        let e = make_linearization_item(
+            (file_id, 4),
+            TermKind::Declaration(
+                Ident::from("e"),
+                Vec::new(),
+                ValueState::Known((file_id, 14)),
+            ),
+        );
+        let f = make_linearization_item(
+            (file_id, 5),
+            TermKind::Declaration(
+                Ident::from("f"),
+                Vec::new(),
+                ValueState::Known((file_id, 15)),
+            ),
+        );
+        let g = make_linearization_item(
+            (file_id, 13),
+            TermKind::Usage(UsageState::Resolved((file_id, 0))),
+        );
+        let h = make_linearization_item(
+            (file_id, 14),
+            TermKind::Usage(UsageState::Resolved((file_id, 3))),
+        );
+        let i = make_linearization_item(
+            (file_id, 15),
+            TermKind::Usage(UsageState::Resolved((file_id, 4))),
+        );
+        let expected = vec![
+            Ident::from("one"),
+            Ident::from("two"),
+            Ident::from("three"),
+            Ident::from("four"),
+        ];
+        let linearization = vec![a, b, c, d, e, f, g, h, i];
+        single_case(
+            linearization,
+            [(file_id, 0), (file_id, 3), (file_id, 4), (file_id, 5)],
+            expected,
+        );
+    }
+}
