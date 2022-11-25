@@ -820,6 +820,15 @@ impl Types {
         self.subcontract(HashMap::new(), true, &mut sy)
     }
 
+    /// Returns true if this type is a function type, false otherwise.
+    pub fn is_function_type(&self) -> bool {
+        match self {
+            Types(TypeF::Forall { body, .. }) => body.is_function_type(),
+            Types(TypeF::Arrow(..)) => true,
+            Types(_) => false,
+        }
+    }
+
     /// Return the contract corresponding to a subtype.
     ///
     /// # Arguments
