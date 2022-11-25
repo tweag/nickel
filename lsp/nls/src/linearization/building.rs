@@ -29,25 +29,22 @@ impl Building {
         self.linearization.push(item)
     }
 
-    pub(super) fn add_usage(&mut self, decl: ItemID, usage: ItemID) {
-        if super::get_from_cache(&decl.0).is_some() {
-            // For now, this is a stdlib term. We don't want to add a reference to it
-            return;
-        }
+    pub(super) fn add_usage(&mut self, _decl: ItemID, _usage: ItemID) {
 
-        match self
-            .linearization
-            // For now use only the file index
-            .get_mut(decl.1)
-            .expect("Could not find parent")
-            .kind
-        {
-            TermKind::Structure | TermKind::Usage(_) | TermKind::Record(_) => {
-                unreachable!()
-            }
-            TermKind::Declaration(_, ref mut usages, _)
-            | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
-        };
+        // TODO fix this function
+        // match self
+        //     .linearization
+        //     // For now use only the file index
+        //     .get_mut(decl.1)
+        //     .expect("Could not find parent")
+        //     .kind
+        // {
+        //     TermKind::Structure | TermKind::Usage(_) | TermKind::Record(_) => {
+        //         unreachable!()
+        //     }
+        //     TermKind::Declaration(_, ref mut usages, _)
+        //     | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
+        // };
     }
 
     pub(super) fn inform_declaration(&mut self, declaration: ItemID, value: ItemID) {

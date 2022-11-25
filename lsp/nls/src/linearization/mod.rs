@@ -20,33 +20,6 @@ use self::{
     interface::{ResolutionState, TermKind, UsageState, ValueState},
 };
 
-// Still a WIP
-static mut CACHE: Option<HashMap<FileId, Linearization<Completed>>> = None;
-
-pub fn update_cache(file: FileId, lin: Linearization<Completed>) {
-    unsafe {
-        match CACHE {
-            None => {
-                let mut table = HashMap::new();
-                table.insert(file, lin);
-                CACHE = Some(table);
-            }
-            Some(ref mut cache) => {
-                cache.insert(file, lin);
-            }
-        }
-    }
-}
-
-pub fn get_from_cache(file: &FileId) -> Option<&mut Linearization<Completed>> {
-    unsafe {
-        match CACHE {
-            None => None,
-            Some(ref mut cache) => cache.get_mut(file),
-        }
-    }
-}
-
 pub mod building;
 pub mod completed;
 pub mod interface;
@@ -454,13 +427,7 @@ impl Linearizer for AnalysisHost {
             })
             .collect();
 
-        // A bit hacky for now, still a WIP
-        let compl = Linearization::new(Completed::new(lin_.clone(), id_mapping.clone()));
-        let completed = Linearization::new(Completed::new(lin_, id_mapping));
-
-        update_cache(self.file, compl);
-
-        completed
+        Linearization::new(Completed::new(lin_, id_mapping))
     }
 
     fn scope(&mut self) -> Self {
