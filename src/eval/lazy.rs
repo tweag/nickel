@@ -148,7 +148,7 @@ impl ThunkData {
     ///
     /// This function is similar in spirit to setting the cached value to be the explicit function
     /// application given as built by `saturate`, but applied to arguments taken
-    /// from `rec_env`. The major difference is that `init_cached` avoid the creation of the
+    /// from `rec_env`. The major difference is that `init_cached` avoids the creation of the
     /// intermediate redex `(fun id1 .. id n => orig) %1 .. %n` as well as the intermediate thunks
     /// and terms, because we can compute the result application right away, in-place.
     pub fn init_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
@@ -163,7 +163,7 @@ impl ThunkData {
                 // an invariant that MUST be maintained by the interpreter.
                 //
                 // `cached` set to `None` solely exists because we need to first allocate all the
-                // revertible thunks corresponding to a recursive record, and only then we can
+                // revertible thunks corresponding to a recursive record, and only then can we
                 // patch them (build the cached value) in a second step, but they should be
                 // logically seen as one construction operation.
                 assert!(
@@ -354,7 +354,7 @@ impl ThunkData {
 /// revertible thunks. Most expressions don't need revertible thunks as their evaluation will
 /// always give the same result, but some others, such as the ones containing recursive references
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
-/// expression. Those aspects are mainly handled and discussed into more details in
+/// expression. Those aspects are handled and discussed in more detail in
 /// [InnerThunkData].
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
@@ -487,7 +487,7 @@ impl Thunk {
     /// # Standard thunks (non-revertible)
     ///
     /// Non revertible thunks can be seen as a special case of revertible thunks with no
-    /// dependencies. Thus the abstraction and application are zero-ary, and the result is just the
+    /// dependencies. Thus the abstraction and application are nullary, and the result is just the
     /// current thunk closurized in `env` as a fresh variable.
     ///
     /// # Example

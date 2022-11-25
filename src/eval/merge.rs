@@ -393,7 +393,7 @@ pub fn merge(
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
             let mut env = Environment::new();
 
-            // Merging recursive record is the one operation that may override recursive fields. To
+            // Merging recursive records is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the
             // corresponding thunks to their original expression.
             //
@@ -540,10 +540,10 @@ fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<ThunkDeps, EvalE
 /// is the merge of the two fields, closurized in the provided final environment.
 ///
 /// The thunk allocated for the result is revertible if and only if at least one of the original
-/// thunk is (if one of the original value is overridable, then so is the merge of the two). In
+/// thunks is (if one of the original values is overridable, then so is the merge of the two). In
 /// this case, the field dependencies are the union of the dependencies of each field.
 ///
-/// The fields are saturaed (see [saturate]) to properly propagate recursive dependencies down to
+/// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     env: &mut Environment,
