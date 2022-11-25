@@ -15,6 +15,11 @@
 /node_modules
 /lsp/client-extension/node_modules
 /lsp/client-extension/out
+/lsp/client-extension/.yarn/cache
+/lsp/client-extension/.yarn/install-state.gz
+/lsp/client-extension/.yarn/unplugged
+/lsp/client-extension/.pnp.cjs
+/lsp/client-extension/.pnp.loader.mjs
 
 # Ctags output
 /tags

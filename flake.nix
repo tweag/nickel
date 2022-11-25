@@ -264,12 +264,15 @@
 
         };
 
+      # For good measure extract the NodeJS version to ensure it's the same used everywhere
+      customNodejs = pkgs.nodejs;
+
       makeDevShell = { rust }: pkgs.mkShell {
         inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
         buildInputs = [
           pkgs.rust-analyzer
-          pkgs.nodejs
-          pkgs.node2nix
+          customNodejs
+          pkgs.yarn
           pkgs.nodePackages.markdownlint-cli
         ];
 
@@ -327,22 +330,29 @@
       };
 
       vscodeExtension =
-        let node-package = (pkgs.callPackage ./lsp/client-extension { }).package;
-        in
-        (node-package.override rec {
-          pname = "nls-client";
-          outputs = [ "vsix" "out" ];
-          nativeBuildInputs = with pkgs; [
-            # `vsce` depends on `keytar`, which depends on `pkg-config` and `libsecret`
-            pkg-config
-            libsecret
-          ];
-          postInstall = ''
-            npm run compile
-            mkdir -p $vsix
-            echo y | npx vsce package -o $vsix/${pname}.vsix
-          '';
-        }).vsix;
+        (pkgs.callPackage ./lsp/client-extension/yarn-project.nix { }
+          {
+            src = ./lsp/client-extension;
+            nodejs = customNodejs;
+          }).overrideAttrs
+          (oldAttrs:
+            let vsixName = "nls-client.vsix";
+            in {
+              nativeBuildInputs = with pkgs; [
+                # `vsce` depends on `keytar`, which depends on `python`, `pkg-config` and `libsecret`
+                python3
+                pkg-config
+                libsecret
+              ];
+              buildPhase = ''
+                yarn run compile
+                echo y | yarn exec vsce package --yarn --no-dependencies --out ${vsixName}
+              '';
+              installPhase = ''
+                mkdir --parents $out
+                cp ${vsixName} $out/${vsixName}
+              '';
+            });
 
       userManual = pkgs.stdenv.mkDerivation {
         name = "nickel-user-manual-${version}";

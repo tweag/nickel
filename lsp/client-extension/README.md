@@ -9,32 +9,17 @@ This directory contains the Visual Studio Code Nickel LSP extension code.
 From the root of the Nickel project:
 
 ```shell
-nix build .\#vscodeExtension.vsix
+nix build .\#vscodeExtension
 ```
 
-The VSIX extension will be at `./result-vsix/nls-client.vsix`.
+The VSIX extension will be at `./result/nls-client.vsix`.
 
-### With NPM
+### With Yarn
 
 From this directory:
 
 ```shell
-npm install && npm run compile && echo y | npx vsce package
+yarn install && yarn run compile && echo y | yarn exec vsce package --yarn
 ```
 
 The VSIX extension will be at `./nls-[version].vsix`.
-
-## Updating `package.json`
-
-Whenever you change `package.json`, you must run the following command:
-
-```shell
-npm install --package-lock-only && node2nix --development --lock
-```
-
-This will update:
-
-* `package-lock.json`
-* `default.nix`
-* `node-env.nix`
-* `node-packages.nix`
