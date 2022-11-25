@@ -578,6 +578,26 @@ pub enum ThunkDeps {
     Empty,
 }
 
+impl ThunkDeps {
+    /// Compute the union of two thunk dependencies. [`ThunkDeps::Unknown`] can be see as the top
+    /// element, meaning that if one of the two set of dependencies is [`ThunkDeps::Unknown`], so
+    /// is the result.
+    pub fn union(self, other: Self) -> Self {
+        match (self, other) {
+            (ThunkDeps::Empty, ThunkDeps::Empty) => ThunkDeps::Empty,
+            // If one of the field has unknown dependencies (understand: may depend on all the other
+            // fields), then the resulting fields has unknown dependencies as well
+            (ThunkDeps::Unknown, _) | (_, ThunkDeps::Unknown) => ThunkDeps::Unknown,
+            (ThunkDeps::Empty, ThunkDeps::Known(deps))
+            | (ThunkDeps::Known(deps), ThunkDeps::Empty) => ThunkDeps::Known(deps),
+            (ThunkDeps::Known(deps1), ThunkDeps::Known(deps2)) => {
+                let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
+                ThunkDeps::Known(Rc::new(union))
+            }
+        }
+    }
+}
+
 /// A thunk update frame.
 ///
 /// A thunk update frame is put on the stack whenever a variable is entered, such that once this

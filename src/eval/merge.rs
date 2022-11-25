@@ -553,26 +553,9 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     env2: &Environment,
     fields: I,
 ) -> Result<RichTerm, EvalError> {
-    use std::{collections::HashSet, rc::Rc};
-
     let mut local_env = Environment::new();
 
-    // May deserve a plus operation on ThunkDeps
-    let combined_deps = match (field_deps(&t1, env1)?, field_deps(&t2, env2)?) {
-        // If neither field has dependencies, the merge of the two fields doesn't have dependencies
-        (ThunkDeps::Empty, ThunkDeps::Empty) => ThunkDeps::Empty,
-        // If one of the field has unknown dependencies (understand: may depend on all the other
-        // fields), then the resulting fields has unknown dependencies as well
-        (ThunkDeps::Unknown, _) | (_, ThunkDeps::Unknown) => ThunkDeps::Unknown,
-        (ThunkDeps::Empty, ThunkDeps::Known(deps)) | (ThunkDeps::Known(deps), ThunkDeps::Empty) => {
-            ThunkDeps::Known(deps)
-        }
-        (ThunkDeps::Known(deps1), ThunkDeps::Known(deps2)) => {
-            let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
-            ThunkDeps::Known(Rc::new(union))
-        }
-    };
-
+    let combined_deps = field_deps(&t1, env1)?.union(field_deps(&t2, env2)?);
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         saturate(t1, &mut local_env, env1, fields.clone())?,
