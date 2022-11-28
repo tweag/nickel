@@ -3,7 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{CompletionItem, CompletionParams};
+use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
@@ -63,6 +63,7 @@ impl IdentWithMeta {
         CompletionItem {
             label: adjust_name(self.ident.label()),
             detail: self.meta.clone(),
+            kind: Some(CompletionItemKind::Method),
             ..Default::default()
         }
     }

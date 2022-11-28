@@ -13,7 +13,7 @@ use lsp_types::{
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
     OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WorkDoneProgressOptions,
+    TextDocumentSyncOptions, WorkDoneProgressOptions, CompletionOptionsCompletionItem,
 };
 
 use nickel_lang::{
@@ -59,6 +59,10 @@ impl Server {
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
                 trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
+                resolve_provider:Some(true),
+                completion_item: Some(CompletionOptionsCompletionItem {
+                    label_details_support: Some(true),
+                }),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
