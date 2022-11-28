@@ -12,6 +12,7 @@ use nickel_lang::{
 use crate::linearization::interface::{TermKind, UsageState};
 
 use super::{
+    completed::Completed,
     interface::{Unresolved, ValueState},
     Environment, IdGen, ItemID, LinearizationItem,
 };
@@ -22,6 +23,7 @@ use super::{
 #[derive(Default)]
 pub struct Building {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
+    pub lin_cache: HashMap<FileId, Completed>,
 }
 
 impl Building {
@@ -29,30 +31,46 @@ impl Building {
         self.linearization.push(item)
     }
 
-    pub(super) fn add_usage(&mut self, _decl: ItemID, _usage: ItemID) {
+    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemID, usage: ItemID) {
+        let (decl_file, index) = decl;
+        let kind = if file == decl_file {
+            // This usage references an item in the file we're currently linearizing
+            &mut self
+                .linearization
+                .get_mut(index)
+                .expect("Could not find parent")
+                .kind
+        } else {
+            // This usage references an item in another file (that has already been linearized)
+            &mut self
+                .lin_cache
+                .get_mut(&decl_file)
+                .expect("Could not find parent")
+                .get_item_mut(decl)
+                .expect("Could not find parent")
+                .kind
+        };
 
-        // TODO fix this function
-        // match self
-        //     .linearization
-        //     // For now use only the file index
-        //     .get_mut(decl.1)
-        //     .expect("Could not find parent")
-        //     .kind
-        // {
-        //     TermKind::Structure | TermKind::Usage(_) | TermKind::Record(_) => {
-        //         unreachable!()
-        //     }
-        //     TermKind::Declaration(_, ref mut usages, _)
-        //     | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
-        // };
+        match kind {
+            TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
+            TermKind::Declaration(_, ref mut usages, _)
+            | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
+        };
     }
 
-    pub(super) fn inform_declaration(&mut self, declaration: ItemID, value: ItemID) {
-        if let Some(LinearizationItem {
-            kind: TermKind::Declaration(_, _, value_state),
-            ..
-        }) = self.linearization.get_mut(declaration.1)
-        {
+    pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemID, value: ItemID) {
+        let (decl_file, index) = declaration;
+        let kind = if file == decl_file {
+            // This usage references an item in the file we're currently linearizing
+            self.linearization.get_mut(index).map(|item| &mut item.kind)
+        } else {
+            // This usage references an item in another file (that has already been linearized)
+            self.lin_cache
+                .get_mut(&decl_file)
+                .and_then(|lin| lin.get_item_mut(declaration).map(|item| &mut item.kind))
+        };
+
+        if let Some(TermKind::Declaration(_, _, value_state)) = kind {
             *value_state = ValueState::Known(value)
         }
     }
@@ -141,7 +159,11 @@ impl Building {
         })
     }
 
-    pub(super) fn resolve_record_references(&mut self, mut defers: Vec<(ItemID, ItemID, Ident)>) {
+    pub(super) fn resolve_record_references(
+        &mut self,
+        file: FileId,
+        mut defers: Vec<(ItemID, ItemID, Ident)>,
+    ) {
         let mut unresolved: Vec<(ItemID, ItemID, Ident)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
@@ -236,7 +258,7 @@ impl Building {
             }
 
             if let Some(referenced_id) = referenced_id {
-                self.add_usage(referenced_id, *child_item);
+                self.add_usage(file, referenced_id, *child_item);
             }
 
             if defers.is_empty() && !unresolved.is_empty() {

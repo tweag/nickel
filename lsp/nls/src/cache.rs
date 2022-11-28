@@ -4,10 +4,10 @@ use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
-    typecheck,
+    typecheck::{self, linearization::Linearization},
 };
 
-use crate::linearization::{completed::Completed, AnalysisHost, Environment};
+use crate::linearization::{building::Building, completed::Completed, AnalysisHost, Environment};
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
@@ -51,8 +51,17 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
-            let (_, linearized) =
-                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host)?;
+            let building = Linearization::new(Building {
+                lin_cache: lin_cache.clone(),
+                ..Default::default()
+            });
+            let (_, linearized) = typecheck::type_check_linearize(
+                term,
+                initial_ctxt.clone(),
+                self,
+                host,
+                Some(building),
+            )?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))

@@ -99,8 +99,7 @@ impl Server {
                 Some(TermKind::Record(table)) => table.get(&name),
                 _ => None,
             }?;
-            let key = name;
-            initial.insert(key, *id);
+            initial.insert(name, *id);
         }
 
         self.initial_env = initial;

@@ -8,7 +8,7 @@ use super::{
     ItemID, LinearizationItem,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     id_to_index: HashMap<ItemID, usize>,
@@ -29,6 +29,11 @@ impl Completed {
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
+    }
+
+    pub fn get_item_mut(&mut self, id: ItemID) -> Option<&mut LinearizationItem<Resolved>> {
+        let index = self.id_to_index.get(&id)?;
+        self.linearization.get_mut(*index)
     }
 
     pub fn get_in_scope(

@@ -46,6 +46,7 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
 pub struct AnalysisHost {
+    // lin_cache: RefCell<HashMap<FileId, Completed>>,
     file: FileId,
     env: Environment,
     meta: Option<MetaValue>,
@@ -69,7 +70,10 @@ pub struct AnalysisHost {
 }
 
 impl AnalysisHost {
-    pub fn new(file: FileId, env: Environment) -> Self {
+    pub fn new(
+        file: FileId,
+        env: Environment, /*lin_cache: HashMap<FileId, Completed>*/
+    ) -> Self {
         Self {
             file,
             env,
@@ -141,7 +145,7 @@ impl Linearizer for AnalysisHost {
             }
 
             if let Some(declaration) = self.let_binding.take() {
-                lin.inform_declaration(declaration, (self.file, id_gen.get()));
+                lin.inform_declaration(self.file, declaration, (self.file, id_gen.get()));
             }
         }
 
@@ -176,8 +180,7 @@ impl Linearizer for AnalysisHost {
                     };
 
                     let id = (self.file, id_gen.get_and_advance());
-                    let key = ident.to_owned();
-                    self.env.insert(key, id);
+                    self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -190,8 +193,7 @@ impl Linearizer for AnalysisHost {
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
                     let id = (self.file, id_gen.get_and_advance());
-                    let key = ident;
-                    self.env.insert(key, id);
+                    self.env.insert(ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -235,8 +237,7 @@ impl Linearizer for AnalysisHost {
                     }
                     _ => unreachable!(),
                 };
-                let key = ident.to_owned();
-                self.env.insert(key, (self.file, id_gen.get()));
+                self.env.insert(ident.to_owned(), (self.file, id_gen.get()));
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: (self.file, id_gen.get()),
@@ -265,7 +266,7 @@ impl Linearizer for AnalysisHost {
                 });
 
                 if let Some(referenced) = self.env.get(&key) {
-                    lin.add_usage(*referenced, root_id)
+                    lin.add_usage(self.file, *referenced, root_id)
                 }
 
                 if let Some(chain) = self.access.take() {
@@ -371,9 +372,11 @@ impl Linearizer for AnalysisHost {
             })
             .collect();
 
-        lin.resolve_record_references(defers);
+        lin.resolve_record_references(self.file, defers);
 
-        let Building { mut linearization } = lin.into_inner();
+        let Building {
+            mut linearization, ..
+        } = lin.into_inner();
 
         linearization.sort_by(
             |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
@@ -465,10 +468,9 @@ impl Linearizer for AnalysisHost {
         ident: &Ident,
         new_type: UnifType,
     ) {
-        let key = ident.to_owned();
         if let Some(item) = self
             .env
-            .get(&key)
+            .get(&ident.to_owned())
             .and_then(|index| lin.linearization.get_mut(index.1))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
