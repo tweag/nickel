@@ -39,7 +39,7 @@ fn enum_simple() {
 
 #[test]
 fn metavalue_contract_default_fail() {
-    assert_raise_blame!("true | default | Num");
+    assert_raise_blame!("{val | default | Num = true}.val");
 }
 
 #[test]

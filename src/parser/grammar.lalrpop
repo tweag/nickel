@@ -92,7 +92,7 @@ AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
 AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
     <>.into_iter().fold(Default::default(), Annot::combine);
 
-// A single type or meta-data annotation. The `Types` rule forbids the use of
+// A single type or contract annotation. The `Types` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.
 // Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
 // either `foo | (let x = 1 in (x : Num))` or `(foo | let x = 1 in x) : Num`).
@@ -102,11 +102,24 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
 // here to control if the type should have its variables fixed now (`FixedType`)
 // or later (bare `Types`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
-AnnotAtom<TypeRule>: MetaValue = {
+AnnotAtom<TypeRule>: MetaAnnot = {
     "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
         contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         ..Default::default()
     },
+    ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
+        types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+        ..Default::default()
+    },
+};
+
+// A single field metadata annotation, without the pseudo-metata (such as push
+// priorities).
+//
+// The rule to use for type annotations is given as a parameter (cf AnnotAtom
+// rule).
+SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
+    <AnnotAtom<TypeRule>> => <>,
     "|" "default" => MetaValue {
         priority: MergePriority::Bottom,
         ..Default::default()
@@ -128,19 +141,19 @@ AnnotAtom<TypeRule>: MetaValue = {
         opt: true,
         ..Default::default()
     },
-    ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
-        ..Default::default()
-    },
-};
+}
 
-ExtdAnnotAtom<TypeRule>: ExtdAnnot = {
-    <AnnotAtom<TypeRule>> => <>.into(),
-    "|" "push force" => ExtdAnnot {
+// A single field metadata annotation.
+//
+// The rule to use for type annotations is given as a parameter (cf AnnotAtom
+// rule).
+FieldAnnotAtom<TypeRule>: FieldAnnot = {
+    <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
+    "|" "push force" => FieldAnnot {
         push_force: true,
         ..Default::default()
     },
-    "|" "push default" => ExtdAnnot {
+    "|" "push default" => FieldAnnot {
         push_default: true,
         ..Default::default()
     },
@@ -149,8 +162,12 @@ ExtdAnnotAtom<TypeRule>: ExtdAnnot = {
 // An annotation, with possibly many annotations chained.
 Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
 
-// An extended annotation, with possibly many annotations chained.
-ExtdAnnot<TypeRule>: ExtdAnnot = AnnotSeries<ExtdAnnotAtom<TypeRule>>;
+// A simple field annotation, with possibly many annotations chained. A simple
+// field annotation excludes pseudo metadata like push priorities operator.
+SimpleFieldAnnot<TypeRule>: MetaAnnot = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
+
+// An field annotation, with possibly many annotations chained.
+FieldAnnot<TypeRule>: FieldAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
@@ -173,7 +190,7 @@ FixedType: Types = {
 // Either a term or a top-level let-binding (a let-binding without an `in`).
 // Used exclusively for the REPL.
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <ann: ExtdAnnot<FixedType>?> "=" <mut t: Term> => {
+    "let" <id: Ident> <ann: Annot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
             let pos = t.pos;
             t = ann.attach(t, pos);
@@ -189,7 +206,7 @@ UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: ExtdAnnot<FixedType>?>
+    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: Annot<FixedType>?>
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
@@ -243,7 +260,7 @@ UniTerm: UniTerm = {
 };
 
 AnnotatedInfixExpr: UniTerm = {
-    <t: AsTerm<InfixExpr>> <ann: ExtdAnnot<FixedType>> => {
+    <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
         let pos = t.pos;
         UniTerm::from(ann.attach(t, pos))
     },
@@ -351,12 +368,12 @@ Atom: UniTerm = {
 // variables inside the annotation right away (note the `Annot<Types>` instead
 // of `Annot<Fixed>`).
 RecordField: (FieldPath, RichTerm) = {
-    <l: @L> <path: FieldPath> <ann: ExtdAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
+    <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
         let pos = t.as_ref()
             .map(|t| t.pos.clone())
             .unwrap_or(mk_pos(src_id, l, r));
         let term = match (ann, t) {
-            (Some(ExtdAnnot { meta, push_force: false, push_default: false }), None) => {
+            (Some(FieldAnnot { meta, push_force: false, push_default: false }), None) => {
                 RichTerm::new(Term::MetaValue(meta), pos)
             }
             (Some(ann), Some(t)) => {
@@ -423,11 +440,11 @@ Destruct: Destruct = {
 
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
-    <left:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+    <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
         let meta = combine_match_annots(anns, default, left.pos.unwrap());
         Match::Assign(left, meta, right)
     },
-    <id:Ident> <anns: Annot<FixedType>?> <default: DefaultAnnot?> => {
+    <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
         let meta = combine_match_annots(anns, default, id.pos.unwrap());
         Match::Simple(id, meta)
     },

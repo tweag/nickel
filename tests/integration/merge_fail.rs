@@ -28,5 +28,7 @@ macro_rules! assert_merge_fails {
 
 #[test]
 fn merge_conflict_inside_metavalue() {
-    assert_merge_fails!("{ foo = (fun x => x) (1 | default), foo = (fun x => x) (1 | default) } & {foo | default = 2 }");
+    assert_merge_fails!(
+        "{ foo | default = (fun x => x) 1, foo | default = (fun x => x) 1} & {foo | default = 2 }"
+    );
 }
