@@ -47,15 +47,16 @@
 
   "$record" = fun field_contracts tail_contract l t =>
     if %typeof% t == `Record then
-      # Returns the sub-record of `l` containing only those
-      # fields which are not present in `r`.
+      # Returns the sub-record of `l` containing only those fields which are not
+      # present in `r`. If `l` has a sealed polymorphic tail then it will be
+      # preserved.
       let field_diff = fun l r => array.foldl
         (fun acc f =>
           if %has_field% f r then
             acc
           else
             %record_insert% f acc (l."%{f}"))
-        {}
+        (%record_empty_with_tail% l)
         (%fields% l)
       in
 

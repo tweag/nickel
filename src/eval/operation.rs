@@ -1201,6 +1201,25 @@ impl<R: ImportResolver> VirtualMachine<R> {
             }
             UnaryOp::PushDefault() => Ok(PushPriority::Bottom.push_into(t, env, pos)),
             UnaryOp::PushForce() => Ok(PushPriority::Top.push_into(t, env, pos)),
+            UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
+                with {
+                    Term::Record(r) => {
+                        let mut empty = RecordData::empty();
+                        empty.sealed_tail = r.sealed_tail;
+                        Ok(Closure {
+                            body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                            env
+                        })
+                    },
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_empty_with_tail%, 1st arg"),
+                        arg_pos,
+                        RichTerm { term: t, pos }
+                    ))
+                }
+            },
         }
     }
 

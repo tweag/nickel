@@ -1352,6 +1352,14 @@ pub enum UnaryOp {
     PushDefault(),
     /// doc: TODO
     PushForce(),
+
+    /// Creates an "empty" record with the sealed tail of its [`Term::Record`]
+    /// argument.
+    ///
+    /// Used in the `$record` contract implementation to ensure that we can
+    /// define a `field_diff` function that preserves the sealed polymorphic
+    /// tail of its argument.
+    RecordEmptyWithTail(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178

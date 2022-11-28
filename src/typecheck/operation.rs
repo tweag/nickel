@@ -201,6 +201,7 @@ pub fn get_uop_type(
             let ty = state.table.fresh_type_uvar();
             (ty.clone(), ty)
         }
+        UnaryOp::RecordEmptyWithTail() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
     })
 }
 

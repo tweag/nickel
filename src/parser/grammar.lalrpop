@@ -583,6 +583,7 @@ UOp: UnaryOp = {
     "str_match" => UnaryOp::StrMatch(),
     "push_force_op" => UnaryOp::PushForce(),
     "push_default_op" => UnaryOp::PushDefault(),
+    "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
 };
 
 SwitchCase: SwitchCase = {
@@ -904,6 +905,7 @@ extern {
         "unseal" => Token::Normal(NormalToken::Unseal),
         "embed" => Token::Normal(NormalToken::Embed),
         "record_map" => Token::Normal(NormalToken::RecordMap),
+        "record_empty_with_tail" => Token::Normal(NormalToken::RecordEmptyWithTail),
         "record_insert" => Token::Normal(NormalToken::RecordInsert),
         "record_remove" => Token::Normal(NormalToken::RecordRemove),
         "seq" => Token::Normal(NormalToken::Seq),
