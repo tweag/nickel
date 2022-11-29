@@ -46,6 +46,8 @@ pub struct LinearizationItem<S: ResolutionState> {
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
 pub struct AnalysisHost<'a> {
+    // We need the lifetime on `AnalysisHost` to be able to
+    // have a lifetime for the associated `Building` data structure.
     phantom: PhantomData<&'a usize>,
     file: FileId,
     env: Environment,
@@ -70,10 +72,7 @@ pub struct AnalysisHost<'a> {
 }
 
 impl<'a> AnalysisHost<'a> {
-    pub fn new(
-        file: FileId,
-        env: Environment, /*lin_cache: HashMap<FileId, Completed>*/
-    ) -> Self {
+    pub fn new(file: FileId, env: Environment) -> Self {
         Self {
             phantom: PhantomData,
             file,
