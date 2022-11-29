@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 use codespan::{ByteIndex, FileId};
 use log::debug;
@@ -45,8 +45,8 @@ pub struct LinearizationItem<S: ResolutionState> {
 ///
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
-pub struct AnalysisHost {
-    // lin_cache: RefCell<HashMap<FileId, Completed>>,
+pub struct AnalysisHost<'a> {
+    phantom: PhantomData<&'a usize>,
     file: FileId,
     env: Environment,
     meta: Option<MetaValue>,
@@ -69,12 +69,13 @@ pub struct AnalysisHost {
     access: Option<Vec<Ident>>,
 }
 
-impl AnalysisHost {
+impl<'a> AnalysisHost<'a> {
     pub fn new(
         file: FileId,
         env: Environment, /*lin_cache: HashMap<FileId, Completed>*/
     ) -> Self {
         Self {
+            phantom: PhantomData,
             file,
             env,
             meta: Default::default(),
@@ -87,8 +88,8 @@ impl AnalysisHost {
 
 use nickel_lang::typecheck::Extra;
 use nickel_lang::types::Types;
-impl Linearizer for AnalysisHost {
-    type Building = Building;
+impl<'a> Linearizer for AnalysisHost<'a> {
+    type Building = Building<'a>;
     type Completed = Completed;
     type CompletionExtra = Extra;
 
@@ -435,6 +436,7 @@ impl Linearizer for AnalysisHost {
 
     fn scope(&mut self) -> Self {
         AnalysisHost {
+            phantom: PhantomData,
             file: self.file,
             env: self.env.clone(),
             meta: self.meta.clone(),
@@ -448,6 +450,7 @@ impl Linearizer for AnalysisHost {
 
     fn scope_meta(&mut self) -> Self {
         AnalysisHost {
+            phantom: PhantomData,
             file: self.file,
             env: self.env.clone(),
             // Metadata must be attached to the original scope of the value (`self`), while the new

@@ -20,13 +20,13 @@ use super::{
 /// A concrete [LinearizationState]
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
-#[derive(Default)]
-pub struct Building {
+// #[derive(Default)]
+pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
-    pub lin_cache: HashMap<FileId, Completed>,
+    pub lin_cache: &'a mut HashMap<FileId, Completed>,
 }
 
-impl Building {
+impl<'b> Building<'b> {
     pub(super) fn push(&mut self, item: LinearizationItem<Unresolved>) {
         self.linearization.push(item)
     }
@@ -273,4 +273,4 @@ impl Building {
     }
 }
 
-impl LinearizationState for Building {}
+impl<'a> LinearizationState for Building<'a> {}

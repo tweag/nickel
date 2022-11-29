@@ -708,7 +708,7 @@ pub fn type_check(
         initial_ctxt,
         resolver,
         StubHost::<(), (), _>::new(),
-        None,
+        Linearization::new(()),
     )
     .map(|(wildcards, _)| wildcards)
 }
@@ -723,13 +723,12 @@ pub fn type_check_linearize<LL>(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
-    building: Option<Linearization<LL::Building>>,
+    mut building: Linearization<LL::Building>,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = Extra>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
-    let mut building = building.unwrap_or_else(|| Linearization::new(LL::Building::default()));
     let mut wildcard_vars = Vec::new();
 
     {

@@ -52,16 +52,11 @@ impl CacheExt for Cache {
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
             let building = Linearization::new(Building {
-                lin_cache: lin_cache.clone(),
-                ..Default::default()
+                lin_cache,
+                linearization: Vec::new(),
             });
-            let (_, linearized) = typecheck::type_check_linearize(
-                term,
-                initial_ctxt.clone(),
-                self,
-                host,
-                Some(building),
-            )?;
+            let (_, linearized) =
+                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
