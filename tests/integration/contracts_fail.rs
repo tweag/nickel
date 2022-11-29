@@ -20,6 +20,22 @@ macro_rules! assert_raise_blame {
     }}
 }
 
+macro_rules! assert_raise_tail_blame {
+    ($term:expr) => {{
+        assert_matches!(
+            eval($term),
+            Err(Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }))
+        )
+    }};
+    ($term:expr, $($arg:tt)+) => {{
+        assert_matches!(
+            eval($term),
+            Err(Error::EvalError(EvalError::IllegalPolymorphicTailAccess{ .. })),
+            $($arg)+
+        )
+    }}
+}
+
 #[test]
 fn flat_contract_fail() {
     assert_raise_blame!(
@@ -155,6 +171,13 @@ fn records_contracts_poly() {
             f { a = 1, b = "yes" } { a = 1, b = "no" }
             "#,
         ),
+    ] {
+        assert_raise_blame!(input, "failed on case: {}", name);
+    }
+
+    // These cases raise a custom error to give the user more information
+    // about what went wrong.
+    for (name, input) in [
         (
             "mapping over a record violates parametricity",
             r#"
@@ -183,7 +206,7 @@ fn records_contracts_poly() {
             "#,
         ),
     ] {
-        assert_raise_blame!(input, "failed on case: {}", name);
+        assert_raise_tail_blame!(input, "failed on case: {}", name);
     }
 
     // These are currently FieldMissing errors rather than BlameErrors as we

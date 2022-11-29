@@ -52,7 +52,7 @@
 //! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use super::*;
-use crate::error::EvalError;
+use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::record::{self, RecordData};
@@ -374,7 +374,11 @@ pub fn merge(
             // users will generally have reason to do, so in the meantime we've
             // decided to just prevent this entirely
             if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
-                return Err(EvalError::BlameError(label, std::mem::take(call_stack)));
+                return Err(EvalError::IllegalPolymorphicTailAccess {
+                    action: IllegalPolymorphicTailAction::Merge,
+                    label,
+                    call_stack: std::mem::take(call_stack),
+                });
             }
 
             let hashmap::SplitResult {

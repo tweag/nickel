@@ -11,8 +11,11 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
-use crate::term::{record, MetaValue};
 use crate::term::{record::RecordData, MergePriority};
+use crate::{
+    error::IllegalPolymorphicTailAction,
+    term::{record, MetaValue},
+};
 
 use crate::{
     error::EvalError,
@@ -622,10 +625,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             // decided to prevent this until we have a clearer idea
                             // of potential use-cases.
                             if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                                return Err(EvalError::BlameError(
+                                return Err(EvalError::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::Map,
                                     label,
-                                    std::mem::take(&mut self.call_stack),
-                                ))
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                })
                             }
 
                             let mut shared_env = Environment::new();
