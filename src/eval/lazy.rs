@@ -526,10 +526,10 @@ impl Thunk {
         let fresh_var = Ident::fresh();
         env.insert(fresh_var, thunk_as_function);
 
-        let as_function = RichTerm::from(Term::Var(fresh_var));
+        let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
 
-        args.fold(as_function, |partial_app, arg| {
+        args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
         })
     }
