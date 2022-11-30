@@ -1,0 +1,17 @@
+mod basics_fail;
+mod contracts_fail;
+mod destructuring;
+mod examples;
+mod free_vars;
+mod imports;
+mod infinite_rec;
+mod merge_fail;
+mod parse_fail;
+mod pass;
+mod pretty;
+mod query;
+mod records_fail;
+mod stdlib_arrays_fails;
+mod stdlib_typecheck;
+mod typecheck_fail;
+mod unbound_type_variables;

@@ -117,22 +117,23 @@ LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 Tests are run via `cargo test`. They are two types of tests:
 
 - Unit tests, located directly in the corresponding module.
-- Integration tests, located in the dedicated crate `tests`.
+- Integration tests, located in the dedicated crate `tests/integration`.
 
 You can take inspiration from the existing tests to add your own. By convention,
-tests expected to pass are written in a standalone Nickel file in `tests/pass/`.
-Each `.ncl` file defines a list of expressions that must individually evaluate
-to the boolean `true`. The whole file is an expression that returns true if and
-only if every tests pass, or fail with a contract failure to help locating the
-failing test (instead of returning just `false`).
+tests expected to pass are written in a standalone Nickel file in
+`tests/integration/pass/`. Each `.ncl` file defines a list of expressions that
+must individually evaluate to the boolean `true`. The whole file is an
+expression that returns true if and only if every tests pass, or fail with a
+contract failure to help locating the failing test (instead of returning just
+`false`).
 
-If a test expected to pass is failing, run it directly using nickel with `nickel
--f tests/pass/test_that_doesnt_pass.ncl` to get better error messages than
-`cargo test`.
+If a test expected to pass is failing, run it directly using nickel with
+`nickel -f tests/integration/pass/test_that_doesnt_pass.ncl` to get better error
+messages than `cargo test`.
 
 Tests expected to fail are often embedded directly into rust source code,
 because you usually want to additionally check that the error is the one you
-expect. For example ([`tests/records_fail.rs`](./tests/records_fail.rs)):
+expect. For example ([`tests/integration/records_fail.rs`](./tests/records_fail.rs)):
 
 ```rust
 #[test]
