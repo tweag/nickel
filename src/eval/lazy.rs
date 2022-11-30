@@ -5,7 +5,6 @@ use crate::{
     term::{FieldDeps, RichTerm, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 
 /// The state of a thunk.
@@ -177,11 +176,11 @@ impl ThunkData {
                 let mut new_cached = Closure::clone(orig);
 
                 match deps {
-                    Some(deps) if deps.is_empty() => (),
-                    Some(deps) => new_cached
+                    FieldDeps::Known(deps) if deps.is_empty() => (),
+                    FieldDeps::Known(deps) => new_cached
                         .env
                         .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
-                    None => new_cached.env.extend(rec_env.iter().cloned()),
+                    FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
                 };
 
                 *cached = Some(new_cached);
@@ -336,13 +335,10 @@ impl ThunkData {
     }
 
     /// Return the potential field dependencies stored in a revertible thunk. See [`crate::transform::free_vars`]
-    pub fn deps(&self) -> ThunkDeps {
+    pub fn deps(&self) -> FieldDeps {
         match self.inner {
-            InnerThunkData::Standard(_) => ThunkDeps::Empty,
-            InnerThunkData::Revertible { ref deps, .. } => deps
-                .as_ref()
-                .map(|deps| ThunkDeps::Known(Rc::clone(deps)))
-                .unwrap_or(ThunkDeps::Unknown),
+            InnerThunkData::Standard(_) => FieldDeps::empty(),
+            InnerThunkData::Revertible { ref deps, .. } => deps.clone(),
         }
     }
 }
@@ -378,11 +374,15 @@ impl Thunk {
         }
     }
 
-    /// Create a new revertible thunk.
+    /// Create a new revertible thunk. If the dependencies are empty [`ThunkDeps::Empty`], this
+    /// function acts as [Thunk::new] and create a standard (non-revertible) thunk.
     pub fn new_rev(closure: Closure, ident_kind: IdentKind, deps: FieldDeps) -> Self {
-        Thunk {
-            data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
-            ident_kind,
+        match deps {
+            FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure, ident_kind),
+            deps => Thunk {
+                data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
+                ident_kind,
+            },
         }
     }
 
@@ -514,9 +514,8 @@ impl Thunk {
             .unwrap_or_else(|rc| rc.borrow().clone());
 
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match deps {
-            ThunkDeps::Empty => Box::new(|_: &&Ident| false),
-            ThunkDeps::Known(deps) => Box::new(move |id: &&Ident| deps.contains(id)),
-            ThunkDeps::Unknown => Box::new(|_: &&Ident| true),
+            FieldDeps::Known(deps) => Box::new(move |id: &&Ident| deps.contains(id)),
+            FieldDeps::Unknown => Box::new(|_: &&Ident| true),
         };
 
         let thunk_as_function = Thunk {
@@ -561,46 +560,10 @@ impl Thunk {
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See
     /// [`crate::transform::free_vars`].
-    pub fn deps(&self) -> ThunkDeps {
+    pub fn deps(&self) -> FieldDeps {
         self.data.borrow().deps()
     }
 }
-
-/// Possible alternatives for the field dependencies of a thunk.
-#[derive(Clone, Debug)]
-pub enum ThunkDeps {
-    /// The thunk is revertible, containing potential recursive references to other fields, and the
-    /// set of dependencies has been computed
-    Known(Rc<HashSet<Ident>>),
-    /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
-    /// the interpreter should be conservative and assume that any recursive references can appear
-    /// in the content of the corresponding thunk.
-    Unknown,
-    /// The thunk is not revertible and can't contain recursive references. The interpreter can
-    /// safely eschews the environment patching process entirely.
-    Empty,
-}
-
-impl ThunkDeps {
-    /// Compute the union of two thunk dependencies. [`ThunkDeps::Unknown`] can be see as the top
-    /// element, meaning that if one of the two set of dependencies is [`ThunkDeps::Unknown`], so
-    /// is the result.
-    pub fn union(self, other: Self) -> Self {
-        match (self, other) {
-            (ThunkDeps::Empty, ThunkDeps::Empty) => ThunkDeps::Empty,
-            // If one of the field has unknown dependencies (understand: may depend on all the other
-            // fields), then the resulting fields has unknown dependencies as well
-            (ThunkDeps::Unknown, _) | (_, ThunkDeps::Unknown) => ThunkDeps::Unknown,
-            (ThunkDeps::Empty, ThunkDeps::Known(deps))
-            | (ThunkDeps::Known(deps), ThunkDeps::Empty) => ThunkDeps::Known(deps),
-            (ThunkDeps::Known(deps1), ThunkDeps::Known(deps2)) => {
-                let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
-                ThunkDeps::Known(Rc::new(union))
-            }
-        }
-    }
-}
-
 /// A thunk update frame.
 ///
 /// A thunk update frame is put on the stack whenever a variable is entered, such that once this

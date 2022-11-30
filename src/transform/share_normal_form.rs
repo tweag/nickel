@@ -31,10 +31,8 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{BindingType, LetAttrs, RichTerm, Term},
+    term::{BindingType, FieldDeps, LetAttrs, RichTerm, Term},
 };
-
-use std::{collections::HashSet, rc::Rc};
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -81,18 +79,18 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
                 let mut bindings = Vec::with_capacity(record.fields.len());
 
-                fn mk_binding_type(field_deps: Option<HashSet<Ident>>) -> BindingType {
+                fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
                     // If the fields has an empty set of dependencies, we can eschew the
                     // useless introduction of a revertible thunk. Note that if
                     // `field_deps` being `None` doesn't mean "empty dependencies" but
                     // rather that the dependencies haven't been computed. In the latter
                     // case, we must be conservative and assume the field is potentially
                     // recursive.
-                    let is_non_rec = field_deps.as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
+                    let is_non_rec = field_deps.as_ref().map(FieldDeps::is_empty).unwrap_or(false);
                     if is_non_rec {
                         BindingType::Normal
                     } else {
-                        BindingType::Revertible(field_deps.map(Rc::new))
+                        BindingType::Revertible(field_deps.unwrap_or(FieldDeps::Unknown))
                     }
                 }
 

@@ -492,18 +492,60 @@ impl RecordAttrs {
     }
 }
 
+/// Dependencies of a field or a thunk over the other recursive fields of a recursive record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FieldDeps {
+    /// The set of dependencies is fixed and has been computed. When attached to a thunk, an empty
+    /// set of dependency means that the thunk isn't revertible, but standard.
+    Known(Rc<HashSet<Ident>>),
+    /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
+    /// the interpreter should be conservative and assume that any recursive references can appear
+    /// in the content of the corresponding thunk.
+    Unknown,
+}
+
+impl FieldDeps {
+    /// Compute the union of two thunk dependencies. [`ThunkDeps::Unknown`] can be see as the top
+    /// element, meaning that if one of the two set of dependencies is [`ThunkDeps::Unknown`], so
+    /// is the result.
+    pub fn union(self, other: Self) -> Self {
+        match (self, other) {
+            // If one of the field has unknown dependencies (understand: may depend on all the other
+            // fields), then the resulting fields has unknown dependencies as well
+            (FieldDeps::Unknown, _) | (_, FieldDeps::Unknown) => FieldDeps::Unknown,
+            (FieldDeps::Known(deps1), FieldDeps::Known(deps2)) => {
+                let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
+                FieldDeps::Known(Rc::new(union))
+            }
+        }
+    }
+
+    /// Return an empty set of dependencies
+    pub fn empty() -> Self {
+        FieldDeps::Known(Rc::new(HashSet::new()))
+    }
+
+    /// Return `true` if the dependencies are known and are empty, or `false` otherwise.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, FieldDeps::Known(deps) if deps.is_empty())
+    }
+}
+
+impl From<HashSet<Ident>> for FieldDeps {
+    fn from(set: HashSet<Ident>) -> Self {
+        FieldDeps::Known(Rc::new(set))
+    }
+}
+
 /// Store field interdependencies in a recursive record. Map each static and dynamic field to the
 /// set of recursive fields that syntactically appears in their definition as free variables.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
     /// Must have exactly the same keys as the static fields map of the recursive record.
-    pub stat_fields: HashMap<Ident, HashSet<Ident>>,
+    pub stat_fields: HashMap<Ident, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
-    pub dyn_fields: Vec<HashSet<Ident>>,
+    pub dyn_fields: Vec<FieldDeps>,
 }
-
-/// Potential dependencies of a single field over the sibling fields in a recursive record.
-pub type FieldDeps = Option<Rc<HashSet<Ident>>>;
 
 /// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
 /// `Ord`.

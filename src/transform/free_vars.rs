@@ -6,7 +6,7 @@
 use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
-    term::{RecordDeps, RichTerm, SharedTerm, StrChunk, Term},
+    term::{FieldDeps, RecordDeps, RichTerm, SharedTerm, StrChunk, Term},
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
 };
 
@@ -122,7 +122,9 @@ impl CollectFreeVars for RichTerm {
                     fresh.clear();
 
                     t.collect_free_vars(&mut fresh);
-                    new_deps.stat_fields.insert(*id, &fresh & &rec_fields);
+                    new_deps
+                        .stat_fields
+                        .insert(*id, FieldDeps::from(&fresh & &rec_fields));
 
                     free_vars.extend(&fresh - &rec_fields);
                 }
@@ -135,7 +137,9 @@ impl CollectFreeVars for RichTerm {
                     // recursive dependencies.
                     t1.collect_free_vars(free_vars);
                     t2.collect_free_vars(&mut fresh);
-                    new_deps.dyn_fields.push(&fresh & &rec_fields);
+                    new_deps
+                        .dyn_fields
+                        .push(FieldDeps::from(&fresh & &rec_fields));
 
                     free_vars.extend(&fresh - &rec_fields);
                 }
