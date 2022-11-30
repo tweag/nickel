@@ -113,6 +113,9 @@ pub enum InnerThunkData {
     },
 }
 
+const REVTHUNK_NO_CACHED_VALUE_MSG: &str =
+    "tried to get data from a revertible thunk without a cached value";
+
 impl ThunkData {
     /// Create new standard thunk data.
     pub fn new(closure: Closure) -> Self {
@@ -234,9 +237,9 @@ impl ThunkData {
             // them (build the cached value) in a second step. But calling to
             // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
             // seen as just one construction operation.
-            InnerThunkData::Revertible { ref cached, .. } => cached
-                .as_ref()
-                .expect("tried to get data from a revertible thunk without a cached value"),
+            InnerThunkData::Revertible { ref cached, .. } => {
+                cached.as_ref().expect(REVTHUNK_NO_CACHED_VALUE_MSG)
+            }
         }
     }
 
@@ -266,7 +269,7 @@ impl ThunkData {
             // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
             // seen as just one construction operation.
             InnerThunkData::Revertible { cached, .. } => {
-                cached.expect("tried to get data from a revertible thunk without a cached value")
+                cached.expect(REVTHUNK_NO_CACHED_VALUE_MSG)
             }
         }
     }
