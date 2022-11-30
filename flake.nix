@@ -1,13 +1,19 @@
 {
-  inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
-  inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
-  inputs.pre-commit-hooks.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.pre-commit-hooks.inputs.flake-utils.follows = "flake-utils";
-  inputs.rust-overlay.url = "github:oxalica/rust-overlay";
-  inputs.rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.rust-overlay.inputs.flake-utils.follows = "flake-utils";
-  inputs.import-cargo.url = "github:edolstra/import-cargo";
+  inputs = {
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    pre-commit-hooks = {
+      url = "github:cachix/pre-commit-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
+    import-cargo.url = "github:edolstra/import-cargo";
+  };
 
   nixConfig = {
     extra-substituters = [ "https://tweag-nickel.cachix.org" ];
