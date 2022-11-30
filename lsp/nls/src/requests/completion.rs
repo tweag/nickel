@@ -146,7 +146,7 @@ fn find_fields_from_term_kind(
                             let (ty, _) = linearization.resolve_item_type_meta(item);
                             IdentWithMeta {
                                 ident,
-                                info: TorC::T(ty.clone()),
+                                info: TorC::T(ty),
                                 item: Some(item.clone()),
                             }
                         })
