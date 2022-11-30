@@ -10,10 +10,11 @@ use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
-    CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
-    OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WorkDoneProgressOptions, CompletionOptionsCompletionItem,
+    CompletionOptions, CompletionOptionsCompletionItem, CompletionParams,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbolParams,
+    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
+    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
 use nickel_lang::{
@@ -59,7 +60,7 @@ impl Server {
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
                 trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
-                resolve_provider:Some(true),
+                resolve_provider: Some(true),
                 completion_item: Some(CompletionOptionsCompletionItem {
                     label_details_support: Some(true),
                 }),
