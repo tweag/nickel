@@ -29,15 +29,26 @@ use crate::{
 // We follow the path by traversing a term, type or contract which represents a record
 // and stop when there is nothing else on the path
 
-#[derive(Eq, PartialEq, Debug, Ord, PartialOrd)]
+// Type or contract
+pub enum TorC {
+    T(Types),
+    C(RichTerm),
+}
+
+// #[derive(Eq, PartialEq, Debug, Ord, PartialOrd, Default)]
 struct IdentWithMeta {
     ident: Ident,
-    meta: Option<String>,
+    info: TorC,
+    item: Option<LinearizationItem<Types>>,
 }
 
 impl From<Ident> for IdentWithMeta {
     fn from(ident: Ident) -> Self {
-        IdentWithMeta { ident, meta: None }
+        IdentWithMeta {
+            ident,
+            info: TorC::T(Types(TypeF::Dyn)),
+            item: None,
+        }
     }
 }
 
@@ -45,12 +56,56 @@ impl From<&str> for IdentWithMeta {
     fn from(ident: &str) -> Self {
         IdentWithMeta {
             ident: Ident::from(ident),
-            meta: None,
+            info: TorC::T(Types(TypeF::Dyn)),
+            item: None,
         }
     }
 }
 
 impl IdentWithMeta {
+    fn compute_detail(&self) -> String {
+        let info = || match &self.info {
+            TorC::T(ty) => ty.to_string(),
+            TorC::C(term) => term.to_string(),
+        };
+        let Some(item) = &self.item else {
+            return info()
+        };
+        item.meta
+            .as_ref()
+            .map(|meta| {
+                meta.types
+                    .as_ref()
+                    .map(|ty| ty.types.to_string())
+                    .or_else(|| {
+                        let result = meta
+                            .contracts
+                            .iter()
+                            .map(|contract| format!("{}", contract.label.types,))
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        if result.is_empty() {
+                            None
+                        } else {
+                            Some(result)
+                        }
+                    })
+                    .unwrap_or_else(info)
+            })
+            .unwrap_or_else(info)
+    }
+
+    fn compute_completion_item_kind(&self) -> CompletionItemKind {
+        match &self.info {
+            TorC::T(Types(TypeF::Arrow(..))) => CompletionItemKind::Function,
+            TorC::T(_) => CompletionItemKind::Property,
+            TorC::C(term) => match term.as_ref() {
+                Term::Fun(..) => CompletionItemKind::Function,
+                _ => CompletionItemKind::Property,
+            },
+        }
+    }
+
     fn to_lsp_completion_item(&self) -> CompletionItem {
         /// Attach quotes to a non-ASCII string
         fn adjust_name(name: &str) -> String {
@@ -62,8 +117,8 @@ impl IdentWithMeta {
         }
         CompletionItem {
             label: adjust_name(self.ident.label()),
-            detail: self.meta.clone(),
-            kind: Some(CompletionItemKind::Method),
+            detail: Some(self.compute_detail()),
+            kind: Some(self.compute_completion_item_kind()),
             ..Default::default()
         }
     }
@@ -89,34 +144,10 @@ fn find_fields_from_term_kind(
                             let id = fields.get(&ident).unwrap();
                             let item = linearization.get_item(*id).unwrap();
                             let (ty, _) = linearization.resolve_item_type_meta(item);
-                            let detail = item
-                                .meta
-                                .as_ref()
-                                .map(|meta| {
-                                    meta.types
-                                        .as_ref()
-                                        .map(|ty| ty.types.to_string())
-                                        .or_else(|| {
-                                            let result = meta
-                                                .contracts
-                                                .iter()
-                                                .map(
-                                                    |contract| format!("{}", contract.label.types,),
-                                                )
-                                                .collect::<Vec<_>>()
-                                                .join(",");
-                                            if result.is_empty() {
-                                                None
-                                            } else {
-                                                Some(result)
-                                            }
-                                        })
-                                        .unwrap_or_else(|| ty.to_string())
-                                })
-                                .unwrap_or_else(|| ty.to_string());
                             IdentWithMeta {
                                 ident,
-                                meta: Some(detail),
+                                info: TorC::T(ty.clone()),
+                                item: Some(item.clone()),
                             }
                         })
                         .collect(),
@@ -203,7 +234,8 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
             })
             .map(|(ident, types)| IdentWithMeta {
                 ident,
-                meta: Some(types.to_string()),
+                item: None,
+                info: TorC::T(types.clone()),
             })
             .collect()
     }
@@ -219,7 +251,8 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
                 .cloned()
                 .map(|ident| IdentWithMeta {
                     ident,
-                    meta: Some(term.to_string()),
+                    info: TorC::C(term.clone()),
+                    item: None,
                 })
                 .collect(),
         ),
@@ -374,13 +407,16 @@ fn get_completion_identifiers(
                 complete(item, name, server, &mut path).unwrap_or_default()
             } else {
                 // variable name completion
+                let (ty, _) = linearization.resolve_item_type_meta(item);
                 linearization
                     .get_in_scope(item)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _) => {
-                            Some(IdentWithMeta { ident, meta: None })
-                        }
+                        TermKind::Declaration(ident, _, _) => Some(IdentWithMeta {
+                            ident,
+                            item: Some(item.clone()),
+                            info: TorC::T(ty.clone()),
+                        }),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -524,8 +560,15 @@ mod tests {
         let mut path = vec![Ident::from("b"), Ident::from("a")];
         // unwrap: the conversion must succeed because we built a type without unification variable
         // nor type constants
-        let result = find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path);
-        let expected = vec![IdentWithMeta::from("c1"), IdentWithMeta::from("c2")];
+        let result: Vec<_> =
+            find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path)
+                .iter()
+                .map(|iwm| iwm.ident)
+                .collect();
+        let expected: Vec<_> = vec![IdentWithMeta::from("c1"), IdentWithMeta::from("c2")]
+            .iter()
+            .map(|iwm| iwm.ident)
+            .collect();
         assert_eq!(result, expected)
     }
 
@@ -603,11 +646,16 @@ mod tests {
             ids: [usize; N],
             mut expected: Vec<IdentWithMeta>,
         ) {
+            let mut expected: Vec<_> = expected.iter().map(|iwm| iwm.ident).collect();
             expected.sort();
             let completed = make_completed(linearization);
             for id in ids {
-                let mut actual = find_fields_from_term_kind(&completed, id, &mut Vec::new())
-                    .expect("Expected Some");
+                let mut actual: Vec<_> =
+                    find_fields_from_term_kind(&completed, id, &mut Vec::new())
+                        .expect("Expected Some")
+                        .iter()
+                        .map(|iwm| iwm.ident)
+                        .collect();
                 actual.sort();
                 assert_eq!(actual, expected)
             }
