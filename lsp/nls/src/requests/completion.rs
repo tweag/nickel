@@ -166,7 +166,8 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     let path = result.iter().rev().next().cloned()?;
     // Remove quotes from a record name
     fn remove_quotes(name: &str) -> String {
-        if let (Some('"'), Some('"')) = (name.chars().next(), name.chars().last()) {
+        let mut chars = name.chars();
+        if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
             String::from(&name[1..name.len() - 1])
         } else {
             String::from(name)
