@@ -331,7 +331,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 /// partiular ID, and in the scope of a given linearization item.
 fn collect_record_info(
     linearization: &Completed,
-    id: usize,
+    id: ItemId,
     path: &mut Vec<Ident>,
 ) -> Vec<IdentWithMeta> {
     linearization
@@ -345,9 +345,6 @@ fn collect_record_info(
                     find_fields_from_contract(linearization, *body_id, path)
                         .or_else(|| find_fields_from_term_kind(linearization, id, path))
                         .unwrap_or_default()
-                }
-                (TermKind::RecordField { .. }, Types(TypeF::Record(rrows))) => {
-                    find_fields_from_type(&rrows, path)
                 }
                 (
                     TermKind::RecordField {
@@ -376,7 +373,7 @@ fn get_completion_identifiers(
         name: Ident,
         server: &Server,
         path: &mut Vec<Ident>,
-    ) -> Option<Vec<Ident>> {
+    ) -> Option<Vec<IdentWithMeta>> {
         let item_id = item.env.get(&name)?;
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
         Some(collect_record_info(lin, *item_id, path))
@@ -643,7 +640,7 @@ mod tests {
         // which would give the expected output
         fn single_case<const N: usize>(
             linearization: Vec<LinearizationItem<Types>>,
-            ids: [usize; N],
+            ids: [ItemId; N],
             mut expected: Vec<IdentWithMeta>,
         ) {
             let mut expected: Vec<_> = expected.iter().map(|iwm| iwm.ident).collect();
@@ -694,7 +691,11 @@ mod tests {
             TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 0 })),
         );
         let linearization = vec![a, b, c, d, e];
-        let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
+        let expected = vec![
+            IdentWithMeta::from("foo"),
+            IdentWithMeta::from("bar"),
+            IdentWithMeta::from("baz"),
+        ];
         single_case(
             linearization,
             [ItemId { file_id, index: 0 }, ItemId { file_id, index: 3 }],
