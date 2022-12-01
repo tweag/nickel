@@ -505,8 +505,8 @@ pub enum FieldDeps {
 }
 
 impl FieldDeps {
-    /// Compute the union of two thunk dependencies. [`ThunkDeps::Unknown`] can be see as the top
-    /// element, meaning that if one of the two set of dependencies is [`ThunkDeps::Unknown`], so
+    /// Compute the union of two thunk dependencies. [`FieldDeps::Unknown`] can be see as the top
+    /// element, meaning that if one of the two set of dependencies is [`FieldDeps::Unknown`], so
     /// is the result.
     pub fn union(self, other: Self) -> Self {
         match (self, other) {

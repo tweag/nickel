@@ -570,7 +570,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     };
     let fresh_var = Ident::fresh();
 
-    // new_rev takes care of not creating a revertible thunks if the dependencies are empty.
+    // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
     env.insert(
         fresh_var,
         Thunk::new_rev(closure, IdentKind::Record, combined_deps),
