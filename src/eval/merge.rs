@@ -57,7 +57,8 @@ use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::record::RecordData;
 use crate::term::{
-    make as mk_term, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term,
+    make as mk_term, BinaryOp, Contract, FieldDeps, MetaValue, RecordAttrs, RichTerm, SharedTerm,
+    Term,
 };
 use crate::transform::Closurizable;
 use std::collections::HashMap;
@@ -525,14 +526,14 @@ fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 }
 
 /// Return the dependencies of a field when represented as a `RichTerm`.
-fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<ThunkDeps, EvalError> {
+fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         local_env
             .get(var_id)
             .map(Thunk::deps)
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
-        Ok(ThunkDeps::Empty)
+        Ok(FieldDeps::empty())
     }
 }
 
@@ -569,16 +570,11 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     };
     let fresh_var = Ident::fresh();
 
-    match combined_deps {
-        ThunkDeps::Empty => env.insert(fresh_var, Thunk::new(closure, IdentKind::Record)),
-        ThunkDeps::Known(deps) => env.insert(
-            fresh_var,
-            Thunk::new_rev(closure, IdentKind::Record, Some(deps)),
-        ),
-        ThunkDeps::Unknown => {
-            env.insert(fresh_var, Thunk::new_rev(closure, IdentKind::Record, None))
-        }
-    };
+    // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
+    env.insert(
+        fresh_var,
+        Thunk::new_rev(closure, IdentKind::Record, combined_deps),
+    );
 
     Ok(RichTerm::from(Term::Var(fresh_var)))
 }
