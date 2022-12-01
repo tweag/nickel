@@ -5,19 +5,19 @@ use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState}
 
 use super::{
     interface::{Resolved, TermKind, UsageState, ValueState},
-    ItemID, LinearizationItem,
+    ItemId, LinearizationItem,
 };
 
 #[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
-    id_to_index: HashMap<ItemID, usize>,
+    id_to_index: HashMap<ItemId, usize>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
-        id_to_index: HashMap<ItemID, usize>,
+        id_to_index: HashMap<ItemId, usize>,
     ) -> Self {
         Self {
             linearization,
@@ -25,13 +25,13 @@ impl Completed {
         }
     }
 
-    pub fn get_item(&self, id: ItemID) -> Option<&LinearizationItem<Resolved>> {
+    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
     }
 
-    pub fn get_item_mut(&mut self, id: ItemID) -> Option<&mut LinearizationItem<Resolved>> {
+    pub fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Resolved>> {
         let index = self.id_to_index.get(&id)?;
         self.linearization.get_mut(*index)
     }

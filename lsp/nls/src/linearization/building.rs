@@ -14,13 +14,12 @@ use crate::linearization::interface::{TermKind, UsageState};
 use super::{
     completed::Completed,
     interface::{Unresolved, ValueState},
-    Environment, IdGen, ItemID, LinearizationItem,
+    Environment, IdGen, ItemId, LinearizationItem,
 };
 
 /// A concrete [LinearizationState]
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
-// #[derive(Default)]
 pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub lin_cache: &'a mut HashMap<FileId, Completed>,
@@ -31,7 +30,7 @@ impl<'b> Building<'b> {
         self.linearization.push(item)
     }
 
-    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemID, usage: ItemID) {
+    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
         let (decl_file, index) = decl;
         let kind = if file == decl_file {
             // This usage references an item in the file we're currently linearizing
@@ -58,7 +57,7 @@ impl<'b> Building<'b> {
         };
     }
 
-    pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemID, value: ItemID) {
+    pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemId, value: ItemId) {
         let (decl_file, index) = declaration;
         let kind = if file == decl_file {
             // This usage references an item in the file we're currently linearizing
@@ -78,7 +77,7 @@ impl<'b> Building<'b> {
     pub(super) fn register_fields(
         &mut self,
         record_fields: &HashMap<Ident, RichTerm>,
-        record: ItemID,
+        record: ItemId,
         env: &mut Environment,
         file: FileId,
     ) {
@@ -112,8 +111,8 @@ impl<'b> Building<'b> {
 
     pub(super) fn add_record_field(
         &mut self,
-        record: ItemID,
-        (field_ident, reference_id): (Ident, ItemID),
+        record: ItemId,
+        (field_ident, reference_id): (Ident, ItemId),
     ) {
         match self
             .linearization
@@ -162,9 +161,9 @@ impl<'b> Building<'b> {
     pub(super) fn resolve_record_references(
         &mut self,
         file: FileId,
-        mut defers: Vec<(ItemID, ItemID, Ident)>,
+        mut defers: Vec<(ItemId, ItemId, Ident)>,
     ) {
-        let mut unresolved: Vec<(ItemID, ItemID, Ident)> = Vec::new();
+        let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
             // child_item: current deferred usage item

@@ -15,7 +15,7 @@ use crate::{
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
-        ItemID, LinearizationItem,
+        ItemId, LinearizationItem,
     },
     server::{self, Server},
     trace::{Enrich, Trace},
@@ -33,7 +33,7 @@ use crate::{
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
     linearization: &Completed,
-    id: ItemID,
+    id: ItemId,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
@@ -63,7 +63,7 @@ fn find_fields_from_term_kind(
 /// its contract information.
 fn find_fields_from_contract(
     linearization: &Completed,
-    id: ItemID,
+    id: ItemId,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
@@ -202,7 +202,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 
 /// Search the linearization to find the record information associated with a
 /// partiular ID, and in the scope of a given linearization item.
-fn collect_record_info(linearization: &Completed, id: ItemID, path: &mut Vec<Ident>) -> Vec<Ident> {
+fn collect_record_info(linearization: &Completed, id: ItemId, path: &mut Vec<Ident>) -> Vec<Ident> {
     linearization
         .get_item(id)
         .map(|item| {
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_find_record_fields() {
-        fn make_linearization_item(id: ItemID, kind: TermKind) -> LinearizationItem<Types> {
+        fn make_linearization_item(id: ItemId, kind: TermKind) -> LinearizationItem<Types> {
             LinearizationItem {
                 env: Environment::new(),
                 id,
@@ -514,7 +514,7 @@ mod tests {
         // which would give the expected output
         fn single_case<const N: usize>(
             linearization: Vec<LinearizationItem<Types>>,
-            ids: [ItemID; N],
+            ids: [ItemId; N],
             mut expected: Vec<Ident>,
         ) {
             expected.sort();

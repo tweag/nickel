@@ -24,8 +24,8 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type ItemID = (FileId, usize);
-pub type Environment = nickel_lang::environment::Environment<Ident, ItemID>;
+pub type ItemId = (FileId, usize);
+pub type Environment = nickel_lang::environment::Environment<Ident, ItemId>;
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -34,7 +34,7 @@ pub type Environment = nickel_lang::environment::Environment<Ident, ItemID>;
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub env: Environment,
-    pub id: ItemID,
+    pub id: ItemId,
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
@@ -59,8 +59,8 @@ pub struct AnalysisHost<'a> {
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
-    record_fields: Option<(ItemID, Vec<(ItemID, Ident)>)>,
-    let_binding: Option<ItemID>,
+    record_fields: Option<(ItemId, Vec<(ItemId, Ident)>)>,
+    let_binding: Option<ItemId>,
     /// Accesses to nested records are recorded recursively.
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
@@ -361,7 +361,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
-        let defers: Vec<(ItemID, ItemID, Ident)> = lin
+        let defers: Vec<(ItemId, ItemId, Ident)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
