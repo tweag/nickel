@@ -113,13 +113,24 @@ AnnotAtom<TypeRule>: MetaAnnot = {
     },
 };
 
+// A single metadata annotation attached to a let-binding. Compared to
+// annotations which can appear everywhere (`AnnotAtom`, either a type or a
+// contract annotation), let annotations also include documentation (`doc`).
+LetAnnotAtom<TypeRule>: MetaAnnot = {
+    <AnnotAtom<TypeRule>> => <>,
+    "|" "doc" <s: StaticString> => MetaValue {
+        doc: Some(strip_indent_doc(s)),
+        ..Default::default()
+    },
+}
+
 // A single field metadata annotation, without the pseudo-metadata (such as push
 // priorities).
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
 // rule).
 SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
-    <AnnotAtom<TypeRule>> => <>,
+    <LetAnnotAtom<TypeRule>> => <>,
     "|" "default" => MetaValue {
         priority: MergePriority::Bottom,
         ..Default::default()
@@ -131,10 +142,6 @@ SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
     "|" "priority" <SignedNumLiteral> => MetaValue {
         // unwrap(): a literal can't be NaN
         priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
-        ..Default::default()
-    },
-    "|" "doc" <s: StaticString> => MetaValue {
-        doc: Some(strip_indent_doc(s)),
         ..Default::default()
     },
     "|" "optional" => MetaValue {
@@ -161,6 +168,10 @@ FieldAnnotAtom<TypeRule>: FieldAnnot = {
 
 // An annotation, with possibly many annotations chained.
 Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
+
+// A let annotation, with possibly many annotations chained. Include type
+// annotations, contract annotations and doc annotations.
+LetAnnot<TypeRule>: MetaAnnot = AnnotSeries<LetAnnotAtom<TypeRule>>;
 
 // A simple field annotation, with possibly many annotations chained. A simple
 // field annotation excludes pseudo metadata like push priorities operator.
@@ -190,7 +201,7 @@ FixedType: Types = {
 // Either a term or a top-level let-binding (a let-binding without an `in`).
 // Used exclusively for the REPL.
 pub ExtendedTerm: ExtendedTerm = {
-    "let" <id: Ident> <ann: Annot<FixedType>?> "=" <mut t: Term> => {
+    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
             let pos = t.pos;
             t = ann.attach(t, pos);
@@ -206,7 +217,7 @@ UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
     AsUniTerm<Forall>,
-    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: Annot<FixedType>?>
+    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: LetAnnot<FixedType>?>
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
