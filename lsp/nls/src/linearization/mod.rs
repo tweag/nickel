@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
-use codespan::ByteIndex;
+use codespan::{ByteIndex, FileId};
 use log::debug;
 use nickel_lang::{
     identifier::Ident,
@@ -15,7 +15,7 @@ use nickel_lang::{
 };
 
 use self::{
-    building::{Building, ID},
+    building::Building,
     completed::Completed,
     interface::{ResolutionState, TermKind, UsageState, ValueState},
 };
@@ -24,7 +24,13 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
+pub type Environment = nickel_lang::environment::Environment<Ident, ItemId>;
+
+#[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
+pub struct ItemId {
+    pub file_id: FileId,
+    pub index: usize,
+}
 
 /// A recorded item of a given state of resolution state
 /// Tracks a unique id used to build a reference table after finalizing
@@ -33,7 +39,7 @@ pub type Environment = nickel_lang::environment::Environment<Ident, usize>;
 pub struct LinearizationItem<S: ResolutionState> {
     //term_: Box<Term>,
     pub env: Environment,
-    pub id: usize,
+    pub id: ItemId,
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
@@ -44,7 +50,11 @@ pub struct LinearizationItem<S: ResolutionState> {
 ///
 /// Tracks a _scope stable_ environment managing variable ident
 /// resolution
-pub struct AnalysisHost {
+pub struct AnalysisHost<'a> {
+    // We need the lifetime on `AnalysisHost` to be able to
+    // have a lifetime for the associated `Building` data structure.
+    phantom: PhantomData<&'a usize>,
+    file: FileId,
     env: Environment,
     meta: Option<MetaValue>,
     /// Indexing a record will store a reference to the record as
@@ -54,8 +64,8 @@ pub struct AnalysisHost {
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
-    record_fields: Option<(ID, Vec<(ID, Ident)>)>,
-    let_binding: Option<ID>,
+    record_fields: Option<(ItemId, Vec<(ItemId, Ident)>)>,
+    let_binding: Option<ItemId>,
     /// Accesses to nested records are recorded recursively.
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
@@ -66,16 +76,12 @@ pub struct AnalysisHost {
     access: Option<Vec<Ident>>,
 }
 
-impl AnalysisHost {
-    pub fn new() -> Self {
-        Default::default()
-    }
-}
-
-impl Default for AnalysisHost {
-    fn default() -> Self {
+impl<'a> AnalysisHost<'a> {
+    pub fn new(file: FileId, env: Environment) -> Self {
         Self {
-            env: Environment::new(),
+            phantom: PhantomData,
+            file,
+            env,
             meta: Default::default(),
             record_fields: Default::default(),
             let_binding: Default::default(),
@@ -86,8 +92,8 @@ impl Default for AnalysisHost {
 
 use nickel_lang::typecheck::Extra;
 use nickel_lang::types::Types;
-impl Linearizer for AnalysisHost {
-    type Building = Building;
+impl<'a> Linearizer for AnalysisHost<'a> {
+    type Building = Building<'a>;
     type Completed = Completed;
     type CompletionExtra = Extra;
 
@@ -120,7 +126,7 @@ impl Linearizer for AnalysisHost {
                     pos
                 });
 
-                if let Some(field) = lin.linearization.get_mut(record + offset) {
+                if let Some(field) = lin.linearization.get_mut(record.index + offset.index) {
                     debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
@@ -134,7 +140,10 @@ impl Linearizer for AnalysisHost {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
-                            *value = ValueState::Known(id_gen.get() + usage_offset);
+                            *value = ValueState::Known(ItemId {
+                                file_id: self.file,
+                                index: id_gen.get() + usage_offset,
+                            });
                         }
                         // The linearization item of a record with n fields is expected to be
                         // followed by n linearization items representing each field
@@ -144,7 +153,14 @@ impl Linearizer for AnalysisHost {
             }
 
             if let Some(declaration) = self.let_binding.take() {
-                lin.inform_declaration(declaration, id_gen.get());
+                lin.inform_declaration(
+                    self.file,
+                    declaration,
+                    ItemId {
+                        file_id: self.file,
+                        index: id_gen.get(),
+                    },
+                );
             }
         }
 
@@ -152,7 +168,10 @@ impl Linearizer for AnalysisHost {
             return;
         }
 
-        let id = id_gen.get();
+        let id = ItemId {
+            file_id: self.file,
+            index: id_gen.get(),
+        };
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
                 if let Some(ident) = ident {
@@ -165,7 +184,10 @@ impl Linearizer for AnalysisHost {
                             // stub object
                             lin.push(LinearizationItem {
                                 env: self.env.clone(),
-                                id: id_gen.get_and_advance(),
+                                id: ItemId {
+                                    file_id: self.file,
+                                    index: id_gen.get_and_advance(),
+                                },
 
                                 ty: ty.clone(),
                                 pos: ident.pos,
@@ -173,12 +195,18 @@ impl Linearizer for AnalysisHost {
                                 meta: self.meta.take(),
                             });
 
-                            ValueState::Known(id_gen.get())
+                            ValueState::Known(ItemId {
+                                file_id: self.file,
+                                index: id_gen.get(),
+                            })
                         }
                         _ => unreachable!(),
                     };
 
-                    let id = id_gen.get_and_advance();
+                    let id = ItemId {
+                        file_id: self.file,
+                        index: id_gen.get_and_advance(),
+                    };
                     self.env.insert(ident.to_owned(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -191,8 +219,11 @@ impl Linearizer for AnalysisHost {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
-                    let id = id_gen.get_and_advance();
-                    self.env.insert(ident.to_owned(), id);
+                    let id = ItemId {
+                        file_id: self.file,
+                        index: id_gen.get_and_advance(),
+                    };
+                    self.env.insert(ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -224,7 +255,10 @@ impl Linearizer for AnalysisHost {
                         // stub object
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
-                            id: id_gen.get_and_advance(),
+                            id: ItemId {
+                                file_id: self.file,
+                                index: id_gen.get_and_advance(),
+                            },
 
                             ty: ty.clone(),
                             pos: ident.pos,
@@ -232,14 +266,26 @@ impl Linearizer for AnalysisHost {
                             meta: self.meta.take(),
                         });
 
-                        ValueState::Known(id_gen.get())
+                        ValueState::Known(ItemId {
+                            file_id: self.file,
+                            index: id_gen.get(),
+                        })
                     }
                     _ => unreachable!(),
                 };
-                self.env.insert(ident.to_owned(), id_gen.get());
+                self.env.insert(
+                    ident.to_owned(),
+                    ItemId {
+                        file_id: self.file,
+                        index: id_gen.get(),
+                    },
+                );
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
-                    id: id_gen.get(),
+                    id: ItemId {
+                        file_id: self.file,
+                        index: id_gen.get(),
+                    },
                     ty,
                     pos: ident.pos,
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
@@ -247,38 +293,48 @@ impl Linearizer for AnalysisHost {
                 });
             }
             Term::Var(ident) => {
-                let root_id = id_gen.get_and_advance();
+                let root_id = ItemId {
+                    file_id: self.file,
+                    index: id_gen.get_and_advance(),
+                };
 
                 debug!(
                     "adding usage of variable {} followed by chain {:?}",
                     ident, self.access
                 );
 
+                let key = ident.to_owned();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
                     ty: UnifType::Concrete(TypeF::Dyn),
-                    kind: TermKind::Usage(UsageState::from(self.env.get(ident).copied())),
+                    kind: TermKind::Usage(UsageState::from(self.env.get(&key).copied())),
                     meta: self.meta.take(),
                 });
 
-                if let Some(referenced) = self.env.get(ident) {
-                    lin.add_usage(*referenced, root_id)
+                if let Some(referenced) = self.env.get(&key) {
+                    lin.add_usage(self.file, *referenced, root_id)
                 }
 
                 if let Some(chain) = self.access.take() {
                     let chain: Vec<_> = chain.into_iter().rev().collect();
 
                     for accessor in chain.iter() {
-                        let id = id_gen.get_and_advance();
+                        let id = ItemId {
+                            file_id: self.file,
+                            index: id_gen.get_and_advance(),
+                        };
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id,
                             pos: accessor.pos,
                             ty: UnifType::Concrete(TypeF::Dyn),
                             kind: TermKind::Usage(UsageState::Deferred {
-                                parent: id - 1,
+                                parent: ItemId {
+                                    file_id: self.file,
+                                    index: id.index - 1,
+                                },
                                 child: accessor.to_owned(),
                             }),
                             meta: self.meta.take(),
@@ -296,12 +352,30 @@ impl Linearizer for AnalysisHost {
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(&record.fields, id, &mut self.env);
+                lin.register_fields(&record.fields, id, &mut self.env, self.file);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
-                self.record_fields =
-                    Some((id + 1, field_names.into_iter().enumerate().rev().collect()));
+                self.record_fields = Some((
+                    ItemId {
+                        file_id: id.file_id,
+                        index: id.index + 1,
+                    },
+                    field_names
+                        .into_iter()
+                        .enumerate()
+                        .map(|(id, ident)| {
+                            (
+                                ItemId {
+                                    file_id: self.file,
+                                    index: id,
+                                },
+                                ident,
+                            )
+                        })
+                        .rev()
+                        .collect(),
+                ));
             }
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
@@ -352,7 +426,7 @@ impl Linearizer for AnalysisHost {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
-        let defers: Vec<(usize, usize, Ident)> = lin
+        let defers: Vec<(ItemId, ItemId, Ident)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -363,9 +437,11 @@ impl Linearizer for AnalysisHost {
             })
             .collect();
 
-        lin.resolve_record_references(defers);
+        lin.resolve_record_references(self.file, defers);
 
-        let Building { mut linearization } = lin.into_inner();
+        let Building {
+            mut linearization, ..
+        } = lin.into_inner();
 
         linearization.sort_by(
             |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
@@ -394,7 +470,7 @@ impl Linearizer for AnalysisHost {
             }
         }
         // resolve types
-        let lin_ = linearization
+        let lin_: Vec<_> = linearization
             .into_iter()
             .map(
                 |LinearizationItem {
@@ -418,11 +494,14 @@ impl Linearizer for AnalysisHost {
                 ..item
             })
             .collect();
+
         Linearization::new(Completed::new(lin_, id_mapping))
     }
 
     fn scope(&mut self) -> Self {
         AnalysisHost {
+            phantom: PhantomData,
+            file: self.file,
             env: self.env.clone(),
             meta: self.meta.clone(),
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
@@ -435,6 +514,8 @@ impl Linearizer for AnalysisHost {
 
     fn scope_meta(&mut self) -> Self {
         AnalysisHost {
+            phantom: PhantomData,
+            file: self.file,
             env: self.env.clone(),
             // Metadata must be attached to the original scope of the value (`self`), while the new
             // scope for metadata should be clean.
@@ -456,8 +537,8 @@ impl Linearizer for AnalysisHost {
     ) {
         if let Some(item) = self
             .env
-            .get(ident)
-            .and_then(|index| lin.linearization.get_mut(*index))
+            .get(&ident.to_owned())
+            .and_then(|item_id| lin.linearization.get_mut(item_id.index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use nickel_lang::{identifier::Ident, typecheck::UnifType, types::Types};
 
-use super::building::ID;
+use super::ItemId;
 
 pub trait ResolutionState {}
 /// Types are available as [TypeWrapper] only during recording
@@ -24,13 +24,13 @@ impl ResolutionState for Resolved {}
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TermKind {
-    Declaration(Ident, Vec<ID>, ValueState),
+    Declaration(Ident, Vec<ItemId>, ValueState),
     Usage(UsageState),
-    Record(HashMap<Ident, ID>),
+    Record(HashMap<Ident, ItemId>),
     RecordField {
         ident: Ident,
-        record: ID,
-        usages: Vec<ID>,
+        record: ItemId,
+        usages: Vec<ItemId>,
         value: ValueState,
     },
     Structure,
@@ -39,11 +39,11 @@ pub enum TermKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueState {
     Unknown,
-    Known(ID),
+    Known(ItemId),
 }
 
 impl ValueState {
-    pub fn as_option(&self) -> Option<ID> {
+    pub fn as_option(&self) -> Option<ItemId> {
         match self {
             ValueState::Unknown => None,
             ValueState::Known(value) => Some(*value),
@@ -55,12 +55,12 @@ impl ValueState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsageState {
     Unbound,
-    Resolved(ID),
-    Deferred { parent: ID, child: Ident },
+    Resolved(ItemId),
+    Deferred { parent: ItemId, child: Ident },
 }
 
-impl From<Option<ID>> for UsageState {
-    fn from(option: Option<ID>) -> Self {
+impl From<Option<ItemId>> for UsageState {
+    fn from(option: Option<ItemId>) -> Self {
         match option {
             Some(id) => UsageState::Resolved(id),
             None => UsageState::Unbound,

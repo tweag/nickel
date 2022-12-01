@@ -15,7 +15,7 @@ use crate::{
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
-        LinearizationItem,
+        ItemId, LinearizationItem,
     },
     server::{self, Server},
     trace::{Enrich, Trace},
@@ -33,7 +33,7 @@ use crate::{
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
     linearization: &Completed,
-    id: usize,
+    id: ItemId,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
@@ -63,7 +63,7 @@ fn find_fields_from_term_kind(
 /// its contract information.
 fn find_fields_from_contract(
     linearization: &Completed,
-    id: usize,
+    id: ItemId,
     path: &mut Vec<Ident>,
 ) -> Option<Vec<Ident>> {
     let item = linearization.get_item(id)?;
@@ -203,35 +203,30 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 
 /// Search the linearization to find the record information associated with a
 /// partiular ID, and in the scope of a given linearization item.
-fn collect_record_info(
-    linearization: &Completed,
-    item: &LinearizationItem<Types>,
-    id: usize,
-    path: &mut Vec<Ident>,
-) -> Vec<(Vec<Ident>, Types)> {
+fn collect_record_info(linearization: &Completed, id: ItemId, path: &mut Vec<Ident>) -> Vec<Ident> {
     linearization
-        .get_in_scope(item)
-        .iter()
-        .filter_map(|item| {
+        .get_item(id)
+        .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (TermKind::Declaration(..), Types(TypeF::Record(rrows))) if id == item.id => {
-                    Some((find_fields_from_type(&rrows, path), item.ty.clone()))
+                (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
+                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
+                    find_fields_from_contract(linearization, *body_id, path)
+                        .or_else(|| find_fields_from_term_kind(linearization, id, path))
+                        .unwrap_or_default()
                 }
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) if id == item.id => {
-                    match find_fields_from_contract(linearization, *body_id, path) {
-                        // Get record fields from contract metadata
-                        Some(fields) => Some((fields, item.ty.clone())),
-                        // Get record fields from lexical scoping
-                        None => find_fields_from_term_kind(linearization, id, path)
-                            .map(|idents| (idents, item.ty.clone())),
-                    }
-                }
-                _ => None,
+                (
+                    TermKind::RecordField {
+                        value: ValueState::Known(value),
+                        ..
+                    },
+                    _,
+                ) => find_fields_from_term_kind(linearization, *value, path).unwrap_or_default(),
+                _ => Vec::new(),
             }
         })
-        .collect()
+        .unwrap_or_default()
 }
 
 /// Generate possible completion identifiers given a source text, its linearization
@@ -241,54 +236,18 @@ fn get_completion_identifiers(
     trigger: Option<&str>,
     linearization: &Completed,
     item: &LinearizationItem<Types>,
+    server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
-    let in_scope = match trigger {
-        // Record Completion
-        Some(server::DOT_COMPL_TRIGGER) => {
-            // empty should return none
-            if let Some(path) = get_identifier_path(source) {
-                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
-                // unwrap is safe here because we are guaranteed by `get_identifier_path`
-                // that it will return a non-empty vector
-                let name = path.pop().unwrap();
-                if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, item, id, &mut path)
-                } else {
-                    return Ok(Vec::new());
-                }
-            } else {
-                return Ok(Vec::new());
-            }
-        }
-        Some(..) | None => {
-            // This is also record completion, but it is in the form
-            // <record path>.<partially-typed-field>
-            // we also want to give completion based on <record path> in this case.
-            if let Some(path) = get_identifiers_before_field(source) {
-                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
-                // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
-                // that it will return a non-empty vector
-                let name = path.pop().unwrap();
-                if let Some(id) = item.env.get(&name).copied() {
-                    collect_record_info(linearization, item, id, &mut path)
-                } else {
-                    return Ok(Vec::new());
-                }
-            } else {
-                // variable name completion
-                linearization
-                    .get_in_scope(item)
-                    .iter()
-                    .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ref ident, _, _) => {
-                            Some((vec![*ident], i.ty.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            }
-        }
-    };
+    fn complete(
+        item: &LinearizationItem<Types>,
+        name: Ident,
+        server: &Server,
+        path: &mut Vec<Ident>,
+    ) -> Option<Vec<Ident>> {
+        let item_id = item.env.get(&name)?;
+        let lin = server.lin_cache_get(&item_id.file_id).unwrap();
+        Some(collect_record_info(lin, *item_id, path))
+    }
 
     /// Attach quotes to a non-ASCII string
     fn adjust_name(name: String) -> String {
@@ -299,13 +258,48 @@ fn get_completion_identifiers(
         }
     }
 
+    let in_scope = match trigger {
+        // Record Completion
+        Some(server::DOT_COMPL_TRIGGER) => {
+            get_identifier_path(source)
+                .and_then(|path| {
+                    let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                    // unwrap is safe here because we are guaranteed by `get_identifier_path`
+                    // that it will return a non-empty vector
+                    let name = path.pop().unwrap();
+                    complete(item, name, server, &mut path)
+                })
+                .unwrap_or_default()
+        }
+        Some(..) | None => {
+            // This is also record completion, but it is in the form
+            // <record path>.<partially-typed-field>
+            // we also want to give completion based on <record path> in this case.
+            if let Some(path) = get_identifiers_before_field(source) {
+                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
+                // that it will return a non-empty vector
+                let name = path.pop().unwrap();
+                complete(item, name, server, &mut path).unwrap_or_default()
+            } else {
+                // variable name completion
+                linearization
+                    .get_in_scope(item)
+                    .iter()
+                    .filter_map(|i| match i.kind {
+                        TermKind::Declaration(ref ident, _, _) => Some(*ident),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            }
+        }
+    };
+
     let in_scope: Vec<_> = in_scope
         .iter()
-        .flat_map(|(idents, _)| {
-            idents.iter().map(|ident| CompletionItem {
-                label: adjust_name(ident.into_label()),
-                ..Default::default()
-            })
+        .map(|ident| CompletionItem {
+            label: adjust_name(ident.into_label()),
+            ..Default::default()
         })
         .collect();
     Ok(remove_duplicates(&in_scope))
@@ -346,7 +340,7 @@ pub fn handle_completion(
                 .and_then(|context| context.trigger_character.as_deref());
 
             let in_scope =
-                get_completion_identifiers(&text[..start], trigger, linearization, item)?;
+                get_completion_identifiers(&text[..start], trigger, linearization, item, server)?;
 
             Some(in_scope)
         }
@@ -368,6 +362,7 @@ pub fn handle_completion(
 mod tests {
     use super::*;
     use crate::linearization::Environment;
+    use codespan::Files;
     use nickel_lang::position::TermPos;
     use std::collections::{HashMap, HashSet};
 
@@ -495,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_find_record_fields() {
-        fn make_linearization_item(id: usize, kind: TermKind) -> LinearizationItem<Types> {
+        fn make_linearization_item(id: ItemId, kind: TermKind) -> LinearizationItem<Types> {
             LinearizationItem {
                 env: Environment::new(),
                 id,
@@ -519,7 +514,7 @@ mod tests {
         // which would give the expected output
         fn single_case<const N: usize>(
             linearization: Vec<LinearizationItem<Types>>,
-            ids: [usize; N],
+            ids: [ItemId; N],
             mut expected: Vec<Ident>,
         ) {
             expected.sort();
@@ -532,57 +527,100 @@ mod tests {
             }
         }
 
-        let a = make_linearization_item(
-            0,
-            TermKind::Declaration(Ident::from("a"), vec![3], ValueState::Known(1)),
-        );
-        let b = make_linearization_item(
-            1,
-            TermKind::Record(HashMap::from([
-                (Ident::from("foo"), 2),
-                (Ident::from("bar"), 2),
-                (Ident::from("baz"), 2),
-            ])),
-        );
-        let c = make_linearization_item(2, TermKind::Structure);
-        let d = make_linearization_item(
-            3,
-            TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(4)),
-        );
-        let e = make_linearization_item(4, TermKind::Usage(UsageState::Resolved(0)));
-        let linearization = vec![a, b, c, d, e];
-        let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
-        single_case(linearization, [0, 3], expected);
+        let files = Files::new();
+        let file_id = files.add("test", "test");
 
         let a = make_linearization_item(
-            0,
-            TermKind::Declaration(Ident::from("a"), Vec::new(), ValueState::Known(1)),
+            ItemId { file_id, index: 0 },
+            TermKind::Declaration(
+                Ident::from("a"),
+                vec![ItemId { file_id, index: 3 }],
+                ValueState::Known(ItemId { file_id, index: 1 }),
+            ),
         );
         let b = make_linearization_item(
-            1,
+            ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("one"), 2),
-                (Ident::from("two"), 2),
-                (Ident::from("three"), 2),
-                (Ident::from("four"), 2),
+                (Ident::from("foo"), ItemId { file_id, index: 2 }),
+                (Ident::from("bar"), ItemId { file_id, index: 2 }),
+                (Ident::from("baz"), ItemId { file_id, index: 2 }),
             ])),
         );
-        let c = make_linearization_item(2, TermKind::Structure);
+        let c = make_linearization_item(ItemId { file_id, index: 2 }, TermKind::Structure);
         let d = make_linearization_item(
-            3,
-            TermKind::Declaration(Ident::from("d"), Vec::new(), ValueState::Known(13)),
+            ItemId { file_id, index: 3 },
+            TermKind::Declaration(
+                Ident::from("d"),
+                Vec::new(),
+                ValueState::Known(ItemId { file_id, index: 4 }),
+            ),
         );
         let e = make_linearization_item(
-            4,
-            TermKind::Declaration(Ident::from("e"), Vec::new(), ValueState::Known(14)),
+            ItemId { file_id, index: 4 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 0 })),
+        );
+        let linearization = vec![a, b, c, d, e];
+        let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
+        single_case(
+            linearization,
+            [ItemId { file_id, index: 0 }, ItemId { file_id, index: 3 }],
+            expected,
+        );
+
+        let a = make_linearization_item(
+            ItemId { file_id, index: 0 },
+            TermKind::Declaration(
+                Ident::from("a"),
+                Vec::new(),
+                ValueState::Known(ItemId { file_id, index: 1 }),
+            ),
+        );
+        let b = make_linearization_item(
+            ItemId { file_id, index: 1 },
+            TermKind::Record(HashMap::from([
+                (Ident::from("one"), ItemId { file_id, index: 2 }),
+                (Ident::from("two"), ItemId { file_id, index: 2 }),
+                (Ident::from("three"), ItemId { file_id, index: 2 }),
+                (Ident::from("four"), ItemId { file_id, index: 2 }),
+            ])),
+        );
+        let c = make_linearization_item(ItemId { file_id, index: 2 }, TermKind::Structure);
+        let d = make_linearization_item(
+            ItemId { file_id, index: 3 },
+            TermKind::Declaration(
+                Ident::from("d"),
+                Vec::new(),
+                ValueState::Known(ItemId { file_id, index: 13 }),
+            ),
+        );
+        let e = make_linearization_item(
+            ItemId { file_id, index: 4 },
+            TermKind::Declaration(
+                Ident::from("e"),
+                Vec::new(),
+                ValueState::Known(ItemId { file_id, index: 14 }),
+            ),
         );
         let f = make_linearization_item(
-            5,
-            TermKind::Declaration(Ident::from("f"), Vec::new(), ValueState::Known(15)),
+            ItemId { file_id, index: 5 },
+            TermKind::Declaration(
+                Ident::from("f"),
+                Vec::new(),
+                ValueState::Known(ItemId { file_id, index: 15 }),
+            ),
         );
-        let g = make_linearization_item(13, TermKind::Usage(UsageState::Resolved(0)));
-        let h = make_linearization_item(14, TermKind::Usage(UsageState::Resolved(3)));
-        let i = make_linearization_item(15, TermKind::Usage(UsageState::Resolved(4)));
+        let g = make_linearization_item(
+            ItemId { file_id, index: 13 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 0 })),
+        );
+        let h = make_linearization_item(
+            ItemId { file_id, index: 14 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 3 })),
+        );
+        let i = make_linearization_item(
+            ItemId { file_id, index: 15 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 4 })),
+        );
         let expected = vec![
             Ident::from("one"),
             Ident::from("two"),
@@ -590,6 +628,15 @@ mod tests {
             Ident::from("four"),
         ];
         let linearization = vec![a, b, c, d, e, f, g, h, i];
-        single_case(linearization, [0, 3, 4, 5], expected);
+        single_case(
+            linearization,
+            [
+                ItemId { file_id, index: 0 },
+                ItemId { file_id, index: 3 },
+                ItemId { file_id, index: 4 },
+                ItemId { file_id, index: 5 },
+            ],
+            expected,
+        );
     }
 }
