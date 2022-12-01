@@ -417,6 +417,7 @@ mod tests {
                     me.ca.cb"##,
                 vec!["me", "ca", "cb"],
             ),
+            ("Single quote", "\"", vec!["\""]),
         ];
         for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
