@@ -31,7 +31,10 @@ impl<'b> Building<'b> {
     }
 
     pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
-        let (decl_file, index) = decl;
+        let ItemId {
+            file_id: decl_file,
+            index,
+        } = decl;
         let kind = if file == decl_file {
             // This usage references an item in the file we're currently linearizing
             &mut self
@@ -58,7 +61,10 @@ impl<'b> Building<'b> {
     }
 
     pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemId, value: ItemId) {
-        let (decl_file, index) = declaration;
+        let ItemId {
+            file_id: decl_file,
+            index,
+        } = declaration;
         let kind = if file == decl_file {
             // This usage references an item in the file we're currently linearizing
             self.linearization.get_mut(index).map(|item| &mut item.kind)
@@ -82,7 +88,10 @@ impl<'b> Building<'b> {
         file: FileId,
     ) {
         for (ident, value) in record_fields.iter() {
-            let id = (file, self.id_gen().get_and_advance());
+            let id = ItemId {
+                file_id: file,
+                index: self.id_gen().get_and_advance(),
+            };
             self.push(LinearizationItem {
                 env: env.clone(),
                 id,
@@ -116,7 +125,7 @@ impl<'b> Building<'b> {
     ) {
         match self
             .linearization
-            .get_mut(record.1)
+            .get_mut(record.index)
             .expect("Could not find record")
             .kind
         {
@@ -133,7 +142,7 @@ impl<'b> Building<'b> {
     ) -> Option<&'a LinearizationItem<UnifType>> {
         // if item is a usage, resolve the usage first
         match item.kind {
-            TermKind::Usage(UsageState::Resolved(pointed)) => self.linearization.get(pointed.1),
+            TermKind::Usage(UsageState::Resolved(pointed)) => self.linearization.get(pointed.index),
             _ => Some(item),
         }
         // load referenced value, either from record field or declaration
@@ -145,11 +154,11 @@ impl<'b> Building<'b> {
                     value
                         // retrieve record
                         .as_option()
-                        .and_then(|value_index| self.linearization.get(value_index.1))
+                        .and_then(|value_index| self.linearization.get(value_index.index))
                 }
                 // if declaration is a let binding resolve its value
                 TermKind::Declaration(_, _, ValueState::Known(value)) => {
-                    self.linearization.get(value.1)
+                    self.linearization.get(value.index)
                 }
 
                 // if something else was referenced, stop.
@@ -174,7 +183,7 @@ impl<'b> Building<'b> {
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.linearization.get(parent_accessor_id.1);
+            let parent_referenced = self.linearization.get(parent_accessor_id.index);
 
             if let Some(LinearizationItem {
                 kind: TermKind::Usage(UsageState::Deferred { .. }),
@@ -207,7 +216,7 @@ impl<'b> Building<'b> {
                 .and_then(|parent_declaration| match &parent_declaration.kind {
                     TermKind::Record(fields) => {
                         fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.linearization.get(child_declaration_id.1)
+                            self.linearization.get(child_declaration_id.index)
                         })
                     }
                     _ => None,
@@ -216,12 +225,12 @@ impl<'b> Building<'b> {
             let referenced_declaration =
                 referenced_declaration.and_then(|referenced| match &referenced.kind {
                     TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.linearization.get(pointed.1)
+                        self.linearization.get(pointed.index)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
                         .as_option()
-                        .and_then(|value_index| self.linearization.get(value_index.1))
+                        .and_then(|value_index| self.linearization.get(value_index.index))
                         // retrieve field
                         .and_then(|record| match &record.kind {
                             TermKind::Record(fields) => {
@@ -229,12 +238,12 @@ impl<'b> Building<'b> {
                                     "parent referenced a nested record indirectly`: {:?}",
                                     fields
                                 );
-                                fields
-                                    .get(child_ident)
-                                    .and_then(|accessor_id| self.linearization.get(accessor_id.1))
+                                fields.get(child_ident).and_then(|accessor_id| {
+                                    self.linearization.get(accessor_id.index)
+                                })
                             }
                             TermKind::Usage(UsageState::Resolved(pointed)) => {
-                                self.linearization.get(pointed.1)
+                                self.linearization.get(pointed.index)
                             }
                             _ => None,
                         })
@@ -252,7 +261,7 @@ impl<'b> Building<'b> {
 
             {
                 let child: &mut LinearizationItem<UnifType> =
-                    self.linearization.get_mut(child_item.1).unwrap();
+                    self.linearization.get_mut(child_item.index).unwrap();
                 child.kind = TermKind::Usage(UsageState::from(referenced_id));
             }
 

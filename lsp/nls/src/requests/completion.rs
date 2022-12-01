@@ -243,11 +243,9 @@ fn get_completion_identifiers(
         server: &Server,
         path: &mut Vec<Ident>,
     ) -> Option<Vec<Ident>> {
-        item.env.get(&name).map(|(file, id)| {
-            let lin = server.lin_cache_get(file).unwrap();
-            let id = (*file, *id);
-            collect_record_info(lin, id, path)
-        })
+        let item_id = item.env.get(&name)?;
+        let lin = server.lin_cache_get(&item_id.file_id).unwrap();
+        Some(collect_record_info(lin, *item_id, path))
     }
 
     /// Attach quotes to a non-ASCII string
@@ -531,91 +529,95 @@ mod tests {
         let file_id = files.add("test", "test");
 
         let a = make_linearization_item(
-            (file_id, 0),
+            ItemId { file_id, index: 0 },
             TermKind::Declaration(
                 Ident::from("a"),
-                vec![(file_id, 3)],
-                ValueState::Known((file_id, 1)),
+                vec![ItemId { file_id, index: 3 }],
+                ValueState::Known(ItemId { file_id, index: 1 }),
             ),
         );
         let b = make_linearization_item(
-            (file_id, 1),
+            ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("foo"), (file_id, 2)),
-                (Ident::from("bar"), (file_id, 2)),
-                (Ident::from("baz"), (file_id, 2)),
+                (Ident::from("foo"), ItemId { file_id, index: 2 }),
+                (Ident::from("bar"), ItemId { file_id, index: 2 }),
+                (Ident::from("baz"), ItemId { file_id, index: 2 }),
             ])),
         );
-        let c = make_linearization_item((file_id, 2), TermKind::Structure);
+        let c = make_linearization_item(ItemId { file_id, index: 2 }, TermKind::Structure);
         let d = make_linearization_item(
-            (file_id, 3),
+            ItemId { file_id, index: 3 },
             TermKind::Declaration(
                 Ident::from("d"),
                 Vec::new(),
-                ValueState::Known((file_id, 4)),
+                ValueState::Known(ItemId { file_id, index: 4 }),
             ),
         );
         let e = make_linearization_item(
-            (file_id, 4),
-            TermKind::Usage(UsageState::Resolved((file_id, 0))),
+            ItemId { file_id, index: 4 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 0 })),
         );
         let linearization = vec![a, b, c, d, e];
         let expected = vec![Ident::from("foo"), Ident::from("bar"), Ident::from("baz")];
-        single_case(linearization, [(file_id, 0), (file_id, 3)], expected);
+        single_case(
+            linearization,
+            [ItemId { file_id, index: 0 }, ItemId { file_id, index: 3 }],
+            expected,
+        );
 
         let a = make_linearization_item(
-            (file_id, 0),
+            ItemId { file_id, index: 0 },
             TermKind::Declaration(
                 Ident::from("a"),
                 Vec::new(),
-                ValueState::Known((file_id, 1)),
+                ValueState::Known(ItemId { file_id, index: 1 }),
             ),
         );
         let b = make_linearization_item(
-            (file_id, 1),
+            ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("one"), (file_id, 2)),
-                (Ident::from("two"), (file_id, 2)),
-                (Ident::from("three"), (file_id, 2)),
-                (Ident::from("four"), (file_id, 2)),
+                (Ident::from("one"), ItemId { file_id, index: 2 }),
+                (Ident::from("two"), ItemId { file_id, index: 2 }),
+                (Ident::from("three"), ItemId { file_id, index: 2 }),
+                (Ident::from("four"), ItemId { file_id, index: 2 }),
             ])),
         );
-        let c = make_linearization_item((file_id, 2), TermKind::Structure);
+        let c = make_linearization_item(ItemId { file_id, index: 2 }, TermKind::Structure);
         let d = make_linearization_item(
-            (file_id, 3),
+            ItemId { file_id, index: 3 },
             TermKind::Declaration(
                 Ident::from("d"),
                 Vec::new(),
-                ValueState::Known((file_id, 13)),
+                ValueState::Known(ItemId { file_id, index: 13 }),
             ),
         );
         let e = make_linearization_item(
-            (file_id, 4),
+            ItemId { file_id, index: 4 },
             TermKind::Declaration(
                 Ident::from("e"),
                 Vec::new(),
-                ValueState::Known((file_id, 14)),
+                ValueState::Known(ItemId { file_id, index: 14 }),
             ),
         );
         let f = make_linearization_item(
-            (file_id, 5),
+            ItemId { file_id, index: 5 },
             TermKind::Declaration(
                 Ident::from("f"),
                 Vec::new(),
-                ValueState::Known((file_id, 15)),
+                ValueState::Known(ItemId { file_id, index: 15 }),
             ),
         );
         let g = make_linearization_item(
-            (file_id, 13),
-            TermKind::Usage(UsageState::Resolved((file_id, 0))),
+            ItemId { file_id, index: 13 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 0 })),
         );
         let h = make_linearization_item(
-            (file_id, 14),
-            TermKind::Usage(UsageState::Resolved((file_id, 3))),
+            ItemId { file_id, index: 14 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 3 })),
         );
         let i = make_linearization_item(
-            (file_id, 15),
-            TermKind::Usage(UsageState::Resolved((file_id, 4))),
+            ItemId { file_id, index: 15 },
+            TermKind::Usage(UsageState::Resolved(ItemId { file_id, index: 4 })),
         );
         let expected = vec![
             Ident::from("one"),
@@ -626,7 +628,12 @@ mod tests {
         let linearization = vec![a, b, c, d, e, f, g, h, i];
         single_case(
             linearization,
-            [(file_id, 0), (file_id, 3), (file_id, 4), (file_id, 5)],
+            [
+                ItemId { file_id, index: 0 },
+                ItemId { file_id, index: 3 },
+                ItemId { file_id, index: 4 },
+                ItemId { file_id, index: 5 },
+            ],
             expected,
         );
     }

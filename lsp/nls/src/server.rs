@@ -25,7 +25,7 @@ use nickel_lang::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
-    linearization::{completed::Completed, interface::TermKind, Environment},
+    linearization::{completed::Completed, interface::TermKind, Environment, ItemId},
     requests::{completion, goto, hover, symbols},
     trace::Trace,
 };
@@ -95,10 +95,15 @@ impl Server {
             // We're using the ID 0 here because a stdlib module is currently
             // REQUIRED to be a record literal. The linearization ID of this
             // record must thus be 0
-            let id = match lin.get_item((file_id, 0)).map(|item| &item.kind) {
+            let id = match lin
+                .get_item(ItemId { file_id, index: 0 })
+                .map(|item| &item.kind)
+            {
                 Some(TermKind::Record(table)) => table.get(&name),
                 _ => None,
-            }?;
+            }
+            .unwrap();
+
             initial.insert(name, *id);
         }
 
