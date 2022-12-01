@@ -113,7 +113,7 @@ AnnotAtom<TypeRule>: MetaAnnot = {
     },
 };
 
-// A single field metadata annotation, without the pseudo-metata (such as push
+// A single field metadata annotation, without the pseudo-metadata (such as push
 // priorities).
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
@@ -166,7 +166,7 @@ Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
 // field annotation excludes pseudo metadata like push priorities operator.
 SimpleFieldAnnot<TypeRule>: MetaAnnot = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
 
-// An field annotation, with possibly many annotations chained.
+// A field annotation, with possibly many annotations chained.
 FieldAnnot<TypeRule>: FieldAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
