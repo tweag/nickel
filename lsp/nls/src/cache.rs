@@ -4,10 +4,10 @@ use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
-    typecheck,
+    typecheck::{self, linearization::Linearization},
 };
 
-use crate::linearization::{completed::Completed, AnalysisHost};
+use crate::linearization::{building::Building, completed::Completed, AnalysisHost, Environment};
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
@@ -15,6 +15,7 @@ pub trait CacheExt {
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
+        initial_env: &Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
@@ -36,6 +37,7 @@ impl CacheExt for Cache {
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
+        initial_env: &Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms_mut().contains_key(&file_id) {
@@ -48,9 +50,13 @@ impl CacheExt for Cache {
         if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            let host = AnalysisHost::new();
+            let host = AnalysisHost::new(file_id, initial_env.clone());
+            let building = Linearization::new(Building {
+                lin_cache,
+                linearization: Vec::new(),
+            });
             let (_, linearized) =
-                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host)?;
+                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))

@@ -703,8 +703,14 @@ pub fn type_check(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_linearize(t, initial_ctxt, resolver, StubHost::<(), (), _>::new())
-        .map(|(wildcards, _)| wildcards)
+    type_check_linearize(
+        t,
+        initial_ctxt,
+        resolver,
+        StubHost::<(), (), _>::new(),
+        Linearization::new(()),
+    )
+    .map(|(wildcards, _)| wildcards)
 }
 
 /// Typecheck a term and build its linearization. A linearization is a sequential data structure
@@ -717,12 +723,12 @@ pub fn type_check_linearize<LL>(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
+    mut building: Linearization<LL::Building>,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = Extra>,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
-    let mut building = Linearization::new(LL::Building::default());
     let mut wildcard_vars = Vec::new();
 
     {

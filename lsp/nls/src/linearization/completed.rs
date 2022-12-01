@@ -4,21 +4,20 @@ use codespan::ByteIndex;
 use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState};
 
 use super::{
-    building::ID,
     interface::{Resolved, TermKind, UsageState, ValueState},
-    LinearizationItem,
+    ItemId, LinearizationItem,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
-    id_to_index: HashMap<ID, usize>,
+    id_to_index: HashMap<ItemId, usize>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
-        id_to_index: HashMap<ID, usize>,
+        id_to_index: HashMap<ItemId, usize>,
     ) -> Self {
         Self {
             linearization,
@@ -26,10 +25,15 @@ impl Completed {
         }
     }
 
-    pub fn get_item(&self, id: usize) -> Option<&LinearizationItem<Resolved>> {
+    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
+    }
+
+    pub fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Resolved>> {
+        let index = self.id_to_index.get(&id)?;
+        self.linearization.get_mut(*index)
     }
 
     pub fn get_in_scope(

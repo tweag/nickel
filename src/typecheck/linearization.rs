@@ -76,7 +76,7 @@ impl LinearizationState for Uninit {}
 /// `L`: The data type available during build
 /// `S`: Type of external state passed into the linearization
 pub trait Linearizer {
-    type Building: LinearizationState + Default;
+    type Building: LinearizationState;
     type Completed: LinearizationState + Default;
     type CompletionExtra;
 
