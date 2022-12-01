@@ -173,7 +173,7 @@ let typecheck = [
   (let y = [] in y) : forall a. Array a,
 
   # full_annotations
-  let x : Num | doc "some" | default = 1 in x + 1 : Num,
+  (let x = {val : Num | doc "some" | default = 1}.val in x + 1) : Num,
 
   # Typed import
   import "typed-import.ncl" : Num,

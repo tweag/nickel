@@ -154,11 +154,11 @@ pub fn combine_match_annots(
     }
 }
 
-/// Some constructs are introduced with the metavalue pipe operator `|`, but aren't metadata per se
+/// Some constructs are introduced with the metadata pipe operator `|`, but aren't metadata per se
 /// (ex: `push force`/`push default`). Those are collected in this extended annotation and then
 /// desugared into a standard metavalue.
 #[derive(Clone, Debug, Default)]
-pub struct ExtdAnnot {
+pub struct FieldAnnot {
     /// Standard metadata.
     pub meta: MetaValue,
     /// Presence of an annotation `push force`
@@ -167,13 +167,13 @@ pub struct ExtdAnnot {
     pub push_default: bool,
 }
 
-impl ExtdAnnot {
+impl FieldAnnot {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl Annot for ExtdAnnot {
+impl Annot for FieldAnnot {
     fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
         if self.push_force || self.push_default {
             let push_prio = if self.push_force {
@@ -195,7 +195,7 @@ impl Annot for ExtdAnnot {
         let push_force = outer.push_force || inner.push_force;
         let push_default = outer.push_default || inner.push_default;
 
-        ExtdAnnot {
+        FieldAnnot {
             meta,
             push_force,
             push_default,
@@ -203,9 +203,9 @@ impl Annot for ExtdAnnot {
     }
 }
 
-impl From<MetaValue> for ExtdAnnot {
+impl From<MetaValue> for FieldAnnot {
     fn from(meta: MetaValue) -> Self {
-        ExtdAnnot {
+        FieldAnnot {
             meta,
             ..Default::default()
         }

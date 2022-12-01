@@ -1,12 +1,7 @@
 let {check, Assert, ..} = import "testlib.ncl" in
 
 [
-  (10 | default | Num) == 10,
-
-  # Check the correct handling of the update of thunks containing enriched values (see issue
-  # https://github.com/tweag/nickel/issues/123)
-  let x = {a = (fun x => (1 | default)) 1} in
-    builtin.seq (x.a) ((x & {a=2}).a) == 2,
+  {val | default | Num = 10}.val == 10,
 
   # merge_default
   ({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true},
