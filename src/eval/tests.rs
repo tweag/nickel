@@ -1,6 +1,7 @@
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
+use crate::eval::cache::CBNCache;
 use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
@@ -9,9 +10,11 @@ use crate::transform::import_resolution::resolve_imports;
 use crate::{mk_app, mk_fun};
 use codespan::Files;
 
+type EC = CBNCache;
+
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::new(DummyResolver {})
+    VirtualMachine::<_, EC>::new(DummyResolver {})
         .eval(t, &Environment::new())
         .map(Term::from)
 }
@@ -171,7 +174,7 @@ fn imports() {
         var: &str,
         import: &str,
         body: RichTerm,
-        vm: &mut VirtualMachine<R>,
+        vm: &mut VirtualMachine<R, EC>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
@@ -284,17 +287,19 @@ fn interpolation_nested() {
 #[test]
 fn initial_env() {
     let mut initial_env = Environment::new();
+    let mut eval_cache = EC::new();
     initial_env.insert(
         Ident::from("g"),
-        Thunk::new(
+        eval_cache.add(
             Closure::atomic_closure(Term::Num(1.0).into()),
             IdentKind::Let,
+            BindingType::Normal,
         ),
     );
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
     assert_eq!(
-        VirtualMachine::new(DummyResolver {})
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(2.0))
@@ -302,7 +307,7 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new(DummyResolver {})
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(1.0))
@@ -311,20 +316,24 @@ fn initial_env() {
     // Shadowing of the initial environment
     let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new(DummyResolver {})
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
             .map(Term::from),
         Ok(Term::Num(2.0))
     );
 }
 
-fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
+fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut EC) -> Environment {
     bindings
         .into_iter()
         .map(|(id, t)| {
             (
                 id.into(),
-                Thunk::new(Closure::atomic_closure(t), IdentKind::Let),
+                eval_cache.add(
+                    Closure::atomic_closure(t),
+                    IdentKind::Let,
+                    BindingType::Normal,
+                ),
             )
         })
         .collect()
@@ -332,26 +341,33 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>) -> Environment {
 
 #[test]
 fn substitution() {
-    let initial_env = mk_env(vec![
-        ("glob1", Term::Num(1.0).into()),
-        ("glob2", parse("\"Glob2\"").unwrap()),
-        ("glob3", Term::Bool(false).into()),
-    ]);
-    let env = mk_env(vec![
-        ("loc1", Term::Bool(true).into()),
-        ("loc2", parse("if glob3 then glob1 else glob2").unwrap()),
-    ]);
+    let mut eval_cache = EC::new();
+    let initial_env = mk_env(
+        vec![
+            ("glob1", Term::Num(1.0).into()),
+            ("glob2", parse("\"Glob2\"").unwrap()),
+            ("glob3", Term::Bool(false).into()),
+        ],
+        &mut eval_cache,
+    );
+    let env = mk_env(
+        vec![
+            ("loc1", Term::Bool(true).into()),
+            ("loc2", parse("if glob3 then glob1 else glob2").unwrap()),
+        ],
+        &mut eval_cache,
+    );
 
     let t = parse("let x = 1 in if loc1 then 1 + loc2 else glob3").unwrap();
     assert_eq!(
-        subst(t, &initial_env, &env),
+        subst(&eval_cache, t, &initial_env, &env),
         parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false").unwrap()
     );
 
     let t = parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
         .unwrap();
     assert_eq!(
-        subst(t, &initial_env, &env),
+        subst(&eval_cache, t, &initial_env, &env),
         parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
     );
 }

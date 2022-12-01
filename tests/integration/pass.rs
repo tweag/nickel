@@ -1,5 +1,5 @@
-use nickel_lang::program::Program;
 use nickel_lang::term::Term;
+use nickel_lang_utilities::TestProgram;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::thread;
@@ -10,7 +10,7 @@ const STACK_SIZE: usize = 4 * 1024 * 1024;
 
 fn run(path: impl Into<OsString>) {
     let path = path.into();
-    let mut p = Program::new_from_file(path.clone()).expect("could not load file as a program");
+    let mut p = TestProgram::new_from_file(path.clone()).expect("could not load file as a program");
     assert_eq!(
         p.eval().map(Term::from),
         Ok(Term::Bool(true)),

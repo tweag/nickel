@@ -90,9 +90,9 @@
 //! something to consider at some point.
 
 use crate::{
-    cache::ImportResolver,
+    cache::{Cache as ImportCache, Envs, ImportResolver},
     environment::Environment as GenericEnvironment,
-    error::EvalError,
+    error::{Error, EvalError},
     identifier::Ident,
     match_sharedterm,
     term::{
@@ -102,6 +102,7 @@ use crate::{
     transform::Closurizable,
 };
 
+pub mod cache;
 pub mod callstack;
 pub mod fixpoint;
 pub mod lazy;
@@ -110,9 +111,12 @@ pub mod operation;
 pub mod stack;
 
 use callstack::*;
+use codespan::FileId;
 use lazy::*;
 use operation::OperationCont;
 use stack::Stack;
+
+use self::cache::{Cache, CacheIndex};
 
 impl AsRef<Vec<StackElem>> for CallStack {
     fn as_ref(&self) -> &Vec<StackElem> {
@@ -133,24 +137,37 @@ impl Default for EvalMode {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver> {
+pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     // Behavior of evaluation with respect to metavalues.
     eval_mode: EvalMode,
     // The main stack, storing arguments, thunks and pending computations.
-    stack: Stack,
+    stack: Stack<C>,
     // The call stack, for error reporting.
     call_stack: CallStack,
     // The interface used to fetch imports.
     import_resolver: R,
+    // The evaluation cache.
+    pub cache: C,
 }
 
-impl<R: ImportResolver> VirtualMachine<R> {
+impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R) -> Self {
         VirtualMachine {
             import_resolver,
             eval_mode: Default::default(),
             call_stack: Default::default(),
-            stack: Default::default(),
+            stack: Stack::new(),
+            cache: Cache::new(),
+        }
+    }
+
+    pub fn new_with_cache(import_resolver: R, cache: C) -> Self {
+        VirtualMachine {
+            import_resolver,
+            eval_mode: Default::default(),
+            call_stack: Default::default(),
+            stack: Stack::new(),
+            cache,
         }
     }
 
@@ -158,7 +175,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
     pub fn reset(&mut self) {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
-        self.stack.reset();
+        self.stack.reset(&mut self.cache);
+        self.cache = Cache::new();
     }
 
     fn set_mode(&mut self, new_mode: EvalMode) {
@@ -191,7 +209,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
         initial_env: &Environment,
     ) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure(t0, initial_env)
-            .map(|(term, env)| subst(term, initial_env, &env))
+            .map(|(term, env)| subst(&self.cache, term, initial_env, &env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
@@ -230,7 +248,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
             if let Some(t) = meta.value.take() {
                 self.reset();
                 let (evaluated, env) = self.eval_closure(Closure { body: t, env }, initial_env)?;
-                let substituted = subst(evaluated, initial_env, &env);
+                let substituted = subst(&self.cache, evaluated, initial_env, &env);
 
                 meta.value = Some(substituted);
             }
@@ -290,7 +308,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
                     // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
                     // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
-                    update_thunks(&mut self.stack, &closure);
+                    update_at_indices(&mut self.cache, &mut self.stack, &closure);
                     match stack_item {
                         Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
                             self.continuate_operation(closure)?
@@ -312,32 +330,23 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     }
                 }
                 Term::Var(x) => {
-                    let mut thunk = env
+                    let mut idx = env
                         .get(x)
                         .or_else(|| initial_env.get(x))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
-                    std::mem::drop(env); // thunk may be a 1RC pointer
+                    std::mem::drop(env); // idx may be a 1RC pointer
 
-                    if thunk.state() != ThunkState::Evaluated {
-                        if thunk.should_update() {
-                            match thunk.mk_update_frame() {
-                                Ok(thunk_upd) => self.stack.push_thunk(thunk_upd),
-                                Err(BlackholedError) => {
-                                    return Err(EvalError::InfiniteRecursion(
-                                        self.call_stack.clone(),
-                                        pos,
-                                    ))
-                                }
-                            }
-                        }
-                        // If the thunk isn't to be updated, directly set the evaluated flag.
-                        else {
-                            thunk.set_evaluated();
+                    match self.cache.get_update_index(&mut idx) {
+                        Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
+                        Ok(None) => {}
+                        Err(BlackholedError) => {
+                            return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
                         }
                     }
-                    self.call_stack.enter_var(thunk.ident_kind(), *x, pos);
-                    thunk.into_closure()
+
+                    self.call_stack.enter_var(idx.ident_kind(), *x, pos);
+                    self.cache.get(idx)
                 }
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
@@ -356,25 +365,22 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     }
                 }
                 Term::Let(x, s, t, LetAttrs { binding_type, rec }) => {
-                    let closure = Closure {
+                    let closure: Closure = Closure {
                         body: s.clone(),
                         env: env.clone(),
                     };
 
-                    let mut thunk = match binding_type {
-                        BindingType::Normal => Thunk::new(closure, IdentKind::Let),
-                        BindingType::Revertible(deps) => {
-                            Thunk::new_rev(closure, IdentKind::Let, deps.clone())
-                        }
-                    };
+                    let idx = self
+                        .cache
+                        .add(closure, IdentKind::Let, binding_type.clone());
 
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
-                        let thunk_ = thunk.clone();
-                        thunk.borrow_mut().env.insert(*x, thunk_);
+                        let idx_ = idx.clone();
+                        self.cache.patch(idx_.clone(), |cl| cl.env.insert(*x, idx_));
                     }
 
-                    env.insert(*x, thunk);
+                    env.insert(*x, idx);
                     Closure {
                         body: t.clone(),
                         env,
@@ -514,12 +520,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     }
                 }
                 Term::RecRecord(record, dyn_fields, _) => {
-                    let rec_env = fixpoint::rec_env(record.fields.iter(), &env)?;
+                    let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
 
-                    record
-                        .fields
-                        .iter()
-                        .try_for_each(|(_, rt)| fixpoint::patch_field(rt, &rec_env, &env))?;
+                    record.fields.iter().try_for_each(|(_, rt)| {
+                        fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
+                    })?;
 
                     //TODO: We should probably avoid cloning the record, using `match_sharedterm`
                     //instead of `match` in the main eval loop, if possible
@@ -538,7 +543,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 let id_t = id_t.clone();
                                 let pos = t.pos;
 
-                                fixpoint::patch_field(t, &rec_env, &env)?;
+                                fixpoint::patch_field(&mut self.cache, t, &rec_env, &env)?;
                                 Ok(RichTerm::new(
                                     Term::App(
                                         mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
@@ -570,7 +575,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             },
                             env,
                         };
-                        update_thunks(&mut self.stack, &update_closure);
+                        update_at_indices(&mut self.cache, &mut self.stack, &update_closure);
 
                         let Closure {
                             body: RichTerm { term, .. },
@@ -617,7 +622,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     let closurized_array = terms
                         .clone()
                         .into_iter()
-                        .map(|t| t.closurize(&mut local_env, env.clone()))
+                        .map(|t| t.closurize(&mut self.cache, &mut local_env, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
@@ -625,7 +630,11 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         .iter()
                         .map(|ctr| {
                             PendingContract::new(
-                                ctr.contract.clone().closurize(&mut local_env, env.clone()),
+                                ctr.contract.clone().closurize(
+                                    &mut self.cache,
+                                    &mut local_env,
+                                    env.clone(),
+                                ),
                                 ctr.label.clone(),
                             )
                         })
@@ -649,7 +658,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     return Err(EvalError::ParseError(parse_error.clone()));
                 }
                 // Continuation of operations and thunk update
-                _ if self.stack.is_top_thunk() || self.stack.is_top_cont() => {
+                _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
                         body: RichTerm {
                             term: shared_term,
@@ -657,8 +666,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         },
                         env,
                     };
-                    if self.stack.is_top_thunk() {
-                        update_thunks(&mut self.stack, &clos);
+                    if self.stack.is_top_idx() {
+                        update_at_indices(&mut self.cache, &mut self.stack, &clos);
                         clos
                     } else {
                         self.continuate_operation(clos)?
@@ -666,9 +675,9 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
                 // Function call
                 Term::Fun(x, t) => {
-                    if let Some((thunk, pos_app)) = self.stack.pop_arg_as_thunk() {
+                    if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(*x, thunk);
+                        env.insert(*x, idx);
                         Closure {
                             body: t.clone(),
                             env,
@@ -679,7 +688,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 }
                 // Otherwise, this is either an ill-formed application, or we are done
                 t => {
-                    if let Some((arg, pos_app)) = self.stack.pop_arg() {
+                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
                         return Err(EvalError::NotAFunc(
                             RichTerm {
                                 term: shared_term.clone(),
@@ -697,6 +706,21 @@ impl<R: ImportResolver> VirtualMachine<R> {
     }
 }
 
+impl<C: Cache> VirtualMachine<ImportCache, C> {
+    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<(RichTerm, Environment), Error> {
+        let Envs {
+            eval_env,
+            type_ctxt,
+        }: Envs = self.import_resolver.prepare_stdlib(&mut self.cache)?;
+        self.import_resolver.prepare(main_id, &type_ctxt)?;
+        Ok((self.import_resolver().get(main_id).unwrap(), eval_env))
+    }
+
+    pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
+        self.import_resolver.prepare_stdlib(&mut self.cache)
+    }
+}
+
 /// Kind of an identifier.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IdentKind {
@@ -706,22 +730,30 @@ pub enum IdentKind {
 }
 
 /// A closure, a term together with an environment.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
     pub env: Environment,
 }
 
-impl Closure {
-    pub fn atomic_closure(body: RichTerm) -> Closure {
+impl Clone for Closure {
+    fn clone(&self) -> Self {
         Closure {
-            body,
-            env: Environment::new(),
+            body: self.body.clone(),
+            env: self.env.clone(),
         }
     }
 }
 
-pub type Environment = GenericEnvironment<Ident, Thunk>;
+impl Closure {
+    pub fn atomic_closure(body: RichTerm) -> Closure {
+        let env: Environment = Environment::new();
+        Closure { body, env }
+    }
+}
+
+#[allow(type_alias_bounds)] // TODO: Look into this warning.
+pub type Environment = GenericEnvironment<Ident, CacheIndex>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -730,13 +762,17 @@ pub enum EnvBuildError {
 }
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
-pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildError> {
+pub fn env_add_term<C: Cache>(
+    cache: &mut C,
+    env: &mut Environment,
+    rt: RichTerm,
+) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
                 let ext = record.fields.into_iter().map(|(id, t)| {
                     (
                         id,
-                        Thunk::new(Closure::atomic_closure(t), IdentKind::Record),
+                        cache.add(Closure::atomic_closure(t), IdentKind::Record, BindingType::Normal),
                     )
                 });
 
@@ -748,32 +784,43 @@ pub fn env_add_term(env: &mut Environment, rt: RichTerm) -> Result<(), EnvBuildE
 }
 
 /// Bind a closure in an environment.
-pub fn env_add(env: &mut Environment, id: Ident, rt: RichTerm, local_env: Environment) {
+pub fn env_add<C: Cache>(
+    cache: &mut C,
+    env: &mut Environment,
+    id: Ident,
+    rt: RichTerm,
+    local_env: Environment,
+) {
     let closure = Closure {
         body: rt,
         env: local_env,
     };
-    env.insert(id, Thunk::new(closure, IdentKind::Let));
+    env.insert(id, cache.add(closure, IdentKind::Let, BindingType::Normal));
 }
 
 /// Pop and update all the thunks on the top of the stack with the given closure.
-fn update_thunks(stack: &mut Stack, closure: &Closure) {
-    while let Some(thunk) = stack.pop_thunk() {
-        thunk.update(closure.clone());
+fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Closure) {
+    while let Some(idx) = stack.pop_update_index() {
+        cache.update(closure.clone(), idx);
     }
 }
 
 /// Recursively substitute each variable occurrence of a term for its value in the environment.
-pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> RichTerm {
+pub fn subst<C: Cache>(
+    cache: &C,
+    rt: RichTerm,
+    initial_env: &Environment,
+    env: &Environment,
+) -> RichTerm {
     let RichTerm { term, pos } = rt;
 
     match term.into_owned() {
         Term::Var(id) => env
             .get(&id)
             .or_else(|| initial_env.get(&id))
-            .map(|thunk| {
-                let closure = thunk.get_owned();
-                subst(closure.body, initial_env, &closure.env)
+            .map(|idx| {
+                let closure = cache.get(idx.clone());
+                subst(cache, closure.body, initial_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
@@ -790,72 +837,72 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
         | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
         Term::Let(id, t1, t2, attrs) => {
-            let t1 = subst(t1, initial_env, env);
-            let t2 = subst(t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_env, env);
+            let t2 = subst(cache, t2, initial_env, env);
 
             RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
         }
         p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
         p @ Term::FunPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
         Term::App(t1, t2) => {
-            let t1 = subst(t1, initial_env, env);
-            let t2 = subst(t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_env, env);
+            let t2 = subst(cache, t2, initial_env, env);
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
         Term::Switch(t, cases, default) => {
             let default =
-                default.map(|d| subst(d, initial_env, env));
+                default.map(|d| subst(cache, d, initial_env, env));
             let cases = cases
                 .into_iter()
                 .map(|(id, t)| {
                     (
                         id,
-                        subst(t, initial_env, env),
+                        subst(cache, t, initial_env, env),
                     )
                 })
                 .collect();
-            let t = subst(t, initial_env, env);
+            let t = subst(cache, t, initial_env, env);
 
             RichTerm::new(Term::Switch(t, cases, default), pos)
         }
         Term::Op1(op, t) => {
-            let t = subst(t, initial_env, env);
+            let t = subst(cache, t, initial_env, env);
 
             RichTerm::new(Term::Op1(op, t), pos)
         }
         Term::Op2(op, t1, t2) => {
-            let t1 = subst(t1, initial_env, env);
-            let t2 = subst(t2, initial_env, env);
+            let t1 = subst(cache, t1, initial_env, env);
+            let t2 = subst(cache, t2, initial_env, env);
 
             RichTerm::new(Term::Op2(op, t1, t2), pos)
         }
         Term::OpN(op, ts) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(t, initial_env, env))
+                .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
             RichTerm::new(Term::OpN(op, ts), pos)
         }
         Term::Sealed(i, t, lbl) => {
-            let t = subst(t, initial_env, env);
+            let t = subst(cache, t, initial_env, env);
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record.map_fields(|_, t| subst(t, initial_env, env));
+            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record.map_fields(|_, t| subst(t, initial_env, env));
+            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()
                 .map(|(id_t, t)| {
                     (
-                        subst(id_t, initial_env, env),
-                        subst(t, initial_env, env),
+                        subst(cache, id_t, initial_env, env),
+                        subst(cache, t, initial_env, env),
                     )
                 })
                 .collect();
@@ -865,7 +912,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
         Term::Array(ts, attrs) => {
             let ts = ts
                 .into_iter()
-                .map(|t| subst(t, initial_env, env))
+                .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
             RichTerm::new(Term::Array(ts, attrs), pos)
@@ -876,7 +923,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
                 .map(|chunk| match chunk {
                     chunk @ StrChunk::Literal(_) => chunk,
                     StrChunk::Expr(t, indent) => StrChunk::Expr(
-                        subst(t, initial_env, env),
+                        subst(cache, t, initial_env, env),
                         indent,
                     ),
                 })
@@ -921,7 +968,7 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
             //     Contract { types, ..ctr }
             // });
 
-            let value = meta.value.map(|t| subst(t, initial_env, env));
+            let value = meta.value.map(|t| subst(cache, t, initial_env, env));
 
             let meta = MetaValue {
                 doc: meta.doc,
@@ -947,14 +994,20 @@ pub fn subst(rt: RichTerm, initial_env: &Environment, env: &Environment) -> Rich
 /// approximation and hence is necessarily incomplete. In practice, this function is able to
 /// traverse merge expressions and follow variables links, but within a limit (in the number of
 /// variables followed).
-pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
-    fn is_empty_optional_aux(rt: &RichTerm, env: &Environment, is_opt: bool, gas: &mut u8) -> bool {
+pub fn is_empty_optional<C: Cache>(cache: &C, rt: &RichTerm, env: &Environment) -> bool {
+    fn is_empty_optional_aux<C: Cache>(
+        cache: &C,
+        rt: &RichTerm,
+        env: &Environment,
+        is_opt: bool,
+        gas: &mut u8,
+    ) -> bool {
         match rt.as_ref() {
             Term::MetaValue(meta) => {
                 let is_opt = is_opt || meta.opt;
 
                 if let Some(ref next) = meta.value {
-                    is_empty_optional_aux(next, env, is_opt, gas)
+                    is_empty_optional_aux(cache, next, env, is_opt, gas)
                 } else {
                     is_opt
                 }
@@ -968,13 +1021,15 @@ pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
                 // - both branch are empty optionals
                 // - a wrapping metavalue is optional (is_opt is true at this point) and both
                 // branch are empty.
-                is_empty_optional_aux(t1, env, is_opt, gas)
-                    && is_empty_optional_aux(t2, env, is_opt, gas)
+                is_empty_optional_aux(cache, t1, env, is_opt, gas)
+                    && is_empty_optional_aux(cache, t2, env, is_opt, gas)
             }
             Term::Var(id) if *gas > 0 => {
-                if let Some(closure) = env.get(id).map(Thunk::borrow) {
-                    *gas -= 1;
-                    is_empty_optional_aux(&closure.body, &closure.env, is_opt, gas)
+                if let Some(index) = env.get(id) {
+                    cache.get_then(index.clone(), |clos| {
+                        *gas -= 1;
+                        is_empty_optional_aux(cache, &clos.body, &clos.env, is_opt, gas)
+                    })
                 } else {
                     false
                 }
@@ -986,7 +1041,7 @@ pub fn is_empty_optional(rt: &RichTerm, env: &Environment) -> bool {
     // The total amount of gas is rather abritrary, but in any case, it ought to stay low: remember
     // that is_empty_optional may be called on each field of a record when evaluatinog some record
     // operations.
-    is_empty_optional_aux(rt, env, false, &mut 8)
+    is_empty_optional_aux(cache, rt, env, false, &mut 8)
 }
 
 #[cfg(test)]

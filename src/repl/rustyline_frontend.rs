@@ -21,7 +21,7 @@ pub fn config() -> Config {
 
 /// Main loop of the REPL.
 pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
-    let mut repl = ReplImpl::new();
+    let mut repl = ReplImpl::<crate::eval::cache::CBNCache>::new();
 
     match repl.load_stdlib() {
         Ok(()) => (),

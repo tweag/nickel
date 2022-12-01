@@ -4,7 +4,10 @@ use criterion::Criterion;
 use nickel_lang::{
     cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
-    eval::VirtualMachine,
+    eval::{
+        cache::{CBNCache, Cache as EvalCache},
+        VirtualMachine,
+    },
     parser::{grammar, lexer},
     program::Program,
     term::{RichTerm, Term},
@@ -13,13 +16,16 @@ use nickel_lang::{
 
 use std::{io::Cursor, path::PathBuf};
 
+pub type EC = CBNCache;
+pub type TestProgram = Program<EC>;
+
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
-    let mut p = Program::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
+    let mut p = Program::<EC>::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
     p.eval().map(Term::from)
 }
 
 pub fn eval_file(f: &str) -> Result<Term, Error> {
-    let mut p = program_from_test_fixture(f);
+    let mut p: Program<EC> = program_from_test_fixture(f);
     p.eval().map(Term::from)
 }
 
@@ -32,11 +38,11 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
 }
 
 pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
-    let mut p = program_from_test_fixture(f);
+    let mut p: Program<EC> = program_from_test_fixture(f);
     p.typecheck()
 }
 
-fn program_from_test_fixture(f: &str) -> Program {
+fn program_from_test_fixture(f: &str) -> Program<EC> {
     let path = format!("{}/../tests/integration/{}", env!("CARGO_MANIFEST_DIR"), f);
     Program::new_from_file(&path)
         .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
@@ -127,10 +133,11 @@ impl<'b> Bench<'b> {
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
     let mut cache = Cache::new(ErrorTolerance::Strict);
+    let mut eval_cache = EC::new();
     let Envs {
         eval_env,
         type_ctxt,
-    } = cache.prepare_stdlib().unwrap();
+    } = cache.prepare_stdlib(&mut eval_cache).unwrap();
     Box::new(move |c: &mut Criterion| {
         rts.iter().for_each(|bench| {
             let t = bench.term();
@@ -148,7 +155,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                             c_local.typecheck(id, &type_ctxt).unwrap();
                         } else {
                             c_local.prepare(id, &type_ctxt).unwrap();
-                            VirtualMachine::new(c_local).eval(t, &eval_env).unwrap();
+                            VirtualMachine::new_with_cache(c_local, eval_cache.clone())
+                                .eval(t, &eval_env)
+                                .unwrap();
                         }
                     },
                     criterion::BatchSize::LargeInput,
@@ -191,14 +200,15 @@ macro_rules! ncl_bench_group {
         pub fn $group_name() {
             use nickel_lang::{
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
-                eval::VirtualMachine,
+                eval::{VirtualMachine, cache::Cache as EvalCache},
                 transform::import_resolution::resolve_imports,
             };
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = Cache::new(ErrorTolerance::Strict);
-            let Envs {eval_env, type_ctxt} = cache.prepare_stdlib().unwrap();
+            let mut eval_cache = nickel_lang_utilities::EC::new();
+            let Envs {eval_env, type_ctxt} = cache.prepare_stdlib(&mut eval_cache).unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;
                 let t = bench.term();
@@ -220,7 +230,7 @@ macro_rules! ncl_bench_group {
                                 c_local.typecheck(id, &type_ctxt).unwrap();
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
-                                VirtualMachine::new(c_local).eval(t, &eval_env).unwrap();
+                                VirtualMachine::new_with_cache(c_local, eval_cache.clone()).eval(t, &eval_env).unwrap();
                             }
                         },
                         criterion::BatchSize::LargeInput,

@@ -419,7 +419,7 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         types: Rc::new(types),
         tag: String::new(),
         span: mk_span(src_id, l, r),
-        arg_thunk: None,
+        arg_idx: None,
         arg_pos: TermPos::None,
         polarity: true,
         path: Vec::new(),

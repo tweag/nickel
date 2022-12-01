@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError, ImportError, TypecheckError};
-use nickel_lang::program::Program;
 use nickel_lang::term::Term;
+use nickel_lang_utilities::TestProgram;
 use std::io::BufReader;
 use std::path::PathBuf;
 
@@ -16,7 +16,7 @@ fn mk_import(file: &str) -> String {
 
 #[test]
 fn nested() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("nested.ncl").as_bytes()),
         "should_be = 3",
     )
@@ -26,7 +26,7 @@ fn nested() {
 
 #[test]
 fn root_path() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("root_path.ncl").as_bytes()),
         "should_be = 44",
     )
@@ -36,7 +36,7 @@ fn root_path() {
 
 #[test]
 fn multi_imports() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("multi_imports.ncl").as_bytes()),
         "should_be = 5",
     )
@@ -46,7 +46,7 @@ fn multi_imports() {
 
 #[test]
 fn contract_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("contract-fail.ncl").as_bytes()),
         "should_fail",
     )
@@ -59,7 +59,7 @@ fn contract_fail() {
 
 #[test]
 fn typecheck_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("typecheck-fail.ncl").as_bytes()),
         "should_fail",
     )
@@ -72,7 +72,7 @@ fn typecheck_fail() {
 
 #[test]
 fn static_typing_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(format!("(let x = {} in x) : Str", mk_import("two.ncl")).as_bytes()),
         "should_fail",
     )
@@ -86,7 +86,7 @@ fn static_typing_fail() {
 #[test]
 fn serialize() {
     use nickel_lang::term::Term;
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(
             format!(
                 "(builtin.serialize `Json ({})) == (builtin.serialize `Json ({{foo = \"ab\"}}))",
@@ -102,7 +102,7 @@ fn serialize() {
 
 #[test]
 fn circular_imports_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("cycle.ncl").as_bytes()),
         "should_fail",
     )
@@ -115,7 +115,7 @@ fn circular_imports_fail() {
 
 #[test]
 fn import_unexpected_token_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("unexpected_token.ncl").as_bytes()),
         "should_fail",
     )
@@ -128,7 +128,7 @@ fn import_unexpected_token_fail() {
 
 #[test]
 fn import_unexpected_token_in_record_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(
             format!(
                 "let x = {} in \"Hello, \" ++ x.name",
@@ -147,7 +147,7 @@ fn import_unexpected_token_in_record_fail() {
 
 #[test]
 fn import_unexpected_token_buried_fail() {
-    let mut prog = Program::new_from_source(
+    let mut prog = TestProgram::new_from_source(
         BufReader::new(
             format!(
                 "let _ign = {} in 1",

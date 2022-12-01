@@ -4,7 +4,7 @@
 //! information about the context of a contract failure.
 use std::rc::Rc;
 
-use crate::eval::lazy::Thunk;
+use crate::eval::cache::CacheIndex;
 use crate::position::{RawSpan, TermPos};
 use crate::types::{TypeF, Types};
 use codespan::Files;
@@ -246,8 +246,8 @@ pub struct Label {
     pub tag: String,
     /// The position of the original contract.
     pub span: RawSpan,
-    /// The thunk corresponding to the value being checked. Set at run-time by the interpreter.
-    pub arg_thunk: Option<Thunk>,
+    /// The index corresponding to the value being checked. Set at run-time by the interpreter.
+    pub arg_idx: Option<CacheIndex>,
     /// The original position of the value being checked. Set at run-time by the interpreter.
     pub arg_pos: TermPos,
     /// The polarity, used for higher-order contracts, that specifies if the current contract is
@@ -268,7 +268,7 @@ impl Label {
                 start: 0.into(),
                 end: 1.into(),
             },
-            arg_thunk: None,
+            arg_idx: None,
             arg_pos: TermPos::None,
             polarity: true,
             path: Vec::new(),
@@ -286,7 +286,7 @@ impl Default for Label {
                 start: 0.into(),
                 end: 1.into(),
             },
-            arg_thunk: None,
+            arg_idx: None,
             arg_pos: TermPos::None,
             polarity: true,
             path: Vec::new(),

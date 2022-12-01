@@ -1,14 +1,14 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError};
 use nickel_lang::position::TermPos;
-use nickel_lang::program::Program;
 use nickel_lang::term::RichTerm;
+use nickel_lang_utilities::TestProgram;
 use std::io::Cursor;
 
 fn eval_full(s: &str) -> Result<RichTerm, Error> {
     let src = Cursor::new(s);
 
-    let mut p = Program::new_from_source(src, "<test>").map_err(|io_err| {
+    let mut p = TestProgram::new_from_source(src, "<test>").map_err(|io_err| {
         Error::EvalError(EvalError::Other(
             format!("IO error: {}", io_err),
             TermPos::None,

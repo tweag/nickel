@@ -43,7 +43,10 @@
 //! times. For anything more complex, we return false.
 
 use super::*;
-use crate::{eval, term::UnaryOp};
+use crate::{
+    eval::{self, cache::Cache},
+    term::UnaryOp,
+};
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
@@ -95,7 +98,8 @@ impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for Sim
     }
 }
 
-impl TermEnvironment for eval::Environment {
+/*
+impl<C: Cache> TermEnvironment for eval::Environment {
     fn get_then<F, T>(&self, id: &Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
@@ -106,20 +110,21 @@ impl TermEnvironment for eval::Environment {
         }
     }
 }
+*/
 
-impl From<eval::Environment> for SimpleTermEnvironment {
-    fn from(eval_env: eval::Environment) -> Self {
+pub trait FromEnv<C: Cache> {
+    fn from_env(eval_env: eval::Environment, cache: &C) -> Self;
+}
+
+impl<C: Cache> FromEnv<C> for SimpleTermEnvironment {
+    fn from_env(eval_env: eval::Environment, cache: &C) -> Self {
         let generic_env: GenericEnvironment<_, _> = eval_env
             .iter_elems()
-            .map(|(id, thunk)| {
-                let borrowed = thunk.borrow();
-                (
-                    *id,
-                    (
-                        borrowed.body.clone(),
-                        SimpleTermEnvironment::from(borrowed.env.clone()),
-                    ),
-                )
+            .map(|(id, idx)| {
+                let borrowed = cache.get_then(idx.clone(), |c| {
+                    (c.body.clone(), Self::from_env(c.env.clone(), cache))
+                });
+                (*id, borrowed)
             })
             .collect();
         SimpleTermEnvironment(generic_env)
