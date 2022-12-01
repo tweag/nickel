@@ -30,30 +30,23 @@ impl<'b> Building<'b> {
         self.linearization.push(item)
     }
 
-    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
-        let ItemId {
-            file_id: decl_file,
-            index,
-        } = decl;
-        let kind = if file == decl_file {
+    fn get_item_kind_mut(&mut self, file: FileId, id: ItemId) -> Option<&mut TermKind> {
+        if file == id.file_id {
             // This usage references an item in the file we're currently linearizing
-            &mut self
-                .linearization
-                .get_mut(index)
-                .expect("Could not find parent")
-                .kind
+            let item = self.linearization.get_mut(id.index)?;
+            Some(&mut item.kind)
         } else {
             // This usage references an item in another file (that has already been linearized)
-            &mut self
-                .lin_cache
-                .get_mut(&decl_file)
-                .expect("Could not find parent")
-                .get_item_mut(decl)
-                .expect("Could not find parent")
-                .kind
-        };
+            let item = self.lin_cache.get_mut(&id.file_id)?.get_item_mut(id)?;
+            Some(&mut item.kind)
+        }
+    }
 
-        match kind {
+    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
+        match self
+            .get_item_kind_mut(file, decl)
+            .expect("Could not find parent")
+        {
             TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
             TermKind::Declaration(_, ref mut usages, _)
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
@@ -61,20 +54,7 @@ impl<'b> Building<'b> {
     }
 
     pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemId, value: ItemId) {
-        let ItemId {
-            file_id: decl_file,
-            index,
-        } = declaration;
-        let kind = if file == decl_file {
-            // This usage references an item in the file we're currently linearizing
-            self.linearization.get_mut(index).map(|item| &mut item.kind)
-        } else {
-            // This usage references an item in another file (that has already been linearized)
-            self.lin_cache
-                .get_mut(&decl_file)
-                .and_then(|lin| lin.get_item_mut(declaration).map(|item| &mut item.kind))
-        };
-
+        let kind = self.get_item_kind_mut(file, declaration);
         if let Some(TermKind::Declaration(_, _, value_state)) = kind {
             *value_state = ValueState::Known(value)
         }
