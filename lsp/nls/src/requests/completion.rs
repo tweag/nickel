@@ -7,7 +7,7 @@ use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams};
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
-    types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
+    types::{RecordRows, RecordRowsIteratorItem, TypeF, Types, VarKind},
 };
 use serde_json::Value;
 
@@ -98,6 +98,11 @@ impl IdentWithMeta {
     fn compute_completion_item_kind(&self) -> CompletionItemKind {
         match &self.info {
             TorC::T(Types(TypeF::Arrow(..))) => CompletionItemKind::Function,
+            TorC::T(Types(TypeF::Forall {
+                var_kind: VarKind::Type,
+                body,
+                ..
+            })) if matches!(**body, Types(TypeF::Arrow(..))) => CompletionItemKind::Function,
             TorC::T(_) => CompletionItemKind::Property,
             TorC::C(term) => match term.as_ref() {
                 Term::Fun(..) => CompletionItemKind::Function,
