@@ -2,7 +2,7 @@
 use super::{cache::CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
-    term::{FieldDeps, RichTerm, Term},
+    term::{record::FieldDeps, RichTerm, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};

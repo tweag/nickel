@@ -17,8 +17,8 @@ use crate::{
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{
-        make as mk_term, record::RecordData, BinaryOp, Contract, MetaValue, RecordAttrs, RichTerm,
-        StrChunk, Term, UnaryOp,
+        make as mk_term, record::RecordAttrs, record::RecordData, BinaryOp, Contract, MetaValue,
+        RichTerm, StrChunk, Term, UnaryOp,
     },
     types::{TypeF, Types},
 };

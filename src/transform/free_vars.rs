@@ -6,7 +6,10 @@
 use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
-    term::{FieldDeps, RecordDeps, RichTerm, SharedTerm, StrChunk, Term},
+    term::{
+        record::{FieldDeps, RecordDeps},
+        RichTerm, SharedTerm, StrChunk, Term,
+    },
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
 };
 

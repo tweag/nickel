@@ -11,14 +11,9 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
-use crate::term::{record::RecordData, MergePriority};
-use crate::{
-    error::IllegalPolymorphicTailAction,
-    term::{record, MetaValue},
-};
 
 use crate::{
-    error::EvalError,
+    error::{EvalError, IllegalPolymorphicTailAction},
     eval,
     eval::Cache,
     identifier::Ident,
@@ -29,8 +24,11 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::Array, make as mk_term, ArrayAttrs, BinaryOp, NAryOp, PendingContract, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        array::{Array, ArrayAttrs},
+        make as mk_term,
+        record::{self, RecordData},
+        BinaryOp, MergePriority, MetaValue, NAryOp, PendingContract, RichTerm, SharedTerm,
+        StrChunk, Term, UnaryOp,
     },
     transform::{apply_contracts::apply_contracts, Closurizable},
 };

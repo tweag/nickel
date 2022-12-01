@@ -367,7 +367,7 @@ mod tests {
     use crate::error::EvalError;
     use crate::eval::cache::CBNCache;
     use crate::position::TermPos;
-    use crate::term::ArrayAttrs;
+    use crate::term::array::ArrayAttrs;
     use assert_matches::assert_matches;
     use std::io::Cursor;
 

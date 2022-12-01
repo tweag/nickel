@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     environment::Environment,
     position::{RawSpan, TermPos},
-    term::{Contract, MergePriority, MetaValue, RecordAttrs, RichTerm, SharedTerm, Term},
+    term::{record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
     types::{
         EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
         UnboundTypeVariableError, VarKind,

@@ -96,7 +96,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
-        make as mk_term, record::RecordData, ArrayAttrs, BinaryOp, BindingType, LetAttrs,
+        array::ArrayAttrs, make as mk_term, record::RecordData, BinaryOp, BindingType, LetAttrs,
         MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
