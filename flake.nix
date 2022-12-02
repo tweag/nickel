@@ -107,8 +107,8 @@
         , rustExtensions ? [
             "rust-src"
             "rust-analysis"
-            "rustfmt-preview"
-            "clippy-preview"
+            "rustfmt"
+            "clippy"
           ]
         , channel ? "stable"
         , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
