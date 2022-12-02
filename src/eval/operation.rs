@@ -1912,7 +1912,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 match fields.insert(Ident::from(id), as_var) {
                                     Some(t) if !is_empty_optional(&t, &env2) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                                     _ => Ok(Closure {
-                                        body: Term::Record(RecordData::new(fields, record.attrs, record.sealed_tail)).into(),
+                                        body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
                                     }),
                                 }
@@ -1952,7 +1952,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                         id,
                                         String::from("(-$)"),
                                         RichTerm::new(
-                                            Term::Record(RecordData::new(fields, record.attrs, record.sealed_tail)),
+                                            Term::Record(RecordData { fields, ..record }),
                                             pos2,
                                         ),
                                         pos_op,
@@ -1961,7 +1961,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 else {
                                     Ok(Closure {
                                         body: RichTerm::new(
-                                            Term::Record(RecordData::new(fields, record.attrs, record.sealed_tail)), pos_op_inh
+                                            Term::Record(RecordData { fields, ..record }), pos_op_inh
                                         ),
                                         env: env2,
                                     })
