@@ -13,6 +13,10 @@
       inputs.flake-utils.follows = "flake-utils";
     };
     import-cargo.url = "github:edolstra/import-cargo";
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   nixConfig = {
@@ -27,6 +31,7 @@
     , pre-commit-hooks
     , rust-overlay
     , import-cargo
+    , crane
     }:
     let
       SYSTEMS = [
@@ -113,165 +118,121 @@
         , channel ? "stable"
         , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
         }:
-        let
-          _rust =
-            if channel == "nightly" then
-              pkgs.rust-bin.selectLatestNightlyWith
-                (toolchain: toolchain.${rustProfile}.override {
-                  extensions = rustExtensions;
-                  targets = [ target ];
-                })
-            else
-              pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
-                extensions = rustExtensions;
-                targets = [ target ];
-              };
-        in
-        pkgs.buildEnv {
-          name = _rust.name;
-          inherit (_rust) meta;
-          buildInputs = [ pkgs.makeWrapper ];
-          paths = [ _rust ];
-          pathsToLink = [ "/" "/bin" ];
-          # XXX: This is needed because cargo and clippy commands need to
-          # also be aware of other binaries in order to work properly.
-          # https://github.com/cachix/pre-commit-hooks.nix/issues/126
-          postBuild = ''
-            for i in $out/bin/*; do
-              wrapProgram "$i" --prefix PATH : "$out/bin"
-            done
-
-          '';
-        };
-
-      pre-commit-builder =
-        { rust ? mkRust { }
-        , nickel ? buildNickel { inherit rust; }
-        , isHermetic
-        }: pre-commit-hooks.lib.${system}.run {
-          src = self;
-          hooks = {
-            nixpkgs-fmt = {
-              enable = true;
-              excludes = [
-                "lsp/client-extension/default.nix"
-                "lsp/client-extension/node-env.nix"
-                "lsp/client-extension/node-packages.nix"
-              ];
-            };
-
-            rustfmt = {
-              enable = true;
-              entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
-            };
-
-            markdownlint = {
-              enable = true;
-              excludes = [
-                "notes/(.+)\\.md$"
-                "^RELEASES\\.md$"
-              ];
-            };
-
-            # The default `clippy` pre-commit-hook is too standard, hence we create our own.
-            # Compared to the default `clippy` hook, we customize the following:
-            # - custom Clippy options
-            # - in case of hermetic run (mostly used by CI), we reuse the Nixified Rust dependencies from `nickel`
-            custom-clippy =
-              let
-                allow = [
-                  "clippy::new-without-default"
-                  "clippy::match_like_matches_macro"
-                ];
-
-                allowOpts = builtins.concatStringsSep " "
-                  (builtins.map (lint: "--allow \"${lint}\"") allow);
-
-                # Clippy requires access to the crate registry because many lints require dependency information.
-                # Similarly to `buildNickel`, we support 2 modes:
-                # - when run as a shell hook, we want to be fast, so we let Cargo do incremental compilation, and download dependencies as needed.
-                #   This is mainly used by developers, who care about speed at the expense of hermeticity.
-                # - when run as a flake check, we want to be fully reproducible, so we Nixify Cargo dependency resolution.
-                #   This is mainly used by CI, where the extra time is not such a big deal.
-                offlineOpts = pkgs.lib.optionalString isHermetic "--frozen --offline";
-
-                # When running in hermetic mode, all Rust dependencies must be already present.
-                # Hence we can't just call `cargo` directly, as it would try to download dependencies.
-                # Hence we do the following:
-                # - `source ${nickel.inputDerivation}` to set the environment variables `buildInputs` and `stdenv` just like in a Nickel build.
-                #   The `buildInputs` will contain the path to Nixified Rust dependencies (a.k.a. `cargoHome`), as well as other build inputs, like `Security` for Darwin.
-                #   ⚠️ This will also completely unset `PATH`, and *update* various environment variables used in downstream scripts, like `TMPDIR`.
-                # - `source $stdenv/setup` does a lot of Nix magic, including loading in the `PATH` everything in the `buildInputs` environment variable.
-                #
-                # 💡 The other commands are needed for Darwin builds to undo some changes of `source ${nickel.inputDerivation}`.
-                #    For Linux, these extra commands are unnecessary (because their value is "updated" from `/build` to `/build`), though harmless.
-                nickelBuildInputsSetup = pkgs.lib.optionalString isHermetic ''
-                  nix_build_top=$NIX_BUILD_TOP
-                  source ${nickel.inputDerivation}
-                  NIX_BUILD_TOP=$nix_build_top
-                  TEMP=$nix_build_top
-                  TEMPDIR=$nix_build_top
-                  TMP=$nix_build_top
-                  TMPDIR=$nix_build_top
-                  source $stdenv/setup
-                '';
-              in
-              {
-                enable = true;
-                files = "\\.rs$";
-                pass_filenames = false;
-                entry =
-                  "${pkgs.writeShellScript "clippy-hook" ''
-                    ${nickelBuildInputsSetup}
-                    cargo clippy --workspace ${offlineOpts} -- --no-deps --deny warnings ${allowOpts}
-                  ''}";
-              };
+        if channel == "nightly" then
+          pkgs.rust-bin.selectLatestNightlyWith
+            (toolchain: toolchain.${rustProfile}.override {
+              extensions = rustExtensions;
+              targets = [ target ];
+            })
+        else
+          pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
+            extensions = rustExtensions;
+            targets = [ target ];
           };
+
+      pre-commit-builder = { rust ? mkRust { } }: pre-commit-hooks.lib.${system}.run {
+        src = self;
+        hooks = {
+          nixpkgs-fmt = {
+            enable = true;
+            # Excluded because they are generated by Node2nix
+            excludes = [
+              "lsp/client-extension/default.nix"
+              "lsp/client-extension/node-env.nix"
+              "lsp/client-extension/node-packages.nix"
+            ];
+          };
+
+          rustfmt = {
+            enable = true;
+            # Silly test to ensure Crane's `rustfmt` check was run
+            entry = pkgs.lib.mkForce "test -d ${(mkCraneArtifacts {inherit rust;}).rustfmt}/target";
+          };
+
+          markdownlint = {
+            enable = true;
+            excludes = [
+              "notes/(.+)\\.md$"
+              "^RELEASES\\.md$"
+            ];
+          };
+
         };
+      };
 
-      buildNickel =
-        { rust ? mkRust { }, withCargoHome ? true }:
-        pkgs.stdenv.mkDerivation {
-          name = "nickel-${version}";
+      # Build the various Crane artifacts (dependencies, packages, rustfmt, clippy) for a given Rust toolchain
+      mkCraneArtifacts = { rust ? mkRust { } }:
+        let
+          craneLib = crane.lib.${system}.overrideToolchain rust;
 
-          buildInputs =
-            [ rust ]
-            # cargoHome is used for a fully, hermetic, nixified build. This is
-            # what we want for e.g. nix-build. However, when hacking on Nickel,
-            # we rather provide the necessary tooling but let people use the
-            # native way (`cargo build`), because:
-            #
-            # - we don't care as much about hermeticity when iterating quickly
-            #   over the codebase
-            # - we get incremental build and a build order of magnitudes
-            #   faster
-            # - etc.
-            ++ pkgs.lib.optional withCargoHome cargoHome
-            ++ missingSysPkgs;
+          # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
+          src =
+            let
+              mkFilter = regexp: path: _type: builtins.match regexp path != null;
+              lalrpopFilter = mkFilter ".*lalrpop$";
+              nclFilter = mkFilter ".*ncl$";
+              txtFilter = mkFilter ".*txt$";
+            in
+            pkgs.lib.cleanSourceWith {
+              src = pkgs.lib.cleanSource ./.;
 
-          src = self;
+              # Combine our custom filters with the default one from Crane
+              # See https://github.com/ipetkov/crane/blob/master/docs/API.md#libfiltercargosources
+              filter = path: type:
+                builtins.any (filter: filter path type) [
+                  lalrpopFilter
+                  nclFilter
+                  txtFilter
+                  craneLib.filterCargoSources
+                ];
+            };
 
-          buildPhase = ''
-            cargo build --workspace --exclude nickel-repl --release --frozen --offline
-          '';
+          # Args passed to all `cargo` invocations by Crane.
+          cargoExtraArgs = "--frozen --offline --workspace";
 
-          doCheck = true;
+        in
+        rec {
+          # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
+          cargoArtifacts = craneLib.buildDepsOnly {
+            inherit
+              src
+              cargoExtraArgs;
+          };
 
-          checkPhase = ''
-            cargo test --release --frozen --offline
-          '';
+          nickel = craneLib.buildPackage {
+            inherit
+              src
+              cargoExtraArgs
+              cargoArtifacts;
+          };
 
-          installPhase = ''
-            mkdir -p $out
-            cargo install --frozen --offline --path . --root $out
-            cargo install --frozen --offline --path lsp/nls --root $out
-            rm $out/.crates.toml
-          '';
+          rustfmt = craneLib.cargoFmt {
+            # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
+            inherit src;
+
+            # We don't reuse the `cargoExtraArgs` in scope because `cargo fmt` does not accept nor need any of `--frozen`, `--offline` or `--workspace`
+            cargoExtraArgs = "--all";
+
+            # `-- --check` is automatically prepended by Crane
+            rustFmtExtraArgs = "--color always";
+          };
+
+          clippy = craneLib.cargoClippy {
+            inherit
+              src
+              cargoExtraArgs
+              cargoArtifacts;
+
+            cargoClippyExtraArgs = "--all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
+          };
 
         };
 
       makeDevShell = { rust }: pkgs.mkShell {
-        inputsFrom = [ (buildNickel { inherit rust; withCargoHome = false; }) ];
+        # Trick found in Crane's examples to get a nice dev shell
+        # See https://github.com/ipetkov/crane/blob/master/examples/quick-start/flake.nix
+        inputsFrom = builtins.attrValues (mkCraneArtifacts { inherit rust; });
+
         buildInputs = [
           pkgs.rust-analyzer
           pkgs.nodejs
@@ -279,7 +240,7 @@
           pkgs.nodePackages.markdownlint-cli
         ];
 
-        shellHook = (pre-commit-builder { inherit rust; isHermetic = false; }).shellHook + ''
+        shellHook = (pre-commit-builder { inherit rust; }).shellHook + ''
           echo "=== Nickel development shell ==="
           echo "Info: Git hooks can be installed using \`pre-commit install\`"
         '';
@@ -376,33 +337,33 @@
     in
     rec {
       packages = {
-        default = packages.build;
-        build = buildNickel { };
-        buildWasm = buildNickelWasm { };
-        dockerImage = buildDocker packages.build; # TODO: docker image should be a passthru
+        nickel = (mkCraneArtifacts { }).nickel;
+        default = packages.nickel;
+        nickelWasm = buildNickelWasm { };
+        dockerImage = buildDocker packages.nickel; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
         inherit stdlibDoc;
       };
 
-      devShells = {
+      devShells = (forEachRustChannel (channel: {
+        name = channel;
+        value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
+      })) // {
         default = devShells.stable;
-      } // (forEachRustChannel
-        (channel: {
-          name = channel;
-          value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
-        }
-        ));
+      };
 
       checks = {
         # wasm-opt can take long: eschew optimizations in checks
         wasm = buildNickelWasm { optimize = false; };
+        clippy = (mkCraneArtifacts { }).clippy;
+        rustfmt = (mkCraneArtifacts { }).rustfmt;
         inherit vscodeExtension;
-        pre-commit = pre-commit-builder { isHermetic = true; };
+        pre-commit = pre-commit-builder { };
       } // (forEachRustChannel (channel:
         {
           name = "nickel-against-${channel}-rust-channel";
-          value = buildNickel { rust = mkRust { inherit channel; }; };
+          value = (mkCraneArtifacts { rust = mkRust { inherit channel; }; }).nickel;
         }
       ));
     }
