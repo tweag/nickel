@@ -386,40 +386,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                Term::Switch(exp, cases, default) => {
-                    self.set_mode(EvalMode::UnwrapMeta);
 
-                    let has_default = default.is_some();
-
-                    if let Some(t) = default {
-                        self.stack.push_arg(
-                            Closure {
-                                body: t.clone(),
-                                env: env.clone(),
-                            },
-                            pos,
-                        );
-                    }
-
-                    self.stack.push_arg(
-                        Closure {
-                            body: RichTerm::new(
-                                Term::Record(RecordData::with_fields(cases.clone())),
-                                pos,
-                            ),
-                            env: env.clone(),
-                        },
-                        pos,
-                    );
-
-                    Closure {
-                        body: RichTerm::new(
-                            Term::Op1(UnaryOp::Switch(has_default), exp.clone()),
-                            pos,
-                        ),
-                        env,
-                    }
-                }
                 Term::Op1(op, t) => {
                     self.set_mode(op.eval_mode());
 
@@ -686,6 +653,64 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         return Ok((RichTerm::new(Term::Fun(*x, t.clone()), pos), env));
                     }
                 }
+                // A match expression acts as a function (in Nickel, a match expression corresponds
+                // to the cases, and doesn't include the examined value).
+                //
+                // The behavior is the same as for a function: we look for an argument on the
+                // stack, and proceed to the evaluation of the match, or stop here otherwise. If
+                // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
+                // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
+                // argument `arg` and doing the actual matching operation.
+                Term::Match { cases, default } => {
+                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                        // Setting the stack to be as if we would have evaluated an application
+                        // `_ cases default`, where `default` is optional, and `_` is not relevant.
+
+                        let has_default = default.is_some();
+
+                        if let Some(t) = default {
+                            self.stack.push_arg(
+                                Closure {
+                                    body: t.clone(),
+                                    env: env.clone(),
+                                },
+                                pos,
+                            );
+                        }
+
+                        self.stack.push_arg(
+                            Closure {
+                                body: RichTerm::new(
+                                    Term::Record(RecordData::with_fields(cases.clone())),
+                                    pos,
+                                ),
+                                env: env.clone(),
+                            },
+                            pos,
+                        );
+
+                        // Now evaluating `%match% arg`, the left-most part of the application `%match%
+                        // arg cases default`, which is in fact a primop application.
+                        self.stack.push_op_cont(
+                            OperationCont::Op1(UnaryOp::Match { has_default }, pos_app),
+                            self.call_stack.len(),
+                            pos,
+                        );
+
+                        arg
+                    } else {
+                        return Ok((
+                            RichTerm::new(
+                                Term::Match {
+                                    cases: cases.clone(),
+                                    default: default.clone(),
+                                },
+                                pos,
+                            ),
+                            env,
+                        ));
+                    }
+                }
                 // Otherwise, this is either an ill-formed application, or we are done
                 t => {
                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
@@ -850,7 +875,7 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::App(t1, t2), pos)
         }
-        Term::Switch(t, cases, default) => {
+        Term::Match {cases, default} => {
             let default =
                 default.map(|d| subst(cache, d, initial_env, env));
             let cases = cases
@@ -862,9 +887,8 @@ pub fn subst<C: Cache>(
                     )
                 })
                 .collect();
-            let t = subst(cache, t, initial_env, env);
 
-            RichTerm::new(Term::Switch(t, cases, default), pos)
+            RichTerm::new(Term::Match {cases, default}, pos)
         }
         Term::Op1(op, t) => {
             let t = subst(cache, t, initial_env, env);

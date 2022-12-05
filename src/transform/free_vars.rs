@@ -88,8 +88,7 @@ impl CollectFreeVars for RichTerm {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
             }
-            Term::Switch(t, cases, default) => {
-                t.collect_free_vars(free_vars);
+            Term::Match { cases, default } => {
                 for t in cases.values_mut().chain(default.iter_mut()) {
                     t.collect_free_vars(free_vars);
                 }

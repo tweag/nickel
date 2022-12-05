@@ -5,7 +5,7 @@ use crate::parser::error::ParseError as InternalParseError;
 use crate::term::make as mk_term;
 use crate::term::Term::*;
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
-use crate::{mk_app, mk_switch};
+use crate::{mk_app, mk_match};
 use assert_matches::assert_matches;
 use codespan::Files;
 
@@ -177,14 +177,20 @@ fn enum_terms() {
             Enum(Ident::from("this works!")).into(),
         ),
         (
-            "switch with raw tags",
-            "switch { `foo => true, `bar => false, _ => 456, } 123",
-            mk_switch!(Num(123.), ("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.)),
+            "match with raw tags",
+            "match { `foo => true, `bar => false, _ => 456, } 123",
+            mk_app!(
+                mk_match!(("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.)),
+                Num(123.)
+            ),
         ),
         (
-            "switch with string tags",
-            "switch { `\"one:two\" => true, `\"three four\" => false, _ => 13 } 1",
-            mk_switch!(Num(1.), ("one:two", Bool(true)), ("three four", Bool(false)) ; Num(13.)),
+            "match with string tags",
+            "match { `\"one:two\" => true, `\"three four\" => false, _ => 13 } 1",
+            mk_app!(
+                mk_match!(("one:two", Bool(true)), ("three four", Bool(false)) ; Num(13.)),
+                Num(1.)
+            ),
         ),
     ];
 

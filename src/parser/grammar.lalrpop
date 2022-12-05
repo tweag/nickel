@@ -236,28 +236,6 @@ UniTerm: UniTerm = {
 
         UniTerm::from(rt)
     },
-    "switch" "{" <cases: (SwitchCase ",")*> <last: SwitchCase?> "}"
-        <exp: Term> => {
-        let mut acc = HashMap::with_capacity(cases.len());
-        let mut default = None;
-
-        for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
-            match case {
-                SwitchCase::Normal(id, t) => acc.insert(id, t),
-                // If there are multiple default cases, the last one silently
-                // erases the others. We should have a dedicated error for that
-                SwitchCase::Default(t) => default.replace(t),
-            };
-        }
-
-        UniTerm::from(
-            Term::Switch(
-                exp,
-                acc,
-                default,
-            )
-        )
-    },
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
     <l: @L> <t: !> <r: @R> => {
@@ -300,6 +278,26 @@ Applicative: UniTerm = {
         => UniTerm::from(mk_term::op2(op, t1, t2)),
     NOpPre<AsTerm<RecordOperand>>,
     RecordOperand,
+    "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
+        let mut acc = HashMap::with_capacity(cases.len());
+        let mut default = None;
+
+        for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
+            match case {
+                MatchCase::Normal(id, t) => acc.insert(id, t),
+                // If there are multiple default cases, the last one silently
+                // erases the others. We should have a dedicated error for that
+                MatchCase::Default(t) => default.replace(t),
+            };
+        }
+
+        UniTerm::from(
+            Term::Match {
+                cases: acc,
+                default,
+            }
+        )
+    },
 };
 
 // The parametrized array type.
@@ -580,15 +578,15 @@ UOp: UnaryOp = {
     "num_from" => UnaryOp::NumFromStr(),
     "enum_from" => UnaryOp::EnumFromStr(),
     "str_is_match" => UnaryOp::StrIsMatch(),
-    "str_match" => UnaryOp::StrMatch(),
+    "str_find" => UnaryOp::StrFind(),
     "rec_force_op" => UnaryOp::RecForce(),
     "rec_default_op" => UnaryOp::RecDefault(),
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
 };
 
-SwitchCase: SwitchCase = {
-    <id: EnumTag> "=>" <t: Term> => SwitchCase::Normal(id, t),
-    "_" "=>" <t: Term> => SwitchCase::Default(<>),
+MatchCase: MatchCase = {
+    <id: EnumTag> "=>" <t: Term> => MatchCase::Normal(id, t),
+    "_" "=>" <t: Term> => MatchCase::Default(<>),
 }
 
 // Infix operators by precedence levels. Lowest levels take precedence over
@@ -845,7 +843,7 @@ extern {
         "in" => Token::Normal(NormalToken::In),
         "let" => Token::Normal(NormalToken::Let),
         "rec" => Token::Normal(NormalToken::Rec),
-        "switch" => Token::Normal(NormalToken::Switch),
+        "match" => Token::Normal(NormalToken::Match),
 
         "null" => Token::Normal(NormalToken::Null),
         "true" => Token::Normal(NormalToken::True),
@@ -951,7 +949,7 @@ extern {
         "str_replace" => Token::Normal(NormalToken::StrReplace),
         "str_replace_regex" => Token::Normal(NormalToken::StrReplaceRegex),
         "str_is_match" => Token::Normal(NormalToken::StrIsMatch),
-        "str_match" => Token::Normal(NormalToken::StrMatch),
+        "str_find" => Token::Normal(NormalToken::StrFind),
         "str_length" => Token::Normal(NormalToken::StrLength),
         "str_substr" => Token::Normal(NormalToken::StrSubstr),
         "str_from" => Token::Normal(NormalToken::ToStr),

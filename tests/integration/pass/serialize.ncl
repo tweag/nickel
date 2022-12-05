@@ -21,9 +21,9 @@ let assertDeserInv = fun x =>
   assertSerInv {val = ["a", 3, []]},
   assertSerInv {a.foo.bar = "2", b = false, c = [{d = "e"}, {d = "f"}]},
 
-  # regression test for a previously missing `#[serde(skip)]` on the `Switch`
+  # regression test for a previously missing `#[serde(skip)]` on the `Match`
   # variant of `term::Term`. That was causing a list with the right size to be
-  # serialized as a `Switch` instead of an array. This test checks that lists of
+  # serialized as a `Match` instead of an array. This test checks that lists of
   # various sizes don't get misinterpreted again as a term construct that misses a
   # `#[serde(skip)]` annotations
   {

@@ -21,7 +21,5 @@ let {check, Assert, ..} = import "testlib.ncl" in
 
   # others_precedence
   ((fun x => x | Assert) true),
-  (let AssertOk = fun l t => if t == `Ok then t else %blame% l in
-    switch {`Ok => true, `Err => false} `Ok | AssertOk),
 ]
 |> check
