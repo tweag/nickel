@@ -419,8 +419,8 @@ impl ArrayAttrs {
 }
 
 pub mod record {
-    use super::{RecordAttrs, RichTerm};
-    use crate::identifier::Ident;
+    use super::{RecordAttrs, RichTerm, SealingKey};
+    use crate::{identifier::Ident, label::Label};
     use std::collections::HashMap;
 
     /// The base structure of a Nickel record.
@@ -433,11 +433,21 @@ pub mod record {
         pub fields: HashMap<Ident, RichTerm>,
         /// Attributes which may be applied to a record.
         pub attrs: RecordAttrs,
+        /// The hidden part of a record under a polymorphic contract.
+        pub sealed_tail: Option<SealedTail>,
     }
 
     impl RecordData {
-        pub fn new(fields: HashMap<Ident, RichTerm>, attrs: RecordAttrs) -> Self {
-            RecordData { fields, attrs }
+        pub fn new(
+            fields: HashMap<Ident, RichTerm>,
+            attrs: RecordAttrs,
+            sealed_tail: Option<SealedTail>,
+        ) -> Self {
+            RecordData {
+                fields,
+                attrs,
+                sealed_tail,
+            }
         }
 
         /// A record with no fields and the default set of attributes.
@@ -448,7 +458,12 @@ pub mod record {
         /// A record with the provided fields & the default set of attributes.
         pub fn with_fields(fields: HashMap<Ident, RichTerm>) -> Self {
             let attrs = Default::default();
-            RecordData { fields, attrs }
+            let sealed_tail = Default::default();
+            RecordData {
+                fields,
+                attrs,
+                sealed_tail,
+            }
         }
 
         /// Returns the record resulting from applying the provided function
@@ -466,6 +481,41 @@ pub mod record {
                 .map(|(id, t)| (id, f(id, t)))
                 .collect();
             RecordData { fields, ..self }
+        }
+    }
+
+    /// The sealed tail of a Nickel record under a polymorphic contract.
+    ///
+    /// Note that access to the enclosed [term] must only be allowed when a
+    /// matching [sealing_key] is provided. If this is not enforced it will
+    /// lead to parametricity violations.
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct SealedTail {
+        /// The key with which the tail is sealed.
+        sealing_key: SealingKey,
+        /// The label to which blame will be attributed if code tries to
+        /// interact with the sealed tail in any way.
+        pub label: Label,
+        /// The term which is sealed.
+        term: RichTerm,
+    }
+
+    impl SealedTail {
+        pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm) -> Self {
+            Self {
+                sealing_key,
+                label,
+                term,
+            }
+        }
+
+        /// Returns the sealed term if the key matches, otherwise returns None.
+        pub fn unseal(&self, key: &SealingKey) -> Option<&RichTerm> {
+            if key == &self.sealing_key {
+                Some(&self.term)
+            } else {
+                None
+            }
         }
     }
 }
@@ -1302,6 +1352,14 @@ pub enum UnaryOp {
     PushDefault(),
     /// doc: TODO
     PushForce(),
+
+    /// Creates an "empty" record with the sealed tail of its [`Term::Record`]
+    /// argument.
+    ///
+    /// Used in the `$record` contract implementation to ensure that we can
+    /// define a `field_diff` function that preserves the sealed polymorphic
+    /// tail of its argument.
+    RecordEmptyWithTail(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
@@ -1472,6 +1530,23 @@ pub enum NAryOp {
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
+    /// Seals one record into the tail of another. Used to ensure that functions
+    /// using polymorphic record contracts do not violate parametricity.
+    ///
+    /// Takes four arguments:
+    ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
+    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is attempted,
+    ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
+    ///   - the [record](Term::Record) that we wish to seal.
+    RecordSealTail(),
+    /// Unseals a term from the tail of a record and returns it.
+    ///
+    /// Takes three arguments:
+    ///   - the [sealing key](Term::SealingKey), which was used to seal the tail,
+    ///   - a [label](Term::Label) which will be used to assign blame correctly if
+    ///     something goes wrong while unsealing,
+    ///   - the [record](Term::Record) whose tail we wish to unseal.
+    RecordUnsealTail(),
 }
 
 impl NAryOp {
@@ -1480,7 +1555,9 @@ impl NAryOp {
             NAryOp::StrReplace()
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
-            | NAryOp::MergeContract() => 3,
+            | NAryOp::MergeContract()
+            | NAryOp::RecordUnsealTail() => 3,
+            NAryOp::RecordSealTail() => 4,
         }
     }
 
@@ -1496,6 +1573,8 @@ impl fmt::Display for NAryOp {
             NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
             NAryOp::MergeContract() => write!(f, "mergeContract"),
+            NAryOp::RecordSealTail() => write!(f, "%record_seal_tail%"),
+            NAryOp::RecordUnsealTail() => write!(f, "%record_unseal_tail%"),
         }
     }
 }
@@ -1656,7 +1735,7 @@ impl RichTerm {
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
                     .collect();
-                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs)), pos)
+                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1676,7 +1755,7 @@ impl RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs), dyn_fields_res?, deps),
+                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs, record.sealed_tail), dyn_fields_res?, deps),
                     pos,
                 )
             },
@@ -1915,7 +1994,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::new(fields, Default::default())))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_fields(fields)))
             }
         };
     }

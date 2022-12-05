@@ -25,6 +25,8 @@ use crate::{
     types::{TypeF, Types},
 };
 
+use self::blame_error::ExtendWithCallStack;
+
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
@@ -92,10 +94,33 @@ pub enum EvalError {
         String,  /* error message */
         TermPos, /* position of the call to deserialize */
     ),
+    /// A polymorphic record contract was broken somewhere.
+    IllegalPolymorphicTailAccess {
+        action: IllegalPolymorphicTailAction,
+        label: label::Label,
+        call_stack: CallStack,
+    },
     /// An unexpected internal error.
     InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
     Other(String, TermPos),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum IllegalPolymorphicTailAction {
+    Map,
+    Merge,
+}
+
+impl IllegalPolymorphicTailAction {
+    fn message(&self) -> &'static str {
+        use IllegalPolymorphicTailAction::*;
+
+        match self {
+            Map => "cannot map over a record sealed by a polymorphic contract",
+            Merge => "cannot merge a record sealed by a polymorphic contract",
+        }
+    }
 }
 
 /// An error occurring during the static typechecking phase.
@@ -690,113 +715,6 @@ fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
 }
 
-/// Generate a codespan label that describes the [type path][crate::label::TyPath] of a (Nickel)
-/// label, and notes to hint at the situation that may have caused the corresponding error.
-fn report_ty_path(l: &label::Label, files: &mut Files<String>) -> (Label<FileId>, Vec<String>) {
-    let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
-
-    let (msg, notes) = if l.path.is_empty() {
-        (String::from("expected type"), Vec::new())
-    } else if ty_path::has_no_arrow(&l.path) {
-        match l.path.last() {
-            Some(ty_path::Elem::Array) => (String::from("expected array element type"), Vec::new()),
-            Some(ty_path::Elem::Field(_)) => (String::from("expected field type"), Vec::new()),
-            _ => unreachable!(),
-        }
-    }
-    // If the path is only composed of codomains, polarity is necessarily true and the cause of the
-    // blame is the return value of the function
-    else if ty_path::is_only_codom(&l.path) {
-        (
-            String::from("expected return type"),
-            vec![
-                String::from(
-                    "This error may happen in the following situation:
-1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
-2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
-                ),
-                String::from(
-                    "Either change the contract accordingly, or change the return value of `f`",
-                ),
-            ],
-        )
-    } else {
-        // We ignore the `Field` and `Array` elements of the path, since they do not impact
-        // polarity, and only consider "higher-order" elements to customize error messages.
-        let last = l
-            .path
-            .iter()
-            .filter(|elt| matches!(*elt, ty_path::Elem::Domain | ty_path::Elem::Codomain))
-            .last()
-            .unwrap();
-        match last {
-            ty_path::Elem::Domain if l.polarity => {
-                (String::from("expected type of an argument of an inner call"),
-                 vec![
-                     String::from("This error may happen in the following situation:
-1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
-2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
-3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
-                     String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
-                     end_note,
-                 ])
-            }
-            ty_path::Elem::Codomain if l.polarity => {
-                (String::from("expected return type of a sub-function passed as an argument of an inner call"),
-                 vec![
-                     String::from("This error may happen in the following situation:
-1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
-2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
-3. `g` itself takes a function as an argument.
-4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
-                     String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
-                     end_note,
-                 ])
-            }
-            ty_path::Elem::Domain => {
-                (String::from("expected type of the argument provided by the caller"),
-                 vec![
-                     String::from("This error may happen in the following situation:
-1. A function `f` is bound by a contract: e.g. `Num -> Num`.
-2. `f` is called with an argument of the wrong type: e.g. `f false`."),
-                     String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
-                     end_note,
-                 ])
-            }
-            ty_path::Elem::Codomain => {
-                (String::from("expected return type of a function provided by the caller"),
-                 vec![
-                     String::from("This error may happen in the following situation:
-1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
-2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
-3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
-                     String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
-                     end_note,
-                 ])
-            }
-            _ => panic!(),
-        }
-    };
-
-    let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
-    let label = Label::new(
-        LabelStyle::Secondary,
-        files.add("", format!("{}", l.types)),
-        start..end,
-    )
-    .with_message(msg);
-    (label, notes)
-}
-
-/// Return a note diagnostic showing where a contract was bound.
-fn blame_label_note(l: &label::Label) -> Diagnostic<FileId> {
-    Diagnostic::note().with_labels(vec![Label::primary(
-        l.span.src_id,
-        l.span.start.to_usize()..l.span.end.to_usize(),
-    )
-    .with_message("bound here")])
-}
-
 impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
@@ -830,116 +748,26 @@ impl ToDiagnostic<FileId> for EvalError {
                 let mut msg = String::new();
 
                 // Writing in a string should not raise an error, hence the fearless `unwrap()`
-                if ty_path::has_no_arrow(&l.path) {
-                    // An empty path or a path that contains only fields necessarily corresponds to
-                    // a positive blame
-                    assert!(l.polarity);
-                    write!(&mut msg, "contract broken by a value").unwrap();
-                } else if l.polarity {
-                    write!(&mut msg, "contract broken by a function").unwrap();
-                } else {
-                    write!(&mut msg, "contract broken by the caller").unwrap();
-                }
+                write!(&mut msg, "{}", blame_error::title(l)).unwrap();
 
                 if !l.tag.is_empty() {
                     write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
                 }
 
-                let (path_label, notes) = report_ty_path(l, files);
-                let mut labels = vec![path_label];
-
-                if let Some(ref arg_pos) = l.arg_pos.into_opt() {
-                    // In some cases, if the blame error is located in an argument or return value
-                    // of an higher order functions for example, the original argument position can
-                    // point to the builtin implementation contract like `func` or `record`, so
-                    // there's no good reason to show it. Note than even in that case, the
-                    // information contained in the argument thunk can still be useful.
-                    if contract_id
-                        .map(|ctrs_id| arg_pos.src_id != ctrs_id)
-                        .unwrap_or(true)
-                    {
-                        labels.push(primary(arg_pos).with_message("applied to this expression"));
-                    }
-                }
-
-                // If we have a reference to the thunk that was being tested, we can try to show
-                // more information about the final, evaluated value that is responsible for the
-                // blame.
-                if let Some(ref thunk) = l.arg_thunk {
-                    let mut val = thunk.get_owned().body;
-
-                    match (val.pos, l.arg_pos.as_opt_ref(), contract_id) {
-                        // Avoid showing a position inside builtin contracts, it's rarely
-                        // informative.
-                        (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
-                            val.pos = TermPos::None;
-                            labels.push(
-                                secondary_term(&val, files).with_message("evaluated to this value"),
-                            );
-                        }
-                        // Do not show the same thing twice: if arg_pos and val_pos are the same,
-                        // the first label "applied to this value" is sufficient.
-                        (TermPos::Original(ref val_pos), Some(arg_pos), _)
-                            if val_pos == arg_pos => {}
-                        (TermPos::Original(ref val_pos), ..) => labels
-                            .push(secondary(val_pos).with_message("evaluated to this expression")),
-                        // If the final thunk is a direct reduct of the original value, rather
-                        // print the actual value than referring to the same position as
-                        // before.
-                        (TermPos::Inherited(ref val_pos), Some(arg_pos), _)
-                            if val_pos == arg_pos =>
-                        {
-                            val.pos = TermPos::None;
-                            labels.push(
-                                secondary_term(&val, files).with_message("evaluated to this value"),
-                            );
-                        }
-                        // Finally, if the parameter reduced to a value which originates from a
-                        // different expression, show both the expression and the value.
-                        (TermPos::Inherited(ref val_pos), ..) => {
-                            labels.push(
-                                secondary(val_pos).with_message("evaluated to this expression"),
-                            );
-                            val.pos = TermPos::None;
-                            labels.push(
-                                secondary_term(&val, files).with_message("evaluated to this value"),
-                            );
-                        }
-                        (TermPos::None, ..) => labels.push(
-                            secondary_term(&val, files).with_message("evaluated to this value"),
-                        ),
-                    }
-                }
+                let (path_label, notes) = blame_error::report_ty_path(l, files);
+                let labels =
+                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(blame_label_note(l));
+                diagnostics.push(blame_error::note(l));
 
                 if ty_path::is_only_codom(&l.path) {
                 } else if let Some(id) = contract_id {
-                    let (calls, curr_call) = call_stack.group_by_calls(id);
-                    let diag_curr_call = curr_call.map(|cdescr| {
-                        let name = cdescr
-                            .head
-                            .map(|ident| ident.to_string())
-                            .unwrap_or_else(|| String::from("<func>"));
-                        Diagnostic::note().with_labels(vec![primary(&cdescr.span)
-                            .with_message(format!("While calling to {}", name))])
-                    });
-                    let diags = calls.into_iter().enumerate().map(|(i, cdescr)| {
-                        let name = cdescr
-                            .head
-                            .map(|ident| ident.to_string())
-                            .unwrap_or_else(|| String::from("<func>"));
-                        Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
-                            .with_message(format!("({}) calling {}", i + 1, name))])
-                    });
-
-                    diagnostics.extend(diag_curr_call);
-                    diagnostics.extend(diags);
+                    diagnostics.extend_with_call_stack(id, call_stack);
                 }
 
                 diagnostics
@@ -1006,7 +834,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_notes(vec![])];
 
                 if let Some(label) = label {
-                    diags.push(blame_label_note(label));
+                    diags.push(blame_error::note(label));
                 }
 
                 diags
@@ -1167,7 +995,278 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
+            EvalError::IllegalPolymorphicTailAccess {
+                action,
+                label: l,
+                call_stack,
+            } => {
+                let mut msg = String::new();
+
+                write!(&mut msg, "{}", blame_error::title(l)).unwrap();
+                write!(&mut msg, " - {}", action.message()).unwrap();
+                if !l.tag.is_empty() {
+                    write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
+                }
+
+                let (path_label, notes) = blame_error::report_ty_path(l, files);
+                let labels =
+                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
+
+                let mut diagnostics = vec![Diagnostic::error()
+                    .with_message(msg)
+                    .with_labels(labels)
+                    .with_notes(notes)];
+
+                diagnostics.push(blame_error::note(l));
+
+                if ty_path::is_only_codom(&l.path) {
+                } else if let Some(id) = contract_id {
+                    diagnostics.extend_with_call_stack(id, call_stack);
+                }
+
+                diagnostics
+            }
         }
+    }
+}
+
+/// Common functionality for formatting blame errors.
+mod blame_error {
+    use codespan::{FileId, Files};
+    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+
+    use crate::{
+        eval::callstack::CallStack,
+        label::{self, ty_path},
+        position::TermPos,
+    };
+
+    use super::{primary, secondary, secondary_term};
+
+    /// Returns a title to be used by blame errors based on the `path` and `polarity`
+    /// of the label.
+    pub fn title(l: &label::Label) -> &str {
+        if ty_path::has_no_arrow(&l.path) {
+            // An empty path or a path that contains only fields necessarily corresponds to
+            // a positive blame
+            assert!(l.polarity);
+            "contract broken by a value"
+        } else if l.polarity {
+            "contract broken by a function"
+        } else {
+            "contract broken by the caller"
+        }
+    }
+
+    /// Constructs the diagnostic labels used when raising a blame error.
+    pub fn build_diagnostic_labels(
+        blame_label: &label::Label,
+        path_label: Label<FileId>,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
+    ) -> Vec<Label<FileId>> {
+        let mut labels = vec![path_label];
+
+        if let Some(ref arg_pos) = blame_label.arg_pos.into_opt() {
+            // In some cases, if the blame error is located in an argument or return value
+            // of an higher order functions for example, the original argument position can
+            // point to the builtin implementation contract like `func` or `record`, so
+            // there's no good reason to show it. Note than even in that case, the
+            // information contained in the argument thunk can still be useful.
+            if contract_id
+                .map(|ctrs_id| arg_pos.src_id != ctrs_id)
+                .unwrap_or(true)
+            {
+                labels.push(primary(arg_pos).with_message("applied to this expression"));
+            }
+        }
+
+        // If we have a reference to the thunk that was being tested, we can try to show
+        // more information about the final, evaluated value that is responsible for the
+        // blame.
+        if let Some(ref thunk) = blame_label.arg_thunk {
+            let mut val = thunk.get_owned().body;
+
+            match (val.pos, blame_label.arg_pos.as_opt_ref(), contract_id) {
+                // Avoid showing a position inside builtin contracts, it's rarely
+                // informative.
+                (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
+                    val.pos = TermPos::None;
+                    labels
+                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                }
+                // Do not show the same thing twice: if arg_pos and val_pos are the same,
+                // the first label "applied to this value" is sufficient.
+                (TermPos::Original(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {}
+                (TermPos::Original(ref val_pos), ..) => {
+                    labels.push(secondary(val_pos).with_message("evaluated to this expression"))
+                }
+                // If the final thunk is a direct reduct of the original value, rather
+                // print the actual value than referring to the same position as
+                // before.
+                (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {
+                    val.pos = TermPos::None;
+                    labels
+                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                }
+                // Finally, if the parameter reduced to a value which originates from a
+                // different expression, show both the expression and the value.
+                (TermPos::Inherited(ref val_pos), ..) => {
+                    labels.push(secondary(val_pos).with_message("evaluated to this expression"));
+                    val.pos = TermPos::None;
+                    labels
+                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                }
+                (TermPos::None, ..) => {
+                    labels.push(secondary_term(&val, files).with_message("evaluated to this value"))
+                }
+            }
+        }
+
+        labels
+    }
+
+    pub trait ExtendWithCallStack {
+        fn extend_with_call_stack(&mut self, contract_id: FileId, call_stack: &CallStack);
+    }
+
+    impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
+        fn extend_with_call_stack(&mut self, contract_id: FileId, call_stack: &CallStack) {
+            let (calls, curr_call) = call_stack.group_by_calls(contract_id);
+            let diag_curr_call = curr_call.map(|cdescr| {
+                let name = cdescr
+                    .head
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| String::from("<func>"));
+                Diagnostic::note().with_labels(vec![
+                    primary(&cdescr.span).with_message(format!("While calling to {}", name))
+                ])
+            });
+            let diags =
+                calls.into_iter().enumerate().map(|(i, cdescr)| {
+                    let name = cdescr
+                        .head
+                        .map(|ident| ident.to_string())
+                        .unwrap_or_else(|| String::from("<func>"));
+                    Diagnostic::note().with_labels(vec![secondary(&cdescr.span)
+                        .with_message(format!("({}) calling {}", i + 1, name))])
+                });
+
+            self.extend(diag_curr_call);
+            self.extend(diags);
+        }
+    }
+
+    /// Generate a codespan label that describes the [type path][crate::label::TyPath] of a (Nickel)
+    /// label, and notes to hint at the situation that may have caused the corresponding error.
+    pub fn report_ty_path(
+        l: &label::Label,
+        files: &mut Files<String>,
+    ) -> (Label<FileId>, Vec<String>) {
+        let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
+
+        let (msg, notes) = if l.path.is_empty() {
+            (String::from("expected type"), Vec::new())
+        } else if ty_path::has_no_arrow(&l.path) {
+            match l.path.last() {
+                Some(ty_path::Elem::Array) => {
+                    (String::from("expected array element type"), Vec::new())
+                }
+                Some(ty_path::Elem::Field(_)) => (String::from("expected field type"), Vec::new()),
+                _ => unreachable!(),
+            }
+        }
+        // If the path is only composed of codomains, polarity is necessarily true and the cause of the
+        // blame is the return value of the function
+        else if ty_path::is_only_codom(&l.path) {
+            (
+                String::from("expected return type"),
+                vec![
+                    String::from(
+                        "This error may happen in the following situation:
+    1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
+    2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
+                    ),
+                    String::from(
+                        "Either change the contract accordingly, or change the return value of `f`",
+                    ),
+                ],
+            )
+        } else {
+            // We ignore the `Field` and `Array` elements of the path, since they do not impact
+            // polarity, and only consider "higher-order" elements to customize error messages.
+            let last = l
+                .path
+                .iter()
+                .filter(|elt| matches!(*elt, ty_path::Elem::Domain | ty_path::Elem::Codomain))
+                .last()
+                .unwrap();
+            match last {
+                ty_path::Elem::Domain if l.polarity => {
+                    (String::from("expected type of an argument of an inner call"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+    1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
+    2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
+    3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
+                        String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Codomain if l.polarity => {
+                    (String::from("expected return type of a sub-function passed as an argument of an inner call"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+    1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
+    2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
+    3. `g` itself takes a function as an argument.
+    4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
+                        String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Domain => {
+                    (String::from("expected type of the argument provided by the caller"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+    1. A function `f` is bound by a contract: e.g. `Num -> Num`.
+    2. `f` is called with an argument of the wrong type: e.g. `f false`."),
+                        String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
+                        end_note,
+                    ])
+                }
+                ty_path::Elem::Codomain => {
+                    (String::from("expected return type of a function provided by the caller"),
+                    vec![
+                        String::from("This error may happen in the following situation:
+    1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
+    2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
+    3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
+                        String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
+                        end_note,
+                    ])
+                }
+                _ => panic!(),
+            }
+        };
+
+        let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
+        let label = Label::new(
+            LabelStyle::Secondary,
+            files.add("", format!("{}", l.types)),
+            start..end,
+        )
+        .with_message(msg);
+        (label, notes)
+    }
+
+    /// Return a note diagnostic showing where a contract was bound.
+    pub fn note(l: &label::Label) -> Diagnostic<FileId> {
+        Diagnostic::note().with_labels(vec![Label::primary(
+            l.span.src_id,
+            l.span.start.to_usize()..l.span.end.to_usize(),
+        )
+        .with_message("bound here")])
     }
 }
 

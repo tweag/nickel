@@ -279,10 +279,7 @@ pub fn elaborate_field_path(
                 fields.insert(id, acc);
                 Term::Record(RecordData::with_fields(fields)).into()
             } else {
-                let empty = Term::Record(RecordData {
-                    fields: HashMap::new(),
-                    attrs: Default::default(),
-                });
+                let empty = Term::Record(RecordData::empty());
                 mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
             }
         }
@@ -361,7 +358,11 @@ where
         }
     });
 
-    Term::RecRecord(RecordData::new(static_fields, attrs), dynamic_fields, None)
+    Term::RecRecord(
+        RecordData::new(static_fields, attrs, None),
+        dynamic_fields,
+        None,
+    )
 }
 
 /// Merge two fields by performing the merge of both their value and MetaValue if any.

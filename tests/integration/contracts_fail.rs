@@ -11,6 +11,29 @@ macro_rules! assert_raise_blame {
             Err(Error::EvalError(EvalError::BlameError(..)))
         )
     }};
+    ($term:expr, $($arg:tt)+) => {{
+        assert_matches!(
+            eval($term),
+            Err(Error::EvalError(EvalError::BlameError(..))),
+            $($arg)+
+        )
+    }}
+}
+
+macro_rules! assert_raise_tail_blame {
+    ($term:expr) => {{
+        assert_matches!(
+            eval($term),
+            Err(Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }))
+        )
+    }};
+    ($term:expr, $($arg:tt)+) => {{
+        assert_matches!(
+            eval($term),
+            Err(Error::EvalError(EvalError::IllegalPolymorphicTailAccess{ .. })),
+            $($arg)+
+        )
+    }}
 }
 
 #[test]
@@ -94,41 +117,115 @@ fn records_contracts_simple() {
 
 #[test]
 fn records_contracts_poly() {
-    // TODO: this test should ultimately pass (i.e., the program should be rejected)
-    // but this is not yet the case.
-    // eval_string(&format!("{} {{foo = 2}}", extd)).unwrap_err();
+    for (name, input) in [
+        (
+            "record argument missing all required fields",
+            r#"
+            let f | forall a. { foo: Num; a } -> Num = fun r => r.foo in
+            f { }
+            "#,
+        ),
+        (
+            "record argument missing one required field",
+            r#"
+            let f | forall r. { x: Num, y: Num; r } -> { x: Num, y: Num; r } =
+                fun r => r
+            in
+            f { x = 1 }
+            "#,
+        ),
+        (
+            "function arg which does not satisfy higher-order contract",
+            r#"
+            let f | (forall r. { x: Num; r } -> { ; r }) -> { x: Num, y: Num } -> { y : Num } =
+                fun g r => g r
+            in
+            f (fun r => r) { x = 1, y = 2 }
+            "#,
+        ),
+        (
+            "invalid record argument to function arg",
+            r#"
+            let f | (forall r. { x: Num; r } -> { x: Num ; r }) -> { x: Str, y: Num } -> { x: Num, y: Num } =
+                fun g r => g r
+            in
+            # We need to evaluate x here to cause the error.
+            (f (fun r => r) { x = "", y = 1 }).x
+            "#,
+        ),
+        (
+            "return value without tail",
+            r#"
+            let f | forall r. { foo: Num; r } -> { foo: Num; r } =
+                fun r => { foo = 1 }
+            in
+            f { foo = 1, other = 2 }
+            "#,
+        ),
+        (
+            "return value with wrong tail",
+            r#"
+            let f | forall r r'. { a: Num; r } -> { a: Num; r' } -> { a: Num; r } =
+                fun r r' => r'
+            in
+            f { a = 1, b = "yes" } { a = 1, b = "no" }
+            "#,
+        ),
+    ] {
+        assert_raise_blame!(input, "failed on case: {}", name);
+    }
 
-    let remv =
-        "let f | forall a. {foo: Num ; a} -> { ; a} = fun x => %record_remove% \"foo\" x in f";
-    assert_raise_blame!(&format!("{} {{}}", remv));
+    // These cases raise a custom error to give the user more information
+    // about what went wrong.
+    for (name, input) in [
+        (
+            "mapping over a record violates parametricity",
+            r#"
+            let f | forall r. { a: Num; r } -> { a: Str; r } =
+                fun r => %record_map% r (fun x => %to_str% x)
+            in
+            f { a = 1, b = 2 }
+            "#,
+        ),
+        (
+            "merging a record violates parametricity, lhs arg",
+            r#"
+            let f | forall r. { a : Num; r } -> { a: Num; r } =
+                fun r => { a | force = 0 } & r
+            in
+            f { a | default = 100, b = 1 }
+            "#,
+        ),
+        (
+            "merging a record violates parametricity, rhs arg",
+            r#"
+            let f | forall r. { a : Num; r } -> { a: Num; r } =
+                fun r => r & { a | force = 0 }
+            in
+            f { a | default = 100, b = 1 }
+            "#,
+        ),
+    ] {
+        assert_raise_tail_blame!(input, "failed on case: {}", name);
+    }
 
-    let bad_cst = "let f | forall a. { ; a} -> { ; a} = fun x => {a=1} in f";
+    // These are currently FieldMissing errors rather than BlameErrors as we
+    // don't yet inspect the sealed tail to see if the requested field is inside.
+    // Once we do, these tests will start failing, and if you're currently here
+    // for that reason, you can just move the examples into the array above.
     let bad_acc = "let f | forall a. { ; a} -> { ; a} = fun x => %seq% x.a x in f";
-    let bad_extd =
-        "let f | forall a. { ; a} -> {foo: Num ; a} = fun x => %record_remove% \"foo\" x in f";
-    let bad_rmv =
-        "let f | forall a. {foo: Num ; a} -> { ; a} = fun x => %record_insert% \"foo\" x 1 in f";
-
-    assert_raise_blame!(&format!("{} {{}}", bad_cst));
-    // The polymorphic part is protected by hiding it. Thus, trying to access the protected field
-    // gives a field missing error, instead of a blame error.
     assert_matches!(
         eval(&format!("{} {{a=1}}", bad_acc)),
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
+
+    let remove_sealed_field = r#"
+        let remove_x | forall r. { ; r } -> { ; r } = fun r => %record_remove% "x" r in
+        remove_x { x = 1 }
+    "#;
     assert_matches!(
-        eval(&format!("{} {{foo=1}}", bad_extd)),
+        eval(&format!("{}", remove_sealed_field)),
         Err(Error::EvalError(EvalError::FieldMissing(..)))
-    );
-    assert_raise_blame!(&format!("{} {{}}", bad_rmv));
-    assert_raise_blame!(
-        "let f |
-            forall a.
-                (forall b. {a: Num, b: Num ; b} -> { a: Num ; b})
-                -> {a: Num ; a}
-                -> { ; a}
-            = fun f r => %record_remove% \"b\" (%record_remove% \"a\" (f r)) in
-        f (fun x => x) {a = 1, b = true, c = 3}"
     );
 }
 

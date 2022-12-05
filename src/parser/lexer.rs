@@ -197,6 +197,12 @@ pub enum NormalToken<'input> {
     RecordInsert,
     #[token("%record_remove%")]
     RecordRemove,
+    #[token("%record_empty_with_tail%")]
+    RecordEmptyWithTail,
+    #[token("%record_seal_tail%")]
+    RecordSealTail,
+    #[token("%record_unseal_tail%")]
+    RecordUnsealTail,
     #[token("%seq%")]
     Seq,
     #[token("%deep_seq%")]

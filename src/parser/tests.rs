@@ -212,15 +212,14 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
-            record::RecordData::new(
+            record::RecordData::with_fields(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("b"), Num(2.).into()),
                     (Ident::from("c"), Num(3.).into()),
                 ]
                 .into_iter()
-                .collect(),
-                Default::default(),
+                .collect()
             ),
             Vec::new(),
             None,
@@ -231,14 +230,13 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
         RecRecord(
-            record::RecordData::new(
+            record::RecordData::with_fields(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("d"), Num(42.).into()),
                 ]
                 .into_iter()
-                .collect(),
-                Default::default(),
+                .collect()
             ),
             vec![(
                 StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
@@ -252,14 +250,13 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
         RecRecord(
-            record::RecordData::new(
+            record::RecordData::with_fields(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("\"%}%"), Num(2.).into()),
                 ]
                 .into_iter()
-                .collect(),
-                Default::default(),
+                .collect()
             ),
             Vec::new(),
             None,

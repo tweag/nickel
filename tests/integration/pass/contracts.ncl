@@ -68,9 +68,12 @@ let {check, Assert, ..} = import "testlib.ncl" in
 
   # polymorphism
   (let id | forall a. { ; a} -> { ; a} = fun x => x in
-    let extend | forall a. { ; a} -> {foo: Num ; a} = fun x =>
-      x & {foo = 1} in
-    let remove | forall a. {foo: Num ; a} -> { ; a} = record.remove "foo" in
+    # Note that we have to use `%record_insert%` and `%record_remove%` here, as
+    # `record.insert` and `record.remove` enforce the `$dyn_record` contract on
+    # their record arguments. `$dyn_record` uses `%record_map%` internally, and
+    # mapping over a sealed record is currently forbidden.
+    let extend | forall a. { ; a} -> {foo: Num ; a} = fun x => %record_insert% "foo" x 1 in
+    let remove | forall a. {foo: Num ; a} -> { ; a} = fun x => %record_remove% "foo" x in
 
     (id {} == {} | Assert) &&
     (id {a = 1, b = false} == {a = 1, b = false} | Assert) &&

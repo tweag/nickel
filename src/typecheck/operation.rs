@@ -201,6 +201,7 @@ pub fn get_uop_type(
             let ty = state.table.fresh_type_uvar();
             (ty.clone(), ty)
         }
+        UnaryOp::RecordEmptyWithTail() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
     })
 }
 
@@ -377,6 +378,25 @@ pub fn get_nop_type(
         NAryOp::StrSubstr() => (
             vec![mk_uniftype::str(), mk_uniftype::num(), mk_uniftype::num()],
             mk_uniftype::str(),
+        ),
+        // Dyn -> Dyn -> Dyn -> Dyn -> Dyn
+        NAryOp::RecordSealTail() => (
+            vec![
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+            ],
+            mk_uniftype::dynamic(),
+        ),
+        // Dyn -> Dyn -> Dyn -> Dyn
+        NAryOp::RecordUnsealTail() => (
+            vec![
+                mk_uniftype::dynamic(),
+                mk_uniftype::dynamic(),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+            ],
+            mk_uniftype::dynamic(),
         ),
         // This should not happen, as Switch() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
