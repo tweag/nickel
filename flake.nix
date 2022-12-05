@@ -353,18 +353,15 @@
       };
 
       checks = {
+        inherit (mkCraneArtifacts { })
+          nickel
+          clippy
+          rustfmt;
         # wasm-opt can take long: eschew optimizations in checks
-        wasm = buildNickelWasm { optimize = false; };
-        clippy = (mkCraneArtifacts { }).clippy;
-        rustfmt = (mkCraneArtifacts { }).rustfmt;
+        nickelWasm = buildNickelWasm { optimize = false; };
         inherit vscodeExtension;
         pre-commit = pre-commit-builder { };
-      } // (forEachRustChannel (channel:
-        {
-          name = "nickel-against-${channel}-rust-channel";
-          value = (mkCraneArtifacts { rust = mkRust { inherit channel; }; }).nickel;
-        }
-      ));
+      };
     }
     );
 }
