@@ -527,7 +527,7 @@ mod tests {
             }
         }
 
-        let files = Files::new();
+        let mut files = Files::new();
         let file_id = files.add("test", "test");
 
         let a = make_linearization_item(
