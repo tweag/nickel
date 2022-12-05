@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 fn mk_import(file: &str) -> String {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("tests/imports/{}", file));
+    path.push(format!("tests/integration/imports/{}", file));
     format!(
         "import \"{}\"",
         path.into_os_string().into_string().unwrap()

@@ -13,14 +13,8 @@ fn diff(s1: &str, s2: &str) {
 
     for change in diff.iter_all_changes() {
         match change.tag() {
-            ChangeTag::Delete => {
-                nb_diff += 1;
-                println!("- {}", change);
-            }
-            ChangeTag::Insert => {
-                nb_diff += 1;
-                println!("+ {}", change);
-            }
+            ChangeTag::Delete => nb_diff += 1,
+            ChangeTag::Insert => nb_diff += 1,
             ChangeTag::Equal => (),
         };
     }
@@ -40,7 +34,7 @@ fn pretty(rt: &RichTerm) -> String {
 fn check_file(file: &str) {
     let mut buffer = String::new();
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("tests/pass/{}", file));
+    path.push(format!("tests/integration/pass/{}", file));
     std::fs::File::open(&path)
         .and_then(|mut file| file.read_to_string(&mut buffer))
         .unwrap();

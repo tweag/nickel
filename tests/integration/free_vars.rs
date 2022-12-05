@@ -1,7 +1,9 @@
+use nickel_lang::term::FieldDeps;
 use nickel_lang::{identifier::Ident, term::Term, transform::free_vars};
 
 use std::collections::{HashMap, HashSet};
 use std::iter::IntoIterator;
+use std::rc::Rc;
 
 use nickel_lang_utilities::parse;
 
@@ -9,13 +11,13 @@ use nickel_lang_utilities::parse;
 //    free_vars.into_iter().all(|id| rec_fields.contains(&id))
 // }
 
-fn free_vars_eq(free_vars: &HashSet<Ident>, expected: Vec<&str>) -> bool {
+fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
     let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
-    *free_vars == expected_set
+    *free_vars == FieldDeps::Known(Rc::new(expected_set))
 }
 
 fn stat_free_vars_incl(
-    stat_fields: &HashMap<Ident, HashSet<Ident>>,
+    stat_fields: &HashMap<Ident, FieldDeps>,
     mut expected: HashMap<&str, Vec<&str>>,
 ) -> bool {
     stat_fields
@@ -23,7 +25,7 @@ fn stat_free_vars_incl(
         .all(|(id, set)| free_vars_eq(set, expected.remove(id.as_ref()).unwrap()))
 }
 
-fn dyn_free_vars_incl(dyn_fields: &Vec<HashSet<Ident>>, mut expected: Vec<Vec<&str>>) -> bool {
+fn dyn_free_vars_incl(dyn_fields: &Vec<FieldDeps>, mut expected: Vec<Vec<&str>>) -> bool {
     dyn_fields
         .iter()
         .enumerate()
