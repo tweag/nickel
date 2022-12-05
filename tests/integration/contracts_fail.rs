@@ -224,7 +224,7 @@ fn records_contracts_poly() {
         remove_x { x = 1 }
     "#;
     assert_matches!(
-        eval(&format!("{}", remove_sealed_field)),
+        eval(remove_sealed_field),
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
 }

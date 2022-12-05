@@ -9,7 +9,7 @@ use nickel_lang::{typecheck, typecheck::Context};
 use nickel_lang_utilities::typecheck_fixture;
 
 fn type_check(rt: &RichTerm) -> Result<(), TypecheckError> {
-    typecheck::type_check(rt, Context::new(), &mut DummyResolver {}).map(|_| ())
+    typecheck::type_check(rt, Context::new(), &DummyResolver {}).map(|_| ())
 }
 
 fn type_check_expr(s: impl std::string::ToString) -> Result<(), TypecheckError> {
@@ -175,11 +175,10 @@ fn polymorphic_row_constraints() {
         assert!(match res.unwrap_err() {
             TypecheckError::RowConflict(_, _, _, _, _) => true,
             TypecheckError::ArrowTypeMismatch(_, _, _, err_boxed, _) => {
-                if let TypecheckError::RowConflict(_, _, _, _, _) = err_boxed.as_ref() {
-                    true
-                } else {
-                    false
-                }
+                matches!(
+                    err_boxed.as_ref(),
+                    TypecheckError::RowConflict(_, _, _, _, _)
+                )
             }
             _ => true,
         })
