@@ -9,7 +9,7 @@ This directory contains the Visual Studio Code Nickel LSP extension code.
 From the root of the Nickel project:
 
 ```shell
-nix build .\#vscodeExtension.vsix
+nix build .\#vscodeExtension
 ```
 
 The VSIX extension will be at `./result-vsix/nls-client.vsix`.

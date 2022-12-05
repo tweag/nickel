@@ -100,7 +100,7 @@ section about the Nix setup).
   - Build with Nix:
 
       ```console
-      nix build github:tweag/nickel#vscodeExtension.vsix
+      nix build github:tweag/nickel#vscodeExtension
       ```
 
   - Then, in VSCode, use "Extension: Install from VSIX" in the vscode command
