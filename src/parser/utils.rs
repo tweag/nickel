@@ -33,7 +33,7 @@ pub enum StringKind {
 
 /// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
 #[derive(Clone, Debug)]
-pub enum SwitchCase {
+pub enum MatchCase {
     Normal(Ident, RichTerm),
     Default(RichTerm),
 }

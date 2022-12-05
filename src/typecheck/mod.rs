@@ -869,12 +869,10 @@ fn walk<L: Linearizer>(
             walk(state, ctxt.clone(), lin, linearizer.scope(), e)?;
             walk(state, ctxt, lin, linearizer, t)
         }
-        Term::Switch(exp, cases, default) => {
+        Term::Match {cases, default} => {
             cases.values().chain(default.iter()).try_for_each(|case| {
                 walk(state, ctxt.clone(), lin, linearizer.scope(), case)
-            })?;
-
-            walk(state, ctxt, lin, linearizer, exp)
+            })
         }
         Term::RecRecord(record, dynamic, ..) => {
             for (id, field) in record.fields.iter() {
@@ -1182,10 +1180,14 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt.clone(), lin, linearizer.scope(), e, arr)?;
             type_check_(state, ctxt, lin, linearizer, t, src)
         }
-        Term::Switch(exp, cases, default) => {
+        Term::Match { cases, default } => {
             // Currently, if it has a default value, we typecheck the whole thing as
-            // taking ANY enum, since it's more permissive and there's no loss of information
-            let res = state.table.fresh_type_uvar();
+            // taking ANY enum, since it's more permissive and there's no loss of information.
+
+            // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
+            // `a` is a enum type determined by the matched tags and `b` is the type of each match
+            // arm.
+            let return_type = state.table.fresh_type_uvar();
 
             for case in cases.values() {
                 type_check_(
@@ -1194,13 +1196,20 @@ fn type_check_<L: Linearizer>(
                     lin,
                     linearizer.scope(),
                     case,
-                    res.clone(),
+                    return_type.clone(),
                 )?;
             }
 
             let erows = match default {
                 Some(t) => {
-                    type_check_(state, ctxt.clone(), lin, linearizer.scope(), t, res.clone())?;
+                    type_check_(
+                        state,
+                        ctxt.clone(),
+                        lin,
+                        linearizer.scope(),
+                        t,
+                        return_type.clone(),
+                    )?;
                     state.table.fresh_erows_uvar()
                 }
                 None => cases.iter().try_fold(
@@ -1211,8 +1220,13 @@ fn type_check_<L: Linearizer>(
                 )?,
             };
 
-            unify(state, &ctxt, ty, res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, ctxt, lin, linearizer, exp, mk_uty_enum!(; erows))
+            // `arg_type` represents the type of arguments that the match expression can be applied
+            // to.
+            let arg_type = mk_uty_enum!(; erows);
+
+            // we unify the expected type of the match expression with `arg_type -> return_type`
+            unify(state, &ctxt, ty, mk_uty_arrow!(arg_type, return_type))
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Var(x) => {
             let x_ty = ctxt

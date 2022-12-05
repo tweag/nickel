@@ -192,7 +192,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     Term::Bool(_) => "Bool",
                     Term::Str(_) => "Str",
                     Term::Enum(_) => "Enum",
-                    Term::Fun(..) => "Fun",
+                    Term::Fun(..) | Term::Match { .. } => "Fun",
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
                     Term::Lbl(..) => "Lbl",
@@ -297,14 +297,14 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     ))
                 }
             }
-            UnaryOp::Switch(has_default) => {
-                let (cases_closure, ..) = self.stack.pop_arg().expect("missing arg for switch");
+            UnaryOp::Match { has_default } => {
+                let (cases_closure, ..) = self.stack.pop_arg().expect("missing arg for match");
                 let default = if has_default {
                     Some(
                         self.stack
                             .pop_arg()
                             .map(|(clos, ..)| clos)
-                            .expect("missing default case for switch"),
+                            .expect("missing default case for match"),
                     )
                 } else {
                     None
@@ -321,7 +321,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                     let mut cases = match cases_term.into_owned() {
                         Term::Record(r) => r.fields,
-                        _ => panic!("invalid argument for switch"),
+                        _ => panic!("invalid argument for match"),
                     };
 
                     cases
@@ -335,7 +335,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         // ? We should have a dedicated error for unmatched pattern
                         EvalError::TypeError(
                             String::from("Enum"),
-                            String::from("switch"),
+                            String::from("match"),
                             arg_pos,
                             RichTerm {
                                 term: t,
@@ -347,7 +347,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Enum"),
-                        String::from("switch"),
+                        String::from("match"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
@@ -1061,7 +1061,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     ))
                 }
             }
-            UnaryOp::StrMatch() => {
+            UnaryOp::StrFind() => {
                 if let Term::Str(s) = &*t {
                     let re = regex::Regex::new(s)
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
@@ -1071,7 +1071,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                         param,
                         RichTerm::new(
                             Term::Op1(
-                                UnaryOp::StrMatchCompiled(re.into()),
+                                UnaryOp::StrFindCompiled(re.into()),
                                 RichTerm::new(Term::Var(param), pos_op_inh),
                             ),
                             pos_op_inh,
@@ -1103,7 +1103,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     ))
                 }
             }
-            UnaryOp::StrMatchCompiled(regex) => {
+            UnaryOp::StrFindCompiled(regex) => {
                 if let Term::Str(s) = &*t {
                     let capt = regex.captures(s);
                     let result = if let Some(capt) = capt {
@@ -1532,7 +1532,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     );
 
                     match *t1 {
-                        Term::Fun(..) => Ok(Closure {
+                        Term::Fun(..) | Term::Match { .. } => Ok(Closure {
                             body: RichTerm {
                                 term: t1,
                                 pos: pos1,

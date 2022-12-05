@@ -703,7 +703,7 @@ impl EnumRows {
         let case_body = if has_tail {
             mk_term::var(value_arg)
         }
-        // Otherwise, we build a switch with all the tags as cases, which just returns the
+        // Otherwise, we build a match with all the tags as cases, which just returns the
         // original argument, and a default case that blames.
         //
         // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
@@ -711,7 +711,7 @@ impl EnumRows {
         //
         // ```
         // fun l x =>
-        //   switch {
+        //   match {
         //     `foo => x,
         //     `bar => x,
         //     `baz => x,
@@ -719,11 +719,13 @@ impl EnumRows {
         //   } x
         // ```
         else {
-            RichTerm::from(Term::Switch(
-                mk_term::var(value_arg),
-                cases,
-                Some(mk_app!(contract::enum_fail(), mk_term::var(label_arg))),
-            ))
+            mk_app!(
+                Term::Match {
+                    cases,
+                    default: Some(mk_app!(contract::enum_fail(), mk_term::var(label_arg))),
+                },
+                mk_term::var(value_arg)
+            )
         };
         let case = mk_fun!(label_arg, value_arg, case_body);
 

@@ -54,8 +54,8 @@ pub fn get_uop_type(
             codomain.constrain_fresh_erows_var(state, row_var_id);
             (domain, codomain)
         }
-        // This should not happen, as Switch() is only produced during evaluation.
-        UnaryOp::Switch(_) => panic!("cannot typecheck Switch()"),
+        // This should not happen, as a match primop is only produced during evaluation.
+        UnaryOp::Match { .. } => panic!("cannot typecheck match primop"),
         // Dyn -> Dyn
         UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoArray() => {
             (mk_uniftype::dynamic(), mk_uniftype::dynamic())
@@ -166,13 +166,13 @@ pub fn get_uop_type(
             mk_uniftype::str(),
             mk_uty_arrow!(mk_uniftype::str(), mk_uniftype::bool()),
         ),
-        // Str -> Str -> {match: Str, index: Num, groups: Array Str}
-        UnaryOp::StrMatch() => (
+        // Str -> Str -> {matched: Str, index: Num, groups: Array Str}
+        UnaryOp::StrFind() => (
             mk_uniftype::str(),
             mk_uty_arrow!(
                 mk_uniftype::str(),
                 mk_uty_record!(
-                    ("match", TypeF::Str),
+                    ("matched", TypeF::Str),
                     ("index", TypeF::Num),
                     ("groups", mk_uniftype::array(TypeF::Str))
                 )
@@ -180,8 +180,8 @@ pub fn get_uop_type(
         ),
         // Str -> Bool
         UnaryOp::StrIsMatchCompiled(_) => (mk_uniftype::str(), mk_uniftype::bool()),
-        // Str -> {match: Str, index: Num, groups: Array Str}
-        UnaryOp::StrMatchCompiled(_) => (
+        // Str -> {matched: Str, index: Num, groups: Array Str}
+        UnaryOp::StrFindCompiled(_) => (
             mk_uniftype::str(),
             mk_uty_record!(
                 ("match", TypeF::Str),
@@ -398,7 +398,7 @@ pub fn get_nop_type(
             ],
             mk_uniftype::dynamic(),
         ),
-        // This should not happen, as Switch() is only produced during evaluation.
+        // This should not happen, as MergeContract() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
     })
 }

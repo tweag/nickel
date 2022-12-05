@@ -181,7 +181,9 @@ pub fn should_share(t: &Term) -> bool {
         | Term::SealingKey(_)
         | Term::Var(_)
         | Term::Enum(_)
-        | Term::Fun(_, _) => false,
+        | Term::Fun(_, _)
+        // match acts like a function, and is a WHNF
+        | Term::Match {..} => false,
         _ => true,
     }
 }

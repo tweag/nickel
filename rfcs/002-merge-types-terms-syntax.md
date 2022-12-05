@@ -216,8 +216,8 @@ look-ahead to distinguish).
 
 With the first release in mind, we propose to just disable support for enum
 altogether. This is a handy but hardly fundamental feature, and this lets us
-more time to find a good syntax replacement. We can also disable `switch`
-temporarily, as currently its only usage is for enums.
+more time to find a good syntax replacement. We can also disable `switch` (edit
+from 05.12.22: now `match`) temporarily, as currently its only usage is for enums.
 
 ### Translation
 
