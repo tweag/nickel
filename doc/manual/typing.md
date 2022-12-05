@@ -211,11 +211,11 @@ The following type constructors are available:
 
   ```nickel
   let protocol : [| `http, `ftp, `sftp |] = `http in
-  (switch {
+  (protocol |> match {
     `http => 1,
     `ftp => 2,
     `sftp => 3
-  } protocol) : Num
+  }) : Num
   ```
 
 - **Arrow (function)**: `S -> T`. A function taking arguments of type `S` and

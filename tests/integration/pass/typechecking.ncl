@@ -54,25 +54,25 @@ let typecheck = [
   (`blo : [|`bla, `blo |]),
   (`bla : forall r. [|`bla ; r |]),
   (`bla : forall r. [|`bla, `blo ; r |]),
-  ((switch {`bla => 3} `bla) : Num),
-  ((switch {`bla => 3, _ => 2} `blo) : Num),
+  ((`bla |> match {`bla => 3}) : Num),
+  ((`blo |> match {`bla => 3, _ => 2}) : Num),
 
   # enums_complex
-  ((fun x => switch {`bla => 1, `ble => 2} x) : [|`bla, `ble |] -> Num),
-  ((fun x => switch {`bla => 1, `ble => 2, `bli => 4} (%embed% bli x))
+  ((fun x => x |> match {`bla => 1, `ble => 2}) : [|`bla, `ble |] -> Num),
+  ((fun x => %embed% bli x |> match {`bla => 1, `ble => 2, `bli => 4})
     : [|`bla, `ble |] -> Num),
   ((fun x =>
-      (switch {`bla => 3, `bli => 2} x)
-      + (switch {`bli => 6, `bla => 20} x))
+      (x |> match {`bla => 3, `bli => 2})
+      + (x |> match {`bli => 6, `bla => 20}))
     `bla
     : Num),
 
-  let f : forall r. [|`blo, `ble ; r |] -> Num = fun x =>
-    switch {`blo => 1, `ble => 2, _ => 3} x in
-            (f `bli : Num),
+  let f : forall r. [|`blo, `ble ; r |] -> Num =
+    match {`blo => 1, `ble => 2, _ => 3} in
+    (f `bli : Num),
 
   let f : forall r. (forall p. [|`blo, `ble ; r |] -> [|`bla, `bli ; p |]) =
-    fun x => switch {`blo => `bla, `ble => `bli, _ => `bla} x in
+    match {`blo => `bla, `ble => `bli, _ => `bla} in
     f `bli,
 
   # recursive let bindings

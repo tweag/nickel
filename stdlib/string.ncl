@@ -349,24 +349,24 @@
       "%m
     = fun regex => %str_is_match% regex,
 
-    match : Str -> Str -> {match: Str, index: Num, groups: Array Str}
+    find : Str -> Str -> {matched: Str, index: Num, groups: Array Str}
     | doc m%"
-      `match regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
+      `find regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
       first character that was part of the match in `str`, and a arrays of all capture groups if any.
 
       For example:
       ```nickel
-        match "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
-          { match = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
-        match "3" "01234" =>
-          { match = "3", index = 3, groups = [ ] }
+        find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
+          { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
+        find "3" "01234" =>
+          { matched = "3", index = 3, groups = [ ] }
       ```
 
       Note that this function may perform better by sharing its partial application between multiple calls,
       because in this case the underlying regular expression will only be compiled once (See the documentation
       of `string.is_match` for more details).
       "%m
-    = fun regex => %str_match% regex,
+    = fun regex => %str_find% regex,
 
     length : Str -> Num
     | doc m%"

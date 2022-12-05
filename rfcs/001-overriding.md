@@ -79,7 +79,7 @@ rather than data. Take the following example:
 ```nickel
 let record = {
   protocol | default = `Http,
-  port | default = switch protocol {
+  port | default = protocol |> match {
     `Http => 80,
     `Ftp => 21,
     _ => 8181,

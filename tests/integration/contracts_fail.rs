@@ -277,12 +277,11 @@ fn records_contracts_closed() {
     assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | Contract)");
 }
 
-// #[test]
-// fn enum_complex() {
-//     eval(
-//         "let f : <foo, bar> -> Num =
-//             fun x => switch { `foo => 1, `bar => 2, } x in
-//             f `boo",
-//     )
-//     .unwrap_err();
-// }
+#[test]
+fn enum_complex() {
+    eval(
+        "let f : [| `foo, `bar |] -> Num = match { `foo => 1, `bar => 2, } in
+         f `boo",
+    )
+    .unwrap_err();
+}

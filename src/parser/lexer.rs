@@ -88,8 +88,8 @@ pub enum NormalToken<'input> {
     Let,
     #[token("rec")]
     Rec,
-    #[token("switch")]
-    Switch,
+    #[token("match")]
+    Match,
 
     #[token("null")]
     Null,
@@ -276,8 +276,8 @@ pub enum NormalToken<'input> {
     StrReplaceRegex,
     #[token("%str_is_match%")]
     StrIsMatch,
-    #[token("%str_match%")]
-    StrMatch,
+    #[token("%str_find%")]
+    StrFind,
     #[token("%str_length%")]
     StrLength,
     #[token("%str_substr%")]
@@ -319,7 +319,7 @@ pub enum NormalToken<'input> {
 
 pub const KEYWORDS: &[&str] = &[
     "Dyn", "Num", "Bool", "Str", "Array", "if", "then", "else", "forall", "in", "let", "rec",
-    "switch", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
+    "match", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
     "priority", "force",
 ];
 

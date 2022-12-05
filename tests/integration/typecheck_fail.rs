@@ -79,30 +79,28 @@ fn simple_forall() {
 #[test]
 fn enum_simple() {
     assert_typecheck_fails!("`foo : [| `bar |]");
-    assert_typecheck_fails!("switch { `foo => 3} `bar : Num");
-    assert_typecheck_fails!("switch { `foo => 3, `bar => true} `bar : Num");
+    assert_typecheck_fails!("match { `foo => 3} `bar : Num");
+    assert_typecheck_fails!("match { `foo => 3, `bar => true} `bar : Num");
 }
 
 #[test]
 fn enum_complex() {
-    assert_typecheck_fails!(
-        "(fun x => switch {`bla => 1, `ble => 2, `bli => 4} x) : [| `bla, `ble |] -> Num"
-    );
+    assert_typecheck_fails!("(match {`bla => 1, `ble => 2, `bli => 4}) : [| `bla, `ble |] -> Num");
     // TODO typecheck this, I'm not sure how to do it with row variables
     // LATER NOTE: this requires row subtyping, not easy
     assert_typecheck_fails!(
         "(fun x =>
-            (switch {`bla => 3, `bli => 2} x) +
-            (switch {`bla => 6, `blo => 20} x)) `bla : Num"
+            (x |> match {`bla => 3, `bli => 2}) +
+            (x |> match {`bla => 6, `blo => 20})) `bla : Num"
     );
     assert_typecheck_fails!(
         "let f : forall r. [| `blo, `ble ; r |] -> Num =
-            fun x => (switch {`blo => 1, `ble => 2, `bli => 3} x) in
+            match {`blo => 1, `ble => 2, `bli => 3} in
         f"
     );
     assert_typecheck_fails!(
         "let f : forall r. (forall p. [| `blo, `ble ; r |] -> [| `bla, `bli ; p |]) =
-            fun x => (switch {`blo => `bla, `ble => `bli, _ => `blo} x) in
+            match {`blo => `bla, `ble => `bli, _ => `blo} in
         f `bli"
     );
 }

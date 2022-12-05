@@ -108,14 +108,15 @@ pub enum Term {
         Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
-    /// A switch construct. The evaluation is done by the corresponding unary operator, but we
-    /// still need this one for typechecking.
+    /// A match construct. Correspond only to the match cases: this expression is still to be
+    /// applied to an argument to match on. Once applied, the evaluation is done by the
+    /// corresponding primitive operator. Still, we need this construct for typechecking and being
+    /// able to handle yet unapplied match expressions.
     #[serde(skip)]
-    Switch(
-        RichTerm,                 /* tested expression */
-        HashMap<Ident, RichTerm>, /* cases */
-        Option<RichTerm>,         /* default */
-    ),
+    Match {
+        cases: HashMap<Ident, RichTerm>,
+        default: Option<RichTerm>,
+    },
 
     /// An array.
     #[serde(serialize_with = "crate::serialize::serialize_array")]
@@ -830,7 +831,6 @@ impl<E> StrChunk<E> {
 }
 
 impl Term {
-    //#[cfg(test)]
     /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
     pub fn apply_to_rich_terms<F>(&mut self, func: F)
     where
@@ -839,14 +839,16 @@ impl Term {
         use self::Term::*;
         match self {
             Null | ParseError(_) => (),
-            Switch(ref mut t, ref mut cases, ref mut def) => {
+            Match {
+                ref mut cases,
+                ref mut default,
+            } => {
                 cases.iter_mut().for_each(|c| {
                     let (_, t) = c;
                     func(t);
                 });
-                func(t);
-                if let Some(def) = def {
-                    func(def)
+                if let Some(default) = default {
+                    func(default)
                 }
             }
             Record(ref mut r) => {
@@ -908,6 +910,7 @@ impl Term {
             Term::Num(_) => Some("Num"),
             Term::Str(_) => Some("Str"),
             Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Fun"),
+            Term::Match { .. } => Some("MatchExpression"),
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),
             Term::Record(..) | Term::RecRecord(..) => Some("Record"),
@@ -919,7 +922,6 @@ impl Term {
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
-            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -952,6 +954,7 @@ impl Term {
                 format!("\"{}\"", chunks_str.join(""))
             }
             Term::Fun(_, _) | Term::FunPattern(_, _, _) => String::from("<func>"),
+            Term::Match { .. } => String::from("<func (match expr)>"),
             Term::Lbl(_) => String::from("<label>"),
             Term::Enum(id) => {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
@@ -994,7 +997,6 @@ impl Term {
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
-            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -1039,6 +1041,8 @@ impl Term {
             | Term::Num(_)
             | Term::Str(_)
             | Term::Fun(_, _)
+            // match expressions are function
+            | Term::Match {..}
             | Term::Lbl(_)
             | Term::Enum(_)
             | Term::Record(..)
@@ -1049,7 +1053,6 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
-            | Term::Switch(..)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -1088,7 +1091,7 @@ impl Term {
             | Term::Fun(_, _)
             | Term::FunPattern(_, _, _)
             | Term::App(_, _)
-            | Term::Switch(..)
+            | Term::Match { .. }
             | Term::Var(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
@@ -1117,14 +1120,25 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Array(..)
             | Term::Var(..)
-            | Term::Op1(..)
-            | Term::SealingKey(..) => true,
+            | Term::SealingKey(..)
+            // Those special cases aren't really atoms, but mustn't be parenthesized because they
+            // are really functions taking additional non-strict arguments and printed as "partial"
+            // infix operators.
+            //
+            // For example, `Op1(BoolOr, Var("x"))` is currently printed as `x ||`. Such operators
+            // must never parenthesized, such as in `(x ||)`.
+            //
+            // We might want a more robust mechanism for pretty printing such operators.
+            | Term::Op1(UnaryOp::BoolAnd(), _)
+            | Term::Op1(UnaryOp::BoolOr(), _)
+            => true,
             Term::Let(..)
-            | Term::Switch(..)
+            | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
             | Term::FunPattern(..)
             | Term::App(..)
+            | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
@@ -1215,8 +1229,8 @@ pub enum UnaryOp {
     /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
     /// `embed someId` act like the identity.
     Embed(Ident),
-    /// A switch block. Used to match on a enumeration.
-    Switch(bool /* presence of a default case */), //HashMap<Ident, CapturedTerm>, Option<CapturedTerm>),
+    /// Evaluate a match block applied to an argument.
+    Match { has_default: bool },
 
     /// Static access to a record field.
     ///
@@ -1318,17 +1332,17 @@ pub enum UnaryOp {
     /// Transform a string to an enum.
     EnumFromStr(),
     /// Test if a regex matches a string.
-    /// Like [`UnaryOp::StrMatch`], this is a unary operator because we would like a way to share the
+    /// Like [`UnaryOp::StrFind`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
-    /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrMatchCompiled`]
+    /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrFindCompiled`]
     StrIsMatch(),
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
-    StrMatch(),
+    StrFind(),
     /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
-    /// Version of [`UnaryOp::StrMatch`] which remembers the compiled regex.
-    StrMatchCompiled(CompiledRegex),
+    /// Version of [`UnaryOp::StrFind`] which remembers the compiled regex.
+    StrFindCompiled(CompiledRegex),
     /// Force full evaluation of a term and return it.
     ///
     /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
@@ -1707,10 +1721,10 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::Switch(t, cases, default) => {
+            Term::Match { cases, default } => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_res: Result<HashMap<Ident, RichTerm>, E> = cases
+                let cases_result : Result<HashMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
@@ -1718,10 +1732,8 @@ impl RichTerm {
 
                 let default = default.map(|t| t.traverse(f, state, order)).transpose()?;
 
-                let t = t.traverse(f, state, order)?;
-
                 RichTerm::new(
-                    Term::Switch(t, cases_res?, default),
+                    Term::Match {cases: cases_result?, default },
                     pos,
                 )
             },
@@ -2033,22 +2045,22 @@ pub mod make {
     /// `mk_switch!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
     /// ``switch { `Json => json_case, `Yaml => yaml_case, _ => def} format``.
     #[macro_export]
-    macro_rules! mk_switch {
-        ( $exp:expr, $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
+    macro_rules! mk_match {
+        ( $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
             {
-                let mut map = std::collections::HashMap::new();
+                let mut cases = std::collections::HashMap::new();
                 $(
-                    map.insert($id.into(), $body.into());
+                    cases.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Switch($crate::term::RichTerm::from($exp), map, Some($crate::term::RichTerm::from($default))))
+                $crate::term::RichTerm::from($crate::term::Term::Match {cases, default: Some($crate::term::RichTerm::from($default)) })
             }
         };
-        ( $exp:expr, $( ($id:expr, $body:expr) ),*) => {
-                let mut map = std::collections::HashMap::new();
+        ( $( ($id:expr, $body:expr) ),*) => {
+                let mut cases = std::collections::HashMap::new();
                 $(
-                    map.insert($id.into(), $body.into());
+                    cases.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Switch($crate::term::RichTerm::from($exp), map, None))
+                $crate::term::RichTerm::from($crate::term::Term::Match {cases, default: None})
         };
     }
 

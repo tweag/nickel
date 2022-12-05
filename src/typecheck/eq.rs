@@ -32,7 +32,7 @@
 //!
 //! ## Equality on terms
 //!
-//! The terms inside a type may be arbitrarily complex. Primops applications, `switch`, and the
+//! The terms inside a type may be arbitrarily complex. Primops applications, `match`, and the
 //! like are quite unlikely to appear inside an annotation (they surely appear inside contract
 //! definitions). We don't want to compare functions syntactically either. The spirit of this
 //! implementation is to equate aliases or simple constructs that may appear inlined inside an

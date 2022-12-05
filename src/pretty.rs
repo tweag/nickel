@@ -586,40 +586,35 @@ where
                 .append(allocator.line())
                 .group()
                 .braces(),
-            Switch(tst, cases, def) => allocator
-                .text("switch")
-                .append(allocator.space())
-                .append(
-                    allocator
-                        .intersperse(
-                            sorted_map(cases).iter().map(|&(id, t)| {
-                                allocator
-                                    .text("`")
-                                    .append(allocator.quote_if_needed(id))
-                                    .append(allocator.space())
-                                    .append(allocator.text("=>"))
-                                    .append(allocator.space())
-                                    .append(t.to_owned().pretty(allocator))
-                                    .append(allocator.text(","))
-                            }),
-                            allocator.line(),
-                        )
-                        .append(def.clone().map_or(allocator.nil(), |d| {
+            Match { cases, default } => allocator.text("match").append(allocator.space()).append(
+                allocator
+                    .intersperse(
+                        sorted_map(cases).iter().map(|&(id, t)| {
                             allocator
-                                .line()
-                                .append(allocator.text("_"))
+                                .text("`")
+                                .append(allocator.quote_if_needed(id))
                                 .append(allocator.space())
                                 .append(allocator.text("=>"))
                                 .append(allocator.space())
-                                .append(d.pretty(allocator))
-                        }))
-                        .nest(2)
-                        .append(allocator.line_())
-                        .braces()
-                        .group(),
-                )
-                .append(allocator.space())
-                .append(allocator.atom(tst)),
+                                .append(t.to_owned().pretty(allocator))
+                                .append(allocator.text(","))
+                        }),
+                        allocator.line(),
+                    )
+                    .append(default.clone().map_or(allocator.nil(), |d| {
+                        allocator
+                            .line()
+                            .append(allocator.text("_"))
+                            .append(allocator.space())
+                            .append(allocator.text("=>"))
+                            .append(allocator.space())
+                            .append(d.pretty(allocator))
+                    }))
+                    .nest(2)
+                    .append(allocator.line_())
+                    .braces()
+                    .group(),
+            ),
             Array(fields, _) => allocator
                 // NOTE: the Array attributes are ignored here.
                 .line()
