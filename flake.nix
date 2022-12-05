@@ -44,7 +44,6 @@
       RUST_CHANNELS = [
         "stable"
         "beta"
-        "nightly"
       ];
 
       forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
