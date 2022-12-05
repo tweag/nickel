@@ -11,8 +11,11 @@ use super::{
     merge::{merge, MergeMode},
     subst, Closure, Environment, ImportResolver, VirtualMachine,
 };
-use crate::term::MetaValue;
 use crate::term::{record::RecordData, MergePriority};
+use crate::{
+    error::IllegalPolymorphicTailAction,
+    term::{record, MetaValue},
+};
 
 use crate::{
     error::EvalError,
@@ -615,6 +618,20 @@ impl<R: ImportResolver> VirtualMachine<R> {
 
                 match_sharedterm! {t, with {
                         Term::Record(record) => {
+                            // While it's certainly possible to allow mapping over
+                            // a record with a sealed tail, it's not entirely obvious
+                            // how that should behave. It's also not clear that this
+                            // is something users will actually need to do, so we've
+                            // decided to prevent this until we have a clearer idea
+                            // of potential use-cases.
+                            if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                                return Err(EvalError::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::Map,
+                                    label,
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                })
+                            }
+
                             let mut shared_env = Environment::new();
                             let f_as_var = f.body.closurize(&mut env, f.env);
 
@@ -1201,6 +1218,25 @@ impl<R: ImportResolver> VirtualMachine<R> {
             }
             UnaryOp::PushDefault() => Ok(PushPriority::Bottom.push_into(t, env, pos)),
             UnaryOp::PushForce() => Ok(PushPriority::Top.push_into(t, env, pos)),
+            UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
+                with {
+                    Term::Record(r) => {
+                        let mut empty = RecordData::empty();
+                        empty.sealed_tail = r.sealed_tail;
+                        Ok(Closure {
+                            body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                            env
+                        })
+                    },
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_empty_with_tail%, 1st arg"),
+                        arg_pos,
+                        RichTerm { term: t, pos }
+                    ))
+                }
+            },
         }
     }
 
@@ -1876,7 +1912,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 match fields.insert(Ident::from(id), as_var) {
                                     Some(t) if !is_empty_optional(&t, &env2) => Err(EvalError::Other(format!("$[ .. ]: tried to extend record with the field {}, but it already exists", id), pos_op)),
                                     _ => Ok(Closure {
-                                        body: Term::Record(RecordData::new(fields, record.attrs)).into(),
+                                        body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
                                     }),
                                 }
@@ -1916,7 +1952,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                         id,
                                         String::from("(-$)"),
                                         RichTerm::new(
-                                            Term::Record(RecordData::new(fields, record.attrs)),
+                                            Term::Record(RecordData { fields, ..record }),
                                             pos2,
                                         ),
                                         pos_op,
@@ -1925,7 +1961,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 else {
                                     Ok(Closure {
                                         body: RichTerm::new(
-                                            Term::Record(RecordData::new(fields, record.attrs)), pos_op_inh
+                                            Term::Record(RecordData { fields, ..record }), pos_op_inh
                                         ),
                                         env: env2,
                                     })
@@ -2125,7 +2161,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 env2,
                 pos_op,
                 MergeMode::Standard,
-                &self.call_stack,
+                &mut self.call_stack,
             ),
 
             BinaryOp::Hash() => {
@@ -2567,12 +2603,180 @@ impl<R: ImportResolver> VirtualMachine<R> {
                                 env3,
                                 pos_op,
                                 MergeMode::Contract(lbl),
-                                &self.call_stack
+                                &mut self.call_stack
                             )
                         }
                     } else {
                         Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))), pos_op))
                     }
+                }
+            }
+            NAryOp::RecordSealTail() => {
+                let mut args = args.into_iter();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a1,
+                                pos: pos1,
+                            },
+                        ..
+                    },
+                    fst_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a2,
+                                pos: pos2,
+                            },
+                        ..
+                    },
+                    snd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a3,
+                                pos: pos3,
+                            },
+                        env: env3,
+                    },
+                    thd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a4,
+                                pos: pos4,
+                            },
+                        env: env4,
+                    },
+                    frth_pos,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                match (&*a1, &*a2, &*a3, &*a4) {
+                    (
+                        Term::SealingKey(s),
+                        Term::Lbl(label),
+                        Term::Record(r),
+                        Term::Record(tail),
+                    ) => {
+                        let mut r = r.clone();
+                        let mut env = env3;
+
+                        let tail_as_var =
+                            RichTerm::from(Term::Record(tail.clone())).closurize(&mut env, env4);
+                        r.sealed_tail =
+                            Some(record::SealedTail::new(*s, label.clone(), tail_as_var));
+
+                        let body = RichTerm::from(Term::Record(r));
+                        Ok(Closure { body, env })
+                    }
+                    (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from("%record_seal_tail%, 4th arg"),
+                            frth_pos,
+                            RichTerm {
+                                term: a4,
+                                pos: pos4,
+                            },
+                        ))
+                    }
+                    (Term::SealingKey(_), Term::Lbl(_), _, _) => Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_seal_tail%, 3rd arg"),
+                        thd_pos,
+                        RichTerm {
+                            term: a3,
+                            pos: pos3,
+                        },
+                    )),
+                    (Term::SealingKey(_), _, _, _) => Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("%record_seal_tail%, 2nd arg"),
+                        snd_pos,
+                        RichTerm {
+                            term: a2,
+                            pos: pos2,
+                        },
+                    )),
+                    (_, _, _, _) => Err(EvalError::TypeError(
+                        String::from("SealingKey"),
+                        String::from("%record_seal_tail%, 1st arg"),
+                        fst_pos,
+                        RichTerm {
+                            term: a1,
+                            pos: pos1,
+                        },
+                    )),
+                }
+            }
+            NAryOp::RecordUnsealTail() => {
+                let mut args = args.into_iter();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a1,
+                                pos: pos1,
+                            },
+                        ..
+                    },
+                    fst_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: a2,
+                                pos: pos2,
+                            },
+                        ..
+                    },
+                    snd_pos,
+                ) = args.next().unwrap();
+                let (
+                    Closure {
+                        body: RichTerm { term: a3, .. },
+                        env: env3,
+                    },
+                    _,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                match (&*a1, &*a2, &*a3) {
+                    (Term::SealingKey(s), Term::Lbl(l), Term::Record(r)) => r
+                        .clone()
+                        .sealed_tail
+                        .and_then(|t| t.unseal(s).cloned())
+                        .ok_or_else(|| {
+                            EvalError::BlameError(l.clone(), std::mem::take(&mut self.call_stack))
+                        })
+                        .map(|t| Closure { body: t, env: env3 }),
+                    (Term::SealingKey(..), _, _) => Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("%record_unseal_tail%, 2nd arg"),
+                        snd_pos,
+                        RichTerm {
+                            term: a2,
+                            pos: pos2,
+                        },
+                    )),
+                    (_, _, _) => Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("%record_unseal_tail%, 3rd arg"),
+                        fst_pos,
+                        RichTerm {
+                            term: a1,
+                            pos: pos1,
+                        },
+                    )),
                 }
             }
         }
