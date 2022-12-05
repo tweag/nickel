@@ -1537,7 +1537,7 @@ pub enum NAryOp {
     ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
     ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is attempted,
     ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
-    ///   - the [term](Term) that we wish to seal.
+    ///   - the [record](Term::Record) that we wish to seal.
     RecordSealTail(),
     /// Unseals a term from the tail of a record and returns it.
     ///

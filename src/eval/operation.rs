@@ -2648,24 +2648,45 @@ impl<R: ImportResolver> VirtualMachine<R> {
                 ) = args.next().unwrap();
                 let (
                     Closure {
-                        body: RichTerm { term: a4, .. },
+                        body:
+                            RichTerm {
+                                term: a4,
+                                pos: pos4,
+                            },
                         env: env4,
                     },
-                    _,
+                    frth_pos,
                 ) = args.next().unwrap();
                 debug_assert!(args.next().is_none());
 
                 match (&*a1, &*a2, &*a3, &*a4) {
-                    (Term::SealingKey(s), Term::Lbl(label), Term::Record(r), tail) => {
+                    (
+                        Term::SealingKey(s),
+                        Term::Lbl(label),
+                        Term::Record(r),
+                        Term::Record(tail),
+                    ) => {
                         let mut r = r.clone();
                         let mut env = env3;
 
-                        let tail_as_var = RichTerm::from(tail.clone()).closurize(&mut env, env4);
+                        let tail_as_var =
+                            RichTerm::from(Term::Record(tail.clone())).closurize(&mut env, env4);
                         r.sealed_tail =
                             Some(record::SealedTail::new(*s, label.clone(), tail_as_var));
 
                         let body = RichTerm::from(Term::Record(r));
                         Ok(Closure { body, env })
+                    }
+                    (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
+                        Err(EvalError::TypeError(
+                            String::from("Record"),
+                            String::from("%record_seal_tail%, 4th arg"),
+                            frth_pos,
+                            RichTerm {
+                                term: a4,
+                                pos: pos4,
+                            },
+                        ))
                     }
                     (Term::SealingKey(_), Term::Lbl(_), _, _) => Err(EvalError::TypeError(
                         String::from("Record"),
