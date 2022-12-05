@@ -149,7 +149,9 @@ highlighting and NLS.
    - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
 
      ```console
-     nix-shell shell.nix
+     nix-shell
+     # Or if you use Nix Flakes
+     nix develop
      ```
 
      to be dropped in a shell, ready to build. You can use [our binary
