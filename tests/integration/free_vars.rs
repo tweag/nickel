@@ -25,7 +25,7 @@ fn stat_free_vars_incl(
         .all(|(id, set)| free_vars_eq(set, expected.remove(id.as_ref()).unwrap()))
 }
 
-fn dyn_free_vars_incl(dyn_fields: &Vec<FieldDeps>, mut expected: Vec<Vec<&str>>) -> bool {
+fn dyn_free_vars_incl(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {
     dyn_fields
         .iter()
         .enumerate()
