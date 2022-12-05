@@ -1216,8 +1216,8 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     })
                 }
             }
-            UnaryOp::PushDefault() => Ok(PushPriority::Bottom.push_into(t, env, pos)),
-            UnaryOp::PushForce() => Ok(PushPriority::Top.push_into(t, env, pos)),
+            UnaryOp::RecDefault() => Ok(RecPriority::Bottom.propagate_in_term(t, env, pos)),
+            UnaryOp::RecForce() => Ok(RecPriority::Top.propagate_in_term(t, env, pos)),
             UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
                 with {
                     Term::Record(r) => {
@@ -2783,56 +2783,56 @@ impl<R: ImportResolver> VirtualMachine<R> {
     }
 }
 
-/// A merge priority that can be pushed down to the leafs of a record. Currently only `default`
-/// (`Bottom`) and `force` (`Top`) can be pushed down a value.
+/// A merge priority that can be recursively pushed down to the leafs of a record. Currently only
+/// `default` (`Bottom`) and `force` (`Top`) can be recursive.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum PushPriority {
+pub enum RecPriority {
     Bottom,
     Top,
 }
 
-impl From<PushPriority> for MergePriority {
-    fn from(push_prio: PushPriority) -> Self {
-        match push_prio {
-            PushPriority::Top => MergePriority::Top,
-            PushPriority::Bottom => MergePriority::Bottom,
+impl From<RecPriority> for MergePriority {
+    fn from(rec_prio: RecPriority) -> Self {
+        match rec_prio {
+            RecPriority::Top => MergePriority::Top,
+            RecPriority::Bottom => MergePriority::Bottom,
         }
     }
 }
 
-impl PushPriority {
-    /// Return the push operator corresponding to this priority (`$push_force` or `$push_default`)
-    /// applied to the given term.
-    pub fn apply_push_op(&self, rt: RichTerm) -> RichTerm {
+impl RecPriority {
+    /// Return the recursive priority operator corresponding to this priority (`$rec_force` or
+    /// `$rec_default`) applied to the given term.
+    pub fn apply_rec_prio_op(&self, rt: RichTerm) -> RichTerm {
         let pos = rt.pos;
 
         let op = match self {
-            PushPriority::Top => internals::push_force(),
-            PushPriority::Bottom => internals::push_default(),
+            RecPriority::Top => internals::rec_force(),
+            RecPriority::Bottom => internals::rec_default(),
         };
 
         mk_app!(op, rt).with_pos(pos)
     }
 
-    /// Push the priority down the fields of a record.
-    fn push_into_record(&self, record: RecordData, env: &Environment, pos: TermPos) -> Closure {
+    /// Propagate the priority down the fields of a record.
+    fn propagate_in_record(&self, record: RecordData, env: &Environment, pos: TermPos) -> Closure {
         let mut new_env = Environment::new();
 
         let record = record.map_fields_without_optionals(env, |_, rt| {
             // There is a subtlety with respect to overriding here. Take:
             //
             // ```nickel
-            // ({foo = bar + 1, bar = 1} | _push_default) & {bar = 2}
+            // ({foo = bar + 1, bar = 1} | rec default) & {bar = 2}
             // ```
             //
-            // In the example above, if we just map `$push_default` on the value of `foo` and
+            // In the example above, if we just map `$rec_default` on the value of `foo` and
             // closurize it into a new, normal thunk (non revertible), we lose the ability to
             // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
             //
             // What we want is that:
             //
             // ```nickel
-            // {foo = bar + 1, bar = 1} | _push_default
+            // {foo = bar + 1, bar = 1} | rec default
             // ```
             //
             // is equivalent to writing:
@@ -2854,13 +2854,13 @@ impl PushPriority {
                     env.get(id)
                         .unwrap()
                         .map(|Closure { ref body, ref env }| Closure {
-                            body: self.apply_push_op(body.clone()),
+                            body: self.apply_rec_prio_op(body.clone()),
                             env: env.clone(),
                         })
                 }
                 _ => eval::lazy::Thunk::new(
                     Closure {
-                        body: self.apply_push_op(rt),
+                        body: self.apply_rec_prio_op(rt),
                         env: env.clone(),
                     },
                     eval::IdentKind::Record,
@@ -2884,7 +2884,7 @@ impl PushPriority {
     ///
     /// - `st` must represent an evaluated term (a weak head normal form), that is `st.is_whnf()`
     ///   must be true. Otherwise, this function panics
-    fn push_into(&self, st: SharedTerm, env: Environment, pos: TermPos) -> Closure {
+    fn propagate_in_term(&self, st: SharedTerm, env: Environment, pos: TermPos) -> Closure {
         let update_priority = |meta: &mut MetaValue| {
             if let MergePriority::Neutral = meta.priority {
                 meta.priority = (*self).into();
@@ -2894,7 +2894,7 @@ impl PushPriority {
         let t = st.into_owned();
 
         if let Term::Record(record) = t {
-            self.push_into_record(record, &env, pos)
+            self.propagate_in_record(record, &env, pos)
         } else {
             // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
             // priority.
@@ -2916,7 +2916,7 @@ impl PushPriority {
             };
 
             if let Some(inner) = meta.value.take() {
-                // The term is expected to be forced before calling to push_priority, which means that
+                // The term is expected to be forced before calling to rec_priority, which means that
                 // inner is either a simple value, or a thunk containing a weak head normal form.
                 let (inner, env_inner) = if let Term::Var(id) = inner.as_ref() {
                     let closure = env.get(id).unwrap().get_owned();
@@ -2932,7 +2932,7 @@ impl PushPriority {
                         let Closure {
                             body,
                             env: record_env,
-                        } = self.push_into_record(record, &env_inner, pos_inner);
+                        } = self.propagate_in_record(record, &env_inner, pos_inner);
                         meta.value = Some(body.closurize(&mut env, record_env));
                     }
                     t if t.is_whnf() => {
@@ -2940,7 +2940,7 @@ impl PushPriority {
                         meta.value =
                             Some(RichTerm::new(t, pos_inner).closurize(&mut env, env_inner));
                     }
-                    _ => panic!("push_priority: expected an evaluated form"),
+                    _ => panic!("rec_priority: expected an evaluated form"),
                 }
             } else {
                 update_priority(&mut meta);

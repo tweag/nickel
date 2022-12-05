@@ -11,7 +11,7 @@ use super::error::ParseError;
 
 use crate::{
     destruct::Destruct,
-    eval::operation::PushPriority,
+    eval::operation::RecPriority,
     identifier::Ident,
     label::Label,
     mk_app, mk_fun,
@@ -154,17 +154,17 @@ pub fn combine_match_annots(
     }
 }
 
-/// Some constructs are introduced with the metavalue pipe operator `|`, but aren't metadata per se
-/// (ex: `push force`/`push default`). Those are collected in this extended annotation and then
+/// Some constructs are introduced with the metadata pipe operator `|`, but aren't metadata per se
+/// (ex: `rec force`/`rec default`). Those are collected in this extended annotation and then
 /// desugared into a standard metavalue.
 #[derive(Clone, Debug, Default)]
 pub struct ExtdAnnot {
     /// Standard metadata.
     pub meta: MetaValue,
     /// Presence of an annotation `push force`
-    pub push_force: bool,
+    pub rec_force: bool,
     /// Presence of an annotation `push default`
-    pub push_default: bool,
+    pub rec_default: bool,
 }
 
 impl ExtdAnnot {
@@ -175,14 +175,14 @@ impl ExtdAnnot {
 
 impl Annot for ExtdAnnot {
     fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
-        if self.push_force || self.push_default {
-            let push_prio = if self.push_force {
-                PushPriority::Top
+        if self.rec_force || self.rec_default {
+            let rec_prio = if self.rec_force {
+                RecPriority::Top
             } else {
-                PushPriority::Bottom
+                RecPriority::Bottom
             };
 
-            self.meta.value = Some(push_prio.apply_push_op(value).with_pos(pos));
+            self.meta.value = Some(rec_prio.apply_rec_prio_op(value).with_pos(pos));
         } else {
             self.meta.value = Some(value);
         }
@@ -192,13 +192,13 @@ impl Annot for ExtdAnnot {
 
     fn combine(outer: Self, inner: Self) -> Self {
         let meta = MetaValue::flatten(outer.meta, inner.meta);
-        let push_force = outer.push_force || inner.push_force;
-        let push_default = outer.push_default || inner.push_default;
+        let rec_force = outer.rec_force || inner.rec_force;
+        let rec_default = outer.rec_default || inner.rec_default;
 
         ExtdAnnot {
             meta,
-            push_force,
-            push_default,
+            rec_force,
+            rec_default,
         }
     }
 }

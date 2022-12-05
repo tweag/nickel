@@ -133,6 +133,6 @@ pub mod contract {
 pub mod internals {
     use super::*;
 
-    generate_accessor!(push_default);
-    generate_accessor!(push_force);
+    generate_accessor!(rec_default);
+    generate_accessor!(rec_force);
 }

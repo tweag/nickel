@@ -136,12 +136,12 @@ AnnotAtom<TypeRule>: MetaValue = {
 
 ExtdAnnotAtom<TypeRule>: ExtdAnnot = {
     <AnnotAtom<TypeRule>> => <>.into(),
-    "|" "push force" => ExtdAnnot {
-        push_force: true,
+    "|" "rec" "force" => ExtdAnnot {
+        rec_force: true,
         ..Default::default()
     },
-    "|" "push default" => ExtdAnnot {
-        push_default: true,
+    "|" "rec" "default" => ExtdAnnot {
+        rec_default: true,
         ..Default::default()
     },
 }
@@ -356,14 +356,14 @@ RecordField: (FieldPath, RichTerm) = {
             .map(|t| t.pos.clone())
             .unwrap_or(mk_pos(src_id, l, r));
         let term = match (ann, t) {
-            (Some(ExtdAnnot { meta, push_force: false, push_default: false }), None) => {
+            (Some(ExtdAnnot { meta, rec_force: false, rec_default: false }), None) => {
                 RichTerm::new(Term::MetaValue(meta), pos)
             }
             (Some(ann), Some(t)) => {
                 ann.attach(t, pos)
             }
             (Some(_), None) => {
-                panic!("can't use push default/push force on a field without definition");
+                panic!("can't use rec default/rec force on a field without definition");
             }
             (None, Some(t)) => t,
             (None, None) => RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
@@ -553,8 +553,8 @@ UOp: UnaryOp = {
     "enum_from" => UnaryOp::EnumFromStr(),
     "str_is_match" => UnaryOp::StrIsMatch(),
     "str_match" => UnaryOp::StrMatch(),
-    "push_force_op" => UnaryOp::PushForce(),
-    "push_default_op" => UnaryOp::PushDefault(),
+    "rec_force_op" => UnaryOp::RecForce(),
+    "rec_default_op" => UnaryOp::RecDefault(),
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
 };
 
@@ -894,8 +894,8 @@ extern {
         "fields" => Token::Normal(NormalToken::FieldsOf),
         "values" => Token::Normal(NormalToken::ValuesOf),
         "pow" => Token::Normal(NormalToken::Pow),
-        "push_force_op" => Token::Normal(NormalToken::PushForceOp),
-        "push_default_op" => Token::Normal(NormalToken::PushDefaultOp),
+        "rec_force_op" => Token::Normal(NormalToken::RecForceOp),
+        "rec_default_op" => Token::Normal(NormalToken::RecDefaultOp),
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),
@@ -908,8 +908,6 @@ extern {
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
         "priority" => Token::Normal(NormalToken::Priority),
-        "push force" => Token::Normal(NormalToken::PushForce),
-        "push default" => Token::Normal(NormalToken::PushDefault),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

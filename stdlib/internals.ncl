@@ -111,8 +111,8 @@
       if t == {} then acc
       else %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l),
 
-  # Push priorities operators
+  # Recursive priorities operators
 
-  "$push_force" = fun val => %seq% val (%push_force% val),
-  "$push_default" = fun val => %seq% val (%push_default% val),
+  "$rec_force" = fun val => %seq% val (%rec_force% val),
+  "$rec_default" = fun val => %seq% val (%rec_default% val),
 }
