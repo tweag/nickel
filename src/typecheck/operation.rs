@@ -384,8 +384,8 @@ pub fn get_nop_type(
             vec![
                 mk_uniftype::dynamic(),
                 mk_uniftype::dynamic(),
-                mk_uniftype::dynamic(),
-                mk_uniftype::dynamic(),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
             ],
             mk_uniftype::dynamic(),
         ),
@@ -394,7 +394,7 @@ pub fn get_nop_type(
             vec![
                 mk_uniftype::dynamic(),
                 mk_uniftype::dynamic(),
-                mk_uniftype::dynamic(),
+                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
             ],
             mk_uniftype::dynamic(),
         ),
