@@ -12,6 +12,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    # `import-cargo` is still used for the WASM build for now, though we expect to get rid of it in the future.
+    # See https://github.com/tweag/nickel/issues/967
     import-cargo.url = "github:edolstra/import-cargo";
     crane = {
       url = "github:ipetkov/crane";
