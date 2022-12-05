@@ -89,7 +89,7 @@ let {check, ..} = import "testlib.ncl" in
                | default = "",
       snd_data = "snd",
     },
-    final_override | _push_force = {
+    final_override | rec force = {
       fst_data = "override",
       snd_data = "override",
       common.final = fst_data ++ "_" ++ snd_data,

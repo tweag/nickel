@@ -41,16 +41,16 @@ let {Assert, check, ..} =  import "testlib.ncl" in
     d = 1,
   } | Assert,
 
-  {foo | _push_default = 1} & {foo = 2} == {foo = 2} | Assert,
-  {foo | _push_force = 1} & {foo = 2} == {foo = 1} | Assert,
-  {val | _push_default = {foo = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
-  {val | _push_force = {foo = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
+  {foo | rec default = 1} & {foo = 2} == {foo = 2} | Assert,
+  {foo | rec force = 1} & {foo = 2} == {foo = 1} | Assert,
+  {val | rec default = {foo = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
+  {val | rec force = {foo = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
 
   # Pushed priorities should only modifies fields without explicitly set priorities
-  {val | _push_force = {foo | priority -1 = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
-  {val | _push_force = {foo | default = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
-  {val | _push_default = {foo | priority 1 = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
-  {val | _push_default = {foo | force = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
+  {val | rec force = {foo | priority -1 = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
+  {val | rec force = {foo | default = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
+  {val | rec default = {foo | priority 1 = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
+  {val | rec default = {foo | force = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
 
   let x = {
     foo | force = "old",
@@ -59,16 +59,16 @@ let {Assert, check, ..} =  import "testlib.ncl" in
         baz' = "old"
       } |> record.map (fun _name value => value)
   } in
-  {val | _push_default = x} & {val = {foo = "new", bar.baz = "new"}}
+  {val | rec default = x} & {val = {foo = "new", bar.baz = "new"}}
     == { val = {foo = "old", bar = {baz = "new", baz' = "old"}}}
     | Assert,
 
-  # Interaction of recursive overriding and push priorities
+  # Interaction of recursive overriding and recursive priorities
   let context = 1 in
   let x = {
     foo = context + 2 + bar,
     bar | default = 1,
   } in
-  {val | _push_force = x } & {val = {foo = 0, bar = 10}}
+  {val | rec force = x } & {val = {foo = 0, bar = 10}}
     == {val = {bar = 10, foo = 1 + 2 + 10}} | Assert,
 ] |> check
