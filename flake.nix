@@ -131,7 +131,11 @@
             targets = [ target ];
           };
 
-      pre-commit-builder = { rust ? mkRust { } }: pre-commit-hooks.lib.${system}.run {
+      # A note on check_format: the way we invoke rustfmt here works locally but fails on CI.
+      # Since the formatting is checked on CI anyway - as part of the rustfmt check - we
+      # disable rustfmt in the pre-commit hook when running checks, but enable it when
+      # running in a dev shell.
+      pre-commit-builder = { rust ? mkRust { }, checkFormat ? false }: pre-commit-hooks.lib.${system}.run {
         src = self;
         hooks = {
           nixpkgs-fmt = {
@@ -145,9 +149,8 @@
           };
 
           rustfmt = {
-            enable = true;
-            # Silly test to ensure Crane's `rustfmt` check was run
-            entry = pkgs.lib.mkForce "test -d ${(mkCraneArtifacts {inherit rust;}).rustfmt}/target";
+            enable = checkFormat;
+            entry = pkgs.lib.mkForce "${rust}/bin/cargo-fmt fmt -- --check --color always";
           };
 
           markdownlint = {
@@ -241,7 +244,7 @@
           pkgs.nodePackages.markdownlint-cli
         ];
 
-        shellHook = (pre-commit-builder { inherit rust; }).shellHook + ''
+        shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
           echo "=== Nickel development shell ==="
           echo "Info: Git hooks can be installed using \`pre-commit install\`"
         '';
