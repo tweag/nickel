@@ -11,7 +11,7 @@ mod pass;
 mod pretty;
 mod query;
 mod records_fail;
-mod stdlib_arrays_fails;
+mod stdlib_arrays_fail;
 mod stdlib_typecheck;
 mod typecheck_fail;
 mod unbound_type_variables;
