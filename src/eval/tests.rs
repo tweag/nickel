@@ -186,13 +186,13 @@ fn imports() {
     // let x = import "does_not_exist" in x
     match mk_import("x", "does_not_exist", mk_term::var("x"), &mut vm).unwrap_err() {
         ImportError::IOError(_, _, _) => (),
-        _ => assert!(false),
+        _ => panic!(),
     };
 
     // let x = import "bad" in x
     match mk_import("x", "bad", mk_term::var("x"), &mut vm).unwrap_err() {
         ImportError::ParseErrors(_, _) => (),
-        _ => assert!(false),
+        _ => panic!(),
     };
 
     // let x = import "two" in x

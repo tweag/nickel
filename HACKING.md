@@ -94,7 +94,7 @@ Both methods are described below.
 At the root of the repository:
 
 ```shell
-$ nix build .#buildWasm
+$ nix build .#nickelWasm
 $ ls result/nickel-repl
 LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 ```
