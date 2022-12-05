@@ -37,7 +37,7 @@ pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
 }
 
 fn program_from_test_fixture(f: &str) -> Program {
-    let path = format!("{}/../tests/{}", env!("CARGO_MANIFEST_DIR"), f);
+    let path = format!("{}/../tests/integration/{}", env!("CARGO_MANIFEST_DIR"), f);
     Program::new_from_file(&path)
         .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
 }

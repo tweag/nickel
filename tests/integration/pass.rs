@@ -21,7 +21,7 @@ fn run(path: impl Into<OsString>) {
 
 fn check_file(file: &str) {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("tests/pass/{}", file));
+    path.push(format!("tests/integration/pass/{}", file));
 
     thread::Builder::new()
         .name(String::from(file))

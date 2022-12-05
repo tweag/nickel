@@ -76,31 +76,33 @@ let {check, ..} = import "testlib.ncl" in
   },
 
   # merging recursive expressions with different dependencies
-  let fst_data = {
-    common.fst = snd_data ++ "_data",
-    snd_data | Str
-             | default = "",
-    fst_data = "fst",
-  } in
-  let snd_data = {
-    common.snd = fst_data ++ "_data",
-    fst_data | Str
-             | default = "",
-    snd_data = "snd",
-  } in
-  let final_override | _push_force = {
-    fst_data = "override",
-    snd_data = "override",
-    common.final = fst_data ++ "_" ++ snd_data,
+  let parent = {
+    fst_data = {
+      common.fst = snd_data ++ "_data",
+      snd_data | Str
+               | default = "",
+      fst_data = "fst",
+    },
+    snd_data = {
+      common.snd = fst_data ++ "_data",
+      fst_data | Str
+               | default = "",
+      snd_data = "snd",
+    },
+    final_override | _push_force = {
+      fst_data = "override",
+      snd_data = "override",
+      common.final = fst_data ++ "_" ++ snd_data,
+    },
   } in
   [
-    fst_data & snd_data == {
+    parent.fst_data & parent.snd_data == {
       common.fst = "snd_data",
       common.snd = "fst_data",
       fst_data = "fst",
       snd_data = "snd",
     },
-    (fst_data & snd_data) & final_override == {
+    (parent.fst_data & parent.snd_data) & parent.final_override == {
       common.fst = "override_data",
       common.snd = "override_data",
       common.final = "override_override",
