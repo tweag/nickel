@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "ansi_term",
  "assert_matches",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-lsp"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-utilities"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "codespan",
  "criterion",
@@ -1250,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-repl"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "nickel-lang",
 ]
