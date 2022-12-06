@@ -36,4 +36,12 @@ pub enum ParseError {
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
+    /// A type variable is used in ways that imply it has muiltiple different kinds.
+    ///
+    /// This can happen in several situations, for example:
+    /// - a variable is used as both a type variable and a row type variable,
+    ///   e.g. in the signature `forall r. { ; r } -> r`,
+    /// - a variable is used as both a record and enum row variable, e.g. in the
+    ///   signature `forall r. [| ; r |] -> { ; r }`.
+    TypeVariableKindMismatch { ty_var: Ident, span: RawSpan },
 }
