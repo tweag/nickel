@@ -1231,8 +1231,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })
                 }
             }
-            UnaryOp::RecDefault() => Ok(RecPriority::Bottom.propagate_in_term(&mut self.cache, t, env, pos)),
-            UnaryOp::RecForce() => Ok(RecPriority::Top.propagate_in_term(&mut self.cache, t, env, pos)),
+            UnaryOp::RecDefault() => {
+                Ok(RecPriority::Bottom.propagate_in_term(&mut self.cache, t, env, pos))
+            }
+            UnaryOp::RecForce() => {
+                Ok(RecPriority::Top.propagate_in_term(&mut self.cache, t, env, pos))
+            }
             UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
                 with {
                     Term::Record(r) => {
