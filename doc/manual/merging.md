@@ -313,6 +313,58 @@ Dually, values with the `force` annotation are given the highest priority. Such
 a value can never be overriden, and will either take precedence over another
 value or be tentatively merged if the other value is forcing as well.
 
+#### Recursive priorities
+
+**Warning**: the syntax and semantics of recursive priorities are new as of
+version 0.3, and may evolve in the future.
+
+Using the `default` annotation on a record value means that the value is either
+picked as a block, or erased altogether:
+
+```text
+nickel> {server | default = {ip = "192.168.1.1", port = 80}} & {server.ip =
+"42.42.42.42"}
+{ server = { ip = "42.42.42.42" } }
+```
+
+This might not be what you want, for example because the server field should
+always define a `port`. It's useful to provide a set of default values that are
+individually overridable: in our example, we would like to be able to override
+`server` as we did while still keeping a default value for `port`. One solution
+is to simply annotate each value with a `default`:
+
+```nickel
+{server = {ip | default = "192.168.1.1", port | default = 80}}
+```
+
+However, doing so can quickly become cumbersome for larger sets of default
+values, where we end up duplicating `default` annotations. We can do better
+thanks to *recursive priorities*, written `rec default` and `rec force`. During
+evaluation, recursive priorities are dynamically pushed down until they reach
+values which are not records anymore, that is to the leaves of the record, so to
+speak:
+
+```text
+nickel> {server | rec default = {ip = "192.168.1.1", port = 80}} & {server.ip =
+"42.42.42.42"}
+{ server = { ip = "42.42.42.42", port = 80 } }
+```
+
+`rec force` implements the same idea for `force`. It makes overriding happen for
+individual fields of a record and not as a block.
+
+If a value already has a merge priority set, the rules are the following:
+
+- `rec default` doesn't apply on values with explicit priorities set. That is,
+  `{foo | rec default = {bar | priority 10 = 1, baz = 2}}` will evaluate to
+  `{foo = {bar | priority 10 = 1, baz | default = 2}}`.
+- `rec force` always overrides existing priorities. That is,
+  `{foo | rec force = {bar | priority 10 = 1, baz | default = 2}}` will evaluate
+  to `{foo = {bar | force = 1, baz | force = 2}}`.
+
+Put differently, when another priority is explicitly set, we take the maximum
+priority between the recursive priority and the existing one.
+
 #### Specification
 
 We can consider the merging system to feature priorities. To each field
