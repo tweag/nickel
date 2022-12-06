@@ -158,7 +158,7 @@ impl Default for Attributes {
 }
 
 /// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`crate::eval::eval_meta`] and [`crate::program::query`]).
+/// [`crate::eval::VirtualMachine::eval_meta`] and [`crate::program::query`]).
 ///
 /// Wrapper around `write_query_result_` that selects an adapated query printer at compile time.
 pub fn write_query_result(
@@ -176,7 +176,7 @@ pub fn write_query_result(
 }
 
 /// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`crate::eval::eval_meta`] and [`crate::program::query`]).
+/// [`crate::eval::VirtualMachine::eval_meta`] and [`crate::program::query`]).
 fn write_query_result_<R: QueryPrinter>(
     out: &mut impl Write,
     term: &Term,

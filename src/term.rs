@@ -425,8 +425,8 @@ pub mod record {
 
     /// The base structure of a Nickel record.
     ///
-    /// Used to group together fields common to both the [Record](Term::Record) and
-    /// [RecRecord](Term::RecRecord) terms.
+    /// Used to group together fields common to both the [super::Term::Record] and
+    /// [super::Term::RecRecord] terms.
     #[derive(Clone, Debug, Default, PartialEq)]
     pub struct RecordData {
         /// Fields whose names are known statically.
@@ -486,9 +486,8 @@ pub mod record {
 
     /// The sealed tail of a Nickel record under a polymorphic contract.
     ///
-    /// Note that access to the enclosed [term] must only be allowed when a
-    /// matching [sealing_key] is provided. If this is not enforced it will
-    /// lead to parametricity violations.
+    /// Note that access to the enclosed term must only be allowed when a matching sealing key is
+    /// provided. If this is not enforced it will lead to parametricity violations.
     #[derive(Clone, Debug, PartialEq)]
     pub struct SealedTail {
         /// The key with which the tail is sealed.
@@ -1481,7 +1480,7 @@ pub enum BinaryOp {
     Assume(),
     /// Unseal a sealed term.
     ///
-    /// See [`UnaryOp::Seal`].
+    /// See [`BinaryOp::Seal`].
     Unseal(),
     /// Go to a specific field in the type path of a label.
     ///
@@ -1573,7 +1572,7 @@ pub enum NAryOp {
     ///
     /// Takes three arguments:
     ///   - the [sealing key](Term::SealingKey), which was used to seal the tail,
-    ///   - a [label](Term::Label) which will be used to assign blame correctly if
+    ///   - a [label](Term::Lbl) which will be used to assign blame correctly if
     ///     something goes wrong while unsealing,
     ///   - the [record](Term::Record) whose tail we wish to unseal.
     RecordUnsealTail(),
@@ -2055,7 +2054,7 @@ pub mod make {
 
     /// Array for types implementing `Into<RichTerm>` (for elements).
     /// The array's attributes are a trailing (optional) `ArrayAttrs`, separated by a `;`.
-    /// `mk_array!(Term::Num(42)) corresponds to `[42]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may have different attributes.
+    /// `mk_array!(Term::Num(42))` corresponds to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may have different attributes.
     #[macro_export]
     macro_rules! mk_array {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
