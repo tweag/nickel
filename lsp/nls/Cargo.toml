@@ -1,6 +1,6 @@
 [package]
 name = "nickel-lang-lsp"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Nickel team"]
 license = "MIT"
 readme = "README.md"
@@ -31,7 +31,7 @@ lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
-nickel-lang = {path = "../../", version = "0.2.1"}
+nickel-lang = {path = "../../", version = "0.3.0"}
 derive_more = "0.99"
 lazy_static = "1"
 csv = "1"
