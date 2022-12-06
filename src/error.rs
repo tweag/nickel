@@ -100,6 +100,8 @@ pub enum EvalError {
         label: label::Label,
         call_stack: CallStack,
     },
+    /// A non-equatable term was compared for equality.
+    EqError { eq_pos: TermPos, term: RichTerm },
     /// An unexpected internal error.
     InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -994,6 +996,29 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_message(format!("{} parse error: {}", format, msg))
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
+            }
+            EvalError::EqError { eq_pos, term: t } => {
+                let label = format!(
+                    "an argument has type {}, which cannot be compared for equality",
+                    t.term
+                        .type_of()
+                        .unwrap_or_else(|| String::from("<unevaluated>")),
+                );
+
+                let labels = match eq_pos {
+                    TermPos::Original(pos) | TermPos::Inherited(pos) if eq_pos != &t.pos => {
+                        vec![
+                            primary(pos).with_message(label),
+                            secondary_term(t, files)
+                                .with_message("problematic argument evaluated to this"),
+                        ]
+                    }
+                    _ => vec![primary_term(t, files).with_message(label)],
+                };
+
+                vec![Diagnostic::error()
+                    .with_message("cannot compare values for equality")
+                    .with_labels(labels)]
             }
             EvalError::IllegalPolymorphicTailAccess {
                 action,

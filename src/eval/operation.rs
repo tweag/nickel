@@ -1689,7 +1689,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env: env2,
                 };
 
-                match eq(&mut self.cache, &mut env, c1, c2) {
+                match eq(&mut self.cache, &mut env, c1, c2, pos_op_inh)? {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -3000,25 +3000,39 @@ impl RecPriority {
         }
     }
 }
+
 /// Compute the equality of two terms, represented as closures.
 ///
 /// # Parameters
 ///
-/// - env: the final environment in which to closurize the operands of potential subequalities.
-/// - c1: the closure of the first operand.
-/// - c2: the closure of the second operand.
+/// - `env`: the final environment in which to closurize the operands of potential subequalities.
+/// - `c1`: the closure of the first operand.
+/// - `c2`: the closure of the second operand.
+/// - `pos_op`: the position of the equality operation, used for error diagnostics.
 ///
 /// # Return
 ///
-/// Return either a boolean when the equality can be computed directly, or a new non-empty list of
-/// equalities to be checked if operands are composite values.
-fn eq<C: Cache>(cache: &mut C, env: &mut Environment, c1: Closure, c2: Closure) -> EqResult {
+/// If the comparison is successful, returns a bool indicating whether the values were equal,
+/// otherwise returns an [`EvalError`] indiciating that the values cannot be compared.
+fn eq<C: Cache>(
+    cache: &mut C,
+    env: &mut Environment,
+    c1: Closure,
+    c2: Closure,
+    pos_op: TermPos,
+) -> Result<EqResult, EvalError> {
     let Closure {
-        body: RichTerm { term: t1, .. },
+        body: RichTerm {
+            term: t1,
+            pos: pos1,
+        },
         env: env1,
     } = c1;
     let Closure {
-        body: RichTerm { term: t2, .. },
+        body: RichTerm {
+            term: t2,
+            pos: pos2,
+        },
         env: env2,
     } = c2;
 
@@ -3061,13 +3075,13 @@ fn eq<C: Cache>(cache: &mut C, env: &mut Environment, c1: Closure, c2: Closure) 
     }
 
     match (t1.into_owned(), t2.into_owned()) {
-        (Term::Null, Term::Null) => EqResult::Bool(true),
-        (Term::Bool(b1), Term::Bool(b2)) => EqResult::Bool(b1 == b2),
-        (Term::Num(n1), Term::Num(n2)) => EqResult::Bool(n1 == n2),
-        (Term::Str(s1), Term::Str(s2)) => EqResult::Bool(s1 == s2),
-        (Term::Lbl(l1), Term::Lbl(l2)) => EqResult::Bool(l1 == l2),
-        (Term::SealingKey(s1), Term::SealingKey(s2)) => EqResult::Bool(s1 == s2),
-        (Term::Enum(id1), Term::Enum(id2)) => EqResult::Bool(id1 == id2),
+        (Term::Null, Term::Null) => Ok(EqResult::Bool(true)),
+        (Term::Bool(b1), Term::Bool(b2)) => Ok(EqResult::Bool(b1 == b2)),
+        (Term::Num(n1), Term::Num(n2)) => Ok(EqResult::Bool(n1 == n2)),
+        (Term::Str(s1), Term::Str(s2)) => Ok(EqResult::Bool(s1 == s2)),
+        (Term::Lbl(l1), Term::Lbl(l2)) => Ok(EqResult::Bool(l1 == l2)),
+        (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
+        (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1 == id2)),
         (Term::Record(r1), Term::Record(r2)) => {
             let merge::hashmap::SplitResult {
                 left,
@@ -3079,12 +3093,12 @@ fn eq<C: Cache>(cache: &mut C, env: &mut Environment, c1: Closure, c2: Closure) 
             if !left.values().all(|rt| is_empty_optional(cache, rt, &env1))
                 || !right.values().all(|rt| is_empty_optional(cache, rt, &env2))
             {
-                EqResult::Bool(false)
+                Ok(EqResult::Bool(false))
             } else if center.is_empty() {
-                EqResult::Bool(true)
+                Ok(EqResult::Bool(true))
             } else {
                 let eqs = center.into_iter().map(|(_, (t1, t2))| (t1, t2));
-                gen_eqs(cache, eqs, env, env1, env2)
+                Ok(gen_eqs(cache, eqs, env, env1, env2))
             }
         }
         (Term::Array(l1, a1), Term::Array(l2, a2)) if l1.len() == l2.len() => {
@@ -3119,7 +3133,7 @@ fn eq<C: Cache>(cache: &mut C, env: &mut Environment, c1: Closure, c2: Closure) 
                 .collect::<Vec<_>>();
 
             match eqs.pop() {
-                None => EqResult::Bool(true),
+                None => Ok(EqResult::Bool(true)),
                 Some((t1, t2)) => {
                     let eqs = eqs
                         .into_iter()
@@ -3137,15 +3151,23 @@ fn eq<C: Cache>(cache: &mut C, env: &mut Environment, c1: Closure, c2: Closure) 
                         })
                         .collect::<Vec<_>>();
 
-                    EqResult::Eqs(
+                    Ok(EqResult::Eqs(
                         t1.closurize(cache, env, shared_env1),
                         t2.closurize(cache, env, shared_env2),
                         eqs,
-                    )
+                    ))
                 }
             }
         }
-        (_, _) => EqResult::Bool(false),
+        (Term::Fun(i, rt), _) => Err(EvalError::EqError {
+            eq_pos: pos_op,
+            term: RichTerm::new(Term::Fun(i, rt), pos1),
+        }),
+        (_, Term::Fun(i, rt)) => Err(EvalError::EqError {
+            eq_pos: pos_op,
+            term: RichTerm::new(Term::Fun(i, rt), pos2),
+        }),
+        (_, _) => Ok(EqResult::Bool(false)),
     }
 }
 
