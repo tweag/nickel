@@ -1231,8 +1231,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     })
                 }
             }
-            UnaryOp::RecDefault() => Ok(RecPriority::Bottom.propagate_in_term(t, env, pos)),
-            UnaryOp::RecForce() => Ok(RecPriority::Top.propagate_in_term(t, env, pos)),
+            UnaryOp::RecDefault() => Ok(RecPriority::Bottom.propagate_in_term(&mut self.cache, t, env, pos)),
+            UnaryOp::RecForce() => Ok(RecPriority::Top.propagate_in_term(&mut self.cache, t, env, pos)),
             UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
                 with {
                     Term::Record(r) => {
@@ -2852,7 +2852,6 @@ impl RecPriority {
         record.fields = record
             .fields
             .into_iter()
-            //.filter(|(id, t)| !is_empty_optional(cache, t, env))
             .filter_map(|(id, rt)| {
                 // There is a subtlety with respect to overriding here. Take:
                 //
@@ -2889,13 +2888,13 @@ impl RecPriority {
                         Term::Var(id) => {
                             let idx = env.get(id).unwrap();
                             cache.map_at_index(idx, |Closure { ref body, ref env }| Closure {
-                                body: self.apply_push_op(body.clone()),
+                                body: self.apply_rec_prio_op(body.clone()),
                                 env: env.clone(),
                             })
                         }
                         _ => cache.add(
                             Closure {
-                                body: self.apply_push_op(rt),
+                                body: self.apply_rec_prio_op(rt),
                                 env: env.clone(),
                             },
                             eval::IdentKind::Record,
@@ -2938,7 +2937,7 @@ impl RecPriority {
         let t = st.into_owned();
 
         if let Term::Record(record) = t {
-            self.push_into_record(cache, record, &env, pos)
+            self.propagate_in_record(cache, record, &env, pos)
         } else {
             // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
             // priority.
@@ -2976,7 +2975,7 @@ impl RecPriority {
                         let Closure {
                             body,
                             env: record_env,
-                        } = self.push_into_record(cache, record, &env_inner, pos_inner);
+                        } = self.propagate_in_record(cache, record, &env_inner, pos_inner);
                         meta.value = Some(body.closurize(cache, &mut env, record_env));
                     }
                     t if t.is_whnf() => {
