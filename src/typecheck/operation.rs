@@ -192,12 +192,12 @@ pub fn get_uop_type(
         // Dyn -> Dyn
         UnaryOp::Force(_) => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // forall a. a -> a
-        UnaryOp::PushDefault() => {
+        UnaryOp::RecDefault() => {
             let ty = state.table.fresh_type_uvar();
             (ty.clone(), ty)
         }
         // forall a. a -> a
-        UnaryOp::PushForce() => {
+        UnaryOp::RecForce() => {
             let ty = state.table.fresh_type_uvar();
             (ty.clone(), ty)
         }

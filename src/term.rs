@@ -1347,11 +1347,41 @@ pub enum UnaryOp {
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
     Force(Option<crate::eval::callstack::StackElem>),
-
-    /// doc: TODO
-    PushDefault(),
-    /// doc: TODO
-    PushForce(),
+    /// Recursive default priority operator. Recursively propagates a default priority through a
+    /// record, stopping whenever a field isn't a record anymore to then turn into a simple
+    /// `default`.
+    ///
+    /// For example:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo | rec default = {
+    ///     bar = 1,
+    ///     baz = "a",
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// Is evaluated to:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo = {
+    ///     bar | default = 1,
+    ///     baz | default = "a",
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// If a value has any explicit priority annotation, then the original annotation takes
+    /// precedence and the default doesn't apply.
+    RecDefault(),
+    /// Recursive force priority operator. Similar to [UnaryOp::RecDefault], but propagate the
+    /// `force` annotation.
+    ///
+    /// As opposed to `RecDefault`, the `force` takes precedence and erase any prior explicit
+    /// priority annotation.
+    RecForce(),
 
     /// Creates an "empty" record with the sealed tail of its [`Term::Record`]
     /// argument.
@@ -1399,7 +1429,7 @@ pub enum OpPos {
 impl UnaryOp {
     pub fn eval_mode(&self) -> EvalMode {
         match self {
-            UnaryOp::PushDefault() | UnaryOp::PushForce() => EvalMode::StopAtMeta,
+            UnaryOp::RecDefault() | UnaryOp::RecForce() => EvalMode::StopAtMeta,
             _ => EvalMode::default(),
         }
     }
