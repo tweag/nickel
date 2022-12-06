@@ -25,8 +25,8 @@ impl NameReg {
 
 /// Create a fresh name candidate for a type variable or a type constant.
 ///
-/// Used by [`to_type_report`] and subfunctions `var_to_type` and `cst_to_type` when converting a
-/// type wrapper to a human-readable representation.
+/// Used by [`to_type`] and subfunctions [`var_name`] and [`cst_name`] when converting a type
+/// wrapper to a human-readable representation.
 ///
 /// To select a candidate, first check in `names` if the variable or the constant corresponds to a
 /// type variable written by the user. If it is, return the name of the variable. Otherwise, use

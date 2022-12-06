@@ -177,7 +177,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
         &mut self.import_resolver
     }
 
-    /// Evaluate a Nickel term. Wrapper around [eval_closure] that starts from an empty local
+    /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an empty local
     /// environment and drops the final environment.
     pub fn eval(&mut self, t0: RichTerm, initial_env: &Environment) -> Result<RichTerm, EvalError> {
         self.eval_closure(Closure::atomic_closure(t0), initial_env)

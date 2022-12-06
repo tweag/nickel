@@ -1157,8 +1157,9 @@ mod blame_error {
         }
     }
 
-    /// Generate a codespan label that describes the [type path][crate::label::TyPath] of a (Nickel)
-    /// label, and notes to hint at the situation that may have caused the corresponding error.
+    /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
+    /// (Nickel) label, and notes to hint at the situation that may have caused the corresponding
+    /// error.
     pub fn report_ty_path(
         l: &label::Label,
         files: &mut Files<String>,

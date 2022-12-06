@@ -267,8 +267,8 @@ impl Cache {
         self.add_file_(normalized, timestamp)
     }
 
-    /// Same as [get_or_add_file], but assume that the path is already normalized, and take the
-    /// timestamp as a parameter.
+    /// Same as [Self::add_file], but assume that the path is already normalized, and take the timestamp
+    /// as a parameter.
     fn get_or_add_file_(
         &mut self,
         path: impl Into<OsString>,
