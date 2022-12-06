@@ -29,7 +29,7 @@ impl From<Error> for InputError {
 }
 
 /// Return a new instance of an REPL with the standard library loaded.
-pub fn init() -> Result<ReplImpl, Error> {
+pub fn init<EC: EvalCache>() -> Result<ReplImpl<EC>, Error> {
     let mut repl = ReplImpl::new();
     repl.load_stdlib()?;
     Ok(repl)

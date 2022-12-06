@@ -1,13 +1,13 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError};
-use nickel_lang::program::Program;
 use nickel_lang::term::RichTerm;
+use nickel_lang_utilities::TestProgram;
 use std::path::PathBuf;
 
 fn eval_file(file: &str) -> Result<RichTerm, Error> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push(format!("examples/{}", file));
-    let mut p = Program::new_from_file(path).expect("could not load file as a program");
+    let mut p = TestProgram::new_from_file(path).expect("could not load file as a program");
     p.eval_deep()
 }
 

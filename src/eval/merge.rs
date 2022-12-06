@@ -86,7 +86,9 @@ impl Default for MergeMode {
 ///
 /// In [`MergeMode::Contract`] mode, `t1` must be the value and `t2` must be the contract. It is
 /// important as `merge` is not commutative in this mode.
-pub fn merge(
+#[allow(clippy::too_many_arguments)] // TODO: Is it worth to pack the inputs in an ad-hoc struct?
+pub fn merge<C: Cache>(
+    cache: &mut C,
     t1: RichTerm,
     env1: Environment,
     t2: RichTerm,
@@ -271,6 +273,7 @@ pub fn merge(
                         && (priority1 >= priority2 || value2.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
+                        cache,
                         v1,
                         &env1,
                         types2.iter().chain(contracts2.iter()),
@@ -288,6 +291,7 @@ pub fn merge(
                         && (priority2 >= priority1 || value1.is_none()) =>
                 {
                     let (v, e) = cross_apply_contracts(
+                        cache,
                         v2,
                         &env2,
                         types1.iter().chain(contracts1.iter()),
@@ -304,7 +308,7 @@ pub fn merge(
                 (Some(t1), Some(t2)) if priority1 == priority2 => {
                     let mut env = Environment::new();
                     (
-                        Some(merge_closurize(&mut env, t1, val_env1, t2, val_env2)),
+                        Some(merge_closurize(cache, &mut env, t1, val_env1, t2, val_env2)),
                         priority1,
                         env,
                     )
@@ -320,7 +324,7 @@ pub fn merge(
             // Finally, we also need to closurize the contracts in the final envirnment.
             let mut contracts1: Vec<Contract> = contracts1
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env1.clone()))
+                .map(|ctr| ctr.closurize(cache, &mut env, env1.clone()))
                 .collect();
             // Clippy is wrong to complain about the useless `collect` here:
             // It is necessary to release the mutable borrow on `env`
@@ -328,10 +332,10 @@ pub fn merge(
             #[allow(clippy::needless_collect)]
             let contracts2: Vec<Contract> = contracts2
                 .into_iter()
-                .map(|ctr| ctr.closurize(&mut env, env2.clone()))
+                .map(|ctr| ctr.closurize(cache, &mut env, env2.clone()))
                 .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(&mut env, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(&mut env, env2));
+            let types1 = types1.map(|ctr| ctr.closurize(cache, &mut env, env1));
+            let types2 = types2.map(|ctr| ctr.closurize(cache, &mut env, env2));
 
             // If both have type annotations, we arbitrarily choose the first one. At this point we
             // are evaluating the term, and types annotations and contracts make no difference
@@ -483,7 +487,8 @@ pub fn merge(
 ///
 /// - the term is given by `t1` in its environment `env1`
 /// - the contracts are given as an iterator `it2` together with their environment `env2`
-fn cross_apply_contracts<'a>(
+fn cross_apply_contracts<'a, C: Cache>(
+    cache: &mut C,
     t1: RichTerm,
     env1: &Environment,
     mut it2: impl Iterator<Item = &'a Contract>,
@@ -495,7 +500,10 @@ fn cross_apply_contracts<'a>(
     let pos = t1.pos.into_inherited();
     let result = it2
         .try_fold(t1, |acc, ctr| {
-            let ty_closure = ctr.types.clone().closurize(&mut env1_local, env2.clone());
+            let ty_closure = ctr
+                .types
+                .clone()
+                .closurize(cache, &mut env1_local, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
@@ -503,7 +511,7 @@ fn cross_apply_contracts<'a>(
                 })
                 .map(|rt| rt.with_pos(pos))
         })?
-        .closurize(&mut env, env1_local);
+        .closurize(cache, &mut env, env1_local);
 
     Ok((result, env))
 }
@@ -596,7 +604,8 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 /// is the closurized merge of the two. A simplified version of [fields_merge_closurize], when we
 /// are not merging recursive record fields and thus don't have to deal with revertible thunks and
 /// saturation.
-fn merge_closurize(
+fn merge_closurize<C: Cache>(
+    cache: &mut C,
     env: &mut Environment,
     t1: RichTerm,
     env1: Environment,
@@ -606,10 +615,10 @@ fn merge_closurize(
     let mut local_env = Environment::new();
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
-        t1.closurize(&mut local_env, env1),
-        t2.closurize(&mut local_env, env2),
+        t1.closurize(cache, &mut local_env, env1),
+        t2.closurize(cache, &mut local_env, env2),
     ));
-    body.closurize(env, local_env)
+    body.closurize(cache, env, local_env)
 }
 
 /// Revert the thunk inside the provided field (if any), and closurize the result inside `env`.

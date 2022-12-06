@@ -1,5 +1,5 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{Closure, Environment, IdentKind};
+use super::{cache::CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
     term::{FieldDeps, RichTerm, Term},
@@ -31,6 +31,8 @@ pub struct ThunkData {
     inner: InnerThunkData,
     state: ThunkState,
 }
+
+type CBNClosure = Closure;
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
 /// - A standard thunk, that is destructively updated once and for all
@@ -104,7 +106,7 @@ pub struct ThunkData {
 /// variables of `orig`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
-    Standard(Closure),
+    Standard(CBNClosure),
     Revertible {
         orig: Rc<Closure>,
         cached: Option<Closure>,
@@ -117,7 +119,7 @@ const REVTHUNK_NO_CACHED_VALUE_MSG: &str =
 
 impl ThunkData {
     /// Create new standard thunk data.
-    pub fn new(closure: Closure) -> Self {
+    pub fn new(closure: CBNClosure) -> Self {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
             state: ThunkState::Suspended,
@@ -224,7 +226,7 @@ impl ThunkData {
     }
 
     /// Return a reference to the closure currently cached.
-    pub fn closure(&self) -> &Closure {
+    pub fn closure(&self) -> &CBNClosure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
             // Nothing should peek into a revertible thunk before the cached value has been
@@ -243,7 +245,7 @@ impl ThunkData {
     }
 
     /// Return a mutable reference to the closure currently cached.
-    pub fn closure_mut(&mut self) -> &mut Closure {
+    pub fn closure_mut(&mut self) -> &mut CBNClosure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
             InnerThunkData::Revertible {
@@ -255,7 +257,7 @@ impl ThunkData {
     }
 
     /// Consume the data and return the cached closure.
-    pub fn into_closure(self) -> Closure {
+    pub fn into_closure(self) -> CBNClosure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
             // Nothing should access the cached value of a revertible thunk before the cached
@@ -274,7 +276,7 @@ impl ThunkData {
     }
 
     /// Update the cached closure.
-    pub fn update(&mut self, new: Closure) {
+    pub fn update(&mut self, new: CBNClosure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
             InnerThunkData::Revertible { ref mut cached, .. } => *cached = Some(new),
@@ -312,7 +314,7 @@ impl ThunkData {
     /// the cached expression.
     pub fn map<F>(&self, mut f: F) -> Self
     where
-        F: FnMut(&Closure) -> Closure,
+        F: FnMut(&CBNClosure) -> CBNClosure,
     {
         match self.inner {
             InnerThunkData::Standard(ref c) => ThunkData {
@@ -367,7 +369,7 @@ pub struct BlackholedError;
 
 impl Thunk {
     /// Create a new standard thunk.
-    pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
+    pub fn new(closure: CBNClosure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
             ident_kind,
@@ -411,17 +413,17 @@ impl Thunk {
     }
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
-    pub fn borrow(&self) -> Ref<'_, Closure> {
+    pub fn borrow(&self) -> Ref<'_, CBNClosure> {
         Ref::map(self.data.borrow(), |data| data.closure())
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
-    pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
+    pub fn borrow_mut(&mut self) -> RefMut<'_, CBNClosure> {
         RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
     }
 
     /// Get an owned clone of the inner closure.
-    pub fn get_owned(&self) -> Closure {
+    pub fn get_owned(&self) -> CBNClosure {
         self.data.borrow().closure().clone()
     }
 
@@ -431,7 +433,7 @@ impl Thunk {
 
     /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
     /// reference to the inner closure.
-    pub fn into_closure(self) -> Closure {
+    pub fn into_closure(self) -> CBNClosure {
         match Rc::try_unwrap(self.data) {
             Ok(inner) => inner.into_inner().into_closure(),
             Err(rc) => rc.borrow().closure().clone(),
@@ -448,7 +450,7 @@ impl Thunk {
         }
     }
 
-    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
+    pub fn build_cached(&mut self, rec_env: &[(Ident, CacheIndex)]) {
         self.data.borrow_mut().init_cached(rec_env)
     }
 
@@ -541,7 +543,7 @@ impl Thunk {
     /// cached expression.
     pub fn map<F>(&self, f: F) -> Self
     where
-        F: FnMut(&Closure) -> Closure,
+        F: FnMut(&CBNClosure) -> CBNClosure,
     {
         Thunk {
             data: Rc::new(RefCell::new(self.data.borrow().map(f))),
@@ -583,7 +585,7 @@ impl ThunkUpdateFrame {
     ///
     /// - `true` if the thunk was successfully updated
     /// - `false` if the corresponding closure has been dropped since
-    pub fn update(self, closure: Closure) -> bool {
+    pub fn update(self, closure: CBNClosure) -> bool {
         if let Some(data) = Weak::upgrade(&self.data) {
             data.borrow_mut().update(closure);
             true
@@ -594,7 +596,7 @@ impl ThunkUpdateFrame {
 
     /// Reset the state of the thunk to Suspended
     /// Mainly used to reset the state of the vm between REPL runs
-    pub fn reset_state(self) {
+    pub fn reset_state(&mut self) {
         if let Some(data) = Weak::upgrade(&self.data) {
             data.borrow_mut().state = ThunkState::Suspended;
         }

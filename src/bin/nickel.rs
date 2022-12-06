@@ -1,5 +1,6 @@
 //! Entry point of the program.
 use nickel_lang::error::{Error, IOError};
+use nickel_lang::eval::cache::CBNCache;
 use nickel_lang::program::Program;
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
@@ -14,6 +15,8 @@ use std::{
 // use std::ffi::OsStr;
 use directories::BaseDirs;
 use structopt::StructOpt;
+
+type EC = CBNCache;
 
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]
@@ -211,7 +214,7 @@ fn main() {
 }
 
 fn export(
-    program: &mut Program,
+    program: &mut Program<EC>,
     format: Option<ExportFormat>,
     output: Option<PathBuf>,
 ) -> Result<(), Error> {

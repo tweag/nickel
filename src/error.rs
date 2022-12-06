@@ -1084,7 +1084,7 @@ mod blame_error {
         // If we have a reference to the thunk that was being tested, we can try to show
         // more information about the final, evaluated value that is responsible for the
         // blame.
-        if let Some(ref thunk) = blame_label.arg_thunk {
+        if let Some(ref thunk) = blame_label.arg_idx {
             let mut val = thunk.get_owned().body;
 
             match (val.pos, blame_label.arg_pos.as_opt_ref(), contract_id) {
