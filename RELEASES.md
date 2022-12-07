@@ -1,3 +1,47 @@
+Version 0.3  (2022-12-07)
+=========================
+
+Fixes
+-----
+
+- Fix polymorphic contracts unduly changing semantics by @ebresafegaga in https://github.com/tweag/nickel/pull/802
+- Fix typechecking and unification in presence of flat types (aka opaque types, aka contracts) by @yannham in https://github.com/tweag/nickel/pull/766
+- Fix polarity for polymorphic contract failure by @ebresafegaga in https://github.com/tweag/nickel/pull/831
+- Fix panic when a row mismatch occurs while unifying row tails by @matthew-healy in https://github.com/tweag/nickel/pull/847
+- Fix type to term conversion causing unbound type variables errors by @francois-caddet in https://github.com/tweag/nickel/pull/854
+- Fix bad lexing of enum tags by @matthew-healy in https://github.com/tweag/nickel/pull/874
+- Fix multiple recursive overriding by @yannham in https://github.com/tweag/nickel/pull/940
+
+Language features
+-----------------
+
+- Optional fields by @yannham in https://github.com/tweag/nickel/pull/815
+- Numeral merge priorities by @yannham in https://github.com/tweag/nickel/pull/829
+- Recursive merge priorities (or push-priorities, or leafy priorities) by @yannham in https://github.com/tweag/nickel/pull/845
+- Change `switch` to `match` and make it a proper function by @yannham in https://github.com/tweag/nickel/pull/970
+
+Stdlib
+------
+
+- Statically type `string.join` by @matthew-healy in https://github.com/tweag/nickel/pull/946
+
+Tooling
+-------
+
+- Add record completion in the LSP by @ebresafegaga in
+  - https://github.com/tweag/nickel/pull/867
+  - https://github.com/tweag/nickel/pull/909
+  - https://github.com/tweag/nickel/pull/913
+  - https://github.com/tweag/nickel/pull/914
+- Add completion for Nickel's stdlib in the LSP by @ebresafegaga in https://github.com/tweag/nickel/pull/918
+
+Performances
+------------
+
+- Lazy array contracts by @fuzzypixelz in https://github.com/tweag/nickel/pull/809
+- Array slices by @fuzzypixelz in https://github.com/tweag/nickel/pull/776
+- String interning for identifiers by @Acaccia in https://github.com/tweag/nickel/pull/835
+
 Version 0.2  (2022-07-29)
 =========================
 
