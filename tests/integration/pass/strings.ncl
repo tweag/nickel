@@ -12,17 +12,17 @@ let {check, ..} = import "testlib.ncl" in
     == "Hello, world! Welcome in the world-universe",
 
   # regression test for issue #361 (https://github.com/tweag/nickel/issues/361)
-  m%""%{"foo"}""%m == "\"foo\"",
-  m%"""%m == "\"",
-  m%""%"%"%"%m == "\"%\"%\"%",
+  m%""%{"foo"}""% == "\"foo\"",
+  m%"""% == "\"",
 
   # regression test for issue #596 (https://github.com/tweag/nickel/issues/596)
-  let s = "Hello" in m%%""%%{s}" World"%%m == "\"Hello\" World",
-  let s = "Hello" in m%%""%%%{s}" World"%%m == "\"%Hello\" World",
-  m%%""%%s"%%m == "\"%%s",
+  let s = "Hello" in m%%""%%{s}" World"%% == "\"Hello\" World",
+  let s = "Hello" in m%%""%%%{s}" World"%% == "\"%Hello\" World",
+  m%"%s"% == "%s",
+  m%%"%%s"%% == "%%s",
 
   # regression test for issue #659 (https://github.com/tweag/nickel/issues/659)
-  let b = "x" in m%"a%%{b}c"%m == "a%xc",
-  m%"%Hel%%{"1"}lo%%%{"2"}"%m == "%Hel%1lo%%2",
+  let b = "x" in m%"a%%{b}c"% == "a%xc",
+  m%"%Hel%%{"1"}lo%%%{"2"}"% == "%Hel%1lo%%2",
 ]
 |> check

@@ -197,7 +197,7 @@ fn enum_terms() {
         ("whitespace between backtick & identifier", "`     test"),
         ("invalid identifier", "`$s"),
         ("empty raw identifier", "`"),
-        ("multiline string", "`m%\"words\"%m"),
+        ("multiline string", "`m%\"words\"%"),
         ("interpolation", "`\"%{x}\""),
     ];
 
@@ -337,9 +337,9 @@ fn string_lexing() {
     );
 
     assert_eq!(
-        lex_without_pos(r##"m%""%"%m"##),
+        lex_without_pos(r#"m%%""%"%%"#),
         Ok(vec![
-            Token::Normal(NormalToken::MultiStringStart(3)),
+            Token::Normal(NormalToken::MultiStringStart(4)),
             Token::MultiStr(MultiStringToken::Literal("\"%")),
             Token::MultiStr(MultiStringToken::End),
         ])
@@ -398,19 +398,19 @@ fn ascii_escape() {
     assert_eq!(parse_without_pos("\"\\x08\""), mk_single_chunk("\x08"));
     assert_eq!(parse_without_pos("\"\\x7F\""), mk_single_chunk("\x7F"));
 
-    assert_eq!(parse_without_pos("m%\"\\x[f\"%m"), mk_single_chunk("\\x[f"));
-    assert_eq!(parse_without_pos("m%\"\\x0\"%m"), mk_single_chunk("\\x0"));
-    assert_eq!(parse_without_pos("m%\"\\x0z\"%m"), mk_single_chunk("\\x0z"));
-    assert_eq!(parse_without_pos("m%\"\\x00\"%m"), mk_single_chunk("\\x00"));
-    assert_eq!(parse_without_pos("m%\"\\x08\"%m"), mk_single_chunk("\\x08"));
-    assert_eq!(parse_without_pos("m%\"\\x7F\"%m"), mk_single_chunk("\\x7F"));
+    assert_eq!(parse_without_pos("m%\"\\x[f\"%"), mk_single_chunk("\\x[f"));
+    assert_eq!(parse_without_pos("m%\"\\x0\"%"), mk_single_chunk("\\x0"));
+    assert_eq!(parse_without_pos("m%\"\\x0z\"%"), mk_single_chunk("\\x0z"));
+    assert_eq!(parse_without_pos("m%\"\\x00\"%"), mk_single_chunk("\\x00"));
+    assert_eq!(parse_without_pos("m%\"\\x08\"%"), mk_single_chunk("\\x08"));
+    assert_eq!(parse_without_pos("m%\"\\x7F\"%"), mk_single_chunk("\\x7F"));
 }
 
 /// Regression test for [#230](https://github.com/tweag/nickel/issues/230).
 #[test]
 fn multiline_str_escape() {
     assert_eq!(
-        parse_without_pos(r##"m%"%Hel%%lo%%%"%m"##),
+        parse_without_pos(r##"m%"%Hel%%lo%%%"%"##),
         mk_single_chunk("%Hel%%lo%%%"),
     );
 }

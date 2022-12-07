@@ -363,7 +363,7 @@ pub enum MultiStringToken<'input> {
     /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
     /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     /// `FalseEnd` otherwise
-    #[regex("\"%+m")]
+    #[regex("\"%+")]
     CandidateEnd(&'input str),
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
@@ -487,9 +487,9 @@ impl<'input> Lexer<'input> {
         self.count = 0;
     }
 
-    fn enter_indstr(&mut self, hash_count: usize) {
+    fn enter_indstr(&mut self, percent_count: usize) {
         self.enter_strlike(|lexer| ModalLexer::MultiStr(lexer.morph()));
-        self.count = hash_count;
+        self.count = percent_count;
     }
 
     fn enter_normal(&mut self) {
@@ -568,7 +568,7 @@ impl<'input> Lexer<'input> {
         s: &'input str,
         span: Range<usize>,
     ) -> (Option<Token<'input>>, Range<usize>) {
-        let split_at = s.len() - self.count + 1;
+        let split_at = s.len() - self.count;
         let next_token = Token::MultiStr(MultiStringToken::Interpolation);
         let next_span = Range {
             start: span.start + split_at,
@@ -605,8 +605,12 @@ impl<'input> Iterator for Lexer<'input> {
             Some(Normal(NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin)) => {
                 self.enter_str()
             }
-            Some(Normal(NormalToken::MultiStringStart(hash_count))) => {
-                self.enter_indstr(*hash_count)
+            Some(Normal(NormalToken::MultiStringStart(delim_size))) => {
+                // for interpolation & closing delimeters we only care about
+                // the number of `%`s (plus the opening `"` or `{`) so we
+                // drop the "kind marker" size here (i.e. the `m` character).
+                let size_without_kind_marker = delim_size - 1;
+                self.enter_indstr(size_without_kind_marker)
             }
             Some(Normal(NormalToken::LBrace)) => self.count += 1,
             Some(Normal(NormalToken::RBrace)) => {
@@ -631,14 +635,14 @@ impl<'input> Iterator for Lexer<'input> {
             // If we encounter a `CandidateInterp` token with the right number of characters, this is
             // an interpolation sequence.
             //
-            // Note that the number of characters may be greater than `count`: in `m"%
-            // %%%{foo} "%m`, the lexer will process `%%%{` as a candidate interpolation with 4
-            // characters, while `count` is 1. In that case, we must emit an `%%` literal and put
-            // an interpolation token in the buffer.
+            // Note that the number of characters may be greater than `count`: in `m%" %%%{foo} "%`,
+            // the lexer will process `%%%{` as a candidate interpolation with 4 characters, while
+            // `count` is 2. In that case, we must emit a `%%` literal and put an interpolation
+            // token in the buffer.
             Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
-                if s.len() >= (self.count - 1) =>
+                if s.len() >= self.count =>
             {
-                if s.len() == (self.count - 1) {
+                if s.len() == self.count {
                     token = Some(MultiStr(MultiStringToken::Interpolation));
                     self.enter_normal();
                 } else {
@@ -659,7 +663,7 @@ impl<'input> Iterator for Lexer<'input> {
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
             //
-            // For example, in `m%%""%%%{exp}"%%m`, the `"%%%{` is a `QuotesCandidateInterpolation`
+            // For example, in `m%%""%%%{exp}"%%`, the `"%%%{` is a `QuotesCandidateInterpolation`
             // which is split as a `"%` literal followed by an interpolation token.
             Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
                 if s.len() >= self.count =>
@@ -694,14 +698,14 @@ impl<'input> Iterator for Lexer<'input> {
                     )));
                 }
             }
-            // If we encounter a `CandidateEnd` token with the right number of characters, this is
-            // the end of a multiline string
+            // If we encounter a `CandidateEnd` token with the same number of `%`s as the
+            // starting token then it is the end of a multiline string
             Some(MultiStr(MultiStringToken::CandidateEnd(s))) if s.len() == self.count => {
                 token = Some(MultiStr(MultiStringToken::End));
                 self.leave_indstr()
             }
             // Otherwise, it is just part of the string, so we transform the token into a
-            // `FalseEnd` one
+            // `Literal` one
             Some(MultiStr(MultiStringToken::CandidateEnd(s))) => {
                 token = Some(MultiStr(MultiStringToken::Literal(s)))
             }

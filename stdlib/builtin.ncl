@@ -11,7 +11,7 @@
         is_num "Hello, World!" =>
           false
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Num,
 
     is_bool : Dyn -> Bool
@@ -25,7 +25,7 @@
         is_bool 42 =>
           false
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Bool,
 
     is_str : Dyn -> Bool
@@ -39,7 +39,7 @@
         is_str "Hello, World!" =>
           true
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Str,
 
     is_enum : Dyn -> Bool
@@ -53,7 +53,7 @@
         is_enum `false =>
           true
       ```
-      "%m
+      "%
 
     = fun x => %typeof% x == `Enum,
 
@@ -68,7 +68,7 @@
         is_fun 42 =>
           false
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Fun,
 
     is_array : Dyn -> Bool
@@ -82,7 +82,7 @@
         is_array 42 =>
           false
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Array,
 
     is_record : Dyn -> Bool
@@ -96,7 +96,7 @@
         is_record { hello = "Hello", world = "World" } =>
           true
       ```
-      "%m
+      "%
     = fun x => %typeof% x == `Record,
 
     typeof : Dyn -> [|
@@ -120,7 +120,7 @@
         typeof (fun x => x) =>
           `Fun
       ```
-      "%m
+      "%
     = fun x => %typeof% x,
 
     seq : forall a. Dyn -> a -> a
@@ -136,7 +136,7 @@
         seq { tooFar = 42 / 0 } 37 =>
           37
       ```
-      "%m
+      "%
     = fun x y => %seq% x y,
 
     deep_seq : forall a. Dyn -> a -> a
@@ -152,7 +152,7 @@
         deep_seq { tooFar = 42 / 0 } 37 =>
           error
       ```
-      "%m
+      "%
     = fun x y => %deep_seq% x y,
 
     hash : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> Str -> Str
@@ -164,7 +164,7 @@
         hash `Md5 "hunter2" =>
           "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
-      "%m
+      "%
     = fun type s => %hash% type s,
 
     serialize : [| `Json, `Toml, `Yaml |] -> Dyn -> Str
@@ -179,7 +179,7 @@
             "world": "World"
           }"
       ```
-      "%m
+      "%
     = fun format x => %serialize% format (%force% x),
 
     deserialize : [| `Json, `Toml, `Yaml |] -> Str -> Dyn
@@ -191,7 +191,7 @@
         deserialize `Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
           { hello = "Hello", world = "World" }
       ```
-      "%m
+      "%
     = fun format x => %deserialize% format x,
 
     to_str | string.Stringable -> Str
@@ -207,7 +207,7 @@
         "Foo"
       from null =>
         "null"
-      "%m
+      "%
     = fun x => %to_str% x,
 
   },

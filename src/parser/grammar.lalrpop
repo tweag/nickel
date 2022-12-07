@@ -511,7 +511,7 @@ StringStart : StringKind = {
 
 StringEnd : StringKind = {
     "\"" => StringKind::Standard,
-    "\"%m" => StringKind::Multiline,
+    "\"%" => StringKind::Multiline,
 };
 
 ChunkLiteral : String =
@@ -884,7 +884,7 @@ extern {
         "=>" => Token::Normal(NormalToken::DoubleArrow),
         "_" => Token::Normal(NormalToken::Underscore),
         "\"" => Token::Normal(NormalToken::DoubleQuote),
-        "\"%m" => Token::MultiStr(MultiStringToken::End),
+        "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
 
         "Num" => Token::Normal(NormalToken::Num),

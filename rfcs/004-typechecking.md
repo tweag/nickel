@@ -220,14 +220,14 @@ subtractLists: forall a. Array a -> Array a -> Array a
      Example:
        subtractLists [ 3, 2 ] [ 1, 2, 3, 4, 5, 3 ]
        >> [ 1, 4, 5 ]
-  "%m
+  "%
   = fun e => array.filter (fun x => !(array.elem (x | Dyn) (e | Array Dyn))),
 
 mutuallyExclusive: forall a. Array a -> Array a -> Bool
   | doc m%"
       Test if two lists have no common element.
      It should be slightly more efficient than (intersectLists a b == [])
-  "%m
+  "%
   = fun a b =>
     array.length a == 0
     || !(any (fun x => array.elem (x | Dyn) (a | Array Dyn)) b),
@@ -253,7 +253,7 @@ flatten: Dyn -> Array Dyn
        >> [1, 2, 3, 4, 5]
        flatten 1
        >> [1]
-  "%m
+  "%
   = fun x =>
      if builtin.is_array x then
        concatMap (fun y => flatten y) (x | Array Dyn)

@@ -171,7 +171,7 @@ let Package = { name | Str, drv | Drv, .. } in
   },
   build = m%"
     %{build_inputs.foo.drv.out_path}/bin/foo $out
-  "%m,
+  "%,
 } & {
   build_inputs = {
     foo = { name = "foo", drv.out_path = "/fake/path" },

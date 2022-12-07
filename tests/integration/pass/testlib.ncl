@@ -7,7 +7,7 @@
     However, we apply this contract to each test instead because it provides
     fine-grained error reporting, pinpointoing the exact expression that failed
     in an array of tests, as opposed to the pure boolean solution.
-    "%m
+    "%
     = fun l x => x || %blame% l,
   # We can't use a static type because x | Assert is not of type bool.
   # We could use additional contracts to make it work but it's not worth the
@@ -25,6 +25,6 @@
     ```
 
     But will give more precise error reporting when one test fails.
-    "%m
+    "%
     = array.foldl (fun acc test => (test | Assert) && acc) true,
 }

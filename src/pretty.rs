@@ -12,15 +12,14 @@ fn min_interpolate_sign(text: &str) -> usize {
     reg.find_iter(text)
         .map(|m| {
             let d = m.end() - m.start();
-            // We iterate over all sequences `%+{` and `"%+m`, which could clash with the interpolation
+            // We iterate over all sequences `%+{` and `"%+`, which could clash with the interpolation
             // syntax, and return the maximum number of `%` insead each sequence.
             //
-            // For the case of a closing delimiter `"%m`, we could actually be slightly smarter as we
+            // For the case of a closing delimiter `"%`, we could actually be slightly smarter as we
             // don't necessarily need more `%`, but just a different number of `%`. For example, if the
-            // string contains only one `"%%m`, then single `%` delimiters like `m%"` and `"%m` would
-            // be fine. But picking the maximum
-            //
-            // TODO: Improve the `"%*m` case if necessary.
+            // string contains only one `"%%`, then single `%` delimiters like `m%"` and `"%` would
+            // be fine. But picking the maximum results in a simpler algorithm for now, which we can
+            // update later if necessary.
             if m.as_str().ends_with('{') {
                 d
             } else {
@@ -314,11 +313,7 @@ where
                         } else {
                             "".to_string()
                         },
-                        if multiline {
-                            format!("{}m", interp)
-                        } else {
-                            "".to_string()
-                        },
+                        if multiline { interp } else { "".to_string() },
                     )
             }
             Fun(id, rt) => {

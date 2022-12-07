@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
-/// `m%"`/`"%m` in the parser.
+/// `m%"`/`"%` in the parser.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum StringKind {
     Standard,
@@ -527,7 +527,7 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 ///   baseline
 ///     ${x}
 ///   end
-/// "%m
+/// "%
 /// ```
 ///
 /// gives
@@ -548,7 +548,7 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 ///   baseline
 ///     ${x} sth
 ///   end
-/// "%m
+/// "%
 /// ```
 ///
 /// gives
@@ -578,7 +578,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     //    ${x} ${y}
     //    ${x}
     //  string
-    // "%m
+    // "%
     // ```
     //
     // We don't know at the time we process the expression `${x}` if it wil have to be re-indented,

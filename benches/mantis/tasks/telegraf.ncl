@@ -42,7 +42,7 @@ let types = import "../schemas/nomad/types.ncl" in
       [outputs.influxdb]
       database = "telegraf"
       urls = [ "http://172.16.0.20:8428" ]
-    "%m
+    "%
   },
   ..
 }

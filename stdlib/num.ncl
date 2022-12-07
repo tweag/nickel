@@ -11,7 +11,7 @@
         (42 | Int) =>
           42
       ```
-      "%m
+      "%
     = fun label value =>
       if %typeof% value == `Num then
         if value % 1 == 0 then
@@ -34,7 +34,7 @@
         (-4 | Nat) =>
           error
       ```
-      "%m
+      "%
     = fun label value =>
       if %typeof% value == `Num then
         if value % 1 == 0 && value >= 0 then
@@ -57,7 +57,7 @@
         (-4 | PosNat) =>
           error
       ```
-      "%m
+      "%
     = fun label value =>
       if %typeof% value == `Num then
         if value % 1 == 0 && value > 0 then
@@ -78,7 +78,7 @@
         (0.0 | NonZero) =>
           error
       ```
-      "%m
+      "%
     = fun label value =>
       if %typeof% value == `Num then
         if value != 0 then
@@ -99,7 +99,7 @@
         is_int 1.5 =>
           false
       ```
-      "%m
+      "%
     = fun x => x % 1 == 0,
 
     min : Num -> Num -> Num
@@ -111,7 +111,7 @@
         min (-1337) 42 =>
           -1337
       ```
-      "%m
+      "%
     = fun x y => if x <= y then x else y,
 
     max : Num -> Num -> Num
@@ -123,7 +123,7 @@
         max (-1337) 42 =>
           42
       ```
-      "%m
+      "%
     = fun x y => if x >= y then x else y,
 
     floor : Num -> Num
@@ -135,7 +135,7 @@
         floor 42.5 =>
           42
       ```
-      "%m
+      "%
     = fun x =>
       if x >= 0
       then x - (x % 1)
@@ -152,7 +152,7 @@
         abs 42 =>
           42
       ```
-      "%m
+      "%
     = fun x => if x < 0 then -x else x,
 
     fract : Num -> Num
@@ -166,7 +166,7 @@
         fract 42 =>
           0
       ```
-      "%m
+      "%
     = fun x => x % 1,
 
     trunc : Num -> Num
@@ -180,7 +180,7 @@
         trunc 42.5 =>
           42
       ```
-      "%m
+      "%
     = fun x => x - (x % 1),
 
     pow : Num -> Num -> Num
@@ -192,7 +192,7 @@
         pow 2 8 =>
           256
       ```
-      "%m
+      "%
     = fun x n => %pow% x n,
   }
 }
