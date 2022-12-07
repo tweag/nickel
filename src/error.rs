@@ -342,6 +342,14 @@ pub enum ParseError {
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
+    /// A type variable is used in ways that imply it has muiltiple different kinds.
+    ///
+    /// This can happen in several situations, for example:
+    /// - a variable is used as both a type variable and a row type variable,
+    ///   e.g. in the signature `forall r. { ; r } -> r`,
+    /// - a variable is used as both a record and enum row variable, e.g. in the
+    ///   signature `forall r. [| ; r |] -> { ; r }`.
+    TypeVariableKindMismatch { ty_var: Ident, span: RawSpan },
 }
 
 /// An error occurring during the resolution of an import.
@@ -500,6 +508,9 @@ impl ParseError {
                 }
                 InternalParseError::RecursiveLetPattern(pos) => {
                     ParseError::RecursiveLetPattern(pos)
+                }
+                InternalParseError::TypeVariableKindMismatch { ty_var, span } => {
+                    ParseError::TypeVariableKindMismatch { ty_var, span }
                 }
             },
         }
@@ -1345,6 +1356,15 @@ impl ToDiagnostic<FileId> for ParseError {
                 .with_notes(vec![
                     String::from("A destructuring let-binding can't be recursive. Try removing the `rec` from `let rec`."),
                     String::from("Note: you can reference other fields of a record recursively from within a field, so you might not need the recursive let."),
+                ]),
+            ParseError::TypeVariableKindMismatch { ty_var, span } => Diagnostic::error()
+                .with_message(format!("the type variable {} is used in conflicting ways", ty_var))
+                .with_labels(vec![
+                    primary(span),
+                ])
+                .with_notes(vec![
+                    String::from("Type variables may be used either as types, polymorphic record tails, or polymorphic enum tails."),
+                    String::from("Using the same variable as more than one of these is not permitted.")
                 ]),
         };
 

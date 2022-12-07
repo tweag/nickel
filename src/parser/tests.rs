@@ -436,3 +436,38 @@ fn line_comments() {
         parse_without_pos("{field = foo}")
     );
 }
+
+/// Regression test for [#942](https://github.com/tweag/nickel/issues/942).
+#[test]
+fn ty_var_kind_mismatch() {
+    for (name, src) in [
+        (
+            "var used as both row and type var",
+            r#"
+                let f | forall r. { x: r; r } -> { x: r; r } = fun r => r in
+                f { x = 1 }
+            "#,
+        ),
+        (
+            "row type as return value type",
+            r#"
+                let f | forall r. { ; r } -> r = fun r => r in
+                f { x = 1, y = 2}
+            "#,
+        ),
+        (
+            "row var in both enum and record",
+            r#"
+                let f | forall r. { x : r; r } -> [| `a; r |] = fun x => x in
+                f { x = 1 }
+            "#,
+        ),
+    ] {
+        assert_matches!(
+            parse(src),
+            Err(ParseError::TypeVariableKindMismatch { .. }),
+            "{}",
+            name
+        )
+    }
+}

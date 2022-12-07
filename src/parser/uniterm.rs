@@ -93,7 +93,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Types(mut ty) => {
-                ty.fix_type_vars();
+                ty.fix_type_vars(pos.unwrap())?;
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
                     // We unwrap the position of the identifier, which must be set at this stage of parsing
                     let pos = id.pos;
@@ -272,17 +272,20 @@ impl TryFrom<UniRecord> for RichTerm {
                     ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
                 })
                 .and_then(|mut ty| {
-                    ty.fix_type_vars();
+                    ty.fix_type_vars(pos.unwrap())?;
                     ty.contract().map_err(|UnboundTypeVariableError(id)| {
                         ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
                     })
                 })
         } else {
             let UniRecord { fields, attrs, .. } = ur;
-            let elaborated = fields.into_iter().map(|(path, mut rt)| {
-                fix_field_types(&mut rt);
-                elaborate_field_path(path, rt)
-            });
+            let elaborated = fields
+                .into_iter()
+                .map(|(path, mut rt)| {
+                    fix_field_types(&mut rt)?;
+                    Ok(elaborate_field_path(path, rt))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             Ok(RichTerm::from(build_record(elaborated, attrs)))
         };
@@ -452,18 +455,26 @@ pub(super) trait FixTypeVars {
     /// # this is inconsistent and will raise a parse error
     /// forall a. [| `foo, `bar; a |] -> {foo : Str, bar: Str; a}
     /// ```
-    fn fix_type_vars(&mut self) {
-        self.fix_type_vars_env(BoundVarEnv::new())
+    fn fix_type_vars(&mut self, span: RawSpan) -> Result<(), ParseError> {
+        self.fix_type_vars_env(BoundVarEnv::new(), span)
     }
 
     /// Fix type vars in a given environment of variables bound by foralls enclosing this type. The
     /// environment maps bound variables to a reference to the variable kind of the corresponding
     /// forall.
-    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv);
+    fn fix_type_vars_env(
+        &mut self,
+        bound_vars: BoundVarEnv,
+        span: RawSpan,
+    ) -> Result<(), ParseError>;
 }
 
 impl FixTypeVars for Types {
-    fn fix_type_vars_env(&mut self, mut bound_vars: BoundVarEnv) {
+    fn fix_type_vars_env(
+        &mut self,
+        mut bound_vars: BoundVarEnv,
+        span: RawSpan,
+    ) -> Result<(), ParseError> {
         match self.0 {
             TypeF::Dyn
             | TypeF::Num
@@ -471,20 +482,22 @@ impl FixTypeVars for Types {
             | TypeF::Str
             | TypeF::Sym
             | TypeF::Flat(_)
-            | TypeF::Wildcard(_) => (),
+            | TypeF::Wildcard(_) => Ok(()),
             TypeF::Arrow(ref mut s, ref mut t) => {
-                (*s).fix_type_vars_env(bound_vars.clone());
-                (*t).fix_type_vars_env(bound_vars);
+                (*s).fix_type_vars_env(bound_vars.clone(), span)?;
+                (*t).fix_type_vars_env(bound_vars, span)?;
+                Ok(())
             }
             TypeF::Var(ref mut id) => {
                 if let Some(cell) = bound_vars.get(id) {
                     cell.set_or_check_equal(VarKind::Type)
-                        .expect("incompatible variable kinds");
+                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 } else {
                     let id = *id;
                     let pos = id.pos;
                     self.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
+                Ok(())
             }
             TypeF::Forall {
                 ref var,
@@ -499,46 +512,57 @@ impl FixTypeVars for Types {
                 // fix_type_vars will fill this cell with the correct kind, which we get afterwards
                 // to set the right value for `var_kind`.
                 bound_vars.insert(*var, VarKindCell::new());
-                (*body).fix_type_vars_env(bound_vars.clone());
+                (*body).fix_type_vars_env(bound_vars.clone(), span)?;
                 // unwrap(): we just inseted a value for `var` above, and environment can never
                 // delete values.
                 *var_kind = bound_vars.get(var).unwrap().var_kind();
+
+                Ok(())
             }
             TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
-                (*ty).fix_type_vars_env(bound_vars)
+                (*ty).fix_type_vars_env(bound_vars, span)
             }
-            TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars),
-            TypeF::Record(ref mut rrows) => rrows.fix_type_vars_env(bound_vars),
+            TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars, span),
+            TypeF::Record(ref mut rrows) => rrows.fix_type_vars_env(bound_vars, span),
         }
     }
 }
 
 impl FixTypeVars for RecordRows {
-    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv) {
+    fn fix_type_vars_env(
+        &mut self,
+        bound_vars: BoundVarEnv,
+        span: RawSpan,
+    ) -> Result<(), ParseError> {
         match self.0 {
-            RecordRowsF::Empty => (),
-            RecordRowsF::TailDyn => (),
+            RecordRowsF::Empty => Ok(()),
+            RecordRowsF::TailDyn => Ok(()),
             // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
             // have to set the correct kind for the corresponding forall binder.
             RecordRowsF::TailVar(ref id) => {
                 if let Some(cell) = bound_vars.get(id) {
                     cell.set_or_check_equal(VarKind::RecordRows)
-                        .expect("var kind mismatch");
+                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 }
+                Ok(())
             }
             RecordRowsF::Extend {
                 ref mut row,
                 ref mut tail,
             } => {
-                row.types.fix_type_vars_env(bound_vars.clone());
-                tail.fix_type_vars_env(bound_vars)
+                row.types.fix_type_vars_env(bound_vars.clone(), span)?;
+                tail.fix_type_vars_env(bound_vars, span)
             }
         }
     }
 }
 
 impl FixTypeVars for EnumRows {
-    fn fix_type_vars_env(&mut self, bound_vars: BoundVarEnv) {
+    fn fix_type_vars_env(
+        &mut self,
+        bound_vars: BoundVarEnv,
+        span: RawSpan,
+    ) -> Result<(), ParseError> {
         // An enum row doesn't contain any subtypes (beside other enum rows). No term variable can
         // appear in it, so we don't have to traverse for fixing type variables properly.
         //
@@ -552,26 +576,29 @@ impl FixTypeVars for EnumRows {
             Some(EnumRowsIteratorItem::TailVar(id)) => {
                 if let Some(cell) = bound_vars.get(id) {
                     cell.set_or_check_equal(VarKind::EnumRows)
-                        .expect("var kind mismatch");
+                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 }
+                Ok(())
             }
             // unreachable(): we consumed all the rows item via the `take_while()` call above
             Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
-            None => (),
+            None => Ok(()),
         }
     }
 }
 
 /// Fix the type variables of types appearing as annotations of record fields. See
 /// [`Types::fix_type_vars`].
-pub fn fix_field_types(rt: &mut RichTerm) {
+pub fn fix_field_types(rt: &mut RichTerm) -> Result<(), ParseError> {
     if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
         if let Some(Contract { ref mut types, .. }) = m.types {
-            types.fix_type_vars();
+            types.fix_type_vars(rt.pos.unwrap())?;
         }
 
         for ctr in m.contracts.iter_mut() {
-            ctr.types.fix_type_vars();
+            ctr.types.fix_type_vars(rt.pos.unwrap())?;
         }
     }
+
+    Ok(())
 }
