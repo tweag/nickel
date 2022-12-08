@@ -75,14 +75,16 @@ website.
 
 ## Current state and roadmap
 
-Nickel has been released in version `0.1`. This version should be functional, it
-is intended to gather feedback and real-life testing. Nickel `0.1` isn't intended
-to be used in production. The next steps we plan to work on are:
+Nickel has been released in version `0.3`. This version should be functional, it
+is intended to gather feedback and real-life testing. Nickel `0.3` isn't intended
+to be used in production yet. The next steps we plan to work on are:
 
-- Nix integration: being able to seamlessly use Nickel to write shells, packages
-  and NixOS modules.
-- Custom merge functions and priorities (second part of the
+- Nix integration: being able to seamlessly use Nickel to write packages and
+  shells ([nickel-nix](https://github.com/nickel-lang/nickel-nix))
+- Custom merge functions (second part of the
   [overriding proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
+- Rework the merging semantics and implementation ([RFC005](https://github.com/tweag/nickel/blob/6110c7f61e46f39e57503889b8f699de8ef3d41e/rfcs/005-metadata-rework.md))
+- Cached incremental evaluation
 - Performance improvements
 
 ## Content
