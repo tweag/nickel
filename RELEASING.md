@@ -28,7 +28,7 @@ crates and dependent repositories (such as the website) in a consistent state.
      workspace as well.
 
    Commit and push your changes.
-3. Make sure than everything builds: run `nix flake check` and the root of the
+3. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
 4. The documentation will be pushed to `crates.io` after the release. Make sure
    that the documentation builds correctly:
