@@ -57,8 +57,9 @@ use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::record::{self, RecordData};
 use crate::term::{
-    make as mk_term, BinaryOp, Contract, FieldDeps, MetaValue, RecordAttrs, RichTerm, SharedTerm,
-    Term,
+    make as mk_term,
+    record::{FieldDeps, RecordAttrs},
+    BinaryOp, Contract, MetaValue, RichTerm, SharedTerm, Term,
 };
 use crate::transform::Closurizable;
 use std::collections::HashMap;

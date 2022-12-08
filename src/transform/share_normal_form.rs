@@ -31,7 +31,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{BindingType, FieldDeps, LetAttrs, RichTerm, Term},
+    term::{record::FieldDeps, BindingType, LetAttrs, RichTerm, Term},
 };
 
 /// Transform the top-level term of an AST to a share normal form, if it can.

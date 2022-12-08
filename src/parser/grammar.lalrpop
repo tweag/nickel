@@ -59,7 +59,7 @@ use crate::{
     destruct::{Match, LastMatch, Destruct},
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-        MergePriority, Contract, NAryOp, RecordAttrs, SharedTerm,
+        MergePriority, Contract, NAryOp, record::RecordAttrs, SharedTerm,
         NumeralPriority, array::Array, make as mk_term,
     },
     types::{

@@ -5,7 +5,7 @@ use crate::identifier::Ident;
 use crate::label::Label;
 use crate::position::RawSpan;
 use crate::term::record::RecordData;
-use crate::term::{Contract, MetaValue, RecordAttrs, RichTerm, Term};
+use crate::term::{record::RecordAttrs, Contract, MetaValue, RichTerm, Term};
 use crate::types::{TypeF, Types};
 
 /// A match field in a `Destruct` pattern.

@@ -1,4 +1,4 @@
-use nickel_lang::term::FieldDeps;
+use nickel_lang::term::record::FieldDeps;
 use nickel_lang::{identifier::Ident, term::Term, transform::free_vars};
 
 use std::collections::{HashMap, HashSet};
