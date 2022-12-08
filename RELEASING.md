@@ -94,7 +94,7 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 2. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
-   and include the docker image built in 1. Please look at previous releases to
+   and include the docker image built in 1. Please look at previous releases
    for the naming convention of git tags.
 
 ### Redeploy nickel-lang.org with the new release
