@@ -104,5 +104,5 @@
         Ue3d9Jd3nZeSetAzBBqk
         DvN7NvTzdt4EyvUCq4Se
         a9TLAq2eVr0exurkvJZN
-      "%m
+      "%
 }

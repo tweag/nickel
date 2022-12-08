@@ -10,7 +10,7 @@
       Example:
         singleton "foo"
         >> [ "foo" ]
-    "%m
+    "%
     = fun x => [x],
 
   forEach: forall a b. (Array a) -> (a -> b) -> (Array b)
@@ -23,7 +23,7 @@
           toString x
         )
         >> [ "1" "2" ]
-    "%m
+    "%
   = fun xs f => array.map f xs,
 
   foldr: forall a b. (a -> b -> b) -> b -> (Array a) -> b
@@ -40,7 +40,7 @@
        strange = foldr (fun int str => toString (int + 1) @@ str) "a"
        strange [ 1 2 3 4 ]
        => "2345a"
-  "%m
+  "%
   = fun op nul list =>
     let len = array.length list in
     let rec fold_ = fun n =>
@@ -51,7 +51,7 @@
 
   fold: forall a b. (a -> b -> b) -> b -> (Array a) -> b
   | doc m%"
-      `fold` is an alias of `foldr` for historic reasons "%m
+      `fold` is an alias of `foldr` for historic reasons "%
   # FIXME(Profpatsch): deprecate?
   = foldr,
 
@@ -69,7 +69,7 @@
        lstrange = foldl (str: int: str + toString (int + 1)) "a"
        lstrange [ 1 2 3 4 ]
        => "a2345"
-  "%m
+  "%
   = fun op nul list =>
     let rec foldl_ = fun n =>
         if n == -1
@@ -84,7 +84,7 @@
      The difference is that evaluation is forced upon access. Usually used
      with small whole results (in contrast with lazily-generated list or large
      lists where only a part is consumed.)
-  "%m
+  "%
   = fun op nul list => array.foldl op nul list,
 
   imap0: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
@@ -94,7 +94,7 @@
      Example:
        imap0 (fun i v => "%{v}-%{%to_string% i}") ["a", "b"]
        >> [ "a-0", "b-1" ]
-  "%%m
+  "%%
   = fun f list => array.generate (fun n => f n (array.elem_at n list)) (array.length list),
 
   imap1: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
@@ -104,7 +104,7 @@
      Example:
        imap1 (fun i v => "%{v}-%{toString i}") ["a", "b"]
        >> [ "a-1", "b-2" ]
-  "%%m
+  "%%
   = fun f list => array.generate (fun n => f (n + 1) (array.elem_at n list)) (array.length list),
 
   concatMap: forall a b. (a -> (Array b)) -> (Array a) -> (Array b)
@@ -114,7 +114,7 @@
      Example:
        concatMap (fun x => [x] @ ["z"]) ["a", "b"]
        >> [ "a", "z", "b", "z" ]
-  "%m
+  "%
   = (fun f list => array.flatten (array.map f list)),
 
   flatten: Dyn -> Array Dyn
@@ -127,7 +127,7 @@
        >> [1, 2, 3, 4, 5]
        flatten 1
        >> [1]
-  "%m
+  "%
   = fun x =>
     if builtin.is_array x
     then concatMap (fun y => flatten y) (x | Array Dyn)
@@ -140,7 +140,7 @@
      Example:
        remove 3 [ 1, 3, 4, 3 ]
        >> [ 1, 4 ]
-  "%m
+  "%
   = # Element to remove from the list
     fun e => array.filter ((!=) e),
 
@@ -157,7 +157,7 @@
        >> 3
        findSingle (fun x => x == 3) "none" "multiple" [ 1, 9 ]
        >> "none"
-  "%m
+  "%
   = fun
     # Predicate
     pred
@@ -183,7 +183,7 @@
        >> 6
        findFirst (fun x => x > 9) 7 [ 1, 6, 4 ]
        >> 7
-  "%m
+  "%
   = fun
     # Predicate
     pred
@@ -204,7 +204,7 @@
        >> true
        any builtin.is_str [ 1, { } ]
        >> false
-  "%m
+  "%
   = fun pred => foldr (fun x y => if pred x then true else y) false,
 
   all: forall a. (a -> Bool) -> Array a -> Bool
@@ -217,7 +217,7 @@
        >> true
        all (fun x => x < 3) [ 1, 2, 3 ]
        >> false
-  "%m
+  "%
   = fun pred => foldr (fun x y => if pred x then y else false) true,
 
   count: forall a. (a -> Bool) -> Array a -> Num
@@ -228,7 +228,7 @@
      Example:
        count (fun x => x == 3) [ 3, 2, 3, 4, 6 ]
        >> 2
-  "%m
+  "%
   = fun
     # Predicate
     pred => foldl_ (fun c x => if pred x then c + 1 else c) 0,
@@ -244,7 +244,7 @@
        >> [ "foo" ]
        optional' false "foo"
        >> [ ]
-  "%m
+  "%
   = fun cond elem => if cond then [elem] else [],
 
   optionals: forall a. Bool -> Array a -> Array a
@@ -256,7 +256,7 @@
        >> [ 2, 3 ]
        optionals false [ 2, 3 ]
        >> [ ]
-  "%m
+  "%
   = fun
     # Condition
     cond
@@ -276,7 +276,7 @@
        >> [ 1, 2 ]
        toList "hi"
        >> [ "hi "]
-  "%m
+  "%
   = fun x => if builtin.is_array x then (x | Array Dyn) else [x],
 
   range: Num -> Num -> Array Num
@@ -288,7 +288,7 @@
        >> [ 2, 3, 4 ]
        range 3 2
        >> [ ]
-  "%m
+  "%
   = fun
     # First integer in the range
     first
@@ -307,7 +307,7 @@
      Example:
        partition (fun x => x > 2) [ 5, 1, 2, 3, 4 ]
        >> { right = [ 5, 3, 4 ], wrong = [ 1, 2 ] }
-  "%m
+  "%
   = fun pred =>
     foldr (fun h t =>
       if pred h
@@ -334,7 +334,7 @@
             mate  = [ { name = "mate",  script = "gnome-session &" } ],
             xfce  = [ { name = "xfce",  script = "xfce4-session &" } ],
           }
-  "%m
+  "%
   = fun pred => foldl_ (fun r e =>
        let key = pred e in
          { "%{key}" = (r."%{key}" @ [e]) } & (record.remove key r)
@@ -347,7 +347,7 @@
      Example:
        groupBy_ builtins.add 0 (fun x => boolToString (x > 2)) [ 5, 1, 2, 3, 4 ]
        >> { true = 12, false = 3 }
-  "%m
+  "%
   = fun op nul pred lst => record.map (fun name value => foldl op nul value) (groupBy pred lst),
 
   zipListsWith: forall a b c. (a -> b -> c) -> Array a -> Array b -> Array c
@@ -359,7 +359,7 @@
      Example:
        zipListsWith (fun a b => a @@ b) ["h", "l"] ["e", "o"]
        >> ["he", "lo"]
-  "%m
+  "%
   = fun
     # Function to zip elements of both lists
     f
@@ -377,7 +377,7 @@
      Example:
        zipLists [ 1, 2 ] [ "a", "b" ]
        >> [ { fst = 1, snd = "a" }, { fst = 2, snd = "b" } ]
-  "%m
+  "%
   = zipListsWith (fun fst snd => { fst = fst, snd = snd }),
 
   reverseList: forall a. Array a -> Array a
@@ -387,7 +387,7 @@
      Example:
        reverseList [ "b", "o", "j" ]
        >> [ "j", "o", "b" ]
-  "%m
+  "%
   = fun xs =>
     let l = array.length xs in
     array.generate (fun n => array.elem_at (l - n - 1) xs) l,
@@ -413,7 +413,7 @@
                 visited = [ "/" "/home/user" ], # elements leading to the cycle (in reverse order)
                 rest    = [ "/home" "other" ],  # everything else
 
-   "%m
+   "%
   = fun stopOnCycles before list =>
     let rec dfs_ = fun us visited_ rest_ =>
         let c = array.filter (fun x => before x us) visited_ in
@@ -452,7 +452,7 @@
            == { result = [ "other", "/", "/home", "/home/user" ], }
 
          toposort (a: b: a < b) [ 3, 2, 1 ] == { result = [ 1, 2, 3 ], }
-  "%m
+  "%
   = fun before list =>
     let dfsthis = listDfs true before list in
     let toporest = toposort before (dfsthis.visited @ dfsthis.rest) in
@@ -481,7 +481,7 @@
      Example:
        sort (a: b: a < b) [ 5, 3, 7 ]
        >> [ 3, 5, 7 ]
-  "%m
+  "%
   = fun strictLess list =>
     let len = array.length list in
     let first = array.head list in
@@ -511,7 +511,7 @@
        >> 1
        compareLists compare [ "a", "b" ] [ "a", "c" ]
        >> 1
-  "%m
+  "%
   = fun cmp a b =>
     if a == []
     then if b == []
@@ -536,7 +536,7 @@
 #      >> ["10.5.16.62" "10.46.133.149" "10.54.16.25"]
 #      naturalSort ["v0.2", "v0.15", "v0.0.9"]
 #      >> [ "v0.0.9", "v0.2", "v0.15" ]
-# "%m
+# "%
 # # TODO: broken. how to implement it in nickel?
 # = fun lst =>
 #   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.head x) | Num else x | Num) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
@@ -555,7 +555,7 @@
        >> [ "a", "b" ]
        take 2 [ ]
        >> [ ]
-  "%m
+  "%
   = fun 
     # Number of elements to take
     count => sublist 0 count,
@@ -570,7 +570,7 @@
        >> [ "c", "d" ]
        drop 2 [ ]
        >> [ ]
-  "%m
+  "%
   = fun
     # Number of elements to drop
     count
@@ -588,7 +588,7 @@
        >> [ "b", "c", "d" ]
        sublist 1 3 [ ]
        >> [ ]
-  "%m
+  "%
   = fun
     # Index at which to start the sublist
     start
@@ -613,7 +613,7 @@
      Example:
        last [ 1, 2, 3 ]
        >> 3
-  "%m
+  "%
   = fun lst =>
     #assert lib.assertMsg (lst != []) "lists.last: list must not be empty!",
     array.elem_at (array.length lst - 1) lst,
@@ -627,7 +627,7 @@
      Example:
        init [ 1, 2, 3 ]
        >> [ 1, 2 ]
-  "%m
+  "%
   = fun lst =>
     #assert lib.assertMsg (lst != []) "lists.init: list must not be empty!",
     take (array.length lst - 1) lst,
@@ -639,7 +639,7 @@
      Example:
        unique [ 3, 2, 3, 4 ]
        >> [ 3, 2, 4 ]
-   "%m
+   "%
   = foldl_ (fun acc e => if array.elem e acc then acc else acc @ [ e ]) [],
 
   intersectLists: Array Dyn -> Array Dyn -> Array Dyn
@@ -649,7 +649,7 @@
      Example:
        intersectLists [ 1, 2, 3 ] [ 6, 3, 2 ]
        >> [ 3, 2 ]
-  "%m
+  "%
   = fun e => array.filter (fun x => array.elem x e),
 
   subtractLists: Array Dyn -> Array Dyn -> Array Dyn
@@ -659,14 +659,14 @@
      Example:
        subtractLists [ 3, 2 ] [ 1, 2, 3, 4, 5, 3 ]
        >> [ 1, 4, 5 ]
-  "%m
+  "%
   = fun e => array.filter (fun x => !(array.elem x e)),
 
   mutuallyExclusive: Array Dyn -> Array Dyn -> Bool
   | doc m%"
       Test if two lists have no common element.
      It should be slightly more efficient than (intersectLists a b == [])
-  "%m
+  "%
   = fun a b => array.length a == 0 || !(any (fun x => array.elem x a) b),
 
 }

@@ -17,7 +17,7 @@
           if value == 0 then value
           else contract.blame label
         ```
-        "%m
+        "%
       = fun l => %blame% l,
 
     blame_with
@@ -38,7 +38,7 @@
           else contract.blame_with "Not zero" label in
         0 | IsZero
         ```
-        "%m
+        "%
       = fun msg l => %blame% (%tag% msg l),
 
     from_predicate
@@ -53,7 +53,7 @@
         let IsZero = contract.from_predicate (fun x => x == 0) in
         0 | IsZero
         ```
-        "%m
+        "%
       = fun pred l v => if pred v then v else %blame% l,
 
     tag
@@ -76,7 +76,7 @@
             value in
         5 | Contract
         ```
-        "%m
+        "%
       = fun msg l => %tag% msg l,
 
     apply
@@ -101,7 +101,7 @@
         let Contract = Nullable {foo | Num} in
         ({foo = 1} | Contract)
         ```
-        "%m
+        "%
       = fun contract label value => %assume% contract label value,
   },
 }

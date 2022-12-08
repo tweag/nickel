@@ -51,7 +51,7 @@ fun vars =>
                     mantis.blockchains.testnet-internal-nomad.bootstrap-nodes = [
                       %{string.join ",\n" bootstrapNodes."%{vars.namespace}"})
                     ]
-                    "%m,
+                    "%,
     logLevel | default = "INFO",
     loggers = defaultLoggers,
     job = vars.job,

@@ -25,7 +25,7 @@ let GccFlag =
     contract.blame_with "expected record or string" label in
 
 let Path =
-  let pattern = m%"^(.+)/([^/]+)$"%m in
+  let pattern = m%"^(.+)/([^/]+)$"% in
   fun label value =>
     if builtin.is_str value then
       if string.is_match pattern value then
@@ -37,7 +37,7 @@ let Path =
 
 let SharedObjectFile = fun label value =>
   if builtin.is_str value then
-    if string.is_match m%"\.so$"%m value then
+    if string.is_match m%"\.so$"% value then
       value
     else
       contract.blame_with "not an .so file" label

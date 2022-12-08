@@ -11,7 +11,7 @@
           ([ 1 ] | NonEmpty) =>
             [ 1 ]
         ```
-        "%m
+        "%
       = fun label value =>
        if %typeof% value == `Array then
          if %length% value != 0 then
@@ -30,7 +30,7 @@
           head [ "this is the head", "this is not" ] =>
             "this is the head"
         ```
-        "%m
+        "%
       = fun l => %head% l,
 
     tail : forall a. Array a -> Array a
@@ -42,7 +42,7 @@
           tail [ 1, 2, 3 ] =>
             [ 2, 3 ]
         ```
-        "%m
+        "%
       = fun l => %tail% l,
 
     length : forall a. Array a -> Num
@@ -54,7 +54,7 @@
           length [ "Hello,", " World!" ] =>
             2
         ```
-        "%m
+        "%
       = fun l => %length% l,
 
     map : forall a b. (a -> b) -> Array a -> Array b
@@ -67,7 +67,7 @@
           map (fun x => x + 1) [ 1, 2, 3 ] =>
             [ 2, 3, 4 ]
         ```
-        "%m
+        "%
       = fun f l => %map% l f,
 
     elem_at : forall a. Num -> Array a -> a
@@ -79,7 +79,7 @@
           elem_at 3 [ "zero" "one" "two" "three" "four" ] =>
             "three"
         ```
-        "%m
+        "%
       = fun n l => %elem_at% l n,
 
     concat : forall a. Array a -> Array a -> Array a
@@ -91,7 +91,7 @@
           concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
             [ 1, 2, 3, 4, 5, 6 ]
         ```
-        "%m
+        "%
       = fun l1 l2 => l1 @ l2,
 
     foldl : forall a b. (a -> b -> a) -> a -> Array b -> a
@@ -107,7 +107,7 @@
             (((0 + 1) + 2) 3) =>
             6
         ```
-        "%m
+        "%
       = fun f acc l =>
         if %length% l == 0 then
           acc
@@ -126,7 +126,7 @@
             ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
         ```
-        "%m
+        "%
       = fun f fst l =>
         if %length% l == 0 then
           fst
@@ -142,7 +142,7 @@
           cons 1 [ 2, 3 ] =>
             [ 1, 2, 3 ]
         ```
-        "%m
+        "%
       = fun x l => [x] @ l,
 
     reverse : forall a. Array a -> Array a
@@ -154,7 +154,7 @@
           reverse [ 1, 2, 3 ] =>
             [ 3, 2, 1 ]
         ```
-        "%m
+        "%
       = fun l => foldl (fun acc e => [e] @ acc) [] l,
 
     filter : forall a. (a -> Bool) -> Array a -> Array a
@@ -166,7 +166,7 @@
           filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
             [ 3, 2, 1 ]
         ```
-        "%m
+        "%
       = fun pred l => foldl (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
     flatten : forall a. Array (Array a) -> Array a
@@ -178,7 +178,7 @@
           flatten [[1, 2], [3, 4]] =>
             [1, 2, 3, 4]
         ```
-        "%m
+        "%
       = fun l => fold (fun l acc => l @ acc) [] l,
 
     all : forall a. (a -> Bool) -> Array a -> Bool
@@ -192,7 +192,7 @@
           all (fun x => x < 3) [ 1, 2 3 ] =>
             false
         ```
-        "%m
+        "%
       = fun pred l => fold (fun x acc => if pred x then acc else false) true l,
 
     any : forall a. (a -> Bool) -> Array a -> Bool
@@ -206,7 +206,7 @@
           any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
             false
         ```
-        "%m
+        "%
       = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
 
     elem : Dyn -> Array Dyn -> Bool
@@ -218,7 +218,7 @@
           elem 3 [ 1, 2, 3, 4, 5 ] =>
             true
         ```
-        "%m
+        "%
       = fun elt => any (fun x => x == elt),
 
     partition : forall a. (a -> Bool) -> Array a -> {right: Array a, wrong: Array a}
@@ -231,7 +231,7 @@
           partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
             { right = [ 3, 4, 2 ], wrong = [ 6, 8, 7, 5 ] }
         ```
-        "%m
+        "%
       = fun pred l =>
         let aux = fun acc x =>
           if (pred x) then
@@ -251,7 +251,7 @@
           generate function.id 4 =>
             [ 0, 1, 2, 3 ]
         ```
-        "%m
+        "%
       = fun f n => %generate% n f,
 
     sort | forall a. (a -> a -> [| `Lesser, `Equal, `Greater |]) -> Array a -> Array a
@@ -263,7 +263,7 @@
           sort (fun x y => if x < y then `Lesser else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
             [ 1, 2, 4, 5 ]
         ```
-        "%m
+        "%
       = fun cmp l =>
         let first = %head% l in
         let parts = partition (fun x => (cmp x first == `Lesser)) (%tail% l) in

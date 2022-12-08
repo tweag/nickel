@@ -93,7 +93,7 @@ false
 ### Strings
 
 Nickel can work with sequences of characters, or strings. Strings are enclosed
-by `" ... "` for a single line string or by `m%" ... "%m` for a multiline
+by `" ... "` for a single line string or by `m%" ... "%` for a multiline
 string. They can be concatenated with the operator `++`. Strings must be UTF-8
 valid.
 
@@ -107,7 +107,7 @@ Examples:
 "Hello, World!"
 
 > m%"Well, if this isn't a multiline string?
-Yes it is, indeed it is"%m
+Yes it is, indeed it is"%
 "Well, if this isn't a string?
 Yes it is, indeed it is"
 
@@ -136,7 +136,7 @@ This line has no indentation.
   This line is indented.
     This line is even more indented.
 This line has no more indentation.
-"%m
+"%
 "This line has no indentation.
   This line is indented.
     This line is even more indented.
@@ -148,10 +148,10 @@ The only special sequence in a multiline string is the string interpolation.
 Examples:
 
 ```text
-> m%"Multiline\nString?"%m
+> m%"Multiline\nString?"%
 "Multiline\nString?"
 
-> m%"Multiline%{"\n"}String"%m
+> m%"Multiline%{"\n"}String"%
 "Multiline
 String"
 ```
@@ -163,16 +163,16 @@ the same amount of `%` as in the delimiters.
 Examples:
 
 ```text
-> m%%"Hello World"%%m
+> m%%"Hello World"%%
 "Hello World"
 
-> m%%%%%"Hello World"%%%%%m
+> m%%%%%"Hello World"%%%%%
 "Hello World"
 
-> let w = "World" in m%%"Hello %{w}"%%m
+> let w = "World" in m%%"Hello %{w}"%%
 "Hello %{w}"
 
-> let w = "World" in m%%"Hello %%{w}"%%m
+> let w = "World" in m%%"Hello %%{w}"%%
 "Hello World"
 ```
 
@@ -183,14 +183,14 @@ indented string interpolation and the indentation would behave as expected:
 > let log = m%"
 if log:
   print("log:", s)
-"%m in m%"
+"% in m%"
 def concat(str_array, log=false):
   res = []
   for s in str_array:
     %{log}
     res.append(s)
   return res
-"%m
+"%
 "def concat(str_array, log=false):
   res = []
   for s in str_array:
@@ -528,7 +528,7 @@ Adding documentation can be done with `| doc < string >`. Examples:
     it is based on facts rather than being invented or imagined,
     and is accurate and reliable.
     (Collins dictionary)
-    "%m
+    "%
 true
 ```
 

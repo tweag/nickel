@@ -12,7 +12,7 @@
         map (fun s x => x + 1) { hello = 1, world = 2 } =>
           { hello = 2, world = 3 }
       ```
-      "%m
+      "%
     = fun f r => %record_map% r f,
 
     fields | { ; Dyn} -> Array Str
@@ -23,7 +23,7 @@
         fields { one = 1, two = 2 } =>
           [ "one", "two" ]
       ```
-      "%m
+      "%
     = fun r => %fields% r,
 
     values | { ; Dyn} -> Array Dyn
@@ -34,7 +34,7 @@
         values { one = 1, world = "world" }
           [ 1, "world" ]
       ```
-      "%m
+      "%
     = fun r => %values% r,
 
     has_field : forall a. Str -> {_ : a} -> Bool
@@ -47,7 +47,7 @@
         has_field "one" { one = 1, two = 2 } =>
           true
       ```
-      "%m
+      "%
     = fun field r => %has_field% field r,
 
     insert : forall a. Str -> a -> {_: a} -> {_: a}
@@ -64,7 +64,7 @@
         |> insert "length" 10*1000 =>
           {"file.txt" = "data/text", "length" = 10000}
         ```
-      "%%m
+      "%%
       = fun field content r => %record_insert% field r content,
 
     remove : forall a. Str -> {_: a} -> {_: a}
@@ -76,7 +76,7 @@
         remove "foo" foo { foo = "foo", bar = "bar" } =>
           { bar = "bar }
         ```
-      "%m
+      "%
       = fun field r => %record_remove% field r,
 
     update | forall a. Str -> a -> {_: a} -> {_: a}
@@ -100,7 +100,7 @@
         update "bar" 1 {foo = bar + 1, bar | default = 0 } =>
           { foo = 1, bar = 1 }
         ```
-      "%m
+      "%
       = fun field content r =>
         let r = if %has_field% field r then
           %record_remove% field r

@@ -14,7 +14,7 @@
         (true | BoolLiteral) =>
           error
       ```
-      "%m
+      "%
     = fun l s =>
       if %typeof% s == `Str then
         if s == "true" || s == "True" then
@@ -39,8 +39,8 @@
         (42 | NumLiteral) =>
           error
       ```
-      "%m
-    = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"%m in
+      "%
+    = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
       let is_num_literal = %str_is_match% pattern in
       fun l s =>
         if %typeof% s == `Str then
@@ -66,7 +66,7 @@
         (1 | CharLiteral) =>
           error
       ```
-      "%m
+      "%
     = fun l s =>
       if %typeof% s == `Str then
         if length s == 1 then
@@ -89,7 +89,7 @@
         ("tag" | EnumTag) =>
           error
       ```
-      "%m
+      "%
     = contract.from_predicate builtin.is_enum,
 
     Stringable
@@ -114,7 +114,7 @@
         ({foo = "baz"} | Stringable) =>
           error
       ```
-      "%m
+      "%
     = contract.from_predicate (fun value =>
       let type = builtin.typeof value in
       value == null
@@ -136,7 +136,7 @@
         (42 | NonEmpty) =>
           error
       ```
-      "%m
+      "%
     = fun l s =>
       if %typeof% s == `Str then
         if %str_length% s > 0 then
@@ -155,7 +155,7 @@
         join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
       ```
-      "%m
+      "%
     = fun sep l =>
       if %length% l == 0 then
         ""
@@ -173,7 +173,7 @@
       split "." "1,2,3" =>
         [ "1,2,3" ]
       ```
-      "%m
+      "%
     = fun sep s => %str_split% s sep,
 
     trim : Str -> Str
@@ -187,7 +187,7 @@
       trim "1   2   3   " =>
         "1   2   3"
       ```
-      "%m
+      "%
     = fun s => %str_trim% s,
 
     chars : Str -> Array Str
@@ -199,11 +199,11 @@
         chars "Hello" =>
           [ "H", "e", "l", "l", "o" ]
       ```
-      "%m
+      "%
     = fun s => %str_chars% s,
 
     code | CharLiteral -> Num
-    | doc m%"
+    | doc m%%"
       Results in the ascii code of the given character.
 
       For example:
@@ -215,11 +215,11 @@
         code "å" =>
           error
       ```
-      "%m
+      "%%
     = fun s => %char_code% s,
 
     from_code | Num -> CharLiteral
-    | doc m%"
+    | doc m%%"
       Results in the character for a given ascii code. Any number outside the ascii range results in an error.
 
       For example:
@@ -231,7 +231,7 @@
         from_code 128 =>
           error
       ```
-      "%m
+      "%%
     = fun s => %char_from_code% s,
 
     uppercase : Str -> Str
@@ -248,7 +248,7 @@
         uppercase "." =>
           "."
       ```
-      "%m
+      "%
     = fun s => %str_uppercase% s,
 
     lowercase : Str -> Str
@@ -265,7 +265,7 @@
         lowercase "." =>
           "."
       ```
-      "%m
+      "%
     = fun s => %str_lowercase% s,
 
     contains: Str -> Str -> Bool
@@ -281,7 +281,7 @@
         contains "ghj" "abcdef" =>
           false
       ```
-      "%m
+      "%
     = fun subs s => %str_contains% s subs,
 
     replace: Str -> Str -> Str -> Str
@@ -295,7 +295,7 @@
         replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
       ```
-      "%m
+      "%
     = fun pattern replace s =>
        %str_replace% s pattern replace,
 
@@ -310,7 +310,7 @@
         replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
-      "%m
+      "%
     = fun pattern replace s =>
        %str_replace_regex% s pattern replace,
 
@@ -346,7 +346,7 @@
       ["0", "42", "0.5"] |> array.all is_number' =>
         true
       ```
-      "%m
+      "%
     = fun regex => %str_is_match% regex,
 
     match : Str -> Str -> {match: Str, index: Num, groups: Array Str}
@@ -365,7 +365,7 @@
       Note that this function may perform better by sharing its partial application between multiple calls,
       because in this case the underlying regular expression will only be compiled once (See the documentation
       of `string.is_match` for more details).
-      "%m
+      "%
     = fun regex => %str_match% regex,
 
     length : Str -> Num
@@ -379,7 +379,7 @@
         length "hi" =>
           2
       ```
-      "%m
+      "%
     = fun s => %str_length% s,
 
     substring: Num -> Num -> Str -> Str
@@ -395,7 +395,7 @@
         substring (-3) 4 "abcdef" =>
           error
       ```
-      "%m
+      "%
     = fun start end s => %str_substr% s start end,
 
     from | Stringable -> Str
@@ -411,7 +411,7 @@
         "Foo"
       from null =>
         "null"
-      "%m
+      "%
     = fun x => %to_str% x,
 
     from_num | Num -> Str
@@ -423,7 +423,7 @@
       from_num 42 =>
         "42"
       ```
-      "%m
+      "%
     = from,
 
     # from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
@@ -436,7 +436,7 @@
       from_enum `MyEnum =>
         "MyEnum"
       ```
-      "%m
+      "%
     = from,
 
     from_bool | Bool -> Str
@@ -448,7 +448,7 @@
         from_bool true =>
           "true"
       ```
-      "%m
+      "%
     = from,
 
     to_num | NumLiteral -> Num
@@ -460,7 +460,7 @@
         to_num "123" =>
           123
       ```
-      "%m
+      "%
     = fun s => %num_from_str% s,
 
     to_bool | BoolLiteral -> Bool
@@ -476,7 +476,7 @@
         to_bool "false" =>
           false
       ```
-      "%m
+      "%
     = fun s => s == "true",
 
     # to_enum | Str -> < | Dyn> = fun s => %enum_from_str% s,
@@ -489,7 +489,7 @@
         to_enum "Hello" =>
           `Hello
       ```
-      "%m
+      "%
     = fun s => %enum_from_str% s,
   }
 }
