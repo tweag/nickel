@@ -364,10 +364,10 @@ fn substitution() {
         parse("let x = 1 in if true then 1 + (if false then 1 else \"Glob2\") else false").unwrap()
     );
 
-    let t = parse("switch {`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
+    let t = parse("match{`x => [1, glob1], `y => loc2, `z => {id = true, other = glob3}} loc1")
         .unwrap();
     assert_eq!(
         subst(&eval_cache, t, &initial_env, &env),
-        parse("switch {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
+        parse("match {`x => [1, 1], `y => (if false then 1 else \"Glob2\"), `z => {id = true, other = false}} true").unwrap()
     );
 }

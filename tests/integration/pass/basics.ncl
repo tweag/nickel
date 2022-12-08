@@ -31,7 +31,7 @@ let {check, ..} = import "testlib.ncl" in
   1/4 + 1/4 - 1/4 + 1/4 >= 1/2 == true,
   1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false,
 
-  # This test checks that the terms of a switch are closured
-  let x = 3 in (switch { `foo => 1, _ => x} (3 + 2)) == 3,
+  # This test checks that the terms of a match are closured
+  let x = 3 in ((3 + 2) |> match { `foo => 1, _ => x}) == 3,
 ]
 |> check
