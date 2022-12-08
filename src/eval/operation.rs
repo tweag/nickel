@@ -2,7 +2,7 @@
 //!
 //! Define functions which perform the evaluation of primitive operators. The machinery required
 //! for the strict evaluation of the operands is mainly handled by [crate::eval], and marginally in
-//! [`continuate_operation`].
+//! [`VirtualMachine::continuate_operation`].
 //!
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.

@@ -410,7 +410,7 @@ impl UnifEnumRows {
 }
 
 impl UnifType {
-    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`from_type`], this function requires
+    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`GenericUnifType::from_type`], this function requires
     /// the current term environment.
     pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
         match at {
@@ -476,7 +476,7 @@ impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
     }
 }
 
-/// Iterator items produced by [`GenericUnifRecordRowsIterator`].
+/// Iterator items produced by [RecordRowsIterator] on [GenericUnifRecordRows].
 pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailDyn,
     TailVar(&'a Ident),
@@ -1437,7 +1437,7 @@ fn type_check_<L: Linearizer>(
 /// that may be stored in a typing environment at some point.
 ///
 /// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
-/// [`TypeWrapper`]. Otherwise:
+/// [`UnifType`]. Otherwise:
 ///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
 ///       return `Dyn`.
 ///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
@@ -2259,7 +2259,7 @@ impl UnifTable {
     /// different from all the currently live variables. This is currently simply the max of the
     /// length of the various unification tables.
     ///
-    /// Used inside [super::eq] to generate temporary rigid type variables that are guaranteed to
+    /// Used inside [self::eq] to generate temporary rigid type variables that are guaranteed to
     /// not conflict with existing variables.
     pub fn max_uvars_count(&self) -> VarId {
         use std::cmp::max;
