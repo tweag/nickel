@@ -390,6 +390,20 @@ impl MetaValue {
         Default::default()
     }
 
+    pub fn contracts_to_string(&self) -> Option<String> {
+        if !self.contracts.is_empty() {
+            Some(
+                self.contracts
+                    .iter()
+                    .map(|contract| format!("{}", contract.label.types,))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )
+        } else {
+            None
+        }
+    }
+
     /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
     /// combined (typically, the documentation or the type annotation) are set by both metavalues,
     /// outer's one are kept.

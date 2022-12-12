@@ -3,7 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams};
+use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams, Documentation};
 use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
@@ -29,16 +29,9 @@ use crate::{
 // We follow the path by traversing a term, type or contract which represents a record
 // and stop when there is nothing else on the path
 
-// Type or contract
-pub enum TorC {
-    T(Types),
-    C(RichTerm),
-}
-
-// #[derive(Eq, PartialEq, Debug, Ord, PartialOrd, Default)]
 struct IdentWithMeta {
     ident: Ident,
-    info: TorC,
+    ty: Types,
     item: Option<LinearizationItem<Types>>,
 }
 
@@ -46,7 +39,7 @@ impl From<Ident> for IdentWithMeta {
     fn from(ident: Ident) -> Self {
         IdentWithMeta {
             ident,
-            info: TorC::T(Types(TypeF::Dyn)),
+            ty: Types(TypeF::Dyn),
             item: None,
         }
     }
@@ -56,7 +49,7 @@ impl From<&str> for IdentWithMeta {
     fn from(ident: &str) -> Self {
         IdentWithMeta {
             ident: Ident::from(ident),
-            info: TorC::T(Types(TypeF::Dyn)),
+            ty: Types(TypeF::Dyn),
             item: None,
         }
     }
@@ -64,45 +57,23 @@ impl From<&str> for IdentWithMeta {
 
 impl IdentWithMeta {
     fn compute_detail(&self) -> String {
-        let info = || match &self.info {
-            TorC::T(ty) => ty.to_string(),
-            TorC::C(term) => term.to_string(),
-        };
-        let Some(item) = &self.item else {
-            return info()
-        };
-        item.meta
+        self.item
             .as_ref()
-            .map(|meta| {
-                meta.types
-                    .as_ref()
-                    .map(|ty| ty.types.to_string())
-                    .or_else(|| {
-                        let result = meta
-                            .contracts
-                            .iter()
-                            .map(|contract| format!("{}", contract.label.types,))
-                            .collect::<Vec<_>>()
-                            .join(",");
-                        if result.is_empty() {
-                            None
-                        } else {
-                            Some(result)
-                        }
-                    })
-                    .unwrap_or_else(info)
+            .and_then(|item| {
+                item.meta.as_ref().and_then(|meta| {
+                    meta.types
+                        .as_ref()
+                        .map(|ty| ty.types.to_string())
+                        .or_else(|| meta.contracts_to_string())
+                })
             })
-            .unwrap_or_else(info)
+            .unwrap_or(self.ty.to_string())
     }
 
     fn compute_completion_item_kind(&self) -> CompletionItemKind {
-        match &self.info {
-            TorC::T(ty) if ty.is_function_type() => CompletionItemKind::Function,
-            TorC::T(_) => CompletionItemKind::Property,
-            TorC::C(term) => match term.as_ref() {
-                Term::Fun(..) => CompletionItemKind::Function,
-                _ => CompletionItemKind::Property,
-            },
+        match &self.ty {
+            ty if ty.is_function_type() => CompletionItemKind::Function,
+            _ => CompletionItemKind::Property,
         }
     }
 
@@ -119,6 +90,17 @@ impl IdentWithMeta {
             label: adjust_name(self.ident.label()),
             detail: Some(self.compute_detail()),
             kind: Some(self.compute_completion_item_kind()),
+            documentation: self.item.as_ref().and_then(|item| {
+                item.meta.as_ref().and_then(|meta| {
+                    meta.doc.as_ref().and_then(|doc| {
+                        Some(Documentation::String(format!(
+                            "{}\nMerge Priority {}",
+                            doc.clone(),
+                            meta.priority.to_string()
+                        )))
+                    })
+                })
+            }),
             ..Default::default()
         }
     }
@@ -146,7 +128,7 @@ fn find_fields_from_term_kind(
                             let (ty, _) = linearization.resolve_item_type_meta(item);
                             IdentWithMeta {
                                 ident,
-                                info: TorC::T(ty),
+                                ty,
                                 item: Some(item.clone()),
                             }
                         })
@@ -235,7 +217,7 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
             .map(|(ident, types)| IdentWithMeta {
                 ident,
                 item: None,
-                info: TorC::T(types.clone()),
+                ty: types.clone(),
             })
             .collect()
     }
@@ -251,7 +233,7 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
                 .cloned()
                 .map(|ident| IdentWithMeta {
                     ident,
-                    info: TorC::C(term.clone()),
+                    ty: Types(TypeF::Flat(term.clone())),
                     item: None,
                 })
                 .collect(),
@@ -413,7 +395,7 @@ fn get_completion_identifiers(
                         TermKind::Declaration(ident, _, _) => Some(IdentWithMeta {
                             ident,
                             item: Some(item.clone()),
-                            info: TorC::T(ty.clone()),
+                            ty: ty.clone(),
                         }),
                         _ => None,
                     })
@@ -651,7 +633,7 @@ mod tests {
             for id in ids {
                 let mut actual: Vec<_> =
                     find_fields_from_term_kind(&completed, id, &mut Vec::new())
-                        .expect("Expected Some")
+                        .unwrap()
                         .iter()
                         .map(|iwm| iwm.ident)
                         .collect();
