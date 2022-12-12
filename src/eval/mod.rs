@@ -96,7 +96,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
-        array::ArrayAttrs, make as mk_term, record::RecordData, BinaryOp, BindingType, LetAttrs,
+        array::ArrayAttrs, make as mk_term, record::{RecordData, Field}, BinaryOp, BindingType, LetAttrs,
         MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
@@ -490,8 +490,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::RecRecord(record, dyn_fields, _) => {
                     let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
 
-                    record.fields.iter().try_for_each(|(_, rt)| {
-                        fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
+                    record.fields.iter().try_for_each(|(_, rt)| { fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
                     })?;
 
                     //TODO: We should probably avoid cloning the record, using `match_sharedterm`
@@ -507,15 +506,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .iter()
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
                             static_part,
-                            |acc, (id_t, t)| {
-                                let id_t = id_t.clone();
-                                let pos = t.pos;
+                            |acc, (name_as_term, value)| {
+                                let pos = value.pos;
 
-                                fixpoint::patch_field(&mut self.cache, t, &rec_env, &env)?;
+                                // TODO: dynamic fields should be field, in fact?
+                                fixpoint::patch_field(&mut self.cache, &Field { value: Some(value.clone()), ..Default::default() }, &rec_env, &env)?;
                                 Ok(RichTerm::new(
                                     Term::App(
-                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                        t.clone(),
+                                        mk_term::op2(BinaryOp::DynExtend(), name_as_term.clone(), acc),
+                                        value.clone(),
                                     ),
                                     pos.into_inherited(),
                                 ))
@@ -682,7 +681,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_arg(
                             Closure {
                                 body: RichTerm::new(
-                                    Term::Record(RecordData::with_fields(cases.clone())),
+                                    Term::Record(RecordData::with_field_values(cases.clone())),
                                     pos,
                                 ),
                                 env: env.clone(),
@@ -787,7 +786,8 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-/// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
+/// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
+/// well as fields without definition.
 pub fn env_add_term<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
@@ -795,11 +795,12 @@ pub fn env_add_term<C: Cache>(
 ) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
-                let ext = record.fields.into_iter().map(|(id, t)| {
+                let ext = record.fields.into_iter().filter_map(|(id, field)| {
+                    field.value.map(|value|
                     (
                         id,
-                        cache.add(Closure::atomic_closure(t), IdentKind::Record, BindingType::Normal),
-                    )
+                        cache.add(Closure::atomic_closure(value), IdentKind::Record, BindingType::Normal),
+                    ))
                 });
 
                 env.extend(ext);
@@ -915,12 +916,12 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
+            let record = record.map_fields_with_value(|_, value| subst(cache, value, initial_env, env));
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
+            let record = record.map_fields_with_value(|_, value| subst(cache, value, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()

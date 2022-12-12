@@ -59,8 +59,8 @@ use crate::{
     destruct::{Match, LastMatch, Destruct},
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-        MergePriority, Contract, NAryOp, record::RecordAttrs, SharedTerm,
-        NumeralPriority, array::Array, make as mk_term
+        MergePriority, LabeledType, NAryOp, record::RecordAttrs, SharedTerm,
+        NumeralPriority, array::Array, make as mk_term,
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
@@ -104,11 +104,11 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: MetaAnnot = {
     "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+        contracts: vec![LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         ..Default::default()
     },
     ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+        types: Some(LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         ..Default::default()
     },
 };

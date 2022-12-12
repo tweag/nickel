@@ -17,7 +17,7 @@ use crate::{
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{
-        make as mk_term, record::RecordAttrs, record::RecordData, BinaryOp, Contract, MetaValue,
+        make as mk_term, record::{RecordAttrs, RecordData, Field}, BinaryOp, LabeledType, MetaValue,
         RichTerm, StrChunk, Term, UnaryOp,
     },
     types::{TypeF, Types},
@@ -172,7 +172,7 @@ pub fn combine_match_annots(
             Annot::combine(anns.unwrap_or_default(), default.unwrap_or_default())
         }
         (None, None) => MetaValue {
-            contracts: vec![Contract {
+            contracts: vec![LabeledType {
                 types: Types(TypeF::Dyn),
                 label: Label {
                     span,
@@ -282,7 +282,11 @@ pub fn elaborate_field_path(
     let fst = it.next().unwrap();
 
     let content = it.rev().fold(content, |acc, path_elem| {
-        // unwrap is safe here because the initial content has a position,
+        // We first compute a position for the intermediate generated records (it's useful in
+        // particular for the LSP). The position starts at the subpath corresponding to the
+        // intermediate record and ends at the final value.
+        //
+        // unwrap is safe here becuase the initial content has a position,
         // and we make sure we assign a position for the next field.
         let acc_span = acc.pos.unwrap();
         let pos = match path_elem {
@@ -294,20 +298,21 @@ pub fn elaborate_field_path(
         // `RawSpan::fuse` only returns `None` when the two spans are in different files.
         // A record field and its value *must* be in the same file, so this is safe.
         let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+
         match path_elem {
             FieldPathElem::Ident(id) => {
                 let mut fields = HashMap::new();
                 fields.insert(id, acc);
-
-                RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
+                RichTerm::new(Term::Record(RecordData::with_field_values(fields)), pos)
             }
             FieldPathElem::Expr(exp) => {
                 let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
+
                 if let Some(static_access) = static_access {
                     let id = Ident::new_with_pos(static_access, exp.pos);
                     let mut fields = HashMap::new();
                     fields.insert(id, acc);
-                    RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
+                    RichTerm::new(Term::Record(RecordData::with_field_values(fields)), pos)
                 } else {
                     let empty = Term::Record(RecordData::empty());
                     mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc).with_pos(pos)
@@ -390,7 +395,8 @@ where
     });
 
     Term::RecRecord(
-        RecordData::new(static_fields, attrs, None),
+        //TODO: add metadata gathered during parsing
+        RecordData::new(static_fields.into_iter().map(|(id, value)| (id, Field::from(value))).collect(), attrs, None),
         dynamic_fields,
         None,
     )

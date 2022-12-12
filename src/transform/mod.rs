@@ -3,7 +3,7 @@ use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{BindingType, Contract, RichTerm, Term, TraverseOrder},
+    term::{BindingType, LabeledType, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
     types::{TypeF, Types, UnboundTypeVariableError},
 };
@@ -173,14 +173,14 @@ impl Closurizable for Types {
     }
 }
 
-impl Closurizable for Contract {
+impl Closurizable for LabeledType {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Contract {
-        Contract {
+    ) -> LabeledType {
+        LabeledType {
             types: self.types.closurize(cache, env, with_env),
             label: self.label,
         }

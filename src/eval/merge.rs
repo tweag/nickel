@@ -55,11 +55,10 @@ use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::Label;
 use crate::position::TermPos;
-use crate::term::record::{self, RecordData};
 use crate::term::{
     make as mk_term,
-    record::{FieldDeps, RecordAttrs},
-    BinaryOp, Contract, MetaValue, RichTerm, SharedTerm, Term,
+    record::{self, FieldDeps, RecordAttrs, RecordData, Field},
+    BinaryOp, LabeledType, MetaValue, RichTerm, SharedTerm, Term,
 };
 use crate::transform::Closurizable;
 use std::collections::HashMap;
@@ -322,8 +321,8 @@ pub fn merge<C: Cache>(
                 _ => unreachable!(),
             };
 
-            // Finally, we also need to closurize the contracts in the final environment.
-            let mut contracts1: Vec<Contract> = contracts1
+            // Finally, we also need to closurize the contracts in the final envirnment.
+            let mut contracts1: Vec<LabeledType> = contracts1
                 .into_iter()
                 .map(|ctr| ctr.closurize(cache, &mut env, env1.clone()))
                 .collect();
@@ -331,7 +330,7 @@ pub fn merge<C: Cache>(
             // It is necessary to release the mutable borrow on `env`
             // See https://github.com/rust-lang/rust-clippy/issues/7526
             #[allow(clippy::needless_collect)]
-            let contracts2: Vec<Contract> = contracts2
+            let contracts2: Vec<LabeledType> = contracts2
                 .into_iter()
                 .map(|ctr| ctr.closurize(cache, &mut env, env2.clone()))
                 .collect();
@@ -428,26 +427,21 @@ pub fn merge<C: Cache>(
             // [crate::eval::lazy::Thunk::saturate].
             m.extend(
                 left.into_iter()
-                    .map(|(field, t)| (field, revert_closurize(cache, t, &mut env, &env1))),
+                    .map(|(id, field)| (id, field.map_value(|value| revert_closurize(cache, value, &mut env, &env1)))),
             );
             m.extend(
                 right
                     .into_iter()
-                    .map(|(field, t)| (field, revert_closurize(cache, t, &mut env, &env2))),
+                    .map(|(id, field)| (id, field.map_value(|value| revert_closurize(cache, value, &mut env, &env2)))),
             );
 
-            for (field, (t1, t2)) in center.into_iter() {
+            for (id, (field1, field2)) in center.into_iter() {
                 m.insert(
-                    field,
-                    fields_merge_closurize(
-                        cache,
-                        &mut env,
-                        t1,
-                        &env1,
-                        t2,
-                        &env2,
-                        field_names.iter(),
-                    )?,
+                    id,
+                    Field {
+                        metadata: todo!(),
+                        value: Some(fields_merge_closurize(cache, &mut env, todo!(), &env1, todo!(), &env2, field_names.iter())?),
+                    },
                 );
             }
 
@@ -507,7 +501,7 @@ fn cross_apply_contracts<'a, C: Cache>(
     cache: &mut C,
     t1: RichTerm,
     env1: &Environment,
-    mut it2: impl Iterator<Item = &'a Contract>,
+    mut it2: impl Iterator<Item = &'a LabeledType>,
     env2: &Environment,
 ) -> Result<(RichTerm, Environment), EvalError> {
     let mut env = Environment::new();

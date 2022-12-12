@@ -358,18 +358,25 @@ mod doc {
         options: &ComrakOptions,
     ) -> Result<(), Error> {
         match rt.term.as_ref() {
-            Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
-                document.append(parse_documentation(header_level, arena, md, options))
-            }
+            // Term::MetaValue(MetaValue { doc: Some(md), .. }) => {
+            //     document.append(parse_documentation(header_level, arena, md, options))
+            // }
             Term::Record(record) | Term::RecRecord(record, _, _) => {
                 // Sorting fields for a deterministic output
                 let mut entries: Vec<(_, _)> = record.fields.iter().collect();
                 entries.sort_by_key(|(k, _)| *k);
 
-                for (ident, rt) in entries {
+                for (ident, field) in entries {
                     let header = mk_header(ident.label(), header_level + 1, arena);
                     document.append(header);
-                    to_markdown(rt, header_level + 1, arena, document, options)?;
+
+                    if let Some(ref doc) = field.metadata.doc {
+                        document.append(parse_documentation(header_level, arena, doc, options));
+                    }
+
+                    if let Some(ref value) = field.value {
+                        to_markdown(value, header_level + 1, arena, document, options)?;
+                    }
                 }
             }
             _ => (),

@@ -10,6 +10,7 @@ use serde::de::{
 
 use crate::identifier::Ident;
 use crate::term::array::{self, Array};
+use crate::term::record::{Field};
 use crate::term::{MetaValue, RichTerm, Term};
 
 macro_rules! deserialize_number {
@@ -123,7 +124,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             Term::Record(record) => {
                 let mut iter = record.fields.into_iter();
                 let (variant, value) = match iter.next() {
-                    Some(v) => v,
+                    Some((id, Field { value, .. })) => (id, value),
                     None => {
                         return Err(RustDeserializationError::InvalidType {
                             expected: "Record with single key".to_string(),
@@ -137,7 +138,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                         occurred: "Record with multiple keys".to_string(),
                     });
                 }
-                (variant.into_label(), Some(value))
+                (variant.into_label(), value)
             }
             other => {
                 return Err(RustDeserializationError::InvalidType {
@@ -405,15 +406,15 @@ where
 }
 
 struct RecordDeserializer {
-    iter: <HashMap<Ident, RichTerm> as IntoIterator>::IntoIter,
-    rich_term: Option<RichTerm>,
+    iter: <HashMap<Ident, Field> as IntoIterator>::IntoIter,
+    field: Option<Field>,
 }
 
 impl RecordDeserializer {
-    fn new(map: HashMap<Ident, RichTerm>) -> Self {
+    fn new(map: HashMap<Ident, Field>) -> Self {
         RecordDeserializer {
             iter: map.into_iter(),
-            rich_term: None,
+            field: None,
         }
     }
 }
@@ -427,7 +428,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     {
         match self.iter.next() {
             Some((key, value)) => {
-                self.rich_term = Some(value);
+                self.field = Some(value);
                 seed.deserialize(key.label().into_deserializer()).map(Some)
             }
             None => Ok(None),
@@ -438,8 +439,15 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     where
         T: DeserializeSeed<'de>,
     {
-        match self.rich_term.take() {
-            Some(value) => seed.deserialize(value),
+        match self.field.take() {
+            Some(Field { value: Some(value), ..}) => seed.deserialize(value),
+            // TODO: what to do about fields without definition is not totally clear (should an
+            // empty optional be considered as `None` or just disappear from the serialization?
+            // Probably the former). For now, we implement the same behavior as before the
+            // implementation of RFC005, which is to always fail on a field without definition.
+            //
+            // This should be relaxed in the future.
+            Some(Field { value: None, ..}) => Err(RustDeserializationError::EmptyMetaValue),
             _ => Err(RustDeserializationError::MissingValue),
         }
     }
@@ -453,7 +461,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
 }
 
 fn visit_record<'de, V>(
-    record: HashMap<Ident, RichTerm>,
+    record: HashMap<Ident, Field>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where
