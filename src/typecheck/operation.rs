@@ -184,7 +184,7 @@ pub fn get_uop_type(
         UnaryOp::StrFindCompiled(_) => (
             mk_uniftype::str(),
             mk_uty_record!(
-                ("match", TypeF::Str),
+                ("matched", TypeF::Str),
                 ("index", TypeF::Num),
                 ("groups", mk_uniftype::array(TypeF::Str))
             ),
