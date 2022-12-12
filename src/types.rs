@@ -771,7 +771,7 @@ impl RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
+        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
         Ok(mk_app!(contract::record(), rec, tail))
     }

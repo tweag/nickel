@@ -7,7 +7,7 @@ use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
     term::{
-        record::{FieldDeps, RecordDeps},
+        record::{FieldDeps, RecordDeps, Field},
         RichTerm, SharedTerm, StrChunk, Term,
     },
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
@@ -213,6 +213,18 @@ impl CollectFreeVars for RecordRows {
                 types.collect_free_vars(set);
                 tail.collect_free_vars(set);
             }
+        }
+    }
+}
+
+impl CollectFreeVars for Field {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for labeled_ty in self.metadata.annotation.iter_mut() {
+            labeled_ty.types.collect_free_vars(set)
+        }
+
+        if let Some(ref mut value) = self.value {
+            value.collect_free_vars(set);
         }
     }
 }

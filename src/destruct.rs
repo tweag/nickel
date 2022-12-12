@@ -1,12 +1,13 @@
 //! In this module, you have the main structures used in the destructuring feature of nickel.
 //! Also, there are implementation managing the generation of a contract from a pattern.
 
-use crate::identifier::Ident;
-use crate::label::Label;
-use crate::position::RawSpan;
-use crate::term::record::RecordData;
-use crate::term::{record::RecordAttrs, Contract, MetaValue, RichTerm, Term};
-use crate::types::{TypeF, Types};
+use crate::{
+    identifier::Ident,
+    label::Label,
+    position::RawSpan,
+    term::{record::{RecordData, RecordAttrs, Field}, LabeledType, MetaValue, RichTerm, Term},
+    types::{TypeF, Types},
+};
 
 /// A match field in a `Destruct` pattern.
 /// every field can contain a `MetaValue` either simply because they are annotated either because
@@ -59,12 +60,13 @@ impl Destruct {
     fn into_contract_with_lbl(self, label: Label) -> MetaValue {
         let open = self.is_open();
         MetaValue {
-            contracts: vec![Contract {
+            contracts: vec![LabeledType {
                 types: Types(TypeF::Flat(
                     Term::Record(RecordData::new(
                         self.inner()
                             .into_iter()
                             .map(|m| m.as_meta_field())
+                            .map(|(id, value)| (id, Field::from(value)))
                             .collect(),
                         RecordAttrs { open },
                         None,

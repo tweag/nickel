@@ -6,7 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     environment::Environment,
     position::{RawSpan, TermPos},
-    term::{record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
+    term::{record::RecordAttrs, LabeledType, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
     types::{
         EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
         UnboundTypeVariableError, VarKind,
@@ -601,7 +601,7 @@ impl FixTypeVars for EnumRows {
 /// [`Types::fix_type_vars`].
 pub fn fix_field_types(rt: &mut RichTerm) -> Result<(), ParseError> {
     if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
-        if let Some(Contract { ref mut types, .. }) = m.types {
+        if let Some(LabeledType { ref mut types, .. }) = m.types {
             types.fix_type_vars(rt.pos.unwrap())?;
         }
 

@@ -109,11 +109,7 @@ where
     S: Serializer,
 {
     let mut entries: Vec<(_, _)> = record
-        .fields
-        .iter()
-        // Filtering out optional fields without a definition. All variable should have been
-        // substituted at this point, so we pass an empty environment.
-        .filter(|(_, t)| !is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()))
+        .iter_without_opts()
         .collect();
     entries.sort_by_key(|(k, _)| *k);
 
@@ -131,7 +127,7 @@ where
     D: Deserializer<'de>,
 {
     let fields = HashMap::deserialize(deserializer)?;
-    Ok(RecordData::with_fields(fields))
+    Ok(RecordData::with_field_values(fields))
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.
@@ -201,9 +197,8 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(record) => {
                 record
-                    .fields
-                    .iter()
-                    .try_for_each(|(_, t)| validate(format, t))?;
+                    .iter_without_opts()
+                    .try_for_each(|(_, rt)| validate(format, &rt))?;
                 Ok(())
             }
             Array(array, _) => {

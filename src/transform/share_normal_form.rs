@@ -49,7 +49,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
             Term::Record(record) => {
                 let mut bindings = Vec::with_capacity(record.fields.len());
 
-                let record = record.map_fields(|id, t| {
+                let record = record.map_fields_with_value(|id, t| {
                     if should_share(&t.term) {
                         let fresh_var = Ident::fresh();
                         let pos_t = t.pos;
@@ -94,7 +94,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     }
                 }
 
-                let record = record.map_fields(|id, t| {
+                let record = record.map_fields_with_value(|id, t| {
                     // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
                     // explained above.
                     if !t.as_ref().is_constant() {
@@ -128,6 +128,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     })
                     .collect();
 
+                //TODO: transform field metadata
                 with_bindings(Term::RecRecord(record, dyn_fields, deps), bindings, pos)
             },
             Term::Array(ts, attrs) => {

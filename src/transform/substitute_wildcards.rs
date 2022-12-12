@@ -9,7 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use crate::{
     label::Label,
     match_sharedterm,
-    term::{Contract, MetaValue, RichTerm, Term, TraverseOrder},
+    term::{LabeledType, MetaValue, RichTerm, Term, TraverseOrder},
     typecheck::Wildcards,
     types::{TypeF, Types},
 };
@@ -25,7 +25,7 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
                 ..
             }) => {
                 let mut meta = meta;
-                let Contract { types, label } = meta.types.take().unwrap();  // Safe, we know there's a type
+                let LabeledType { types, label } = meta.types.take().unwrap();  // Safe, we know there's a type
 
                 // Replace the type annotation and the blame label
                 let types = substitute_wildcards_recursively(types, wildcards);
@@ -35,7 +35,7 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
                     types: Rc::new(label_types),
                     ..label
                 };
-                meta.types = Some(Contract { types, label });
+                meta.types = Some(LabeledType { types, label });
 
                 RichTerm::new(Term::MetaValue(meta), pos)
             }

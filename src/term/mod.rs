@@ -21,6 +21,7 @@ pub mod array;
 pub mod record;
 
 use array::{Array, ArrayAttrs};
+use record::{Field, FieldDeps, RecordData, RecordDeps};
 
 use crate::{
     destruct::Destruct,
@@ -45,8 +46,6 @@ use std::{
     ops::Deref,
     rc::Rc,
 };
-
-use record::{FieldDeps, RecordData, RecordDeps};
 
 /// The AST of a Nickel expression.
 ///
@@ -360,7 +359,7 @@ impl fmt::Display for MergePriority {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Contract {
+pub struct LabeledType {
     pub types: Types,
     pub label: Label,
 }
@@ -368,8 +367,8 @@ pub struct Contract {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct MetaValue {
     pub doc: Option<String>,
-    pub types: Option<Contract>,
-    pub contracts: Vec<Contract>,
+    pub types: Option<LabeledType>,
+    pub contracts: Vec<LabeledType>,
     /// If the field is optional.
     pub opt: bool,
     pub priority: MergePriority,
@@ -454,6 +453,29 @@ impl MetaValue {
     }
 }
 
+/// A type and/or contract annotation.
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct TypeAnnotation {
+    pub types: Option<LabeledType>,
+    pub contracts: Vec<LabeledType>,
+}
+
+impl TypeAnnotation {
+    /// Return the main annotation, which is either the type annotation if any, or the first
+    /// contract annotation.
+    pub fn first(&self) -> Option<&LabeledType> {
+        self.types.as_ref().or(self.contracts.first())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &LabeledType> {
+        self.types.iter().chain(self.contracts.iter())
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
+        self.types.iter_mut().chain(self.contracts.iter_mut())
+    }
+}
+
 /// A chunk of a string with interpolated expressions inside. Same as `Either<String,
 /// RichTerm>` but with explicit constructor names.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -496,10 +518,18 @@ impl Term {
                 }
             }
             Record(ref mut r) => {
-                r.fields.iter_mut().for_each(|(_, t)| func(t));
+                r.fields.iter_mut().for_each(|(_, field)| {
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
+                });
             }
             RecRecord(ref mut r, ref mut dyn_fields, ..) => {
-                r.fields.iter_mut().for_each(|(_, t)| func(t));
+                r.fields.iter_mut().for_each(|(_, field)| {
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
+                });
                 dyn_fields.iter_mut().for_each(|(t1, t2)| {
                     func(t1);
                     func(t2);
@@ -516,7 +546,7 @@ impl Term {
             MetaValue(ref mut meta) => {
                 meta.contracts
                     .iter_mut()
-                    .for_each(|Contract { types, .. }| {
+                    .for_each(|LabeledType { types, .. }| {
                         if let TypeF::Flat(ref mut rt) = types.0 {
                             func(rt)
                         }
@@ -656,7 +686,13 @@ impl Term {
                 let fields_str: Vec<String> = r
                     .fields
                     .iter()
-                    .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
+                    .map(|(ident, field)| {
+                        if let Some(ref value) = field.value {
+                            format!("{} = {}", ident, value.as_ref().deep_repr())
+                        } else {
+                            format!("{}", ident)
+                        }
+                    })
                     .collect();
 
                 let suffix = match self {
@@ -1439,20 +1475,40 @@ impl RichTerm {
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
+                let fields_res: Result<HashMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
+                    .map(|(id, field)| {
+                        let value =
+                            field.value
+                            .map(|v| v.traverse(f, state, order))
+                            .map_or(Ok(None), |res| res.map(Some))?;
+
+                        Ok((id, Field {
+                            metadata: field.metadata,
+                            value,
+                        }))
+                    })
                     .collect();
                 RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
+                let static_fields_res: Result<HashMap<Ident, Field>, E> = record.fields
                     .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
+                    // For the conversion to work, note that we need a Result<(Ident,Field), E>
+                    .map(|(id, field)| {
+                        let value =
+                            field.value
+                            .map(|v| v.traverse(f, state, order))
+                            .map_or(Ok(None), |res| res.map(Some))?;
+
+                        Ok((id, Field {
+                            metadata: field.metadata,
+                            value,
+                        }))
+                    })
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
                     .into_iter()
@@ -1503,12 +1559,12 @@ impl RichTerm {
                     }
                 };
 
-                let contracts: Result<Vec<Contract>, _> = meta
+                let contracts: Result<Vec<LabeledType>, _> = meta
                     .contracts
                     .into_iter()
                     .map(|ctr| {
-                        let Contract {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
+                        let LabeledType {types, label} = ctr;
+                        types.traverse(&f_on_type, state, order).map(|types| LabeledType { types, label })
                     })
                     .collect();
                 let contracts = contracts?;
@@ -1516,8 +1572,8 @@ impl RichTerm {
                 let types = meta
                     .types
                     .map(|ctr| {
-                        let Contract {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
+                        let LabeledType {types, label} = ctr;
+                        types.traverse(&f_on_type, state, order).map(|types| LabeledType { types, label })
                     })
                     .transpose()?;
 
@@ -1525,7 +1581,7 @@ impl RichTerm {
                     .value
                     .map(|t| t.traverse(f, state, order))
                     .map_or(Ok(None), |res| res.map(Some))?;
-                    let meta = MetaValue {
+                let meta = MetaValue {
                         doc: meta.doc,
                         types,
                         contracts,
@@ -1703,7 +1759,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_fields(fields)))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_field_values(fields)))
             }
         };
     }
@@ -1868,7 +1924,7 @@ mod tests {
     #[test]
     fn metavalue_flatten() {
         let mut inner = MetaValue::new();
-        inner.types = Some(Contract {
+        inner.types = Some(LabeledType {
             types: Types(TypeF::Num),
             label: Label::dummy(),
         });

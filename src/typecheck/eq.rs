@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    term::UnaryOp,
+    term::{UnaryOp, record::Field},
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
@@ -275,7 +275,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (Record(r1), Record(r2)) => {
             map_eq(
-                contract_eq_bounded,
+                contract_eq_fields,
                 state,
                 &r1.fields,
                 env1,
@@ -290,7 +290,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
                 && map_eq(
-                    contract_eq_bounded,
+                    contract_eq_fields,
                     state,
                     &r1.fields,
                     env1,
@@ -397,6 +397,24 @@ fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
         .collect();
 
     set
+}
+
+/// Check for contract equality between record fields. Fields are equal if they are both without a
+/// definition, or are both defined and their values are equal.
+fn contract_eq_fields<E: TermEnvironment>(
+    state: &mut State,
+    field1: &Field,
+    env1: &E,
+    field2: &Field,
+    env2: &E,
+) -> bool {
+    match (&field1.value, &field2.value) {
+        (Some(ref value1), Some(ref value2)) => {
+            contract_eq_bounded(state, value1, env1, value2, env2)
+        }
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test

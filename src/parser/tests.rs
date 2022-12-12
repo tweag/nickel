@@ -218,7 +218,7 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("b"), Num(2.).into()),
@@ -236,7 +236,7 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("d"), Num(42.).into()),
@@ -256,7 +256,7 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("\"%}%"), Num(2.).into()),

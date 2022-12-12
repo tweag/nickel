@@ -1,6 +1,7 @@
 use crate::destruct::{self, Destruct};
 use crate::parser::lexer::KEYWORDS;
-use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
+use crate::term::{record::{Field, FieldMetadata}, BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
+use crate::identifier::Ident;
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -65,6 +66,90 @@ where
         self.hardline()
             .append(self.intersperse(s.lines().map(|d| self.text(d.to_owned())), self.hardline()))
             .enclose(format!("m{delimiter}\""), format!("\"{delimiter}"))
+    }
+
+    fn field_metadata(
+        &'a self,
+        metadata: &FieldMetadata,
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        if let Some(labeled_ty) = &metadata.annotation.types {
+            self.text(":")
+                .append(self.space())
+                .append(labeled_ty.types.clone().pretty(self))
+                .append(self.line())
+        } else {
+            self.nil()
+        }
+        .append(if with_doc {
+            metadata
+                .doc
+                .clone()
+                .map(|doc| {
+                    self.text("|")
+                        .append(self.space())
+                        .append(self.text("doc"))
+                        .append(self.space())
+                        .append(
+                            self.hardline()
+                                .append(self.intersperse(
+                                    doc.lines().map(|d| self.escaped_string(d)),
+                                    self.hardline().clone(),
+                                ))
+                                .double_quotes(),
+                        )
+                        .append(self.line())
+                })
+                .unwrap_or_else(|| self.nil())
+        } else {
+            self.nil()
+        })
+        .append(self.intersperse(
+            metadata.annotation.contracts.iter().map(|c| {
+                self.text("|")
+                    .append(self.space())
+                    .append(c.to_owned().types.pretty(self))
+            }),
+            self.line().clone(),
+        ))
+        .append(if metadata.opt {
+            self.line().append(self.text("| optional"))
+        } else {
+            self.nil()
+        })
+        .append(match metadata.priority {
+            crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
+            crate::term::MergePriority::Neutral => self.nil(),
+            crate::term::MergePriority::Numeral(p) => self
+                .line()
+                .append(self.text("| priority"))
+                .append(self.space())
+                .append(self.as_string(p)),
+            crate::term::MergePriority::Top => self.line().append(self.text("| force")),
+        })
+        .nest(2)
+        .group()
+    }
+
+    fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
+                self.quote_if_needed(&id)
+                    .append(self.field_metadata(&field.metadata, with_doc))
+                    .append(if let Some(ref value) = field.value {
+                        self.space()
+                            .append(self.text("="))
+                            .append(self.line())
+                            .append(value.to_owned().pretty(self).nest(2))
+                    } else {
+                        self.nil()
+                    })
+                    .append(self.text(","))
+    }
+
+    fn fields(&'a self, fields: &HashMap<Ident, Field>, with_doc: bool)  -> DocBuilder<'a, Self, A> {
+        self.intersperse(
+            sorted_map(fields).iter().map(|&(id, field)| self.field(id, field, with_doc)),
+            self.line(),
+        )
     }
 
     fn metadata(&'a self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
@@ -472,36 +557,7 @@ where
             Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
             Record(record) => allocator
                 .line()
-                .append(allocator.intersperse(
-                    sorted_map(&record.fields).iter().map(|&(id, rt)| {
-                        allocator
-                            .quote_if_needed(id)
-                            .append(allocator.space())
-                            .append(if let MetaValue(mv) = rt.as_ref() {
-                                allocator
-                                    .metadata(mv, true)
-                                    .append(allocator.space())
-                                    .append(
-                                        mv.value
-                                            .clone()
-                                            .map(|v| {
-                                                allocator
-                                                    .text("=")
-                                                    .append(allocator.space())
-                                                    .append(v.pretty(allocator))
-                                            })
-                                            .unwrap_or_else(|| allocator.nil()),
-                                    )
-                            } else {
-                                allocator
-                                    .text("=")
-                                    .append(allocator.line())
-                                    .append(rt.to_owned().pretty(allocator).nest(2))
-                            })
-                            .append(allocator.text(","))
-                    }),
-                    allocator.line(),
-                ))
+                .append(allocator.fields(&record.fields, true))
                 .append(if record.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
@@ -512,73 +568,17 @@ where
                 .group()
                 .braces(),
             RecRecord(
-                record,
-                dyn_fields, /* field whose name is defined by interpolation */
-                _deps,      /* dependency tracking between fields. None before the free var pass */
+                record_data,
+                dyn_fields,
+                _,
             ) => allocator
                 .line()
-                .append(
-                    allocator.intersperse(
-                        sorted_map(&record.fields)
-                            .iter()
-                            .map(|&(id, rt)| {
-                                allocator
-                                    .quote_if_needed(id)
-                                    .append(allocator.space())
-                                    .append(if let MetaValue(mv) = rt.as_ref() {
-                                        allocator
-                                            .metadata(mv, true)
-                                            .append(allocator.space())
-                                            .append(
-                                                mv.value
-                                                    .clone()
-                                                    .map(|v| {
-                                                        allocator
-                                                            .text("=")
-                                                            .append(allocator.space())
-                                                            .append(v.pretty(allocator))
-                                                    })
-                                                    .unwrap_or_else(|| allocator.nil()),
-                                            )
-                                    } else {
-                                        allocator
-                                            .text("=")
-                                            .append(allocator.line())
-                                            .append(rt.to_owned().pretty(allocator).nest(2))
-                                    })
-                                    .append(allocator.text(","))
-                            })
-                            .chain(dyn_fields.iter().map(|(id, rt)| {
-                                id.to_owned()
-                                    .pretty(allocator)
-                                    .append(allocator.space())
-                                    .append(if let MetaValue(mv) = rt.as_ref() {
-                                        allocator
-                                            .metadata(mv, true)
-                                            .append(allocator.space())
-                                            .append(
-                                                mv.value
-                                                    .clone()
-                                                    .map(|v| {
-                                                        allocator
-                                                            .text("=")
-                                                            .append(v.pretty(allocator))
-                                                    })
-                                                    .unwrap_or_else(|| allocator.nil()),
-                                            )
-                                    } else {
-                                        allocator
-                                            .text("=")
-                                            .append(allocator.space())
-                                            .append(allocator.line())
-                                            .append(rt.to_owned().pretty(allocator).nest(2))
-                                    })
-                                    .append(allocator.text(","))
-                            })),
-                        allocator.line(),
-                    ),
-                )
-                .append(if record.attrs.open {
+                .append(allocator.fields(&record_data.fields, true))
+                // TODO: !todo() introdued by PR #XXX. The previous version of this code printing
+                // the dynamic fields was wrong and isn't currently tested. We delay fixing this to
+                // a later PR or commit.
+                // dynamic fields
+                .append(if record_data.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()
