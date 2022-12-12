@@ -39,22 +39,24 @@ fn mk_single_chunk(s: &str) -> RichTerm {
 }
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
+    use crate::term::record::Field;
+
     build_record(
         [
             (
                 FieldPathElem::Ident("tag".into()),
-                RichTerm::from(Term::Enum("SymbolicString".into())),
+                Field::from(RichTerm::from(Term::Enum("SymbolicString".into()))),
             ),
             (
                 FieldPathElem::Ident("prefix".into()),
-                RichTerm::from(Term::Enum(prefix.into())),
+                Field::from(RichTerm::from(Term::Enum(prefix.into()))),
             ),
             (
                 FieldPathElem::Ident("fragments".into()),
-                RichTerm::from(Array(
+                Field::from(RichTerm::from(Array(
                     Array::new(Rc::new([Str(String::from(s)).into()])),
                     Default::default(),
-                )),
+                ))),
             ),
         ],
         Default::default(),
@@ -251,10 +253,12 @@ fn enum_terms() {
 
 #[test]
 fn record_terms() {
+    use crate::term::record::Field;
+
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("b"), Num(2.).into()),
@@ -272,7 +276,7 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"%{123}\" = (if 4 then 5 else 6), d = 42}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("d"), Num(42.).into()),
@@ -282,7 +286,11 @@ fn record_terms() {
             ),
             vec![(
                 StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
-                mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
+                Field::from(mk_app!(
+                    mk_term::op1(UnaryOp::Ite(), Num(4.)),
+                    Num(5.),
+                    Num(6.)
+                ))
             )],
             None,
         )
@@ -292,7 +300,7 @@ fn record_terms() {
     assert_eq!(
         parse_without_pos("{ a = 1, \"\\\"%}%\" = 2}"),
         RecRecord(
-            record::RecordData::with_fields(
+            record::RecordData::with_field_values(
                 vec![
                     (Ident::from("a"), Num(1.).into()),
                     (Ident::from("\"%}%"), Num(2.).into()),

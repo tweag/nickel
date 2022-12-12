@@ -1,15 +1,10 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     error::SerializationError,
-    eval::{
-        self,
-        cache::{CBNCache, Cache},
-        is_empty_optional,
-    },
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        MetaValue, RichTerm, Term,
+        RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -89,17 +84,16 @@ where
     n.serialize(serializer)
 }
 
-/// Serializer for metavalues.
-pub fn serialize_meta_value<S>(meta: &MetaValue, serializer: S) -> Result<S::Ok, S::Error>
+/// Serializer for annotated values.
+pub fn serialize_annotated_value<S>(
+    _annot: &TypeAnnotation,
+    t: &RichTerm,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    if let Some(ref t) = meta.value {
-        t.serialize(serializer)
-    } else {
-        // This error should not happen if the input term is validated before serialization
-        Err(Error::custom("empty metavalue"))
-    }
+    t.serialize(serializer)
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
@@ -108,13 +102,16 @@ pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, 
 where
     S: Serializer,
 {
-    let mut entries: Vec<(_, _)> = record
-        .fields
-        .iter()
-        // Filtering out optional fields without a definition. All variable should have been
-        // substituted at this point, so we pass an empty environment.
-        .filter(|(_, t)| !is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()))
-        .collect();
+    let mut entries = record
+        .iter_without_opts()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|missing_def_err| {
+            Error::custom(format!(
+                "missing field definition for `{}`",
+                missing_def_err.id
+            ))
+        })?;
+
     entries.sort_by_key(|(k, _)| *k);
 
     let mut map_ser = serializer.serialize_map(Some(entries.len()))?;
@@ -131,7 +128,7 @@ where
     D: Deserializer<'de>,
 {
     let fields = HashMap::deserialize(deserializer)?;
-    Ok(RecordData::with_fields(fields))
+    Ok(RecordData::with_field_values(fields))
 }
 
 /// Serialize for an Array. Required to hide the internal attributes.
@@ -182,9 +179,7 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
-/// TODO: We should have a NoCache impl of Cache or adapt the signature of [is_empty_optional()]
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
-    use crate::term;
     use Term::*;
 
     if format == ExportFormat::Raw {
@@ -200,23 +195,18 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(record) => {
-                record
-                    .fields
-                    .iter()
-                    .try_for_each(|(_, t)| validate(format, t))?;
+                record.iter_without_opts().try_for_each(|binding| {
+                    // unwrap(): terms must be fully evaluated before being validated for
+                    // serialization. Otherwise, it's an internal error.
+                    let (_, rt) = binding.unwrap_or_else(|err| panic!("encountered field without definition `{}` during pre-serialization validation", err.id));
+                    validate(format, rt)
+                })?;
                 Ok(())
             }
             Array(array, _) => {
                 array.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
-            //TODO: have a specific error for such missing value.
-            MetaValue(term::MetaValue {
-                value: Some(ref t), ..
-            }) => validate(format, t),
-            // Optional field without definition are accepted and ignored during serialization.
-            // TODO: This shouldn't spin a new cache
-            _ if is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()) => Ok(()),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
     }
@@ -246,6 +236,8 @@ where
                 .map_err(|err| SerializationError::Other(err.to_string())),
             t => Err(SerializationError::Other(format!(
                 "raw export requires a `Str`, got {}",
+                // unwrap(): terms must be fully evaluated before serialization,
+                // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
             ))),
         },
@@ -266,6 +258,8 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
             Term::Str(s) => Ok(s.clone()),
             t => Err(SerializationError::Other(format!(
                 "raw export requires a `Str`, got {}",
+                // unwrap(): terms must be fully evaluated before serialization,
+                // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
             ))),
         },
@@ -277,7 +271,7 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::{Environment, VirtualMachine};
+    use crate::eval::{cache::CBNCache, Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};

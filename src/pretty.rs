@@ -1,10 +1,21 @@
 use crate::destruct::{self, Destruct};
+use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
-use crate::term::{BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
+
+use crate::term::{
+    record::{Field, FieldMetadata},
+    BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+};
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 use std::collections::HashMap;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StringRenderStyle {
+    Monoline,
+    Multiline,
+}
 
 /// Helper to find the min number of `%` sign needed to interpolate a string containing this chunk.
 fn min_interpolate_sign(text: &str) -> usize {
@@ -43,7 +54,9 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
-    fn quote_if_needed(&'a self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
+    /// Add quote around an ident if it contains characters that aren't normally allowed inside
+    /// bare identifiers.
+    fn quote_if_needed(&'a self, id: &Ident) -> DocBuilder<'a, Self, A> {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
         if reg.is_match(id.as_ref()) && !KEYWORDS.contains(&id.as_ref()) {
             self.as_string(id)
@@ -52,76 +65,220 @@ where
         }
     }
 
+    /// Escape the special characters in a string, including the newline character, so that it can
+    /// be enclosed by double quotes a be a valid Nickel string.
     fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
         let s = s
             .replace('\\', "\\\\")
             .replace("%{", "\\%{")
-            .replace('\"', "\\\"");
+            .replace('\"', "\\\"")
+            .replace('\n', "\\n");
         self.text(s)
     }
 
-    fn multiline_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        let delimiter = "%".repeat(min_interpolate_sign(s));
-        self.hardline()
-            .append(self.intersperse(s.lines().map(|d| self.text(d.to_owned())), self.hardline()))
-            .enclose(format!("m{delimiter}\""), format!("\"{delimiter}"))
+    /// Print string chunks, either in the single line or multiline style.
+    fn chunks(
+        &'a self,
+        chunks: &[StrChunk<RichTerm>],
+        string_style: StringRenderStyle,
+    ) -> DocBuilder<'a, Self, A> {
+        let multiline = string_style == StringRenderStyle::Multiline;
+        let nb_perc = chunks
+            .iter()
+            .map(
+                |c| {
+                    if let StrChunk::Literal(s) = c {
+                        min_interpolate_sign(s)
+                    } else {
+                        1
+                    }
+                }, // be sure we have at least 1 `%` sign when an interpolation is present
+            )
+            .max()
+            .unwrap_or(1);
+
+        let interp: String = "%".repeat(nb_perc);
+
+        let line_maybe = if multiline {
+            self.hardline()
+        } else {
+            self.nil()
+        };
+
+        let start_delimiter = if multiline {
+            format!("m{interp}")
+        } else {
+            String::new()
+        };
+
+        let end_delimiter = if multiline {
+            interp.clone()
+        } else {
+            String::new()
+        };
+
+        line_maybe
+            .clone()
+            .append(self.intersperse(
+                chunks.iter().cloned().rev().map(|c| {
+                    match c {
+                        StrChunk::Literal(s) => {
+                            if multiline {
+                                self.intersperse(
+                                    s.lines().map(|s| self.text(s.to_owned())),
+                                    self.hardline().clone(),
+                                )
+                            } else {
+                                self.escaped_string(&s)
+                            }
+                        }
+                        StrChunk::Expr(e, _i) => self
+                            .text(interp.clone())
+                            .append(self.text("{"))
+                            .append(e.pretty(self))
+                            .append(self.text("}")),
+                    }
+                }),
+                self.nil(),
+            ))
+            .append(line_maybe)
+            .double_quotes()
+            .enclose(start_delimiter, end_delimiter)
     }
 
-    fn metadata(&'a self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        if let Some(types) = &mv.types {
-            self.text(":")
+    fn field_metadata(
+        &'a self,
+        metadata: &FieldMetadata,
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        self.annot_part(&metadata.annotation)
+            .append(if with_doc {
+                metadata
+                    .doc
+                    .clone()
+                    .map(|doc| {
+                        self.line()
+                            .append(self.text("|"))
+                            .append(self.space())
+                            .append(self.text("doc"))
+                            .append(self.space())
+                            .append(
+                                self.chunks(
+                                    &[StrChunk::Literal(doc)],
+                                    StringRenderStyle::Multiline,
+                                ),
+                            )
+                    })
+                    .unwrap_or_else(|| self.nil())
+            } else {
+                self.nil()
+            })
+            .append(if metadata.opt {
+                self.line().append(self.text("| optional"))
+            } else {
+                self.nil()
+            })
+            .append(match metadata.priority {
+                MergePriority::Bottom => self.line().append(self.text("| default")),
+                MergePriority::Neutral => self.nil(),
+                MergePriority::Numeral(p) => self
+                    .line()
+                    .append(self.text("| priority"))
+                    .append(self.space())
+                    .append(self.as_string(p)),
+                MergePriority::Top => self.line().append(self.text("| force")),
+            })
+            .nest(2)
+            .group()
+    }
+
+    fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
+        self.quote_if_needed(id)
+            .append(self.field_body(field, with_doc))
+    }
+
+    fn dyn_field(
+        &'a self,
+        id_expr: &RichTerm,
+        field: &Field,
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        id_expr
+            .clone()
+            .pretty(self)
+            .append(self.field_body(field, with_doc))
+    }
+
+    fn field_body(&'a self, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
+        self.field_metadata(&field.metadata, with_doc)
+            .append(if let Some(ref value) = field.value {
+                let has_metadata = field.metadata != FieldMetadata::default();
+
+                if has_metadata {
+                    self.line()
+                } else {
+                    self.space()
+                }
+                .append(
+                    self.text("=")
+                        .append(self.softline())
+                        .append(value.to_owned().pretty(self).nest(2)),
+                )
+                .nest(2)
+            } else {
+                self.nil()
+            })
+            .append(self.text(","))
+    }
+
+    fn fields(&'a self, fields: &HashMap<Ident, Field>, with_doc: bool) -> DocBuilder<'a, Self, A> {
+        self.intersperse(
+            sorted_map(fields)
+                .iter()
+                .map(|&(id, field)| self.field(id, field, with_doc)),
+            self.line(),
+        )
+    }
+
+    fn dyn_fields(
+        &'a self,
+        fields: &[(RichTerm, Field)],
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        self.intersperse(
+            fields
+                .iter()
+                .map(|(ref id_term, ref field)| self.dyn_field(id_term, field, with_doc)),
+            self.line(),
+        )
+    }
+
+    fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
+        self.annot_part(annot).nest(2).group()
+    }
+
+    fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
+        if let Some(types) = &annot.types {
+            self.line()
+                .append(self.text(":"))
                 .append(self.space())
                 .append(types.types.clone().pretty(self))
-                .append(self.line())
         } else {
             self.nil()
         }
-        .append(if with_doc {
-            mv.doc
-                .as_ref()
-                .map(|doc| {
-                    self.text("|")
-                        .append(self.space())
-                        .append(self.text("doc"))
-                        .append(self.hardline())
-                        .append({
-                            if doc.contains('\n') {
-                                self.multiline_string(doc)
-                            } else {
-                                self.escaped_string(doc).double_quotes()
-                            }
-                        })
-                        .append(self.line())
-                })
-                .unwrap_or_else(|| self.nil())
+        .append(if !annot.contracts.is_empty() {
+            self.line()
         } else {
             self.nil()
         })
         .append(self.intersperse(
-            mv.contracts.iter().map(|c| {
+            annot.contracts.iter().map(|c| {
                 self.text("|")
                     .append(self.space())
                     .append(c.to_owned().types.pretty(self))
             }),
-            self.line().clone(),
+            self.line(),
         ))
-        .append(if mv.opt {
-            self.line().append(self.text("| optional"))
-        } else {
-            self.nil()
-        })
-        .append(match mv.priority {
-            crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
-            crate::term::MergePriority::Neutral => self.nil(),
-            crate::term::MergePriority::Numeral(p) => self
-                .line()
-                .append(self.text("| priority"))
-                .append(self.space())
-                .append(self.as_string(p)),
-            crate::term::MergePriority::Top => self.line().append(self.text("| force")),
-        })
-        .nest(2)
-        .group()
     }
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
@@ -216,29 +373,30 @@ where
             } => allocator
                 .intersperse(
                     matches.iter().map(|m| match m {
-                        destruct::Match::Simple(id, meta) => allocator
+                        destruct::Match::Simple(id, field) => allocator
                             .as_string(id)
                             .append(allocator.space())
-                            .append(match meta.clone() {
-                                MetaValue {
-                                    types,
-                                    contracts,
-                                    priority: crate::term::MergePriority::Bottom,
+                            .append(match field {
+                                Field {
                                     value: Some(value),
-                                    ..
+                                    metadata:
+                                        FieldMetadata {
+                                            annotation,
+                                            priority: MergePriority::Bottom,
+                                            ..
+                                        },
                                 } => allocator
                                     .text("?")
                                     .append(allocator.space())
-                                    .append(allocator.atom(&value))
-                                    .append(allocator.metadata(
-                                        &MetaValue {
-                                            types,
-                                            contracts,
+                                    .append(allocator.atom(value))
+                                    .append(allocator.field_metadata(
+                                        &FieldMetadata {
+                                            annotation: annotation.clone(),
                                             ..Default::default()
                                         },
                                         false,
                                     )),
-                                m => allocator.metadata(&m, false),
+                                field => allocator.field_metadata(&field.metadata, false),
                             }),
                         _ => unimplemented!(),
                     }),
@@ -278,50 +436,14 @@ where
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.escaped_string(v).double_quotes(),
-            StrChunks(chunks) => {
-                let multiline = chunks.len() > 1;
-                let nb_perc = chunks
-                    .iter()
-                    .map(
-                        |c| {
-                            if let crate::term::StrChunk::Literal(s) = c {
-                                min_interpolate_sign(s)
-                            } else {
-                                1
-                            }
-                        }, // be sure we have at least 1 `%` sign when an interpolation is present
-                    )
-                    .max()
-                    .unwrap_or(1);
-                let interp: String = "%".repeat(nb_perc);
-                allocator
-                    .intersperse(
-                        chunks.iter().rev().map(|c| match c {
-                            crate::term::StrChunk::Literal(s) => {
-                                if multiline {
-                                    allocator.as_string(s)
-                                } else {
-                                    allocator.escaped_string(s)
-                                }
-                            }
-                            crate::term::StrChunk::Expr(e, _i) => allocator
-                                .text(interp.clone())
-                                .append(allocator.text("{"))
-                                .append(e.to_owned().pretty(allocator))
-                                .append(allocator.text("}")),
-                        }),
-                        allocator.nil(),
-                    )
-                    .double_quotes()
-                    .enclose(
-                        if multiline {
-                            format!("m{}", interp)
-                        } else {
-                            "".to_string()
-                        },
-                        if multiline { interp } else { "".to_string() },
-                    )
-            }
+            StrChunks(chunks) => allocator.chunks(
+                chunks,
+                if chunks.len() > 1 {
+                    StringRenderStyle::Multiline
+                } else {
+                    StringRenderStyle::Monoline
+                },
+            ),
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;
@@ -371,8 +493,8 @@ where
                 .text("let")
                 .append(allocator.space())
                 .append(allocator.as_string(id))
-                .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.space().append(allocator.metadata(mv, false))
+                .append(if let Annotated(ref annot, _) = rt.as_ref() {
+                    allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
                 })
@@ -380,11 +502,8 @@ where
                 .append(allocator.text("="))
                 .append(allocator.line())
                 .append(
-                    if let MetaValue(crate::term::MetaValue {
-                        value: Some(rt), ..
-                    }) = rt.as_ref()
-                    {
-                        rt
+                    if let Annotated(_, inner) = rt.as_ref() {
+                        inner
                     } else {
                         rt
                     }
@@ -417,8 +536,8 @@ where
                         .unwrap_or_else(|| allocator.nil()),
                 )
                 .append(dst.pretty(allocator))
-                .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.space().append(allocator.metadata(mv, false))
+                .append(if let Annotated(ref annot, _) = rt.as_ref() {
+                    allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
                 })
@@ -426,11 +545,8 @@ where
                 .append(allocator.text("="))
                 .append(allocator.line())
                 .append(
-                    if let MetaValue(crate::term::MetaValue {
-                        value: Some(rt), ..
-                    }) = rt.as_ref()
-                    {
-                        rt
+                    if let Annotated(_, inner) = rt.as_ref() {
+                        inner
                     } else {
                         rt
                     }
@@ -472,36 +588,7 @@ where
             Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
             Record(record) => allocator
                 .line()
-                .append(allocator.intersperse(
-                    sorted_map(&record.fields).iter().map(|&(id, rt)| {
-                        allocator
-                            .quote_if_needed(id)
-                            .append(allocator.space())
-                            .append(if let MetaValue(mv) = rt.as_ref() {
-                                allocator
-                                    .metadata(mv, true)
-                                    .append(allocator.space())
-                                    .append(
-                                        mv.value
-                                            .clone()
-                                            .map(|v| {
-                                                allocator
-                                                    .text("=")
-                                                    .append(allocator.space())
-                                                    .append(v.pretty(allocator))
-                                            })
-                                            .unwrap_or_else(|| allocator.nil()),
-                                    )
-                            } else {
-                                allocator
-                                    .text("=")
-                                    .append(allocator.line())
-                                    .append(rt.to_owned().pretty(allocator).nest(2))
-                            })
-                            .append(allocator.text(","))
-                    }),
-                    allocator.line(),
-                ))
+                .append(allocator.fields(&record.fields, true))
                 .append(if record.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
@@ -511,74 +598,11 @@ where
                 .append(allocator.line())
                 .group()
                 .braces(),
-            RecRecord(
-                record,
-                dyn_fields, /* field whose name is defined by interpolation */
-                _deps,      /* dependency tracking between fields. None before the free var pass */
-            ) => allocator
+            RecRecord(record_data, dyn_fields, _) => allocator
                 .line()
-                .append(
-                    allocator.intersperse(
-                        sorted_map(&record.fields)
-                            .iter()
-                            .map(|&(id, rt)| {
-                                allocator
-                                    .quote_if_needed(id)
-                                    .append(allocator.space())
-                                    .append(if let MetaValue(mv) = rt.as_ref() {
-                                        allocator
-                                            .metadata(mv, true)
-                                            .append(allocator.space())
-                                            .append(
-                                                mv.value
-                                                    .clone()
-                                                    .map(|v| {
-                                                        allocator
-                                                            .text("=")
-                                                            .append(allocator.space())
-                                                            .append(v.pretty(allocator))
-                                                    })
-                                                    .unwrap_or_else(|| allocator.nil()),
-                                            )
-                                    } else {
-                                        allocator
-                                            .text("=")
-                                            .append(allocator.line())
-                                            .append(rt.to_owned().pretty(allocator).nest(2))
-                                    })
-                                    .append(allocator.text(","))
-                            })
-                            .chain(dyn_fields.iter().map(|(id, rt)| {
-                                id.to_owned()
-                                    .pretty(allocator)
-                                    .append(allocator.space())
-                                    .append(if let MetaValue(mv) = rt.as_ref() {
-                                        allocator
-                                            .metadata(mv, true)
-                                            .append(allocator.space())
-                                            .append(
-                                                mv.value
-                                                    .clone()
-                                                    .map(|v| {
-                                                        allocator
-                                                            .text("=")
-                                                            .append(v.pretty(allocator))
-                                                    })
-                                                    .unwrap_or_else(|| allocator.nil()),
-                                            )
-                                    } else {
-                                        allocator
-                                            .text("=")
-                                            .append(allocator.space())
-                                            .append(allocator.line())
-                                            .append(rt.to_owned().pretty(allocator).nest(2))
-                                    })
-                                    .append(allocator.text(","))
-                            })),
-                        allocator.line(),
-                    ),
-                )
-                .append(if record.attrs.open {
+                .append(allocator.fields(&record_data.fields, true))
+                .append(allocator.dyn_fields(dyn_fields, true))
+                .append(if record_data.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
                     allocator.nil()
@@ -679,34 +703,20 @@ where
             SealingKey(sym) => allocator
                 .text(format!("#<sealing key: {}>", sym))
                 .append(allocator.hardline()),
-
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
-
-            MetaValue(mv) => mv.to_owned().pretty(allocator),
+            Annotated(annot, rt) => allocator
+                .atom(rt)
+                .append(allocator.space())
+                .append(allocator.annot(annot)),
             Import(f) => allocator
                 .text("import")
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
-            ParseError(_) => allocator.text("#<PARSE ERROR!>"),
+            ParseError(_) => allocator.text("%<PARSE ERROR>"),
+            RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }
-    }
-}
-
-impl<'a, D, A> Pretty<'a, D, A> for MetaValue
-where
-    D: NickelAllocatorExt<'a, A>,
-    D::Doc: Clone,
-    A: Clone + 'a,
-{
-    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        if let Some(value) = &self.value {
-            allocator.atom(value).append(allocator.space())
-        } else {
-            allocator.nil()
-        }
-        .append(allocator.metadata(&self, false))
     }
 }
 

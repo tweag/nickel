@@ -64,22 +64,6 @@
 //!   environment to the specific implementation of the operator (located in [operation], or in
 //!   [merge] for `merge`).
 //!
-//! ## Enriched values
-//!
-//! The evaluation of enriched values is controlled by the parameter `eval_mode`. If it is
-//! set to `UnwrapMeta` (which is usually the case), the machine tries to extract a simple
-//! value from it:
-//!  - **Contract**: raise an error. This usually means that an access to a field was attempted,
-//!    and that this field had a contract to satisfy, but it was never defined.
-//!  - **Default(value)**: an access to a field which has a default value. Proceed with the
-//!    evaluation of this value
-//!  - **ContractDefault(type, label, value)**: same as above, but the field also has an attached
-//!    contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
-//!    default value satisfies this contract.
-//!
-//! If `eval_mode` is set to StopAtMeta, as it is when evaluating `merge`, the machine does not
-//! evaluate enriched values further, and consider the term evaluated.
-//!
 //! # Garbage collection
 //!
 //! Currently the machine relies on Rust's reference counting to manage memory. Precisely, the
@@ -89,15 +73,20 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
+use crate::term::record::FieldMetadata;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     identifier::Ident,
     match_sharedterm,
+    position::TermPos,
+    program::QueryPath,
     term::{
-        array::ArrayAttrs, make as mk_term, record::RecordData, BinaryOp, BindingType, LetAttrs,
-        MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        array::ArrayAttrs,
+        make as mk_term,
+        record::{Field, RecordData},
+        BinaryOp, BindingType, LetAttrs, PendingContract, RichTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -123,22 +112,8 @@ impl AsRef<Vec<StackElem>> for CallStack {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EvalMode {
-    UnwrapMeta,
-    StopAtMeta,
-}
-
-impl Default for EvalMode {
-    fn default() -> Self {
-        EvalMode::UnwrapMeta
-    }
-}
-
 // The current state of the Nickel virtual machine.
 pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // Behavior of evaluation with respect to metavalues.
-    eval_mode: EvalMode,
     // The main stack, storing arguments, thunks and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -153,7 +128,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R) -> Self {
         VirtualMachine {
             import_resolver,
-            eval_mode: Default::default(),
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
@@ -163,7 +137,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new_with_cache(import_resolver: R, cache: C) -> Self {
         VirtualMachine {
             import_resolver,
-            eval_mode: Default::default(),
             call_stack: Default::default(),
             stack: Stack::new(),
             cache,
@@ -172,18 +145,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
     pub fn reset(&mut self) {
-        self.eval_mode = Default::default();
         self.call_stack.0.clear();
         self.stack.reset(&mut self.cache);
         self.cache = Cache::new();
-    }
-
-    fn set_mode(&mut self, new_mode: EvalMode) {
-        if self.eval_mode != new_mode {
-            self.stack.push_strictness(self.eval_mode);
-        }
-
-        self.eval_mode = new_mode;
     }
 
     pub fn import_resolver(&self) -> &R {
@@ -230,30 +194,85 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
     }
 
-    /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
-    /// unwrapping it. Then evaluate the underlying value, and substitute variables in order to obtain
-    /// a WHNF that is printable.
+    /// Query the value and the metadata of a record field in an expression.
     ///
-    /// Used to query the metadata of a value.
-    pub fn eval_meta(
+    /// Querying `foo.bar.baz` on a term `exp` will evaluate `exp.foo.bar` and extract the field
+    /// `baz`. The content of `baz` is evaluated as well, and variables are substituted, in order
+    /// to obtain a value that can be printed. The metadata and the evaluated value are returned as
+    /// a new field.
+    pub fn query(
         &mut self,
         t: RichTerm,
+        path: QueryPath,
         initial_env: &Environment,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_mode = EvalMode::StopAtMeta;
-        let (mut rt, env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
+    ) -> Result<Field, EvalError> {
+        let (rt, mut env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
 
-        if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
-            if let Some(t) = meta.value.take() {
-                self.reset();
-                let (evaluated, env) = self.eval_closure(Closure { body: t, env }, initial_env)?;
-                let substituted = subst(&self.cache, evaluated, initial_env, &env);
+        let mut prev_pos = rt.pos;
+        let mut field: Field = rt.into();
 
-                meta.value = Some(substituted);
+        for id in path.0 {
+            match field.value.as_ref().map(|rt| (rt.as_ref(), rt.pos)) {
+                None => {
+                    return Err(EvalError::MissingFieldDef {
+                        id,
+                        metadata: FieldMetadata::default(),
+                        pos_record: prev_pos,
+                        pos_access: id.pos,
+                    })
+                }
+                Some((Term::Record(record_data), pos_record)) => {
+                    let mut next_field = record_data.fields.get(&id).cloned();
+                    prev_pos = pos_record;
+
+                    if let Some(Field {
+                        metadata: metadata_next,
+                        value: mut value_next,
+                    }) = next_field.take()
+                    {
+                        // We evaluate the fields' value, either to handle the next ident of the
+                        // path, or to show the value if we are treating the last ident of the path
+                        value_next = value_next
+                            .map(|value| -> Result<RichTerm, EvalError> {
+                                let (new_value, new_env) = self.eval_closure(
+                                    Closure {
+                                        body: value,
+                                        env: std::mem::take(&mut env),
+                                    },
+                                    initial_env,
+                                )?;
+                                env = new_env;
+
+                                Ok(new_value)
+                            })
+                            .transpose()?;
+
+                        field = Field {
+                            metadata: metadata_next.clone(),
+                            value: value_next,
+                        };
+                    } else {
+                        return Err(EvalError::FieldMissing(
+                            id.to_string(),
+                            String::from("query"),
+                            RichTerm::new(Term::Record(record_data.clone()), pos_record),
+                            id.pos,
+                        ));
+                    }
+                }
+                Some(_) => {
+                    //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
+                    return Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("query"),
+                        prev_pos,
+                        field.value.unwrap(),
+                    ));
+                }
             }
-        };
+        }
 
-        Ok(rt)
+        Ok(field)
     }
 
     /// The main loop of evaluation.
@@ -287,10 +306,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                 mut env,
             } = clos;
-
-            if let Some(eval_mode) = self.stack.pop_strictness_marker() {
-                self.eval_mode = eval_mode;
-            }
 
             clos = match &*shared_term {
                 Term::Sealed(_, inner, lbl) => {
@@ -347,11 +362,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     self.call_stack
                         .enter_var(self.cache.ident_kind(&idx), *x, pos);
-                    self.cache.get(idx.clone())
+
+                    // If we are fetching a recursive field from the environment that doesn't have
+                    // a definition, we complete the error with the additional information of where
+                    // it was accessed:
+                    let Closure { body, env } = self.cache.get(idx);
+                    let body = match_sharedterm! {body.term, with {
+                            Term::RuntimeError(EvalError::MissingFieldDef {
+                                id,
+                                metadata,
+                                pos_record,
+                                pos_access: TermPos::None,
+                            }) => RichTerm::new(
+                                Term::RuntimeError(EvalError::MissingFieldDef {
+                                    id,
+                                    metadata,
+                                    pos_record,
+                                    pos_access: pos,
+                                }),
+                                pos,
+                            ),
+                        } else {
+                            body
+                        }
+                    };
+
+                    Closure { body, env }
                 }
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
-                    self.set_mode(EvalMode::UnwrapMeta);
 
                     self.stack.push_arg(
                         Closure {
@@ -387,10 +426,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-
                 Term::Op1(op, t) => {
-                    self.set_mode(op.eval_mode());
-
                     self.stack.push_op_cont(
                         OperationCont::Op1(op.clone(), t.pos),
                         self.call_stack.len(),
@@ -412,8 +448,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Op2(op, fst, snd) => {
-                    self.set_mode(op.eval_mode());
-
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
                             op.clone(),
@@ -432,8 +466,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::OpN(op, args) => {
-                    self.set_mode(op.eval_mode());
-
                     // Arguments are passed as a stack to the operation continuation, so we reverse the
                     // original list.
                     let mut args_iter = args.iter();
@@ -476,7 +508,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 StrChunk::Expr(e, indent) => (e.clone(), *indent),
                             };
 
-                            self.set_mode(EvalMode::UnwrapMeta);
                             self.stack.push_str_chunks(chunks_iter.cloned());
                             self.stack.push_str_acc(String::new(), indent, env.clone());
 
@@ -488,7 +519,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::RecRecord(record, dyn_fields, _) => {
-                    let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
+                    let rec_env =
+                        fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env, pos)?;
 
                     record.fields.iter().try_for_each(|(_, rt)| {
                         fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
@@ -507,18 +539,33 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .iter()
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
                             static_part,
-                            |acc, (id_t, t)| {
-                                let id_t = id_t.clone();
-                                let pos = t.pos;
+                            |acc, (name_as_term, field)| {
+                                let pos = if let Some(ref value) = field.value {
+                                    value.pos
+                                } else {
+                                    name_as_term.pos
+                                };
 
-                                fixpoint::patch_field(&mut self.cache, t, &rec_env, &env)?;
-                                Ok(RichTerm::new(
-                                    Term::App(
-                                        mk_term::op2(BinaryOp::DynExtend(), id_t, acc),
-                                        t.clone(),
+                                fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
+
+                                let ext_kind = field.extension_kind();
+                                let Field { metadata, value } = field;
+
+                                let extend = mk_term::op2(
+                                    BinaryOp::DynExtend(metadata.clone(), ext_kind),
+                                    name_as_term.clone(),
+                                    acc,
+                                );
+
+                                let result = match value {
+                                    Some(value) => RichTerm::new(
+                                        Term::App(extend, value.clone()),
+                                        pos.into_inherited(),
                                     ),
-                                    pos.into_inherited(),
-                                ))
+                                    None => extend,
+                                };
+
+                                Ok(result)
                             },
                         )?;
 
@@ -528,43 +575,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 // Unwrapping of enriched terms
-                Term::MetaValue(meta) if self.eval_mode == EvalMode::UnwrapMeta => {
-                    if meta.value.is_some() {
-                        /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
-                         * than `t` itself. Updating a thunk after having performed this forcing may
-                         * alter the semantics of the program in an unexpected way (see issue
-                         * https://github.com/tweag/nickel/issues/123): we update potential thunks now
-                         * so that their content remains a meta value.
-                         */
-                        let update_closure = Closure {
-                            body: RichTerm {
-                                term: shared_term.clone(),
-                                pos,
-                            },
-                            env,
-                        };
-                        update_at_indices(&mut self.cache, &mut self.stack, &update_closure);
-
-                        let Closure {
-                            body: RichTerm { term, .. },
-                            env,
-                        } = update_closure;
-
-                        match term.into_owned() {
-                            Term::MetaValue(MetaValue {
-                                value: Some(inner), ..
-                            }) => Closure { body: inner, env },
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        let label = meta
-                            .contracts
-                            .last()
-                            .or(meta.types.as_ref())
-                            .map(|ctr| ctr.label.clone());
-                        return Err(EvalError::MissingFieldDef(label, self.call_stack.clone()));
-                    }
-                }
                 Term::ResolvedImport(id) => {
                     if let Some(t) = self.import_resolver.get(*id) {
                         Closure::atomic_closure(t)
@@ -625,6 +635,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::ParseError(parse_error) => {
                     return Err(EvalError::ParseError(parse_error.clone()));
                 }
+                Term::RuntimeError(error) => {
+                    return Err(error.clone());
+                }
+                // For now, we simply erase annotations at runtime. They aren't accessible anyway
+                // (as opposed to field metadata) and don't change the operational semantics, as
+                // long as we generate the corresponding contract application at one point
+                // (currently ahead-of-time during program transformations).
+                //
+                // The situation could change if we want to implement optimizations such as
+                // avoiding repeated contract application. Annotations could then be a good way of
+                // remembering which contracts have been applied to a value.
+                Term::Annotated(_, inner) => Closure {
+                    body: inner.clone(),
+                    env,
+                },
                 // Continuation of operations and thunk update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
@@ -682,7 +707,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_arg(
                             Closure {
                                 body: RichTerm::new(
-                                    Term::Record(RecordData::with_fields(cases.clone())),
+                                    Term::Record(RecordData::with_field_values(cases.clone())),
                                     pos,
                                 ),
                                 env: env.clone(),
@@ -787,7 +812,8 @@ pub enum EnvBuildError {
     NotARecord(RichTerm),
 }
 
-/// Add the bindings of a record to an environment. Ignore the fields defined by interpolation.
+/// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
+/// well as fields without definition.
 pub fn env_add_term<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
@@ -795,11 +821,12 @@ pub fn env_add_term<C: Cache>(
 ) -> Result<(), EnvBuildError> {
     match_sharedterm! {rt.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
-                let ext = record.fields.into_iter().map(|(id, t)| {
+                let ext = record.fields.into_iter().filter_map(|(id, field)| {
+                    field.value.map(|value|
                     (
                         id,
-                        cache.add(Closure::atomic_closure(t), IdentKind::Record, BindingType::Normal),
-                    )
+                        cache.add(Closure::atomic_closure(value), IdentKind::Record, BindingType::Normal),
+                    ))
                 });
 
                 env.extend(ext);
@@ -851,6 +878,7 @@ pub fn subst<C: Cache>(
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
         | v @ Term::ParseError(_)
+        | v @ Term::RuntimeError(_)
         | v @ Term::Bool(_)
         | v @ Term::Num(_)
         | v @ Term::Str(_)
@@ -915,19 +943,19 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
+            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record.map_fields(|_, t| subst(cache, t, initial_env, env));
+            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()
-                .map(|(id_t, t)| {
+                .map(|(id_t, field)| {
                     (
                         subst(cache, id_t, initial_env, env),
-                        subst(cache, t, initial_env, env),
+                        field.map_value(|v| subst(cache, v, initial_env, env)),
                     )
                 })
                 .collect();
@@ -956,117 +984,12 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::StrChunks(chunks), pos)
         }
-        Term::MetaValue(meta) => {
+        Term::Annotated(annot, t) => {
             // Currently, there is no interest in replacing variables inside contracts, thus we
-            // limit the work of `subst`. If this is needed at some point, just uncomment the
-            // following code.
-
-            // let contracts: Vec<_> = meta
-            //     .contracts
-            //     .into_iter()
-            //     .map(|ctr| {
-            //         let types = match ctr.types {
-            //             Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
-            //                 t,
-            //                 initial_env,
-            //                 env,
-            //                 Cow::Borrowed(bound.as_ref()),
-            //             ))),
-            //             ty => ty,
-            //         };
-            //
-            //         Contract { types, ..ctr }
-            //     })
-            //     .collect();
-            //
-            // let types = meta.types.map(|ctr| {
-            //     let types = match ctr.types {
-            //         Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
-            //             t,
-            //             initial_env,
-            //             env,
-            //             Cow::Borrowed(bound.as_ref()),
-            //         ))),
-            //         ty => ty,
-            //     };
-            //
-            //     Contract { types, ..ctr }
-            // });
-
-            let value = meta.value.map(|t| subst(cache, t, initial_env, env));
-
-            let meta = MetaValue {
-                doc: meta.doc,
-                value,
-                ..meta
-            };
-
-            RichTerm::new(Term::MetaValue(meta), pos)
+            // limit the work of `subst`.
+            RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_env, env)), pos)
         }
     }
-}
-
-/// Checks if the given term is a chain of nested and/or merged metavalues such that:
-///
-/// 1. At least one metavalue has the `optional` flag set
-/// 2. The final value is undefined
-///
-/// This function is used to determine if a record field is an optional field without definition,
-/// and should thus be ignored by record operations.
-///
-/// Beware: correctly checking that a value is an empty optional can incur arbitrary computations
-/// in principle, but this function is supposed to be a quick peek. It's a terminating
-/// approximation and hence is necessarily incomplete. In practice, this function is able to
-/// traverse merge expressions and follow variables links, but within a limit (in the number of
-/// variables followed).
-pub fn is_empty_optional<C: Cache>(cache: &C, rt: &RichTerm, env: &Environment) -> bool {
-    fn is_empty_optional_aux<C: Cache>(
-        cache: &C,
-        rt: &RichTerm,
-        env: &Environment,
-        is_opt: bool,
-        gas: &mut u8,
-    ) -> bool {
-        match rt.as_ref() {
-            Term::MetaValue(meta) => {
-                let is_opt = is_opt || meta.opt;
-
-                if let Some(ref next) = meta.value {
-                    is_empty_optional_aux(cache, next, env, is_opt, gas)
-                } else {
-                    is_opt
-                }
-            }
-            Term::Op2(BinaryOp::Merge(), ref t1, ref t2) => {
-                // The aggregated value for is_opt must follow the same logic as in the
-                // implementation of merge: a field is optional if both operands define it as
-                // optional.
-                //
-                // Thus the resulting value is an empty optional if either:
-                // - both branch are empty optionals
-                // - a wrapping metavalue is optional (is_opt is true at this point) and both
-                // branch are empty.
-                is_empty_optional_aux(cache, t1, env, is_opt, gas)
-                    && is_empty_optional_aux(cache, t2, env, is_opt, gas)
-            }
-            Term::Var(id) if *gas > 0 => {
-                if let Some(index) = env.get(id) {
-                    cache.get_then(index.clone(), |clos| {
-                        *gas -= 1;
-                        is_empty_optional_aux(cache, &clos.body, &clos.env, is_opt, gas)
-                    })
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    // The total amount of gas is rather arbitrary, but in any case, it ought to stay low: remember
-    // that is_empty_optional may be called on each field of a record when evaluating some record
-    // operations.
-    is_empty_optional_aux(cache, rt, env, false, &mut 8)
 }
 
 #[cfg(test)]

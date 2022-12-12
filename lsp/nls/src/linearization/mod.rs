@@ -6,7 +6,10 @@ use nickel_lang::{
     cache::ImportResolver,
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, RichTerm, Term, UnaryOp},
+    term::{
+        record::{Field, FieldMetadata},
+        RichTerm, Term, UnaryOp,
+    },
     typecheck::{
         linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
@@ -38,13 +41,12 @@ pub struct ItemId {
 /// the linearization using the LSP [AnalysisHost]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearizationItem<S: ResolutionState> {
-    //term_: Box<Term>,
     pub env: Environment,
     pub id: ItemId,
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
-    pub meta: Option<MetaValue>,
+    pub metadata: Option<FieldMetadata>,
 }
 
 /// [Linearizer] used by the LSP
@@ -57,7 +59,7 @@ pub struct AnalysisHost<'a> {
     phantom: PhantomData<&'a usize>,
     file: FileId,
     env: Environment,
-    meta: Option<MetaValue>,
+    meta: Option<FieldMetadata>,
     /// Indexing a record will store a reference to the record as
     /// well as its fields.
     /// [Self::Scope] will produce a host with a single **`pop`ed**
@@ -112,12 +114,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         // `record` is the id [LinearizatonItem] of the enclosing record
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
-        if !matches!(
-            term,
-            Term::Op1(UnaryOp::StaticAccess(_), _) | Term::MetaValue(_)
-        ) {
+        if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
             if let Some((record, (offset, _))) = self
                 .record_fields
+                // We call take because each record field will be linearized in a different scope.
+                // In particular, each record field gets its own copy of `record_fields`, so we can
+                // take it.
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
@@ -188,7 +190,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                 ty: ty.clone(),
                                 pos,
                                 kind: TermKind::Structure,
-                                meta: self.meta.take(),
+                                metadata: self.meta.take(),
                             });
 
                             ValueState::Known(ItemId {
@@ -219,11 +221,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         ty,
                         pos: ident.pos,
                         kind,
-                        meta: None,
+                        metadata: None,
                     });
                 }
                 for matched in destruct.to_owned().inner() {
-                    let (ident, term) = matched.as_meta_field();
+                    let (ident, field) = matched.as_binding();
 
                     let id = ItemId {
                         file_id: self.file,
@@ -241,13 +243,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             Vec::new(),
                             ValueState::Known(id),
                         ),
-                        meta: match &*term.term {
-                            Term::MetaValue(meta) => Some(MetaValue {
-                                value: None,
-                                ..meta.clone()
-                            }),
-                            _ => None,
-                        },
+                        metadata: Some(field.metadata),
                     });
                 }
             }
@@ -269,7 +265,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             ty: ty.clone(),
                             pos,
                             kind: TermKind::Structure,
-                            meta: self.meta.take(),
+                            metadata: self.meta.take(),
                         });
 
                         ValueState::Known(ItemId {
@@ -302,7 +298,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     ty,
                     pos: ident.pos,
                     kind,
-                    meta: self.meta.take(),
+                    metadata: self.meta.take(),
                 });
             }
             Term::Var(ident) => {
@@ -323,7 +319,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     pos: ident.pos,
                     ty: UnifType::Concrete(TypeF::Dyn),
                     kind: TermKind::Usage(UsageState::from(self.env.get(&key).copied())),
-                    meta: self.meta.take(),
+                    metadata: self.meta.take(),
                 });
 
                 if let Some(referenced) = self.env.get(&key) {
@@ -351,7 +347,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                 },
                                 child: accessor.to_owned(),
                             }),
-                            meta: self.meta.take(),
+                            metadata: self.meta.take(),
                         });
                     }
                 }
@@ -363,7 +359,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
-                    meta: self.meta.take(),
+                    metadata: self.meta.take(),
                 });
 
                 lin.register_fields(self.file, &record.fields, id, &mut self.env);
@@ -395,17 +391,15 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
                 x.push(ident.to_owned())
             }
-            Term::MetaValue(meta) => {
-                // Notice 1: No push to lin for the `MetaValue` itself
+            Term::Annotated(annot, _) => {
+                // Notice 1: No push to lin for the `FieldMetadata` itself
                 // Notice 2: we discard the encoded value as anything we
                 //           would do with the value will be handled in the following
                 //           call to [Self::add_term]
-                if meta.value.is_some() {
-                    self.meta = Some(MetaValue {
-                        value: None,
-                        ..meta.to_owned()
-                    })
-                }
+                self.meta = Some(FieldMetadata {
+                    annotation: annot.clone(),
+                    ..Default::default()
+                })
             }
             Term::ResolvedImport(file) => {
                 fn final_term_pos(term: &RichTerm) -> &TermPos {
@@ -444,7 +438,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     pos,
                     ty,
                     kind: TermKind::Usage(UsageState::Resolved(term_id)),
-                    meta: self.meta.take(),
+                    metadata: self.meta.take(),
                 })
             }
             other => {
@@ -456,10 +450,18 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     pos,
                     ty,
                     kind: TermKind::Structure,
-                    meta: self.meta.take(),
+                    metadata: self.meta.take(),
                 })
             }
         }
+    }
+
+    fn add_field_metadata(&mut self, _lin: &mut Linearization<Building>, field: &Field) {
+        // Notice 1: No push to lin for the `FieldMetadata` itself
+        // Notice 2: we discard the encoded value as anything we
+        //           would do with the value will be handled in the following
+        //           call to [Self::add_term]
+        self.meta = Some(field.metadata.clone())
     }
 
     /// [Self::add_term] produces a depth first representation or the
@@ -535,14 +537,14 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                      pos,
                      ty,
                      kind,
-                     meta,
+                     metadata: meta,
                  }| LinearizationItem {
                     ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
                     env,
                     id,
                     pos,
                     kind,
-                    meta,
+                    metadata: meta,
                 },
             )
             .map(|item| LinearizationItem {

@@ -10,7 +10,8 @@ use serde::de::{
 
 use crate::identifier::Ident;
 use crate::term::array::{self, Array};
-use crate::term::{MetaValue, RichTerm, Term};
+use crate::term::record::Field;
+use crate::term::{RichTerm, Term};
 
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
@@ -22,7 +23,7 @@ macro_rules! deserialize_number {
                 Term::Num(n) => visitor.$visit(n as $type),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Num".to_string(),
-                    occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    occurred: RichTerm::from(other).to_string(),
                 }),
             }
         }
@@ -39,7 +40,7 @@ macro_rules! deserialize_number_round {
                 Term::Num(n) => visitor.$visit(n.round() as $type),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Num".to_string(),
-                    occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    occurred: RichTerm::from(other).to_string(),
                 }),
             }
         }
@@ -51,7 +52,7 @@ macro_rules! deserialize_number_round {
 pub enum RustDeserializationError {
     InvalidType { expected: String, occurred: String },
     MissingValue,
-    EmptyMetaValue,
+    EmptyRecordField,
     UnimplementedType { occurred: String },
     InvalidRecordLength(usize),
     InvalidArrayLength(usize),
@@ -77,7 +78,10 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             }),
             Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
-            Term::MetaValue(_) => visitor.visit_unit(),
+            // unreachable(): `unwrap_term` recursively unwraps `Annotated` nodes until it
+            // encounters a different node, or it fails. Thus, if `unwrap_term` succeeds, the
+            // result can't be `Annotated`.
+            Term::Annotated(..) => unreachable!(),
             other => Err(RustDeserializationError::UnimplementedType {
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
             }),
@@ -123,7 +127,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             Term::Record(record) => {
                 let mut iter = record.fields.into_iter();
                 let (variant, value) = match iter.next() {
-                    Some(v) => v,
+                    Some((id, Field { value, .. })) => (id, value),
                     None => {
                         return Err(RustDeserializationError::InvalidType {
                             expected: "Record with single key".to_string(),
@@ -137,7 +141,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
                         occurred: "Record with multiple keys".to_string(),
                     });
                 }
-                (variant.into_label(), Some(value))
+                (variant.into_label(), value)
             }
             other => {
                 return Err(RustDeserializationError::InvalidType {
@@ -377,13 +381,7 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
 fn unwrap_term(mut rich_term: RichTerm) -> Result<Term, RustDeserializationError> {
     loop {
         rich_term = match Term::from(rich_term) {
-            Term::MetaValue(MetaValue { value, .. }) => {
-                if let Some(rich_term) = value {
-                    rich_term
-                } else {
-                    break Err(RustDeserializationError::EmptyMetaValue);
-                }
-            }
+            Term::Annotated(_, value) => value,
             other => break Ok(other),
         }
     }
@@ -405,15 +403,15 @@ where
 }
 
 struct RecordDeserializer {
-    iter: <HashMap<Ident, RichTerm> as IntoIterator>::IntoIter,
-    rich_term: Option<RichTerm>,
+    iter: <HashMap<Ident, Field> as IntoIterator>::IntoIter,
+    field: Option<Field>,
 }
 
 impl RecordDeserializer {
-    fn new(map: HashMap<Ident, RichTerm>) -> Self {
+    fn new(map: HashMap<Ident, Field>) -> Self {
         RecordDeserializer {
             iter: map.into_iter(),
-            rich_term: None,
+            field: None,
         }
     }
 }
@@ -427,7 +425,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     {
         match self.iter.next() {
             Some((key, value)) => {
-                self.rich_term = Some(value);
+                self.field = Some(value);
                 seed.deserialize(key.label().into_deserializer()).map(Some)
             }
             None => Ok(None),
@@ -438,8 +436,17 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
     where
         T: DeserializeSeed<'de>,
     {
-        match self.rich_term.take() {
-            Some(value) => seed.deserialize(value),
+        match self.field.take() {
+            Some(Field {
+                value: Some(value), ..
+            }) => seed.deserialize(value),
+            // TODO: what to do about fields without definition is not totally clear (should an
+            // empty optional be considered as `None` or just disappear from the serialization?
+            // Probably the former). For now, we implement the same behavior as before the
+            // implementation of RFC005, which is to always fail on a field without definition.
+            //
+            // This should be relaxed in the future.
+            Some(Field { value: None, .. }) => Err(RustDeserializationError::EmptyRecordField),
             _ => Err(RustDeserializationError::MissingValue),
         }
     }
@@ -453,7 +460,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
 }
 
 fn visit_record<'de, V>(
-    record: HashMap<Ident, RichTerm>,
+    record: HashMap<Ident, Field>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where
@@ -564,7 +571,7 @@ impl std::fmt::Display for RustDeserializationError {
                 ref occurred,
             } => write!(f, "invalid type: {occurred}, expected: {expected}"),
             RustDeserializationError::MissingValue => write!(f, "missing value"),
-            RustDeserializationError::EmptyMetaValue => write!(f, "empty Metavalue"),
+            RustDeserializationError::EmptyRecordField => write!(f, "empty Metavalue"),
             RustDeserializationError::InvalidRecordLength(len) => {
                 write!(f, "invalid record length, expected {len}")
             }
@@ -692,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_deserialize_ignore_metavalue() {
+    fn rust_deserialize_ignore_annotation() {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A {
             a: f64,

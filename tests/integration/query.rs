@@ -1,4 +1,7 @@
-use nickel_lang::term::{MetaValue, SharedTerm, Term};
+use nickel_lang::term::{
+    record::{Field, FieldMetadata},
+    SharedTerm, Term, TypeAnnotation,
+};
 use nickel_lang_utilities::TestProgram;
 
 #[test]
@@ -10,38 +13,56 @@ pub fn test_query_metadata_basic() {
     .unwrap();
     let result = program.query(Some(String::from("val"))).unwrap();
 
-    if let Term::MetaValue(meta) = result {
-        assert_eq!(meta.doc, Some(String::from("Test basic")));
-        assert_eq!(meta.value.unwrap().term, SharedTerm::new(Term::Num(2.0)));
-    } else {
-        panic!();
-    }
+    assert_eq!(result.metadata.doc, Some(String::from("Test basic")));
+    assert_eq!(result.value.unwrap().term, SharedTerm::new(Term::Num(2.0)));
 }
 
 #[test]
 pub fn test_query_with_wildcard() {
+    let path = Some(String::from("value"));
+
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
-    fn assert_types_eq(lhs: &str, rhs: &str) {
+    #[track_caller]
+    fn assert_types_eq(lhs: &str, rhs: &str, path: Option<String>) {
         let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests")
             .unwrap()
-            .query(None)
+            .query(path.clone())
             .unwrap();
         let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests")
             .unwrap()
-            .query(None)
+            .query(path)
             .unwrap();
         if let (
-            Term::MetaValue(MetaValue {
-                types: Some(contract1),
+            Field {
+                metadata:
+                    FieldMetadata {
+                        annotation:
+                            TypeAnnotation {
+                                types: Some(contract1),
+                                ..
+                            },
+                        ..
+                    },
                 ..
-            }),
-            Term::MetaValue(MetaValue {
-                types: Some(contract2),
+            },
+            Field {
+                metadata:
+                    FieldMetadata {
+                        annotation:
+                            TypeAnnotation {
+                                types: Some(contract2),
+                                ..
+                            },
+                        ..
+                    },
                 ..
-            }),
+            },
         ) = (term1, term2)
         {
-            assert_eq!(contract1.types, contract2.types);
+            // Since RFC005, we closurize the contracts attached to fields, which makes comparing
+            // them after transformation quite hard. We can only rely on the original types as
+            // stored inside the label, which is the one used for reporting anyway.
+            // assert_eq!(contract1.types, contract2.types);
             assert_eq!(
                 contract1.label.types.as_ref(),
                 contract2.label.types.as_ref()
@@ -52,22 +73,34 @@ pub fn test_query_with_wildcard() {
     }
 
     // Without wildcard, the result has no type annotation
-    let mut program = TestProgram::new_from_source("10".as_bytes(), "regr_tests").unwrap();
-    let result = program.query(None).unwrap();
-    assert!(!matches!(result, Term::MetaValue(_)));
+    let mut program =
+        TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests").unwrap();
+    let result = program.query(path.clone()).unwrap();
+    assert!(matches!(
+        result,
+        Field {
+            metadata: FieldMetadata {
+                annotation: TypeAnnotation { types: None, .. },
+                ..
+            },
+            ..
+        }
+    ));
 
     // With a wildcard, there is a type annotation, inferred to be Num
-    assert_types_eq("10 : _", "10 : Num");
+    assert_types_eq("{value : _ = 10}", "{value : Num = 10}", path.clone());
 
     // Wildcard infers record type
     assert_types_eq(
-        r#"{foo: Str = "quux"} : _"#,
-        r#"{foo: Str = "quux"} : {foo: Str}"#,
+        r#"{value : _ = {foo = "quux"}}"#,
+        r#"{value : {foo: Str} = {foo = "quux"}}"#,
+        path.clone(),
     );
 
     // Wildcard infers function type, infers inside `let`
     assert_types_eq(
-        r#"let f : _ = fun x => x + 1 in f"#,
-        r#"(fun x => x + 1) : Num -> Num"#,
+        r#"{value : _ = let f = fun x => x + 1 in f}"#,
+        r#"{value : Num -> Num = (fun x => x + 1)}"#,
+        path,
     );
 }

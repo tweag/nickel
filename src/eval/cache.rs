@@ -21,8 +21,12 @@ pub trait Cache: Clone {
     fn update(&mut self, clos: Closure, idx: Self::UpdateIndex);
     fn new() -> Self;
     fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex);
-    fn map_at_index<F: FnMut(&Closure) -> Closure>(&mut self, idx: &CacheIndex, f: F)
-        -> CacheIndex;
+    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
+        &mut self,
+        idx: &CacheIndex,
+        f: F,
+    ) -> CacheIndex;
+    // TODO: Needs a better name
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]);
     fn ident_kind(&self, idx: &CacheIndex) -> IdentKind;
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
@@ -96,12 +100,12 @@ impl Cache for CBNCache {
         idx.reset_state();
     }
 
-    fn map_at_index<F: FnMut(&Closure) -> Closure>(
+    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
         &mut self,
         idx: &CacheIndex,
-        f: F,
+        mut f: F,
     ) -> CacheIndex {
-        idx.map(f)
+        idx.map(|v| f(self, v))
     }
 
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {

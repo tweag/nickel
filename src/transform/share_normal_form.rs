@@ -31,8 +31,18 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{record::FieldDeps, BindingType, LetAttrs, RichTerm, Term},
+    term::{
+        record::{Field, FieldDeps, FieldMetadata, RecordData},
+        BindingType, LabeledType, LetAttrs, RichTerm, Term, TypeAnnotation,
+    },
+    types::{TypeF, Types},
 };
+
+struct Binding {
+    fresh_var: Ident,
+    term: RichTerm,
+    binding_type: BindingType,
+}
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
 ///
@@ -49,11 +59,11 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
             Term::Record(record) => {
                 let mut bindings = Vec::with_capacity(record.fields.len());
 
-                let record = record.map_fields(|id, t| {
+                let record = record.map_defined_values(|id, t| {
                     if should_share(&t.term) {
                         let fresh_var = Ident::fresh();
                         let pos_t = t.pos;
-                        bindings.push((fresh_var, t, BindingType::Normal));
+                        bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
                         RichTerm::new(Term::Var(fresh_var), pos_t)
                     } else {
                         t
@@ -62,73 +72,24 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Record(record), bindings, pos)
             },
-            Term::RecRecord(record, dyn_fields, deps) => {
-                // When a recursive record is evaluated, all fields need to be turned to closures
-                // anyway (see the corresponding case in `eval::eval()`), which is what the share
-                // normal form transformation does. This is why the test is more lax here than for
-                // other constructors: it is not only about sharing, but also about the future
-                // evaluation of recursive records. Only constant are not required to be
-                // closurized.
-                //
-                // In theory, the variable case is one exception: if the field is already a bare
-                // variable, it seems useless to add one more indirection through a generated
-                // variable. However, it is currently fundamental for recursive record merging that
-                // the sare normal form transformation ensure the following post-condition: the
-                // fields of recursive records contain either a constant or a *generated* variable,
-                // but never a user-supplied variable directly (the former starts with a special
-                // marker). See comments inside [`crate::RichTerm::closurize`] for more details.
-                let mut bindings = Vec::with_capacity(record.fields.len());
+            Term::RecRecord(record_data, dyn_fields, deps) => {
+                let mut bindings = Vec::with_capacity(record_data.fields.len());
 
-                fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
-                    // If the fields has an empty set of dependencies, we can eschew the
-                    // useless introduction of a revertible thunk. Note that if
-                    // `field_deps` being `None` doesn't mean "empty dependencies" but
-                    // rather that the dependencies haven't been computed. In the latter
-                    // case, we must be conservative and assume the field is potentially
-                    // recursive.
-                    let is_non_rec = field_deps.as_ref().map(FieldDeps::is_empty).unwrap_or(false);
-                    if is_non_rec {
-                        BindingType::Normal
-                    } else {
-                        BindingType::Revertible(field_deps.unwrap_or(FieldDeps::Unknown))
-                    }
-                }
-
-                let record = record.map_fields(|id, t| {
-                    // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-                    // explained above.
-                    if !t.as_ref().is_constant() {
-                        let fresh_var = Ident::fresh();
-                        let pos_t = t.pos;
-                        let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
-                        let is_non_rec = field_deps.as_ref().map(|deps| deps.is_empty()).unwrap_or(false);
-                        let btype = mk_binding_type(field_deps);
-                        bindings.push((fresh_var, t, btype));
-
-                        RichTerm::new(Term::Var(fresh_var), pos_t)
-                    } else {
-                        t
-                    }
-                });
+                let fields = record_data.fields.into_iter().map(|(id, field)| {
+                    let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id)).cloned();
+                    (id, transform_rec_field(field, field_deps, &mut bindings))
+                }).collect();
 
                 let dyn_fields = dyn_fields
                     .into_iter()
                     .enumerate()
-                    .map(|(index, (id_t, t))| {
-                        if !t.as_ref().is_constant() {
-                            let fresh_var = Ident::fresh();
-                            let pos_t = t.pos;
-                            let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
-                            let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var, t, btype));
-                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id_t, t)
-                        }
+                    .map(|(index, (id_t, field))| {
+                        let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
+                        (id_t, transform_rec_field(field, field_deps, &mut bindings))
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(record, dyn_fields, deps), bindings, pos)
+                with_bindings(Term::RecRecord(RecordData { fields, ..record_data}, dyn_fields, deps), bindings, pos)
             },
             Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -139,7 +100,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = Ident::fresh();
                             let pos_t = t.pos;
-                            bindings.push((fresh_var, t, BindingType::Normal));
+                            bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
                             RichTerm::new(Term::Var(fresh_var), pos_t)
                         } else {
                             t
@@ -149,20 +110,136 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
-            Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
-                    let mut meta = meta;
-                    let fresh_var = Ident::fresh();
-                    let t = meta.value.take().unwrap();
-                    meta.value
-                        .replace(RichTerm::new(Term::Var(fresh_var), t.pos));
-                    let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    let attrs = LetAttrs {
-                        binding_type: BindingType::Normal,
-                        rec : false,
-                    };
-                    RichTerm::new(Term::Let(fresh_var, t, inner, attrs), pos)
-            }
+            Term::Annotated(annot, t) if should_share(&rt.term) => {
+                let fresh_var = Ident::fresh();
+                let shared = RichTerm::new(Term::Var(fresh_var), rt.pos);
+                let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
+                RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
+            },
         } else rt
+    }
+}
+
+/// Transform a record field. Take care of transforming the contracts contained in the field
+/// metadata as well, as those might be recursively depending on other fields.
+///
+/// When a recursive record is evaluated, all fields need to be turned to closures
+/// anyway (see the corresponding case in `eval::eval()`), which is what the share
+/// normal form transformation does. This is why the test is more lax here than for
+/// other constructors: it is not only about sharing, but also about the future
+/// evaluation of recursive records. Only constants are not required to be
+/// closurized.
+///
+/// In theory, the variable case is one exception: if the field is already a bare
+/// variable, it seems useless to add one more indirection through a generated
+/// variable. However, it is currently fundamental for recursive record merging that
+/// the share normal form transformation ensures the following post-condition: the
+/// fields of recursive records contain either a constant or a *generated* variable,
+/// but never a user-supplied variable directly (the former starts with a special
+/// marker). See comments inside [`crate::RichTerm::closurize`] for more details.
+fn transform_rec_field(
+    field: Field,
+    field_deps: Option<FieldDeps>,
+    bindings: &mut Vec<Binding>,
+) -> Field {
+    let annotation = field.metadata.annotation;
+
+    let types = annotation.types.map(|labeled_ty| {
+        let as_contract = labeled_ty.types.contract().unwrap();
+
+        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+        // explained above.
+        let contract = if !as_contract.as_ref().is_constant() {
+            let fresh_var = Ident::fresh();
+            let pos_contract = as_contract.pos;
+            let binding_type = mk_binding_type(field_deps.clone());
+            bindings.push(Binding {
+                fresh_var,
+                term: as_contract,
+                binding_type,
+            });
+            RichTerm::new(Term::Var(fresh_var), pos_contract)
+        } else {
+            as_contract
+        };
+
+        LabeledType {
+            types: Types(TypeF::Flat(contract)),
+            ..labeled_ty
+        }
+    });
+
+    let contracts = annotation
+        .contracts
+        .into_iter()
+        .map(|labeled_ty| {
+            let as_contract = labeled_ty.types.contract().unwrap();
+
+            // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+            // explained above.
+            let contract = if !as_contract.as_ref().is_constant() {
+                let fresh_var = Ident::fresh();
+                let pos_contract = as_contract.pos;
+                let binding_type = mk_binding_type(field_deps.clone());
+                bindings.push(Binding {
+                    fresh_var,
+                    term: as_contract,
+                    binding_type,
+                });
+                RichTerm::new(Term::Var(fresh_var), pos_contract)
+            } else {
+                as_contract
+            };
+
+            LabeledType {
+                types: Types(TypeF::Flat(contract)),
+                ..labeled_ty
+            }
+        })
+        .collect();
+
+    let value = field.value.map(|value| {
+        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+        // explained above.
+        if !value.as_ref().is_constant() {
+            let fresh_var = Ident::fresh();
+            let pos_v = value.pos;
+            let binding_type = mk_binding_type(field_deps);
+            bindings.push(Binding {
+                fresh_var,
+                term: value,
+                binding_type,
+            });
+            RichTerm::new(Term::Var(fresh_var), pos_v)
+        } else {
+            value
+        }
+    });
+
+    Field {
+        value,
+        metadata: FieldMetadata {
+            annotation: TypeAnnotation { types, contracts },
+            ..field.metadata
+        },
+    }
+}
+
+fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
+    // If the fields has an empty set of dependencies, we can eschew the
+    // useless introduction of a revertible thunk. Note that
+    // `field_deps` being `None` doesn't mean "empty dependencies" but
+    // rather that the dependencies haven't been computed. In the latter
+    // case, we must be conservative and assume the field is potentially
+    // recursive.
+    let is_non_rec = field_deps
+        .as_ref()
+        .map(FieldDeps::is_empty)
+        .unwrap_or(false);
+    if is_non_rec {
+        BindingType::Normal
+    } else {
+        BindingType::Revertible(field_deps.unwrap_or(FieldDeps::Unknown))
     }
 }
 
@@ -193,18 +270,19 @@ pub fn should_share(t: &Term) -> bool {
 /// Given the term `body` and bindings of identifiers to terms represented as a list of pairs
 /// `(id_1, term_1), .., (id_n, term_n)`, return the new term `let id_n = term_n in ... let
 /// id_1 = term_1 in body`.
-fn with_bindings(
-    body: Term,
-    bindings: Vec<(Ident, RichTerm, BindingType)>,
-    pos: TermPos,
-) -> RichTerm {
+fn with_bindings(body: Term, bindings: Vec<Binding>, pos: TermPos) -> RichTerm {
     bindings.into_iter().fold(
         RichTerm::new(body, pos.into_inherited()),
-        |acc, (id, t, binding_type)| {
+        |acc,
+         Binding {
+             fresh_var,
+             term,
+             binding_type,
+         }| {
             RichTerm::new(
                 Term::Let(
-                    id,
-                    t,
+                    fresh_var,
+                    term,
                     acc,
                     LetAttrs {
                         binding_type,

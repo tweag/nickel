@@ -21,11 +21,11 @@ pub mod array;
 pub mod record;
 
 use array::{Array, ArrayAttrs};
+use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 
 use crate::{
     destruct::Destruct,
-    error::ParseError,
-    eval::EvalMode,
+    error::{EvalError, ParseError},
     identifier::Ident,
     label::Label,
     match_sharedterm,
@@ -45,8 +45,6 @@ use std::{
     ops::Deref,
     rc::Rc,
 };
-
-use record::{FieldDeps, RecordData, RecordDeps};
 
 /// The AST of a Nickel expression.
 ///
@@ -109,7 +107,7 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         RecordData,
-        Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
+        Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
     /// A match construct. Correspond only to the match cases: this expression is still to be
@@ -164,9 +162,10 @@ pub enum Term {
     #[serde(skip)]
     Sealed(SealingKey, RichTerm, Label),
 
-    #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
+    /// A term with a type and/or contract annotation.
+    #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
     #[serde(skip_deserializing)]
-    MetaValue(MetaValue),
+    Annotated(TypeAnnotation, RichTerm),
 
     /// An unresolved import.
     #[serde(skip)]
@@ -174,17 +173,39 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+
+    /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
+    /// programs.
     #[serde(skip)]
     ParseError(ParseError),
+    /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
+    /// without the need to store them in the AST. However, some cases require a term which aborts
+    /// with a specific error if evaluated, but is fine being stored and passed around.
+    ///
+    /// The main use-cae is currently missing field definitions: when evaluating a recursive record
+    /// to a normal record with a recursive environment, we might find fields that aren't defined
+    /// currently, eg:
+    ///
+    /// ```nickel
+    /// let r = {
+    ///   foo = bar + 1,
+    ///   bar | Num,
+    ///   baz = 2,
+    /// } in
+    /// r.baz + (r & {bar = 1}).foo
+    /// ```
+    ///
+    /// This program is valid, but when evaluating `r` in `r.baz`, `bar` doesn't have a definition
+    /// yet. This is fine because we don't evaluate `bar` nor `foo`. Still, we have to put
+    /// something in the recursive environment. And if we wrote `r.foo` instead, we should raise a
+    /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
+    /// evaluated, will raise a proper missing field definition error. This is precisely the
+    /// behavior of `RuntimeError` behaves.
+    #[serde(skip)]
+    RuntimeError(EvalError),
 }
 
 pub type SealingKey = i32;
-
-impl From<MetaValue> for Term {
-    fn from(m: MetaValue) -> Self {
-        Term::MetaValue(m)
-    }
-}
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible thunks at evaluation, which are devices used for the implementation of recursive
@@ -225,6 +246,23 @@ pub struct LetAttrs {
     pub binding_type: BindingType,
     /// A recursive let binding adds its binding to the environment of the expression.
     pub rec: bool,
+}
+
+/// The metadata that can be attached to a let.
+#[derive(Default, Clone)]
+pub struct LetMetadata {
+    pub doc: Option<String>,
+    pub annotation: TypeAnnotation,
+}
+
+impl From<LetMetadata> for record::FieldMetadata {
+    fn from(let_metadata: LetMetadata) -> Self {
+        record::FieldMetadata {
+            annotation: let_metadata.annotation,
+            doc: let_metadata.doc,
+            ..Default::default()
+        }
+    }
 }
 
 /// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
@@ -359,103 +397,98 @@ impl fmt::Display for MergePriority {
     }
 }
 
+/// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
-pub struct Contract {
+pub struct LabeledType {
     pub types: Types,
     pub label: Label,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct MetaValue {
-    pub doc: Option<String>,
-    pub types: Option<Contract>,
-    pub contracts: Vec<Contract>,
-    /// If the field is optional.
-    pub opt: bool,
-    pub priority: MergePriority,
-    pub value: Option<RichTerm>,
+impl Traverse<RichTerm> for LabeledType {
+    // Note that this function doesn't traverse the label, which is most often what you want. The
+    // terms that may hide in a label are mostly types used for error reporting, but are never
+    // evaluated.
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<LabeledType, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let LabeledType { types, label } = self;
+        types
+            .traverse(f, state, order)
+            .map(|types| LabeledType { types, label })
+    }
 }
 
-impl From<RichTerm> for MetaValue {
-    fn from(rt: RichTerm) -> Self {
-        MetaValue {
-            value: Some(rt),
+/// A type and/or contract annotation.
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct TypeAnnotation {
+    /// The type annotation (using `:`).
+    pub types: Option<LabeledType>,
+    /// The contracts annotation (using `|`).
+    pub contracts: Vec<LabeledType>,
+}
+
+impl TypeAnnotation {
+    /// Return the main annotation, which is either the type annotation if any, or the first
+    /// contract annotation.
+    pub fn first(&self) -> Option<&LabeledType> {
+        self.iter().next()
+    }
+
+    /// Iterate over the annotations, starting by the type and followed by the contracts.
+    pub fn iter(&self) -> impl Iterator<Item = &LabeledType> {
+        self.types.iter().chain(self.contracts.iter())
+    }
+
+    /// Mutably iterate over the annotations, starting by the type and followed by the contracts.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
+        self.types.iter_mut().chain(self.contracts.iter_mut())
+    }
+
+    /// Return a string representation of the contracts (without the static type annotation) as a
+    /// comma-separated list.
+    pub fn contracts_to_string(&self) -> Option<String> {
+        (!self.contracts.is_empty()).then(|| {
+            self.contracts
+                .iter()
+                .map(|contract| format!("{}", contract.label.types,))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+    }
+}
+
+impl From<TypeAnnotation> for LetMetadata {
+    fn from(annotation: TypeAnnotation) -> Self {
+        LetMetadata {
+            annotation,
             ..Default::default()
         }
     }
 }
 
-impl MetaValue {
-    pub fn new() -> Self {
-        Default::default()
-    }
+impl Traverse<RichTerm> for TypeAnnotation {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let TypeAnnotation { types, contracts } = self;
 
-    pub fn contracts_to_string(&self) -> Option<String> {
-        if !self.contracts.is_empty() {
-            Some(
-                self.contracts
-                    .iter()
-                    .map(|contract| format!("{}", contract.label.types,))
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )
-        } else {
-            None
-        }
-    }
+        let contracts = contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .collect::<Result<Vec<_>, _>>()?;
 
-    /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
-    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
-    /// outer's one are kept.
-    ///
-    /// Note that no environment management such as closurization takes place, because this
-    /// function is expected to be used on the AST before the evaluation (in the parser or during
-    /// program transformation).
-    ///
-    /// # Preconditions
-    ///
-    /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
-    ///   condition is not fulfilled, the value of the final metavalue is set to be `inner`'s one,
-    ///   and `outer`'s one is dropped.
-    pub fn flatten(mut outer: MetaValue, mut inner: MetaValue) -> MetaValue {
-        // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
-        // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
-        // so on).
-        // Keep the inner value.
+        let types = types
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .transpose()?;
 
-        if outer.types.is_some() {
-            // If both have type annotations, the result will have the outer one as a type annotation.
-            // However we still need to enforce the corresponding contract to preserve the operational
-            // semantics. Thus, the inner type annotation is derelicted to a contract.
-            if let Some(ctr) = inner.types.take() {
-                outer.contracts.push(ctr)
-            }
-        }
-
-        outer.contracts.extend(inner.contracts.into_iter());
-
-        let priority = match (outer.priority, inner.priority) {
-            // Neutral corresponds to the case where no priority was specified. In that case, the
-            // other priority takes precedence.
-            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
-            // Otherwise, we keep the maximum of both priorities, as we would do when merging
-            // values.
-            (p1, p2) => std::cmp::max(p1, p2),
-        };
-
-        MetaValue {
-            doc: outer.doc.or(inner.doc),
-            types: outer.types.or(inner.types),
-            contracts: outer.contracts,
-            opt: outer.opt || inner.opt,
-            priority,
-            value: inner.value,
-        }
+        Ok(TypeAnnotation { types, contracts })
     }
 }
 
-/// A chunk of a string with interpolated expressions inside. Same as `Either<String,
-/// RichTerm>` but with explicit constructor names.
+/// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
+/// interpolated expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum StrChunk<E> {
     /// A string literal.
@@ -482,7 +515,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null | ParseError(_) => (),
+            Null | ParseError(_) | RuntimeError(_) => (),
             Match {
                 ref mut cases,
                 ref mut default,
@@ -496,13 +529,24 @@ impl Term {
                 }
             }
             Record(ref mut r) => {
-                r.fields.iter_mut().for_each(|(_, t)| func(t));
+                r.fields.iter_mut().for_each(|(_, field)| {
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
+                });
             }
             RecRecord(ref mut r, ref mut dyn_fields, ..) => {
-                r.fields.iter_mut().for_each(|(_, t)| func(t));
-                dyn_fields.iter_mut().for_each(|(t1, t2)| {
-                    func(t1);
-                    func(t2);
+                r.fields.iter_mut().for_each(|(_, field)| {
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
+                });
+                dyn_fields.iter_mut().for_each(|(id_t, field)| {
+                    func(id_t);
+
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
@@ -513,15 +557,14 @@ impl Term {
             | Sealed(_, ref mut t, _) => {
                 func(t);
             }
-            MetaValue(ref mut meta) => {
-                meta.contracts
-                    .iter_mut()
-                    .for_each(|Contract { types, .. }| {
-                        if let TypeF::Flat(ref mut rt) = types.0 {
-                            func(rt)
-                        }
-                    });
-                meta.value.iter_mut().for_each(func);
+            Annotated(ref mut annot, ref mut t) => {
+                annot.iter_mut().for_each(|LabeledType { types, .. }| {
+                    if let TypeF::Flat(ref mut rt) = types.0 {
+                        func(rt)
+                    }
+                });
+
+                func(t);
             }
             Let(_, ref mut t1, ref mut t2, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
@@ -561,7 +604,7 @@ impl Term {
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
             Term::Sealed(..) => Some("Sealed"),
-            Term::MetaValue(_) => Some("Metavalue"),
+            Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -572,7 +615,8 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::ParseError(_) => None,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => None,
         }
         .map(String::from)
     }
@@ -613,31 +657,10 @@ impl Term {
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
             Term::Sealed(..) => String::from("<sealed>"),
-            Term::MetaValue(ref meta) => {
-                let mut content = String::new();
-
-                if meta.doc.is_some() {
-                    content.push_str("doc,");
-                }
-                if !meta.contracts.is_empty() {
-                    content.push_str("contract,");
-                }
-
-                let value_label = if meta.priority == MergePriority::Bottom {
-                    "default"
-                } else {
-                    "value"
-                };
-                let value = if let Some(t) = &meta.value {
-                    t.as_ref().shallow_repr()
-                } else {
-                    String::from("none")
-                };
-
-                format!("<{}{}={}>", content, value_label, value)
-            }
+            Term::Annotated(_, t) => t.as_ref().shallow_repr(),
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
+            Term::RuntimeError(_) => String::from("<runtime error>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -656,7 +679,13 @@ impl Term {
                 let fields_str: Vec<String> = r
                     .fields
                     .iter()
-                    .map(|(ident, term)| format!("{} = {}", ident, term.as_ref().deep_repr()))
+                    .map(|(ident, field)| {
+                        if let Some(ref value) = field.value {
+                            format!("{} = {}", ident, value.as_ref().deep_repr())
+                        } else {
+                            format!("{}", ident)
+                        }
+                    })
                     .collect();
 
                 let suffix = match self {
@@ -684,7 +713,7 @@ impl Term {
             | Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
-            | Term::Fun(_, _)
+            | Term::Fun(..)
             // match expressions are function
             | Term::Match {..}
             | Term::Lbl(_)
@@ -695,24 +724,25 @@ impl Term {
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
-            | Term::App(_, _)
+            | Term::App(..)
             | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Op1(..)
+            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(_)
+            | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 
-    /// Determine if a term is a metavalue.
-    pub fn is_metavalue(&self) -> bool {
-        matches!(self, Term::MetaValue(..))
+    /// Determine if a term is annotated.
+    pub fn is_annotated(&self) -> bool {
+        matches!(self, Term::Annotated(..))
     }
 
     /// Determine if a term is a constant.
@@ -732,21 +762,22 @@ impl Term {
             | Term::LetPattern(..)
             | Term::Record(..)
             | Term::Array(..)
-            | Term::Fun(_, _)
-            | Term::FunPattern(_, _, _)
+            | Term::Fun(..)
+            | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Match { .. }
             | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Op1(..)
+            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(_)
+            | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -770,12 +801,11 @@ impl Term {
             // infix operators.
             //
             // For example, `Op1(BoolOr, Var("x"))` is currently printed as `x ||`. Such operators
-            // must never parenthesized, such as in `(x ||)`.
+            // must never be parenthesized, such as in `(x ||)`.
             //
             // We might want a more robust mechanism for pretty printing such operators.
             | Term::Op1(UnaryOp::BoolAnd(), _)
-            | Term::Op1(UnaryOp::BoolOr(), _)
-            => true,
+            | Term::Op1(UnaryOp::BoolOr(), _) => true,
             Term::Let(..)
             | Term::Match { .. }
             | Term::LetPattern(..)
@@ -786,10 +816,11 @@ impl Term {
             | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(..)
+            | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -1108,13 +1139,6 @@ pub enum OpPos {
 }
 
 impl UnaryOp {
-    pub fn eval_mode(&self) -> EvalMode {
-        match self {
-            UnaryOp::RecDefault() | UnaryOp::RecForce() => EvalMode::StopAtMeta,
-            _ => EvalMode::default(),
-        }
-    }
-
     pub fn pos(&self) -> OpPos {
         use UnaryOp::*;
         match self {
@@ -1125,8 +1149,16 @@ impl UnaryOp {
     }
 }
 
+/// The kind of a dynamic record extension. Kind indicates if a definition is expected for the
+/// field being inserted, or if the inserted field doesn't have a definition.
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum RecordExtKind {
+    WithValue,
+    WithoutValue,
+}
+
 /// Primitive binary operators
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
@@ -1176,7 +1208,12 @@ pub enum BinaryOp {
     /// string. `DynExtend` tries to evaluate this name to a string, and in case of success, add a
     /// field with this name to the given record with the expression on top of the stack as
     /// content.
-    DynExtend(),
+    ///
+    /// The field may have been defined with attached metadata, and may or may not have a defined
+    /// value. We can't store those information as a term argument (metadata aren't first class
+    /// values, at least at the time of writing), so for now we attach it directly to the extend
+    /// primop. This isn't ideal, and in the future we may want to have a more principled primop.
+    DynExtend(FieldMetadata, RecordExtKind),
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
@@ -1210,18 +1247,11 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    pub fn eval_mode(&self) -> EvalMode {
-        match self {
-            BinaryOp::Merge() => EvalMode::StopAtMeta,
-            _ => EvalMode::default(),
-        }
-    }
-
     pub fn pos(&self) -> OpPos {
         use BinaryOp::*;
         match self {
             Plus() | Sub() | Mult() | Div() | Modulo() | Pow() | StrConcat() | Eq()
-            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend()
+            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend(..)
             | DynRemove() | DynAccess() | ArrayConcat() | Merge() => OpPos::Infix,
             _ => OpPos::Prefix,
         }
@@ -1270,10 +1300,6 @@ impl NAryOp {
             | NAryOp::RecordUnsealTail() => 3,
             NAryOp::RecordSealTail() => 4,
         }
-    }
-
-    pub fn eval_mode(&self) -> EvalMode {
-        EvalMode::default()
     }
 }
 
@@ -1332,15 +1358,41 @@ impl RichTerm {
         self
     }
 
-    /// Apply a transformation on a whole term by mapping a faillible function `f` on each node in
-    /// manner as prescribed by the order.
+    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
+    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
+    /// than the bound, the string is truncated to `max_width` and the last character after
+    /// truncate is replaced by the ellipsis unicode character U+2026.
+    pub fn pretty_print_cap(&self, max_width: usize) -> String {
+        let output = format!("{}", self);
+
+        if output.len() <= max_width {
+            output
+        } else {
+            let (end, _) = output.char_indices().nth(max_width).unwrap();
+            let mut truncated = String::from(&output[..end]);
+
+            if max_width >= 2 {
+                truncated.pop();
+                truncated.push('\u{2026}');
+            }
+
+            truncated
+        }
+    }
+}
+
+pub trait Traverse<T>: Sized {
+    /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
+    /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
+    ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<F, S, E>(
-        self,
-        f: &F,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<RichTerm, E>
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(T, &mut S) -> Result<T, E>;
+}
+
+impl Traverse<RichTerm> for RichTerm {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
@@ -1439,28 +1491,34 @@ impl RichTerm {
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
+                let fields_res: Result<HashMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
+                    .map(|(id, field)| {
+                        let field = field.traverse(f, state, order)?;
+                        Ok((id, field))
+                    })
                     .collect();
                 RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<HashMap<Ident, RichTerm>, E> = record.fields
+                let static_fields_res: Result<HashMap<Ident, Field>, E> = record.fields
                     .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| Ok((id, t.traverse(f, state, order)?)))
+                    // For the conversion to work, note that we need a Result<(Ident,Field), E>
+                    .map(|(id, field)| {
+                        let field = field.traverse(f, state, order)?;
+                        Ok((id, field))
+                    })
                     .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
-                        Ok((
-                            id_t.traverse(f, state, order)?,
-                            t.traverse(f, state, order)?,
-                        ))
+                    .map(|(id_t, field)| {
+                        let id_t = id_t.traverse(f, state, order)?;
+                        let field = field.traverse(f, state, order)?;
+
+                        Ok((id_t, field,))
                     })
                     .collect();
                 RichTerm::new(
@@ -1495,77 +1553,19 @@ impl RichTerm {
                     pos,
                 )
             },
-            Term::MetaValue(meta) => {
-                let mut f_on_type = |ty: Types, s: &mut S| {
-                    match ty.0 {
-                        TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
-                        _ => Ok(ty),
-                    }
-                };
-
-                let contracts: Result<Vec<Contract>, _> = meta
-                    .contracts
-                    .into_iter()
-                    .map(|ctr| {
-                        let Contract {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
-                    })
-                    .collect();
-                let contracts = contracts?;
-
-                let types = meta
-                    .types
-                    .map(|ctr| {
-                        let Contract {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| Contract { types, label })
-                    })
-                    .transpose()?;
-
-                let value = meta
-                    .value
-                    .map(|t| t.traverse(f, state, order))
-                    .map_or(Ok(None), |res| res.map(Some))?;
-                    let meta = MetaValue {
-                        doc: meta.doc,
-                        types,
-                        contracts,
-                        opt: meta.opt,
-                        priority: meta.priority,
-                        value,
-                    };
-
+            Term::Annotated(annot, term) => {
+                let annot = annot.traverse(f, state, order)?;
+                let term = term.traverse(f, state, order)?;
                 RichTerm::new(
-                    Term::MetaValue(meta),
+                    Term::Annotated(annot, term),
                     pos,
                 )
-            }} else rt
-        };
+            }
+        } else rt};
 
         match order {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
-        }
-    }
-
-    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
-    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
-    /// than the bound, the string is truncated to `max_width` and the last character after
-    /// truncate is replaced by the ellipsis unicode character U+2026.
-    pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = format!("{}", self);
-
-        if output.len() <= max_width {
-            output
-        } else {
-            let (end, _) = output.char_indices().nth(max_width).unwrap();
-            let mut truncated = String::from(&output[..end]);
-
-            if max_width >= 2 {
-                truncated.pop();
-                truncated.push('\u{2026}');
-            }
-
-            truncated
         }
     }
 }
@@ -1703,7 +1703,7 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_fields(fields)))
+                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_field_values(fields)))
             }
         };
     }
@@ -1740,7 +1740,7 @@ pub mod make {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
                 let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
-                $crate::term::RichTerm::from(Term::Array(ts, $attrs))
+                $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
             }
         };
         ( $( $terms:expr ),* ) => {
@@ -1866,14 +1866,18 @@ mod tests {
 
     /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
     #[test]
-    fn metavalue_flatten() {
-        let mut inner = MetaValue::new();
-        inner.types = Some(Contract {
-            types: Types(TypeF::Num),
-            label: Label::dummy(),
-        });
-        let outer = MetaValue::new();
-        let res = MetaValue::flatten(outer, inner);
+    fn annot_flatten() {
+        use crate::parser::utils::Annot;
+
+        let inner = TypeAnnotation {
+            types: Some(LabeledType {
+                types: Types(TypeF::Num),
+                label: Label::dummy(),
+            }),
+            ..Default::default()
+        };
+        let outer = TypeAnnotation::default();
+        let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.types, None);
     }
 }

@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    term::UnaryOp,
+    term::{self, record::Field, UnaryOp},
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
@@ -203,7 +203,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
     // structural checks below may reject the equality)
-    if crate::term::SharedTerm::ptr_eq(&t1.term, &t2.term) {
+    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) {
         return true;
     }
 
@@ -275,7 +275,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (Record(r1), Record(r2)) => {
             map_eq(
-                contract_eq_bounded,
+                contract_eq_fields,
                 state,
                 &r1.fields,
                 env1,
@@ -290,7 +290,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
                 && map_eq(
-                    contract_eq_bounded,
+                    contract_eq_fields,
                     state,
                     &r1.fields,
                     env1,
@@ -308,27 +308,30 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && attrs1 == attrs2
         }
         // We must compare the inner values as well as the corresponding contracts or type
-        // annotations. Documentation and merge priority shouldn't impact the result on the
-        // other hand.
-        (MetaValue(m1), MetaValue(m2)) => {
-            let value_eq = match (&m1.value, &m2.value) {
-                (None, None) => true,
-                (Some(v1), Some(v2)) => contract_eq_bounded(state, v1, env1, v2, env2),
-                _ => false,
-            };
+        // annotations.
+        (Annotated(annot1, t1), Annotated(annot2, t2)) => {
+            let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+
+            // TODO:
+            // - does it really make sense to compare the annotations?
+            // - does it even happen to have contracts having themselves type annotations?
+            // - and in the latter case, should they be declared unequal because of that?
+            //   The answer to the last question is probably yes, because contracts are
+            //   fundamentally as powerful as function application, so they can change their
+            //   argument.
 
             // We use the same logic as in the typechecker: the type associated to an annotated
             // value is either the type annotation, or the first contract annotation.
-            let ty1 = m1.types.as_ref().or_else(|| m1.contracts.first());
-            let ty2 = m2.types.as_ref().or_else(|| m2.contracts.first());
+            let ty1 = annot1.first();
+            let ty2 = annot2.first();
 
             let ty_eq = match (ty1, ty2) {
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &GenericUnifType::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr1.types.clone(), env1),
                     env1,
-                    &GenericUnifType::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
+                    &GenericUnifType::from_type(ctr2.types.clone(), env2),
                     env2,
                 ),
                 _ => false,
@@ -339,7 +342,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
-        // We dont treat imports and parse errors
+        // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
         _ => false,
     }
 }
@@ -397,6 +400,24 @@ fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
         .collect();
 
     set
+}
+
+/// Check for contract equality between record fields. Fields are equal if they are both without a
+/// definition, or are both defined and their values are equal.
+fn contract_eq_fields<E: TermEnvironment>(
+    state: &mut State,
+    field1: &Field,
+    env1: &E,
+    field2: &Field,
+    env2: &E,
+) -> bool {
+    match (&field1.value, &field2.value) {
+        (Some(ref value1), Some(ref value2)) => {
+            contract_eq_bounded(state, value1, env1, value2, env2)
+        }
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test

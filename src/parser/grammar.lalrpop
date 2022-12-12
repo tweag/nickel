@@ -58,15 +58,16 @@ use crate::{
     identifier::Ident,
     destruct::{Match, LastMatch, Destruct},
     term::{
-        BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-        MergePriority, Contract, NAryOp, record::RecordAttrs, SharedTerm,
-        NumeralPriority, array::Array, make as mk_term
+        *, 
+        record::{RecordAttrs, Field, FieldMetadata},
+        array::Array,
+        make as mk_term,
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
         VarKind
     },
-    position::TermPos,
+    position::{TermPos, RawSpan},
     label::Label,
 };
 
@@ -102,13 +103,13 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
 // here to control if the type should have its variables fixed now (`FixedType`)
 // or later (bare `Types`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
-AnnotAtom<TypeRule>: MetaAnnot = {
-    "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        contracts: vec![Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+AnnotAtom<TypeRule>: TypeAnnotation = {
+    "|" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
+        contracts: vec![LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         ..Default::default()
     },
-    ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
-        types: Some(Contract {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+    ":" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
+        types: Some(LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         ..Default::default()
     },
 };
@@ -116,10 +117,10 @@ AnnotAtom<TypeRule>: MetaAnnot = {
 // A single metadata annotation attached to a let-binding. Compared to
 // annotations which can appear everywhere (`AnnotAtom`, either a type or a
 // contract annotation), let annotations also include documentation (`doc`).
-LetAnnotAtom<TypeRule>: MetaAnnot = {
-    <AnnotAtom<TypeRule>> => <>,
-    "|" "doc" <s: StaticString> => MetaValue {
-        doc: Some(strip_indent_doc(s)),
+LetAnnotAtom<TypeRule>: LetMetadata = {
+    <AnnotAtom<TypeRule>> => <>.into(),
+    "|" "doc" <s: StaticString> => LetMetadata {
+        doc: Some(s),
         ..Default::default()
     },
 }
@@ -129,22 +130,22 @@ LetAnnotAtom<TypeRule>: MetaAnnot = {
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
 // rule).
-SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
-    <LetAnnotAtom<TypeRule>> => <>,
-    "|" "default" => MetaValue {
+SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
+    <LetAnnotAtom<TypeRule>> => <>.into(),
+    "|" "default" => FieldMetadata {
         priority: MergePriority::Bottom,
         ..Default::default()
     },
-    "|" "force" => MetaValue {
+    "|" "force" => FieldMetadata {
         priority: MergePriority::Top,
         ..Default::default()
     },
-    "|" "priority" <SignedNumLiteral> => MetaValue {
+    "|" "priority" <SignedNumLiteral> => FieldMetadata {
         // unwrap(): a literal can't be NaN
         priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
         ..Default::default()
     },
-    "|" "optional" => MetaValue {
+    "|" "optional" => FieldMetadata {
         opt: true,
         ..Default::default()
     },
@@ -154,31 +155,31 @@ SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
 // rule).
-FieldAnnotAtom<TypeRule>: FieldAnnot = {
+FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
     <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
-    "|" "rec" "force" => FieldAnnot {
+    "|" "rec" "force" => FieldExtAnnot {
         rec_force: true,
         ..Default::default()
     },
-    "|" "rec" "default" => FieldAnnot {
+    "|" "rec" "default" => FieldExtAnnot {
         rec_default: true,
         ..Default::default()
     },
 }
 
 // An annotation, with possibly many annotations chained.
-Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
+Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<TypeRule>>;
 
 // A let annotation, with possibly many annotations chained. Include type
 // annotations, contract annotations and doc annotations.
-LetAnnot<TypeRule>: MetaAnnot = AnnotSeries<LetAnnotAtom<TypeRule>>;
+LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<TypeRule>>;
 
 // A simple field annotation, with possibly many annotations chained. A simple
 // field annotation excludes pseudo metadata like recursive priorities operator.
-SimpleFieldAnnot<TypeRule>: MetaAnnot = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
+SimpleFieldAnnot<TypeRule>: FieldMetadata = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
 
 // A field annotation, with possibly many annotations chained.
-FieldAnnot<TypeRule>: FieldAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
+FieldAnnot<TypeRule>: FieldExtAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
@@ -203,8 +204,7 @@ FixedType: Types = {
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
-            let pos = t.pos;
-            t = ann.attach(t, pos);
+            t = ann.annotation.attach_term(t);
         }
 
         ExtendedTerm::ToplevelLet(id, t)
@@ -221,8 +221,7 @@ UniTerm: UniTerm = {
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
-            let pos = t1.pos;
-            t1 = ann.attach(t1, pos);
+            t1 = ann.annotation.attach_term(t1);
         }
 
         Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
@@ -245,8 +244,7 @@ UniTerm: UniTerm = {
 
 AnnotatedInfixExpr: UniTerm = {
     <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
-        let pos = t.pos;
-        UniTerm::from(ann.attach(t, pos))
+        UniTerm::from(ann.attach_term(t))
     },
 };
 
@@ -264,7 +262,7 @@ Forall: Types =
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm = {
-    "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
     AsUniTerm<TypeArray>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
         UniTerm::from(mk_app!(t1, t2)),
@@ -371,42 +369,55 @@ Atom: UniTerm = {
 // A record field definition. The is the only place where we don't fix the type
 // variables inside the annotation right away (note the `Annot<Types>` instead
 // of `Annot<Fixed>`).
-RecordField: (FieldPath, RichTerm) = {
+RecordField: FieldDef = {
     <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
-        let pos = t.as_ref()
-            .map(|t| t.pos.clone())
-            .unwrap_or(mk_pos(src_id, l, r));
-        let term = match (ann, t) {
-            (Some(FieldAnnot { meta, rec_force: false, rec_default: false }), None) => {
-                RichTerm::new(Term::MetaValue(meta), pos)
+        let annot_span = mk_span(src_id, l, r);
+        let span = if let Some(ref value) = t {
+                // value.pos.unwrap(): the position of `t` is necessarily set by the <Term> rule
+                // result unwrap(): the term and the annotation have spans
+                //   coming from the same file (the current one)
+                RawSpan::fuse(annot_span, value.pos.unwrap()).unwrap()
+        } else {
+            annot_span
+        };
+
+        let field = match (ann, t) {
+            (Some(FieldExtAnnot { metadata, rec_force: false, rec_default: false }), None) => {
+                Field { value: None, metadata }
             }
-            (Some(ann), Some(t)) => {
-                ann.attach(t, pos)
+            (Some(ann), Some(value)) => {
+                ann.attach_term(value)
             }
             (Some(_), None) => {
                 panic!("can't use rec default/rec force on a field without definition");
             }
-            (None, Some(t)) => t,
-            (None, None) => RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
+            (None, value) => Field { value, ..Default::default() }
         };
 
-        (path, term)
+        FieldDef {
+            path,
+            field,
+            pos: TermPos::Original(span),
+        }
     },
     <err: Error> => {
-        let pos = err.pos;
-        let path = vec![FieldPathElem::Expr(err)];
-        let term = RichTerm::new(Term::MetaValue(MetaValue::new()), pos);
-        (path, term)
+        FieldDef {
+          pos: err.pos,
+          path: vec![FieldPathElem::Expr(err.clone())],
+          field: Default::default(),
+        }
     },
 };
 
 // An error recovery handler.
 Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        errors.push(t.clone());
+    let pos = mk_pos(src_id, l, r);
+    errors.push(t.clone());
 
-        RichTerm::new(Term::ParseError(
-            crate::error::ParseError::from_lalrpop(t.error, src_id)), pos)
+    RichTerm::new(Term::ParseError(
+      crate::error::ParseError::from_lalrpop(t.error, src_id)),
+      pos,
+    )
 };
 
 RecordLastField: RecordLastField = {
@@ -460,20 +471,22 @@ Destruct: Destruct = {
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let meta = combine_match_annots(anns, default, left.pos.unwrap());
-        Match::Assign(left, meta, right)
+        let field = combine_match_annots(anns, default, left.pos.unwrap());
+        Match::Assign(left, field, right)
     },
     <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
-        let meta = combine_match_annots(anns, default, id.pos.unwrap());
-        Match::Simple(id, meta)
+        let field = combine_match_annots(anns, default, id.pos.unwrap());
+        Match::Simple(id, field)
     },
 };
 
 // A default annotation in a pattern.
-DefaultAnnot: MetaAnnot = "?" <t: Term> => MetaValue {
-    priority: MergePriority::Bottom,
+DefaultAnnot: Field = "?" <t: Term> => Field {
+    metadata: FieldMetadata {
+        priority: MergePriority::Bottom,
+        ..Default::default()
+    },
     value: Some(t),
-    ..Default::default()
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
@@ -518,9 +531,18 @@ StrChunks: RichTerm = {
             }).collect();
 
             RichTerm::from(build_record([
-                (FieldPathElem::Ident("tag".into()), RichTerm::from(Term::Enum("SymbolicString".into()))),
-                (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Enum(prefix.into()))),
-                (FieldPathElem::Ident("fragments".into()), RichTerm::from(Term::Array(terms, Default::default())))
+                (
+                  FieldPathElem::Ident("tag".into()),
+                  Field::from(RichTerm::from(Term::Enum("SymbolicString".into())))
+                ),
+                (
+                  FieldPathElem::Ident("prefix".into()),
+                  Field::from(RichTerm::from(Term::Enum(prefix.into())))
+                ),
+                (
+                  FieldPathElem::Ident("fragments".into()),
+                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                )
             ], Default::default()))
         } else {
             let mut chunks = chunks;
@@ -561,7 +583,22 @@ Interpolation = { "%{", "multstr %{" };
 // Used to implement `StaticString` as well as `StringEnumTag`.
 DelimitedStaticString<Start, End>: String = Start <s: ChunkLiteral?> End => s.unwrap_or_default();
 
-StaticString = DelimitedStaticString<StringStart, StringEnd>;
+StandardStaticString = DelimitedStaticString<"\"", "\"">;
+
+MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
+    // strip the common indentation prefix
+    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::Literal(<>)];
+    match strip_indent(chunks).pop().unwrap() {
+        StrChunk::Literal(s) => s,
+        // We build 
+        _ => unreachable!(),
+    }
+};
+
+StaticString : String = {
+    StandardStaticString,
+    MultilineStaticString,
+}
 
 StringEnumTag = DelimitedStaticString<"`\"", "\"">;
 
@@ -791,7 +828,10 @@ BOpPre: BinaryOp = {
     "pow" => BinaryOp::Pow(),
     "str_split" => BinaryOp::StrSplit(),
     "str_contains" => BinaryOp::StrContains(),
-    "record_insert" => BinaryOp::DynExtend(),
+    "record_insert" => BinaryOp::DynExtend(
+        FieldMetadata::default(),
+        RecordExtKind::WithValue,
+    ),
     "record_remove" => BinaryOp::DynRemove(),
 }
 

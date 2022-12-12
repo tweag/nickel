@@ -7,7 +7,7 @@ use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
     term::{
-        record::{FieldDeps, RecordDeps},
+        record::{Field, FieldDeps, RecordDeps},
         RichTerm, SharedTerm, StrChunk, Term,
     },
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
@@ -33,6 +33,7 @@ impl CollectFreeVars for RichTerm {
                 free_vars.insert(*id);
             }
             Term::ParseError(_)
+            | Term::RuntimeError(_)
             | Term::Null
             | Term::Bool(_)
             | Term::Num(_)
@@ -164,14 +165,12 @@ impl CollectFreeVars for RichTerm {
                     }
                 }
             }
-            Term::MetaValue(meta) => {
-                for ctr in meta.contracts.iter_mut().chain(meta.types.iter_mut()) {
+            Term::Annotated(annot, t) => {
+                for ctr in annot.iter_mut() {
                     ctr.types.collect_free_vars(free_vars)
                 }
 
-                if let Some(ref mut t) = meta.value {
-                    t.collect_free_vars(free_vars);
-                }
+                t.collect_free_vars(free_vars);
             }
         }
     }
@@ -213,6 +212,18 @@ impl CollectFreeVars for RecordRows {
                 types.collect_free_vars(set);
                 tail.collect_free_vars(set);
             }
+        }
+    }
+}
+
+impl CollectFreeVars for Field {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
+        for labeled_ty in self.metadata.annotation.iter_mut() {
+            labeled_ty.types.collect_free_vars(set)
+        }
+
+        if let Some(ref mut value) = self.value {
+            value.collect_free_vars(set);
         }
     }
 }

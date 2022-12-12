@@ -30,9 +30,9 @@
       if pol == lPol then
           %unseal% sy t (%blame% l)
       else
-          # Here, we know that this term should be sealed, but to give the right 
-          # blame for the contract, we have to change the polarity to match the 
-          # polarity of the `Forall`, because this is what's important for 
+          # Here, we know that this term should be sealed, but to give the right
+          # blame for the contract, we have to change the polarity to match the
+          # polarity of the `Forall`, because this is what's important for
           # blaming polymorphic contracts.
           %seal% sy (%chng_pol% l) t,
 
@@ -113,6 +113,6 @@
 
   # Recursive priorities operators
 
-  "$rec_force" = fun val => %seq% val (%rec_force% val),
-  "$rec_default" = fun val => %seq% val (%rec_default% val),
+  "$rec_force" = fun val => %rec_force% (%force% val),
+  "$rec_default" = fun val => %rec_default% (%force% val),
 }

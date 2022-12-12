@@ -50,11 +50,11 @@
 //! enriched values `Contract` or `ContractDefault`. They ensure sane interaction between typed and
 //! untyped parts.
 use crate::{
-    error::{ParseError, ParseErrors, TypecheckError},
+    error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
     mk_app, mk_fun,
     term::make as mk_term,
-    term::{record::RecordData, RichTerm, Term, TraverseOrder},
+    term::{record::RecordData, RichTerm, Term, Traverse, TraverseOrder},
 };
 
 use std::{
@@ -549,7 +549,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 }
 
-impl RecordRows {
+impl Traverse<Types> for RecordRows {
     fn traverse<FTy, S, E>(
         self,
         f: &FTy,
@@ -571,6 +571,14 @@ impl RecordRows {
 
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub Ident);
+
+impl From<UnboundTypeVariableError> for EvalError {
+    fn from(err: UnboundTypeVariableError) -> Self {
+        let UnboundTypeVariableError(id) = err;
+        let pos = id.pos;
+        EvalError::UnboundIdentifier(id, pos)
+    }
+}
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
@@ -771,7 +779,7 @@ impl RecordRows {
             RecordRowsF::Extend { .. } => unreachable!(),
         };
 
-        let rec = RichTerm::from(Term::Record(RecordData::with_fields(fcs)));
+        let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
         Ok(mk_app!(contract::record(), rec, tail))
     }
@@ -904,17 +912,10 @@ impl Types {
             _ => false,
         }
     }
+}
 
-    /// Apply a transformation on a whole type by mapping a fallible function `f` on each node as
-    /// prescribed by the order.
-    ///
-    /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<FTy, S, E>(
-        self,
-        f: &FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<Self, E>
+impl Traverse<Types> for Types {
+    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
         FTy: Fn(Types, &mut S) -> Result<Types, E>,
     {
@@ -940,6 +941,20 @@ impl Types {
                 f(Types(traversed_depth_first), state)
             }
         }
+    }
+}
+
+impl Traverse<RichTerm> for Types {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let f_on_type = |ty: Types, s: &mut S| match ty.0 {
+            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
+            _ => Ok(ty),
+        };
+
+        self.traverse(&f_on_type, state, order)
     }
 }
 
@@ -1028,7 +1043,7 @@ mod test {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Types {
-        use crate::term::MetaValue;
+        use crate::term::TypeAnnotation;
 
         // Wrap the type in a contract to have it accepted by the parser.
         let wrapper = format!("null | {}", s);
@@ -1040,7 +1055,7 @@ mod test {
             .unwrap();
 
         match rt.term.into_owned() {
-            Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
+            Term::Annotated(TypeAnnotation { mut contracts, .. }, _) if contracts.len() == 1 => {
                 contracts.remove(0).types
             }
             _ => panic!("types::test::parse_type(): expected contract"),

@@ -45,17 +45,20 @@
 //!
 //! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
-use crate::types::EnumRowsIterator;
-use crate::types::RecordRowsIterator;
 use crate::{
     cache::ImportResolver,
     destruct::*,
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::Ident,
-    term::{Contract, MetaValue, RichTerm, StrChunk, Term, TraverseOrder},
+    position::TermPos,
+    term::{
+        record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
+        TypeAnnotation,
+    },
     types::{
-        EnumRow, EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types, VarKind,
+        EnumRow, EnumRows, EnumRowsF, EnumRowsIterator, RecordRowF, RecordRows, RecordRowsF,
+        RecordRowsIterator, TypeF, Types, VarKind,
     },
     {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row},
 };
@@ -599,7 +602,19 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
         .iter()
         .map(|rt| {
             if let Term::RecRecord(record, ..) = rt.as_ref() {
-                Ok(record.fields.iter().map(|(id, rt)| (*id, rt.clone())))
+                // We reject fields without a value (that would a stdlib module without defintion)
+                Ok(record.fields.iter().map(|(id, field)| {
+                    (
+                        *id,
+                        field
+                            .value
+                            .as_ref()
+                            .unwrap_or_else(|| {
+                                panic!("expected stdlib module {} to have a definition", id)
+                            })
+                            .clone(),
+                    )
+                }))
             } else {
                 Err(EnvBuildError::NotARecord(rt.clone()))
             }
@@ -614,7 +629,7 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
         .collect();
 
     let type_env = bindings
-        .map(|(id, rt)| (id, infer_record_type(rt.as_ref(), &term_env)))
+        .map(|(id, rt)| (id, infer_record_type(&rt, &term_env)))
         .collect();
 
     Ok(Context { type_env, term_env })
@@ -633,9 +648,9 @@ pub fn env_add_term(
 
     match term.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) => {
-            for (id, t) in &record.fields {
-                let uty: UnifType = UnifType::from_apparent_type(
-                    apparent_type(t.as_ref(), Some(env), Some(resolver)),
+            for (id, field) in &record.fields {
+                let uty = UnifType::from_apparent_type(
+                    field_apparent_type(field, Some(env), Some(resolver)),
                     term_env,
                 );
                 env.insert(*id, uty);
@@ -782,6 +797,7 @@ fn walk<L: Linearizer>(
 
     match t.as_ref() {
         Term::ParseError(_)
+        | Term::RuntimeError(_)
         | Term::Null
         | Term::Bool(_)
         | Term::Num(_)
@@ -876,29 +892,36 @@ fn walk<L: Linearizer>(
         }
         Term::RecRecord(record, dynamic, ..) => {
             for (id, field) in record.fields.iter() {
-                let binding_type = binding_type(
+                let field_type = field_type(
                     state,
-                    field.as_ref(),
+                    field,
                     &ctxt,
                     false,
                 );
-                ctxt.type_env.insert(*id, binding_type.clone());
-                linearizer.retype_ident(lin, id, binding_type);
+                ctxt.type_env.insert(*id, field_type.clone());
+                linearizer.retype_ident(lin, id, field_type);
             }
+
+            // Walk the type and contract annotations
 
             // We don't bind the fields in the term environment used to check for contract
             // equality. See the `Let` case above for more details on why such recursive bindings
             // are currently ignored.
             record.fields
                 .values()
-                .chain(dynamic.iter().map(|(_, t)| t))
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, ctxt.clone(), lin, linearizer.scope(), t)
+                .try_for_each(|field| -> Result<(), TypecheckError> {
+                    walk_field(state, ctxt.clone(), lin, linearizer.scope(), field)
+                })?;
+
+            dynamic.iter().map(|(_, field)| field)
+                .try_for_each(|field| -> Result<(), TypecheckError> {
+                    walk_field(state, ctxt.clone(), lin, linearizer.scope(), field)
                 })
         }
         Term::Record(record) => {
             record.fields
                 .values()
+                .filter_map(|field| field.value.as_ref())
                 .try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)
                 })
@@ -920,27 +943,8 @@ fn walk<L: Linearizer>(
                 },
             )
         }
-        // An type annotation switches mode to check.
-        Term::MetaValue(meta) => {
-            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
-
-            match meta {
-                MetaValue {
-                types: Some(Contract { types: ty2, .. }),
-                value: Some(t),
-                ..
-                } => {
-                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
-                    type_check_(state, ctxt, lin, linearizer, t, instantiated)
-                }
-                MetaValue {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
-                // A metavalue without a body nor a type annotation is a record field without definition.
-                // TODO: we might have something to with the linearizer to clear the current
-                // metadata. It looks like it may be unduly attached to the next field definition,
-                // which is not critical, but still a bug.
-                _ => Ok(()),
-            }
+        Term::Annotated(annot, rt) => {
+            walk_annotated(state, ctxt, lin, linearizer, annot, rt)
         }
         Term::Sealed(_, t, _) => walk(state, ctxt, lin, linearizer, t)
    }
@@ -1000,6 +1004,70 @@ fn walk_rrows<L: Linearizer>(
     }
 }
 
+fn walk_field<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    field: &Field,
+) -> Result<(), TypecheckError> {
+    linearizer.add_field_metadata(lin, field);
+
+    walk_with_annot(
+        state,
+        ctxt,
+        lin,
+        linearizer,
+        &field.metadata.annotation,
+        field.value.as_ref(),
+    )
+}
+
+fn walk_annotated<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    linearizer: L,
+    annot: &TypeAnnotation,
+    rt: &RichTerm,
+) -> Result<(), TypecheckError> {
+    walk_with_annot(state, ctxt, lin, linearizer, annot, Some(rt))
+}
+
+/// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
+/// type or contract annotation. A type annotation switches the typechecking mode to _checking_.
+fn walk_with_annot<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    annot: &TypeAnnotation,
+    value: Option<&RichTerm>,
+) -> Result<(), TypecheckError> {
+    annot.iter().try_for_each(|ty| {
+        walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
+    })?;
+
+    match (annot, value) {
+        (
+            TypeAnnotation {
+                types: Some(LabeledType { types: ty2, .. }),
+                ..
+            },
+            Some(value),
+        ) => {
+            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
+            type_check_(state, ctxt, lin, linearizer.scope(), value, instantiated)
+        }
+        (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
+        // TODO: we might have something to do with the linearizer to clear the current
+        // metadata. It looks like it may be unduly attached to the next field definition,
+        // which is not critical, but still a bug.
+        _ => Ok(()),
+    }
+}
+
 // TODO: The insertion of values in the type environment is done but everything is
 // typed as `Dyn`.
 fn inject_pat_vars(pat: &Destruct, env: &mut Environment) {
@@ -1046,6 +1114,7 @@ fn type_check_<L: Linearizer>(
 
     match t.as_ref() {
         Term::ParseError(_) => Ok(()),
+        Term::RuntimeError(_) => panic!("unexpected RuntimeError term during typechecking"),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, &ctxt, ty, mk_uniftype::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -1257,14 +1326,15 @@ fn type_check_<L: Linearizer>(
             // `Let` case in `walk`.
             record
                 .fields
-                .values()
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    type_check_(
+                .iter()
+                .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
+                    type_check_field(
                         state,
                         ctxt.clone(),
                         lin,
                         linearizer.scope(),
-                        t,
+                        *id,
+                        field,
                         ty_dict.clone(),
                     )
                 })?;
@@ -1277,8 +1347,8 @@ fn type_check_<L: Linearizer>(
             // ctxt before actually typechecking the content of fields.
             // Fields defined by interpolation are ignored.
             if let Term::RecRecord(..) = t.as_ref() {
-                for (id, rt) in &record.fields {
-                    let uty = binding_type(state, rt.as_ref(), &ctxt, true);
+                for (id, field) in &record.fields {
+                    let uty = field_type(state, field, &ctxt, true);
                     ctxt.type_env.insert(*id, uty.clone());
                     linearizer.retype_ident(lin, id, uty);
                 }
@@ -1290,14 +1360,15 @@ fn type_check_<L: Linearizer>(
                 // Checking for a dictionary
                 record
                     .fields
-                    .values()
-                    .try_for_each(|t| -> Result<(), TypecheckError> {
-                        type_check_(
+                    .iter()
+                    .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
+                        type_check_field(
                             state,
                             ctxt.clone(),
                             lin,
                             linearizer.scope(),
-                            t,
+                            *id,
+                            field,
                             (*rec_ty).clone(),
                         )
                     })
@@ -1314,11 +1385,12 @@ fn type_check_<L: Linearizer>(
                             state.table.fresh_type_uvar()
                         };
 
-                        type_check_(
+                        type_check_field(
                             state,
                             ctxt.clone(),
                             lin,
                             linearizer.scope(),
+                            *id,
                             field,
                             ty.clone(),
                         )?;
@@ -1361,69 +1433,8 @@ fn type_check_<L: Linearizer>(
 
             Ok(())
         }
-        Term::MetaValue(meta) => {
-            meta.contracts
-                .iter()
-                .chain(meta.types.iter())
-                .try_for_each(|ty| {
-                    walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
-                })?;
-
-            match meta {
-                MetaValue {
-                    types: Some(Contract { types: ty2, .. }),
-                    value: Some(t),
-                    ..
-                } => {
-                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated =
-                        instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
-
-                    unify(state, &ctxt, uty2, ty)
-                        .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-                    type_check_(state, ctxt, lin, linearizer, t, instantiated)
-                }
-                // A metavalue without a type annotation but with a contract annotation switches
-                // the typechecker back to walk mode. If there are several contracts, we
-                // arbitrarily chose the first one as the apparent type.
-                MetaValue {
-                    contracts, value, ..
-                } if !contracts.is_empty() => {
-                    let ctr = contracts.get(0).unwrap();
-                    let Contract { types: ty2, .. } = ctr;
-
-                    unify(
-                        state,
-                        &ctxt,
-                        ty,
-                        UnifType::from_type(ty2.clone(), &ctxt.term_env),
-                    )
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-                    // if there's an inner value, we still have to walk it, as it may contain
-                    // statically typed blocks.
-                    if let Some(t) = value {
-                        walk(state, ctxt, lin, linearizer, t)
-                    } else {
-                        // TODO: we might have something to with the linearizer to clear the current
-                        // metadata. It looks like it may be unduly attached to the next field definition,
-                        // which is not critical, but still a bug.
-                        Ok(())
-                    }
-                }
-                // A non-empty metavalue without a type or a contract annotation is typechecked in
-                // the same way as its inner value
-                MetaValue { value: Some(t), .. } => {
-                    type_check_(state, ctxt, lin, linearizer, t, ty)
-                }
-                // A metavalue without a body nor a type annotation is a record field without definition.
-                // We infer it to be of type `Dyn` for now.
-                // TODO: we might have something to with the linearizer to clear the current
-                // metadata. It looks like it may be unduly attached to the next field definition,
-                // which is not critical, but still a bug.
-                _ => unify(state, &ctxt, ty, mk_uniftype::dynamic())
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-            }
+        Term::Annotated(annot, rt) => {
+            type_check_annotated(state, ctxt, lin, linearizer, annot, rt, ty)
         }
         Term::SealingKey(_) => unify(state, &ctxt, ty, mk_uniftype::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -1446,8 +1457,128 @@ fn type_check_<L: Linearizer>(
     }
 }
 
-/// Determine the type of a let-bound expression, or more generally of any binding (e.g. fields)
-/// that may be stored in a typing environment at some point.
+fn type_check_field<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    id: Ident,
+    field: &Field,
+    ty: UnifType,
+) -> Result<(), TypecheckError> {
+    linearizer.add_field_metadata(lin, field);
+
+    type_check_with_annot(
+        state,
+        ctxt,
+        lin,
+        linearizer,
+        &field.metadata.annotation,
+        field.value.as_ref(),
+        ty,
+        field.value.as_ref().map(|v| v.pos).unwrap_or(id.pos),
+    )
+}
+
+fn type_check_annotated<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    linearizer: L,
+    annot: &TypeAnnotation,
+    rt: &RichTerm,
+    ty: UnifType,
+) -> Result<(), TypecheckError> {
+    type_check_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), ty, rt.pos)
+}
+
+/// Subfunction handling the common part of typechecking term with type or contract annotation, with
+/// or without definitions. This encompasses both standalone type annotation (where `value` is
+/// always `Some(_)`) as well as field definiitions (where `value` may or may not be defined).
+///
+/// The last argument is a position to use for error reporting when `value` is `None`.
+#[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
+fn type_check_with_annot<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    mut linearizer: L,
+    annot: &TypeAnnotation,
+    value: Option<&RichTerm>,
+    ty: UnifType,
+    pos: TermPos,
+) -> Result<(), TypecheckError> {
+    annot.iter().try_for_each(|ty| {
+        walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
+    })?;
+
+    match (annot, value) {
+        (
+            TypeAnnotation {
+                types: Some(LabeledType { types: ty2, .. }),
+                ..
+            },
+            Some(value),
+        ) => {
+            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            let instantiated = instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
+
+            unify(state, &ctxt, uty2, ty).map_err(|err| err.into_typecheck_err(state, pos))?;
+            type_check_(state, ctxt, lin, linearizer, value, instantiated)
+        }
+        // A annotation without a type but with a contract switches the typechecker back to walk
+        // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
+        // type (the most precise type would be the intersection of all contracts, but Nickel's
+        // type system doesn't feature intersection types).
+        (
+            TypeAnnotation {
+                types: None,
+                contracts,
+            },
+            value_opt,
+        ) if !contracts.is_empty() => {
+            let ctr = contracts.get(0).unwrap();
+            let LabeledType { types: ty2, .. } = ctr;
+
+            unify(
+                state,
+                &ctxt,
+                ty,
+                UnifType::from_type(ty2.clone(), &ctxt.term_env),
+            )
+            .map_err(|err| err.into_typecheck_err(state, pos))?;
+
+            // if there's an inner value, we still have to walk it, as it may contain
+            // statically typed blocks.
+            if let Some(value) = value_opt {
+                walk(state, ctxt, lin, linearizer, value)
+            } else {
+                // TODO: we might have something to with the linearizer to clear the current
+                // metadata. It looks like it may be unduly attached to the next field definition,
+                // which is not critical, but still a bug.
+                Ok(())
+            }
+        }
+        // A non-empty value without a type or a contract annotation is typechecked in the same way
+        // as its inner value
+        (_, Some(value)) => type_check_(state, ctxt, lin, linearizer, value, ty),
+        // A empty value is a record field without definition. We don't check anything, and infer
+        // its type to be either the first annotation defined if any, or `Dyn` otherwise.
+        //
+        // TODO: we might have something to with the linearizer to clear the current metadata.
+        // It looks like it may be unduly attached to the next field definition, which is not
+        // critical, but still a bug.
+        _ => {
+            let inferred = annot
+                .first()
+                .map(|labeled_ty| UnifType::from_type(labeled_ty.types.clone(), &ctxt.term_env))
+                .unwrap_or_else(mk_uniftype::dynamic);
+            unify(state, &ctxt, ty, inferred).map_err(|err| err.into_typecheck_err(state, pos))
+        }
+    }
+}
+
+/// Determine the type of a let-bound expression.
 ///
 /// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
 /// [`UnifType`]. Otherwise:
@@ -1463,9 +1594,31 @@ fn type_check_<L: Linearizer>(
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
 fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
-    let ty_apt = apparent_type(t, Some(&ctxt.type_env), Some(state.resolver));
+    apparent_or_uvar(
+        state,
+        apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
+        ctxt,
+        strict,
+    )
+}
 
-    match ty_apt {
+/// Same as `binding_type` but for record field definition.
+fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) -> UnifType {
+    apparent_or_uvar(
+        state,
+        field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver)),
+        ctxt,
+        strict,
+    )
+}
+
+fn apparent_or_uvar(
+    state: &mut State,
+    aty: ApparentType,
+    ctxt: &Context,
+    strict: bool,
+) -> UnifType {
+    match aty {
         ApparentType::Annotated(ty) if strict => {
             replace_wildcards_with_var(state.table, state.wildcard_vars, ty, &ctxt.term_env)
         }
@@ -1522,8 +1675,7 @@ fn replace_wildcards_with_var(
 /// is.
 #[derive(Debug)]
 pub enum ApparentType {
-    /// The apparent type is given by a user-provided annotation, such as an `Assume`, a `Promise`,
-    /// or a metavalue.
+    /// The apparent type is given by a user-provided annotation.
     Annotated(Types),
     /// The apparent type has been inferred from a simple expression.
     Inferred(Types),
@@ -1546,6 +1698,29 @@ impl From<ApparentType> for Types {
     }
 }
 
+/// Return the apparent type of a field, by first looking at the type annotation, if any, the at
+/// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
+/// there is no value, `Approximated(Dyn)` is returned.
+fn field_apparent_type(
+    field: &Field,
+    env: Option<&Environment>,
+    resolver: Option<&dyn ImportResolver>,
+) -> ApparentType {
+    field
+        .metadata
+        .annotation
+        .first()
+        .cloned()
+        .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types))
+        .or_else(|| {
+            field
+                .value
+                .as_ref()
+                .map(|v| apparent_type(v.as_ref(), env, resolver))
+        })
+        .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn)))
+}
+
 /// Determine the apparent type of a let-bound expression.
 ///
 /// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
@@ -1553,8 +1728,8 @@ impl From<ApparentType> for Types {
 /// Then, future occurrences of `x` can be given this type when used in a `Promise` block.
 ///
 /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
-/// - if `bound_exp` is annotated by an `Assume`, a `Promise` or a metavalue, return the
-///   user-provided type, unless that type is a wildcard.
+/// - if `bound_exp` is annotated by a type or contract annotation, return the user-provided type,
+///   unless that type is a wildcard.
 /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
 ///   directly without unfolding the expression further, return the corresponding exact type.
 /// - if `bound_exp` is an array, return `Array Dyn`.
@@ -1568,17 +1743,10 @@ pub fn apparent_type(
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType {
     match t {
-        Term::MetaValue(MetaValue {
-            types: Some(Contract { types: ty, .. }),
-            ..
-        }) => ApparentType::Annotated(ty.clone()),
-        // For metavalues, if there's no type annotation, choose the first contract appearing.
-        Term::MetaValue(MetaValue { contracts, .. }) if !contracts.is_empty() => {
-            ApparentType::Annotated(contracts.get(0).unwrap().types.clone())
-        }
-        Term::MetaValue(MetaValue { value: Some(v), .. }) => {
-            apparent_type(v.as_ref(), env, resolver)
-        }
+        Term::Annotated(annot, value) => annot
+            .first()
+            .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
+            .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
         Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
         Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
         Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),
@@ -1606,31 +1774,23 @@ pub fn apparent_type(
 
 /// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
 /// currently used essentially to type the stdlib.
-pub fn infer_record_type(t: &Term, term_env: &SimpleTermEnvironment) -> UnifType {
-    match t {
-        // An explicit annotation must take precedence over this inference, so let's use it.
-        t @ Term::MetaValue(MetaValue {
-            types, contracts, ..
-        }) if (types.is_some() || !contracts.is_empty()) => {
-            UnifType::from_apparent_type(apparent_type(t, None, None), term_env)
-        }
-        // We unwrap meta-values without any type information. Otherwise, something like a
-        // top-level module documentation would stop this function from doing its job.
-        Term::MetaValue(MetaValue {
-            value: Some(rt),
-            types: None,
-            contracts,
-            ..
-        }) if contracts.is_empty() => infer_record_type(rt.as_ref(), term_env),
+pub fn infer_record_type(rt: &RichTerm, term_env: &SimpleTermEnvironment) -> UnifType {
+    match rt.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(
             UnifRecordRows::Concrete(record.fields.iter().fold(
                 RecordRowsF::Empty,
-                |r, (id, rt)| RecordRowsF::Extend {
-                    row: UnifRecordRow {
-                        id: *id,
-                        types: Box::new(infer_record_type(rt.term.as_ref(), term_env)),
-                    },
-                    tail: Box::new(r.into()),
+                |r, (id, field)| {
+                    let uty = UnifType::from_apparent_type(
+                        field_apparent_type(field, None, None),
+                        term_env,
+                    );
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow {
+                            id: *id,
+                            types: Box::new(uty),
+                        },
+                        tail: Box::new(r.into()),
+                    }
                 },
             )),
         )),
@@ -1646,7 +1806,7 @@ fn has_wildcards(ty: &Types) -> bool {
     let mut has_wildcard = false;
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
-            &|ty, has_wildcard| {
+            &|ty: Types, has_wildcard| {
                 if ty.0.is_wildcard() {
                     *has_wildcard = true;
                 }

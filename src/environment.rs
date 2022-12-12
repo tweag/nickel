@@ -25,7 +25,7 @@ use std::rc::Rc;
 /// the current has been cloned and inserted in the previous environment already,
 /// so it can safely be reset as a new hashmap.
 /// The previous layers are set in order from the most recent one to the oldest.
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq)]
 pub struct Environment<K: Hash + Eq, V: PartialEq> {
     current: Rc<HashMap<K, V>>,
     previous: RefCell<Option<Rc<Environment<K, V>>>>,
@@ -53,13 +53,19 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     }
 }
 
-impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
-    /// Creates a new empty Environment.
-    pub fn new() -> Self {
+impl<K: Hash + Eq, V: PartialEq> Default for Environment<K, V> {
+    fn default() -> Self {
         Self {
             current: Rc::new(HashMap::new()),
             previous: RefCell::new(None),
         }
+    }
+}
+
+impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
+    /// Creates a new empty Environment.
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Inserts a key-value pair into the Environment.

@@ -25,7 +25,11 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use super::UnifType;
-use crate::{identifier::Ident, position::TermPos, term::Term};
+use crate::{
+    identifier::Ident,
+    position::TermPos,
+    term::{record::Field, Term},
+};
 
 /// Holds the state of a linearization, either in progress or finalized
 /// Restricts the possible states of a linearization to entities marked
@@ -80,10 +84,10 @@ pub trait Linearizer {
     type Completed: LinearizationState + Default;
     type CompletionExtra;
 
-    /// Record a new type
+    /// Record a new term.
     ///
-    /// `self` is assumed to be _scope stable_ meaning, it can hold information
-    /// valid in the current scope.
+    /// `self` is assumed to be _scope stable_ meaning, it can hold information valid in the
+    /// current scope.
     ///
     /// In practice this mainly includes environment information. Providing this
     /// state is the responsibility of [Linearizer::scope]
@@ -95,6 +99,16 @@ pub trait Linearizer {
         _ty: UnifType,
     ) {
     }
+
+    /// Record the metadata of a record field. The record field is guaranteed to be linearized
+    /// next, if the it has a value.
+    ///
+    /// `self` is assumed to be _scope stable_ meaning, it can hold information
+    /// valid in the current scope.
+    ///
+    /// In practice this mainly includes environment information. Providing this state is the
+    /// responsibility of [Linearizer::scope]
+    fn add_field_metadata(&mut self, _lin: &mut Linearization<Self::Building>, _field: &Field) {}
 
     /// Allows to amend the type of an ident in scope
     fn retype_ident(
@@ -132,7 +146,7 @@ pub trait Linearizer {
 
     /// Create a scope for the processing of terms potentially contained in metadata (contracts
     /// expressions in the annotations). When walking such terms, scoping behaves differently with
-    /// respect to the previous state (pending record fields, let binding, metavalue, etc.).
+    /// respect to the previous state (pending record fields, let binding, field metadata, etc.).
     /// Mostly, the `self` linearizer keeps the state while the returned one has a clean state.
     fn scope_meta(&mut self) -> Self;
 }

@@ -1,12 +1,15 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
 use error::ParseError;
-use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
+use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
     environment::Environment,
     position::{RawSpan, TermPos},
-    term::{record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
+    term::{
+        record::{Field, FieldMetadata, RecordAttrs},
+        LabeledType, MergePriority, RichTerm, Term, TypeAnnotation,
+    },
     types::{
         EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
         UnboundTypeVariableError, VarKind,
@@ -147,7 +150,7 @@ impl From<UniRecord> for UniTerm {
 /// A record in the `UniTerm` syntax.
 #[derive(Clone)]
 pub struct UniRecord {
-    pub fields: Vec<(FieldPath, RichTerm)>,
+    pub fields: Vec<FieldDef>,
     pub tail: Option<(RecordRows, TermPos)>,
     pub attrs: RecordAttrs,
     pub pos: TermPos,
@@ -169,23 +172,29 @@ impl UniRecord {
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
         fn term_to_record_rows(
             id: Ident,
-            rt: RichTerm,
+            field_def: FieldDef,
             tail: RecordRows,
         ) -> Result<RecordRows, InvalidRecordTypeError> {
             // At parsing stage, all `Rc`s must be 1-counted. We can thus call
             // `into_owned()` without risking to actually clone anything.
-            match rt.term.into_owned() {
-                Term::MetaValue(MetaValue {
-                    doc: None,
-                    types: Some(ctrt),
-                    contracts,
-                    opt: false,
-                    priority: MergePriority::Neutral,
+            match field_def.field {
+                Field {
                     value: None,
-                }) if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
+                    metadata:
+                        FieldMetadata {
+                            doc: None,
+                            annotation:
+                                TypeAnnotation {
+                                    types: Some(labeled_ty),
+                                    contracts,
+                                },
+                            opt: false,
+                            priority: MergePriority::Neutral,
+                        },
+                } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
                     row: RecordRow {
                         id,
-                        types: Box::new(ctrt.types),
+                        types: Box::new(labeled_ty.types),
                     },
                     tail: Box::new(tail),
                 })),
@@ -193,7 +202,7 @@ impl UniRecord {
                     // Position of identifiers must always be set at this stage
                     // (parsing)
                     let span_id = id.pos.unwrap();
-                    let term_pos = rt.pos.into_opt().unwrap_or(span_id);
+                    let term_pos = field_def.pos.into_opt().unwrap_or(span_id);
                     Err(InvalidRecordTypeError(TermPos::Original(
                         RawSpan::fuse(span_id, term_pos).unwrap(),
                     )))
@@ -220,10 +229,11 @@ impl UniRecord {
                 self.tail
                     .map(|(tail, _)| tail)
                     .unwrap_or(RecordRows(RecordRowsF::Empty)),
-                |acc: RecordRows, (mut path, rt)| {
+                |acc: RecordRows, mut field_def| {
                     // We don't support compound paths for types, yet.
-                    if path.len() > 1 {
-                        let span = path
+                    if field_def.path.len() > 1 {
+                        let span = field_def
+                            .path
                             .into_iter()
                             .map(|path_elem| match path_elem {
                                 FieldPathElem::Ident(id) => id.pos.into_opt(),
@@ -239,15 +249,15 @@ impl UniRecord {
                             span.map_or(TermPos::None, TermPos::Original),
                         ))
                     } else {
-                        let elem = path.pop().unwrap();
+                        let elem = field_def.path.pop().unwrap();
                         match elem {
-                            FieldPathElem::Ident(id) => term_to_record_rows(id, rt, acc),
+                            FieldPathElem::Ident(id) => term_to_record_rows(id, field_def, acc),
                             FieldPathElem::Expr(expr) => {
                                 let Some(id) = expr.term.as_ref().try_str_chunk_as_static_str() else {
-                                        return Err(InvalidRecordTypeError(rt.pos))
+                                        return Err(InvalidRecordTypeError(field_def.pos))
                                 };
                                 let id = Ident::new_with_pos(id, expr.pos);
-                                term_to_record_rows(id, rt, acc)
+                                term_to_record_rows(id, field_def, acc)
                             }
                         }
                     }
@@ -291,9 +301,9 @@ impl TryFrom<UniRecord> for RichTerm {
             let UniRecord { fields, attrs, .. } = ur;
             let elaborated = fields
                 .into_iter()
-                .map(|(path, mut rt)| {
-                    fix_field_types(&mut rt)?;
-                    Ok(elaborate_field_path(path, rt))
+                .map(|mut field_def| {
+                    fix_field_types(&mut field_def.field.metadata, field_def.pos.unwrap())?;
+                    Ok(field_def.elaborate())
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
@@ -511,10 +521,6 @@ impl FixTypeVars for Types {
             }
             TypeF::Forall {
                 ref var,
-                // TODO: pass a mutable ref to var_kind, and set the var kind while fixing type
-                // vars, depending on the position of type vars. Raise an error if the same type var
-                // appears in position with incompatible kinds (as a record rows and a type, for
-                // example).
                 ref mut var_kind,
                 ref mut body,
             } => {
@@ -599,15 +605,13 @@ impl FixTypeVars for EnumRows {
 
 /// Fix the type variables of types appearing as annotations of record fields. See
 /// [`Types::fix_type_vars`].
-pub fn fix_field_types(rt: &mut RichTerm) -> Result<(), ParseError> {
-    if let Term::MetaValue(ref mut m) = SharedTerm::make_mut(&mut rt.term) {
-        if let Some(Contract { ref mut types, .. }) = m.types {
-            types.fix_type_vars(rt.pos.unwrap())?;
-        }
+pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<(), ParseError> {
+    if let Some(LabeledType { ref mut types, .. }) = metadata.annotation.types {
+        types.fix_type_vars(span)?;
+    }
 
-        for ctr in m.contracts.iter_mut() {
-            ctr.types.fix_type_vars(rt.pos.unwrap())?;
-        }
+    for ctr in metadata.annotation.contracts.iter_mut() {
+        ctr.types.fix_type_vars(span)?;
     }
 
     Ok(())

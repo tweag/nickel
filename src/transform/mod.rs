@@ -3,7 +3,10 @@ use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{BindingType, Contract, RichTerm, Term, TraverseOrder},
+    term::{
+        record::{Field, FieldMetadata},
+        BindingType, LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation,
+    },
     typecheck::Wildcards,
     types::{TypeF, Types, UnboundTypeVariableError},
 };
@@ -173,16 +176,66 @@ impl Closurizable for Types {
     }
 }
 
-impl Closurizable for Contract {
+impl Closurizable for LabeledType {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Contract {
-        Contract {
+    ) -> LabeledType {
+        LabeledType {
             types: self.types.closurize(cache, env, with_env),
             label: self.label,
         }
+    }
+}
+
+impl Closurizable for TypeAnnotation {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> TypeAnnotation {
+        let types = self
+            .types
+            .map(|ty| ty.closurize(cache, env, with_env.clone()));
+        let contracts = self
+            .contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.closurize(cache, env, with_env.clone()))
+            .collect();
+
+        TypeAnnotation { types, contracts }
+    }
+}
+
+impl Closurizable for FieldMetadata {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> FieldMetadata {
+        FieldMetadata {
+            annotation: self.annotation.closurize(cache, env, with_env),
+            ..self
+        }
+    }
+}
+
+impl Closurizable for Field {
+    fn closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> Field {
+        let metadata = self.metadata.closurize(cache, env, with_env.clone());
+        let value = self
+            .value
+            .map(|value| value.closurize(cache, env, with_env));
+
+        Field { metadata, value }
     }
 }

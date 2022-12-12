@@ -5,7 +5,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::record::RecordData;
+use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck::type_check;
@@ -306,6 +306,10 @@ impl Cache {
         Ok(self.add_string(source_name, buffer))
     }
 
+    pub fn source(&self, id: FileId) -> &str {
+        self.files.source(id)
+    }
+
     /// Load a new source as a string and add it to the name-id table.
     ///
     /// Do not check if a source with the same name already exists: if it is the case, this one
@@ -573,7 +577,14 @@ impl Cache {
                             let map_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(fields)
                                     .into_iter()
-                                    .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
+                                    .map(|(id, field)| {
+                                        Ok((
+                                            id,
+                                            field.try_map_value(|v| {
+                                                transform::transform(v, wildcards)
+                                            })?,
+                                        ))
+                                    })
                                     .collect();
                             *fields = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
@@ -583,16 +594,29 @@ impl Cache {
                             let map_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(&mut record.fields)
                                     .into_iter()
-                                    .map(|(id, t)| Ok((id, transform::transform(t, wildcards)?)))
+                                    .map(|(id, field)| {
+                                        Ok((
+                                            id,
+                                            field.try_map_value(|v| {
+                                                transform::transform(v, wildcards)
+                                            })?,
+                                        ))
+                                    })
                                     .collect();
 
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
                                     .into_iter()
-                                    .map(|(id_t, t)| {
+                                    .map(|(id_t, mut field)| {
+                                        let value = field
+                                            .value
+                                            .take()
+                                            .map(|v| transform::transform(v, wildcards))
+                                            .transpose()?;
+
                                         Ok((
                                             transform::transform(id_t, wildcards)?,
-                                            transform::transform(t, wildcards)?,
+                                            Field { value, ..field },
                                         ))
                                     })
                                     .collect();
