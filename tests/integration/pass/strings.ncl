@@ -24,5 +24,6 @@ let {check, ..} = import "testlib.ncl" in
   # regression test for issue #659 (https://github.com/tweag/nickel/issues/659)
   let b = "x" in m%"a%%{b}c"%m == "a%xc",
   m%"%Hel%%{"1"}lo%%%{"2"}"%m == "%Hel%1lo%%2",
+  let res = string.find "a" "bac" in res.matched == "a" && res.index == 1,
 ]
 |> check
