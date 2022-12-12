@@ -1117,7 +1117,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                             .collect();
 
                         mk_record!(
-                            ("match", Term::Str(String::from(first_match.as_str()))),
+                            ("matched", Term::Str(String::from(first_match.as_str()))),
                             ("index", Term::Num(first_match.start() as f64)),
                             (
                                 "groups",
@@ -1127,7 +1127,7 @@ impl<R: ImportResolver> VirtualMachine<R> {
                     } else {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
-                            ("match", Term::Str(String::new())),
+                            ("matched", Term::Str(String::new())),
                             ("index", Term::Num(-1.)),
                             (
                                 "groups",
