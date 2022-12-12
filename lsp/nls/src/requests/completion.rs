@@ -625,7 +625,7 @@ mod tests {
         fn single_case<const N: usize>(
             linearization: Vec<LinearizationItem<Types>>,
             ids: [ItemId; N],
-            mut expected: Vec<IdentWithMeta>,
+            expected: Vec<IdentWithMeta>,
         ) {
             let mut expected: Vec<_> = expected.iter().map(|iwm| iwm.ident).collect();
             expected.sort();
