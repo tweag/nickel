@@ -164,7 +164,10 @@ fn find_fields_from_contract(
 ) -> Option<Vec<IdentWithType>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
-        Some(meta_value) => Some(find_fields_from_meta_value(meta_value, path)),
+        Some(meta_value) => {
+            let result = find_fields_from_meta_value(meta_value, path);
+            (!result.is_empty()).then_some(result)
+        }
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
