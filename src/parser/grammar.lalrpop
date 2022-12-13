@@ -477,7 +477,10 @@ Bool: bool = {
 // Strings that support interpolation.
 StrChunks: RichTerm = {
   <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
-        debug_assert_eq!(start, end);
+        debug_assert!(
+            start.is_closed_by(&end),
+            "Fatal parser error: a string starting with {start:?} should never be closed by {end:?}"
+        );
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
             .map(StrChunk::Literal)
@@ -490,10 +493,9 @@ StrChunks: RichTerm = {
             .chain(lasts.into_iter())
             .collect();
 
-        let mut chunks = if start == StringKind::Multiline {
+        let mut chunks = if start.needs_strip_indent() {
             strip_indent(chunks)
-        }
-        else {
+        } else {
             chunks
         };
         chunks.reverse();
@@ -502,14 +504,14 @@ StrChunks: RichTerm = {
     },
 };
 
-StringStart : StringKind = {
-    "\"" => StringKind::Standard,
-    "m%\"" => StringKind::Multiline,
+StringStart : StringStartDelimiter = {
+    "\"" => StringStartDelimiter::Standard,
+    "m%\"" => StringStartDelimiter::Multiline,
 };
 
-StringEnd : StringKind = {
-    "\"" => StringKind::Standard,
-    "\"%" => StringKind::Multiline,
+StringEnd : StringEndDelimiter = {
+    "\"" => StringEndDelimiter::Standard,
+    "\"%" => StringEndDelimiter::Multiline,
 };
 
 ChunkLiteral : String =
