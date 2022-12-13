@@ -86,21 +86,19 @@ impl IdentWithMeta {
                 format!("\"{}\"", name)
             }
         }
+        let doc = || {
+            let item = self.item.as_ref()?;
+            let meta = item.meta.as_ref()?;
+            let doc = meta.doc.as_ref()?;
+            let doc =
+                Documentation::String(format!("{}\nMerge Priority {}", doc.clone(), meta.priority));
+            Some(doc)
+        };
         CompletionItem {
             label: adjust_name(self.ident.label()),
             detail: Some(self.compute_detail()),
             kind: Some(self.compute_completion_item_kind()),
-            documentation: self.item.as_ref().and_then(|item| {
-                item.meta.as_ref().and_then(|meta| {
-                    meta.doc.as_ref().map(|doc| {
-                        Documentation::String(format!(
-                            "{}\nMerge Priority {}",
-                            doc.clone(),
-                            meta.priority
-                        ))
-                    })
-                })
-            }),
+            documentation: doc(),
             ..Default::default()
         }
     }
