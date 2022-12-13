@@ -67,7 +67,7 @@ impl IdentWithMeta {
                         .or_else(|| meta.contracts_to_string())
                 })
             })
-            .unwrap_or(self.ty.to_string())
+            .unwrap_or_else(|| self.ty.to_string())
     }
 
     fn compute_completion_item_kind(&self) -> CompletionItemKind {
@@ -92,12 +92,12 @@ impl IdentWithMeta {
             kind: Some(self.compute_completion_item_kind()),
             documentation: self.item.as_ref().and_then(|item| {
                 item.meta.as_ref().and_then(|meta| {
-                    meta.doc.as_ref().and_then(|doc| {
-                        Some(Documentation::String(format!(
+                    meta.doc.as_ref().map(|doc| {
+                        Documentation::String(format!(
                             "{}\nMerge Priority {}",
                             doc.clone(),
-                            meta.priority.to_string()
-                        )))
+                            meta.priority
+                        ))
                     })
                 })
             }),
