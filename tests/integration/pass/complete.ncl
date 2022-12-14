@@ -1,4 +1,4 @@
-let {Assert, ..} = import "testlib.ncl" in
+let {Assert, ..} = import "lib/assert.ncl" in
 
 let Y | ((Num -> Num) -> Num -> Num) -> Num -> Num = fun f => (fun x => f (x x)) (fun x => f (x x)) in
 let dec : Num -> Num = fun x => x + (-1) in

@@ -1,3 +1,3 @@
-let {Assert, ..} = import "testlib.ncl" in
+let {Assert, ..} = import "lib/assert.ncl" in
 
-(import "imported.ncl" 3 == 3 | Assert)
+(import "lib/imported.ncl" 3 == 3 | Assert)

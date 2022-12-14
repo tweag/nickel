@@ -1,4 +1,4 @@
-let {check, ..} = import "testlib.ncl" in
+let {check, ..} = import "lib/assert.ncl" in
 
 [
   # regression test for issue #908 (https://github.com/tweag/nickel/issues/908)

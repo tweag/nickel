@@ -1,4 +1,4 @@
-let {check, ..} = import "testlib.ncl" in
+let {check, ..} = import "lib/assert.ncl" in
 
 [
   {foo | default = 1} & {foo = 2} == {foo = 2},

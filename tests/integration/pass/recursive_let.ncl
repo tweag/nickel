@@ -1,4 +1,4 @@
-let {check, ..} = import "testlib.ncl" in
+let {check, ..} = import "lib/assert.ncl" in
 
 [
   let rec f = fun n => if n == 0 then n else f (n - 1) in f 10 == 0,

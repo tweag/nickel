@@ -1,4 +1,4 @@
-let {Assert, check, ..} =  import "testlib.ncl" in
+let {Assert, check, ..} =  import "lib/assert.ncl" in
 
 [
   let block1 = {
