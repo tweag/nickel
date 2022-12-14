@@ -393,6 +393,20 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     })
                 }
             }
+            Term::ResolvedImport(file) => lin.push(LinearizationItem {
+                env: self.env.clone(),
+                id,
+                pos,
+                ty,
+                kind: TermKind::Usage(UsageState::Resolved(ItemId {
+                    file_id: *file,
+                    index: 0,
+                })),
+                meta: self.meta.take(),
+            }),
+            Term::Import(file) => {
+                panic!("unreaolve import with location {:?}", file)
+            }
             other => {
                 debug!("Add wildcard item: {:?}", other);
 
@@ -440,7 +454,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         lin.resolve_record_references(self.file, defers);
 
         let Building {
-            mut linearization, ..
+            mut linearization,
+            lin_cache,
         } = lin.into_inner();
 
         linearization.sort_by(
@@ -495,7 +510,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             })
             .collect();
 
-        Linearization::new(Completed::new(lin_, id_mapping))
+        Linearization::new(Completed::new(lin_, id_mapping, lin_cache.clone()))
     }
 
     fn scope(&mut self) -> Self {

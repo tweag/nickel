@@ -637,15 +637,17 @@ impl Cache {
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
             Some(state) if state >= EntryState::Parsed => {
+                let mut ps = Vec::new();
                 if state < EntryState::ImportsResolving {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.remove(&file_id).unwrap();
                     let (term, pending) = import_resolution::resolve_imports(term, self)?;
+                    ps = pending.clone();
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -667,7 +669,7 @@ impl Cache {
                 }
 
                 self.update_state(file_id, EntryState::ImportsResolved);
-                Ok(CacheOp::Done(()))
+                Ok(CacheOp::Done(ps))
             }
             _ => Err(CacheError::NotParsed),
         }
@@ -692,7 +694,7 @@ impl Cache {
                 "cache::prepare(): expected source to be parsed before imports resolutions",
             )
         })?;
-        if import_res == CacheOp::Done(()) {
+        if matches!(import_res, CacheOp::Done(..)) {
             result = CacheOp::Done(());
         };
 

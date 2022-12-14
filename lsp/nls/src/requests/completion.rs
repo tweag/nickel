@@ -151,8 +151,11 @@ fn find_fields_from_term_kind(
             value: ValueState::Known(new_id),
             ..
         }
-        | TermKind::Declaration(_, _, ValueState::Known(new_id))
-        | TermKind::Usage(UsageState::Resolved(new_id)) => {
+        | TermKind::Declaration(_, _, ValueState::Known(new_id)) => {
+            find_fields_from_term_kind(linearization, new_id, path)
+        }
+        TermKind::Usage(UsageState::Resolved(new_id)) => {
+            // panic!("{:?}", linearization.get_item(new_id));
             find_fields_from_term_kind(linearization, new_id, path)
         }
         _ => Vec::new(),
@@ -330,6 +333,7 @@ fn collect_record_info(
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
+                (TermKind::Record(data), _) => data.keys().cloned().collect(),
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
@@ -637,6 +641,26 @@ mod tests {
 
     #[test]
     fn test_find_record_fields() {
+        fn make_linearization_item(id: ItemId, kind: TermKind) -> LinearizationItem<Types> {
+            LinearizationItem {
+                env: Environment::new(),
+                id,
+                pos: TermPos::None,
+                ty: Types(TypeF::Dyn),
+                kind,
+                meta: None,
+            }
+        }
+        fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
+            let id_to_index: HashMap<_, _> = linearization
+                .iter()
+                .map(|item| item.id)
+                .enumerate()
+                .map(|(index, id)| (id, index))
+                .collect();
+            Completed::new(linearization, id_to_index, HashMap::new())
+        }
+
         // ids is an array of the ids from this linearization
         // which would give the expected output
         fn single_case<const N: usize>(

@@ -81,7 +81,6 @@ impl Server {
     }
 
     pub fn initialize_stdlib_environment(&mut self) -> Option<()> {
-        let mut initial = Environment::new();
         let modules = stdlib::modules();
         for module in modules {
             // This module has a different format from the rest of the stdlib items
@@ -104,10 +103,8 @@ impl Server {
             }
             .unwrap();
 
-            initial.insert(name, *id);
+            self.initial_env.insert(name, *id);
         }
-
-        self.initial_env = initial;
         Some(())
     }
 

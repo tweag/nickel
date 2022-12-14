@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use codespan::ByteIndex;
+use codespan::{ByteIndex, FileId};
 use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState};
 
 use super::{
@@ -12,23 +12,44 @@ use super::{
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     id_to_index: HashMap<ItemId, usize>,
+    lin_cache: HashMap<FileId, Completed>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
         id_to_index: HashMap<ItemId, usize>,
+        lin_cache: HashMap<FileId, Completed>,
     ) -> Self {
         Self {
             linearization,
             id_to_index,
+            lin_cache,
         }
     }
 
     pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
+        let ItemId { file_id, .. } = id;
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
+            .or_else(|| {
+                // panic!("{:?}", self.lin_cache.keys().count());
+                let c = self.lin_cache.get(&file_id).unwrap();
+                // let cs = self.lin_cache.values().collect::<Vec<_>>();
+                //let ks = self.lin_cache.keys().collect::<Vec<_>>();
+                // panic!("{:?}-{:?}", file_id, ks);
+                // panic!("{:?}", c.get(4).unwrap());
+                // let c = c.iter().rev().next().unwrap();
+                // panic!("here");
+                // for c in cs {
+                //     if let Some(x) = c.get_item(id) {
+                //         return Some(x);
+                //     }
+                // }
+                // panic!("none found")
+                c.get_item(id)
+            })
     }
 
     pub fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Resolved>> {
