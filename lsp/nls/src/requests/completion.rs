@@ -658,7 +658,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, id)| (id, index))
                 .collect();
-            Completed::new(linearization, id_to_index, HashMap::new())
+            Completed::new(linearization, id_to_index)
         }
 
         // ids is an array of the ids from this linearization

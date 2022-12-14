@@ -5,26 +5,23 @@ use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState}
 
 use super::{
     interface::{Resolved, TermKind, UsageState, ValueState},
-    ItemId, LinearizationItem,
+    ItemId, LinearizationItem, LIN_CACHE,
 };
 
 #[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     id_to_index: HashMap<ItemId, usize>,
-    lin_cache: HashMap<FileId, Completed>,
 }
 
 impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
         id_to_index: HashMap<ItemId, usize>,
-        lin_cache: HashMap<FileId, Completed>,
     ) -> Self {
         Self {
             linearization,
             id_to_index,
-            lin_cache,
         }
     }
 
@@ -33,8 +30,9 @@ impl Completed {
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
-            .or_else(|| {
-                let c = self.lin_cache.get(&file_id).unwrap();
+            .or_else(|| unsafe {
+                let lin_cache = LIN_CACHE.as_ref()?;
+                let c = lin_cache.get(&file_id).unwrap();
                 c.get_item(id)
             })
     }
