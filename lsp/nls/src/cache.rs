@@ -44,11 +44,11 @@ impl CacheExt for Cache {
             return Err(CacheError::NotParsed);
         }
 
-        // if let CacheOp::Done(ids) = self.resolve_imports(file_id).unwrap() {
-        //     for id in ids {
-        //         self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache).unwrap();
-        //     }
-        // }
+        if let CacheOp::Done(ids) = self.resolve_imports(file_id).unwrap() {
+            for id in ids {
+                self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache).unwrap();
+            }
+        }
         
         // After self.parse(), the cache must be populated
         let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();

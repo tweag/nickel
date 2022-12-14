@@ -34,20 +34,7 @@ impl Completed {
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
             .or_else(|| {
-                // panic!("{:?}", self.lin_cache.keys().count());
                 let c = self.lin_cache.get(&file_id).unwrap();
-                // let cs = self.lin_cache.values().collect::<Vec<_>>();
-                //let ks = self.lin_cache.keys().collect::<Vec<_>>();
-                // panic!("{:?}-{:?}", file_id, ks);
-                // panic!("{:?}", c.get(4).unwrap());
-                // let c = c.iter().rev().next().unwrap();
-                // panic!("here");
-                // for c in cs {
-                //     if let Some(x) = c.get_item(id) {
-                //         return Some(x);
-                //     }
-                // }
-                // panic!("none found")
                 c.get_item(id)
             })
     }

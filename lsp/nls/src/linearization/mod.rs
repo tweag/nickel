@@ -404,9 +404,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 })),
                 meta: self.meta.take(),
             }),
-            Term::Import(file) => {
-                panic!("unreaolve import with location {:?}", file)
-            }
             other => {
                 debug!("Add wildcard item: {:?}", other);
 
