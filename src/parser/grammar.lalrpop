@@ -474,7 +474,9 @@ Bool: bool = {
     "false" => false,
 };
 
-// Strings that support interpolation.
+// String-like syntax which supports interpolation.
+// Depending on the opening brace, these either parse as strings, or as "symbolic strings",
+// which get desugared here to an array of terms.
 StrChunks: RichTerm = {
   <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
         debug_assert!(
@@ -493,20 +495,30 @@ StrChunks: RichTerm = {
             .chain(lasts.into_iter())
             .collect();
 
-        let mut chunks = if start.needs_strip_indent() {
+        let chunks = if start.needs_strip_indent() {
             strip_indent(chunks)
         } else {
             chunks
         };
-        chunks.reverse();
 
-        RichTerm::from(Term::StrChunks(chunks))
+        if start == StringStartDelimiter::Symbolic {
+            let terms = chunks.into_iter().map(|chunk| match chunk {
+                StrChunk::Literal(l) => Term::Str(l).into(),
+                StrChunk::Expr(e, _) => e,
+            }).collect();
+            RichTerm::from(Term::Array(terms, Default::default()))
+        } else {
+            let mut chunks = chunks;
+            chunks.reverse();
+            RichTerm::from(Term::StrChunks(chunks))
+        }
     },
 };
 
 StringStart : StringStartDelimiter = {
     "\"" => StringStartDelimiter::Standard,
     "m%\"" => StringStartDelimiter::Multiline,
+    "s%\"" => StringStartDelimiter::Symbolic,
 };
 
 StringEnd : StringEndDelimiter = {
@@ -886,6 +898,7 @@ extern {
         "\"" => Token::Normal(NormalToken::DoubleQuote),
         "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
+        "s%\"" => Token::Normal(NormalToken::SymbolicStringStart(<usize>)),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),

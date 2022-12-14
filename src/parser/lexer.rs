@@ -160,6 +160,8 @@ pub enum NormalToken<'input> {
     Underscore,
     #[regex("m(%+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
+    #[regex("s(%+)\"", |lex| lex.slice().len())]
+    SymbolicStringStart(usize),
 
     #[token("%tag%")]
     Tag,
@@ -605,7 +607,10 @@ impl<'input> Iterator for Lexer<'input> {
             Some(Normal(NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin)) => {
                 self.enter_str()
             }
-            Some(Normal(NormalToken::MultiStringStart(delim_size))) => {
+            Some(Normal(
+                NormalToken::MultiStringStart(delim_size)
+                | NormalToken::SymbolicStringStart(delim_size),
+            )) => {
                 // for interpolation & closing delimeters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).

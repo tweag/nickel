@@ -23,12 +23,13 @@ use crate::{
     types::{TypeF, Types},
 };
 
-/// Distinguish between the standard string opening delimiter `"` and the multi-line string
-/// opening delimter `m%"`
+/// Distinguish between the standard string opening delimiter `"`, the multi-line string
+/// opening delimter `m%"`, and the symbolic string opening delimiter `s%"`.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum StringStartDelimiter {
     Standard,
     Multiline,
+    Symbolic,
 }
 
 impl StringStartDelimiter {
@@ -40,13 +41,17 @@ impl StringStartDelimiter {
                     StringStartDelimiter::Multiline,
                     StringEndDelimiter::Multiline
                 )
+                | (
+                    StringStartDelimiter::Symbolic,
+                    StringEndDelimiter::Multiline
+                )
         )
     }
 
     pub fn needs_strip_indent(&self) -> bool {
         match self {
             StringStartDelimiter::Standard => false,
-            StringStartDelimiter::Multiline => true,
+            StringStartDelimiter::Multiline | StringStartDelimiter::Symbolic => true,
         }
     }
 }
