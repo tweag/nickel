@@ -1,5 +1,4 @@
-# /!\ THIS EXAMPLE IS EXPECTED TO FAIL
-# Illustrate a basic contract violation.
+# test: blame
 
 let Even = fun label value =>
   if builtin.is_num value && value % 2 == 0 then
@@ -11,6 +10,6 @@ let DivBy3 = fun label value =>
     value
   else
     contract.blame label in
-# Will cause an error! 4 is no divided by 3.
+# Will cause an error! 4 is not divisible by 3.
 (4 | Even
    | DivBy3)

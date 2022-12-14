@@ -1,3 +1,5 @@
+# test: pass
+
 # Example of simple custom contract, parametrized by a first argument.
 # In practice, for this kind of simple predicate, one should rather use
 # `contract.from_predicate`

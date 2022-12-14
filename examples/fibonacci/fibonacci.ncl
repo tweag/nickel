@@ -1,3 +1,5 @@
+# test: pass
+
 # This is the naive, exponential version of fibonacci: don't call it on a big
 # value!
 let rec fibonacci = fun n =>
