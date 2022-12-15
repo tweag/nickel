@@ -75,10 +75,11 @@ crates and dependent repositories (such as the website) in a consistent state.
 
    **Commit those changes temporarily to please cargo, but they will be
    dropped later. Do not push**.
-2. Check that `cargo publish --dry-run` succeeds. You may have to create an
-   account on `crates.io` and get a key for `nickel-lang` and
-   `nickel-lang-lsp`: please refer to cargo documentation and contact the
-   Nickel maintainers.
+2. Check that `cargo publish --dry-run` succeeds. For this to work, you will
+   need to be signed in to `crates.io` with a GitHub account that is part of
+   the [Nickel Core team](https://github.com/orgs/nickel-lang/teams/core),
+   and have a `crates.io` API key saved locally on your machine (normally
+   via `cargo login`). For help with this, contact the Nickel maintainers.
 3. Release on crates.io: `cargo publish`
 4. Ditch the potential changes made to the cargo manifests at step 1. by
    dropping the corresponding commit.
@@ -107,7 +108,7 @@ crates and dependent repositories (such as the website) in a consistent state.
    $git checkout -b release/X.Y.Z
    $nix flake lock --update-input nickel
    $git add flake.lock
-   $git ci -m "Update to Nickel vX.Y.Z"
+   $git commit -m "Update to Nickel vX.Y.Z"
    $git push -u origin @
    ```
 
