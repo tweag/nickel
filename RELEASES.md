@@ -1,3 +1,11 @@
+Version 0.3.1 (2022-12-15)
+==========================
+
+Fixes
+-----
+
+- Fix blame error when calling `string.find` by @euank in https://github.com/tweag/nickel/pull/988
+
 Version 0.3  (2022-12-07)
 =========================
 
