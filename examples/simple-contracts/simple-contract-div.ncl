@@ -1,5 +1,7 @@
 # test: blame
 
+# /!\ THIS EXAMPLE IS EXPECTED TO FAIL
+# Illustrates a basic contract violation.
 let Even = fun label value =>
   if builtin.is_num value && value % 2 == 0 then
     value
