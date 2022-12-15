@@ -10,10 +10,9 @@ use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
-    CompletionOptions, CompletionParams,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbolParams,
-    GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
-    ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
+    OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
     TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
