@@ -1,4 +1,4 @@
-let {check, ..} = import "testlib.ncl" in
+let {check, ..} = import "lib/assert.ncl" in
 
 let assertSerInv = fun x =>
     let assertAux = fun format x =>

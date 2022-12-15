@@ -70,6 +70,7 @@ criterion = "0.3"
 pprof = { version = "0.9.1", features = ["criterion", "flamegraph"] }
 nickel-lang-utilities = {path = "utilities", version = "0.3.0"}
 similar = "2.1.0"
+test-generator = "0.3.1"
 
 [workspace]
 members = [
