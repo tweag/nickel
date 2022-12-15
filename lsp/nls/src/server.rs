@@ -10,7 +10,7 @@ use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
-    CompletionOptions, CompletionOptionsCompletionItem, CompletionParams,
+    CompletionOptions, CompletionParams,
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbolParams,
     GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability, OneOf,
     ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
@@ -61,9 +61,6 @@ impl Server {
             completion_provider: Some(CompletionOptions {
                 trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
                 resolve_provider: Some(true),
-                completion_item: Some(CompletionOptionsCompletionItem {
-                    label_details_support: Some(true),
-                }),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),

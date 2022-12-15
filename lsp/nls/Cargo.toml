@@ -27,7 +27,7 @@ structopt = "0.3"
 regex = "1.5"
 
 lsp-server = "0.6"
-lsp-types = { version = "0.88", features = ["proposed"] }
+lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
