@@ -1,3 +1,5 @@
+# test: pass
+
 # First projection, statically typed
 let fst : forall a b. a -> b -> a = fun x y => x in
 # Evaluation function, statically typed

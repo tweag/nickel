@@ -1,3 +1,5 @@
+# test: pass
+
 # Example array functions. This code is illustrative: prefer using the array 
 # stdlib functions `array.map` and `array.fold` instead.
 let my_array_lib = {

@@ -1,56 +1,53 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError};
-use nickel_lang::term::RichTerm;
 use nickel_lang_utilities::TestProgram;
+use std::fs::File;
+use std::io::{self, BufRead};
 use std::path::PathBuf;
+use test_generator::test_resources;
 
-fn eval_file(file: &str) -> Result<RichTerm, Error> {
+#[test_resources("examples/**/*.ncl")]
+fn eval_file(file: &str) {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("examples/{}", file));
-    let mut p = TestProgram::new_from_file(path).expect("could not load file as a program");
-    p.eval_deep()
+    path.push(file);
+
+    let annotation = extract_annotation(path.clone());
+
+    match annotation {
+        ExampleAnnotation::Ignore => (),
+        ExampleAnnotation::Blame => {
+            let mut p = TestProgram::new_from_file(path).expect("could not load file as a program");
+            assert_matches!(
+                p.eval_deep(),
+                Err(Error::EvalError(EvalError::BlameError(..)))
+            );
+        }
+        ExampleAnnotation::Pass => {
+            let mut p = TestProgram::new_from_file(path).expect("could not load file as a program");
+            p.eval_deep().unwrap();
+        }
+    }
 }
 
-#[test]
-fn config_gcc() {
-    eval_file("config-gcc/config-gcc.ncl").unwrap();
+enum ExampleAnnotation {
+    Pass,
+    Blame,
+    Ignore,
 }
 
-#[test]
-fn fibonacci() {
-    eval_file("fibonacci/fibonacci.ncl").unwrap();
-}
+fn extract_annotation(path: PathBuf) -> ExampleAnnotation {
+    let file = File::open(path).unwrap();
+    let reader = io::BufReader::new(file);
+    let first_line = reader
+        .lines()
+        .next()
+        .expect("Found empty example file")
+        .expect("Error reading example file");
 
-#[test]
-fn arrays() {
-    eval_file("arrays/arrays.ncl").unwrap();
-}
-
-#[test]
-fn merge_main() {
-    eval_file("merge/main.ncl").unwrap();
-}
-
-#[test]
-fn polymorphism() {
-    eval_file("polymorphism/polymorphism.ncl").unwrap();
-}
-
-#[test]
-fn record_contract() {
-    eval_file("record-contract/record-contract.ncl").unwrap();
-}
-
-#[test]
-fn simple_contract_bool() {
-    eval_file("simple-contracts/simple-contract-bool.ncl").unwrap();
-}
-
-/// This example is expected to fail.
-#[test]
-fn simple_contract_div() {
-    assert_matches!(
-        eval_file("simple-contracts/simple-contract-div.ncl"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
-    );
+    match first_line.strip_prefix("# test: ") {
+        Some("pass") => ExampleAnnotation::Pass,
+        Some("blame") => ExampleAnnotation::Blame,
+        Some("ignore") => ExampleAnnotation::Ignore,
+        _ => panic!("Invalid example file annotation. Example files must begin with `# test: (pass|blame|ignore)`")
+    }
 }
