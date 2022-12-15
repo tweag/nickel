@@ -119,21 +119,27 @@ Tests are run via `cargo test`. They are two types of tests:
 - Unit tests, located directly in the corresponding module.
 - Integration tests, located in the dedicated crate `tests/integration`.
 
-You can take inspiration from the existing tests to add your own. By convention,
-tests expected to pass are written in a standalone Nickel file in
-`tests/integration/pass/`. Each `.ncl` file defines a list of expressions that
-must individually evaluate to the boolean `true`. The whole file is an
-expression that returns true if and only if every tests pass, or fail with a
-contract failure to help locating the failing test (instead of returning just
-`false`).
+### Happy-path testing
 
-If a test expected to pass is failing, run it directly using nickel with
-`nickel -f tests/integration/pass/test_that_doesnt_pass.ncl` to get better error
-messages than `cargo test`.
+Tests for the happy path - i.e., valid Nickel programs which do not raise errors
+are generally written in standalone Nickel files in the `tests/integration/pass`
+directory. All `.ncl` files in this directory are automatically converted into
+Rust integration tests, which run the file and assert that no errors were
+raised during evaluation.
 
-Tests expected to fail are often embedded directly into rust source code,
-because you usually want to additionally check that the error is the one you
-expect. For example ([`tests/integration/records_fail.rs`](./tests/records_fail.rs)):
+Each of these `.ncl` files is structured as an array of `Bool` expressions, which
+is ultimately passed to a `check` function defined in
+`tests/integration/pass/lib/assert.ncl`. This function applies an `Assert` contract
+to each value in the array, which checks that the value it is applied to evalutes
+to `true`. The benefit of using a contract for this is that if a test fails we
+can simply run the file directly using Nickel, which gives better error messages
+than the ones we get by default from `cargo test`.
+
+### Testing failures
+
+Tests which are expected to fail are currently written in Rust, because that makes
+it possible to additionally check which particular error was raised. For example,
+([`tests/integration/records_fail.rs`](./tests/integration/records_fail.rs)):
 
 ```rust
 #[test]
@@ -147,6 +153,30 @@ fn non_mergeable() {
         Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
     );
 }
+```
+
+The exception to the above is the suite of tests which check that the programs in
+`examples/` behave as expected. These tests are also auto-generated from the example
+programs, but since not every example is expected to pass, these files are annotated
+with a comment declaring the expected behaviour. For example
+([`examples/simple-contracts/simple-contract-div.ncl`](./examples/simple-contracts/simple-contract-div.ncl)):
+
+```nickel
+# test: blame
+
+let Even = fun label value =>
+  if builtin.is_num value && value % 2 == 0 then
+    value
+  else
+    contract.blame label in
+let DivBy3 = fun label value =>
+  if builtin.is_num value && value % 3 == 0 then
+    value
+  else
+    contract.blame label in
+# Will cause an error! 4 is not divisible by 3.
+(4 | Even
+   | DivBy3)
 ```
 
 ## Benchmarking
