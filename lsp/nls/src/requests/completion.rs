@@ -164,10 +164,7 @@ fn find_fields_from_contract(
 ) -> Option<Vec<IdentWithType>> {
     let item = linearization.get_item(id)?;
     match &item.meta {
-        Some(meta_value) => {
-            let result = find_fields_from_meta_value(meta_value, path);
-            (!result.is_empty()).then_some(result)
-        }
+        Some(meta_value) => Some(find_fields_from_meta_value(meta_value, path)),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
@@ -331,9 +328,15 @@ fn collect_record_info(
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
-                    find_fields_from_contract(linearization, *body_id, path)
-                        .or_else(|| find_fields_from_term_kind(linearization, id, path))
-                        .unwrap_or_default()
+                    // The path is mutable, so the first case would consume the path
+                    // so we have to clone it so that it can be correctly used for the second case.
+                    let mut p = path.clone();
+                    let mut fst = find_fields_from_contract(linearization, *body_id, path)
+                        .unwrap_or_default();
+                    let snd =
+                        find_fields_from_term_kind(linearization, id, &mut p).unwrap_or_default();
+                    fst.extend(snd);
+                    fst
                 }
                 (
                     TermKind::RecordField {
