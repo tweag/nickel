@@ -25,5 +25,16 @@ let {check, ..} = import "lib/assert.ncl" in
   let b = "x" in m%"a%%{b}c"% == "a%xc",
   m%"%Hel%%{"1"}lo%%%{"2"}"% == "%Hel%1lo%%2",
   let res = string.find "a" "bac" in res.matched == "a" && res.index == 1,
+
+  # length
+  string.length "" == 0,
+  string.length "nickel" == 6,
+  # Hungarian `ő` character.
+  string.length "unicőde" == 7,
+  # Vietnamese `ế ` character.
+  string.length "nickếl" == 6,
+  string.length "四字熟語" == 4,
+  string.length "👩🏿‍❤️‍💋‍👩🏼" == 1,
+  string.length "👨‍❤️‍💋‍👨" == 1,
 ]
 |> check

@@ -36,6 +36,7 @@ use crate::{
 use md5::digest::Digest;
 
 use simple_counter::*;
+use unicode_segmentation::UnicodeSegmentation;
 
 use std::{iter::Extend, rc::Rc};
 
@@ -984,8 +985,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrLength() => {
                 if let Term::Str(s) = &*t {
+                    let length = s.graphemes(true).count();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(s.len() as f64),
+                        Term::Num(length as f64),
                         pos_op_inh,
                     )))
                 } else {
