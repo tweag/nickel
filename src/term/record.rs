@@ -1,4 +1,4 @@
-use super::{MergePriority, RichTerm, SealingKey, LabeledType, TypeAnnotation};
+use super::{LabeledType, MergePriority, RichTerm, SealingKey, TypeAnnotation};
 use crate::{identifier::Ident, label::Label, types::Types};
 use std::{
     collections::{HashMap, HashSet},
@@ -116,7 +116,10 @@ impl FieldMetadata {
             }
         }
 
-        outer.annotation.contracts.extend(inner.annotation.contracts.into_iter());
+        outer
+            .annotation
+            .contracts
+            .extend(inner.annotation.contracts.into_iter());
 
         let priority = match (outer.priority, inner.priority) {
             // Neutral corresponds to the case where no priority was specified. In that case, the
@@ -193,7 +196,6 @@ pub struct RecordData {
     pub sealed_tail: Option<SealedTail>,
 }
 
-
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
 /// definition and isn't optional.
 pub struct MissingFieldDefinitionError(pub FieldMetadata);
@@ -222,10 +224,8 @@ impl RecordData {
         Default::default()
     }
 
-    /// A record with the provided fields & the default set of attributes.
+    /// A record with the provided fields and the default set of attributes.
     pub fn with_field_values(field_values: HashMap<Ident, RichTerm>) -> Self {
-        let attrs = Default::default();
-        let sealed_tail = Default::default();
         let fields = field_values
             .into_iter()
             .map(|(id, value)| {
@@ -241,8 +241,7 @@ impl RecordData {
 
         RecordData {
             fields,
-            attrs,
-            sealed_tail,
+            ..Default::default()
         }
     }
 
@@ -311,7 +310,11 @@ impl RecordData {
     /// which is non optional return an error.
     pub fn get_value(&self, id: &Ident) -> Result<Option<&RichTerm>, MissingFieldDefinitionError> {
         match self.fields.get(id) {
-            Some(Field { value: None, metadata: metadata @ FieldMetadata { opt: false, ..}, ..}) => Err(MissingFieldDefinitionError(metadata.clone())),
+            Some(Field {
+                value: None,
+                metadata: metadata @ FieldMetadata { opt: false, .. },
+                ..
+            }) => Err(MissingFieldDefinitionError(metadata.clone())),
             field_opt => Ok(field_opt.and_then(|field| field.value.as_ref())),
         }
     }

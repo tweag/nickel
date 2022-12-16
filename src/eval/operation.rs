@@ -471,9 +471,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Some(Field {
                             value: None,
                             metadata,
-                        }) => {
-                            Err(EvalError::MissingFieldDef(metadata.annotation.first().cloned().map(|labeled_ty| labeled_ty.label), std::mem::take(&mut self.call_stack)))
-                        }
+                        }) => Err(EvalError::MissingFieldDef(
+                            metadata
+                                .annotation
+                                .first()
+                                .cloned()
+                                .map(|labeled_ty| labeled_ty.label),
+                            std::mem::take(&mut self.call_stack),
+                        )),
                         None => Err(EvalError::FieldMissing(
                             id.into_label(),
                             String::from("(.)"),
@@ -3146,7 +3151,12 @@ fn eq<C: Cache>(
                         (undefined @ Field { value: None, .. }, Field { value: Some(_), .. })
                         | (Field { value: Some(_), .. }, undefined @ Field { value: None, .. }) => {
                             Some(Err(EvalError::MissingFieldDef(
-                                undefined.metadata.annotation.first().cloned().map(|labeled_ty| labeled_ty.label),
+                                undefined
+                                    .metadata
+                                    .annotation
+                                    .first()
+                                    .cloned()
+                                    .map(|labeled_ty| labeled_ty.label),
                                 todo!(),
                             )))
                         }
@@ -3261,10 +3271,17 @@ impl RecordDataExt for RecordData {
             .into_iter()
             .filter_map(|(id, field)| {
                 (!field.is_empty_optional()).then(|| {
-                    let value = field.value
+                    let value = field
+                        .value
                         .map(|value| f(id, value).closurize(cache, shared_env, env.clone()))
                         .ok_or(record::MissingFieldDefinitionError(field.metadata.clone()))?;
-                    Ok((id, Field { value: Some(value), ..field }))
+                    Ok((
+                        id,
+                        Field {
+                            value: Some(value),
+                            ..field
+                        },
+                    ))
                 })
             })
             .collect();

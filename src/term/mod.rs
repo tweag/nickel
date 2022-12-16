@@ -108,7 +108,7 @@ pub enum Term {
     #[serde(skip)]
     RecRecord(
         RecordData,
-        Vec<(RichTerm, RichTerm)>, /* field whose name is defined by interpolation */
+        Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
     /// A match construct. Correspond only to the match cases: this expression is still to be
@@ -476,8 +476,8 @@ impl TypeAnnotation {
     }
 }
 
-/// A chunk of a string with interpolated expressions inside. Same as `Either<String,
-/// RichTerm>` but with explicit constructor names.
+/// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
+/// interpolated expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum StrChunk<E> {
     /// A string literal.
@@ -530,9 +530,12 @@ impl Term {
                         func(value);
                     }
                 });
-                dyn_fields.iter_mut().for_each(|(t1, t2)| {
-                    func(t1);
-                    func(t2);
+                dyn_fields.iter_mut().for_each(|(id_t, field)| {
+                    func(id_t);
+
+                    if let Some(ref mut value) = field.value {
+                        func(value);
+                    }
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
@@ -1482,7 +1485,7 @@ impl RichTerm {
                         let value =
                             field.value
                             .map(|v| v.traverse(f, state, order))
-                            .map_or(Ok(None), |res| res.map(Some))?;
+                            .transpose()?;
 
                         Ok((id, Field {
                             metadata: field.metadata,
@@ -1502,7 +1505,7 @@ impl RichTerm {
                         let value =
                             field.value
                             .map(|v| v.traverse(f, state, order))
-                            .map_or(Ok(None), |res| res.map(Some))?;
+                            .transpose()?;
 
                         Ok((id, Field {
                             metadata: field.metadata,
@@ -1510,12 +1513,17 @@ impl RichTerm {
                         }))
                     })
                     .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, RichTerm)>, E> = dyn_fields
+                let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
-                    .map(|(id_t, t)| {
+                    .map(|(id_t, field)| {
+                        let value =
+                            field.value
+                            .map(|v| v.traverse(f, state, order))
+                            .transpose()?;
+
                         Ok((
                             id_t.traverse(f, state, order)?,
-                            t.traverse(f, state, order)?,
+                            Field { metadata: field.metadata, value },
                         ))
                     })
                     .collect();
@@ -1580,7 +1588,8 @@ impl RichTerm {
                 let value = meta
                     .value
                     .map(|t| t.traverse(f, state, order))
-                    .map_or(Ok(None), |res| res.map(Some))?;
+                    .transpose()?;
+
                 let meta = MetaValue {
                         doc: meta.doc,
                         types,

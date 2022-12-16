@@ -108,9 +108,7 @@ pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, 
 where
     S: Serializer,
 {
-    let mut entries: Vec<(_, _)> = record
-        .iter_without_opts()
-        .collect();
+    let mut entries: Vec<(_, _)> = record.iter_without_opts().collect();
     entries.sort_by_key(|(k, _)| *k);
 
     let mut map_ser = serializer.serialize_map(Some(entries.len()))?;

@@ -7,7 +7,7 @@ use crate::{
     destruct::{Destruct, Match},
     identifier::Ident,
     term::{
-        record::{FieldDeps, RecordDeps, Field},
+        record::{Field, FieldDeps, RecordDeps},
         RichTerm, SharedTerm, StrChunk, Term,
     },
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},

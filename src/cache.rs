@@ -573,7 +573,14 @@ impl Cache {
                             let map_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(fields)
                                     .into_iter()
-                                    .map(|(id, field)| Ok((id, field.try_map_value(|v| transform::transform(v, wildcards))?)))
+                                    .map(|(id, field)| {
+                                        Ok((
+                                            id,
+                                            field.try_map_value(|v| {
+                                                transform::transform(v, wildcards)
+                                            })?,
+                                        ))
+                                    })
                                     .collect();
                             *fields = map_res.map_err(|err| {
                                 CacheError::Error(ImportError::ParseErrors(err.into(), pos))
@@ -583,7 +590,14 @@ impl Cache {
                             let map_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(&mut record.fields)
                                     .into_iter()
-                                    .map(|(id, field)| Ok((id, field.try_map_value(|v| transform::transform(v, wildcards))?)))
+                                    .map(|(id, field)| {
+                                        Ok((
+                                            id,
+                                            field.try_map_value(|v| {
+                                                transform::transform(v, wildcards)
+                                            })?,
+                                        ))
+                                    })
                                     .collect();
 
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
