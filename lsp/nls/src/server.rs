@@ -59,7 +59,6 @@ impl Server {
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
                 trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
-                resolve_provider: Some(true),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),

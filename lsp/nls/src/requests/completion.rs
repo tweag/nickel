@@ -122,17 +122,12 @@ fn find_fields_from_term_kind(
             if path.is_empty() {
                 Some(
                     fields
-                        .keys()
-                        .cloned()
-                        .map(|ident| {
-                            // This unwrap is safe because this `ident` is gotten from `fields`
-                            // which we're currently iterating over. So we're sure `ident` is a
-                            // is present in `fields`
-                            let id = fields.get(&ident).unwrap();
+                        .iter()
+                        .map(|(&ident, &id)| {
                             // This unwrap is safe because, `id` is the field of the record
                             // we're currently analyzing. We're sure that the linearization
                             // phase doesn't produce wrong or invalid ids.
-                            let item = linearization.get_item(*id).unwrap();
+                            let item = linearization.get_item(id).unwrap();
                             let (ty, _) = linearization.resolve_item_type_meta(item);
                             IdentWithType {
                                 ident,
@@ -238,7 +233,7 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Option<Vec<I
         (Term::Record(data) | Term::RecRecord(data, ..), None) => Some(
             data.fields
                 .keys()
-                .cloned()
+                .copied()
                 .map(|ident| IdentWithType {
                     ident,
                     ty: Types(TypeF::Flat(term.clone())),
