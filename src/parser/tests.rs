@@ -287,69 +287,100 @@ fn invalid_record_types() {
 
 #[test]
 fn string_lexing() {
-    assert_eq!(
-        lex_without_pos("\"Good\" \"strings\""),
-        Ok(vec![
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Literal("Good")),
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Literal("strings")),
-            Token::Normal(NormalToken::DoubleQuote),
-        ])
-    );
-
-    assert_eq!(
-        lex_without_pos("\"Good\\nEscape\\t\\\"\""),
-        Ok(vec![
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Literal("Good")),
-            Token::Str(StringToken::EscapedChar('\n')),
-            Token::Str(StringToken::Literal("Escape")),
-            Token::Str(StringToken::EscapedChar('\t')),
-            Token::Str(StringToken::EscapedChar('\"')),
-            Token::Normal(NormalToken::DoubleQuote),
-        ])
-    );
-
-    assert_eq!(
-        lex_without_pos("\"1 + %{ 1 } + 2\""),
-        Ok(vec![
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::Interpolation),
-            Token::Normal(NormalToken::NumLiteral(1.0)),
-            Token::Normal(NormalToken::RBrace),
-            Token::Str(StringToken::Literal(" + 2")),
-            Token::Normal(NormalToken::DoubleQuote),
-        ])
-    );
-
-    assert_eq!(
-        lex_without_pos("\"1 + %{ \"%{ 1 }\" } + 2\""),
-        Ok(vec![
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Literal("1 + ")),
-            Token::Str(StringToken::Interpolation),
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Str(StringToken::Interpolation),
-            Token::Normal(NormalToken::NumLiteral(1.0)),
-            Token::Normal(NormalToken::RBrace),
-            Token::Normal(NormalToken::DoubleQuote),
-            Token::Normal(NormalToken::RBrace),
-            Token::Str(StringToken::Literal(" + 2")),
-            Token::Normal(NormalToken::DoubleQuote),
-        ])
-    );
-
-    assert_eq!(
-        lex_without_pos(r#"m%%""%"%%"#),
-        Ok(vec![
-            Token::Normal(NormalToken::MultiStringStart(4)),
-            Token::MultiStr(MultiStringToken::Literal("\"%")),
-            Token::MultiStr(MultiStringToken::End),
-        ])
-    );
+    for (name, input, expected) in [
+        (
+            "simple strings",
+            r#""Good" "strings""#,
+            vec![
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Literal("Good")),
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Literal("strings")),
+                Token::Normal(NormalToken::DoubleQuote),
+            ],
+        ),
+        (
+            "valid escape sequence",
+            r#""Good\nEscape\t\"""#,
+            vec![
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Literal("Good")),
+                Token::Str(StringToken::EscapedChar('\n')),
+                Token::Str(StringToken::Literal("Escape")),
+                Token::Str(StringToken::EscapedChar('\t')),
+                Token::Str(StringToken::EscapedChar('\"')),
+                Token::Normal(NormalToken::DoubleQuote),
+            ],
+        ),
+        (
+            "simple interpolation",
+            r#""1 + %{ 1 } + 2""#,
+            vec![
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Literal("1 + ")),
+                Token::Str(StringToken::Interpolation),
+                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::RBrace),
+                Token::Str(StringToken::Literal(" + 2")),
+                Token::Normal(NormalToken::DoubleQuote),
+            ],
+        ),
+        (
+            "nested interpolated strings",
+            r#""1 + %{ "%{ 1 }" } + 2""#,
+            vec![
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Literal("1 + ")),
+                Token::Str(StringToken::Interpolation),
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Str(StringToken::Interpolation),
+                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::RBrace),
+                Token::Normal(NormalToken::DoubleQuote),
+                Token::Normal(NormalToken::RBrace),
+                Token::Str(StringToken::Literal(" + 2")),
+                Token::Normal(NormalToken::DoubleQuote),
+            ],
+        ),
+        (
+            "multiline strings only close on delmiter with correct number of %s",
+            r#"m%%""%"%%"#,
+            vec![
+                Token::Normal(NormalToken::MultiStringStart(4)),
+                Token::MultiStr(MultiStringToken::Literal("\"%")),
+                Token::MultiStr(MultiStringToken::End),
+            ],
+        ),
+        (
+            "empty symbolic string lexes like multi-line str",
+            r#"s%""%"#,
+            vec![
+                Token::Normal(NormalToken::SymbolicStringStart(3)),
+                Token::MultiStr(MultiStringToken::End),
+            ],
+        ),
+        (
+            "symbolic string with interpolation",
+            r#"s%"text %{ 1 } etc."%"#,
+            vec![
+                Token::Normal(NormalToken::SymbolicStringStart(3)),
+                Token::MultiStr(MultiStringToken::Literal("text ")),
+                Token::MultiStr(MultiStringToken::Interpolation),
+                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::RBrace),
+                Token::MultiStr(MultiStringToken::Literal(" etc.")),
+                Token::MultiStr(MultiStringToken::End),
+            ],
+        ),
+    ] {
+        assert_eq!(
+            lex_without_pos(input),
+            Ok(expected),
+            "Case failed: {}",
+            name
+        )
+    }
 }
 
 #[test]

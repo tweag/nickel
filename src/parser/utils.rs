@@ -23,12 +23,39 @@ use crate::{
     types::{TypeF, Types},
 };
 
-/// Distinguish between the standard string separators `"`/`"` and the multi-line string separators
-/// `m%"`/`"%` in the parser.
+/// Distinguish between the standard string opening delimiter `"`, the multi-line string
+/// opening delimter `m%"`, and the symbolic string opening delimiter `s%"`.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum StringKind {
+pub enum StringStartDelimiter {
     Standard,
     Multiline,
+    Symbolic,
+}
+
+impl StringStartDelimiter {
+    pub fn is_closed_by(&self, close: &StringEndDelimiter) -> bool {
+        matches!(
+            (self, close),
+            (StringStartDelimiter::Standard, StringEndDelimiter::Standard)
+                | (StringStartDelimiter::Multiline, StringEndDelimiter::Special)
+                | (StringStartDelimiter::Symbolic, StringEndDelimiter::Special)
+        )
+    }
+
+    pub fn needs_strip_indent(&self) -> bool {
+        match self {
+            StringStartDelimiter::Standard => false,
+            StringStartDelimiter::Multiline | StringStartDelimiter::Symbolic => true,
+        }
+    }
+}
+
+/// Distinguish between the standard string closing delimter `"` and the "special" string
+/// closing delimeter `"%`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum StringEndDelimiter {
+    Standard,
+    Special,
 }
 
 /// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
