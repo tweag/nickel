@@ -59,14 +59,17 @@ use crate::{
     destruct::{Match, LastMatch, Destruct},
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-        MergePriority, LabeledType, NAryOp, record::RecordAttrs, SharedTerm,
+        MergePriority, LabeledType, NAryOp,
+        record::{RecordAttrs, Field, FieldMetadata},
+        SharedTerm,
         NumeralPriority, array::Array, make as mk_term,
+        TypeAnnotation,
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
         VarKind
     },
-    position::TermPos,
+    position::{TermPos, RawSpan},
     label::Label,
 };
 
@@ -102,12 +105,12 @@ AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
 // here to control if the type should have its variables fixed now (`FixedType`)
 // or later (bare `Types`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
-AnnotAtom<TypeRule>: MetaAnnot = {
-    "|" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
+AnnotAtom<TypeRule>: TypeAnnotation = {
+    "|" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
         contracts: vec![LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         ..Default::default()
     },
-    ":" <l: @L> <ty: TypeRule> <r: @R> => MetaValue {
+    ":" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
         types: Some(LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         ..Default::default()
     },
@@ -117,8 +120,11 @@ AnnotAtom<TypeRule>: MetaAnnot = {
 // annotations which can appear everywhere (`AnnotAtom`, either a type or a
 // contract annotation), let annotations also include documentation (`doc`).
 LetAnnotAtom<TypeRule>: MetaAnnot = {
-    <AnnotAtom<TypeRule>> => <>,
-    "|" "doc" <s: StaticString> => MetaValue {
+    <AnnotAtom<TypeRule>> => FieldMetadata {
+        annotation: <>,
+        ..Default::default
+    },
+    "|" "doc" <s: StaticString> => FieldMetadata {
         doc: Some(strip_indent_doc(s)),
         ..Default::default()
     },
@@ -131,20 +137,20 @@ LetAnnotAtom<TypeRule>: MetaAnnot = {
 // rule).
 SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
     <LetAnnotAtom<TypeRule>> => <>,
-    "|" "default" => MetaValue {
+    "|" "default" => FieldMetadata {
         priority: MergePriority::Bottom,
         ..Default::default()
     },
-    "|" "force" => MetaValue {
+    "|" "force" => FieldMetadata {
         priority: MergePriority::Top,
         ..Default::default()
     },
-    "|" "priority" <SignedNumLiteral> => MetaValue {
+    "|" "priority" <SignedNumLiteral> => FieldMetadata {
         // unwrap(): a literal can't be NaN
         priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
         ..Default::default()
     },
-    "|" "optional" => MetaValue {
+    "|" "optional" => FieldMetadata {
         opt: true,
         ..Default::default()
     },
@@ -203,8 +209,7 @@ FixedType: Types = {
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
-            let pos = t.pos;
-            t = ann.attach(t, pos);
+            t = ann.attach_value(t);
         }
 
         ExtendedTerm::ToplevelLet(id, t)
@@ -221,8 +226,7 @@ UniTerm: UniTerm = {
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
-            let pos = t1.pos;
-            t1 = ann.attach(t1, pos);
+            t1 = ann.attach_value(t1);
         }
 
         Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
@@ -245,8 +249,7 @@ UniTerm: UniTerm = {
 
 AnnotatedInfixExpr: UniTerm = {
     <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
-        let pos = t.pos;
-        UniTerm::from(ann.attach(t, pos))
+        UniTerm::from(ann.attach_value(t))
     },
 };
 
@@ -371,32 +374,43 @@ Atom: UniTerm = {
 // A record field definition. The is the only place where we don't fix the type
 // variables inside the annotation right away (note the `Annot<Types>` instead
 // of `Annot<Fixed>`).
-RecordField: (FieldPath, RichTerm) = {
+RecordField: FieldDef = {
     <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
-        let pos = t.as_ref()
-            .map(|t| t.pos.clone())
-            .unwrap_or(mk_pos(src_id, l, r));
-        let term = match (ann, t) {
-            (Some(FieldAnnot { meta, rec_force: false, rec_default: false }), None) => {
-                RichTerm::new(Term::MetaValue(meta), pos)
+        let annot_span = mk_span(src_id, l, r);
+        let span = if let Some(value) = t {
+                // value.pos.unwrap(): the position of `t` is necessarily set by the <Term> rule
+                // result unwrap(): the term and the annotation have spans
+                //   coming from the same file (the current one)
+                RawSpan::fuse(annot_span, value.pos.unwrap()).unwrap()
+        } else {
+            annot_span
+        };
+
+        let field = match (ann, t) {
+            (Some(FieldAnnot { metadata, rec_force: false, rec_default: false }), None) => {
+                Field { value: None, metadata }
             }
-            (Some(ann), Some(t)) => {
-                ann.attach(t, pos)
+            (Some(ann), Some(value)) => {
+                ann.attach_value(value)
             }
             (Some(_), None) => {
                 panic!("can't use rec default/rec force on a field without definition");
             }
-            (None, Some(t)) => t,
-            (None, None) => RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
+            (None, value) => Field { value, ..Default::default() }
         };
 
-        (path, term)
+        FieldDef {
+            path,
+            field,
+            pos: TermPos::Original(span),
+        }
     },
     <err: Error> => {
-        let pos = err.pos;
-        let path = vec![FieldPathElem::Expr(err)];
-        let term = RichTerm::new(Term::MetaValue(MetaValue::new()), pos);
-        (path, term)
+        FieldDef {
+          pos: err.pos,
+          path: vec![FieldPathElem::Expr(err)],
+          term: RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
+        }
     },
 };
 
@@ -407,6 +421,7 @@ Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
 
         RichTerm::new(Term::ParseError(
             crate::error::ParseError::from_lalrpop(t.error, src_id)), pos)
+    }
 };
 
 RecordLastField: RecordLastField = {

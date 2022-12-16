@@ -14,11 +14,12 @@ use crate::{
     eval::operation::RecPriority,
     identifier::Ident,
     label::Label,
-    mk_app, mk_fun,
+    mk_fun,
     position::{RawSpan, TermPos},
     term::{
-        make as mk_term, record::{RecordAttrs, RecordData, Field}, BinaryOp, LabeledType, MetaValue,
-        RichTerm, StrChunk, Term, UnaryOp,
+        make as mk_term,
+        record::{Field, FieldMetadata, RecordAttrs, RecordData},
+        BinaryOp, LabeledType, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
     },
     types::{TypeF, Types},
 };
@@ -92,10 +93,74 @@ pub enum ChunkLiteralPart<'input> {
     Char(char),
 }
 
+#[derive(Clone, Debug)]
+pub struct FieldDef {
+    pub path: FieldPath,
+    pub field: Field,
+    pub pos: TermPos,
+}
+
+impl FieldDef {
+    /// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
+    /// flat definition `a = {b = {c = foo}}`.
+    ///
+    /// # Preconditions
+    /// - /!\ path must be **non-empty**, otherwise this function panics
+    pub fn elaborate(self) -> (FieldPathElem, Field) {
+        let mut it = self.path.into_iter();
+        let fst = it.next().unwrap();
+
+        let content = it.rev().fold(self.field, |acc, path_elem| {
+            // We first compute a position for the intermediate generated records (it's useful in
+            // particular for the LSP). The position starts at the subpath corresponding to the
+            // intermediate record and ends at the final value.
+            //
+            // unwrap is safe here becuase the initial content has a position,
+            // and we make sure we assign a position for the next field.
+            let pos = match path_elem {
+                FieldPathElem::Ident(id) => id.pos,
+                FieldPathElem::Expr(ref expr) => expr.pos,
+            };
+            // unwrap is safe here because every id should have a non-`TermPos::None` position
+            let id_span = pos.unwrap();
+            let acc_span = acc.value.map(|value| value.pos.unwrap()).unwrap_or(id_span);
+
+            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
+            // A record field and its value *must* be in the same file, so this is safe.
+            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+
+            match path_elem {
+                FieldPathElem::Ident(id) => {
+                    let mut fields = HashMap::new();
+                    fields.insert(id, acc);
+                    Field::from(RichTerm::new(Term::Record(RecordData { fields, ..Default::default() }), pos))
+                }
+                FieldPathElem::Expr(exp) => {
+                    let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
+
+                    if let Some(static_access) = static_access {
+                        let id = Ident::new_with_pos(static_access, exp.pos);
+                        let mut fields = HashMap::new();
+                        fields.insert(id, acc);
+                        Field::from(RichTerm::new(Term::Record(RecordData { fields, ..Default::default() }), pos))
+                    } else {
+                        // The record we create isn't recursive, because it is only comprised of one
+                        // dynamic field. It's just simpler to use the infrastructure of `RecRecord` to
+                        // handle dynamic fields at evaluation time rather than right here
+                        Field::from(RichTerm::new(Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None), pos))
+                    }
+                }
+            }
+        });
+
+        (fst, content)
+    }
+}
+
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
 #[derive(Clone, Debug)]
 pub enum RecordLastField {
-    Field((FieldPath, RichTerm)),
+    Field(FieldDef),
     Ellipsis,
 }
 
@@ -135,24 +200,58 @@ impl InfixOp {
 }
 
 /// General interface for structures representing a series of annotations.
-pub trait Annot: Default + From<MetaValue> {
+pub trait Annot: Default + From<FieldMetadata> {
     /// Attach the annotation to a term.
-    fn attach(self, value: RichTerm, pos: TermPos) -> RichTerm;
+    fn attach_value(self, value: RichTerm) -> Field;
     /// Combine two annotations.
     fn combine(outer: Self, inner: Self) -> Self;
 }
 
 /// Consistency of naming inside the parser module.
-pub type MetaAnnot = MetaValue;
+pub type MetaAnnot = FieldMetadata;
 
-impl Annot for MetaValue {
-    fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
-        self.value = Some(value);
-        RichTerm::new(Term::MetaValue(self), pos)
+impl Annot for FieldMetadata {
+    fn attach_value(self, value: RichTerm) -> Field {
+        Field {
+            value: Some(value),
+            metadata: self,
+        }
     }
 
     fn combine(outer: Self, inner: Self) -> Self {
         Self::flatten(outer, inner)
+    }
+}
+
+impl Annot for TypeAnnotation {
+    fn attach_value(self, value: RichTerm) -> Field {
+        Field {
+            value: Some(value),
+            metadata: FieldMetadata {
+                annotation: self,
+                ..Default::default()
+            }
+        }
+    }
+
+    /// Combine two type annotations. If both have `types` set, the final type is the one of outer,
+    /// while inner's type is put inside the final `contracts`.
+    fn combine(outer: Self, inner: Self) -> Self {
+        let (types, leftover) = match (inner.types, outer.types) {
+            (outer_ty @ Some(_), inner_ty @ Some(_)) => (outer_ty, inner_ty),
+            (outer_ty, inner_ty) => (outer_ty.or(inner_ty), None)
+        };
+
+        let contracts = inner.contracts.into_iter().chain(leftover.into_iter()).chain(outer.contracts.into_iter()).collect();
+
+        TypeAnnotation { types, contracts }
+    }
+
+}
+
+impl From<FieldMetadata> for TypeAnnotation {
+    fn from(metadata: FieldMetadata) -> Self {
+        metadata.annotation
     }
 }
 
@@ -171,14 +270,17 @@ pub fn combine_match_annots(
         (anns @ Some(_), default) | (anns, default @ Some(_)) => {
             Annot::combine(anns.unwrap_or_default(), default.unwrap_or_default())
         }
-        (None, None) => MetaValue {
-            contracts: vec![LabeledType {
-                types: Types(TypeF::Dyn),
-                label: Label {
-                    span,
-                    ..Default::default()
-                },
-            }],
+        (None, None) => FieldMetadata {
+            annotation: TypeAnnotation {
+                contracts: vec![LabeledType {
+                    types: Types(TypeF::Dyn),
+                    label: Label {
+                        span,
+                        ..Default::default()
+                    },
+                }],
+                ..Default::default()
+            },
             ..Default::default()
         },
     }
@@ -190,7 +292,7 @@ pub fn combine_match_annots(
 #[derive(Clone, Debug, Default)]
 pub struct FieldAnnot {
     /// Standard metadata.
-    pub meta: MetaValue,
+    pub metadata: FieldMetadata,
     /// Presence of an annotation `push force`
     pub rec_force: bool,
     /// Presence of an annotation `push default`
@@ -204,39 +306,42 @@ impl FieldAnnot {
 }
 
 impl Annot for FieldAnnot {
-    fn attach(mut self, value: RichTerm, pos: TermPos) -> RichTerm {
-        if self.rec_force || self.rec_default {
+    fn attach_value(mut self, value: RichTerm) -> Field {
+        let value = if self.rec_force || self.rec_default {
             let rec_prio = if self.rec_force {
                 RecPriority::Top
             } else {
                 RecPriority::Bottom
             };
 
-            self.meta.value = Some(rec_prio.apply_rec_prio_op(value).with_pos(pos));
+            Some(rec_prio.apply_rec_prio_op(value).with_pos(value.pos))
         } else {
-            self.meta.value = Some(value);
-        }
+            Some(value)
+        };
 
-        RichTerm::new(Term::MetaValue(self.meta), pos)
+        Field {
+            value,
+            metadata: self.metadata,
+        }
     }
 
     fn combine(outer: Self, inner: Self) -> Self {
-        let meta = MetaValue::flatten(outer.meta, inner.meta);
+        let metadata = FieldMetadata::flatten(outer.metadata, inner.metadata);
         let rec_force = outer.rec_force || inner.rec_force;
         let rec_default = outer.rec_default || inner.rec_default;
 
         FieldAnnot {
-            meta,
+            metadata,
             rec_force,
             rec_default,
         }
     }
 }
 
-impl From<MetaValue> for FieldAnnot {
-    fn from(meta: MetaValue) -> Self {
+impl From<FieldMetadata> for FieldAnnot {
+    fn from(metadata: FieldMetadata) -> Self {
         FieldAnnot {
-            meta,
+            metadata,
             ..Default::default()
         }
     }
@@ -269,81 +374,26 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
     }
 }
 
-/// Elaborate a record field definition specified as a path, like `a.b.c = foo`, into a regular
-/// flat definition `a = {b = {c = foo}}`.
-///
-/// # Preconditions
-/// - /!\ path must be **non-empty**, otherwise this function panics
-pub fn elaborate_field_path(
-    path: Vec<FieldPathElem>,
-    content: RichTerm,
-) -> (FieldPathElem, RichTerm) {
-    let mut it = path.into_iter();
-    let fst = it.next().unwrap();
-
-    let content = it.rev().fold(content, |acc, path_elem| {
-        // We first compute a position for the intermediate generated records (it's useful in
-        // particular for the LSP). The position starts at the subpath corresponding to the
-        // intermediate record and ends at the final value.
-        //
-        // unwrap is safe here becuase the initial content has a position,
-        // and we make sure we assign a position for the next field.
-        let acc_span = acc.pos.unwrap();
-        let pos = match path_elem {
-            FieldPathElem::Ident(id) => id.pos,
-            FieldPathElem::Expr(ref expr) => expr.pos,
-        };
-        // unwrap is safe here because every id should have a non-`TermPos::None` position
-        let id_span = pos.unwrap();
-        // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-        // A record field and its value *must* be in the same file, so this is safe.
-        let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
-
-        match path_elem {
-            FieldPathElem::Ident(id) => {
-                let mut fields = HashMap::new();
-                fields.insert(id, acc);
-                RichTerm::new(Term::Record(RecordData::with_field_values(fields)), pos)
-            }
-            FieldPathElem::Expr(exp) => {
-                let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
-
-                if let Some(static_access) = static_access {
-                    let id = Ident::new_with_pos(static_access, exp.pos);
-                    let mut fields = HashMap::new();
-                    fields.insert(id, acc);
-                    RichTerm::new(Term::Record(RecordData::with_field_values(fields)), pos)
-                } else {
-                    let empty = Term::Record(RecordData::empty());
-                    mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc).with_pos(pos)
-                }
-            }
-        }
-    });
-
-    (fst, content)
-}
-
 /// Build a record from a list of field definitions. If a field is defined several times, the
 /// different definitions are merged.
 pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
-    I: IntoIterator<Item = (FieldPathElem, RichTerm)> + Debug,
+    I: IntoIterator<Item = (FieldPathElem, Field)> + Debug,
 {
     let mut static_fields = HashMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(static_fields: &mut HashMap<Ident, RichTerm>, id: Ident, t: RichTerm) {
+    fn insert_static_field(static_fields: &mut HashMap<Ident, Field>, id: Ident, field: Field) {
         match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
-                // temporary putting null in the entry to take the previous value.
-                let prev = occpd.insert(Term::Null.into());
+                // temporarily putting an empty field in the entry to take the previous value.
+                let prev = occpd.insert(Field::default());
 
                 // A field of a record without metadata AND without value is impossible
-                occpd.insert(merge_field(prev, t).unwrap());
+                occpd.insert(merge_fields(prev, field));
             }
             Entry::Vacant(vac) => {
-                vac.insert(t);
+                vac.insert(field);
             }
         }
     }
@@ -353,15 +403,15 @@ where
         (FieldPathElem::Expr(e), t) => {
             // Dynamic fields (whose name is defined by an interpolated string) have a different
             // semantics than fields whose name can be determined statically. However, static
-            // fields with special characters are also parsed as an `Expr(e)`:
+            // fields with special characters are also parsed as string chunks:
             //
             // ```
-            // let x = "dynamic" in {"I#am.static" = false, "%{x}" = true}
+            // let x = "dynamic" in {"I%am.static" = false, "%{x}" = true}
             // ```
             //
-            // Here, both fields are parsed as `Expr(e)`, but the first field is actually a static
-            // one, just with special characters. The following code determines which fields are
-            // actually static or not, and inserts them in the right location.
+            // Here, both fields are parsed as `StrChunks`, but the first field is actually a
+            // static one, just with special characters. The following code determines which fields
+            // are actually static or not, and inserts them in the right location.
             match e.term.as_ref() {
                 Term::StrChunks(chunks) => {
                     let mut buffer = String::new();
@@ -395,46 +445,30 @@ where
     });
 
     Term::RecRecord(
-        //TODO: add metadata gathered during parsing
-        RecordData::new(static_fields.into_iter().map(|(id, value)| (id, Field::from(value))).collect(), attrs, None),
+        RecordData::new(
+            static_fields
+                .into_iter()
+                .map(|(id, value)| (id, value))
+                .collect(),
+            attrs,
+            None,
+        ),
         dynamic_fields,
         None,
     )
 }
 
 /// Merge two fields by performing the merge of both their value and MetaValue if any.
-fn merge_field(rterm1: RichTerm, rterm2: RichTerm) -> Option<RichTerm> {
-    let term1 = if let Term::MetaValue(meta) = &*rterm1.term {
-        (Some(meta.clone()), meta.value.clone())
-    } else {
-        (None, Some(rterm1))
-    };
-
-    let term2 = if let Term::MetaValue(meta) = &*rterm2.term {
-        (Some(meta.clone()), meta.value.clone())
-    } else {
-        (None, Some(rterm2))
-    };
-
-    let new_value = match (term1.1, term2.1) {
+fn merge_fields(field1: Field, field2: Field) -> Field {
+    let value = match (field1.value, field2.value) {
         (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
         (Some(t), None) | (None, Some(t)) => Some(t),
         (None, None) => None,
     };
 
-    match (term1.0, term2.0) {
-        (Some(meta1), Some(meta2)) => {
-            let mut new_meta = MetaValue::flatten(meta1, meta2);
-            new_meta.value = new_value;
-            Some(RichTerm::from(Term::MetaValue(new_meta)))
-        }
-        (Some(meta), None) | (None, Some(meta)) => {
-            let mut new_meta = meta;
-            new_meta.value = new_value;
-            Some(RichTerm::from(Term::MetaValue(new_meta)))
-        }
-        (None, None) => new_value,
-    }
+    let metadata = FieldMetadata::flatten(field1.metadata, field2.metadata);
+
+    Field { value, metadata }
 }
 
 /// Make a span from parser byte offsets.

@@ -57,7 +57,7 @@ use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{
     make as mk_term,
-    record::{self, FieldDeps, RecordAttrs, RecordData, Field},
+    record::{self, Field, FieldDeps, RecordAttrs, RecordData},
     BinaryOp, LabeledType, MetaValue, RichTerm, SharedTerm, Term,
 };
 use crate::transform::Closurizable;
@@ -425,22 +425,33 @@ pub fn merge<C: Cache>(
             // The fields in the intersection (center) need a slightly more general treatment to
             // correctly propagate the recursive values down each field: saturation. See
             // [crate::eval::lazy::Thunk::saturate].
-            m.extend(
-                left.into_iter()
-                    .map(|(id, field)| (id, field.map_value(|value| revert_closurize(cache, value, &mut env, &env1)))),
-            );
-            m.extend(
-                right
-                    .into_iter()
-                    .map(|(id, field)| (id, field.map_value(|value| revert_closurize(cache, value, &mut env, &env2)))),
-            );
+            m.extend(left.into_iter().map(|(id, field)| {
+                (
+                    id,
+                    field.map_value(|value| revert_closurize(cache, value, &mut env, &env1)),
+                )
+            }));
+            m.extend(right.into_iter().map(|(id, field)| {
+                (
+                    id,
+                    field.map_value(|value| revert_closurize(cache, value, &mut env, &env2)),
+                )
+            }));
 
             for (id, (field1, field2)) in center.into_iter() {
                 m.insert(
                     id,
                     Field {
                         metadata: todo!(),
-                        value: Some(fields_merge_closurize(cache, &mut env, todo!(), &env1, todo!(), &env2, field_names.iter())?),
+                        value: Some(fields_merge_closurize(
+                            cache,
+                            &mut env,
+                            todo!(),
+                            &env1,
+                            todo!(),
+                            &env2,
+                            field_names.iter(),
+                        )?),
                     },
                 );
             }

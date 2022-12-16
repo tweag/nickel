@@ -10,7 +10,7 @@ use serde::de::{
 
 use crate::identifier::Ident;
 use crate::term::array::{self, Array};
-use crate::term::record::{Field};
+use crate::term::record::Field;
 use crate::term::{MetaValue, RichTerm, Term};
 
 macro_rules! deserialize_number {
@@ -440,14 +440,16 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
         T: DeserializeSeed<'de>,
     {
         match self.field.take() {
-            Some(Field { value: Some(value), ..}) => seed.deserialize(value),
+            Some(Field {
+                value: Some(value), ..
+            }) => seed.deserialize(value),
             // TODO: what to do about fields without definition is not totally clear (should an
             // empty optional be considered as `None` or just disappear from the serialization?
             // Probably the former). For now, we implement the same behavior as before the
             // implementation of RFC005, which is to always fail on a field without definition.
             //
             // This should be relaxed in the future.
-            Some(Field { value: None, ..}) => Err(RustDeserializationError::EmptyMetaValue),
+            Some(Field { value: None, .. }) => Err(RustDeserializationError::EmptyMetaValue),
             _ => Err(RustDeserializationError::MissingValue),
         }
     }

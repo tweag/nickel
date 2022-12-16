@@ -5,7 +5,10 @@ use crate::{
     identifier::Ident,
     label::Label,
     position::RawSpan,
-    term::{record::{RecordData, RecordAttrs, Field}, LabeledType, MetaValue, RichTerm, Term},
+    term::{
+        record::{Field, RecordAttrs, RecordData},
+        LabeledType, MetaValue, RichTerm, Term,
+    },
     types::{TypeF, Types},
 };
 

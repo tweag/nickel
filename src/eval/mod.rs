@@ -96,8 +96,11 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
-        array::ArrayAttrs, make as mk_term, record::{RecordData, Field}, BinaryOp, BindingType, LetAttrs,
-        MetaValue, PendingContract, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        array::ArrayAttrs,
+        make as mk_term,
+        record::{Field, RecordData},
+        BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract, RichTerm, SharedTerm,
+        StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -490,7 +493,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::RecRecord(record, dyn_fields, _) => {
                     let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
 
-                    record.fields.iter().try_for_each(|(_, rt)| { fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
+                    record.fields.iter().try_for_each(|(_, rt)| {
+                        fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
                     })?;
 
                     //TODO: We should probably avoid cloning the record, using `match_sharedterm`
@@ -510,10 +514,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 let pos = value.pos;
 
                                 // TODO: dynamic fields should be field, in fact?
-                                fixpoint::patch_field(&mut self.cache, &Field { value: Some(value.clone()), ..Default::default() }, &rec_env, &env)?;
+                                fixpoint::patch_field(
+                                    &mut self.cache,
+                                    &Field {
+                                        value: Some(value.clone()),
+                                        ..Default::default()
+                                    },
+                                    &rec_env,
+                                    &env,
+                                )?;
                                 Ok(RichTerm::new(
                                     Term::App(
-                                        mk_term::op2(BinaryOp::DynExtend(), name_as_term.clone(), acc),
+                                        mk_term::op2(
+                                            BinaryOp::DynExtend(),
+                                            name_as_term.clone(),
+                                            acc,
+                                        ),
                                         value.clone(),
                                     ),
                                     pos.into_inherited(),

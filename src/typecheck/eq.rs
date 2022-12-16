@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    term::{UnaryOp, record::Field},
+    term::{record::Field, UnaryOp},
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should

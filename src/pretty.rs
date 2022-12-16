@@ -1,7 +1,10 @@
 use crate::destruct::{self, Destruct};
-use crate::parser::lexer::KEYWORDS;
-use crate::term::{record::{Field, FieldMetadata}, BinaryOp, MetaValue, RichTerm, Term, UnaryOp};
 use crate::identifier::Ident;
+use crate::parser::lexer::KEYWORDS;
+use crate::term::{
+    record::{Field, FieldMetadata},
+    BinaryOp, MetaValue, RichTerm, Term, UnaryOp,
+};
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
@@ -132,22 +135,24 @@ where
     }
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-                self.quote_if_needed(&id)
-                    .append(self.field_metadata(&field.metadata, with_doc))
-                    .append(if let Some(ref value) = field.value {
-                        self.space()
-                            .append(self.text("="))
-                            .append(self.line())
-                            .append(value.to_owned().pretty(self).nest(2))
-                    } else {
-                        self.nil()
-                    })
-                    .append(self.text(","))
+        self.quote_if_needed(&id)
+            .append(self.field_metadata(&field.metadata, with_doc))
+            .append(if let Some(ref value) = field.value {
+                self.space()
+                    .append(self.text("="))
+                    .append(self.line())
+                    .append(value.to_owned().pretty(self).nest(2))
+            } else {
+                self.nil()
+            })
+            .append(self.text(","))
     }
 
-    fn fields(&'a self, fields: &HashMap<Ident, Field>, with_doc: bool)  -> DocBuilder<'a, Self, A> {
+    fn fields(&'a self, fields: &HashMap<Ident, Field>, with_doc: bool) -> DocBuilder<'a, Self, A> {
         self.intersperse(
-            sorted_map(fields).iter().map(|&(id, field)| self.field(id, field, with_doc)),
+            sorted_map(fields)
+                .iter()
+                .map(|&(id, field)| self.field(id, field, with_doc)),
             self.line(),
         )
     }
@@ -567,11 +572,7 @@ where
                 .append(allocator.line())
                 .group()
                 .braces(),
-            RecRecord(
-                record_data,
-                dyn_fields,
-                _,
-            ) => allocator
+            RecRecord(record_data, dyn_fields, _) => allocator
                 .line()
                 .append(allocator.fields(&record_data.fields, true))
                 // TODO: !todo() introdued by PR #XXX. The previous version of this code printing
