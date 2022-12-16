@@ -37,14 +37,8 @@ impl StringStartDelimiter {
         matches!(
             (self, close),
             (StringStartDelimiter::Standard, StringEndDelimiter::Standard)
-                | (
-                    StringStartDelimiter::Multiline,
-                    StringEndDelimiter::Multiline
-                )
-                | (
-                    StringStartDelimiter::Symbolic,
-                    StringEndDelimiter::Multiline
-                )
+                | (StringStartDelimiter::Multiline, StringEndDelimiter::Special)
+                | (StringStartDelimiter::Symbolic, StringEndDelimiter::Special)
         )
     }
 
@@ -56,12 +50,12 @@ impl StringStartDelimiter {
     }
 }
 
-/// Distinguish between the standard string closing delimter `"` and the multi-line string
+/// Distinguish between the standard string closing delimter `"` and the "special" string
 /// closing delimeter `"%`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StringEndDelimiter {
     Standard,
-    Multiline,
+    Special,
 }
 
 /// Distinguish between a normal case `id => exp` and a default case `_ => exp`.

@@ -523,7 +523,7 @@ StringStart : StringStartDelimiter = {
 
 StringEnd : StringEndDelimiter = {
     "\"" => StringEndDelimiter::Standard,
-    "\"%" => StringEndDelimiter::Multiline,
+    "\"%" => StringEndDelimiter::Special,
 };
 
 ChunkLiteral : String =
