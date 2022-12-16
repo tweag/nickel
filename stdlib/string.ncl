@@ -370,7 +370,10 @@
 
     length : Str -> Num
     | doc m%"
-      Results in the length of the given string.
+      Returns the length of the string, as measured by the number of UTF-8
+      [extended grapheme clusters](https://unicode.org/glossary/#extended_grapheme_cluster).
+
+      Generally speaking, this gives the number of "visible" glyphs in the string.
 
       For example:
       ```nickel
@@ -378,6 +381,10 @@
           0
         length "hi" =>
           2
+        length "四字熟語" =>
+          4
+        length "👨🏾‍❤️‍💋‍👨🏻" =>
+          1
       ```
       "%
     = fun s => %str_length% s,

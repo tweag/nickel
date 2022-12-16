@@ -45,6 +45,7 @@ sha-1 = "0.10.0"
 sha2 = "0.10.2"
 md-5 = "0.10.1"
 directories = "4.0.1"
+unicode-segmentation = "1.10.0"
 
 termimad = { version = "0.20.1", optional = true }
 ansi_term = { version = "0.12", optional = true }
