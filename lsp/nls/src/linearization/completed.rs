@@ -127,13 +127,14 @@ impl Completed {
             _ => item,
         };
 
-        if let Some(MetaValue {
-            ref doc,
-            ref types,
-            ref contracts,
-            priority,
-            ..
-        }) = item.meta.as_ref()
+        if let Some(
+            meta @ MetaValue {
+                ref doc,
+                ref types,
+                priority,
+                ..
+            },
+        ) = item.meta.as_ref()
         {
             if let Some(doc) = doc {
                 extra.push(doc.to_owned());
@@ -141,14 +142,8 @@ impl Completed {
             if let Some(types) = types {
                 extra.push(types.label.tag.to_string());
             }
-            if !contracts.is_empty() {
-                extra.push(
-                    contracts
-                        .iter()
-                        .map(|contract| format!("{}", contract.label.types,))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                );
+            if let Some(contracts) = meta.contracts_to_string() {
+                extra.push(contracts);
             }
 
             extra.push(format!("Merge Priority: {:?}", priority));
