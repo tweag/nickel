@@ -6,7 +6,7 @@ use nickel_lang::{
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{linearization::LinearizationState, UnifType},
-    types::TypeF,
+    types::TypeF, cache::CachedTerm,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};
@@ -23,6 +23,7 @@ use super::{
 pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub lin_cache: &'a mut HashMap<FileId, Completed>,
+    pub terms: &'a HashMap<FileId, CachedTerm>,
 }
 
 impl<'b> Building<'b> {

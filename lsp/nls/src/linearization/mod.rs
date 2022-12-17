@@ -3,6 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::{ByteIndex, FileId};
 use log::debug;
 use nickel_lang::{
+    cache::CachedTerm,
     identifier::Ident,
     position::TermPos,
     term::{MetaValue, Term, UnaryOp},
@@ -411,17 +412,25 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     })
                 }
             }
-            Term::ResolvedImport(file) => lin.push(LinearizationItem {
-                env: self.env.clone(),
-                id,
-                pos,
-                ty,
-                kind: TermKind::Usage(UsageState::Resolved(ItemId {
-                    file_id: *file,
-                    index: 0,
-                })),
-                meta: self.meta.take(),
-            }),
+            Term::ResolvedImport(file) => {
+                // These unwraps are not safe
+                // Take a more careful look at them again
+                let terms = lin.terms;
+                let CachedTerm { term, .. } = terms.get(file).unwrap();
+                let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
+                let linearization = lin_cache.get(file).unwrap();
+                lin.push(LinearizationItem {
+                    env: self.env.clone(),
+                    id,
+                    pos,
+                    ty,
+                    kind: TermKind::Usage(UsageState::Resolved(ItemId {
+                        file_id: *file,
+                        index: 0,
+                    })),
+                    meta: self.meta.take(),
+                })
+            }
             other => {
                 debug!("Add wildcard item: {:?}", other);
 
