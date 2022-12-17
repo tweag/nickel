@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use codespan::{ByteIndex, FileId};
+use codespan::ByteIndex;
 use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState};
 
 use super::{

@@ -24,7 +24,8 @@ pub fn handle(
                 .text_document_position_params
                 .text_document
                 .uri
-                .as_str(),
+                .to_file_path()
+                .unwrap(),
         )
         .unwrap();
 

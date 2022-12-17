@@ -469,8 +469,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         lin.resolve_record_references(self.file, defers);
 
         let Building {
-            mut linearization,
-            lin_cache,
+            mut linearization, ..
         } = lin.into_inner();
 
         linearization.sort_by(
@@ -524,7 +523,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 ..item
             })
             .collect();
-       
+
         let c = Completed::new(lin_, id_mapping);
         update(self.file, c.clone());
         Linearization::new(c)

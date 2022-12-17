@@ -27,7 +27,8 @@ pub fn handle_to_definition(
                 .text_document_position_params
                 .text_document
                 .uri
-                .as_str(),
+                .to_file_path()
+                .unwrap(),
         )
         .unwrap();
 
@@ -63,7 +64,7 @@ pub fn handle_to_definition(
                 src_id,
             } = definition.pos.unwrap();
             let location = Location {
-                uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
+                uri: Url::from_file_path(server.cache.name(src_id)).unwrap(),
                 range: Range::from_codespan(
                     &src_id,
                     &(start as usize..end as usize),

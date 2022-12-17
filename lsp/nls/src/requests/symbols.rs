@@ -16,7 +16,7 @@ pub fn handle_document_symbols(
 ) -> Result<(), ResponseError> {
     let file_id = server
         .cache
-        .id_of(params.text_document.uri.to_string())
+        .id_of(params.text_document.uri.to_file_path().unwrap())
         .unwrap();
 
     if let Some(completed) = server.lin_cache.get(&file_id) {

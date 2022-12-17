@@ -641,13 +641,22 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
             Some(state) if state >= EntryState::Parsed => {
-                let mut ps = Vec::new();
-                if state < EntryState::ImportsResolving {
+                let pending = if state < EntryState::ImportsResolving {
+                    // let CachedTerm {
+                    //     term, parse_errs, ..
+                    // } = self.terms.remove(&file_id).unwrap();
                     let CachedTerm {
                         term, parse_errs, ..
-                    } = self.terms.remove(&file_id).unwrap();
+                    } = self.terms.get(&file_id).unwrap();
+                    // The current solution is not to remove the item from the cache
+                    // in order to keep it, in the case where we fail.
+                    // okay, for now these clones are here becuase the function call below
+                    // is faillible, and then we don't put back the item in cache
+                    // A better way is to put it back before we fail.
+                    let term = term.clone();
+                    let parse_errs = parse_errs.clone();
                     let (term, pending) = import_resolution::resolve_imports(term, self)?;
-                    ps = pending.clone();
+
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -657,19 +666,21 @@ impl Cache {
                         },
                     );
 
-                    for id in pending {
-                        self.resolve_imports(id)?;
+                    for id in &pending {
+                        self.resolve_imports(*id)?;
                     }
+                    pending
                 } else {
                     let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
 
-                    for id in pending {
-                        self.resolve_imports(id)?;
+                    for id in &pending {
+                        self.resolve_imports(*id)?;
                     }
-                }
+                    pending.into_iter().collect()
+                };
 
                 self.update_state(file_id, EntryState::ImportsResolved);
-                Ok(CacheOp::Done(ps))
+                Ok(CacheOp::Done(pending))
             }
             _ => Err(CacheError::NotParsed),
         }
@@ -1033,7 +1044,7 @@ impl ImportResolver for Cache {
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
-                path.to_string_lossy().into_owned(),
+                path_buf.to_string_lossy().into_owned(),
                 format!("{}", err),
                 *pos,
             )

@@ -434,7 +434,14 @@ pub fn handle_completion(
 ) -> Result<(), ResponseError> {
     let file_id = server
         .cache
-        .id_of(params.text_document_position.text_document.uri.as_str())
+        .id_of(
+            params
+                .text_document_position
+                .text_document
+                .uri
+                .to_file_path()
+                .unwrap(),
+        )
         .unwrap();
 
     let text = server.cache.files().source(file_id);
