@@ -6,7 +6,7 @@ use nickel_lang::{
     cache::CachedTerm,
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, Term, UnaryOp},
+    term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
@@ -238,6 +238,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
+
+                    // self.add_term(lin, term.as_ref(), pos, ty);
+
                     let id = ItemId {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
@@ -252,6 +255,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         kind: TermKind::Declaration(
                             ident.to_owned(),
                             Vec::new(),
+                            // This id is supposed to be the id from the
+                            // linearized `term`
                             ValueState::Known(id),
                         ),
                         meta: match &*term.term {
@@ -413,21 +418,44 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
             }
             Term::ResolvedImport(file) => {
+                fn final_term_pos(term: &RichTerm) -> &TermPos {
+                    let RichTerm { term, pos } = term;
+                    match term.as_ref() {
+                        Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
+                            final_term_pos(body)
+                        }
+                        _ => pos,
+                    }
+                }
+
                 // These unwraps are not safe
                 // Take a more careful look at them again
                 let terms = lin.terms;
                 let CachedTerm { term, .. } = terms.get(file).unwrap();
+                let position = final_term_pos(term);
+
                 let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
                 let linearization = lin_cache.get(file).unwrap();
+
+                // This linear search through the linearization might not be
+                // good for the performance... Is there a more efficient way? 
+                // Another alternative might be to keep track of a mapping of 
+                // TermPos to id (i.e HashMap<TermPos, ItemId>) in the `Completed`
+                // data structure, but obviously this would require more space.
+                let term_id = linearization
+                    .linearization
+                    .iter()
+                    .find_map(|item| {
+                        let pred = item.pos == *position;
+                        pred.then_some(item.id)
+                    })
+                    .unwrap();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id,
                     pos,
                     ty,
-                    kind: TermKind::Usage(UsageState::Resolved(ItemId {
-                        file_id: *file,
-                        index: 0,
-                    })),
+                    kind: TermKind::Usage(UsageState::Resolved(term_id)),
                     meta: self.meta.take(),
                 })
             }

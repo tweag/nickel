@@ -666,10 +666,19 @@ impl Cache {
                         },
                     );
 
-                    for id in &pending {
-                        self.resolve_imports(*id)?;
-                    }
+                    // for id in &pending {
+                    //     if let CacheOp::Done(ps) = self.resolve_imports(*id)? {}
+                    // }
                     pending
+                        .iter()
+                        .flat_map(|id| {
+                            if let Ok(CacheOp::Done(ps)) = self.resolve_imports(*id) {
+                                ps
+                            } else {
+                                Vec::new()
+                            }
+                        })
+                        .collect()
                 } else {
                     let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
 

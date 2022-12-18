@@ -45,6 +45,7 @@ impl CacheExt for Cache {
         }
 
         if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id) {
+            // TODO: we need a way to stop infite recursion with imports
             for id in ids {
                 // Linearize all imports in this file
                 // NOTE: This only goes down one level
