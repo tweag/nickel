@@ -672,10 +672,11 @@ impl Cache {
                     pending
                         .iter()
                         .flat_map(|id| {
-                            if let Ok(CacheOp::Done(ps)) = self.resolve_imports(*id) {
+                            if let Ok(CacheOp::Done(mut ps)) = self.resolve_imports(*id) {
+                                ps.push(*id);
                                 ps
                             } else {
-                                Vec::new()
+                                vec![*id]
                             }
                         })
                         .collect()
