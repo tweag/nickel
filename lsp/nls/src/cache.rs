@@ -47,6 +47,9 @@ impl CacheExt for Cache {
         if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id) {
             // TODO: we need a way to stop infite recursion with imports
             for id in ids {
+                if id == file_id {
+                    continue;
+                }
                 // Linearize all imports in this file
                 // NOTE: This only goes down one level
                 self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
@@ -65,7 +68,7 @@ impl CacheExt for Cache {
             let building = Linearization::new(Building {
                 lin_cache,
                 linearization: Vec::new(),
-                terms
+                terms,
             });
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;

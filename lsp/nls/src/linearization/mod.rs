@@ -428,18 +428,22 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                // These unwraps are not safe
-                // Take a more careful look at them again
                 let terms = lin.terms;
+                // This is safe because the import file is resolved, before we linearize 
+                // the containing file, therefore the cache MUST have the term stored.
                 let CachedTerm { term, .. } = terms.get(file).unwrap();
                 let position = final_term_pos(term);
 
+                // This is safe because imports are linearized before the containing file 
+                // is linearized, so there MUST be at least one item in the cache.
                 let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
-                let linearization = lin_cache.get(file).unwrap();
+                let Some(linearization) = lin_cache.get(file) else {
+                    return
+                };
 
                 // This linear search through the linearization might not be
-                // good for the performance... Is there a more efficient way? 
-                // Another alternative might be to keep track of a mapping of 
+                // good for the performance... Is there a more efficient way?
+                // Another alternative might be to keep track of a mapping of
                 // TermPos to id (i.e HashMap<TermPos, ItemId>) in the `Completed`
                 // data structure, but obviously this would require more space.
                 let term_id = linearization
@@ -449,7 +453,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         let pred = item.pos == *position;
                         pred.then_some(item.id)
                     })
-                    .unwrap();
+                    .unwrap(); // This unwrap is not safe
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id,
