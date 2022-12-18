@@ -224,7 +224,7 @@ fn export(
     serialize::validate(format, &rt)?;
 
     if let Some(file) = output {
-        let file = fs::File::create(&file).map_err(IOError::from)?;
+        let file = fs::File::create(file).map_err(IOError::from)?;
         serialize::to_writer(file, format, &rt)?;
     } else {
         serialize::to_writer(std::io::stdout(), format, &rt)?;

@@ -215,7 +215,7 @@ fn records_contracts_poly() {
     // for that reason, you can just move the examples into the array above.
     let bad_acc = "let f | forall a. { ; a} -> { ; a} = fun x => %seq% x.a x in f";
     assert_matches!(
-        eval(&format!("{} {{a=1}}", bad_acc)),
+        eval(format!("{} {{a=1}}", bad_acc)),
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
 
