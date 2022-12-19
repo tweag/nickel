@@ -214,7 +214,7 @@ pkgs.hello = builders.unix_package & {
 Thanks to laziness, `nix` could extract fields like `name` or `version` directly
 without having to provide inputs or to evaluate `drv`.
 
-We call this approach the **PARM** (**P**ackage **A**s **R**records
+We call this approach the **PARM** (**P**ackage **A**s **R**ecords
 **M**odel) thereafter.
 
 #### Specifying dependencies
