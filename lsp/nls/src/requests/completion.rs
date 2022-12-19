@@ -808,6 +808,11 @@ mod tests {
             priority: MergePriority::Neutral,
             value: None,
         };
+        let c = make_lin_item(
+            ItemId { file_id, index: 2 },
+            TermKind::Structure,
+            None,
+        );
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
@@ -816,10 +821,11 @@ mod tests {
             ])),
             Some(meta),
         );
-        let lin = make_completed(vec![a, b]);
+        let lin = make_completed(vec![a, b, c]);
 
         let actual = collect_record_info(&lin, id, &mut Vec::new());
         let expected = vec![Ident::from("one"), Ident::from("two")];
+        let actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
         assert_eq!(actual, expected)
     }
 }
