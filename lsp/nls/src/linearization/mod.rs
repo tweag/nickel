@@ -434,6 +434,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // the containing file, therefore the cache MUST have the term stored.
                 let CachedTerm { term, .. } = terms.get(file).unwrap();
                 let position = final_term_pos(term);
+                let locator = (*file, position.unwrap().start);
 
                 // This is safe because imports are linearized before the containing file
                 // is linearized, so there MUST be at least one item in the cache.
@@ -442,24 +443,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     return
                 };
 
-                // This linear search through the linearization might not be
-                // good for the performance... Is there a more efficient way?
-                // Another alternative might be to keep track of a mapping of
-                // TermPos to id (i.e HashMap<TermPos, ItemId>) in the `Completed`
-                // data structure, but obviously this would require more space.
-                let term_id = linearization
-                    .linearization
-                    .iter()
-                    .find_map(|item| {
-                        let pred = item.pos == *position;
-                        pred.then_some(item.id)
-                    })
-                    // This unwrap is not safe
-                    // Idealy we want to find the CLOSEST possible term,
-                    // not just a term which the actual term might be a subterm of
-                    // This is because the linearizer doesn't keep all terms in the
-                    // linearization
-                    .unwrap();
+                let term_id = linearization.item_at(&locator).unwrap().id;
 
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
