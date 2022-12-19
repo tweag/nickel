@@ -333,7 +333,6 @@ fn collect_record_info(
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item);
             match (&item.kind, ty) {
-                (TermKind::Record(data), _) => data.keys().cloned().collect(),
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
                 (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
@@ -346,8 +345,9 @@ fn collect_record_info(
                     fst
                 }
                 (
-                    TermKind::RecordField {
-                        value: ValueState::Known(value),
+                    TermKind::Declaration(_, _, ValueState::Known(body_id))
+                    | TermKind::RecordField {
+                        value: ValueState::Known(body_id),
                         ..
                     },
                     _,

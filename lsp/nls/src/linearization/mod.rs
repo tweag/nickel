@@ -424,6 +424,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
                             final_term_pos(body)
                         }
+                        Term::Op1(UnaryOp::StaticAccess(_field), term) => final_term_pos(term),
                         _ => pos,
                     }
                 }
@@ -459,6 +460,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     // This is because the linearizer doesn't keep all terms in the
                     // linearization
                     .unwrap();
+
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id,
