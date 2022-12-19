@@ -3,10 +3,11 @@ use std::{collections::HashMap, mem};
 use codespan::FileId;
 use log::debug;
 use nickel_lang::{
+    cache::CachedTerm,
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{linearization::LinearizationState, UnifType},
-    types::TypeF, cache::CachedTerm,
+    types::TypeF,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};

@@ -429,12 +429,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
 
                 let terms = lin.terms;
-                // This is safe because the import file is resolved, before we linearize 
+                // This is safe because the import file is resolved, before we linearize
                 // the containing file, therefore the cache MUST have the term stored.
                 let CachedTerm { term, .. } = terms.get(file).unwrap();
                 let position = final_term_pos(term);
 
-                // This is safe because imports are linearized before the containing file 
+                // This is safe because imports are linearized before the containing file
                 // is linearized, so there MUST be at least one item in the cache.
                 let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
                 let Some(linearization) = lin_cache.get(file) else {
@@ -453,7 +453,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         let pred = item.pos == *position;
                         pred.then_some(item.id)
                     })
-                    .unwrap(); // This unwrap is not safe
+                    // This unwrap is not safe
+                    // Idealy we want to find the CLOSEST possible term,
+                    // not just a term which the actual term might be a subterm of
+                    // This is because the linearizer doesn't keep all terms in the
+                    // linearization
+                    .unwrap();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id,
