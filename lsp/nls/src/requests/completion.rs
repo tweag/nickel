@@ -808,11 +808,7 @@ mod tests {
             priority: MergePriority::Neutral,
             value: None,
         };
-        let c = make_lin_item(
-            ItemId { file_id, index: 2 },
-            TermKind::Structure,
-            None,
-        );
+        let c = make_lin_item(ItemId { file_id, index: 2 }, TermKind::Structure, None);
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
