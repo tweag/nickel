@@ -4,7 +4,6 @@ use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-<<<<<<< HEAD
 /// This is an array containing all the Nickel standard library modules.
 pub fn modules() -> [StdlibModule; 9] {
     [
@@ -19,7 +18,6 @@ pub fn modules() -> [StdlibModule; 9] {
         StdlibModule::Compat,
     ]
 }
-
 
 /// Represents a particular Nickel standard library module.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -98,7 +96,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::Num => "num",
             StdlibModule::Function => "function",
             StdlibModule::Internals => "internals",
-            StdlibModule::Compat=> "Compat",
+            StdlibModule::Compat => "Compat",
         };
         Ident::from(name)
     }
