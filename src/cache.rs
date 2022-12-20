@@ -642,17 +642,14 @@ impl Cache {
             Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
             Some(state) if state >= EntryState::Parsed => {
                 let pending = if state < EntryState::ImportsResolving {
-                    // let CachedTerm {
-                    //     term, parse_errs, ..
-                    // } = self.terms.remove(&file_id).unwrap();
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.get(&file_id).unwrap();
-                    // The current solution is not to remove the item from the cache
-                    // in order to keep it, in the case where we fail.
                     // okay, for now these clones are here becuase the function call below
-                    // is faillible, and then we don't put back the item in cache
-                    // A better way is to put it back before we fail.
+                    // short circuts, and then we don't put back the item in cache, so the
+                    // linearization of a file fails if we can't resolve any of it's imports
+                    // The current solution is not to remove the item from the cache, and
+                    // put it back when done, but to get a reference and clone it.
                     let term = term.clone();
                     let parse_errs = parse_errs.clone();
                     let (term, pending) = import_resolution::resolve_imports(term, self)?;
@@ -666,9 +663,6 @@ impl Cache {
                         },
                     );
 
-                    // for id in &pending {
-                    //     if let CacheOp::Done(ps) = self.resolve_imports(*id)? {}
-                    // }
                     pending
                         .iter()
                         .flat_map(|id| {

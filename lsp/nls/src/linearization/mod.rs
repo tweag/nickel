@@ -28,7 +28,7 @@ pub mod interface;
 // Cache of completed items
 static mut LIN_CACHE: Option<HashMap<FileId, Completed>> = None;
 
-fn update(file: FileId, value: Completed) {
+fn update_lin_cache(file: FileId, value: Completed) {
     unsafe {
         match &mut LIN_CACHE {
             Some(table) => {
@@ -239,8 +239,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
 
-                    // self.add_term(lin, term.as_ref(), pos, ty);
-
                     let id = ItemId {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
@@ -255,8 +253,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         kind: TermKind::Declaration(
                             ident.to_owned(),
                             Vec::new(),
-                            // This id is supposed to be the id from the
-                            // linearized `term`
                             ValueState::Known(id),
                         ),
                         meta: match &*term.term {
@@ -556,7 +552,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             .collect();
 
         let c = Completed::new(lin_, id_mapping);
-        update(self.file, c.clone());
+        update_lin_cache(self.file, c.clone());
         Linearization::new(c)
     }
 
