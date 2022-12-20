@@ -44,11 +44,11 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
-        types::{RecordRowF, RecordRowsF, TypeF, Types},
+        types::{RecordRowF, RecordRowsIteratorItem, TypeF, Types},
     };
 
     /// An element of a path type.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Copy)]
     pub enum Elem {
         Domain,
         Codomain,
@@ -58,28 +58,82 @@ pub mod ty_path {
 
     pub type Path = Vec<Elem>;
 
-    /// Determine if the path has only `Codomain` components.
-    pub fn is_only_codom(p: &Path) -> bool {
-        p.iter().all(|elt| *elt == Elem::Codomain)
+    /// Determine if the path has no `Domain` arrow component in it.
+    pub fn has_no_dom(p: &Path) -> bool {
+        !p.iter().any(|elt| matches!(*elt, Elem::Domain))
+    }
+
+    /// Return the last element of the past which is either `Domain` or `Codomain`.
+    pub fn last_arrow_elem(p: &Path) -> Option<Elem> {
+        p.iter().fold(None, |current_last, elt| {
+            matches!(*elt, Elem::Domain | Elem::Codomain)
+                .then_some(*elt)
+                .or(current_last)
+        })
     }
 
     /// Determine if the path is not higher order, that is, if it doesn't contain any arrow.
     pub fn has_no_arrow(p: &Path) -> bool {
-        !p.iter()
-            .any(|elt| matches!(*elt, Elem::Domain | Elem::Codomain))
+        last_arrow_elem(p).is_none()
     }
 
-    /// Return the position span encoded by a type path in the string representation of the
-    /// corresponding type.
+    #[derive(Clone, Copy, Debug)]
+    /// Represent the span of a type path in the string representation of the corresponding type,
+    /// together with additional data useful to error reporting.
+    ///
+    /// Produced by [`span`]. The last element of the path that could be matched with the type is
+    /// returned, as well as the last element of the part of the path that could be matched which
+    /// is an arrow element (`Domain` or `Codomain`).
+    ///
+    /// In the general case, this should be respectively the last element of the path and the last
+    /// element of the path filtered by keeping only `Domain` and `Codmain`. But sometimes the
+    /// `span` function couldn't make further progress:
+    ///
+    /// ```nickel
+    /// let Foo = Array Num in
+    /// let f : Num -> Foo = fun x => ["a"] in
+    /// f 0
+    /// ```
+    ///
+    /// This code will blame with path `[Codomain, Array]`. However, because the "alias" `Foo` is
+    /// used for `Array Num`, we can't descend further inside `Foo` which doesn't have the shape
+    /// `Array _`. `span` will stop here, and the last elements saved in `PathSpan` will both be
+    /// `Codomain`, instead of `Array` and `Codomain`. This helps specializing the error message
+    /// accordingly.
+    pub struct PathSpan {
+        pub start: usize,
+        pub end: usize,
+        pub last: Option<Elem>,
+        pub last_arrow_elem: Option<Elem>,
+    }
+
+    /// Return the span encoded (as well as additional data: see [PathSpan]) by a type path in the
+    /// string representation of the corresponding type.
     ///
     /// Used in the error reporting of blame errors (see `crate::error::report_ty_path`).
     ///
     /// # Example
     ///
-    /// - Type path: `Codomain(Domain(Nil()))`
+    /// - Type path: `[Codomain, Domain]`
     /// - Type : `Num -> Num -> Num`
-    /// - Return: `(7, 10)`, which corresponds to the second `Num` occurrence.
-    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> (usize, usize)
+    /// - Return: `{start: 7, end: 10, last: Some(Domain), last_arrow_elem: Some(Domain)}`. The
+    ///   span `(7, 10)` corresponds to the second `Num` occurrence.
+    ///
+    /// # Mismatch between `path` and `ty`
+    ///
+    /// If at some point the shape of the type `ty` doesn't correspond to the path (e.g. if the
+    /// next element is `Array`, but the type isn't of the form `Array _`), `span` just reports the
+    /// span of the whole current subtype.
+    ///
+    /// ```nickel
+    /// let Foo = Array Num in
+    /// ["a"] | Foo
+    /// ```
+    ///
+    /// Here, the type path will contain an `Array` (added by the builtin implementation of the
+    /// `Array` contract), but the original type will be `Foo`, which isn't of the form `Array _`.
+    /// Thus we can't underline the subtype `_`, and stops at the whole `Array T`.
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> PathSpan
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
@@ -90,7 +144,12 @@ pub mod ty_path {
         let forall_offset = match (&ty.0, path_it.peek()) {
             (_, None) => {
                 let repr = format!("{}", ty);
-                return (0, repr.len());
+                return PathSpan {
+                    start: 0,
+                    end: repr.len(),
+                    last: None,
+                    last_arrow_elem: None,
+                };
             }
             (TypeF::Forall { .. }, Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
@@ -121,15 +180,17 @@ pub mod ty_path {
 
                 match next {
                     Elem::Domain => {
-                        let (dom_start, dom_end) = span(path_it, dom.as_ref());
-                        (
-                            dom_start + paren_offset + forall_offset,
-                            dom_end + paren_offset + forall_offset,
-                        )
+                        let PathSpan { start: dom_start, end: dom_end, last, last_arrow_elem} = span(path_it, dom.as_ref());
+                        PathSpan {
+                            start: dom_start + paren_offset + forall_offset,
+                            end: dom_end + paren_offset + forall_offset,
+                            last: last.or(Some(*next)),
+                            last_arrow_elem: last_arrow_elem.or(Some(*next)),
+                        }
                     }
                     Elem::Codomain => {
-                        let (_, dom_end) = span(Vec::new().iter().peekable(), dom.as_ref());
-                        let (codom_start, codom_end) = span(path_it, codom.as_ref());
+                        let PathSpan {end: dom_end, ..} = span(std::iter::empty().peekable(), dom.as_ref());
+                        let PathSpan {start: codom_start, end: codom_end, last, last_arrow_elem} = span(path_it, codom.as_ref());
                         // At this point, paren_offset is:
                         // (a) `1` if there is a couple of parentheses around the domain
                         // (b) `0` otherwise
@@ -137,12 +198,17 @@ pub mod ty_path {
                         // to also take into account the closing ')' character, whence the `offset*2`.
                         // The `4` corresponds to the arrow " -> ".
                         let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
-                        (codom_start + offset, codom_end + offset)
+                        PathSpan {
+                            start: codom_start + offset,
+                            end: codom_end + offset,
+                            last: last.or(Some(*next)),
+                            last_arrow_elem: last_arrow_elem.or(Some(*next)),
+                        }
                     }
-                    _ => panic!(),
+                    _ => panic!("span(): seeing an arrow type, but the type path is neither domain nor codomain"),
                 }
             }
-            (TypeF::Record(rows), Some(Elem::Field(ident))) => {
+            (TypeF::Record(rows), next @ Some(Elem::Field(ident))) => {
                 // initial "{"
                 let mut start_offset = 1;
                 // middle ": " between the field name and the type
@@ -150,53 +216,77 @@ pub mod ty_path {
                 // The ", " between two fields
                 let end_offset = 2;
 
-                let mut row = &rows.0;
-                loop {
-                    match row {
-                        RecordRowsF::Extend {
-                            row: RecordRowF { id, types: ty },
-                            tail: _,
-                        } if id == ident => {
-                            let (sub_start, sub_end) = span(path_it, ty);
+                for row_item in rows.iter() {
+                    match row_item {
+                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty })
+                            if id == *ident =>
+                        {
+                            let PathSpan {
+                                start: sub_start,
+                                end: sub_end,
+                                last,
+                                last_arrow_elem,
+                            } = span(path_it, ty);
                             let full_offset = start_offset + format!("{}", id).len() + id_offset;
-                            break (full_offset + sub_start, full_offset + sub_end);
+
+                            return PathSpan {
+                                start: full_offset + sub_start,
+                                end: full_offset + sub_end,
+                                last: last.or_else(|| next.copied()),
+                                last_arrow_elem,
+                            };
                         }
-                        RecordRowsF::Extend {
-                            row: RecordRowF { id, types: ty },
-                            tail,
-                        } => {
+                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty }) => {
                             // The last +1 is for the
                             start_offset += format!("{}", id).len()
                                 + id_offset
                                 + format!("{}", ty).len()
                                 + end_offset;
-                            row = &tail.0;
                         }
-                        _ => panic!(),
+                        RecordRowsIteratorItem::TailDyn | RecordRowsIteratorItem::TailVar(_) => (),
                     }
                 }
+
+                panic!(
+                    "span: current type path element indicates to go to field `{}`,\
+but this field doesn't exist in {}",
+                    ident,
+                    Types(TypeF::Record(rows.clone()))
+                )
             }
             (TypeF::Array(ty), Some(Elem::Array)) if *ty.as_ref() == Types(TypeF::Dyn) =>
             // Dyn shouldn't be the target of any blame
             {
                 panic!("span(): unexpected blame of a dyn contract inside an array")
             }
-            (TypeF::Array(ty), Some(Elem::Array)) => {
+            (TypeF::Array(ty), next @ Some(Elem::Array)) => {
                 // initial "Array "
                 let start_offset = 6;
                 let paren_offset = usize::from(!ty.fmt_is_atom());
 
-                let (sub_start, sub_end) = span(path_it, ty);
-                (
-                    start_offset + paren_offset + sub_start,
-                    start_offset + paren_offset + sub_end,
-                )
+                let PathSpan {
+                    start: sub_start,
+                    end: sub_end,
+                    last,
+                    last_arrow_elem,
+                } = span(path_it, ty);
+                PathSpan {
+                    start: start_offset + paren_offset + sub_start,
+                    end: start_offset + paren_offset + sub_end,
+                    last: last.or_else(|| next.copied()),
+                    last_arrow_elem,
+                }
             }
-            (ty, next) => panic!(
-                "label::span: unexpected type {} with path element {:?}",
-                Types(ty.clone()),
-                next
-            ),
+            // The type and the path don't match, we stop here.
+            _ => {
+                let repr = format!("{}", ty);
+                PathSpan {
+                    start: 0,
+                    end: repr.len(),
+                    last: None,
+                    last_arrow_elem: None,
+                }
+            }
         }
     }
 }

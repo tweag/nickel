@@ -11,9 +11,12 @@ use lalrpop_util::ErrorRecovery;
 use crate::{
     eval::callstack::CallStack,
     identifier::Ident,
-    label::{self, ty_path},
-    parser,
+    label::{
+        self,
+        ty_path::{self, PathSpan},
+    },
     parser::{
+        self,
         error::{LexicalError, ParseError as InternalParseError},
         lexer::Token,
         utils::mk_span,
@@ -778,7 +781,7 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 diagnostics.push(blame_error::note(l));
 
-                if ty_path::is_only_codom(&l.path) {
+                if ty_path::has_no_dom(&l.path) {
                 } else if let Some(id) = contract_id {
                     diagnostics.extend_with_call_stack(id, call_stack);
                 }
@@ -1055,7 +1058,7 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 diagnostics.push(blame_error::note(l));
 
-                if ty_path::is_only_codom(&l.path) {
+                if ty_path::has_no_dom(&l.path) {
                 } else if let Some(id) = contract_id {
                     diagnostics.extend_with_call_stack(id, call_stack);
                 }
@@ -1073,7 +1076,10 @@ mod blame_error {
 
     use crate::{
         eval::callstack::CallStack,
-        label::{self, ty_path},
+        label::{
+            self,
+            ty_path::{self, PathSpan},
+        },
         position::TermPos,
     };
 
@@ -1202,45 +1208,44 @@ mod blame_error {
     ) -> (Label<FileId>, Vec<String>) {
         let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
 
-        let (msg, notes) = if l.path.is_empty() {
-            (String::from("expected type"), Vec::new())
-        } else if ty_path::has_no_arrow(&l.path) {
-            match l.path.last() {
-                Some(ty_path::Elem::Array) => {
-                    (String::from("expected array element type"), Vec::new())
-                }
-                Some(ty_path::Elem::Field(_)) => (String::from("expected field type"), Vec::new()),
-                _ => unreachable!(),
+        let PathSpan {
+            start,
+            end,
+            last,
+            last_arrow_elem,
+        } = ty_path::span(l.path.iter().peekable(), &l.types);
+
+        let (msg, notes) = match (last, last_arrow_elem) {
+            // The type path contract doesn't contain any arrow, and the failing subcontract is the
+            // contract for the elements of an array
+            (Some(ty_path::Elem::Array), None) => (String::from("expected array element type"), Vec::new()),
+            // The type path doesn't contain any arrow, and the failing subcontract is the contract
+            // for the field of a record
+            (Some(ty_path::Elem::Field(_)), None) => (String::from("expected field type"), Vec::new()),
+            // The original contract contains an arrow, and the path is only composed of codomains.
+            // Then polarity is necessarily true and the cause of the blame is the return value of
+            // the function
+            (Some(_), Some(ty_path::Elem::Codomain)) if ty_path::has_no_dom(&l.path) => {
+                (
+                    String::from("expected return type"),
+                    vec![
+                        String::from(
+                            "This error may happen in the following situation:
+    1. A fun    ction `f` is bound by a contract: e.g. `Bool -> Num`.
+    2. `f` r    eturns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
+                        ),
+                        String::from(
+                            "Either change the contract accordingly, or change the return value of `f`",
+                        ),
+                    ],
+                )
             }
-        }
-        // If the path is only composed of codomains, polarity is necessarily true and the cause of the
-        // blame is the return value of the function
-        else if ty_path::is_only_codom(&l.path) {
-            (
-                String::from("expected return type"),
-                vec![
-                    String::from(
-                        "This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
-    2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
-                    ),
-                    String::from(
-                        "Either change the contract accordingly, or change the return value of `f`",
-                    ),
-                ],
-            )
-        } else {
-            // We ignore the `Field` and `Array` elements of the path, since they do not impact
-            // polarity, and only consider "higher-order" elements to customize error messages.
-            let last = l
-                .path
-                .iter()
-                .filter(|elt| matches!(*elt, ty_path::Elem::Domain | ty_path::Elem::Codomain))
-                .last()
-                .unwrap();
-            match last {
-                ty_path::Elem::Domain if l.polarity => {
-                    (String::from("expected type of an argument of an inner call"),
+            // The original contract contains an arrow, the subcontract is the domain of an
+            // arrow, and the polarity is positive. The function is to be blamed for calling an
+            // argument on a value of the wrong type.
+            (Some(_), Some(ty_path::Elem::Domain)) if l.polarity => {
+                (
+                    String::from("expected type of an argument of an inner call"),
                     vec![
                         String::from("This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
@@ -1248,10 +1253,16 @@ mod blame_error {
     3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
                         String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
                         end_note,
-                    ])
-                }
-                ty_path::Elem::Codomain if l.polarity => {
-                    (String::from("expected return type of a sub-function passed as an argument of an inner call"),
+                    ],
+                )
+            }
+            // The original contract contains an arrow, the subcontract is the codomain of an
+            // arrow, and the polarity is positive. The function is to be blamed for calling a
+            // higher-order function argument on a function which returns a value of the wrong
+            // type.
+            (Some(_), Some(ty_path::Elem::Codomain)) if l.polarity => {
+                (
+                    String::from("expected return type of a sub-function passed as an argument of an inner call"),
                     vec![
                         String::from("This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
@@ -1260,20 +1271,30 @@ mod blame_error {
     4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
                         String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
                         end_note,
-                    ])
-                }
-                ty_path::Elem::Domain => {
-                    (String::from("expected type of the argument provided by the caller"),
+                    ],
+                )
+            }
+            // The original contract contains an arrow, the subcontract is the domain of an arrow,
+            // and the polarity is negative. The caller is to be blamed for providing an argument
+            // of the wrong type.
+            (Some(_), Some(ty_path::Elem::Domain)) => {
+                (
+                    String::from("expected type of the argument provided by the caller"),
                     vec![
                         String::from("This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `Num -> Num`.
     2. `f` is called with an argument of the wrong type: e.g. `f false`."),
                         String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
                         end_note,
-                    ])
-                }
-                ty_path::Elem::Codomain => {
-                    (String::from("expected return type of a function provided by the caller"),
+                    ],
+                )
+            }
+            // The original contract contains an arrow, the subcontract is the codomain of an
+            // arrow, and the polarity is negative. The caller is to be blamed for providing a
+            // higher-order function argument which returns a value of the wrong type.
+            (Some(_), Some(ty_path::Elem::Codomain)) => {
+                (
+                    String::from("expected return type of a function provided by the caller"),
                     vec![
                         String::from("This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
@@ -1281,13 +1302,15 @@ mod blame_error {
     3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
                         String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
                         end_note,
-                    ])
-                }
-                _ => panic!(),
+                    ],
+                )
             }
+            // If there is a last arrow element, then there must be last element
+            (None, Some(_)) => panic!("blame error reporting: inconsistent path analysis, last_elem\
+is None but last_arrow_elem is Some"),
+            _ => (String::from("expected type"), Vec::new()),
         };
 
-        let (start, end) = ty_path::span(l.path.iter().peekable(), &l.types);
         let label = Label::new(
             LabelStyle::Secondary,
             files.add("", format!("{}", l.types)),
@@ -1575,8 +1598,8 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         ])]
             }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
-                let (expd_start, expd_end) = ty_path::span(path.iter().peekable(), expd);
-                let (actual_start, actual_end) = ty_path::span(path.iter().peekable(), actual);
+                let PathSpan {start: expd_start, end: expd_end, ..} = ty_path::span(path.iter().peekable(), expd);
+                let PathSpan {start: actual_start, end: actual_end, ..} = ty_path::span(path.iter().peekable(), actual);
 
                 let mut labels = vec![
                     Label::secondary(

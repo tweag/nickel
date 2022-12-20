@@ -898,8 +898,8 @@ fn walk<L: Linearizer>(
         }
         Term::Record(record) => {
             record.fields
-                .iter()
-                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
+                .values()
+                .try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)
                 })
         }
@@ -1257,8 +1257,8 @@ fn type_check_<L: Linearizer>(
             // `Let` case in `walk`.
             record
                 .fields
-                .iter()
-                .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
+                .values()
+                .try_for_each(|t| -> Result<(), TypecheckError> {
                     type_check_(
                         state,
                         ctxt.clone(),
@@ -1290,8 +1290,8 @@ fn type_check_<L: Linearizer>(
                 // Checking for a dictionary
                 record
                     .fields
-                    .iter()
-                    .try_for_each(|(_, t)| -> Result<(), TypecheckError> {
+                    .values()
+                    .try_for_each(|t| -> Result<(), TypecheckError> {
                         type_check_(
                             state,
                             ctxt.clone(),
