@@ -57,7 +57,7 @@ pub fn handle_to_definition(
 
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
-            let definition = linearization.get_item(usage_id).unwrap();
+            let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
             let RawSpan {
                 start: ByteIndex(start),
                 end: ByteIndex(end),
@@ -123,7 +123,7 @@ pub fn handle_to_usages(
                 .iter()
                 .filter_map(|reference_id| {
                     linearization
-                        .get_item(*reference_id)
+                        .get_item(*reference_id, &server.lin_cache)
                         .unwrap()
                         .pos
                         .as_opt_ref()

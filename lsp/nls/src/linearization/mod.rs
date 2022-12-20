@@ -25,24 +25,6 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-// Cache of completed items
-static mut LIN_CACHE: Option<HashMap<FileId, Completed>> = None;
-
-fn update_lin_cache(file: FileId, value: Completed) {
-    unsafe {
-        match &mut LIN_CACHE {
-            Some(table) => {
-                table.insert(file, value);
-            }
-            None => {
-                let mut table = HashMap::new();
-                table.insert(file, value);
-                LIN_CACHE = Some(table);
-            }
-        }
-    }
-}
-
 pub type Environment = nickel_lang::environment::Environment<Ident, ItemId>;
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
@@ -425,10 +407,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                // This is safe because imports are linearized before the containing file
-                // is linearized, so there MUST be at least one item in the cache.
-                let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
-                let Some(linearization) = lin_cache.get(file) else {
+                let Some(linearization) = lin.lin_cache.get(file) else {
                     return
                 };
 
@@ -550,10 +529,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 ..item
             })
             .collect();
-
-        let c = Completed::new(lin_, id_mapping);
-        update_lin_cache(self.file, c.clone());
-        Linearization::new(c)
+        Linearization::new(Completed::new(lin_, id_mapping))
     }
 
     fn scope(&mut self) -> Self {

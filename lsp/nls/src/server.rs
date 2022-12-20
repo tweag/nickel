@@ -95,7 +95,7 @@ impl Server {
             // REQUIRED to be a record literal. The linearization ID of this
             // record must thus be 0
             let id = match lin
-                .get_item(ItemId { file_id, index: 0 })
+                .get_item(ItemId { file_id, index: 0 }, &self.lin_cache)
                 .map(|item| &item.kind)
             {
                 Some(TermKind::Record(table)) => table.get(&name),

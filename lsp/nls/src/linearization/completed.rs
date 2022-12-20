@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use codespan::ByteIndex;
+use codespan::{ByteIndex, FileId};
 use nickel_lang::{term::MetaValue, typecheck::linearization::LinearizationState};
 
 use super::{
     interface::{Resolved, TermKind, UsageState, ValueState},
-    ItemId, LinearizationItem, LIN_CACHE,
+    ItemId, LinearizationItem,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -25,15 +25,19 @@ impl Completed {
         }
     }
 
-    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
+    pub fn get_item<'a>(
+        &'a self,
+        id: ItemId,
+        lin_cache: &'a HashMap<FileId, Completed>,
+    ) -> Option<&'a LinearizationItem<Resolved>> {
         let ItemId { file_id, .. } = id;
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
-            .or_else(|| unsafe {
-                let lin_cache = LIN_CACHE.as_ref()?;
+            .or_else(|| {
+                // let lin_cache = LIN_CACHE.as_ref()?;
                 let c = lin_cache.get(&file_id).unwrap();
-                c.get_item(id)
+                c.get_item(id, lin_cache)
             })
     }
 
@@ -42,12 +46,13 @@ impl Completed {
         self.linearization.get_mut(*index)
     }
 
-    pub fn get_in_scope(
-        &self,
-        LinearizationItem { env, .. }: &LinearizationItem<Resolved>,
+    pub fn get_in_scope<'a>(
+        &'a self,
+        LinearizationItem { env, .. }: &'a LinearizationItem<Resolved>,
+        lin_cache: &'a HashMap<FileId, Completed>,
     ) -> Vec<&LinearizationItem<Resolved>> {
         env.iter()
-            .filter_map(|(_, id)| self.get_item(*id))
+            .filter_map(|(_, id)| self.get_item(*id, lin_cache))
             .collect()
     }
 
@@ -112,23 +117,24 @@ impl Completed {
     pub fn resolve_item_type_meta(
         &self,
         item: &LinearizationItem<Resolved>,
+        lin_cache: &HashMap<FileId, Completed>,
     ) -> (Resolved, Vec<String>) {
         let mut extra = Vec::new();
 
         let item = match item.kind {
             TermKind::Usage(UsageState::Resolved(declaration)) => self
-                .get_item(declaration)
+                .get_item(declaration, lin_cache)
                 .and_then(|decl| match decl.kind {
                     TermKind::Declaration(_, _, ValueState::Known(value))
                     | TermKind::RecordField {
                         value: ValueState::Known(value),
                         ..
-                    } => self.get_item(value),
+                    } => self.get_item(value, lin_cache),
                     _ => None,
                 })
                 .unwrap_or(item),
             TermKind::Declaration(_, _, ValueState::Known(value)) => {
-                self.get_item(value).unwrap_or(item)
+                self.get_item(value, lin_cache).unwrap_or(item)
             }
             _ => item,
         };

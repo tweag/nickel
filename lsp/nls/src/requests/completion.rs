@@ -1,4 +1,6 @@
-use codespan::ByteIndex;
+use std::collections::HashMap;
+
+use codespan::{ByteIndex, FileId};
 use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
@@ -152,11 +154,10 @@ fn find_fields_from_term_kind(
             ..
         }
         | TermKind::Declaration(_, _, ValueState::Known(new_id)) => {
-            find_fields_from_term_kind(linearization, new_id, path)
+            find_fields_from_term_kind(linearization, new_id, path, lin_cache)
         }
         TermKind::Usage(UsageState::Resolved(new_id)) => {
-            // panic!("{:?}", linearization.get_item(new_id));
-            find_fields_from_term_kind(linearization, new_id, path)
+            find_fields_from_term_kind(linearization, new_id, path, lin_cache)
         }
         _ => Vec::new(),
     }
@@ -177,7 +178,7 @@ fn find_fields_from_contract(
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_fields_from_contract(linearization, new_id, path)
+                find_fields_from_contract(linearization, new_id, path, lin_cache)
             }
             _ => Vec::new(),
         },
@@ -327,11 +328,12 @@ fn collect_record_info(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
+    lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
     linearization
-        .get_item(id)
+        .get_item(id, lin_cache)
         .map(|item| {
-            let (ty, _) = linearization.resolve_item_type_meta(item);
+            let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
             match (&item.kind, ty) {
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
@@ -375,7 +377,7 @@ fn get_completion_identifiers(
     ) -> Option<Vec<IdentWithType>> {
         let item_id = item.env.get(&name)?;
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
-        Some(collect_record_info(lin, *item_id, path))
+        Some(collect_record_info(lin, *item_id, path, &server.lin_cache))
     }
 
     let in_scope = match trigger {
@@ -403,9 +405,9 @@ fn get_completion_identifiers(
                 complete(item, name, server, &mut path).unwrap_or_default()
             } else {
                 // variable name completion
-                let (ty, _) = linearization.resolve_item_type_meta(item);
+                let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
                 linearization
-                    .get_in_scope(item)
+                    .get_in_scope(item, &server.lin_cache)
                     .iter()
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration(ident, _, _) => Some(IdentWithType {
