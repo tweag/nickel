@@ -429,13 +429,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                let terms = lin.terms;
-                // This is safe because the import file is resolved, before we linearize
-                // the containing file, therefore the cache MUST have the term stored.
-                let CachedTerm { term, .. } = terms.get(file).unwrap();
-                let position = final_term_pos(term);
-                let locator = (*file, position.unwrap().start);
-
                 // This is safe because imports are linearized before the containing file
                 // is linearized, so there MUST be at least one item in the cache.
                 let lin_cache = unsafe { LIN_CACHE.as_ref().unwrap() };
@@ -443,6 +436,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     return
                 };
 
+                let terms = lin.terms;
+                // This is safe because the import file is resolved, before we linearize
+                // the containing file, therefore the cache MUST have the term stored.
+                let CachedTerm { term, .. } = terms.get(file).unwrap();
+                let position = final_term_pos(term);
+                let locator = (*file, position.unwrap().start);
                 let term_id = linearization.item_at(&locator).unwrap().id;
 
                 lin.push(LinearizationItem {
