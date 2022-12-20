@@ -65,7 +65,6 @@ impl ToNickel for rnix::SyntaxNode {
         use rnix::types::{self, ParsedType, Wrapper};
         use rnix::value;
         use rnix::SyntaxKind::*;
-        use std::convert::{TryFrom, TryInto};
         let pos = self.text_range();
         let file_id = state.file_id.clone();
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
@@ -168,7 +167,6 @@ impl ToNickel for rnix::SyntaxNode {
             // are destructured by the pattern.
             ParsedType::LetIn(n) => {
                 use crate::destruct;
-                use crate::identifier::Ident;
                 let mut destruct_vec = Vec::new();
                 let mut fields = HashMap::new();
                 let mut state = state.clone();
