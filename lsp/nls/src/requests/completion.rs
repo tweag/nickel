@@ -822,8 +822,10 @@ mod tests {
         let lin = make_completed(vec![a, b, c]);
 
         let actual = collect_record_info(&lin, id, &mut Vec::new());
-        let expected = vec![Ident::from("one"), Ident::from("two")];
-        let actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
+        let mut expected = vec![Ident::from("one"), Ident::from("two")];
+        let mut actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
+        expected.sort();
+        actual.sort();
         assert_eq!(actual, expected)
     }
 }
