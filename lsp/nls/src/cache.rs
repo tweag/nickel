@@ -46,10 +46,6 @@ impl CacheExt for Cache {
 
         if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id) {
             for id in ids {
-                if id == file_id {
-                    // Avoid infinite recursion
-                    continue;
-                }
                 self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
                     .unwrap();
             }
@@ -62,11 +58,10 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
-            let terms = self.terms();
             let building = Linearization::new(Building {
                 lin_cache,
                 linearization: Vec::new(),
-                terms,
+                cache: self,
             });
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;

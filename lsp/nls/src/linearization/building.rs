@@ -3,7 +3,7 @@ use std::{collections::HashMap, mem};
 use codespan::FileId;
 use log::debug;
 use nickel_lang::{
-    cache::CachedTerm,
+    cache::Cache,
     identifier::Ident,
     term::{MetaValue, RichTerm, Term},
     typecheck::{linearization::LinearizationState, UnifType},
@@ -24,7 +24,7 @@ use super::{
 pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub lin_cache: &'a mut HashMap<FileId, Completed>,
-    pub terms: &'a HashMap<FileId, CachedTerm>,
+    pub cache: &'a Cache,
 }
 
 impl<'b> Building<'b> {

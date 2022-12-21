@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::{ByteIndex, FileId};
 use log::debug;
 use nickel_lang::{
-    cache::CachedTerm,
+    cache::ImportResolver,
     identifier::Ident,
     position::TermPos,
     term::{MetaValue, RichTerm, Term, UnaryOp},
@@ -410,12 +410,10 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let Some(linearization) = lin.lin_cache.get(file) else {
                     return
                 };
-
-                let terms = lin.terms;
                 // This is safe because the import file is resolved, before we linearize
                 // the containing file, therefore the cache MUST have the term stored.
-                let CachedTerm { term, .. } = terms.get(file).unwrap();
-                let position = final_term_pos(term);
+                let term = lin.cache.get(*file).unwrap();
+                let position = final_term_pos(&term);
                 let locator = (*file, position.unwrap().start);
                 let term_id = linearization.item_at(&locator).unwrap().id;
 
