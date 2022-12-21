@@ -670,7 +670,7 @@ impl Cache {
                                 ps.push(*id);
                                 ps
                             } else {
-                                vec![*id]
+                                Vec::new()
                             }
                         })
                         .collect()
@@ -709,9 +709,9 @@ impl Cache {
                 "cache::prepare(): expected source to be parsed before imports resolutions",
             )
         })?;
-        if matches!(import_res, CacheOp::Done(..)) {
+        if let CacheOp::Done(..) = import_res {
             result = CacheOp::Done(());
-        };
+        }
 
         let typecheck_res = self.typecheck(file_id, initial_ctxt).map_err(|cache_err| {
             cache_err
