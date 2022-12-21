@@ -44,7 +44,7 @@ fn main() -> Result<()> {
 
     let capabilities = Server::capabilities();
 
-    connection.initialize(serde_json::to_value(&capabilities)?)?;
+    connection.initialize(serde_json::to_value(capabilities)?)?;
 
     let _server = Server::new(connection).run();
 

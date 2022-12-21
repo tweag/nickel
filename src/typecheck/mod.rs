@@ -890,8 +890,7 @@ fn walk<L: Linearizer>(
             // equality. See the `Let` case above for more details on why such recursive bindings
             // are currently ignored.
             record.fields
-                .iter()
-                .map(|(_, t)| t)
+                .values()
                 .chain(dynamic.iter().map(|(_, t)| t))
                 .try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(state, ctxt.clone(), lin, linearizer.scope(), t)

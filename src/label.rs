@@ -184,7 +184,7 @@ pub mod ty_path {
             (TypeF::Array(ty), Some(Elem::Array)) => {
                 // initial "Array "
                 let start_offset = 6;
-                let paren_offset = if ty.fmt_is_atom() { 0 } else { 1 };
+                let paren_offset = usize::from(!ty.fmt_is_atom());
 
                 let (sub_start, sub_end) = span(path_it, ty);
                 (
