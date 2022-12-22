@@ -402,7 +402,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
                             final_term_pos(body)
                         }
-                        Term::Op1(UnaryOp::StaticAccess(_field), term) => final_term_pos(term),
+                        Term::Op1(UnaryOp::StaticAccess(field), _) => &field.pos,
                         _ => pos,
                     }
                 }
