@@ -33,10 +33,19 @@ use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
 
+fn symbolic_string_prefix_and_length<'input>(
+    lex: &mut logos::Lexer<'input, NormalToken<'input>>,
+) -> (&'input str, usize) {
+    let slice = lex.slice();
+    let (prefix, postfix) = slice
+        .rsplit_once('-')
+        .expect("The logos regexp ensures this succeeds");
+    (prefix, postfix.len())
+}
+
 // **IMPORTANT**
 // When adding or removing tokens that might be parsed as identifiers,
-// please update the KEYWORDS array
-// list
+// please update the [KEYWORDS] array
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum NormalToken<'input> {
@@ -160,8 +169,8 @@ pub enum NormalToken<'input> {
     Underscore,
     #[regex("m(%+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
-    #[regex("s(%+)\"", |lex| lex.slice().len())]
-    SymbolicStringStart(usize),
+    #[regex("[a-zA-Z][_a-zA-Z0-9-']*-s(%+)\"", symbolic_string_prefix_and_length)]
+    SymbolicStringStart((&'input str, usize)),
 
     #[token("%tag%")]
     Tag,
@@ -611,7 +620,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
             Some(Normal(
                 NormalToken::MultiStringStart(delim_size)
-                | NormalToken::SymbolicStringStart(delim_size),
+                | NormalToken::SymbolicStringStart((_, delim_size)),
             )) => {
                 // for interpolation & closing delimeters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
