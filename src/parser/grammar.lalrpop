@@ -60,7 +60,7 @@ use crate::{
     term::{
         BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
         MergePriority, Contract, NAryOp, record::RecordAttrs, SharedTerm,
-        NumeralPriority, array::Array, make as mk_term,
+        NumeralPriority, array::Array, make as mk_term
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
@@ -511,12 +511,16 @@ StrChunks: RichTerm = {
             chunks
         };
 
-        if start == StringStartDelimiter::Symbolic {
+        if let StringStartDelimiter::Symbolic(prefix) = start {
             let terms = chunks.into_iter().map(|chunk| match chunk {
                 StrChunk::Literal(l) => Term::Str(l).into(),
                 StrChunk::Expr(e, _) => e,
             }).collect();
-            RichTerm::from(Term::Array(terms, Default::default()))
+
+            RichTerm::from(build_record([
+                (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Str(prefix.to_owned()))),
+                (FieldPathElem::Ident("chunks".into()), RichTerm::from(Term::Array(terms, Default::default())))
+            ], Default::default()))
         } else {
             let mut chunks = chunks;
             chunks.reverse();
@@ -525,10 +529,10 @@ StrChunks: RichTerm = {
     },
 };
 
-StringStart : StringStartDelimiter = {
+StringStart : StringStartDelimiter<'input> = {
     "\"" => StringStartDelimiter::Standard,
     "m%\"" => StringStartDelimiter::Multiline,
-    "s%\"" => StringStartDelimiter::Symbolic,
+    "symbolic string start" => StringStartDelimiter::Symbolic(<>.0),
 };
 
 StringEnd : StringEndDelimiter = {
@@ -909,7 +913,7 @@ extern {
         "\"" => Token::Normal(NormalToken::DoubleQuote),
         "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
-        "s%\"" => Token::Normal(NormalToken::SymbolicStringStart(<usize>)),
+        "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart((<&'input str>, <usize>))),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),
