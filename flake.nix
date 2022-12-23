@@ -350,6 +350,13 @@
         inherit stdlibDoc;
       };
 
+      apps = {
+        default = {
+          type = "app";
+          program = "${packages.nickel}/bin/nickel";
+        };
+      };
+
       devShells = (forEachRustChannel (channel: {
         name = channel;
         value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
