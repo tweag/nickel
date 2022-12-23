@@ -634,7 +634,7 @@ impl Cache {
     /// nothing if the imports of the entry have already been resolved. Require that the
     /// corresponding source has been parsed.
     /// If resolved imports contain imports themselves, resolve them recursively.
-    /// It returns a `Vec<FileId>`, which is a vector of all the imports that were resolved.
+    /// It returns a `Vec<FileId>`, which is a vector of all the imports that were transitively resolved.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
