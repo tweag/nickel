@@ -117,8 +117,9 @@ fn find_fields_from_term_kind(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
+    lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
-    let Some(item) = linearization.get_item(id) else {
+    let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
     match item.kind {
@@ -130,8 +131,8 @@ fn find_fields_from_term_kind(
                         // This unwrap is safe because, `id` is the field of the record
                         // we're currently analyzing. We're sure that the linearization
                         // phase doesn't produce wrong or invalid ids.
-                        let item = linearization.get_item(id).unwrap();
-                        let (ty, _) = linearization.resolve_item_type_meta(item);
+                        let item = linearization.get_item(id, lin_cache).unwrap();
+                        let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
                         IdentWithType {
                             ident,
                             ty,
@@ -146,7 +147,7 @@ fn find_fields_from_term_kind(
                 let Some(new_id) = fields.get(&name) else {
                     return Vec::new()
                 };
-                find_fields_from_term_kind(linearization, *new_id, path)
+                find_fields_from_term_kind(linearization, *new_id, path, lin_cache)
             }
         }
         TermKind::RecordField {
@@ -169,8 +170,9 @@ fn find_fields_from_contract(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
+    lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
-    let Some(item) = linearization.get_item(id) else {
+    let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
     match &item.meta {
@@ -337,15 +339,6 @@ fn collect_record_info(
             match (&item.kind, ty) {
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
-                (TermKind::Declaration(_, _, ValueState::Known(body_id)), _) => {
-                    // The path is mutable, so the first case would consume the path
-                    // so we have to clone it so that it can be correctly used for the second case.
-                    let mut p = path.clone();
-                    let mut fst = find_fields_from_contract(linearization, *body_id, path);
-                    let snd = find_fields_from_term_kind(linearization, *body_id, &mut p);
-                    fst.extend(snd);
-                    fst
-                }
                 (
                     TermKind::Declaration(_, _, ValueState::Known(body_id))
                     | TermKind::RecordField {
@@ -353,7 +346,17 @@ fn collect_record_info(
                         ..
                     },
                     _,
-                ) => find_fields_from_term_kind(linearization, *value, path),
+                ) => {
+                    // The path is mutable, so the first case would consume the path
+                    // so we have to clone it so that it can be correctly used for the second case.
+                    let mut p = path.clone();
+                    let mut fst =
+                        find_fields_from_contract(linearization, *body_id, path, lin_cache);
+                    let snd =
+                        find_fields_from_term_kind(linearization, *body_id, &mut p, lin_cache);
+                    fst.extend(snd);
+                    fst
+                }
                 _ => Vec::new(),
             }
         })
@@ -650,16 +653,6 @@ mod tests {
 
     #[test]
     fn test_find_record_fields() {
-        fn make_linearization_item(id: ItemId, kind: TermKind) -> LinearizationItem<Types> {
-            LinearizationItem {
-                env: Environment::new(),
-                id,
-                pos: TermPos::None,
-                ty: Types(TypeF::Dyn),
-                kind,
-                meta: None,
-            }
-        }
         fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
             let id_to_index: HashMap<_, _> = linearization
                 .iter()
@@ -682,7 +675,7 @@ mod tests {
             let completed = make_completed(linearization);
             for id in ids {
                 let mut actual: Vec<_> =
-                    find_fields_from_term_kind(&completed, id, &mut Vec::new())
+                    find_fields_from_term_kind(&completed, id, &mut Vec::new(), &HashMap::new())
                         .iter()
                         .map(|iwm| iwm.ident)
                         .collect();
@@ -854,7 +847,7 @@ mod tests {
         );
         let lin = make_completed(vec![a, b, c]);
 
-        let actual = collect_record_info(&lin, id, &mut Vec::new());
+        let actual = collect_record_info(&lin, id, &mut Vec::new(), &HashMap::new());
         let mut expected = vec![Ident::from("one"), Ident::from("two")];
         let mut actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
         expected.sort();
