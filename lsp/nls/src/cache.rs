@@ -40,8 +40,15 @@ impl CacheExt for Cache {
         initial_env: &Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
-        if !self.terms_mut().contains_key(&file_id) {
+        if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
+        }
+
+        if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id) {
+            for id in ids {
+                self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
+                    .unwrap();
+            }
         }
 
         // After self.parse(), the cache must be populated
@@ -54,6 +61,7 @@ impl CacheExt for Cache {
             let building = Linearization::new(Building {
                 lin_cache,
                 linearization: Vec::new(),
+                cache: self,
             });
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;

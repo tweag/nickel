@@ -634,18 +634,27 @@ impl Cache {
     /// nothing if the imports of the entry have already been resolved. Require that the
     /// corresponding source has been parsed.
     /// If resolved imports contain imports themselves, resolve them recursively.
+    /// It returns a `Vec<FileId>`, which is a vector of all the imports that were transitively resolved.
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(())),
+            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
             Some(state) if state >= EntryState::Parsed => {
-                if state < EntryState::ImportsResolving {
+                let pending = if state < EntryState::ImportsResolving {
                     let CachedTerm {
                         term, parse_errs, ..
-                    } = self.terms.remove(&file_id).unwrap();
+                    } = self.terms.get(&file_id).unwrap();
+                    // okay, for now these clones are here becuase the function call below
+                    // short circuts, and then we don't put back the item in cache, so the
+                    // linearization of a file fails if we can't resolve any of it's imports
+                    // The current solution is not to remove the item from the cache, and
+                    // put it back when done, but to get a reference and clone it.
+                    let term = term.clone();
+                    let parse_errs = parse_errs.clone();
                     let (term, pending) = import_resolution::resolve_imports(term, self)?;
+
                     self.terms.insert(
                         file_id,
                         CachedTerm {
@@ -655,19 +664,28 @@ impl Cache {
                         },
                     );
 
-                    for id in pending {
-                        self.resolve_imports(id)?;
-                    }
+                    pending
+                        .iter()
+                        .flat_map(|id| {
+                            if let Ok(CacheOp::Done(mut ps)) = self.resolve_imports(*id) {
+                                ps.push(*id);
+                                ps
+                            } else {
+                                Vec::new()
+                            }
+                        })
+                        .collect()
                 } else {
                     let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
 
-                    for id in pending {
-                        self.resolve_imports(id)?;
+                    for id in &pending {
+                        self.resolve_imports(*id)?;
                     }
-                }
+                    pending.into_iter().collect()
+                };
 
                 self.update_state(file_id, EntryState::ImportsResolved);
-                Ok(CacheOp::Done(()))
+                Ok(CacheOp::Done(pending))
             }
             _ => Err(CacheError::NotParsed),
         }
@@ -692,9 +710,9 @@ impl Cache {
                 "cache::prepare(): expected source to be parsed before imports resolutions",
             )
         })?;
-        if import_res == CacheOp::Done(()) {
+        if let CacheOp::Done(..) = import_res {
             result = CacheOp::Done(());
-        };
+        }
 
         let typecheck_res = self.typecheck(file_id, initial_ctxt).map_err(|cache_err| {
             cache_err
@@ -1031,7 +1049,7 @@ impl ImportResolver for Cache {
         let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
-                path.to_string_lossy().into_owned(),
+                path_buf.to_string_lossy().into_owned(),
                 format!("{}", err),
                 *pos,
             )

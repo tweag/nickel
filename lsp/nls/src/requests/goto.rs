@@ -27,7 +27,8 @@ pub fn handle_to_definition(
                 .text_document_position_params
                 .text_document
                 .uri
-                .as_str(),
+                .to_file_path()
+                .unwrap(),
         )
         .unwrap();
 
@@ -56,14 +57,14 @@ pub fn handle_to_definition(
 
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
-            let definition = linearization.get_item(usage_id).unwrap();
+            let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
             let RawSpan {
                 start: ByteIndex(start),
                 end: ByteIndex(end),
                 src_id,
             } = definition.pos.unwrap();
             let location = Location {
-                uri: Url::parse(&server.cache.name(src_id).to_string_lossy()).unwrap(),
+                uri: Url::from_file_path(server.cache.name(src_id)).unwrap(),
                 range: Range::from_codespan(
                     &src_id,
                     &(start as usize..end as usize),
@@ -122,7 +123,7 @@ pub fn handle_to_usages(
                 .iter()
                 .filter_map(|reference_id| {
                     linearization
-                        .get_item(*reference_id)
+                        .get_item(*reference_id, &server.lin_cache)
                         .unwrap()
                         .pos
                         .as_opt_ref()

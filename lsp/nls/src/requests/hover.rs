@@ -24,7 +24,8 @@ pub fn handle(
                 .text_document_position_params
                 .text_document
                 .uri
-                .as_str(),
+                .to_file_path()
+                .unwrap(),
         )
         .unwrap();
 
@@ -53,7 +54,7 @@ pub fn handle(
 
     debug!("{:?}", item);
 
-    let (ty, meta) = linearization.resolve_item_type_meta(&item);
+    let (ty, meta) = linearization.resolve_item_type_meta(&item, &server.lin_cache);
 
     if item.pos == TermPos::None {
         server.reply(Response::new_ok(id, Value::Null));

@@ -81,7 +81,6 @@ impl Server {
     }
 
     pub fn initialize_stdlib_environment(&mut self) -> Option<()> {
-        let mut initial = Environment::new();
         let modules = stdlib::modules();
         for module in modules {
             // This module has a different format from the rest of the stdlib items
@@ -96,7 +95,7 @@ impl Server {
             // REQUIRED to be a record literal. The linearization ID of this
             // record must thus be 0
             let id = match lin
-                .get_item(ItemId { file_id, index: 0 })
+                .get_item(ItemId { file_id, index: 0 }, &self.lin_cache)
                 .map(|item| &item.kind)
             {
                 Some(TermKind::Record(table)) => table.get(&name),
@@ -104,10 +103,8 @@ impl Server {
             }
             .unwrap();
 
-            initial.insert(name, *id);
+            self.initial_env.insert(name, *id);
         }
-
-        self.initial_env = initial;
         Some(())
     }
 

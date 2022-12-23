@@ -3,9 +3,10 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::{ByteIndex, FileId};
 use log::debug;
 use nickel_lang::{
+    cache::ImportResolver,
     identifier::Ident,
     position::TermPos,
-    term::{MetaValue, Term, UnaryOp},
+    term::{MetaValue, RichTerm, Term, UnaryOp},
     typecheck::{
         linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
@@ -140,6 +141,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
+                            pos = field.pos;
                             *value = ValueState::Known(ItemId {
                                 file_id: self.file,
                                 index: id_gen.get() + usage_offset,
@@ -219,6 +221,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
                 for matched in destruct.to_owned().inner() {
                     let (ident, term) = matched.as_meta_field();
+
                     let id = ItemId {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
@@ -393,6 +396,46 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     })
                 }
             }
+            Term::ResolvedImport(file) => {
+                fn final_term_pos(term: &RichTerm) -> &TermPos {
+                    let RichTerm { term, pos } = term;
+                    match term.as_ref() {
+                        Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
+                            final_term_pos(body)
+                        }
+                        Term::Op1(UnaryOp::StaticAccess(field), _) => &field.pos,
+                        _ => pos,
+                    }
+                }
+
+                let Some(linearization) = lin.lin_cache.get(file) else {
+                    return
+                };
+                // This is safe because the import file is resolved, before we linearize
+                // the containing file, therefore the cache MUST have the term stored.
+                let term = lin.cache.get(*file).unwrap();
+                let position = final_term_pos(&term);
+
+                // This unwrap fails only when position is a `TermPos::None`, which only happens
+                // if the `RichTerm`, has been transformed or evaluated. None of these happen before
+                // linearization, so this is safe.
+                let start = position.unwrap().start;
+                let locator = (*file, start);
+
+                let Some(term_id) = linearization.item_at(&locator) else {
+                    return
+                };
+                let term_id = term_id.id;
+
+                lin.push(LinearizationItem {
+                    env: self.env.clone(),
+                    id,
+                    pos,
+                    ty,
+                    kind: TermKind::Usage(UsageState::Resolved(term_id)),
+                    meta: self.meta.take(),
+                })
+            }
             other => {
                 debug!("Add wildcard item: {:?}", other);
 
@@ -494,7 +537,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 ..item
             })
             .collect();
-
         Linearization::new(Completed::new(lin_, id_mapping))
     }
 

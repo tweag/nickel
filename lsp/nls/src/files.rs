@@ -32,9 +32,10 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
             content: &params.text_document.text,
         },
     );
-    let file_id = server
-        .cache
-        .add_string(params.text_document.uri.as_str(), params.text_document.text);
+    let file_id = server.cache.add_string(
+        params.text_document.uri.to_file_path().unwrap(),
+        params.text_document.text,
+    );
 
     parse_and_typecheck(server, params.text_document.uri, file_id)?;
     Trace::reply(id);
@@ -57,7 +58,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     );
 
     let file_id = server.cache.update_content(
-        params.text_document.uri.as_str(),
+        params.text_document.uri.to_file_path().unwrap(),
         params.content_changes[0].text.to_owned(),
     )?;
 
