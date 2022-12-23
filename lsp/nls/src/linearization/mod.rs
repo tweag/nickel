@@ -141,6 +141,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
+                            pos = field.pos;
                             *value = ValueState::Known(ItemId {
                                 file_id: self.file,
                                 index: id_gen.get() + usage_offset,
@@ -403,6 +404,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             final_term_pos(body)
                         }
                         Term::Op1(UnaryOp::StaticAccess(field), _) => &field.pos,
+                        Term::Fun(ident, _) | Term::FunPattern(Some(ident), ..) => &ident.pos,
                         _ => pos,
                     }
                 }
@@ -415,7 +417,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let term = lin.cache.get(*file).unwrap();
                 let position = final_term_pos(&term);
                 let locator = (*file, position.unwrap().start);
-                let term_id = linearization.item_at(&locator).unwrap().id;
+
+                let Some(term_id) = linearization.item_at(&locator) else {
+                    return
+                };
+                let term_id = term_id.id;
 
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
