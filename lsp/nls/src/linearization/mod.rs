@@ -416,7 +416,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // the containing file, therefore the cache MUST have the term stored.
                 let term = lin.cache.get(*file).unwrap();
                 let position = final_term_pos(&term);
-                let locator = (*file, position.unwrap().start);
+                
+                // This unwrap fails only when position is a `TermPos::None`, which only happens
+                // if the `RichTerm`, has been transformed or evaluated. None of these happen before
+                // linearization, so this is safe.
+                let start = position.unwrap().start;
+                let locator = (*file, start);
 
                 let Some(term_id) = linearization.item_at(&locator) else {
                     return

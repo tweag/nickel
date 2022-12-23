@@ -35,9 +35,8 @@ impl Completed {
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
             .or_else(|| {
-                // let lin_cache = LIN_CACHE.as_ref()?;
-                let c = lin_cache.get(&file_id).unwrap();
-                c.get_item(id, lin_cache)
+                let lin = lin_cache.get(&file_id).unwrap();
+                lin.get_item(id, lin_cache)
             })
     }
 
