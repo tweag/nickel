@@ -265,11 +265,11 @@
           src = filterNickelSrc craneLib.filterCargoSources;
 
           cargoExtraArgs = "-p nickel-repl --target wasm32-unknown-unknown --frozen --offline";
-          # *  --mode no-install prevents wasm-pack for trying to download and
+          # *  --mode no-install prevents wasm-pack from trying to download and
           #   vendor tools like wasm-bindgen, wasm-opt, etc. but use the one
           #   provided by Nix
           # * --no-default-features disable some default features of Nickel that
-          #   aren't useful for the WASM repl (and possibly incompatible with
+          #   aren't useful for the WASM REPL (and possibly incompatible with
           #   WASM build)
           wasmPackExtraArgs = "--${profile} --mode no-install -- --no-default-features --frozen --offline";
 
