@@ -12,9 +12,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
-    # `import-cargo` is still used for the WASM build for now, though we expect to get rid of it in the future.
-    # See https://github.com/tweag/nickel/issues/967
-    import-cargo.url = "github:edolstra/import-cargo";
     crane = {
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -32,7 +29,6 @@
     , flake-utils
     , pre-commit-hooks
     , rust-overlay
-    , import-cargo
     , crane
     }:
     let
@@ -93,12 +89,7 @@
         ];
       };
 
-      cargoHome = (import-cargo.builders.importCargo {
-        lockFile = ./Cargo.lock;
-        inherit pkgs;
-      }).cargoHome;
-
-      # Additional packages required for some systems to build Nickel
+      # Additional packages required to build Nickel on Darwin
       missingSysPkgs =
         if pkgs.stdenv.isDarwin then
           [
@@ -164,36 +155,40 @@
         };
       };
 
-      # Build the various Crane artifacts (dependencies, packages, rustfmt, clippy) for a given Rust toolchain
+      # Customize source filtering for Crane as Nickel uses non-standard-Rust
+      # files like `*.lalrpop`.
+      filterNickelSrc = filterCargoSources:
+        let
+          mkFilter = regexp: path: _type: builtins.match regexp path != null;
+          lalrpopFilter = mkFilter ".*lalrpop$";
+          nclFilter = mkFilter ".*ncl$";
+          txtFilter = mkFilter ".*txt$";
+        in
+        pkgs.lib.cleanSourceWith {
+          src = pkgs.lib.cleanSource ./.;
+
+          # Combine our custom filters with the default one from Crane
+          # See https://github.com/ipetkov/crane/blob/master/docs/API.md#libfiltercargosources
+          filter = path: type:
+            builtins.any (filter: filter path type) [
+              lalrpopFilter
+              nclFilter
+              txtFilter
+              filterCargoSources
+            ];
+        };
+
+      # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
+      # well as rust tools (like clippy)
       mkCraneArtifacts = { rust ? mkRust { } }:
         let
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
-          src =
-            let
-              mkFilter = regexp: path: _type: builtins.match regexp path != null;
-              lalrpopFilter = mkFilter ".*lalrpop$";
-              nclFilter = mkFilter ".*ncl$";
-              txtFilter = mkFilter ".*txt$";
-            in
-            pkgs.lib.cleanSourceWith {
-              src = pkgs.lib.cleanSource ./.;
-
-              # Combine our custom filters with the default one from Crane
-              # See https://github.com/ipetkov/crane/blob/master/docs/API.md#libfiltercargosources
-              filter = path: type:
-                builtins.any (filter: filter path type) [
-                  lalrpopFilter
-                  nclFilter
-                  txtFilter
-                  craneLib.filterCargoSources
-                ];
-            };
+          src = filterNickelSrc craneLib.filterCargoSources;
 
           # Args passed to all `cargo` invocations by Crane.
           cargoExtraArgs = "--frozen --offline --workspace";
-
         in
         rec {
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
@@ -252,37 +247,62 @@
         RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
       };
 
+      # Profile is passed to `wasm-pack`, and is either "dev" (with debug
+      # symbols and no optimization), "release" (with optimization and without
+      # debug symbols) or "profiling". Right now only dev and release are used:
+      #   - release for the production build
+      #   - dev for checks, as the code isn't optimized, and WASM optimization
+      #   takes time
       buildNickelWasm =
         { rust ? mkRust { target = "wasm32-unknown-unknown"; }
-        , optimize ? true
+        , profile ? "release"
         }:
-        pkgs.stdenv.mkDerivation {
-          name = "nickel-wasm-${version}";
+        let
+          # Build the various Crane artifacts (dependencies, packages, rustfmt, clippy) for a given Rust toolchain
+          craneLib = crane.lib.${system}.overrideToolchain rust;
 
-          src = self;
+          # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
+          src = filterNickelSrc craneLib.filterCargoSources;
 
-          buildInputs = [
+          cargoExtraArgs = "-p nickel-repl --target wasm32-unknown-unknown --frozen --offline";
+          # *  --mode no-install prevents wasm-pack from trying to download and
+          #   vendor tools like wasm-bindgen, wasm-opt, etc. but use the one
+          #   provided by Nix
+          # * --no-default-features disable some default features of Nickel that
+          #   aren't useful for the WASM REPL (and possibly incompatible with
+          #   WASM build)
+          wasmPackExtraArgs = "--${profile} --mode no-install -- --no-default-features --frozen --offline";
+
+          # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
+          cargoArtifacts = craneLib.buildDepsOnly {
+            inherit
+              src
+              cargoExtraArgs;
+            doCheck = false;
+          };
+
+        in
+        craneLib.mkCargoDerivation {
+          inherit cargoArtifacts src;
+
+          buildPhaseCargoCommand = ''
+            wasm-pack build nickel-wasm-repl ${wasmPackExtraArgs}
+          '';
+
+          # nickel-lang.org expects an interface `nickel-repl.wasm`, hence the
+          # `ln`
+          installPhaseCommand = ''
+            mkdir -p $out
+            cp -r nickel-wasm-repl/pkg $out/nickel-repl
+            ln -s $out/nickel-repl/nickel_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
+          '';
+
+          nativeBuildInputs = [
             rust
             pkgs.wasm-pack
             pkgs.wasm-bindgen-cli
             pkgs.binaryen
-            cargoHome
           ] ++ missingSysPkgs;
-
-          buildPhase = ''
-            cd nickel-wasm-repl
-            wasm-pack build --mode no-install -- --no-default-features --frozen --offline
-            # Because of wasm-pack not using existing wasm-opt
-            # (https://github.com/rustwasm/wasm-pack/issues/869), we have to
-            # run wasm-opt manually
-            echo "[Nix build script] Manually running wasm-opt..."
-            wasm-opt ${if optimize then "-O4 " else "-O0"} pkg/nickel_repl_bg.wasm -o pkg/nickel_repl.wasm
-          '';
-
-          installPhase = ''
-            mkdir -p $out
-            cp -r pkg $out/nickel-repl
-          '';
         };
 
       buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
@@ -297,6 +317,8 @@
         };
       };
 
+      # Build the Nickel VSCode extension. The extension seems to be required
+      # for the LSP to work.
       vscodeExtension =
         let node-package = (pkgs.callPackage ./lsp/client-extension { }).package;
         in
@@ -315,6 +337,7 @@
           '';
         }).vsix;
 
+      # Copy the markdown user manual to $out.
       userManual = pkgs.stdenv.mkDerivation {
         name = "nickel-user-manual-${version}";
         src = ./doc/manual;
@@ -324,6 +347,7 @@
         '';
       };
 
+      # Generate the stdlib documentation from `nickel doc`.
       stdlibDoc = pkgs.stdenv.mkDerivation {
         name = "nickel-stdlib-doc-${version}";
         src = ./stdlib;
@@ -369,8 +393,9 @@
           nickel
           clippy
           rustfmt;
-        # wasm-opt can take long: eschew optimizations in checks
-        nickelWasm = buildNickelWasm { optimize = false; };
+        # An optimizing release build is long: eschew optimizations in checks by
+        # building a dev profile
+        nickelWasm = buildNickelWasm { profile = "dev"; };
         inherit vscodeExtension;
         pre-commit = pre-commit-builder { };
       };
