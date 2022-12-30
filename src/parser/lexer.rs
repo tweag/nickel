@@ -661,9 +661,10 @@ impl<'input> Iterator for Lexer<'input> {
             // have still been buffered in the previous iteration, and can thus be matched here,
             // which is why we need the case below.
             Some(MultiStr(MultiStringToken::Interpolation)) => self.enter_normal(),
-            // If we encouter a `QuotesCandidateInterpolation` token with the right number of
-            // characters, we need to split it into two tokens:
-            // - a literal starting by a `"` followed by between 0 and k `%`
+            // If we encounter a `QuotesCandidateInterpolation` token with more characters
+            // than the current count, we need to split it into two tokens:
+            //
+            // - a literal starting with `"` followed by (s.len() - self.count) `%`s
             // - an interpolation token
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
@@ -671,7 +672,7 @@ impl<'input> Iterator for Lexer<'input> {
             // For example, in `m%%""%%%{exp}"%%`, the `"%%%{` is a `QuotesCandidateInterpolation`
             // which is split as a `"%` literal followed by an interpolation token.
             Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
-                if s.len() >= self.count =>
+                if s.len() > self.count =>
             {
                 let (token_fst, span_fst) = self.split_candidate_interp(s, span);
                 token = token_fst;
