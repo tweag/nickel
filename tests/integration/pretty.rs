@@ -98,8 +98,13 @@ fn record_defs() {
 }
 
 #[test]
-fn strings() {
-    check_file("strings.ncl");
+fn string_interpolation() {
+    check_file("string_interpolation.ncl");
+}
+
+#[test]
+fn stdlib_string() {
+    check_file("stdlib_string.ncl")
 }
 
 #[test]

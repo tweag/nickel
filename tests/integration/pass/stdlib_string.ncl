@@ -1,16 +1,6 @@
 let {check, ..} = import "lib/assert.ncl" in
 
 [
-  # interpolation
-  "simple %{"interp" ++ "olation"} here" == "simple interpolation here",
-  "%{"alone"}" == "alone",
-  "nested %{ "%{(fun x => "%{x}") "expression"}" }" == "nested expression",
-  "%{"some"}%{" " ++ "se" ++ "qu"}%{"%{"ence"}"}" == "some sequence",
-  "nested %{ {str = {a = "braces"}.a}.str } !" == "nested braces !",
-  (let x = "world" in
-    "Hello, %{x}! Welcome in %{let y = "universe" in "the %{x}-%{y}"}")
-    == "Hello, world! Welcome in the world-universe",
-
   # happy path for all stdlib functions
   # string.BoolLiteral
   ("True" | string.BoolLiteral) == "true",
@@ -94,9 +84,19 @@ let {check, ..} = import "lib/assert.ncl" in
   string.find "([0-9]{1,3}\\.){3}([0-9]{1,3})" "1.2.3.4" == { matched = "1.2.3.4", index = 0, groups = ["3.", "4"]},
   string.find "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})" "ip: 192.168.1.4, sorry, what's ipv6?" == { matched = "192.168.1.4", index = 4, groups = ["192", "168", "1", "4"]},
   string.find "\\d" "no numeral" == { matched = "", index = -1, groups = []},
+
   # string.length
   string.length "" == 0,
   string.length " " == 1,
+  string.length "nickel" == 6,
+  # Hungarian `ő` character.
+  string.length "unicőde" == 7,
+  # Vietnamese `ế ` character.
+  string.length "nickếl" == 6,
+  string.length "四字熟語" == 4,
+  string.length "👩🏿‍❤️‍💋‍👩🏼" == 1,
+  string.length "👨‍❤️‍💋‍👨" == 1,
+
   # string.substring
   string.substring 3 5 "abcdef" == "de",
   # string.from
@@ -127,33 +127,5 @@ let {check, ..} = import "lib/assert.ncl" in
   string.to_enum "X" == `X,
   string.to_enum "X" == string.to_enum "X",
   string.to_enum "タグ" == `"タグ",
-
-  # regression test for issue #361 (https://github.com/tweag/nickel/issues/361)
-  m%""%{"foo"}""% == "\"foo\"",
-  m%"""% == "\"",
-
-  # regression test for issue #596 (https://github.com/tweag/nickel/issues/596)
-  let s = "Hello" in m%%""%%{s}" World"%% == "\"Hello\" World",
-  let s = "Hello" in m%%""%%%{s}" World"%% == "\"%Hello\" World",
-  m%"%s"% == "%s",
-  m%%"%%s"%% == "%%s",
-
-  # regression test for issue #659 (https://github.com/tweag/nickel/issues/659)
-  let b = "x" in m%"a%%{b}c"% == "a%xc",
-  m%"%Hel%%{"1"}lo%%%{"2"}"% == "%Hel%1lo%%2",
-
-  # regression test for issue #987
-  let res = string.find "a" "bac" in res.matched == "a" && res.index == 1,
-
-  # length
-  string.length "" == 0,
-  string.length "nickel" == 6,
-  # Hungarian `ő` character.
-  string.length "unicőde" == 7,
-  # Vietnamese `ế ` character.
-  string.length "nickếl" == 6,
-  string.length "四字熟語" == 4,
-  string.length "👩🏿‍❤️‍💋‍👩🏼" == 1,
-  string.length "👨‍❤️‍💋‍👨" == 1,
 ]
 |> check
