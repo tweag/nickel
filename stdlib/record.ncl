@@ -15,7 +15,7 @@
       "%
     = fun f r => %record_map% r f,
 
-    fields | { ; Dyn} -> Array Str
+    fields : forall a. { _: a } -> Array Str
     | doc m%"
       Given a record, results in a array of the string representation of all fields in the record.
 
@@ -26,7 +26,7 @@
       "%
     = fun r => %fields% r,
 
-    values | { ; Dyn} -> Array Dyn
+    values : forall a. { _: a } -> Array a
     | doc m%"
       Given a record, results in a array containing all the values in that record.
 
