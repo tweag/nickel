@@ -210,11 +210,16 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get_and_advance(),
                     };
                     self.env.insert(ident.to_owned(), id);
+                    let pos = match term {
+                        Term::LetPattern(..) => ident.pos,
+                        Term::FunPattern(..) => pos,
+                        _ => unreachable!(),
+                    };
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
                         ty,
-                        pos: ident.pos,
+                        pos,
                         kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                         meta: None,
                     });
@@ -283,6 +288,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                 );
+                let pos = match term {
+                    Term::Let(..) => ident.pos,
+                    Term::Fun(..) => pos,
+                    _ => unreachable!(),
+                };
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: ItemId {
@@ -290,7 +300,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                     ty,
-                    pos: ident.pos,
+                    pos,
                     kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
                     meta: self.meta.take(),
                 });
@@ -423,6 +433,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let locator = (*file, start);
 
                 let Some(term_id) = linearization.item_at(&locator) else {
+                    panic!("hey");
                     return
                 };
                 let term_id = term_id.id;
