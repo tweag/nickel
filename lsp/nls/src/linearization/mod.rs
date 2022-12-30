@@ -433,7 +433,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let locator = (*file, start);
 
                 let Some(term_id) = linearization.item_at(&locator) else {
-                    panic!("hey");
                     return
                 };
                 let term_id = term_id.id;
