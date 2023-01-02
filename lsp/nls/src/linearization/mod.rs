@@ -155,12 +155,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             }
 
             if let Some(declaration) = self.let_binding.take() {
+                let offset = self.access.as_ref().map(|v| v.len()).unwrap_or(0);
                 lin.inform_declaration(
                     self.file,
                     declaration,
                     ItemId {
                         file_id: self.file,
-                        index: id_gen.get(),
+                        index: id_gen.get() + offset,
                     },
                 );
             }
