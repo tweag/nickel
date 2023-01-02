@@ -210,9 +210,19 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get_and_advance(),
                     };
                     self.env.insert(ident.to_owned(), id);
-                    let pos = match term {
-                        Term::LetPattern(..) => ident.pos,
-                        Term::FunPattern(..) => pos,
+                    let (pos, kind) = match term {
+                        Term::LetPattern(..) => (
+                            ident.pos,
+                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                        ),
+                        Term::FunPattern(..) => (
+                            pos,
+                            TermKind::Declaration(
+                                ident.to_owned(),
+                                Vec::new(),
+                                ValueState::Unknown,
+                            ),
+                        ),
                         _ => unreachable!(),
                     };
                     lin.push(LinearizationItem {
@@ -220,7 +230,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         id,
                         ty,
                         pos,
-                        kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                        kind,
                         meta: None,
                     });
                 }
@@ -288,9 +298,15 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                 );
-                let pos = match term {
-                    Term::Let(..) => ident.pos,
-                    Term::Fun(..) => pos,
+                let (pos, kind) = match term {
+                    Term::Let(..) => (
+                        ident.pos,
+                        TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                    ),
+                    Term::Fun(..) => (
+                        pos,
+                        TermKind::Declaration(ident.to_owned(), Vec::new(), ValueState::Unknown),
+                    ),
                     _ => unreachable!(),
                 };
                 lin.push(LinearizationItem {
@@ -301,7 +317,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     },
                     ty,
                     pos,
-                    kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                    kind,
                     meta: self.meta.take(),
                 });
             }
