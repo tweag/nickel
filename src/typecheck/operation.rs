@@ -129,15 +129,24 @@ pub fn get_uop_type(
         }
         // This should not happen, as ChunksConcat() is only produced during evaluation.
         UnaryOp::ChunksConcat() => panic!("cannot type ChunksConcat()"),
-        // BEFORE: forall rows. { rows } -> Array
-        // Dyn -> Array Str
-        UnaryOp::FieldsOf() => (
-            mk_uniftype::dynamic(),
-            //mk_uty_record!(; TypeWrapper::Ptr(state.table.fresh_type_var_id())),
-            mk_uniftype::array(TypeF::Str),
-        ),
-        // Dyn -> Array Dyn
-        UnaryOp::ValuesOf() => (mk_uniftype::dynamic(), mk_uniftype::array(TypeF::Dyn)),
+        // forall a. { _: a } -> Array Str
+        UnaryOp::FieldsOf() => {
+            let ty_a = UnifType::UnifVar(state.table.fresh_type_var_id());
+
+            (
+                mk_uniftype::dyn_record(ty_a),
+                mk_uniftype::array(mk_uniftype::str()),
+            )
+        }
+        // forall a. { _: a } -> Array a
+        UnaryOp::ValuesOf() => {
+            let ty_a = UnifType::UnifVar(state.table.fresh_type_var_id());
+
+            (
+                mk_uniftype::dyn_record(ty_a.clone()),
+                mk_uniftype::array(ty_a),
+            )
+        }
         // Str -> Str
         UnaryOp::StrTrim() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Array Str
