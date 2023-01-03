@@ -63,7 +63,7 @@ pub mod ty_path {
         !p.iter().any(|elt| matches!(*elt, Elem::Domain))
     }
 
-    /// Return the last element of the past which is either `Domain` or `Codomain`.
+    /// Return the last element of the path which is either `Domain` or `Codomain`.
     pub fn last_arrow_elem(p: &Path) -> Option<Elem> {
         p.iter().fold(None, |current_last, elt| {
             matches!(*elt, Elem::Domain | Elem::Codomain)
@@ -86,7 +86,7 @@ pub mod ty_path {
     /// is an arrow element (`Domain` or `Codomain`).
     ///
     /// In the general case, this should be respectively the last element of the path and the last
-    /// element of the path filtered by keeping only `Domain` and `Codmain`. But sometimes the
+    /// element of the path filtered by keeping only `Domain` and `Codomain`. But sometimes the
     /// `span` function couldn't make further progress:
     ///
     /// ```nickel
