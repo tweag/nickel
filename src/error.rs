@@ -1231,8 +1231,8 @@ mod blame_error {
                     vec![
                         String::from(
                             "This error may happen in the following situation:
-    1. A fun    ction `f` is bound by a contract: e.g. `Bool -> Num`.
-    2. `f` r    eturns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
+    1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
+    2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
                         ),
                         String::from(
                             "Either change the contract accordingly, or change the return value of `f`",
