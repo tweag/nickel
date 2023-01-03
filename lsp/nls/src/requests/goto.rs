@@ -44,16 +44,14 @@ pub fn handle_to_definition(
 
     Trace::enrich(&id, linearization);
 
-    let item = linearization.item_at(&locator);
-
-    if item.is_none() {
+    let Some(item) = linearization.item_at(&locator) else {
         server.reply(Response::new_ok(id, Value::Null));
-        return Ok(());
-    }
-
-    let item = item.unwrap();
+        return Ok(())
+    };
 
     debug!("found referencing item: {:?}", item);
+
+    // panic!("{:?}", item);
 
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {

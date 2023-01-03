@@ -329,6 +329,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             file_id: self.file,
                             index: id_gen.get_and_advance(),
                         };
+
+                        // if ident.label() == "string" {
+                        //     panic!("{:?}", accessor.label());
+                        // }
+
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id,
