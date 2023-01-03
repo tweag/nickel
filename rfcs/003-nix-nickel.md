@@ -32,7 +32,7 @@ flakes and modules.
 ### Constraints
 
 Because Nix is a distinct project from Nickel which has existed for quite some
-time now, we need operate under the following constraints:
+time now, we need to operate under the following constraints:
 
 - _Do not require unreasonable changes to Nix itself_. While it's probably
     illusory to avoid any change in Nix at all, we must strive to keep them
@@ -51,8 +51,8 @@ time now, we need operate under the following constraints:
 - _Do not lock ourselves in the current Nixpkgs architecture_. Nixpkgs had
     made a number of design choices that are, in hindsight, not optimal (stdenv,
     describing packages as functions instead of data, etc.). While we have to
-    keep some form of backward-compatibility, we want to do so while avoiding to
-    tie ourselves to the current design and implementation. In other words, this
+    keep some form of backward-compatibility, we want to do so while avoiding
+    tying ourselves to the current design and implementation. In other words, this
     document must propose a solution that stay compatible with a future radical
     departure from e.g. the Nixpkgs architecture.
 
@@ -65,7 +65,7 @@ goals and constraints:
 - **Flakes**: new format for decentralized and composable packages.
 - **NixOS modules**: NixOS system configuration.
 
-In the long term, we aims at handling all those cases, but the scope of such an
+In the long term, we aim at handling all those cases, but the scope of such an
 undertaking appears very large for a single RFC. We decide to focus on the first
 item: writing derivations and Nixpkgs-style packages.
 
@@ -88,7 +88,7 @@ possibilities, so we choose to include it as well.
 
 ### Interaction with Nixpkgs
 
-There is a bunch of scenarios that require leveraging Nixpkgs:
+There are a bunch of scenarios that require leveraging Nixpkgs:
 
 - **PKG**: Using a package from Nixpkgs, for example as a dependency
 - **LIB**: Use one of the myriad of helpers from Nixpkgs: `mkShell`,
@@ -101,10 +101,10 @@ JSON.
 
 **LIB** is more involved. Some of Nixpkgs helpers take either functions, but the
 sole laziness of expressions means that an interface (in the form of a FFI)
-between Nix and Nickel would needs to handle going back and forth between the
+between Nix and Nickel would need to handle going back and forth between the
 two languages transparently.
 
-**OVD** is technically not very different than **LIB**, since it mostly amounts
+**OVD** is technically not very different from **LIB**, since it mostly amounts
 to calling Nix functions like `override`, `overrideAttrs`, etc (for any override
 that doesn't operate directly on a derivation, which most are). That is, solving
 **LIB** would solve **OVD** as well.
@@ -264,7 +264,7 @@ dependencies as record fields without definition:
 }
 ```
 
-The contract may be optional as the infrastructure of an hypothetical Nickelpkg
+The contract may be optional as the infrastructure of a hypothetical Nickelpkg
 would already apply the contract Package.
 
 <!-- In this design, it would be nice to avoid having to repeat those
@@ -322,7 +322,7 @@ derivations.
 
 However, this only concerns a few top-level attributes. Other fields of the
 derivation, such as `version`, `license`, etc. are still hidden under the output
-function. Flakes are not a alternative to Nixpkgs, but a schema working on top
+function. Flakes are not an alternative to Nixpkgs, but a schema working on top
 of it. Building derivations in a flake still relies on Nixpkgs mechanisms like
 `mkDerivation`, and the overriding mechanisms are the same as well. Flakes
 solves related but distinct issues (package composition and reproducibility).
@@ -379,8 +379,8 @@ Compilation could be done on the fly, as the compilation process would be rather
 straightforward, or have a Nixpkgs snapshot pre-compiled to Nickel, or a mix of
 both.
 
-This solution requires to reimplement Nix builtins in Nickel (the nickel-nix
-compatibility layer) . This is an interesting milestone in itself, because even
+This solution requires reimplementing Nix builtins in Nickel (the nickel-nix
+compatibility layer). This is an interesting milestone in itself, because even
 without a Nix-to-Nickel compiler, the compatibility layer would already make
 writing derivations in pure Nickel possible.
 
@@ -399,62 +399,158 @@ Nixpkgs model to the PARM doesn't seem trivial, if even doable.
 
 ### Supporting string contexts
 
-#### Nix-style
-
 Ideally, we would like to have a behavior similar to Nix string contexts to
-automatically track dependencies in a transparent way (you don't have to think
-about it in Nix, using strings in a natural way).
+automatically track dependencies transparently (you don't have to think
+about it in Nix, using normal strings).
 
 There is a tension between endowing Nickel with specific features for the Nix
 use-case and keeping it a general and versatile language for configuration.
 
 One solution is to support string contexts in Nickel exactly as in Nix. But that
-would do feel _ad hoc_. Other use-cases would benefit from a similar but more
+would feel _ad hoc_. Other use-cases would benefit from a similar but more
 flexible mechanism for automatic dependency tracking. For example, in Terraform,
 interpolated expressions can refer to values that are only known after certain
 resources have been deployed. The Terraform evaluator thus uses a similar
-mechanism to elaborate a deployment plan from string metadata. Using Nickel for
-Terraform would need to replicate this mechanism in some way.
+mechanism to elaborate a deployment plan from the evaluation of the
+configuration. Using Nickel for Terraform would need to handle this in some way.
 
-We propose to adopt a more generic mechanism for strings with context, which
-behavior can be parametrized. Strings become (conceptually) pairs `(s, ctxt)`
-where `ctxt` is an arbitrary data structure with additional structure:
+We list below different proposals for a generic feature of which string context
+would be one specific application.
+
+#### Generic string context
+
+This proposal is similar in spirit to Nix string contexts, but generic in what
+is a context and how to combine contexts. Strings become (conceptually) pairs
+`{value: Str, ctxt: Ctxt}` where `Ctxt` is an arbitrary data structure with
+associated functions:
 
 ```Rust
 combine: Ctxt -> Ctxt -> Ctxt,
-pure: Str -> Ctxt,
-pure_exp: Expr -> Ctxt,
+literal: Str -> Ctxt,
+exp: Expr -> Ctxt,
 ```
 
 The above functions could either be provided by user code or directly as an
 interpreter plug-in.
 
+In the case of user-land definitions, generic string context requires an
+overloading mechanism (like type classes or trait, even if it can be much
+simpler): there must be a non-local definition somewhere indicating which
+definition of `Ctxt` and associated methods the interpreter shall pick, and a
+way to deal with potentially conflicting definitions (coherence).
+
 - Existing standard strings would be equivalent to having a trivial context
   `null` and the obvious corresponding trivial structure.
 - Custom contexts would be introduced by specific string delimiters, such as
-    `nix%" %{pkgs.hello}/bin/hello"%`
-- Different kind of strings are incompatible, to avoid accidentally forgetting
-  or losing contexts. Also, we don't know a priori how to convert one context to
-  another.
+    `nix%"%{pkgs.hello}/bin/hello"%`
+- Different kind of strings would be incompatible, to avoid accidentally
+  forgetting or losing contexts. Also, we don't know a priori how to convert one
+  context to another.
 - There would be a contract to distinguish the different kind of
   strings in order enforce the usage of e.g. Nix style contexts for writing
   Nickel for Nix. We want to avoid users loosing or missing context unknowingly.
 
-#### G-exps
-
-Alternative: something like `g-exp`. No magic, no extension, but less ergonomic.
+Generic string contexts look powerful and general, but they imply important
+additions to the Nickel language.
 
 #### Effects
 
-Another possible route is to use [effects][nickel-effects].
+Another possible route is to use [effects][nickel-effects]. A proper effect
+system for Nickel is yet to be precisely designed.
 
-<!-- TODO: add a proposal using effects. If string interpolation can perform
-effects, including actual deployment (and not just build free effects AST), that
-may subsume the string contexts usage as well as other things like Terraform
-interpolation  -->
+The motivation for effects is somehow similar to the one of string context, but
+the approach is different: effects would allow to actually perform build actions
+when evaluating `%{some_derivation}`. But Nix observes a strict separation of
+phases: first evaluation, then building. It's not clear that we can or should
+replace this a model where evaluation is interleaved with building (_à la_
+[Recursive Nix][recursive-nix])
 
-<!-- tangentially, effects ~= recursive Nix? -->
+A full-fledged effect system may be able to simulate string context by e.g.
+performing an effect which saves or update contexts when interpolating a
+derivation. This isn't trivial though, and depends on the power of the final
+system.
+
+#### G-expressions
+
+[Guix][guix] uses [G-expressions][g-expr] for Scheme to achieve automatic
+dependencies management. The idea is pretty natural in a Lisp derivative: build
+actions are _quoted_ (see [quasiquote][guile-quasiquote] in Scheme), which means
+that expressions aren't interpreted but simply returned as data representing an
+unevaluated syntax tree. Within such a g-expr, specific elements are treated
+differently thanks to an unquoting operator, typically including derivations.
+Unquoting implements what Nix string context do: store the implicit dependencies
+somewhere, combine them if needed, and substitute the derivation for a string
+representing a path.
+
+It turns out one can mimic this idea without really needing language support.
+Instead of building strings, we can build composite values carrying additional
+data. Here is a former example of a Nickel derivation built using pure library
+functions which automatically manage the dependencies:
+
+```nickel
+{
+  name = "hello",
+  version = "0.1",
+  build_command = {
+    cmd = nix.lib.nix_string [inputs.bash, "/bin/bash"],
+    args = [ "-c",
+      ([inputs.gcc, "/bin/gcc ", inputs.hello, " -o hello\n"]
+       @ [ inputs.coreutils, "/bin/mkdir -p $out/bin\n"]
+       @ [ inputs.coreutils, "/bin/cp hello $out/bin/hello"])
+       |> nix.lib.nix_string
+    ]
+  },
+  env = {},
+} | nix.builders.NickelPkg
+```
+
+However, the result is quite harder to read, and different from writing strings
+idiomatically as well.
+
+#### Nickel symbolic strings
+
+The proposed solution for this RFC is [symbolic
+strings][nickel-symbolic-strings]. Symbolic strings are a simple feature which
+is on par with string context from the point of view of usability. For example,
+here is the version of the hello package from the section on G-expressions using
+symbolic strings:
+
+```nickel
+{
+  name = "hello",
+  version = "0.1",
+  build_command = {
+    cmd = s%"%{inputs.bash}/bin/bash"%,
+    args = [ "-c",
+      s%"
+        %{inputs.gcc}/bin/gcc %{nix.lib.import_file "hello.c"} -o hello
+        %{inputs.coreutils}/bin/mkdir -p $out/bin
+        %{inputs.coreutils}/bin/cp hello $out/bin/hello
+       "%
+    ]
+  },
+  env = {},
+} | nix.builders.NickelPkg
+```
+
+Symbolic strings are applying the idea of G-expressions to strings: when using a
+special string prefix (here `s`, but `s` is confusing and temporary), the string
+is not evaluated but returned as an array of either string literals or
+expressions instead. Then, the contract for `args` defined in the `nickel-nix`
+library just applies `nix_string` under the hood. Deep down, this example is
+strictly identical to the previous version, but symbolic strings offer a nice
+and natural syntax to write trees of values as nested arrays.
+
+`nix_string` is just a Nickel library function implementing the logic of Nix
+string context. Library writers can however define different interpreting
+functions, such as a handler for Terraform's computed values, which makes
+symbolic strings a generic mechanism as desired.
 
 [nix-lang]: https://gist.github.com/edolstra/29ce9d8ea399b703a7023073b0dbc00d
 [nix-flakes]: https://nixos.wiki/wiki/Flakes
 [nickel-effects]: https://github.com/tweag/nickel/issues/85
+[guix]: https://guix.gnu.org/
+[g-expr]: https://guix.gnu.org/manual/devel/en/html_node/G_002dExpressions.html
+[guile-quasiquote]: https://www.gnu.org/software/guile/manual/html_node/Expression-Syntax.html#Expression-Syntax
+[nickel-symbolic-strings]: https://github.com/tweag/nickel/issues/948
+[recursive-nix]: https://github.com/NixOS/nix/issues/13
