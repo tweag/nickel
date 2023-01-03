@@ -63,18 +63,10 @@ pub mod ty_path {
         !p.iter().any(|elt| matches!(*elt, Elem::Domain))
     }
 
-    /// Return the last element of the path which is either `Domain` or `Codomain`.
-    pub fn last_arrow_elem(p: &Path) -> Option<Elem> {
-        p.iter().fold(None, |current_last, elt| {
-            matches!(*elt, Elem::Domain | Elem::Codomain)
-                .then_some(*elt)
-                .or(current_last)
-        })
-    }
-
     /// Determine if the path is not higher order, that is, if it doesn't contain any arrow.
     pub fn has_no_arrow(p: &Path) -> bool {
-        last_arrow_elem(p).is_none()
+        !p.iter()
+            .any(|elt| matches!(*elt, Elem::Domain | Elem::Codomain))
     }
 
     #[derive(Clone, Copy, Debug)]
