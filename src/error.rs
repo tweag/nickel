@@ -1216,7 +1216,7 @@ mod blame_error {
         } = ty_path::span(l.path.iter().peekable(), &l.types);
 
         let (msg, notes) = match (last, last_arrow_elem) {
-            // The type path contract doesn't contain any arrow, and the failing subcontract is the
+            // The type path doesn't contain any arrow, and the failing subcontract is the
             // contract for the elements of an array
             (Some(ty_path::Elem::Array), None) => (String::from("expected array element type"), Vec::new()),
             // The type path doesn't contain any arrow, and the failing subcontract is the contract
