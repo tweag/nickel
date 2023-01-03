@@ -19,9 +19,13 @@ use std::{io::Cursor, path::PathBuf};
 pub type EC = CBNCache;
 pub type TestProgram = Program<EC>;
 
+/// Create a program from a Nickel expression provided as a string.
+pub fn program_from_expr(s: impl std::string::ToString) -> Program<EC> {
+    Program::<EC>::new_from_source(Cursor::new(s.to_string()), "test").unwrap()
+}
+
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
-    let mut p = Program::<EC>::new_from_source(Cursor::new(s.to_string()), "test").unwrap();
-    p.eval().map(Term::from)
+    program_from_expr(s).eval().map(Term::from)
 }
 
 pub fn eval_file(f: &str) -> Result<Term, Error> {
