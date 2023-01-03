@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use codespan::Files;
 use nickel_lang::error::{Error, EvalError, ToDiagnostic};
 
-use nickel_lang_utilities::eval;
+use nickel_lang_utilities::{eval, program_from_expr};
 
 macro_rules! assert_raise_blame {
     ($term:expr) => {{
@@ -284,4 +284,24 @@ fn enum_complex() {
          f `boo",
     )
     .unwrap_err();
+}
+
+// Regression test for https://github.com/tweag/nickel/issues/1021
+#[test]
+fn type_path_with_aliases() {
+    #[track_caller]
+    fn assert_blame_dont_panic(expr: &str) {
+        let mut p = program_from_expr(expr);
+        let result = p.eval();
+        assert_matches!(result, Err(Error::EvalError(EvalError::BlameError(..))));
+        // Check that the diagnostic is correctly produced
+        p.report(result.unwrap_err());
+    }
+
+    assert_blame_dont_panic("let Foo = Array Num in %force% ([\"a\"] | Foo)");
+    assert_blame_dont_panic("let Foo = Num -> Num in ((fun x => \"a\") | Foo) 0");
+    assert_blame_dont_panic("let Foo = Num -> Num in ((fun x => x) | Foo) \"a\"");
+    assert_blame_dont_panic(
+        "let Foo = {foo: Num} in %force% (((fun x => {foo = \"a\"}) | Dyn -> Foo) null)",
+    );
 }
