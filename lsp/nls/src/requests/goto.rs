@@ -51,8 +51,6 @@ pub fn handle_to_definition(
 
     debug!("found referencing item: {:?}", item);
 
-    // panic!("{:?}", item);
-
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
@@ -91,7 +89,14 @@ pub fn handle_to_usages(
 ) -> Result<(), ResponseError> {
     let file_id = server
         .cache
-        .id_of(params.text_document_position.text_document.uri.as_str())
+        .id_of(
+            params
+                .text_document_position
+                .text_document
+                .uri
+                .to_file_path()
+                .unwrap(),
+        )
         .unwrap();
 
     let start = position_to_byte_index(
@@ -126,7 +131,7 @@ pub fn handle_to_usages(
                         .pos
                         .as_opt_ref()
                         .map(|RawSpan { start, end, src_id }| Location {
-                            uri: Url::parse(&server.cache.name(*src_id).to_string_lossy()).unwrap(),
+                            uri: Url::from_file_path(server.cache.name(*src_id)).unwrap(),
                             range: Range::from_codespan(
                                 src_id,
                                 &((*start).into()..(*end).into()),

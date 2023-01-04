@@ -137,42 +137,39 @@ impl<'b> Building<'b> {
         }
     }
 
-    pub(super) fn resolve_reference<'a>(&'a self, item: &'a TermKind) -> Option<&'a TermKind> {
-        // if item is a usage, resolve the usage first
+    pub(super) fn resolve_reference<'a>(
+        &'a self,
+        current_file: FileId,
+        item: &'a TermKind,
+    ) -> Option<&'a TermKind> {
         match item {
-            TermKind::Usage(UsageState::Resolved(pointed)) => {
-                self.linearization.get(pointed.index).map(|item| &item.kind)
+            // if declaration is a record field, resolve its value
+            TermKind::RecordField { value, .. } => {
+                debug!("parent referenced a record field {:?}", value);
+                value
+                    // retrieve record
+                    .as_option()
+                    .and_then(|value_index| self.get_item_kind(current_file, value_index))
             }
+            // if declaration is a let binding resolve its value
+            TermKind::Declaration(_, _, ValueState::Known(value)) => {
+                self.get_item_kind(current_file, *value)
+            }
+
+            TermKind::Usage(UsageState::Resolved(pointed)) => {
+                let kind = self.get_item_kind(current_file, *pointed)?;
+                self.resolve_reference(current_file, kind)
+            }
+            // if something else was referenced, stop.
             _ => Some(item),
         }
-        // load referenced value, either from record field or declaration
-        .and_then(|item_pointer| {
-            match item_pointer {
-                // if declaration is a record field, resolve its value
-                TermKind::RecordField { value, .. } => {
-                    debug!("parent referenced a record field {:?}", value);
-                    value
-                        // retrieve record
-                        .as_option()
-                        .and_then(|value_index| self.linearization.get(value_index.index))
-                        .map(|item| &item.kind)
-                }
-                // if declaration is a let binding resolve its value
-                TermKind::Declaration(_, _, ValueState::Known(value)) => {
-                    self.linearization.get(value.index).map(|item| &item.kind)
-                }
-
-                // if something else was referenced, stop.
-                _ => Some(item_pointer),
-            }
-        })
     }
 
     pub(super) fn resolve_record_references(
         &mut self,
         file: FileId,
         mut defers: Vec<(ItemId, ItemId, Ident)>,
-    ) {
+    ) -> Vec<(ItemId, ItemId, Ident)> {
         let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
@@ -193,7 +190,7 @@ impl<'b> Building<'b> {
 
             // load the parent referenced declaration (i.e.: a declaration or record field term)
             let parent_declaration = parent_referenced
-                .and_then(|parent_usage_value| self.resolve_reference(&parent_usage_value));
+                .and_then(|parent_usage_value| self.resolve_reference(file, &parent_usage_value));
 
             if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_declaration {
                 debug!("parent references deferred usage");
@@ -203,7 +200,7 @@ impl<'b> Building<'b> {
 
             let referenced_declaration = parent_declaration
                 // resolve indirection by following the usage
-                .and_then(|parent_declaration| self.resolve_reference(parent_declaration))
+                .and_then(|parent_declaration| self.resolve_reference(file, parent_declaration))
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration {
                     TermKind::Record(fields) => {
@@ -259,11 +256,14 @@ impl<'b> Building<'b> {
             if let Some(referenced_id) = referenced_id {
                 self.add_usage(file, referenced_id, *child_item);
             }
+        }
 
-            if defers.is_empty() && !unresolved.is_empty() {
-                debug!("unresolved references: {:?}", unresolved);
-                defers = mem::take(&mut unresolved);
-            }
+        if defers.is_empty() && !unresolved.is_empty() {
+            debug!("unresolved references: {:?}", unresolved);
+            defers = mem::take(&mut unresolved);
+            defers
+        } else {
+            Vec::new()
         }
     }
 

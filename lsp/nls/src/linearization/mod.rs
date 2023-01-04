@@ -486,7 +486,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             })
             .collect();
 
-        lin.resolve_record_references(self.file, defers);
+        lin.resolve_record_references(self.file, defers.into_iter().rev().collect());
 
         let Building {
             mut linearization, ..
