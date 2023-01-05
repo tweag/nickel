@@ -163,6 +163,7 @@
           lalrpopFilter = mkFilter ".*lalrpop$";
           nclFilter = mkFilter ".*ncl$";
           txtFilter = mkFilter ".*txt$";
+          snapFilter = mkFilter ".*snap$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -174,6 +175,7 @@
               lalrpopFilter
               nclFilter
               txtFilter
+              snapFilter
               filterCargoSources
             ];
         };
