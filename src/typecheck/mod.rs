@@ -968,6 +968,19 @@ fn walk<L: Linearizer>(
                 },
             )
         }
+        Term::Annotated(annot, rt) => {
+            annot.iter().try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
+
+            if let Some(LabeledType { types: ty2, .. }) = annot.types {
+                //TODO: code dedup. We have that on fields too
+                let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
+                type_check_(state, ctxt, lin, linearizer, rt, instantiated)
+            }
+            else {
+                walk(state, ctxt, lin, linearizer, rt)
+            }
+        }
         // An type annotation switches mode to check.
         Term::MetaValue(meta) => {
             meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
@@ -1421,6 +1434,49 @@ fn type_check_<L: Linearizer>(
             )?;
 
             Ok(())
+        }
+        Term::Annotated(annot, rt) => {
+            annot.iter().try_for_each(|ty| {
+                walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
+            })?;
+
+            match annot {
+                TypeAnnotation {
+                    types: Some(LabeledType { types: ty2, .. }),
+                    ..
+                } => {
+                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                    let instantiated =
+                        instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
+
+                    unify(state, &ctxt, uty2, ty)
+                        .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+                    type_check_(state, ctxt, lin, linearizer, rt, instantiated)
+                }
+                // A metavalue without a type annotation but with a contract annotation switches
+                // the typechecker back to walk mode. If there are several contracts, we
+                // arbitrarily chose the first one as the apparent type.
+                TypeAnnotation { contracts, .. } if !contracts.is_empty() => {
+                    // unwrap(): the pattern condition ensures that contracts.is_empty() is false
+                    let ctr = contracts.first().unwrap();
+                    let LabeledType { types: ty2, .. } = ctr;
+
+                    unify(
+                        state,
+                        &ctxt,
+                        ty,
+                        UnifType::from_type(ty2.clone(), &ctxt.term_env),
+                    )
+                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+                    // We still have to walk the inner value, as it may contain statically typed
+                    // blocks.
+                    walk(state, ctxt, lin, linearizer, rt)
+                }
+                // A value witha an empty annotation is typechecked in
+                // the same way as its inner value
+                _ => type_check_(state, ctxt, lin, linearizer, rt, ty),
+            }
         }
         Term::MetaValue(meta) => {
             meta.contracts

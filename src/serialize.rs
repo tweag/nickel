@@ -9,7 +9,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        MetaValue, RichTerm, Term,
+        MetaValue, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -100,6 +100,18 @@ where
         // This error should not happen if the input term is validated before serialization
         Err(Error::custom("empty metavalue"))
     }
+}
+
+/// Serializer for annotated values.
+pub fn serialize_annotated_value<S>(
+    annot: &TypeAnnotation,
+    t: &RichTerm,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    t.serialize(serializer)
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output

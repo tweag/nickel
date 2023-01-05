@@ -154,6 +154,12 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
+            Term::Annotated(annot, t) if should_share(&rt.term) => {
+                    let fresh_var = Ident::fresh();
+                    let shared = RichTerm::new(Term::Var(fresh_var), rt.pos);
+                    let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
+                    RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
+            },
             Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
                     let mut meta = meta;
                     let fresh_var = Ident::fresh();
