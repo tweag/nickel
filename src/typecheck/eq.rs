@@ -308,6 +308,38 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && attrs1 == attrs2
         }
         // We must compare the inner values as well as the corresponding contracts or type
+        // annotations.
+        (Annotated(annot1, t1), Annotated(annot2, t2)) => {
+            let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+
+            // TODO:
+            // - does it really make sense to compare the annotations?
+            // - does it even happen to have contracts having themselves type annotations?
+            // - and in the latter case, should they be declared unequal because of that?
+            //   The answer to the last question is probably yes, because contracts are
+            //   fundamentally as powerful as function application, so they can change their
+            //   argument.
+
+            // We use the same logic as in the typechecker: the type associated to an annotated
+            // value is either the type annotation, or the first contract annotation.
+            let ty1 = annot1.first();
+            let ty2 = annot2.first();
+
+            let ty_eq = match (ty1, ty2) {
+                (None, None) => true,
+                (Some(ctr1), Some(ctr2)) => type_eq_bounded(
+                    state,
+                    &GenericUnifType::from_type(ctr1.types.clone(), env1),
+                    env1,
+                    &GenericUnifType::from_type(ctr2.types.clone(), env2),
+                    env2,
+                ),
+                _ => false,
+            };
+
+            value_eq && ty_eq
+        }
+        // We must compare the inner values as well as the corresponding contracts or type
         // annotations. Documentation and merge priority shouldn't impact the result on the
         // other hand.
         (MetaValue(m1), MetaValue(m2)) => {
@@ -339,7 +371,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }
-        // We dont treat imports and parse errors
+        // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
         _ => false,
     }
 }

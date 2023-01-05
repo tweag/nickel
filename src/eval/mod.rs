@@ -970,6 +970,11 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::StrChunks(chunks), pos)
         }
+        Term::Annotated(annot, t) => {
+            // Currently, there is no interest in replacing variables inside contracts, thus we
+            // limit the work of `subst`.
+            RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_env, env)), pos)
+        }
         Term::MetaValue(meta) => {
             // Currently, there is no interest in replacing variables inside contracts, thus we
             // limit the work of `subst`. If this is needed at some point, just uncomment the

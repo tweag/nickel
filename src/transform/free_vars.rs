@@ -173,6 +173,13 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(free_vars);
                 }
             }
+            Term::Annotated(annot, t) => {
+                for ctr in annot.iter_mut() {
+                    ctr.types.collect_free_vars(free_vars)
+                }
+
+                t.collect_free_vars(free_vars);
+            }
         }
     }
 }

@@ -120,14 +120,12 @@ AnnotAtom<TypeRule>: TypeAnnotation = {
 // annotations which can appear everywhere (`AnnotAtom`, either a type or a
 // contract annotation), let annotations also include documentation (`doc`).
 LetAnnotAtom<TypeRule>: MetaAnnot = {
-    <AnnotAtom<TypeRule>> => FieldMetadata {
-        annotation: <>,
-        ..Default::default()
-    },
-    "|" "doc" <s: StaticString> => FieldMetadata {
-        doc: Some(strip_indent_doc(s)),
-        ..Default::default()
-    },
+    <AnnotAtom<TypeRule>> => <>,
+    "|" "doc" <s: StaticString> => {
+        // TODO: handle this when LetMetadata are here
+        // for now, we just ignore doc on let
+        Default::default()
+    }
 }
 
 // A single field metadata annotation, without the pseudo-metadata (such as

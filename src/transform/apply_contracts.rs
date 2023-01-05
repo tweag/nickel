@@ -22,6 +22,16 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     let pos = rt.pos;
     let result = match_sharedterm! {rt.term,
         with {
+            Term::Annotated(annot, rt) => {
+                let pos_inh = pos.into_inherited();
+
+                let ctrs = annot.iter()
+                    .map(|ctr| Ok(PendingContract::new(ctr.types.contract()?, ctr.label.clone())))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let inner = apply_contracts(rt, ctrs.into_iter(), pos_inh);
+                RichTerm::new(Term::Annotated(annot, rt), pos)
+            },
             Term::MetaValue(meta) if meta.value.is_some() => {
                 let mut meta = meta;
                 let pos_inh = pos.into_inherited();

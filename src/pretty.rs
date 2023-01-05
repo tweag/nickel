@@ -3,7 +3,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
-    BinaryOp, MetaValue, RichTerm, Term, UnaryOp,
+    BinaryOp, MetaValue, RichTerm, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -47,7 +47,7 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
-    fn quote_if_needed(&'a self, id: &crate::identifier::Ident) -> DocBuilder<'a, Self, A> {
+    fn quote_if_needed(&'a self, id: &Ident) -> DocBuilder<'a, Self, A> {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
         if reg.is_match(id.as_ref()) && !KEYWORDS.contains(&id.as_ref()) {
             self.as_string(id)
@@ -154,6 +154,18 @@ where
                 .iter()
                 .map(|&(id, field)| self.field(id, field, with_doc)),
             self.line(),
+        )
+    }
+
+    //TODO: do not use MetaData anymore
+    fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
+        self.metadata(
+            &MetaValue {
+                types: annot.types.clone(),
+                contracts: annot.contracts.clone(),
+                ..Default::default()
+            },
+            false,
         )
     }
 
@@ -463,6 +475,8 @@ where
                 .append(allocator.as_string(id))
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
                     allocator.space().append(allocator.metadata(mv, false))
+                } else if let Annotated(ref annot, _) = rt.as_ref() {
+                    allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
                 })
@@ -509,6 +523,8 @@ where
                 .append(dst.pretty(allocator))
                 .append(if let MetaValue(ref mv) = rt.as_ref() {
                     allocator.space().append(allocator.metadata(mv, false))
+                } else if let Annotated(ref annot, _) = rt.as_ref() {
+                    allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
                 })
@@ -680,10 +696,16 @@ where
             SealingKey(sym) => allocator
                 .text(format!("#<sealing key: {}>", sym))
                 .append(allocator.hardline()),
-
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
-
+            // TODO: do not use metavalue anymore
+            Annotated(annot, rt) => crate::term::MetaValue {
+                types: annot.types,
+                contracts: annot.contracts,
+                value: Some(rt.clone()),
+                ..Default::default()
+            }
+            .pretty(allocator),
             MetaValue(mv) => mv.to_owned().pretty(allocator),
             Import(f) => allocator
                 .text("import")

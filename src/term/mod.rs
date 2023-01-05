@@ -167,6 +167,11 @@ pub enum Term {
     #[serde(skip_deserializing)]
     MetaValue(MetaValue),
 
+    /// A term with a type and/or contract annotation.
+    #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
+    #[serde(skip_deserializing)]
+    Annotated(TypeAnnotation, RichTerm),
+
     /// An unresolved import.
     #[serde(skip)]
     Import(OsString),
@@ -225,6 +230,13 @@ pub struct LetAttrs {
     /// A recursive let binding adds its binding to the environment of the expression.
     pub rec: bool,
 }
+
+/// The metadata that can be attached to a let.
+// TODO: actually use this. For now, doc inside let is ignored.
+// pub struct LetMetadata {
+//     pub doc: String,
+//     pub annotation: TypeAnnotation,
+// }
 
 /// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
 /// `Ord`.
@@ -556,6 +568,15 @@ impl Term {
                     });
                 meta.value.iter_mut().for_each(func);
             }
+            Annotated(ref mut annot, ref mut t) => {
+                annot.iter_mut().for_each(|LabeledType { types, .. }| {
+                    if let TypeF::Flat(ref mut rt) = types.0 {
+                        func(rt)
+                    }
+                });
+
+                func(t);
+            }
             Let(_, ref mut t1, ref mut t2, _)
             | LetPattern(_, _, ref mut t1, ref mut t2)
             | App(ref mut t1, ref mut t2)
@@ -595,6 +616,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey"),
             Term::Sealed(..) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
+            Term::Annotated(_, t) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -669,6 +691,7 @@ impl Term {
 
                 format!("<{}{}={}>", content, value_label, value)
             }
+            Term::Annotated(annot, t) => t.as_ref().shallow_repr(),
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
             Term::Let(..)
@@ -723,7 +746,7 @@ impl Term {
             | Term::Bool(_)
             | Term::Num(_)
             | Term::Str(_)
-            | Term::Fun(_, _)
+            | Term::Fun(..)
             // match expressions are function
             | Term::Match {..}
             | Term::Lbl(_)
@@ -734,13 +757,14 @@ impl Term {
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::FunPattern(..)
-            | Term::App(_, _)
+            | Term::App(..)
             | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Op1(..)
+            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::MetaValue(_)
+            | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
@@ -771,16 +795,17 @@ impl Term {
             | Term::LetPattern(..)
             | Term::Record(..)
             | Term::Array(..)
-            | Term::Fun(_, _)
-            | Term::FunPattern(_, _, _)
+            | Term::Fun(..)
+            | Term::FunPattern(..)
             | Term::App(_, _)
             | Term::Match { .. }
             | Term::Var(_)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
+            | Term::Op1(..)
+            | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::MetaValue(_)
+            | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
@@ -809,12 +834,11 @@ impl Term {
             // infix operators.
             //
             // For example, `Op1(BoolOr, Var("x"))` is currently printed as `x ||`. Such operators
-            // must never parenthesized, such as in `(x ||)`.
+            // must never be parenthesized, such as in `(x ||)`.
             //
             // We might want a more robust mechanism for pretty printing such operators.
             | Term::Op1(UnaryOp::BoolAnd(), _)
-            | Term::Op1(UnaryOp::BoolOr(), _)
-            => true,
+            | Term::Op1(UnaryOp::BoolOr(), _) => true,
             Term::Let(..)
             | Term::Match { .. }
             | Term::LetPattern(..)
@@ -826,6 +850,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::MetaValue(..)
+            | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
             | Term::ParseError(_) => false,

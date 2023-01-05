@@ -9,7 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use crate::{
     label::Label,
     match_sharedterm,
-    term::{LabeledType, MetaValue, RichTerm, Term, TraverseOrder},
+    term::{LabeledType, MetaValue, RichTerm, Term, TraverseOrder, TypeAnnotation},
     typecheck::Wildcards,
     types::{TypeF, Types},
 };
@@ -20,6 +20,32 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
+            Term::Annotated(
+                annot @ TypeAnnotation {
+                    types: Some(_),
+                    ..
+                },
+                inner
+            ) => {
+                let LabeledType { types, label } = annot.types.take().unwrap();  // Safe, we know there's a type
+
+                // Replace the type annotation and the blame label
+                let types = substitute_wildcards_recursively(types, wildcards);
+                let label_types = substitute_wildcards_recursively(label.types.as_ref().clone(), wildcards);
+                let label = Label {
+                    types: Rc::new(label_types),
+                    ..label
+                };
+
+                annot.types = Some(LabeledType { types, label });
+
+                // TODO: should we also replace wildcards for contract annotation? It may be useful
+                // to use them, for example by annotationg a subexpression inside a typed block
+                // `exp | _`, saying "whatever the typechecker thinks the type of this expression should
+                // be, assume that it is".
+
+                RichTerm::new(Term::Annotated(annot, inner), pos)
+            },
             Term::MetaValue(meta @ MetaValue {
                 types: Some(_),
                 ..
