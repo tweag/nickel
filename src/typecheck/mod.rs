@@ -912,9 +912,35 @@ fn walk<L: Linearizer>(
                     walk_annotated_term(state, ctxt.clone(), lin, linearizer.scope(), field.value.as_ref(), &field.metadata.annotation)
                 })?;
 
-            dynamic.iter().map(|(_, t)| t)
-                .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, ctxt.clone(), lin, linearizer.scope(), t)
+            dynamic.iter().map(|(_, field)| field)
+                .try_for_each(|field| -> Result<(), TypecheckError> {
+                    field.value.map(|value| walk(state, ctxt.clone(), lin, linearizer.scope(), &value)).transpose()?;
+                    field.metadata.annotation.iter().try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
+
+                    match field {
+                        Field {
+                            metadata: FieldMetadata {
+                                annotation: TypeAnnotation {
+                                    types: Some(LabeledType { types: ty2, .. }),
+                                    ..
+                                },
+                                ..
+                            },
+                            value: Some(t),
+                            ..
+                        } => {
+                            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+                            let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
+                            type_check_(state, ctxt, lin, linearizer, t, instantiated)
+                        }
+                        Field {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
+                        // A metavalue without a body nor a type annotation is a record field
+                        // without definition. There is nothing left to do in that case.
+                        // TODO: we might have something to do with the linearizer to clear the current
+                        // metadata. It looks like it may be unduly attached to the next field definition,
+                        // which is not critical, but still a bug.
+                        _ => Ok(()),
+                    }
                 })
         }
         Term::Record(record) => {
@@ -958,7 +984,7 @@ fn walk<L: Linearizer>(
                 }
                 MetaValue {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
                 // A metavalue without a body nor a type annotation is a record field without definition.
-                // TODO: we might have something to with the linearizer to clear the current
+                // TODO: we might have something to do with the linearizer to clear the current
                 // metadata. It looks like it may be unduly attached to the next field definition,
                 // which is not critical, but still a bug.
                 _ => Ok(()),

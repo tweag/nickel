@@ -5,7 +5,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::parser::lexer::Lexer;
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
-use crate::term::record::RecordData;
+use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
 use crate::typecheck::type_check;
@@ -603,10 +603,16 @@ impl Cache {
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
                                     .into_iter()
-                                    .map(|(id_t, t)| {
+                                    .map(|(id_t, field)| {
+                                        let value = field
+                                            .value
+                                            .take()
+                                            .map(|v| transform::transform(v, wildcards))
+                                            .transpose()?;
+
                                         Ok((
                                             transform::transform(id_t, wildcards)?,
-                                            transform::transform(t, wildcards)?,
+                                            Field { value, ..field },
                                         ))
                                     })
                                     .collect();
