@@ -122,7 +122,7 @@ AnnotAtom<TypeRule>: TypeAnnotation = {
 LetAnnotAtom<TypeRule>: MetaAnnot = {
     <AnnotAtom<TypeRule>> => FieldMetadata {
         annotation: <>,
-        ..Default::default
+        ..Default::default()
     },
     "|" "doc" <s: StaticString> => FieldMetadata {
         doc: Some(strip_indent_doc(s)),
@@ -173,7 +173,7 @@ FieldAnnotAtom<TypeRule>: FieldAnnot = {
 }
 
 // An annotation, with possibly many annotations chained.
-Annot<TypeRule>: MetaAnnot = AnnotSeries<AnnotAtom<TypeRule>>;
+Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<TypeRule>>;
 
 // A let annotation, with possibly many annotations chained. Include type
 // annotations, contract annotations and doc annotations.
@@ -485,7 +485,7 @@ Match: Match = {
 };
 
 // A default annotation in a pattern.
-DefaultAnnot: MetaAnnot = "?" <t: Term> => MetaValue {
+DefaultAnnot: MetaAnnot = "?" <t: Term> => FieldMetadata {
     priority: MergePriority::Bottom,
     value: Some(t),
     ..Default::default()

@@ -227,7 +227,7 @@ impl Annot for TypeAnnotation {
             metadata: FieldMetadata {
                 annotation: self,
                 ..Default::default()
-            }
+            },
         }
     }
 
@@ -236,14 +236,18 @@ impl Annot for TypeAnnotation {
     fn combine(outer: Self, inner: Self) -> Self {
         let (types, leftover) = match (inner.types, outer.types) {
             (outer_ty @ Some(_), inner_ty @ Some(_)) => (outer_ty, inner_ty),
-            (outer_ty, inner_ty) => (outer_ty.or(inner_ty), None)
+            (outer_ty, inner_ty) => (outer_ty.or(inner_ty), None),
         };
 
-        let contracts = inner.contracts.into_iter().chain(leftover.into_iter()).chain(outer.contracts.into_iter()).collect();
+        let contracts = inner
+            .contracts
+            .into_iter()
+            .chain(leftover.into_iter())
+            .chain(outer.contracts.into_iter())
+            .collect();
 
         TypeAnnotation { types, contracts }
     }
-
 }
 
 impl From<FieldMetadata> for TypeAnnotation {

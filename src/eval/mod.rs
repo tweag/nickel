@@ -510,19 +510,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .iter()
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
                             static_part,
-                            |acc, (name_as_term, value)| {
-                                let pos = value.pos;
+                            |acc, (name_as_term, field)| {
+                                let pos = if let Some(value) = field.value {
+                                    value.pos
+                                } else {
+                                    name_as_term.pos
+                                };
 
-                                // TODO: dynamic fields should be field, in fact?
-                                fixpoint::patch_field(
-                                    &mut self.cache,
-                                    &Field {
-                                        value: Some(value.clone()),
-                                        ..Default::default()
-                                    },
-                                    &rec_env,
-                                    &env,
-                                )?;
+                                fixpoint::patch_field(&mut self.cache, &field, &rec_env, &env)?;
+
+                                // TODO: preserve metadata when extending
                                 Ok(RichTerm::new(
                                     Term::App(
                                         mk_term::op2(
@@ -530,7 +527,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             name_as_term.clone(),
                                             acc,
                                         ),
-                                        value.clone(),
+                                        todo!(),
                                     ),
                                     pos.into_inherited(),
                                 ))
@@ -941,10 +938,10 @@ pub fn subst<C: Cache>(
 
             let dyn_fields = dyn_fields
                 .into_iter()
-                .map(|(id_t, t)| {
+                .map(|(id_t, field)| {
                     (
                         subst(cache, id_t, initial_env, env),
-                        subst(cache, t, initial_env, env),
+                        field.map_value(|v| subst(cache, v, initial_env, env)),
                     )
                 })
                 .collect();

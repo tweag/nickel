@@ -31,7 +31,10 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
-    term::{record::FieldDeps, BindingType, LetAttrs, RichTerm, Term},
+    term::{
+        record::{Field, FieldDeps},
+        BindingType, LetAttrs, RichTerm, Term,
+    },
 };
 
 /// Transform the top-level term of an AST to a share normal form, if it can.
@@ -114,16 +117,17 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 let dyn_fields = dyn_fields
                     .into_iter()
                     .enumerate()
-                    .map(|(index, (id_t, t))| {
-                        if !t.as_ref().is_constant() {
-                            let fresh_var = Ident::fresh();
-                            let pos_t = t.pos;
-                            let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
-                            let btype = mk_binding_type(field_deps);
-                            bindings.push((fresh_var, t, btype));
-                            (id_t, RichTerm::new(Term::Var(fresh_var), pos_t))
-                        } else {
-                            (id_t, t)
+                    .map(|(index, (id_t, field))| {
+                        match field.value {
+                            Some(value) if value.as_ref().is_constant() => {
+                                let fresh_var = Ident::fresh();
+                                let pos_v = value.pos;
+                                let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
+                                let btype = mk_binding_type(field_deps);
+                                bindings.push((fresh_var, value, btype));
+                                (id_t, Field { value: Some(RichTerm::new(Term::Var(fresh_var), pos_v)), ..field })
+                            }
+                            _ => (id_t, field)
                         }
                     })
                     .collect();
@@ -159,7 +163,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     let inner = RichTerm::new(Term::MetaValue(meta), pos);
                     let attrs = LetAttrs {
                         binding_type: BindingType::Normal,
-                        rec : false,
+                        rec: false,
                     };
                     RichTerm::new(Term::Let(fresh_var, t, inner, attrs), pos)
             }
