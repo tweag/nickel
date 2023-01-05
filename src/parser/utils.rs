@@ -19,7 +19,7 @@ use crate::{
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+        BinaryOp, LabeledType, LetMetadata, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
     },
     types::{TypeF, Types},
 };
@@ -199,41 +199,42 @@ impl InfixOp {
     }
 }
 
-/// General interface for structures representing a series of annotations.
-pub trait Annot: Default + From<FieldMetadata> {
-    /// Attach the annotation to a term.
-    fn attach_value(self, value: RichTerm) -> Field;
+/// Trait for structures representing a series of annotation that can be combined (flattened).
+/// Pedantically, `Annot` describes a monoid.
+pub trait Annot: Default {
     /// Combine two annotations.
     fn combine(outer: Self, inner: Self) -> Self;
 }
 
-/// Consistency of naming inside the parser module.
-pub type MetaAnnot = FieldMetadata;
+/// Trait for structures representing annotations which can be combined with a term to build a
+/// term, or another structure holding a term, such as a field.
+/// `T` is the said target structure.
+pub trait AttachTerm<T> {
+    fn attach_term(self, rt: RichTerm) -> T;
+}
 
 impl Annot for FieldMetadata {
-    fn attach_value(self, value: RichTerm) -> Field {
-        Field {
-            value: Some(value),
-            metadata: self,
-        }
-    }
-
     fn combine(outer: Self, inner: Self) -> Self {
         Self::flatten(outer, inner)
     }
 }
 
-impl Annot for TypeAnnotation {
-    fn attach_value(self, value: RichTerm) -> Field {
+impl AttachTerm<Field> for FieldMetadata {
+    fn attach_term(self, rt: RichTerm) -> Field {
         Field {
-            value: Some(value),
-            metadata: FieldMetadata {
-                annotation: self,
-                ..Default::default()
-            },
+            value: Some(rt),
+            metadata: self,
         }
     }
+}
 
+impl Annot for LetMetadata {
+    fn combine(outer: Self, inner: Self) -> Self {
+        todo!()
+    }
+}
+
+impl Annot for TypeAnnotation {
     /// Combine two type annotations. If both have `types` set, the final type is the one of outer,
     /// while inner's type is put inside the final `contracts`.
     fn combine(outer: Self, inner: Self) -> Self {
@@ -253,11 +254,17 @@ impl Annot for TypeAnnotation {
     }
 }
 
-impl From<FieldMetadata> for TypeAnnotation {
-    fn from(metadata: FieldMetadata) -> Self {
-        metadata.annotation
+impl AttachTerm<RichTerm> for TypeAnnotation {
+    fn attach_term(self, rt: RichTerm) -> RichTerm {
+        RichTerm::new(Term::Annotated(self, rt), rt.pos)
     }
 }
+
+// impl From<FieldMetadata> for TypeAnnotation {
+//     fn from(metadata: FieldMetadata) -> Self {
+//         metadata.annotation
+//     }
+// }
 
 /// Used to combine annotations in a pattern. If at least one annotation is not `None`, then this
 /// just calls [`Annot::combine`] and substitute a potential `None` by the default value.
@@ -266,16 +273,24 @@ impl From<FieldMetadata> for TypeAnnotation {
 /// case, `combine_match_annots` returns a value with a dummy `Dyn` contract and a label with the
 /// position set to `span`.
 pub fn combine_match_annots(
-    anns: Option<MetaAnnot>,
-    default: Option<MetaAnnot>,
+    anns: Option<FieldMetadata>,
+    default: Option<Field>,
     span: RawSpan,
-) -> MetaAnnot {
+) -> Field {
     match (anns, default) {
         (anns @ Some(_), default) | (anns, default @ Some(_)) => {
-            Annot::combine(anns.unwrap_or_default(), default.unwrap_or_default())
+            let Field {
+                value: default_value,
+                metadata: default_metadata,
+            } = default.unwrap_or_default();
+
+            Field {
+                value: default_value,
+                metadata: Annot::combine(anns.unwrap_or_default(), default_metadata),
+            }
         }
-        (None, None) => FieldMetadata {
-            annotation: TypeAnnotation {
+        (None, None) => {
+            let dummy_annot = TypeAnnotation {
                 contracts: vec![LabeledType {
                     types: Types(TypeF::Dyn),
                     label: Label {
@@ -284,9 +299,16 @@ pub fn combine_match_annots(
                     },
                 }],
                 ..Default::default()
-            },
-            ..Default::default()
-        },
+            };
+
+            Field {
+                metadata: FieldMetadata {
+                    annotation: dummy_annot,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
     }
 }
 
@@ -294,7 +316,7 @@ pub fn combine_match_annots(
 /// (ex: `rec force`/`rec default`). Those are collected in this extended annotation and then
 /// desugared into a standard metavalue.
 #[derive(Clone, Debug, Default)]
-pub struct FieldAnnot {
+pub struct FieldExtAnnot {
     /// Standard metadata.
     pub metadata: FieldMetadata,
     /// Presence of an annotation `push force`
@@ -303,14 +325,14 @@ pub struct FieldAnnot {
     pub rec_default: bool,
 }
 
-impl FieldAnnot {
+impl FieldExtAnnot {
     pub fn new() -> Self {
         Default::default()
     }
 }
 
-impl Annot for FieldAnnot {
-    fn attach_value(mut self, value: RichTerm) -> Field {
+impl AttachTerm<Field> for FieldExtAnnot {
+    fn attach_term(mut self, value: RichTerm) -> Field {
         let value = if self.rec_force || self.rec_default {
             let rec_prio = if self.rec_force {
                 RecPriority::Top
@@ -328,13 +350,15 @@ impl Annot for FieldAnnot {
             metadata: self.metadata,
         }
     }
+}
 
+impl Annot for FieldExtAnnot {
     fn combine(outer: Self, inner: Self) -> Self {
         let metadata = FieldMetadata::flatten(outer.metadata, inner.metadata);
         let rec_force = outer.rec_force || inner.rec_force;
         let rec_default = outer.rec_default || inner.rec_default;
 
-        FieldAnnot {
+        FieldExtAnnot {
             metadata,
             rec_force,
             rec_default,
@@ -342,9 +366,9 @@ impl Annot for FieldAnnot {
     }
 }
 
-impl From<FieldMetadata> for FieldAnnot {
+impl From<FieldMetadata> for FieldExtAnnot {
     fn from(metadata: FieldMetadata) -> Self {
-        FieldAnnot {
+        FieldExtAnnot {
             metadata,
             ..Default::default()
         }

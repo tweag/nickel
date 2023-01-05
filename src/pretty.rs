@@ -3,7 +3,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
-    BinaryOp, MetaValue, RichTerm, Term, TypeAnnotation, UnaryOp,
+    BinaryOp, MergePriority, MetaValue, RichTerm, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -318,29 +318,30 @@ where
             } => allocator
                 .intersperse(
                     matches.iter().map(|m| match m {
-                        destruct::Match::Simple(id, meta) => allocator
+                        destruct::Match::Simple(id, field) => allocator
                             .as_string(id)
                             .append(allocator.space())
-                            .append(match meta.clone() {
-                                MetaValue {
-                                    types,
-                                    contracts,
-                                    priority: crate::term::MergePriority::Bottom,
+                            .append(match field {
+                                Field {
                                     value: Some(value),
-                                    ..
+                                    metadata:
+                                        FieldMetadata {
+                                            annotation,
+                                            priority: MergePriority::Bottom,
+                                            ..
+                                        },
                                 } => allocator
                                     .text("?")
                                     .append(allocator.space())
                                     .append(allocator.atom(&value))
-                                    .append(allocator.metadata(
-                                        &MetaValue {
-                                            types,
-                                            contracts,
+                                    .append(allocator.field_metadata(
+                                        &FieldMetadata {
+                                            annotation: annotation.clone(),
                                             ..Default::default()
                                         },
                                         false,
                                     )),
-                                m => allocator.metadata(&m, false),
+                                field => allocator.field_metadata(&field.metadata, false),
                             }),
                         _ => unimplemented!(),
                     }),
