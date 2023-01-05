@@ -34,6 +34,26 @@ use std::ffi::OsString;
 use std::io::{self, Read};
 use std::result::Result;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ColorOpt {
+    Auto,
+    Always,
+    Never,
+}
+
+impl std::str::FromStr for ColorOpt {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "always" => Ok(Self::Always),
+            "never" => Ok(Self::Never),
+            _ => Err("possible values are 'auto', 'always' or 'never'."),
+        }
+    }
+}
+
 /// A Nickel program.
 ///
 /// Manage a file database, which stores the original source code of the program and eventually the
@@ -43,6 +63,8 @@ pub struct Program<EC: EvalCache> {
     main_id: FileId,
     /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache, EC>,
+    /// The color option to use when reporting errors.
+    color_opt: ColorOpt,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -56,7 +78,11 @@ impl<EC: EvalCache> Program<EC> {
         let main_id = cache.add_file(path)?;
         let vm = VirtualMachine::new(cache);
 
-        Ok(Self { main_id, vm })
+        Ok(Self {
+            main_id,
+            vm,
+            color_opt: ColorOpt::Auto,
+        })
     }
 
     /// Create a program by reading it from a generic source.
@@ -69,7 +95,11 @@ impl<EC: EvalCache> Program<EC> {
         let main_id = cache.add_source(source_name, source)?;
         let vm = VirtualMachine::new(cache);
 
-        Ok(Self { main_id, vm })
+        Ok(Self {
+            main_id,
+            vm,
+            color_opt: ColorOpt::Auto,
+        })
     }
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
@@ -130,7 +160,7 @@ impl<EC: EvalCache> Program<EC> {
     where
         E: ToDiagnostic<FileId>,
     {
-        report(self.vm.import_resolver_mut(), error)
+        report(self.vm.import_resolver_mut(), error, self.color_opt)
     }
 
     /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
@@ -144,6 +174,10 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.import_resolver_mut().skip_stdlib = true;
     }
 
+    pub fn set_color(&mut self, c: ColorOpt) {
+        self.color_opt = c;
+    }
+
     pub fn pprint_ast(
         &mut self,
         out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
@@ -152,7 +186,9 @@ impl<EC: EvalCache> Program<EC> {
         use crate::pretty::*;
         use pretty::BoxAllocator;
 
-        let Program { ref main_id, vm } = self;
+        let Program {
+            ref main_id, vm, ..
+        } = self;
         let allocator = BoxAllocator;
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
@@ -224,11 +260,11 @@ pub fn query<EC: EvalCache>(
 /// to produce a diagnostic (see `crate::error::label_alt`).
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn report<E>(cache: &mut Cache, error: E)
+pub fn report<E>(cache: &mut Cache, error: E, color_opt: ColorOpt)
 where
     E: ToDiagnostic<FileId>,
 {
-    let writer = StandardStream::stderr(ColorChoice::Always);
+    let writer = StandardStream::stderr(color_opt.into());
     let config = codespan_reporting::term::Config::default();
     let contracts_id = cache.id_of("<stdlib/contract.ncl>");
     let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
@@ -243,6 +279,16 @@ where
             err
         ),
     };
+}
+
+impl From<ColorOpt> for ColorChoice {
+    fn from(c: ColorOpt) -> Self {
+        match c {
+            ColorOpt::Auto => ColorChoice::Auto,
+            ColorOpt::Always => ColorChoice::Always,
+            ColorOpt::Never => ColorChoice::Never,
+        }
+    }
 }
 
 #[cfg(feature = "doc")]

@@ -4,39 +4,59 @@ use std::path::PathBuf;
 use super::command::Command;
 use super::*;
 
-use crate::program;
+use crate::program::{self, ColorOpt};
 use ansi_term::{Colour, Style};
 use rustyline::config::OutputStreamType;
 use rustyline::error::ReadlineError;
 use rustyline::{Config, EditMode, Editor};
 
 /// The config of rustyline's editor.
-pub fn config() -> Config {
+pub fn config(color_opt: ColorOpt) -> Config {
     Config::builder()
         .history_ignore_space(true)
         .edit_mode(EditMode::Emacs)
+        .color_mode(color_opt.into())
         .output_stream(OutputStreamType::Stdout)
         .build()
 }
 
+impl From<ColorOpt> for rustyline::config::ColorMode {
+    fn from(c: ColorOpt) -> Self {
+        use rustyline::config::ColorMode;
+        match c {
+            ColorOpt::Always => ColorMode::Forced,
+            ColorOpt::Auto => ColorMode::Enabled,
+            ColorOpt::Never => ColorMode::Disabled,
+        }
+    }
+}
+
 /// Main loop of the REPL.
-pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
+pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
     let mut repl = ReplImpl::<crate::eval::cache::CBNCache>::new();
 
     match repl.load_stdlib() {
         Ok(()) => (),
         Err(err) => {
-            program::report(repl.cache_mut(), err);
+            program::report(repl.cache_mut(), err, color_opt);
             return Err(InitError::Stdlib);
         }
     }
 
     let validator = InputParser::new(repl.cache_mut().add_tmp("<repl-input>", String::new()));
 
-    let mut editor = Editor::with_config(config());
+    let mut editor = Editor::with_config(config(color_opt));
     let _ = editor.load_history(&histfile);
     editor.set_helper(Some(validator));
-    let prompt = Style::new().fg(Colour::Green).paint("nickel> ").to_string();
+    let prompt = {
+        let style = Style::new();
+        let style = if color_opt != ColorOpt::Never {
+            style.fg(Colour::Green)
+        } else {
+            style
+        };
+        style.paint("nickel> ").to_string()
+    };
 
     let result = loop {
         let line = editor.readline(&prompt);
@@ -80,7 +100,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                         match repl.eval_full(&exp) {
                             Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
                             Ok(EvalResult::Bound(_)) => (),
-                            Err(err) => program::report(repl.cache_mut(), err),
+                            Err(err) => program::report(repl.cache_mut(), err, color_opt),
                         };
                         Ok(())
                     }
@@ -96,7 +116,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                 };
 
                 if let Err(err) = result {
-                    program::report(repl.cache_mut(), err);
+                    program::report(repl.cache_mut(), err, color_opt);
                 } else {
                     println!();
                 }
@@ -105,7 +125,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                 match repl.eval_full(&line) {
                     Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
                     Ok(EvalResult::Bound(_)) => (),
-                    Err(err) => program::report(repl.cache_mut(), err),
+                    Err(err) => program::report(repl.cache_mut(), err, color_opt),
                 };
             }
             Err(ReadlineError::Eof) => {
@@ -118,6 +138,7 @@ pub fn repl(histfile: PathBuf) -> Result<(), InitError> {
                 program::report(
                     repl.cache_mut(),
                     Error::IOError(IOError(format!("{}", err))),
+                    color_opt,
                 );
             }
         }
