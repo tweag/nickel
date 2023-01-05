@@ -12,17 +12,16 @@ use crate::{
     types::{TypeF, Types},
 };
 
-/// A match field in a `Destruct` pattern.
-/// every field can contain a `MetaValue` either simply because they are annotated either because
-/// they are of the form `a ? "something"` (default value).
+/// A match field in a `Destruct` pattern. Every field can contain a `MetaValue` either because
+/// they are annotated with a type, with contracts or with a default value.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Match {
-    /// `{..., a=b, ...}` will bind the field a of the record to variable a. Here, a is the first
-    /// field of this variant and b the optional one. The last field can actualy be a nested
-    /// destruct pattern.
-    Assign(Ident, MetaValue, (Option<Ident>, Destruct)),
+    /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
+    /// first field of this variant and `b` the optional one. The last field can actualy be a
+    /// nested destruct pattern.
+    Assign(Ident, Field, (Option<Ident>, Destruct)),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
-    Simple(Ident, MetaValue),
+    Simple(Ident, Field),
 }
 
 /// Last match field of a `Destruct`.
@@ -55,30 +54,28 @@ pub enum Destruct {
 
 impl Destruct {
     /// generate the metavalue containing the contract representing this pattern.
-    pub fn into_contract(self) -> MetaValue {
+    pub fn into_contract(self) -> LabeledType {
         let label = self.label();
         self.into_contract_with_lbl(label)
     }
 
-    fn into_contract_with_lbl(self, label: Label) -> MetaValue {
-        let open = self.is_open();
-        MetaValue {
-            contracts: vec![LabeledType {
-                types: Types(TypeF::Flat(
-                    Term::Record(RecordData::new(
-                        self.inner()
-                            .into_iter()
-                            .map(|m| m.as_meta_field())
-                            .map(|(id, value)| (id, Field::from(value)))
-                            .collect(),
-                        RecordAttrs { open },
-                        None,
-                    ))
-                    .into(),
-                )),
-                label,
-            }],
-            ..Default::default()
+    fn into_contract_with_lbl(self, label: Label) -> LabeledType {
+        LabeledType {
+            types: Types(TypeF::Flat(
+                Term::Record(RecordData::new(
+                    self.inner()
+                        .into_iter()
+                        .map(|mtch| mtch.as_field())
+                        .map(|(id, value)| (id, Field::from(value)))
+                        .collect(),
+                    RecordAttrs {
+                        open: self.is_open(),
+                    },
+                    None,
+                ))
+                .into(),
+            )),
+            label,
         }
     }
 
@@ -115,10 +112,10 @@ impl Destruct {
 impl Match {
     /// Convert the `Match` to a metavalue. It's used to generate the record contract representing
     /// a record pattern destructuring.
-    pub fn as_meta_field(self) -> (Ident, RichTerm) {
+    pub fn as_field(self) -> (Ident, Field) {
         match self {
-            Match::Assign(id, m, (_, Destruct::Empty)) | Match::Simple(id, m) => {
-                (id, Term::MetaValue(m).into())
+            Match::Assign(id, field, (_, Destruct::Empty)) | Match::Simple(id, field) => {
+                (id, field)
             }
 
             // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
@@ -126,14 +123,16 @@ impl Match {
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            Match::Assign(id, m, (_, d @ Destruct::Record { .. })) => {
-                let label @ Label { span, .. } = d.label();
-                let span = RawSpan::fuse(id.pos.unwrap(), span).unwrap();
-                let label = Label { span, ..label };
-                (
-                    id,
-                    Term::MetaValue(MetaValue::flatten(m, d.into_contract_with_lbl(label))).into(),
-                )
+            Match::Assign(id, mut field, (_, destruct @ Destruct::Record { .. })) => {
+                let mut label = destruct.label();
+                label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
+                field
+                    .metadata
+                    .annotation
+                    .contracts
+                    .push(destruct.into_contract_with_lbl(label));
+
+                (id, field)
             }
             Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
         }

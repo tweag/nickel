@@ -233,10 +233,21 @@ pub struct LetAttrs {
 
 /// The metadata that can be attached to a let.
 // TODO: actually use this. For now, doc inside let is ignored.
-// pub struct LetMetadata {
-//     pub doc: String,
-//     pub annotation: TypeAnnotation,
-// }
+#[derive(Default, Clone)]
+pub struct LetMetadata {
+    pub doc: Option<String>,
+    pub annotation: TypeAnnotation,
+}
+
+impl From<LetMetadata> for record::FieldMetadata {
+    fn from(let_metadata: LetMetadata) -> Self {
+        record::FieldMetadata {
+            annotation: let_metadata.annotation,
+            doc: let_metadata.doc,
+            ..Default::default()
+        }
+    }
+}
 
 /// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
 /// `Ord`.
@@ -485,6 +496,15 @@ impl TypeAnnotation {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
         self.types.iter_mut().chain(self.contracts.iter_mut())
+    }
+}
+
+impl From<TypeAnnotation> for LetMetadata {
+    fn from(annotation: TypeAnnotation) -> Self {
+        LetMetadata {
+            annotation,
+            ..Default::default()
+        }
     }
 }
 

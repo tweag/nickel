@@ -63,7 +63,7 @@ use crate::{
         record::{RecordAttrs, Field, FieldMetadata},
         SharedTerm,
         NumeralPriority, array::Array, make as mk_term,
-        TypeAnnotation,
+        TypeAnnotation, LetMetadata,
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
@@ -119,13 +119,12 @@ AnnotAtom<TypeRule>: TypeAnnotation = {
 // A single metadata annotation attached to a let-binding. Compared to
 // annotations which can appear everywhere (`AnnotAtom`, either a type or a
 // contract annotation), let annotations also include documentation (`doc`).
-LetAnnotAtom<TypeRule>: MetaAnnot = {
-    <AnnotAtom<TypeRule>> => <>,
-    "|" "doc" <s: StaticString> => {
-        // TODO: handle this when LetMetadata are here
-        // for now, we just ignore doc on let
-        Default::default()
-    }
+LetAnnotAtom<TypeRule>: LetMetadata = {
+    <AnnotAtom<TypeRule>> => <>.into(),
+    "|" "doc" <s: StaticString> => LetMetadata {
+        doc: Some(s),
+        ..Default::default()
+    },
 }
 
 // A single field metadata annotation, without the pseudo-metadata (such as
@@ -133,8 +132,8 @@ LetAnnotAtom<TypeRule>: MetaAnnot = {
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
 // rule).
-SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
-    <LetAnnotAtom<TypeRule>> => <>,
+SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
+    <LetAnnotAtom<TypeRule>> => <>.into(),
     "|" "default" => FieldMetadata {
         priority: MergePriority::Bottom,
         ..Default::default()
@@ -158,13 +157,13 @@ SimpleFieldAnnotAtom<TypeRule>: MetaAnnot = {
 //
 // The rule to use for type annotations is given as a parameter (cf AnnotAtom
 // rule).
-FieldAnnotAtom<TypeRule>: FieldAnnot = {
+FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
     <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
-    "|" "rec" "force" => FieldAnnot {
+    "|" "rec" "force" => FieldExtAnnot {
         rec_force: true,
         ..Default::default()
     },
-    "|" "rec" "default" => FieldAnnot {
+    "|" "rec" "default" => FieldExtAnnot {
         rec_default: true,
         ..Default::default()
     },
@@ -175,14 +174,14 @@ Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<TypeRule>>;
 
 // A let annotation, with possibly many annotations chained. Include type
 // annotations, contract annotations and doc annotations.
-LetAnnot<TypeRule>: MetaAnnot = AnnotSeries<LetAnnotAtom<TypeRule>>;
+LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<TypeRule>>;
 
 // A simple field annotation, with possibly many annotations chained. A simple
 // field annotation excludes pseudo metadata like recursive priorities operator.
-SimpleFieldAnnot<TypeRule>: MetaAnnot = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
+SimpleFieldAnnot<TypeRule>: FieldMetadata = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
 
 // A field annotation, with possibly many annotations chained.
-FieldAnnot<TypeRule>: FieldAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
+FieldAnnot<TypeRule>: FieldExtAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
@@ -207,7 +206,8 @@ FixedType: Types = {
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
-            t = ann.attach_value(t);
+            // TODO: actually use the doc once we have proper LetMetadata in the AST
+            t = ann.annotation.attach_term(t);
         }
 
         ExtendedTerm::ToplevelLet(id, t)
@@ -224,7 +224,8 @@ UniTerm: UniTerm = {
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
-            t1 = ann.attach_value(t1);
+            // TODO: actually use the doc once we have proper LetMetadata in the AST
+            t1 = ann.annotation.attach_term(t1);
         }
 
         Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
@@ -247,7 +248,7 @@ UniTerm: UniTerm = {
 
 AnnotatedInfixExpr: UniTerm = {
     <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
-        UniTerm::from(ann.attach_value(t))
+        UniTerm::from(ann.attach_term(t))
     },
 };
 
@@ -385,11 +386,11 @@ RecordField: FieldDef = {
         };
 
         let field = match (ann, t) {
-            (Some(FieldAnnot { metadata, rec_force: false, rec_default: false }), None) => {
+            (Some(FieldExtAnnot { metadata, rec_force: false, rec_default: false }), None) => {
                 Field { value: None, metadata }
             }
             (Some(ann), Some(value)) => {
-                ann.attach_value(value)
+                ann.attach_term(value)
             }
             (Some(_), None) => {
                 panic!("can't use rec default/rec force on a field without definition");
@@ -473,20 +474,22 @@ Destruct: Destruct = {
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let meta = combine_match_annots(anns, default, left.pos.unwrap());
-        Match::Assign(left, meta, right)
+        let field = combine_match_annots(anns, default, left.pos.unwrap());
+        Match::Assign(left, field, right)
     },
     <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
-        let meta = combine_match_annots(anns, default, id.pos.unwrap());
-        Match::Simple(id, meta)
+        let field = combine_match_annots(anns, default, id.pos.unwrap());
+        Match::Simple(id, field)
     },
 };
 
 // A default annotation in a pattern.
-DefaultAnnot: MetaAnnot = "?" <t: Term> => FieldMetadata {
-    priority: MergePriority::Bottom,
+DefaultAnnot: Field = "?" <t: Term> => Field {
+    metadata: FieldMetadata {
+        priority: MergePriority::Bottom,
+        ..Default::default()
+    },
     value: Some(t),
-    ..Default::default()
 };
 
 Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>

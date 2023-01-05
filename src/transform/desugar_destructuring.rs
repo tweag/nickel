@@ -34,7 +34,7 @@ use crate::destruct::{Destruct, Match};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
-use crate::term::{BinaryOp::DynRemove, MetaValue, RichTerm, Term, UnaryOp::StaticAccess};
+use crate::term::{BinaryOp::DynRemove, RichTerm, Term, TypeAnnotation, UnaryOp::StaticAccess};
 
 /// Entry point of the patterns desugaring.
 /// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
@@ -75,27 +75,27 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     }
 }
 
-/// Wrap the desugar `LetPattern` in a meta value containing the "Record contract" needed to check the
-/// pattern exhaustively and also fill the default values (`?` operator) if not presents in the
+/// Wrap the desugar `LetPattern` in a meta value containing the "Record contract" needed to check
+/// the pattern exhaustively and also fill the default values (`?` operator) if not presents in the
 /// record. This function should be, in the general case, considered as the entry point of the let
 /// patterns transformation.
 pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
     match_sharedterm!(rt.term,
         with {
-            Term::LetPattern(x, pat, t_, body) => {
+            Term::LetPattern(x, pat, bound, body) => {
                 let pos = body.pos;
-                let meta = pat.clone().into_contract();
-                let t_ = {
-                    let t_pos = t_.pos;
+                let contract = pat.clone().into_contract();
+                let annotated = {
+                    let t_pos = bound.pos;
                     RichTerm::new(
-                        Term::MetaValue(MetaValue {
-                            value: Some(t_),
-                            ..meta
-                        }),
+                        Term::Annotated(
+                            TypeAnnotation { contracts: vec![contract], ..Default::default() },
+                            bound
+                        ),
                         t_pos,
                     )
                 };
-                desugar(RichTerm::new(Term::LetPattern(x, pat, t_, body), pos))
+                desugar(RichTerm::new(Term::LetPattern(x, pat, annotated, body), pos))
             }
         } else rt
     )
