@@ -25,7 +25,7 @@ use record::{Field, FieldDeps, RecordData, RecordDeps};
 
 use crate::{
     destruct::Destruct,
-    error::ParseError,
+    error::{EvalError, ParseError},
     eval::EvalMode,
     identifier::Ident,
     label::Label,
@@ -178,8 +178,36 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+
+    /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
+    /// programs.
     #[serde(skip)]
     ParseError(ParseError),
+    /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
+    /// without the need to store them in the AST. However, some cases require a term which aborts
+    /// with a specific error if evaluated, but is fine being stored and passed around.
+    ///
+    /// The main use-cae is currently missing field definitions: when evaluating a recursive record
+    /// to a normal record with a recursive environment, we might find fields that aren't defined
+    /// currently, eg:
+    ///
+    /// ```nickel
+    /// let r = {
+    ///   foo = bar + 1,
+    ///   bar | Num,
+    ///   baz = 2,
+    /// } in
+    /// r.baz + (r & {bar = 1}).foo
+    /// ```
+    ///
+    /// This program is valid, but when evaluating `r` in `r.baz`, `bar` doesn't have a definition
+    /// yet. This is fine because we don't evaluate `bar` nor `foo`. Still, we have to put
+    /// something in the recursive environment. And if we wrote `r.foo` instead, we should raise a
+    /// missing field definition error. Thus, we need to bind `bar` to a term wich, if ever
+    /// evaluated, will raise a proper missing field definition error. This is precisely the
+    /// behavior of `RuntimeError` behaves.
+    #[serde(skip)]
+    RuntimeError(EvalError),
 }
 
 pub type SealingKey = i32;
@@ -536,7 +564,7 @@ impl Term {
     {
         use self::Term::*;
         match self {
-            Null | ParseError(_) => (),
+            Null | ParseError(_) | RuntimeError(_) => (),
             Match {
                 ref mut cases,
                 ref mut default,
@@ -636,7 +664,7 @@ impl Term {
             Term::SealingKey(_) => Some("SealingKey"),
             Term::Sealed(..) => Some("Sealed"),
             Term::MetaValue(_) => Some("Metavalue"),
-            Term::Annotated(_, t) => Some("Annotated"),
+            Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -647,7 +675,8 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::ParseError(_) => None,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => None,
         }
         .map(String::from)
     }
@@ -714,6 +743,7 @@ impl Term {
             Term::Annotated(annot, t) => t.as_ref().shallow_repr(),
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
+            Term::RuntimeError(_) => String::from("<runtime error>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -789,7 +819,8 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -830,7 +861,8 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -873,7 +905,8 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::ParseError(_) => false,
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => false,
         }
     }
 

@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    term::{record::Field, UnaryOp},
+    term::{self, record::Field, UnaryOp},
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
@@ -203,7 +203,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
     // structural checks below may reject the equality)
-    if crate::term::SharedTerm::ptr_eq(&t1.term, &t2.term) {
+    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) {
         return true;
     }
 
