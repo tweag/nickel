@@ -392,7 +392,7 @@
     let l = array.length xs in
     array.generate (fun n => array.elem_at (l - n - 1) xs) l,
 
-  #TODO: is there a way to type staticaly?
+  #TODO: is there a way to type statically?
   listDfs |  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
   | doc m%"
       Depth-First Search (DFS) for lists `list != []`.
@@ -470,7 +470,7 @@
     else # there are no cycles
       { result = [ (dfsthis| {minimal:Dyn}).minimal ] @ (toporest | {result: Array Dyn}).result, },
 
-  #TODO: can it be staticaly typed?
+  #TODO: can it be statically typed?
   sort | forall a. (a -> a -> Bool) -> Array a -> Array a
   | doc m%"
       Sort a list based on a comparator function which compares two
