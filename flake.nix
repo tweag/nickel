@@ -237,6 +237,7 @@
         buildInputs = [
           pkgs.rust-analyzer
           pkgs.cargo-insta
+          pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.node2nix
           pkgs.nodePackages.markdownlint-cli
