@@ -663,7 +663,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                 mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
                                     .with_pos(pos)
-                            }).map_err(|missing_field_err| missing_field_err.into_eval_err())?;
+                            }).map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Record(record), pos_op_inh),
@@ -1186,7 +1186,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 });
 
                                 mk_term::op1(UnaryOp::Force(stack_elem), t)
-                            }).map_err(|missing_field_err| missing_field_err.into_eval_err())?;
+                            }).map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
 
                             // unwrap: the call to map_fields_without_optionals must ensure that
                             // the fields all have a definition, so `field.value` must be `Some`.
@@ -1898,7 +1898,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::DynAccess() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
-                            match record.get_value(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err())? {
+                            match record.get_value(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
                                 Some(value) => {
                                     self.call_stack.enter_field(Ident::from(id), pos2, value.pos, pos_op);
                                     Ok(Closure {
@@ -3262,7 +3262,7 @@ trait RecordDataExt {
         shared_env: &mut Environment,
         env: &Environment,
         f: F,
-    ) -> Result<Self, record::MissingFieldDefinitionError>
+    ) -> Result<Self, record::MissingFieldDefError>
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
         Self: Sized;
@@ -3282,7 +3282,7 @@ impl RecordDataExt for RecordData {
         shared_env: &mut Environment,
         env: &Environment,
         mut f: F,
-    ) -> Result<Self, record::MissingFieldDefinitionError>
+    ) -> Result<Self, record::MissingFieldDefError>
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
     {
@@ -3294,7 +3294,10 @@ impl RecordDataExt for RecordData {
                     let value = field
                         .value
                         .map(|value| f(id, value).closurize(cache, shared_env, env.clone()))
-                        .ok_or(record::MissingFieldDefinitionError(field.metadata.clone()))?;
+                        .ok_or(record::MissingFieldDefError {
+                            id,
+                            metadata: field.metadata.clone(),
+                        })?;
                     Ok((
                         id,
                         Field {
