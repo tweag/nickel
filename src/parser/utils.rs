@@ -229,8 +229,13 @@ impl AttachTerm<Field> for FieldMetadata {
 }
 
 impl Annot for LetMetadata {
+    // Flatten two nested let metadata into one. If `doc` is set by both, the outer's documentation
+    // is kept.
     fn combine(outer: Self, inner: Self) -> Self {
-        todo!()
+        LetMetadata {
+            doc: outer.doc.or(inner.doc),
+            annotation: Annot::combine(outer.annotation, inner.annotation),
+        }
     }
 }
 
