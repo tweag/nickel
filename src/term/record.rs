@@ -1,4 +1,4 @@
-use super::{LabeledType, MergePriority, RichTerm, SealingKey, TypeAnnotation};
+use super::*;
 use crate::{identifier::Ident, label::Label, types::Types};
 use std::{
     collections::{HashMap, HashSet},
@@ -179,6 +179,14 @@ impl Field {
 
     pub fn is_empty_optional(&self) -> bool {
         self.value.is_none() && self.metadata.opt
+    }
+
+    pub fn extension_kind(&self) -> RecordExtKind {
+        if self.value.is_some() {
+            RecordExtKind::WithValue
+        } else {
+            RecordExtKind::WithoutValue
+        }
     }
 }
 

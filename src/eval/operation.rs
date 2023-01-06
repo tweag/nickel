@@ -25,8 +25,8 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
-        BinaryOp, MergePriority, MetaValue, NAryOp, PendingContract, RichTerm, SharedTerm,
-        StrChunk, Term, UnaryOp,
+        BinaryOp, MergePriority, MetaValue, NAryOp, PendingContract, RecordExtKind, RichTerm,
+        SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::{apply_contracts::apply_contracts, Closurizable},
 };
@@ -1940,18 +1940,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             },
-            BinaryOp::DynExtend() => {
-                let (clos, _) = self
-                    .stack
-                    .pop_arg(&self.cache)
-                    .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("$[ .. ]"), pos_op))?;
-
+            BinaryOp::DynExtend(metadata, extension_kind) => {
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm! {t2, with {
                             Term::Record(record) => {
                                 let mut fields = record.fields;
-                                let as_var = clos.body.closurize(&mut self.cache, &mut env2, clos.env);
-                                match fields.insert(Ident::from(id), Field::from(as_var)) {
+
+                                // If a defined value is expected for this field, it must be
+                                // provided as an additional argument, so we pop it from the stack
+                                let value = if let RecordExtKind::WithValue = extension_kind {
+                                    let (value_closure, _) = self
+                                        .stack
+                                        .pop_arg(&self.cache)
+                                        .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("insert"), pos_op))?;
+
+                                    let as_var = value_closure.body.closurize(&mut self.cache, &mut env2, value_closure.env);
+                                    Some(as_var)
+                                }
+                                else {
+                                    None
+                                };
+
+                                match fields.insert(Ident::from(id), Field {value, metadata }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
                                     Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {}, but it already exists", id), pos_op)),

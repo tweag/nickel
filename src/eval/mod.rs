@@ -545,18 +545,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                 fixpoint::patch_field(&mut self.cache, &field, &rec_env, &env)?;
 
-                                // TODO: preserve metadata when extending
-                                Ok(RichTerm::new(
-                                    Term::App(
-                                        mk_term::op2(
-                                            BinaryOp::DynExtend(),
-                                            name_as_term.clone(),
-                                            acc,
-                                        ),
-                                        todo!(),
+                                let ext_kind = field.extension_kind();
+                                let Field { metadata, value } = field;
+
+                                let extend = mk_term::op2(
+                                    BinaryOp::DynExtend(metadata.clone(), ext_kind),
+                                    name_as_term.clone(),
+                                    acc,
+                                );
+
+                                let result = match value {
+                                    Some(value) => RichTerm::new(
+                                        Term::App(extend, value.clone()),
+                                        pos.into_inherited(),
                                     ),
-                                    pos.into_inherited(),
-                                ))
+                                    None => extend,
+                                };
+
+                                Ok(result)
                             },
                         )?;
 
