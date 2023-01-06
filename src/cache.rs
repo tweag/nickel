@@ -603,7 +603,7 @@ impl Cache {
                             let dyn_fields_res: Result<_, UnboundTypeVariableError> =
                                 std::mem::take(dyn_fields)
                                     .into_iter()
-                                    .map(|(id_t, field)| {
+                                    .map(|(id_t, mut field)| {
                                         let value = field
                                             .value
                                             .take()
