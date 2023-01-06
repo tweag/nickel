@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     error::TypecheckError,
-    term::{BinaryOp, NAryOp, UnaryOp},
+    term::{BinaryOp, NAryOp, RecordExtKind, UnaryOp},
     types::TypeF,
 };
 use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row};
@@ -286,8 +286,17 @@ pub fn get_bop_type(
                 res,
             )
         }
-        // forall a. Str -> { _ : a } -> a -> { _ : a }
-        BinaryOp::DynExtend() => {
+        // forall a. Str -> {_ : a} -> a -> {_ : a}
+        BinaryOp::DynExtend(_, RecordExtKind::WithValue) => {
+            let res = UnifType::UnifVar(state.table.fresh_type_var_id());
+            (
+                mk_uniftype::str(),
+                mk_uniftype::dyn_record(res.clone()),
+                mk_uty_arrow!(res.clone(), mk_uniftype::dyn_record(res)),
+            )
+        }
+        // forall a. Str -> {_ : a} -> {_ : a}
+        BinaryOp::DynExtend(_, RecordExtKind::WithoutValue) => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),

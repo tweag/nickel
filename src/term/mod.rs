@@ -21,7 +21,7 @@ pub mod array;
 pub mod record;
 
 use array::{Array, ArrayAttrs};
-use record::{Field, FieldDeps, RecordData, RecordDeps};
+use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 
 use crate::{
     destruct::Destruct,
@@ -1242,8 +1242,16 @@ impl UnaryOp {
     }
 }
 
+/// The kind of a dynamic record extension. Kind indicates if a definition is expected for the
+/// field being inserted, or if the inserted field doesn't have a definition.
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+pub enum RecordExtKind {
+    WithValue,
+    WithoutValue,
+}
+
 /// Primitive binary operators
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
@@ -1293,7 +1301,12 @@ pub enum BinaryOp {
     /// string. `DynExtend` tries to evaluate this name to a string, and in case of success, add a
     /// field with this name to the given record with the expression on top of the stack as
     /// content.
-    DynExtend(),
+    ///
+    /// The field may have been defined with attached metadata, and may or may not have a defined
+    /// value. We can't store those information as a term argument (metadata aren't first class
+    /// values, at least at the time of writing), so for now we attach it directly to the extend
+    /// primop. This isn't ideal, and in the future we may want to have a more principled primop.
+    DynExtend(FieldMetadata, RecordExtKind),
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
@@ -1338,7 +1351,7 @@ impl BinaryOp {
         use BinaryOp::*;
         match self {
             Plus() | Sub() | Mult() | Div() | Modulo() | Pow() | StrConcat() | Eq()
-            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend()
+            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend(..)
             | DynRemove() | DynAccess() | ArrayConcat() | Merge() => OpPos::Infix,
             _ => OpPos::Prefix,
         }

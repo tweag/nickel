@@ -58,12 +58,10 @@ use crate::{
     identifier::Ident,
     destruct::{Match, LastMatch, Destruct},
     term::{
-        BinaryOp, RichTerm, Term, UnaryOp, StrChunk, MetaValue,
-        MergePriority, LabeledType, NAryOp,
+        *, 
         record::{RecordAttrs, Field, FieldMetadata},
-        SharedTerm,
-        NumeralPriority, array::Array, make as mk_term,
-        TypeAnnotation, LetMetadata,
+        array::Array,
+        make as mk_term,
     },
     types::{
         Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
@@ -807,7 +805,10 @@ BOpPre: BinaryOp = {
     "pow" => BinaryOp::Pow(),
     "str_split" => BinaryOp::StrSplit(),
     "str_contains" => BinaryOp::StrContains(),
-    "record_insert" => BinaryOp::DynExtend(),
+    "record_insert" => BinaryOp::DynExtend(
+        FieldMetadata::default(),
+        RecordExtKind::WithValue,
+    ),
     "record_remove" => BinaryOp::DynRemove(),
 }
 
