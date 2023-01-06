@@ -1,5 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::*;
+use crate::position::TermPos;
 
 /// Build a recursive environment from record bindings. For each field, `rec_env` either extracts
 /// the corresponding thunk from the environment in the general case, or create a closure on the
@@ -9,6 +10,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
     env: &Environment,
+    pos_record: TermPos,
 ) -> Result<Vec<(Ident, CacheIndex)>, EvalError> {
     bindings
         .map(|(id, field)| {
@@ -29,14 +31,34 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                             body: value.clone(),
                             env: Environment::new(),
                         };
-                        Ok((*id, cache.add(closure, IdentKind::Let, BindingType::Normal)))
+                        Ok((
+                            *id,
+                            cache.add(closure, IdentKind::Record, BindingType::Normal),
+                        ))
                     }
                 }
             } else {
-                //TODO: how to handle missing recursive field, here?
-                // We probably want to bundle a term that errors out with the relevant information
-                // when trying to evaluate it.
-                todo!()
+                let error = EvalError::MissingFieldDef {
+                    id: *id,
+                    metadata: field.metadata.clone(),
+                    pos_record,
+                    // The access is not yet known (there may not be any access, if this error is
+                    // never raised).
+                    //
+                    // This field is filled by the evaluation function when a `MissingFieldDef` is
+                    // extracted from the environment.
+                    pos_access: TermPos::None,
+                };
+
+                let closure = Closure {
+                    body: RichTerm::from(Term::RuntimeError(error)),
+                    env: Environment::new(),
+                };
+
+                Ok((
+                    *id,
+                    cache.add(closure, IdentKind::Record, BindingType::Normal),
+                ))
             }
         })
         .collect()

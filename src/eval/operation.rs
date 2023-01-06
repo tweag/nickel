@@ -9,13 +9,11 @@
 use super::{
     callstack, merge,
     merge::{merge, MergeMode},
-    subst, Closure, Environment, ImportResolver, VirtualMachine,
+    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
 
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
-    eval,
-    eval::Cache,
     identifier::Ident,
     label::ty_path,
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
@@ -471,14 +469,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Some(Field {
                             value: None,
                             metadata,
-                        }) => Err(EvalError::MissingFieldDef(
-                            metadata
-                                .annotation
-                                .first()
-                                .cloned()
-                                .map(|labeled_ty| labeled_ty.label),
-                            std::mem::take(&mut self.call_stack),
-                        )),
+                        }) => Err(EvalError::MissingFieldDef {
+                            id,
+                            metadata: metadata.clone(),
+                            pos_record: pos,
+                            pos_access: pos_op,
+                        }),
                         None => Err(EvalError::FieldMissing(
                             id.into_label(),
                             String::from("(.)"),
@@ -3136,7 +3132,7 @@ fn eq<C: Cache>(
                 // other.
                 let eqs: Result<Vec<_>, _> = center
                     .into_iter()
-                    .filter_map(|(_, (field1, field2))| match (field1, field2) {
+                    .filter_map(|(id, (field1, field2))| match (field1, field2) {
                         (
                             Field {
                                 value: Some(value1),
@@ -3148,17 +3144,31 @@ fn eq<C: Cache>(
                             },
                         ) => Some(Ok((value1, value2))),
                         (Field { value: None, .. }, Field { value: None, .. }) => None,
-                        (undefined @ Field { value: None, .. }, Field { value: Some(_), .. })
-                        | (Field { value: Some(_), .. }, undefined @ Field { value: None, .. }) => {
-                            Some(Err(EvalError::MissingFieldDef(
-                                undefined
-                                    .metadata
-                                    .annotation
-                                    .first()
-                                    .cloned()
-                                    .map(|labeled_ty| labeled_ty.label),
-                                todo!(),
-                            )))
+                        (
+                            Field {
+                                value: value1 @ None,
+                                metadata,
+                            },
+                            Field { value: Some(_), .. },
+                        )
+                        | (
+                            Field {
+                                value: value1 @ Some(_),
+                                ..
+                            },
+                            Field {
+                                value: None,
+                                metadata,
+                            },
+                        ) => {
+                            let pos_record = if value1.is_none() { pos1 } else { pos2 };
+
+                            Some(Err(EvalError::MissingFieldDef {
+                                id,
+                                metadata,
+                                pos_record,
+                                pos_access: pos_op,
+                            }))
                         }
                     })
                     .collect();
@@ -3169,8 +3179,8 @@ fn eq<C: Cache>(
             // Equalities are tested in reverse order, but that shouldn't matter. If it
             // does, just do `eqs.rev()`
 
-            // We should apply all contracts here, otheriwse we risk having wrong values,
-            // think record contrats with default contracts, wrapped terms, etc.
+            // We should apply all contracts here, otherwise we risk having wrong values, think
+            // record contrats with default values, wrapped terms, etc.
             let mut shared_env1 = env1.clone();
             let mut shared_env2 = env2.clone();
 

@@ -95,6 +95,7 @@ use crate::{
     error::{Error, EvalError},
     identifier::Ident,
     match_sharedterm,
+    position::TermPos,
     term::{
         array::ArrayAttrs,
         make as mk_term,
@@ -348,9 +349,33 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
 
-                    self.call_stack
-                        .enter_var(self.cache.ident_kind(&idx), *x, pos);
-                    self.cache.get(idx.clone())
+                    self.call_stack.enter_var(self.cache.ident_kind(&idx), *x, pos);
+
+                    // If we are fetching a recursive field from the environment that doesn't have
+                    // a definition, we complete the error with the additional information of where
+                    // it was accessed:
+                    let Closure { body, env } = self.cache.get(idx);
+                    let body = match_sharedterm! {body.term, with {
+                            Term::RuntimeError(EvalError::MissingFieldDef {
+                                id,
+                                metadata,
+                                pos_record,
+                                pos_access: TermPos::None,
+                            }) => RichTerm::new(
+                                Term::RuntimeError(EvalError::MissingFieldDef {
+                                    id,
+                                    metadata,
+                                    pos_record,
+                                    pos_access: pos,
+                                }),
+                                pos,
+                            ),
+                        } else {
+                            body
+                        }
+                    };
+
+                    Closure { body, env }
                 }
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
@@ -491,7 +516,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::RecRecord(record, dyn_fields, _) => {
-                    let rec_env = fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env)?;
+                    let rec_env =
+                        fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env, pos)?;
 
                     record.fields.iter().try_for_each(|(_, rt)| {
                         fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
@@ -574,7 +600,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .last()
                             .or(meta.types.as_ref())
                             .map(|ctr| ctr.label.clone());
-                        return Err(EvalError::MissingFieldDef(label, self.call_stack.clone()));
+                        // return Err(EvalError::MissingFieldDef(label, self.call_stack.clone()));
+                        // TODO: get rid of metavalues
+                        panic!("missing field definition");
                     }
                 }
                 Term::ResolvedImport(id) => {
