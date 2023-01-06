@@ -24,7 +24,7 @@ use crate::{
     position::{RawSpan, TermPos},
     repl,
     serialize::ExportFormat,
-    term::RichTerm,
+    term::{record::FieldMetadata, RichTerm},
     types::{TypeF, Types},
 };
 
@@ -55,7 +55,12 @@ pub enum EvalError {
         call_stack: CallStack,
     },
     /// A field required by a record contract is missing a definition.
-    MissingFieldDef(Option<label::Label>, CallStack),
+    MissingFieldDef {
+        id: Ident,
+        metadata: FieldMetadata,
+        pos_record: TermPos,
+        pos_access: TermPos,
+    },
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError(
         /* expected type */ String,
@@ -805,50 +810,17 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 diagnostics
             }
-            EvalError::MissingFieldDef(label, callstack) => {
-                use crate::eval::callstack::StackElem;
-
-                // The following code determines what was the last accessed record field by looking
-                // at the call stack. Because of recursive records though, the fields may actually
-                // be accessed via a variable:
-                //
-                // ```
-                //  {
-                //    foo | Dyn
-                //        | doc "Oops, undefined :(",
-                //    bar = 1 + foo,
-                //  }.bar
-                //  ```
-                //
-                // Here, the missing field doesn't correspond to a field access, but to a variable
-                // occurrence `foo`. Thus, we take the last non-generated identifier accessed
-                // (either variable or field) as the name of the missing field.
-                let mut field: Option<String> = None;
-                let mut pos_record = TermPos::None;
-                let mut pos_access = TermPos::None;
-
-                for elt in callstack.as_ref().iter().rev() {
-                    match elt {
-                        StackElem::Var { id, pos, .. } if !id.is_generated() && field.is_none() => {
-                            field = Some(id.to_string());
-                            pos_access = *pos;
-                        }
-                        StackElem::Field {
-                            id,
-                            pos_record: pos_rec,
-                            pos_access: pos_acc,
-                            ..
-                        } => {
-                            field = Some(id.to_string());
-                            pos_access = *pos_acc;
-                            pos_record = *pos_rec;
-                            break;
-                        }
-                        _ => (),
-                    }
-                }
-
+            EvalError::MissingFieldDef {
+                id,
+                metadata,
+                pos_record,
+                pos_access,
+            } => {
                 let mut labels = vec![];
+
+                if let Some(span) = id.pos.into_opt() {
+                    labels.push(primary(&span).with_message("defined here"));
+                }
 
                 if let Some(span) = pos_record.into_opt() {
                     labels.push(primary(&span).with_message("in this record"));
@@ -859,15 +831,19 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let mut diags = vec![Diagnostic::error()
-                    .with_message(format!(
-                        "missing definition for `{}`",
-                        field.unwrap_or_else(|| String::from("?"))
-                    ))
+                    .with_message(format!("missing definition for `{}`", id,))
                     .with_labels(labels)
                     .with_notes(vec![])];
 
-                if let Some(label) = label {
-                    diags.push(blame_error::note(label));
+                // Is it really useful to include the label if we show the position of the ident?
+                // We have to see in practice if it can be the case that `id.pos` is
+                // `TermPos::None`, but the label is defined.
+                if let Some(label) = metadata
+                    .annotation
+                    .first()
+                    .map(|labeled_ty| labeled_ty.label.clone())
+                {
+                    diags.push(blame_error::note(&label));
                 }
 
                 diags
