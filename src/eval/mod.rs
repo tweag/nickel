@@ -637,6 +637,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::ParseError(parse_error) => {
                     return Err(EvalError::ParseError(parse_error.clone()));
                 }
+                Term::RuntimeError(error) => {
+                    return Err(error.clone());
+                }
                 // Continuation of operations and thunk update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
@@ -865,6 +868,7 @@ pub fn subst<C: Cache>(
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
         v @ Term::Null
         | v @ Term::ParseError(_)
+        | v @ Term::RuntimeError(_)
         | v @ Term::Bool(_)
         | v @ Term::Num(_)
         | v @ Term::Str(_)

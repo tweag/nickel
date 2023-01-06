@@ -33,6 +33,7 @@ impl CollectFreeVars for RichTerm {
                 free_vars.insert(*id);
             }
             Term::ParseError(_)
+            | Term::RuntimeError(_)
             | Term::Null
             | Term::Bool(_)
             | Term::Num(_)

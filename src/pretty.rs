@@ -713,7 +713,8 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
-            ParseError(_) => allocator.text("#<PARSE ERROR!>"),
+            ParseError(_) => allocator.text("%<PARSE ERROR>"),
+            RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }
     }
 }

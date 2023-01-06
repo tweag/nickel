@@ -797,6 +797,7 @@ fn walk<L: Linearizer>(
 
     match t.as_ref() {
         Term::ParseError(_)
+        | Term::RuntimeError(_)
         | Term::Null
         | Term::Bool(_)
         | Term::Num(_)
@@ -1123,6 +1124,7 @@ fn type_check_<L: Linearizer>(
 
     match t.as_ref() {
         Term::ParseError(_) => Ok(()),
+        Term::RuntimeError(_) => panic!("unexpected RuntimeError term during typechecking"),
         // null is inferred to be of type Dyn
         Term::Null => unify(state, &ctxt, ty, mk_uniftype::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
