@@ -1,5 +1,5 @@
 use super::*;
-use crate::{identifier::Ident, label::Label, types::Types};
+use crate::{error::EvalError, identifier::Ident, label::Label, types::Types};
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -206,11 +206,19 @@ pub struct RecordData {
 
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
 /// definition and isn't optional.
-pub struct MissingFieldDefinitionError(pub FieldMetadata);
+pub struct MissingFieldDefError {
+    pub id: Ident,
+    pub metadata: FieldMetadata,
+}
 
-impl MissingFieldDefinitionError {
-    pub fn into_eval_err(self) -> crate::error::EvalError {
-        todo!()
+impl MissingFieldDefError {
+    pub fn into_eval_err(self, pos_record: TermPos, pos_access: TermPos) -> EvalError {
+        EvalError::MissingFieldDef {
+            id: self.id,
+            metadata: self.metadata,
+            pos_record,
+            pos_access,
+        }
     }
 }
 
@@ -316,13 +324,16 @@ impl RecordData {
     /// Get the value of a field. Ignore optional fields without value: trying to get their value
     /// returns `None`, as if they weren't present at all. Trying to extract a field without value
     /// which is non optional return an error.
-    pub fn get_value(&self, id: &Ident) -> Result<Option<&RichTerm>, MissingFieldDefinitionError> {
+    pub fn get_value(&self, id: &Ident) -> Result<Option<&RichTerm>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
                 metadata: metadata @ FieldMetadata { opt: false, .. },
                 ..
-            }) => Err(MissingFieldDefinitionError(metadata.clone())),
+            }) => Err(MissingFieldDefError {
+                id: *id,
+                metadata: metadata.clone(),
+            }),
             field_opt => Ok(field_opt.and_then(|field| field.value.as_ref())),
         }
     }
