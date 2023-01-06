@@ -511,7 +511,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
                             static_part,
                             |acc, (name_as_term, field)| {
-                                let pos = if let Some(value) = field.value {
+                                let pos = if let Some(ref value) = field.value {
                                     value.pos
                                 } else {
                                     name_as_term.pos

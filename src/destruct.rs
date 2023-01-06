@@ -60,6 +60,8 @@ impl Destruct {
     }
 
     fn into_contract_with_lbl(self, label: Label) -> LabeledType {
+        let is_open = self.is_open();
+
         LabeledType {
             types: Types(TypeF::Flat(
                 Term::Record(RecordData::new(
@@ -68,9 +70,7 @@ impl Destruct {
                         .map(|mtch| mtch.as_field())
                         .map(|(id, value)| (id, Field::from(value)))
                         .collect(),
-                    RecordAttrs {
-                        open: self.is_open(),
-                    },
+                    RecordAttrs { open: is_open },
                     None,
                 ))
                 .into(),

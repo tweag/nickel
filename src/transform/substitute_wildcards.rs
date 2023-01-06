@@ -27,6 +27,9 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
                 },
                 inner
             ) => {
+                // the followign line is due to a limitation of the macro `match_sharedterm`: we
+                // can't use `mut` directly inside patterns. See the associated documentation.
+                let mut annot = annot;
                 let LabeledType { types, label } = annot.types.take().unwrap();  // Safe, we know there's a type
 
                 // Replace the type annotation and the blame label

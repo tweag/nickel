@@ -914,7 +914,10 @@ fn walk<L: Linearizer>(
 
             dynamic.iter().map(|(_, field)| field)
                 .try_for_each(|field| -> Result<(), TypecheckError> {
-                    field.value.map(|value| walk(state, ctxt.clone(), lin, linearizer.scope(), &value)).transpose()?;
+                    if let Some(ref value) = field.value {
+                        walk(state, ctxt.clone(), lin, linearizer.scope(), value)?;
+                    }
+
                     field.metadata.annotation.iter().try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
 
                     match field {
@@ -926,14 +929,14 @@ fn walk<L: Linearizer>(
                                 },
                                 ..
                             },
-                            value: Some(t),
+                            value: Some(value),
                             ..
                         } => {
                             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
                             let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
-                            type_check_(state, ctxt, lin, linearizer, t, instantiated)
+                            type_check_(state, ctxt.clone(), lin, linearizer.scope(), value, instantiated)
                         }
-                        Field {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
+                        Field {value: Some(value), .. } =>  walk(state, ctxt.clone(), lin, linearizer.scope(), value),
                         // A metavalue without a body nor a type annotation is a record field
                         // without definition. There is nothing left to do in that case.
                         // TODO: we might have something to do with the linearizer to clear the current
@@ -971,8 +974,8 @@ fn walk<L: Linearizer>(
         Term::Annotated(annot, rt) => {
             annot.iter().try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
 
-            if let Some(LabeledType { types: ty2, .. }) = annot.types {
-                //TODO: code dedup. We have that on fields too
+            if let Some(LabeledType { types: ref ty2, .. }) = annot.types {
+                //TODO: code dedup. We have that on record fields too
                 let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
                 let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
                 type_check_(state, ctxt, lin, linearizer, rt, instantiated)

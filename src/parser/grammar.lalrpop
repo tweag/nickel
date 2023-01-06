@@ -376,7 +376,7 @@ Atom: UniTerm = {
 RecordField: FieldDef = {
     <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
         let annot_span = mk_span(src_id, l, r);
-        let span = if let Some(value) = t {
+        let span = if let Some(ref value) = t {
                 // value.pos.unwrap(): the position of `t` is necessarily set by the <Term> rule
                 // result unwrap(): the term and the annotation have spans
                 //   coming from the same file (the current one)

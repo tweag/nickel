@@ -701,8 +701,8 @@ where
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
             // TODO: do not use metavalue anymore
             Annotated(annot, rt) => crate::term::MetaValue {
-                types: annot.types,
-                contracts: annot.contracts,
+                types: annot.types.clone(),
+                contracts: annot.contracts.clone(),
                 value: Some(rt.clone()),
                 ..Default::default()
             }

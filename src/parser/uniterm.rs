@@ -303,7 +303,7 @@ impl TryFrom<UniRecord> for RichTerm {
             let UniRecord { fields, attrs, .. } = ur;
             let elaborated = fields
                 .into_iter()
-                .map(|field_def| {
+                .map(|mut field_def| {
                     fix_field_types(&mut field_def.field.metadata, field_def.pos.unwrap())?;
                     Ok(field_def.elaborate())
                 })

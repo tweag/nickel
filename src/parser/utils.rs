@@ -123,7 +123,7 @@ impl FieldDef {
             };
             // unwrap is safe here because every id should have a non-`TermPos::None` position
             let id_span = pos.unwrap();
-            let acc_span = acc.value.map(|value| value.pos.unwrap()).unwrap_or(id_span);
+            let acc_span = acc.value.as_ref().map(|value| value.pos.unwrap()).unwrap_or(id_span);
 
             // `RawSpan::fuse` only returns `None` when the two spans are in different files.
             // A record field and its value *must* be in the same file, so this is safe.
@@ -256,7 +256,8 @@ impl Annot for TypeAnnotation {
 
 impl AttachTerm<RichTerm> for TypeAnnotation {
     fn attach_term(self, rt: RichTerm) -> RichTerm {
-        RichTerm::new(Term::Annotated(self, rt), rt.pos)
+        let pos = rt.pos;
+        RichTerm::new(Term::Annotated(self, rt), pos)
     }
 }
 
@@ -332,7 +333,7 @@ impl FieldExtAnnot {
 }
 
 impl AttachTerm<Field> for FieldExtAnnot {
-    fn attach_term(mut self, value: RichTerm) -> Field {
+    fn attach_term(self, value: RichTerm) -> Field {
         let value = if self.rec_force || self.rec_default {
             let rec_prio = if self.rec_force {
                 RecPriority::Top
@@ -340,7 +341,8 @@ impl AttachTerm<Field> for FieldExtAnnot {
                 RecPriority::Bottom
             };
 
-            Some(rec_prio.apply_rec_prio_op(value).with_pos(value.pos))
+            let pos = value.pos;
+            Some(rec_prio.apply_rec_prio_op(value).with_pos(pos))
         } else {
             Some(value)
         };
