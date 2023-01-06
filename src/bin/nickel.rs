@@ -1,7 +1,7 @@
 //! Entry point of the program.
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CBNCache;
-use nickel_lang::program::Program;
+use nickel_lang::program::{ColorOpt, Program};
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel_lang::repl::rustyline_frontend;
@@ -30,6 +30,10 @@ struct Opt {
     /// Skips the standard library import. For debugging only. This does not affect REPL
     #[structopt(long)]
     nostdlib: bool,
+
+    /// Coloring: auto, always, never.
+    #[structopt(long, global = true, case_insensitive = true, default_value = "auto")]
+    color: ColorOpt,
 
     #[structopt(subcommand)]
     command: Option<Command>,
@@ -100,7 +104,7 @@ fn main() {
                 .join(".nickel_history")
         };
         #[cfg(feature = "repl")]
-        if rustyline_frontend::repl(histfile).is_err() {
+        if rustyline_frontend::repl(histfile, opts.color).is_err() {
             process::exit(1);
         }
 
@@ -121,6 +125,8 @@ fn main() {
         if opts.nostdlib {
             program.set_skip_stdlib();
         }
+
+        program.set_color(opts.color);
 
         let result = match opts.command {
             Some(Command::PprintAst { transform }) => program.pprint_ast(
