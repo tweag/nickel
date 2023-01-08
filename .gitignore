@@ -21,3 +21,7 @@
 
 # pre-commit-hooks
 /.pre-commit-config.yaml
+
+# Python virtual env
+.venv/
+venv/

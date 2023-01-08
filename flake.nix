@@ -241,6 +241,7 @@
           pkgs.nodejs
           pkgs.node2nix
           pkgs.nodePackages.markdownlint-cli
+          pkgs.python3
         ];
 
         shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
