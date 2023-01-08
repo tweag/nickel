@@ -10,6 +10,7 @@ pub mod parser;
 pub mod position;
 pub mod pretty;
 pub mod program;
+#[cfg(feature = "python-module")]
 pub mod python;
 pub mod repl;
 pub mod serialize;
