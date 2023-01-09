@@ -190,7 +190,7 @@ impl<'b> Building<'b> {
 
             // load the parent referenced declaration (i.e.: a declaration or record field term)
             let parent_declaration = parent_referenced
-                .and_then(|parent_usage_value| self.resolve_reference(file, &parent_usage_value));
+                .and_then(|parent_usage_value| self.resolve_reference(file, parent_usage_value));
 
             if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_declaration {
                 debug!("parent references deferred usage");

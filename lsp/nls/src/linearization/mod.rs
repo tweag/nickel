@@ -330,10 +330,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             index: id_gen.get_and_advance(),
                         };
 
-                        // if ident.label() == "string" {
-                        //     panic!("{:?}", accessor.label());
-                        // }
-
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id,
@@ -475,7 +471,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
-        let defers: Vec<(ItemId, ItemId, Ident)> = lin
+        let mut defers: Vec<(ItemId, ItemId, Ident)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -486,7 +482,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             })
             .collect();
 
-        lin.resolve_record_references(self.file, defers.into_iter().rev().collect());
+        defers.reverse();
+        lin.resolve_record_references(self.file, defers);
 
         let Building {
             mut linearization, ..

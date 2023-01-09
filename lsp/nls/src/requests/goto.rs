@@ -54,6 +54,12 @@ pub fn handle_to_definition(
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
+            if server.cache.is_stdlib_module(definition.id.file_id) {
+                // The standard library files are embeded in the executable,
+                // so we can't possibly go their definition on disk.
+                server.reply(Response::new_ok(id, Value::Null));
+                return Ok(());
+            }
             let RawSpan {
                 start: ByteIndex(start),
                 end: ByteIndex(end),

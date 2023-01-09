@@ -850,6 +850,14 @@ impl Cache {
         self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
     }
 
+    /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
+    pub fn is_stdlib_module(&self, file: FileId) -> bool {
+        let Some(table) = &self.stdlib_ids else {
+            return false
+        };
+        table.values().any(|stdlib_file| *stdlib_file == file)
+    }
+
     /// Retrieve the FileId for a given standard libray module.
     pub fn get_submodule_file_id(&self, module: StdlibModule) -> Option<FileId> {
         let file = self.stdlib_ids.as_ref()?.get(&module).copied()?;
