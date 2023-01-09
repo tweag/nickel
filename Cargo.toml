@@ -30,7 +30,7 @@ lalrpop = "0.19.6"
 
 [dependencies]
 lalrpop-util = "0.19.6"
-regex = "1.5"
+regex = "1.7"
 simple-counter = "0.1.0"
 codespan = "0.11"
 codespan-reporting = "0.11"
@@ -72,6 +72,7 @@ pprof = { version = "0.9.1", features = ["criterion", "flamegraph"] }
 nickel-lang-utilities = {path = "utilities", version = "0.3.1"}
 similar = "2.1.0"
 test-generator = "0.3.1"
+insta = { version = "1.24.1", features = ["filters"] }
 
 [workspace]
 members = [

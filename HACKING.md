@@ -137,9 +137,9 @@ than the ones we get by default from `cargo test`.
 
 ### Testing failures
 
-Tests which are expected to fail are currently written in Rust, because that makes
-it possible to additionally check which particular error was raised. For example,
-([`tests/integration/records_fail.rs`](./tests/integration/records_fail.rs)):
+Tests which are expected to fail are predominantly written in Rust, because that
+makes it possible to additionally check which particular error was raised. For
+example, ([`tests/integration/records_fail.rs`](./tests/integration/records_fail.rs)):
 
 ```rust
 #[test]
@@ -178,6 +178,20 @@ let DivBy3 = fun label value =>
 (4 | Even
    | DivBy3)
 ```
+
+### Snapshot testing
+
+The project also contains a suite of snapshot tests in the `tests/snapshot`
+directory. Here, `.ncl` files written in the subdirectories of the `input`
+directory are run against the last-built Nickel binary, and their output is
+compared to the last-known output.
+
+Failures of these tests do not necessarily mean that anything is wrong. Rather
+it should be seen as an opportunity to review the diffs and either accept
+any changes, or fix any issues introduced.
+
+See the [README] in the snapshot testing crate for more detailed guides on
+working with snapshot tests.
 
 ## Benchmarking
 

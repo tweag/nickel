@@ -163,6 +163,7 @@
           lalrpopFilter = mkFilter ".*lalrpop$";
           nclFilter = mkFilter ".*ncl$";
           txtFilter = mkFilter ".*txt$";
+          snapFilter = mkFilter ".*snap$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -174,6 +175,7 @@
               lalrpopFilter
               nclFilter
               txtFilter
+              snapFilter
               filterCargoSources
             ];
         };
@@ -234,6 +236,8 @@
 
         buildInputs = [
           pkgs.rust-analyzer
+          pkgs.cargo-insta
+          pkgs.nixpkgs-fmt
           pkgs.nodejs
           pkgs.node2nix
           pkgs.nodePackages.markdownlint-cli

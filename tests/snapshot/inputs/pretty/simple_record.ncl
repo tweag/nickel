@@ -1,0 +1,6 @@
+{ 
+  a | Num | default = 1, 
+  b : Str | force = "some long string that goes past the 80 character line limit for pretty printing", 
+  c : { x : Num, y: Num } = { x = 999.8979, y = 500 },
+  d | Array string.NonEmpty = ["a", "list", "of", "non", "empty", "strings"],
+}
