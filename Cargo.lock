@@ -1238,7 +1238,6 @@ dependencies = [
  "pprof",
  "pretty",
  "pretty_assertions",
- "pyo3",
  "regex",
  "rustyline",
  "rustyline-derive",
@@ -1700,6 +1699,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54b25569025b7fc9651de43004ae593a75ad88543b17178aa5e1b9c4f15f56f"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "pyckel"
+version = "0.3.1"
+dependencies = [
+ "nickel-lang",
+ "pyo3",
 ]
 
 [[package]]
