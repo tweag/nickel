@@ -184,7 +184,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             ValueState::Unknown
                         }
                         Term::FunPattern(..) => {
-                            // stub object
+                            // stub object, representing the whole function
                             lin.push(LinearizationItem {
                                 env: self.env.clone(),
                                 id: ItemId {
@@ -193,7 +193,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                 },
 
                                 ty: ty.clone(),
-                                pos: ident.pos,
+                                pos,
                                 kind: TermKind::Structure,
                                 meta: self.meta.take(),
                             });
@@ -211,12 +211,21 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get_and_advance(),
                     };
                     self.env.insert(ident.to_owned(), id);
+                    let kind = match term {
+                        Term::LetPattern(..) => {
+                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr)
+                        }
+                        Term::FunPattern(..) => {
+                            TermKind::Declaration(ident.to_owned(), Vec::new(), ValueState::Unknown)
+                        }
+                        _ => unreachable!(),
+                    };
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
                         ty,
                         pos: ident.pos,
-                        kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                        kind,
                         meta: None,
                     });
                 }
@@ -256,7 +265,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         ValueState::Unknown
                     }
                     Term::Fun(..) => {
-                        // stub object
+                        // stub object, representing the whole function
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id: ItemId {
@@ -265,7 +274,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             },
 
                             ty: ty.clone(),
-                            pos: ident.pos,
+                            pos,
                             kind: TermKind::Structure,
                             meta: self.meta.take(),
                         });
@@ -284,6 +293,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                 );
+                let kind = match term {
+                    Term::Let(..) => TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                    Term::Fun(..) => {
+                        TermKind::Declaration(ident.to_owned(), Vec::new(), ValueState::Unknown)
+                    }
+                    _ => unreachable!(),
+                };
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: ItemId {
@@ -292,7 +308,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     },
                     ty,
                     pos: ident.pos,
-                    kind: TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr),
+                    kind,
                     meta: self.meta.take(),
                 });
             }
