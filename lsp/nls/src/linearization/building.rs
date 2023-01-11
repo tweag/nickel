@@ -32,8 +32,12 @@ impl<'b> Building<'b> {
         self.linearization.push(item)
     }
 
-    fn get_item_kind_with_id(&self, file: FileId, id: ItemId) -> Option<(&ItemId, &TermKind)> {
-        if file == id.file_id {
+    fn get_item_kind_with_id(
+        &self,
+        current_file: FileId,
+        id: ItemId,
+    ) -> Option<(&ItemId, &TermKind)> {
+        if current_file == id.file_id {
             // This usage references an item in the file we're currently linearizing
             let item = self.linearization.get(id.index)?;
             Some((&item.id, &item.kind))
@@ -47,13 +51,13 @@ impl<'b> Building<'b> {
         }
     }
 
-    fn get_item_kind(&self, file: FileId, id: ItemId) -> Option<&TermKind> {
-        let (_, kind) = self.get_item_kind_with_id(file, id)?;
+    fn get_item_kind(&self, current_file: FileId, id: ItemId) -> Option<&TermKind> {
+        let (_, kind) = self.get_item_kind_with_id(current_file, id)?;
         Some(kind)
     }
 
-    fn get_item_kind_mut(&mut self, file: FileId, id: ItemId) -> Option<&mut TermKind> {
-        if file == id.file_id {
+    fn get_item_kind_mut(&mut self, current_file: FileId, id: ItemId) -> Option<&mut TermKind> {
+        if current_file == id.file_id {
             // This usage references an item in the file we're currently linearizing
             let item = self.linearization.get_mut(id.index)?;
             Some(&mut item.kind)
@@ -64,9 +68,9 @@ impl<'b> Building<'b> {
         }
     }
 
-    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
+    pub(super) fn add_usage(&mut self, current_file: FileId, decl: ItemId, usage: ItemId) {
         match self
-            .get_item_kind_mut(file, decl)
+            .get_item_kind_mut(current_file, decl)
             .expect("Could not find parent")
         {
             TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
@@ -75,8 +79,13 @@ impl<'b> Building<'b> {
         };
     }
 
-    pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemId, value: ItemId) {
-        let kind = self.get_item_kind_mut(file, declaration);
+    pub(super) fn inform_declaration(
+        &mut self,
+        current_file: FileId,
+        declaration: ItemId,
+        value: ItemId,
+    ) {
+        let kind = self.get_item_kind_mut(current_file, declaration);
         if let Some(TermKind::Declaration(_, _, value_state)) = kind {
             *value_state = ValueState::Known(value)
         }
@@ -84,14 +93,14 @@ impl<'b> Building<'b> {
 
     pub(super) fn register_fields(
         &mut self,
+        current_file: FileId,
         record_fields: &HashMap<Ident, RichTerm>,
         record: ItemId,
         env: &mut Environment,
-        file: FileId,
     ) {
         for (ident, value) in record_fields.iter() {
             let id = ItemId {
-                file_id: file,
+                file_id: current_file,
                 index: self.id_gen().get_and_advance(),
             };
             self.push(LinearizationItem {
@@ -116,7 +125,7 @@ impl<'b> Building<'b> {
             });
             let key = *ident;
             env.insert(key, id);
-            self.add_record_field(file, record, (*ident, id))
+            self.add_record_field(current_file, record, (*ident, id))
         }
     }
 
@@ -167,7 +176,7 @@ impl<'b> Building<'b> {
 
     pub(super) fn resolve_record_references(
         &mut self,
-        file: FileId,
+        current_file: FileId,
         mut defers: Vec<(ItemId, ItemId, Ident)>,
     ) -> Vec<(ItemId, ItemId, Ident)> {
         let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
@@ -181,7 +190,7 @@ impl<'b> Building<'b> {
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.get_item_kind(file, *parent_accessor_id);
+            let parent_referenced = self.get_item_kind(current_file, *parent_accessor_id);
             if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_referenced {
                 debug!("parent references deferred usage");
                 unresolved.push(deferred);
@@ -189,8 +198,9 @@ impl<'b> Building<'b> {
             }
 
             // load the parent referenced declaration (i.e.: a declaration or record field term)
-            let parent_declaration = parent_referenced
-                .and_then(|parent_usage_value| self.resolve_reference(file, parent_usage_value));
+            let parent_declaration = parent_referenced.and_then(|parent_usage_value| {
+                self.resolve_reference(current_file, parent_usage_value)
+            });
 
             if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_declaration {
                 debug!("parent references deferred usage");
@@ -200,12 +210,14 @@ impl<'b> Building<'b> {
 
             let referenced_declaration = parent_declaration
                 // resolve indirection by following the usage
-                .and_then(|parent_declaration| self.resolve_reference(file, parent_declaration))
+                .and_then(|parent_declaration| {
+                    self.resolve_reference(current_file, parent_declaration)
+                })
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration {
                     TermKind::Record(fields) => {
                         fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.get_item_kind_with_id(file, *child_declaration_id)
+                            self.get_item_kind_with_id(current_file, *child_declaration_id)
                         })
                     }
                     _ => None,
@@ -214,12 +226,12 @@ impl<'b> Building<'b> {
             let referenced_declaration =
                 referenced_declaration.and_then(|(id, referenced)| match &referenced {
                     TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.get_item_kind_with_id(file, *pointed)
+                        self.get_item_kind_with_id(current_file, *pointed)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
                         .as_option()
-                        .and_then(|value_index| self.get_item_kind(file, value_index))
+                        .and_then(|value_index| self.get_item_kind(current_file, value_index))
                         // retrieve field
                         .and_then(|record| match &record {
                             TermKind::Record(fields) => {
@@ -228,11 +240,11 @@ impl<'b> Building<'b> {
                                     fields
                                 );
                                 fields.get(child_ident).and_then(|accessor_id| {
-                                    self.get_item_kind_with_id(file, *accessor_id)
+                                    self.get_item_kind_with_id(current_file, *accessor_id)
                                 })
                             }
                             TermKind::Usage(UsageState::Resolved(pointed)) => {
-                                self.get_item_kind_with_id(file, *pointed)
+                                self.get_item_kind_with_id(current_file, *pointed)
                             }
                             _ => None,
                         })
@@ -249,12 +261,12 @@ impl<'b> Building<'b> {
             );
 
             {
-                let child = self.get_item_kind_mut(file, *child_item).unwrap();
+                let child = self.get_item_kind_mut(current_file, *child_item).unwrap();
                 *child = TermKind::Usage(UsageState::from(referenced_id));
             }
 
             if let Some(referenced_id) = referenced_id {
-                self.add_usage(file, referenced_id, *child_item);
+                self.add_usage(current_file, referenced_id, *child_item);
             }
         }
 

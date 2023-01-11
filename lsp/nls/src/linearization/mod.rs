@@ -357,7 +357,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(&record.fields, id, &mut self.env, self.file);
+                lin.register_fields(self.file, &record.fields, id, &mut self.env);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
