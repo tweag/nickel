@@ -112,7 +112,6 @@ pub mod stack;
 
 use callstack::*;
 use codespan::FileId;
-use lazy::*;
 use operation::OperationCont;
 use stack::Stack;
 
@@ -340,13 +339,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     match self.cache.get_update_index(&mut idx) {
                         Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
                         Ok(None) => {}
-                        Err(BlackholedError) => {
+                        Err(_blackholed_error) => {
                             return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
                         }
                     }
 
-                    self.call_stack.enter_var(idx.ident_kind(), *x, pos);
-                    self.cache.get(idx)
+                    self.call_stack
+                        .enter_var(self.cache.ident_kind(idx.clone()), *x, pos);
+                    self.cache.get(idx.clone())
                 }
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);

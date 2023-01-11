@@ -113,7 +113,7 @@ where
         .iter()
         // Filtering out optional fields without a definition. All variable should have been
         // substituted at this point, so we pass an empty environment.
-        .filter(|(_, t)| !is_empty_optional(&CBNCache {}, t, &eval::Environment::new()))
+        .filter(|(_, t)| !is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()))
         .collect();
     entries.sort_by_key(|(k, _)| *k);
 
@@ -277,7 +277,7 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::{cache::CBNCache, Environment, VirtualMachine};
+    use crate::eval::{Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};

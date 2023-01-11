@@ -9,7 +9,10 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
 
 use crate::{
-    eval::callstack::CallStack,
+    eval::{
+        cache::{CBNCache, Cache},
+        callstack::CallStack,
+    },
     identifier::Ident,
     label::{
         self,
@@ -771,8 +774,13 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = blame_error::report_ty_path(l, files);
-                let labels =
-                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
+                let labels = blame_error::build_diagnostic_labels(
+                    &CBNCache::new(),
+                    l,
+                    path_label,
+                    files,
+                    contract_id,
+                );
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
@@ -1048,8 +1056,13 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = blame_error::report_ty_path(l, files);
-                let labels =
-                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
+                let labels = blame_error::build_diagnostic_labels(
+                    &CBNCache::new(),
+                    l,
+                    path_label,
+                    files,
+                    contract_id,
+                );
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
@@ -1075,7 +1088,7 @@ mod blame_error {
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
     use crate::{
-        eval::callstack::CallStack,
+        eval::{cache::Cache, callstack::CallStack},
         label::{
             self,
             ty_path::{self, PathSpan},
@@ -1101,7 +1114,8 @@ mod blame_error {
     }
 
     /// Constructs the diagnostic labels used when raising a blame error.
-    pub fn build_diagnostic_labels(
+    pub fn build_diagnostic_labels<C: Cache>(
+        cache: &C,
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files<String>,
@@ -1126,8 +1140,8 @@ mod blame_error {
         // If we have a reference to the thunk that was being tested, we can try to show
         // more information about the final, evaluated value that is responsible for the
         // blame.
-        if let Some(ref thunk) = blame_label.arg_idx {
-            let mut val = thunk.get_owned().body;
+        if let Some(idx) = blame_label.arg_idx.clone() {
+            let mut val = cache.get(idx).body;
 
             match (val.pos, blame_label.arg_pos.as_opt_ref(), contract_id) {
                 // Avoid showing a position inside builtin contracts, it's rarely

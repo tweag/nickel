@@ -1,4 +1,4 @@
-//! Define the main evaluation stack of the Nickel abstract machine and related operations.
+//! Define the main ev&mut aluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
 use super::cache::{Cache, CacheIndex};
@@ -352,7 +352,8 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{cache::CBNCache, IdentKind, Thunk};
+    use crate::eval::cache::CBNCache;
+    use crate::eval::IdentKind;
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
@@ -382,9 +383,10 @@ mod tests {
         Marker::Arg(some_closure(), TermPos::None)
     }
 
-    fn some_thunk_marker() -> Marker<EC> {
-        let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
-        Marker::UpdateIndex(thunk.mk_update_frame().unwrap())
+    fn some_thunk_marker(eval_cache: &mut EC) -> Marker<EC> {
+        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let uidx = eval_cache.make_update_index(&mut thunk).unwrap();
+        Marker::UpdateIndex(uidx)
     }
 
     fn some_cont_marker() -> Marker<EC> {
@@ -393,8 +395,9 @@ mod tests {
 
     #[test]
     fn marker_differentiates() {
+        let mut eval_cache = EC::new();
         assert!(some_arg_marker().is_arg());
-        assert!(some_thunk_marker().is_idx());
+        assert!(some_thunk_marker(&mut eval_cache).is_idx());
         assert!(some_cont_marker().is_cont());
     }
 
@@ -408,7 +411,7 @@ mod tests {
         assert_eq!(2, s.count_args());
         assert_eq!(
             some_closure(),
-            s.pop_arg(&CBNCache {}).expect("Already checked").0
+            s.pop_arg(&EC::new()).expect("Already checked").0
         );
         assert_eq!(1, s.count_args());
     }
@@ -418,11 +421,13 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
-        let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
-        s.push_update_index(thunk.mk_update_frame().unwrap());
+        let mut eval_cache = EC::new();
+
+        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        s.push_update_index(eval_cache.make_update_index(&mut thunk).unwrap());
         // TODO: This is not generic
-        thunk = Thunk::new(some_closure(), IdentKind::Let);
-        s.push_update_index(thunk.mk_update_frame().unwrap());
+        thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        s.push_update_index(eval_cache.make_update_index(&mut thunk).unwrap());
 
         assert_eq!(2, s.count_thunks());
         s.pop_update_index().expect("Already checked");
@@ -431,12 +436,13 @@ mod tests {
 
     #[test]
     fn thunk_blackhole() {
-        let mut thunk = Thunk::new(some_closure(), IdentKind::Let);
-        let thunk_upd = thunk.mk_update_frame();
+        let mut eval_cache = CBNCache::new();
+        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let thunk_upd = eval_cache.make_update_index(&mut thunk);
         assert_matches!(thunk_upd, Ok(..));
-        assert_matches!(thunk.mk_update_frame(), Err(..));
-        thunk_upd.unwrap().update(some_closure());
-        assert_matches!(thunk.mk_update_frame(), Ok(..));
+        assert_matches!(eval_cache.make_update_index(&mut thunk), Err(..));
+        eval_cache.update(some_closure(), thunk_upd.unwrap());
+        assert_matches!(eval_cache.make_update_index(&mut thunk), Ok(..));
     }
 
     #[test]
@@ -457,7 +463,7 @@ mod tests {
     #[test]
     fn pushing_and_poping_strictness_markers() {
         let mut s = Stack::new();
-        let cache = CBNCache {};
+        let cache = CBNCache::new();
         assert_eq!(0, s.count_args());
 
         s.push_strictness(EvalMode::UnwrapMeta);

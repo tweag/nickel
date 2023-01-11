@@ -1,7 +1,7 @@
+use super::cache::CBNCache;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
-use crate::eval::cache::CBNCache;
 use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
