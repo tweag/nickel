@@ -174,6 +174,8 @@ impl<'b> Building<'b> {
         }
     }
 
+    /// [`resolve_record_references`] tries to resolve the references passed to it, and
+    /// returns the ids of the items it couldn't resolve.
     pub(super) fn resolve_record_references(
         &mut self,
         current_file: FileId,
@@ -271,7 +273,6 @@ impl<'b> Building<'b> {
         }
 
         if defers.is_empty() && !unresolved.is_empty() {
-            debug!("unresolved references: {:?}", unresolved);
             defers = mem::take(&mut unresolved);
             defers
         } else {

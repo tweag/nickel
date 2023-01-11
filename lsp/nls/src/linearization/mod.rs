@@ -483,7 +483,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             .collect();
 
         defers.reverse();
-        lin.resolve_record_references(self.file, defers);
+        let unresolved = lin.resolve_record_references(self.file, defers);
+        debug!("unresolved references: {:?}", unresolved);
 
         let Building {
             mut linearization, ..
