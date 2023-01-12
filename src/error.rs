@@ -9,10 +9,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
 
 use crate::{
-    eval::{
-        cache::{CBNCache, Cache},
-        callstack::CallStack,
-    },
+    eval::callstack::CallStack,
     identifier::Ident,
     label::{
         self,
@@ -49,7 +46,7 @@ pub enum Error {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
-    BlameError(label::Label, CallStack),
+    BlameError(Option<RichTerm>, label::Label, CallStack),
     /// A field required by a record contract is missing a definition.
     MissingFieldDef(Option<label::Label>, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
@@ -103,6 +100,7 @@ pub enum EvalError {
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
+        evaluated_arg: Option<RichTerm>,
         label: label::Label,
         call_stack: CallStack,
     },
@@ -763,7 +761,7 @@ impl ToDiagnostic<FileId> for EvalError {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            EvalError::BlameError(l, call_stack) => {
+            EvalError::BlameError(evaluated_arg, l, call_stack) => {
                 let mut msg = String::new();
 
                 // Writing in a string should not raise an error, hence the fearless `unwrap()`
@@ -775,7 +773,7 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 let (path_label, notes) = blame_error::report_ty_path(l, files);
                 let labels = blame_error::build_diagnostic_labels(
-                    &CBNCache::new(),
+                    evaluated_arg.clone(),
                     l,
                     path_label,
                     files,
@@ -1045,6 +1043,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::IllegalPolymorphicTailAccess {
                 action,
                 label: l,
+                evaluated_arg,
                 call_stack,
             } => {
                 let mut msg = String::new();
@@ -1057,7 +1056,7 @@ impl ToDiagnostic<FileId> for EvalError {
 
                 let (path_label, notes) = blame_error::report_ty_path(l, files);
                 let labels = blame_error::build_diagnostic_labels(
-                    &CBNCache::new(),
+                    evaluated_arg.clone(),
                     l,
                     path_label,
                     files,
@@ -1088,12 +1087,13 @@ mod blame_error {
     use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
     use crate::{
-        eval::{cache::Cache, callstack::CallStack},
+        eval::callstack::CallStack,
         label::{
             self,
             ty_path::{self, PathSpan},
         },
         position::TermPos,
+        term::RichTerm,
     };
 
     use super::{primary, secondary, secondary_term};
@@ -1114,8 +1114,8 @@ mod blame_error {
     }
 
     /// Constructs the diagnostic labels used when raising a blame error.
-    pub fn build_diagnostic_labels<C: Cache>(
-        cache: &C,
+    pub fn build_diagnostic_labels(
+        evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files<String>,
@@ -1140,16 +1140,20 @@ mod blame_error {
         // If we have a reference to the thunk that was being tested, we can try to show
         // more information about the final, evaluated value that is responsible for the
         // blame.
-        if let Some(idx) = blame_label.arg_idx.clone() {
-            let mut val = cache.get(idx).body;
-
-            match (val.pos, blame_label.arg_pos.as_opt_ref(), contract_id) {
+        if let Some(mut evaluated_arg) = evaluated_arg {
+            match (
+                evaluated_arg.pos,
+                blame_label.arg_pos.as_opt_ref(),
+                contract_id,
+            ) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
                 (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
                 // Do not show the same thing twice: if arg_pos and val_pos are the same,
                 // the first label "applied to this value" is sufficient.
@@ -1161,21 +1165,25 @@ mod blame_error {
                 // print the actual value than referring to the same position as
                 // before.
                 (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
                 (TermPos::Inherited(ref val_pos), ..) => {
                     labels.push(secondary(val_pos).with_message("evaluated to this expression"));
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
-                (TermPos::None, ..) => {
-                    labels.push(secondary_term(&val, files).with_message("evaluated to this value"))
-                }
+                (TermPos::None, ..) => labels.push(
+                    secondary_term(&evaluated_arg, files).with_message("evaluated to this value"),
+                ),
             }
         }
 

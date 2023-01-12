@@ -322,6 +322,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
                             return Err(EvalError::BlameError(
+                                lbl.get_evaluated_arg(&self.cache),
                                 lbl.clone(),
                                 self.call_stack.clone(),
                             ));
