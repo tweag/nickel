@@ -345,6 +345,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             file_id: self.file,
                             index: id_gen.get_and_advance(),
                         };
+
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
                             id,
@@ -372,7 +373,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     meta: self.meta.take(),
                 });
 
-                lin.register_fields(&record.fields, id, &mut self.env, self.file);
+                lin.register_fields(self.file, &record.fields, id, &mut self.env);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
@@ -486,7 +487,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         debug!("linearizing");
 
         // TODO: Storing defers while linearizing?
-        let defers: Vec<(ItemId, ItemId, Ident)> = lin
+        let mut defers: Vec<(ItemId, ItemId, Ident)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -497,7 +498,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             })
             .collect();
 
-        lin.resolve_record_references(self.file, defers);
+        defers.reverse();
+        let unresolved = lin.resolve_record_references(self.file, defers);
+        debug!("unresolved references: {:?}", unresolved);
 
         let Building {
             mut linearization, ..

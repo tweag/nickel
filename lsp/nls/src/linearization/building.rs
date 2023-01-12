@@ -32,10 +32,42 @@ impl<'b> Building<'b> {
         self.linearization.push(item)
     }
 
-    fn get_item_kind_mut(&mut self, file: FileId, id: ItemId) -> Option<&mut TermKind> {
-        if file == id.file_id {
+    fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Unresolved>> {
+        self.linearization.get(id.index)
+    }
+
+    fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Unresolved>> {
+        self.linearization.get_mut(id.index)
+    }
+
+    fn get_item_kind_with_id(
+        &self,
+        current_file: FileId,
+        id: ItemId,
+    ) -> Option<(&ItemId, &TermKind)> {
+        if current_file == id.file_id {
             // This usage references an item in the file we're currently linearizing
-            let item = self.linearization.get_mut(id.index)?;
+            let item = self.get_item(id)?;
+            Some((&item.id, &item.kind))
+        } else {
+            // This usage references an item in another file (that has already been linearized)
+            let item = self
+                .lin_cache
+                .get(&id.file_id)?
+                .get_item(id, self.lin_cache)?;
+            Some((&item.id, &item.kind))
+        }
+    }
+
+    fn get_item_kind(&self, current_file: FileId, id: ItemId) -> Option<&TermKind> {
+        let (_, kind) = self.get_item_kind_with_id(current_file, id)?;
+        Some(kind)
+    }
+
+    fn get_item_kind_mut(&mut self, current_file: FileId, id: ItemId) -> Option<&mut TermKind> {
+        if current_file == id.file_id {
+            // This usage references an item in the file we're currently linearizing
+            let item = self.get_item_mut(id)?;
             Some(&mut item.kind)
         } else {
             // This usage references an item in another file (that has already been linearized)
@@ -44,9 +76,9 @@ impl<'b> Building<'b> {
         }
     }
 
-    pub(super) fn add_usage(&mut self, file: FileId, decl: ItemId, usage: ItemId) {
+    pub(super) fn add_usage(&mut self, current_file: FileId, decl: ItemId, usage: ItemId) {
         match self
-            .get_item_kind_mut(file, decl)
+            .get_item_kind_mut(current_file, decl)
             .expect("Could not find parent")
         {
             TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
@@ -55,8 +87,13 @@ impl<'b> Building<'b> {
         };
     }
 
-    pub(super) fn inform_declaration(&mut self, file: FileId, declaration: ItemId, value: ItemId) {
-        let kind = self.get_item_kind_mut(file, declaration);
+    pub(super) fn inform_declaration(
+        &mut self,
+        current_file: FileId,
+        declaration: ItemId,
+        value: ItemId,
+    ) {
+        let kind = self.get_item_kind_mut(current_file, declaration);
         if let Some(TermKind::Declaration(_, _, value_state)) = kind {
             *value_state = ValueState::Known(value)
         }
@@ -64,14 +101,14 @@ impl<'b> Building<'b> {
 
     pub(super) fn register_fields(
         &mut self,
+        current_file: FileId,
         record_fields: &HashMap<Ident, RichTerm>,
         record: ItemId,
         env: &mut Environment,
-        file: FileId,
     ) {
         for (ident, value) in record_fields.iter() {
             let id = ItemId {
-                file_id: file,
+                file_id: current_file,
                 index: self.id_gen().get_and_advance(),
             };
             self.push(LinearizationItem {
@@ -96,20 +133,19 @@ impl<'b> Building<'b> {
             });
             let key = *ident;
             env.insert(key, id);
-            self.add_record_field(record, (*ident, id))
+            self.add_record_field(current_file, record, (*ident, id))
         }
     }
 
     pub(super) fn add_record_field(
         &mut self,
+        current_file: FileId,
         record: ItemId,
         (field_ident, reference_id): (Ident, ItemId),
     ) {
         match self
-            .linearization
-            .get_mut(record.index)
+            .get_item_kind_mut(current_file, record)
             .expect("Could not find record")
-            .kind
         {
             TermKind::Record(ref mut fields) => {
                 fields.insert(field_ident, reference_id);
@@ -120,40 +156,39 @@ impl<'b> Building<'b> {
 
     pub(super) fn resolve_reference<'a>(
         &'a self,
-        item: &'a LinearizationItem<UnifType>,
-    ) -> Option<&'a LinearizationItem<UnifType>> {
-        // if item is a usage, resolve the usage first
-        match item.kind {
-            TermKind::Usage(UsageState::Resolved(pointed)) => self.linearization.get(pointed.index),
+        current_file: FileId,
+        item: &'a TermKind,
+    ) -> Option<&'a TermKind> {
+        match item {
+            // if declaration is a record field, resolve its value
+            TermKind::RecordField { value, .. } => {
+                debug!("parent referenced a record field {:?}", value);
+                value
+                    // retrieve record
+                    .as_option()
+                    .and_then(|value_index| self.get_item_kind(current_file, value_index))
+            }
+            // if declaration is a let binding resolve its value
+            TermKind::Declaration(_, _, ValueState::Known(value)) => {
+                self.get_item_kind(current_file, *value)
+            }
+
+            TermKind::Usage(UsageState::Resolved(pointed)) => {
+                let kind = self.get_item_kind(current_file, *pointed)?;
+                self.resolve_reference(current_file, kind)
+            }
+            // if something else was referenced, stop.
             _ => Some(item),
         }
-        // load referenced value, either from record field or declaration
-        .and_then(|item_pointer| {
-            match &item_pointer.kind {
-                // if declaration is a record field, resolve its value
-                TermKind::RecordField { value, .. } => {
-                    debug!("parent referenced a record field {:?}", value);
-                    value
-                        // retrieve record
-                        .as_option()
-                        .and_then(|value_index| self.linearization.get(value_index.index))
-                }
-                // if declaration is a let binding resolve its value
-                TermKind::Declaration(_, _, ValueState::Known(value)) => {
-                    self.linearization.get(value.index)
-                }
-
-                // if something else was referenced, stop.
-                _ => Some(item_pointer),
-            }
-        })
     }
 
+    /// [`resolve_record_references`] tries to resolve the references passed to it, and
+    /// returns the ids of the items it couldn't resolve.
     pub(super) fn resolve_record_references(
         &mut self,
-        file: FileId,
+        current_file: FileId,
         mut defers: Vec<(ItemId, ItemId, Ident)>,
-    ) {
+    ) -> Vec<(ItemId, ItemId, Ident)> {
         let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
@@ -165,27 +200,19 @@ impl<'b> Building<'b> {
             let (child_item, parent_accessor_id, child_ident) = &deferred;
             // resolve the value referenced by the parent accessor element
             // get the parent accessor, and read its resolved reference
-            let parent_referenced = self.linearization.get(parent_accessor_id.index);
-
-            if let Some(LinearizationItem {
-                kind: TermKind::Usage(UsageState::Deferred { .. }),
-                ..
-            }) = parent_referenced
-            {
+            let parent_referenced = self.get_item_kind(current_file, *parent_accessor_id);
+            if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_referenced {
                 debug!("parent references deferred usage");
                 unresolved.push(deferred);
                 continue;
             }
 
             // load the parent referenced declaration (i.e.: a declaration or record field term)
-            let parent_declaration = parent_referenced
-                .and_then(|parent_usage_value| self.resolve_reference(parent_usage_value));
+            let parent_declaration = parent_referenced.and_then(|parent_usage_value| {
+                self.resolve_reference(current_file, parent_usage_value)
+            });
 
-            if let Some(LinearizationItem {
-                kind: TermKind::Usage(UsageState::Deferred { .. }),
-                ..
-            }) = parent_declaration
-            {
+            if let Some(TermKind::Usage(UsageState::Deferred { .. })) = parent_declaration {
                 debug!("parent references deferred usage");
                 unresolved.push(deferred);
                 continue;
@@ -193,48 +220,50 @@ impl<'b> Building<'b> {
 
             let referenced_declaration = parent_declaration
                 // resolve indirection by following the usage
-                .and_then(|parent_declaration| self.resolve_reference(parent_declaration))
+                .and_then(|parent_declaration| {
+                    self.resolve_reference(current_file, parent_declaration)
+                })
                 // get record field
-                .and_then(|parent_declaration| match &parent_declaration.kind {
+                .and_then(|parent_declaration| match &parent_declaration {
                     TermKind::Record(fields) => {
                         fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.linearization.get(child_declaration_id.index)
+                            self.get_item_kind_with_id(current_file, *child_declaration_id)
                         })
                     }
                     _ => None,
                 });
 
             let referenced_declaration =
-                referenced_declaration.and_then(|referenced| match &referenced.kind {
+                referenced_declaration.and_then(|(id, referenced)| match &referenced {
                     TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.linearization.get(pointed.index)
+                        self.get_item_kind_with_id(current_file, *pointed)
                     }
                     TermKind::RecordField { value, .. } => value
                         // retrieve record
                         .as_option()
-                        .and_then(|value_index| self.linearization.get(value_index.index))
+                        .and_then(|value_index| self.get_item_kind(current_file, value_index))
                         // retrieve field
-                        .and_then(|record| match &record.kind {
+                        .and_then(|record| match &record {
                             TermKind::Record(fields) => {
                                 debug!(
                                     "parent referenced a nested record indirectly`: {:?}",
                                     fields
                                 );
                                 fields.get(child_ident).and_then(|accessor_id| {
-                                    self.linearization.get(accessor_id.index)
+                                    self.get_item_kind_with_id(current_file, *accessor_id)
                                 })
                             }
                             TermKind::Usage(UsageState::Resolved(pointed)) => {
-                                self.linearization.get(pointed.index)
+                                self.get_item_kind_with_id(current_file, *pointed)
                             }
                             _ => None,
                         })
-                        .or(Some(referenced)),
+                        .or(Some((id, referenced))),
 
-                    _ => Some(referenced),
+                    _ => Some((id, referenced)),
                 });
 
-            let referenced_id = referenced_declaration.map(|reference| reference.id);
+            let referenced_id = referenced_declaration.map(|(id, _)| *id);
 
             debug!(
                 "Associating child {} to value {:?}",
@@ -242,19 +271,20 @@ impl<'b> Building<'b> {
             );
 
             {
-                let child: &mut LinearizationItem<UnifType> =
-                    self.linearization.get_mut(child_item.index).unwrap();
-                child.kind = TermKind::Usage(UsageState::from(referenced_id));
+                let child = self.get_item_kind_mut(current_file, *child_item).unwrap();
+                *child = TermKind::Usage(UsageState::from(referenced_id));
             }
 
             if let Some(referenced_id) = referenced_id {
-                self.add_usage(file, referenced_id, *child_item);
+                self.add_usage(current_file, referenced_id, *child_item);
             }
+        }
 
-            if defers.is_empty() && !unresolved.is_empty() {
-                debug!("unresolved references: {:?}", unresolved);
-                defers = mem::take(&mut unresolved);
-            }
+        if defers.is_empty() && !unresolved.is_empty() {
+            defers = mem::take(&mut unresolved);
+            defers
+        } else {
+            Vec::new()
         }
     }
 
