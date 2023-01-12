@@ -32,6 +32,14 @@ impl<'b> Building<'b> {
         self.linearization.push(item)
     }
 
+    fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Unresolved>> {
+        self.linearization.get(id.index)
+    }
+
+    fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Unresolved>> {
+        self.linearization.get_mut(id.index)
+    }
+
     fn get_item_kind_with_id(
         &self,
         current_file: FileId,
@@ -39,7 +47,7 @@ impl<'b> Building<'b> {
     ) -> Option<(&ItemId, &TermKind)> {
         if current_file == id.file_id {
             // This usage references an item in the file we're currently linearizing
-            let item = self.linearization.get(id.index)?;
+            let item = self.get_item(id)?;
             Some((&item.id, &item.kind))
         } else {
             // This usage references an item in another file (that has already been linearized)
@@ -59,7 +67,7 @@ impl<'b> Building<'b> {
     fn get_item_kind_mut(&mut self, current_file: FileId, id: ItemId) -> Option<&mut TermKind> {
         if current_file == id.file_id {
             // This usage references an item in the file we're currently linearizing
-            let item = self.linearization.get_mut(id.index)?;
+            let item = self.get_item_mut(id)?;
             Some(&mut item.kind)
         } else {
             // This usage references an item in another file (that has already been linearized)
