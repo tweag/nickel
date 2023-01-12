@@ -654,7 +654,7 @@ fn revert_closurize<C: Cache>(
     local_env: &Environment,
 ) -> RichTerm {
     if let Term::Var(id) = rt.as_ref() {
-        // This create a fresh variable which is bound to a reverted copy of the original thunk
+        // This creates a fresh variable which is bound to a reverted copy of the original thunk
         let reverted = cache.revert(local_env.get(id).unwrap().clone());
         let fresh_id = Ident::fresh();
         env.insert(fresh_id, reverted);
