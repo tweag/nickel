@@ -424,7 +424,6 @@ mod tests {
 
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
-        // TODO: This is not generic
         idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
 
