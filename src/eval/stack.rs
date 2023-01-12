@@ -1,4 +1,4 @@
-//! Define the main ev&mut aluation stack of the Nickel abstract machine and related operations.
+//! Define the main evaluation stack of the Nickel abstract machine and related operations.
 //!
 //! See [eval](../eval/index.html).
 use super::cache::{Cache, CacheIndex};
@@ -352,8 +352,7 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::cache::CBNCache;
-    use crate::eval::IdentKind;
+    use crate::eval::{cache::CBNCache, IdentKind};
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
