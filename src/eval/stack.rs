@@ -383,8 +383,8 @@ mod tests {
     }
 
     fn some_thunk_marker(eval_cache: &mut EC) -> Marker<EC> {
-        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
-        let uidx = eval_cache.make_update_index(&mut thunk).unwrap();
+        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let uidx = eval_cache.make_update_index(&mut idx).unwrap();
         Marker::UpdateIndex(uidx)
     }
 
@@ -422,11 +422,11 @@ mod tests {
 
         let mut eval_cache = EC::new();
 
-        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
-        s.push_update_index(eval_cache.make_update_index(&mut thunk).unwrap());
+        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
         // TODO: This is not generic
-        thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
-        s.push_update_index(eval_cache.make_update_index(&mut thunk).unwrap());
+        idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
 
         assert_eq!(2, s.count_thunks());
         s.pop_update_index().expect("Already checked");
@@ -436,12 +436,12 @@ mod tests {
     #[test]
     fn thunk_blackhole() {
         let mut eval_cache = CBNCache::new();
-        let mut thunk = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
-        let thunk_upd = eval_cache.make_update_index(&mut thunk);
-        assert_matches!(thunk_upd, Ok(..));
-        assert_matches!(eval_cache.make_update_index(&mut thunk), Err(..));
-        eval_cache.update(some_closure(), thunk_upd.unwrap());
-        assert_matches!(eval_cache.make_update_index(&mut thunk), Ok(..));
+        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let idx_upd = eval_cache.make_update_index(&mut idx);
+        assert_matches!(idx_upd, Ok(..));
+        assert_matches!(eval_cache.make_update_index(&mut idx), Err(..));
+        eval_cache.update(some_closure(), idx_upd.unwrap());
+        assert_matches!(eval_cache.make_update_index(&mut idx), Ok(..));
     }
 
     #[test]
