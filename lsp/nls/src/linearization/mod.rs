@@ -121,12 +121,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
-                let previous_pos= pos;
-                pos = field_pos.map(|mut pos| {
-                    pos.start = ByteIndex(0);
-                    pos.end = ByteIndex(0);
-                    pos
-                });
+                if pos == TermPos::None {
+                    pos = field_pos.map(|mut x| {
+                        x.start = ByteIndex(u32::MAX);
+                        x.end = ByteIndex(u32::MAX);
+                        x
+                    });
+                }
 
                 if let Some(field) = lin.linearization.get_mut(record.index + offset.index) {
                     debug!("{:?}", field.kind);
@@ -142,14 +143,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
                     match field.kind {
                         TermKind::RecordField { ref mut value, .. } => {
-                            if previous_pos != TermPos::None {
-                                pos = previous_pos;
-                            } else {
-                                pos = field.pos.map(|mut x| {
-                                    x.start = ByteIndex(u32::MAX);
-                                    x
-                                })
-                            }
                             *value = ValueState::Known(ItemId {
                                 file_id: self.file,
                                 index: id_gen.get() + usage_offset,
