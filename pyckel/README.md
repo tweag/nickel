@@ -5,7 +5,7 @@ Python bindings to use Nickel.
 ## Install
 
 ```shell
-pip install pyckel
+pip install .
 ```
 
 ## Use
