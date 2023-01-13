@@ -57,8 +57,8 @@ use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{
     make as mk_term,
-    record::{self, Field, FieldDeps, RecordAttrs, RecordData},
-    BinaryOp, LabeledType, MetaValue, RichTerm, SharedTerm, Term,
+    record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
+    BinaryOp, LabeledType, MetaValue, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
 use crate::transform::Closurizable;
 use std::collections::HashMap;
@@ -236,138 +236,9 @@ pub fn merge<C: Cache>(
                 pos_op.into_inherited(),
             )))
         }
-        (Term::MetaValue(meta1), Term::MetaValue(meta2)) => {
-            // For now, we blindly closurize things and copy environments in this section. A
-            // careful analysis would make it possible to spare a few closurize operations and more
-            // generally environment cloning.
-
-            let MetaValue {
-                doc: doc1,
-                types: types1,
-                contracts: contracts1,
-                opt: opt1,
-                priority: priority1,
-                value: value1,
-            } = meta1;
-            let MetaValue {
-                doc: doc2,
-                types: types2,
-                contracts: contracts2,
-                opt: opt2,
-                priority: priority2,
-                value: value2,
-            } = meta2;
-
-            let doc = merge_doc(doc1, doc2);
-
-            // If:
-            // 1. meta1 has a value
-            // 2. meta2 has a contract
-            // 3. The priorities (or the fact that meta2's value is not defined) are such that
-            //    meta1's value will be used in the final value
-            // Then, we apply meta2's contract to meta1. This creates a new value and a new
-            // intermediate environment.
-            let (value1, val_env1) = match value1 {
-                Some(v1)
-                    if (types2.is_some() || !contracts2.is_empty())
-                        && (priority1 >= priority2 || value2.is_none()) =>
-                {
-                    let (v, e) = cross_apply_contracts(
-                        cache,
-                        v1,
-                        &env1,
-                        types2.iter().chain(contracts2.iter()),
-                        &env2,
-                    )?;
-                    (Some(v), e)
-                }
-                v1 => (v1, env1.clone()),
-            };
-
-            // Dually, we cross apply meta1's contracts to meta2's value.
-            let (value2, val_env2) = match value2 {
-                Some(v2)
-                    if (types1.is_some() || !contracts1.is_empty())
-                        && (priority2 >= priority1 || value1.is_none()) =>
-                {
-                    let (v, e) = cross_apply_contracts(
-                        cache,
-                        v2,
-                        &env2,
-                        types1.iter().chain(contracts1.iter()),
-                        &env1,
-                    )?;
-                    (Some(v), e)
-                }
-                v2 => (v2, env2.clone()),
-            };
-
-            // Selecting either meta1's value, meta2's value, or the merge of the two values,
-            // depending on which is defined and respective priorities.
-            let (value, priority, mut env) = match (value1, value2) {
-                (Some(t1), Some(t2)) if priority1 == priority2 => {
-                    let mut env = Environment::new();
-                    (
-                        Some(merge_closurize(cache, &mut env, t1, val_env1, t2, val_env2)),
-                        priority1,
-                        env,
-                    )
-                }
-                (Some(t1), _) if priority1 > priority2 => (Some(t1), priority1, val_env1),
-                (Some(t1), None) => (Some(t1), priority1, val_env1),
-                (_, Some(t2)) if priority2 > priority1 => (Some(t2), priority2, val_env2),
-                (None, Some(t2)) => (Some(t2), priority2, val_env2),
-                (None, None) => (None, Default::default(), Environment::new()),
-                _ => unreachable!(),
-            };
-
-            // Finally, we also need to closurize the contracts in the final envirnment.
-            let mut contracts1: Vec<LabeledType> = contracts1
-                .into_iter()
-                .map(|ctr| ctr.closurize(cache, &mut env, env1.clone()))
-                .collect();
-            // Clippy is wrong to complain about the useless `collect` here:
-            // It is necessary to release the mutable borrow on `env`
-            // See https://github.com/rust-lang/rust-clippy/issues/7526
-            #[allow(clippy::needless_collect)]
-            let contracts2: Vec<LabeledType> = contracts2
-                .into_iter()
-                .map(|ctr| ctr.closurize(cache, &mut env, env2.clone()))
-                .collect();
-            let types1 = types1.map(|ctr| ctr.closurize(cache, &mut env, env1));
-            let types2 = types2.map(|ctr| ctr.closurize(cache, &mut env, env2));
-
-            // If both have type annotations, we arbitrarily choose the first one. At this point we
-            // are evaluating the term, and types annotations and contracts make no difference
-            // operationnally. Even for a query, it's strange to show multiple static types. So if
-            // both are set, we turn types2 to a contract and keep type1 as the type annotation.
-            let types = match types2 {
-                Some(ctr) if types1.is_some() => {
-                    contracts1.push(ctr);
-                    types1
-                }
-                _ => types1,
-            };
-
-            let contracts: Vec<_> = contracts1
-                .into_iter()
-                .chain(contracts2.into_iter())
-                .collect();
-            let meta = MetaValue {
-                doc,
-                types,
-                contracts,
-                // If one of the record requires this field, then it mustn't be optional. The
-                // resulting field is optional iff both are.
-                opt: opt1 && opt2,
-                priority,
-                value,
-            };
-
-            Ok(Closure {
-                body: RichTerm::new(Term::MetaValue(meta), pos_op.into_inherited()),
-                env,
-            })
+        (Term::MetaValue(_meta1), Term::MetaValue(_meta2)) => {
+            // TODO: remove
+            unimplemented!("will get rid of generic metavalues")
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
@@ -431,6 +302,7 @@ pub fn merge<C: Cache>(
                     field.map_value(|value| revert_closurize(cache, value, &mut env, &env1)),
                 )
             }));
+
             m.extend(right.into_iter().map(|(id, field)| {
                 (
                     id,
@@ -441,18 +313,15 @@ pub fn merge<C: Cache>(
             for (id, (field1, field2)) in center.into_iter() {
                 m.insert(
                     id,
-                    Field {
-                        metadata: todo!(),
-                        value: Some(fields_merge_closurize(
-                            cache,
-                            &mut env,
-                            todo!(),
-                            &env1,
-                            todo!(),
-                            &env2,
-                            field_names.iter(),
-                        )?),
-                    },
+                    merge_fields(
+                        cache,
+                        field1,
+                        env1.clone(),
+                        field2,
+                        env2.clone(),
+                        &mut env,
+                        field_names.iter(),
+                    )?,
                 );
             }
 
@@ -501,40 +370,238 @@ pub fn merge<C: Cache>(
     }
 }
 
-/// Apply a series of contract to term and closurize the result, and apply the necessary
-/// intermediate closurization.
+/// Apply a series of contract to the value of a field as well as the necessary closurize
+/// operations.
 ///
 /// # Parameters
 ///
-/// - the term is given by `t1` in its environment `env1`
-/// - the contracts are given as an iterator `it2` together with their environment `env2`
+/// - the value is given by `value1` in its environment `env1`
+/// - the contracts are given as an iterator `it2` together with their (common) environment `env2`
 fn cross_apply_contracts<'a, C: Cache>(
     cache: &mut C,
-    t1: RichTerm,
-    env1: &Environment,
+    value1: RichTerm,
+    env1: Environment,
     mut it2: impl Iterator<Item = &'a LabeledType>,
     env2: &Environment,
-) -> Result<(RichTerm, Environment), EvalError> {
+) -> Result<Closure, EvalError> {
     let mut env = Environment::new();
-    let mut env1_local = env1.clone();
 
-    let pos = t1.pos.into_inherited();
-    let result = it2
-        .try_fold(t1, |acc, ctr| {
+    let pos = value1.pos.into_inherited();
+
+    // Produce the concrete sequence of application of the `assume` primop to the contract argument.
+    let mut apply_contracts = |cache: &mut C,
+                               value: RichTerm,
+                               mut local_env: Environment|
+     -> Result<Closure, EvalError> {
+        let body = it2.try_fold(value, |acc, ctr| {
             let ty_closure = ctr
                 .types
                 .clone()
-                .closurize(cache, &mut env1_local, env2.clone());
+                .closurize(cache, &mut local_env, env2.clone());
             mk_term::assume(ty_closure, ctr.label.clone(), acc)
                 .map_err(|crate::types::UnboundTypeVariableError(id)| {
                     let pos = id.pos;
                     EvalError::UnboundIdentifier(id, pos)
                 })
                 .map(|rt| rt.with_pos(pos))
-        })?
-        .closurize(cache, &mut env, env1_local);
+        })?;
 
-    Ok((result, env))
+        Ok(Closure {
+            body,
+            env: local_env,
+        })
+    };
+
+    match value1.as_ref() {
+        // In the general case, the value is stored in a thunk and might be recursive. In this
+        // case, we use `map_at_index`, which preserves the recursivity/late-binding (when
+        // revertible thunks are seen as functions, this maps "under the function", so to speak).
+        //
+        // Doing so, we are sure to pick the latest value for recursive fields, and not earlier,
+        // partially built values. It's a trick to get rid of some of the issue mentioned in RFC005
+        // before the implementation of full-fledged lazy contract application. This code is
+        // expected to be transitory.
+        Term::Var(id) => {
+            let idx = env.get(&id).unwrap();
+            let fresh_idx = cache.map_at_index(
+                idx,
+                //FIXME: the `unwrap` below should be properly handled. It can happen when an
+                // unbound type variable or identifier occurs in a type or contract.
+                //
+                // However, this should be checked by the typechecker during a normal execution, so
+                // this arguably corresponds to a bug/internal error. Secondly, this code is
+                // temporary, as a transition during the implementation of RFC005: we should get
+                // rid of cross-application altogether soon and use lazy contract application
+                // instead (see RFC005). Thus, we keep a dirty `unwrap()` for now.
+                |cache,
+                 Closure {
+                     ref body,
+                     env: ref local_env,
+                 }| {
+                    apply_contracts(cache, body.clone(), local_env.clone()).unwrap()
+                },
+            );
+
+            let fresh_id = Ident::fresh();
+            env.insert(fresh_id, fresh_idx);
+            Ok(Closure {
+                body: RichTerm::new(Term::Var(fresh_id), value1.pos),
+                env,
+            })
+        }
+        _ => {
+            let Closure {
+                body,
+                env: local_env,
+            } = apply_contracts(cache, value1.clone(), env1)?;
+            let body = body.closurize(cache, &mut env, local_env);
+
+            Ok(Closure { body, env })
+        }
+    }
+}
+
+fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+    cache: &mut C,
+    field1: Field,
+    env1: Environment,
+    field2: Field,
+    env2: Environment,
+    env_final: &mut Environment,
+    fields: I,
+) -> Result<Field, EvalError> {
+    // For now, we blindly closurize things and copy environments in this function. A
+    // careful analysis would make it possible to spare a few closurize operations and more
+    // generally environment cloning.
+    let Field {
+        metadata: metadata1,
+        value: value1,
+    } = field1;
+    let Field {
+        metadata: metadata2,
+        value: value2,
+    } = field2;
+
+    // Cross-application (in the process of being removed, see RFC005)
+    //
+    // If:
+    // 1. field1 has a value
+    // 2. field2 has a contract
+    // 3. The priorities (or the fact that field2's value is not defined) are such that
+    //    field1's value will be used in the final value
+    //
+    // Then, we apply field2's contracts to field1. This creates a new value and a new
+    // intermediate environment.
+    let (value1, val_env1) = match value1 {
+        Some(v1)
+            if (metadata2.annotation.first().is_some())
+                && (metadata1.priority >= metadata2.priority || value2.is_none()) =>
+        {
+            let Closure { body, env } =
+                cross_apply_contracts(cache, v1, env1.clone(), metadata2.annotation.iter(), &env2)?;
+            (Some(body), env)
+        }
+        v1 => (v1, env1.clone()),
+    };
+
+    // Cross-application (in the process of being removed, see RFC005)
+    //
+    // Dually, we cross apply meta1's contracts to meta2's value.
+    let (value2, val_env2) = match value2 {
+        Some(v2)
+            if (metadata1.annotation.first().is_some())
+                && (metadata2.priority >= metadata1.priority || value1.is_none()) =>
+        {
+            let Closure { body, env } =
+                cross_apply_contracts(cache, v2, env2.clone(), metadata1.annotation.iter(), &env1)?;
+            (Some(body), env)
+        }
+        v2 => (v2, env2.clone()),
+    };
+
+    // Selecting either meta1's value, meta2's value, or the merge of the two values,
+    // depending on which is defined and respective priorities.
+    let (value, priority) = match (value1, value2) {
+        (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
+            Some(fields_merge_closurize(
+                env_final, t1, &val_env1, t2, &val_env2, fields,
+            )?),
+            metadata1.priority,
+        ),
+        (Some(t1), _) if metadata1.priority > metadata2.priority => (
+            Some(revert_closurize(t1, env_final, &val_env1)),
+            metadata1.priority,
+        ),
+        (Some(t1), None) => (
+            Some(revert_closurize(t1, env_final, &val_env1)),
+            metadata1.priority,
+        ),
+        (_, Some(t2)) if metadata2.priority > metadata1.priority => (
+            Some(revert_closurize(t2, env_final, &val_env2)),
+            metadata2.priority,
+        ),
+        (None, Some(t2)) => (
+            Some(revert_closurize(t2, env_final, &val_env2)),
+            metadata2.priority,
+        ),
+        (None, None) => (None, Default::default()),
+        _ => unreachable!(),
+    };
+
+    // Finally, we also need to closurize the contracts in the final envirnment.
+    let mut contracts1: Vec<LabeledType> = metadata1
+        .annotation
+        .contracts
+        .into_iter()
+        .map(|ctr| ctr.closurize(cache, env_final, env1.clone()))
+        .collect();
+
+    // Clippy is wrong to complain about the useless `collect` here:
+    // it's necessary to release the mutable borrow on `env`
+    // See https://github.com/rust-lang/rust-clippy/issues/7526
+    #[allow(clippy::needless_collect)]
+    let contracts2: Vec<LabeledType> = metadata2
+        .annotation
+        .contracts
+        .into_iter()
+        .map(|ctr| ctr.closurize(cache, env_final, env2.clone()))
+        .collect();
+
+    let types1 = metadata1
+        .annotation
+        .types
+        .map(|ctr| ctr.closurize(cache, env_final, env1));
+    let types2 = metadata2
+        .annotation
+        .types
+        .map(|ctr| ctr.closurize(cache, env_final, env2));
+
+    // If both have type annotations, we arbitrarily choose the first one. At this point we are
+    // evaluating, and types annotations and contracts make no difference operationnally. Even for
+    // a query, it's strange to show multiple static types. So if both are set, we turn types2 to a
+    // contract and keep type1 as the main type annotation.
+    let types = match types2 {
+        Some(ctr) if types1.is_some() => {
+            contracts1.push(ctr);
+            types1
+        }
+        _ => types1,
+    };
+
+    let contracts: Vec<_> = contracts1
+        .into_iter()
+        .chain(contracts2.into_iter())
+        .collect();
+    let metadata = FieldMetadata {
+        doc: merge_doc(metadata1.doc, metadata2.doc),
+        annotation: TypeAnnotation { types, contracts },
+        // If one of the record requires this field, then it musn't be optional. The
+        // resulting field is optional iff both are.
+        opt: metadata1.opt && metadata2.opt,
+        priority,
+    };
+
+    Ok(Field { metadata, value })
 }
 
 /// Merge the two optional documentations of a metavalue.
@@ -629,27 +696,6 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
     );
 
     Ok(RichTerm::from(Term::Var(fresh_var)))
-}
-
-/// Take the current environment, two terms with their local environment, and return a term which
-/// is the closurized merge of the two. A simplified version of [fields_merge_closurize], when we
-/// are not merging recursive record fields and thus don't have to deal with revertible thunks and
-/// saturation.
-fn merge_closurize<C: Cache>(
-    cache: &mut C,
-    env: &mut Environment,
-    t1: RichTerm,
-    env1: Environment,
-    t2: RichTerm,
-    env2: Environment,
-) -> RichTerm {
-    let mut local_env = Environment::new();
-    let body = RichTerm::from(Term::Op2(
-        BinaryOp::Merge(),
-        t1.closurize(cache, &mut local_env, env1),
-        t2.closurize(cache, &mut local_env, env2),
-    ));
-    body.closurize(cache, env, local_env)
 }
 
 /// Revert the thunk inside the provided field (if any), and closurize the result inside `env`.
