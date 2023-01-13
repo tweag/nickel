@@ -118,4 +118,3 @@ harness = false
 [[bench]]
 name = "typecheck-nixpkgs-lib"
 harness = false
-
