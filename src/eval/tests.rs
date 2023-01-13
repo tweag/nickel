@@ -44,7 +44,7 @@ fn identity_over_values() {
 #[test]
 fn blame_panics() {
     let label = Label::dummy();
-    if let Err(EvalError::BlameError(l, ..)) =
+    if let Err(EvalError::BlameError(_, l, ..)) =
         eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(label.clone())))
     {
         assert_eq!(l, label);

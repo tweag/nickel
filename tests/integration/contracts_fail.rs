@@ -248,7 +248,7 @@ fn lists_contracts() {
 
     let res = eval("%force% ([{a = [1]}] | Array {a: Array Str}) false");
     match &res {
-        Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
+        Err(Error::EvalError(EvalError::BlameError(_, ref l, _))) => {
             assert_matches!(l.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
         }
         err => panic!("expected blame error, got {:?}", err),
@@ -262,7 +262,7 @@ fn lists_contracts() {
         "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
     );
     match &res {
-        Err(Error::EvalError(EvalError::BlameError(ref l, _))) => {
+        Err(Error::EvalError(EvalError::BlameError(_, ref l, _))) => {
             assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
         }
         err => panic!("expected blame error, got {:?}", err),
