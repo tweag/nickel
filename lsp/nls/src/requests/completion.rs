@@ -547,58 +547,66 @@ mod tests {
             (
                 "Simple let binding with nested record index",
                 "let person = {} in \n    a.b.c.d",
-                vec!["a", "b", "c", "d"],
+                Some(vec!["a", "b", "c", "d"]),
             ),
-            ("Simple record index", "   ab.dec", vec!["ab", "dec"]),
+            ("Simple record index", "   ab.dec", Some(vec!["ab", "dec"])),
             (
                 "Multiple let bindings with nested record index ",
                 r##"let name = { sdf.clue.add.bar = 10 } in
                 let other = name in
                 let another = other in
             name.sdf.clue.add.bar"##,
-                vec!["name", "sdf", "clue", "add", "bar"],
+                Some(vec!["name", "sdf", "clue", "add", "bar"]),
             ),
             (
                 "Incomplete record with nested record index",
                 r##"{
                     foo = let bar = {a.b.c.d = 10} in bar.a.b.c.d"##,
-                vec!["bar", "a", "b", "c", "d"],
+                Some(vec!["bar", "a", "b", "c", "d"]),
             ),
-            ("Simple record Index", "name.class", vec!["name", "class"]),
+            (
+                "Simple record Index",
+                "name.class",
+                Some(vec!["name", "class"]),
+            ),
             (
                 "Simple record Index ending with a dot",
                 "name.class.",
-                vec!["name", "class"],
+                Some(vec!["name", "class"]),
             ),
-            ("Single record variable", "number", vec!["number"]),
+            ("Single record variable", "number", Some(vec!["number"])),
             (
                 "Single record variable ending with a dot",
                 "number.",
-                vec!["number"],
+                Some(vec!["number"]),
             ),
             (
                 "Record binding with unicode string names for fields",
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "fo京o", "foo"],
+                Some(vec!["x", "fo京o", "foo"]),
             ),
             (
                 "Typed record binding with nested record indexing",
                 r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
                     me.ca.cb"##,
-                vec!["me", "ca", "cb"],
+                Some(vec!["me", "ca", "cb"]),
             ),
-            ("Single quote", "\"", vec!["\""]),
-            ("Parenthesis prefix", "(alpha.beta", vec!["alpha", "beta"]),
+            ("Single quote", "\"", None),
+            (
+                "Parenthesis prefix",
+                "(alpha.beta",
+                Some(vec!["alpha", "beta"]),
+            ),
             (
                 "Curly brace prefix",
                 "{first.second",
-                vec!["first", "second"],
+                Some(vec!["first", "second"]),
             ),
         ];
         for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
             let expected: Option<Vec<_>> =
-                Some(expected.iter().cloned().map(String::from).collect());
+                expected.map(|path| path.iter().map(|s| String::from(*s)).collect());
             assert_eq!(actual, expected, "test failed: {}", case_name)
         }
     }
