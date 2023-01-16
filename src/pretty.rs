@@ -136,7 +136,23 @@ where
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
         self.quote_if_needed(&id)
-            .append(self.field_metadata(&field.metadata, with_doc))
+            .append(self.field_body(field, with_doc))
+    }
+
+    fn dyn_field(
+        &'a self,
+        id_expr: &RichTerm,
+        field: &Field,
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        id_expr
+            .clone()
+            .pretty(self)
+            .append(self.field_body(field, with_doc))
+    }
+
+    fn field_body(&'a self, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
+        self.field_metadata(&field.metadata, with_doc)
             .append(if let Some(ref value) = field.value {
                 self.space()
                     .append(self.text("="))
@@ -153,6 +169,19 @@ where
             sorted_map(fields)
                 .iter()
                 .map(|&(id, field)| self.field(id, field, with_doc)),
+            self.line(),
+        )
+    }
+
+    fn dyn_fields(
+        &'a self,
+        fields: &[(RichTerm, Field)],
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        self.intersperse(
+            fields
+                .iter()
+                .map(|(ref id_term, ref field)| self.dyn_field(id_term, field, with_doc)),
             self.line(),
         )
     }
@@ -592,6 +621,7 @@ where
             RecRecord(record_data, dyn_fields, _) => allocator
                 .line()
                 .append(allocator.fields(&record_data.fields, true))
+                .append(allocator.dyn_fields(dyn_fields, true))
                 // TODO: !todo() introduced by PR #XXX. The previous version of this code printing
                 // the dynamic fields was wrong and isn't currently tested. We delay fixing this to
                 // a later PR or commit.
