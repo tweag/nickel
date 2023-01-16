@@ -269,7 +269,7 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Vec<IdentWit
 lazy_static! {
     // unwraps are safe here because we know these are correct regexes.
     // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang::parser::lexer)
-    static ref RE: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
+    static ref RE_IDENTIFIER: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
 
@@ -302,12 +302,12 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     let path = path
         .split('.')
         .map(|str| {
-            let (str, is_unicode) = remove_quotes(str);
-            if is_unicode {
+            let (str, had_quotes) = remove_quotes(str);
+            if had_quotes {
                 // Nickel identifiers cannot contain unicode characters
                 Some(str)
             } else {
-                RE.find(&str).map(|m| String::from(m.as_str()))
+                RE_IDENTIFIER.find(&str).map(|m| String::from(m.as_str()))
             }
         })
         .collect::<Option<Vec<_>>>()?;
@@ -321,7 +321,7 @@ fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
     let text: String = text
         .chars()
         .rev()
-        .skip_while(|c| RE.is_match(c.to_string().as_ref()))
+        .skip_while(|c| RE_IDENTIFIER.is_match(c.to_string().as_ref()))
         .collect::<String>()
         .chars()
         .rev()
