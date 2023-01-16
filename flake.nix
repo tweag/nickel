@@ -189,29 +189,38 @@
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
           src = filterNickelSrc craneLib.filterCargoSources;
 
-          # Args passed to all `cargo` invocations by Crane.
-          cargoExtraArgs = "--frozen --offline --workspace";
-        in
-        rec {
+          # set of cargo args common to all builds
+          cargoBuildExtraArgs = "--frozen --offline";
+
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            inherit
-              src
-              cargoExtraArgs;
+            inherit src;
+            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
+            # pyo3 needs a Python interpreter in the build environment
+            # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
+            buildInputs = [ pkgs.python3 ];
           };
 
-          nickel = craneLib.buildPackage {
-            inherit
-              src
-              cargoExtraArgs
-              cargoArtifacts;
-          };
+          buildPackage = packageName:
+            craneLib.buildPackage {
+              inherit
+                src
+                cargoArtifacts;
+
+              cargoExtraArgs = "${cargoBuildExtraArgs} --package ${packageName}";
+            };
+
+
+        in
+        rec {
+          nickel = buildPackage "nickel-lang";
+          lsp-nls = buildPackage "nickel-lang-lsp";
+          nickel-wasm-repl = buildPackage "nickel-repl";
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
             inherit src;
 
-            # We don't reuse the `cargoExtraArgs` in scope because `cargo fmt` does not accept nor need any of `--frozen`, `--offline` or `--workspace`
             cargoExtraArgs = "--all";
 
             # `-- --check` is automatically prepended by Crane
@@ -221,12 +230,11 @@
           clippy = craneLib.cargoClippy {
             inherit
               src
-              cargoExtraArgs
               cargoArtifacts;
 
+            cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
           };
-
         };
 
       makeDevShell = { rust }: pkgs.mkShell {
@@ -241,6 +249,7 @@
           pkgs.nodejs
           pkgs.node2nix
           pkgs.nodePackages.markdownlint-cli
+          pkgs.python3
         ];
 
         shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
@@ -395,6 +404,8 @@
       checks = {
         inherit (mkCraneArtifacts { })
           nickel
+          lsp-nls
+          nickel-wasm-repl
           clippy
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by

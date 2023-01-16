@@ -80,6 +80,7 @@ members = [
     "lsp/nls",
     "utilities",
     "nickel-wasm-repl",
+    "pyckel",
 ]
 
 # Enable this to use flamegraphs

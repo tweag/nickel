@@ -1,0 +1,18 @@
+[package]
+name = "pyckel"
+version = "0.3.1"
+authors = ["Nickel team"]
+license = "MIT"
+readme = "README.md"
+description = "Python bindings for the Nickel programming language."
+homepage = "https://nickel-lang.org"
+repository = "https://github.com/tweag/nickel"
+keywords = ["configuration", "language", "nix", "nickel"]
+edition = "2018"
+
+[dependencies]
+nickel-lang = {default-features = false, path = "../", version = "0.3.1" }
+pyo3 = { version = "0.17.3", features = ["extension-module"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
