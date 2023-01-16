@@ -267,15 +267,26 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Vec<IdentWit
 }
 
 lazy_static! {
-    // unwrap is safe here because we know this is a correct regex.
-    // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
-    // to correctly parse identifiers.
-    static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
+    // unwraps are safe here because we know these are correct regexes.
+    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang::parser::lexer)
+    static ref RE_IDENTIFIER: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
 
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
+    /// Remove quotes from a record fields name (if any) and return a tuple
+    /// of a String (the fields name) with the quotes removed and a bool
+    /// indicating if the fields name actually contained quotes.
+    fn remove_quotes(name: &str) -> (String, bool) {
+        let mut chars = name.chars();
+        if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
+            (String::from(&name[1..name.len() - 1]), true)
+        } else {
+            (String::from(name), false)
+        }
+    }
+
     // skip any `.` at the end of the text
     let text = {
         let mut text = String::from(text);
@@ -287,16 +298,21 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
     let path = result.iter().rev().next().cloned()?;
-    // Remove quotes from a record name
-    fn remove_quotes(name: &str) -> String {
-        let mut chars = name.chars();
-        if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
-            String::from(&name[1..name.len() - 1])
-        } else {
-            String::from(name)
-        }
-    }
-    Some(path.split('.').map(remove_quotes).collect())
+
+    let path = path
+        .split('.')
+        .map(|str| {
+            let (str, had_quotes) = remove_quotes(str);
+            if had_quotes {
+                // Nickel identifiers cannot contain unicode characters
+                Some(str)
+            } else {
+                RE_IDENTIFIER.find(&str).map(|m| String::from(m.as_str()))
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(path)
 }
 
 /// Get the identifiers before `.<text>` for record completion.
@@ -305,7 +321,7 @@ fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
     let text: String = text
         .chars()
         .rev()
-        .skip_while(|c| RE.is_match(c.to_string().as_ref()))
+        .skip_while(|c| RE_IDENTIFIER.is_match(c.to_string().as_ref()))
         .collect::<String>()
         .chars()
         .rev()
@@ -531,52 +547,68 @@ mod tests {
             (
                 "Simple let binding with nested record index",
                 "let person = {} in \n    a.b.c.d",
-                vec!["a", "b", "c", "d"],
+                Some(vec!["a", "b", "c", "d"]),
             ),
-            ("Simple record index", "   ab.dec", vec!["ab", "dec"]),
+            ("Simple record index", "   ab.dec", Some(vec!["ab", "dec"])),
             (
                 "Multiple let bindings with nested record index ",
                 r##"let name = { sdf.clue.add.bar = 10 } in
                 let other = name in
                 let another = other in
             name.sdf.clue.add.bar"##,
-                vec!["name", "sdf", "clue", "add", "bar"],
+                Some(vec!["name", "sdf", "clue", "add", "bar"]),
             ),
             (
                 "Incomplete record with nested record index",
                 r##"{
                     foo = let bar = {a.b.c.d = 10} in bar.a.b.c.d"##,
-                vec!["bar", "a", "b", "c", "d"],
+                Some(vec!["bar", "a", "b", "c", "d"]),
             ),
-            ("Simple record Index", "name.class", vec!["name", "class"]),
+            (
+                "Simple record Index",
+                "name.class",
+                Some(vec!["name", "class"]),
+            ),
             (
                 "Simple record Index ending with a dot",
                 "name.class.",
-                vec!["name", "class"],
+                Some(vec!["name", "class"]),
             ),
-            ("Single record variable", "number", vec!["number"]),
+            ("Single record variable", "number", Some(vec!["number"])),
             (
                 "Single record variable ending with a dot",
                 "number.",
-                vec!["number"],
+                Some(vec!["number"]),
             ),
             (
                 "Record binding with unicode string names for fields",
                 r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
-                vec!["x", "fo京o", "foo"],
+                Some(vec!["x", "fo京o", "foo"]),
             ),
             (
                 "Typed record binding with nested record indexing",
                 r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
                     me.ca.cb"##,
-                vec!["me", "ca", "cb"],
+                Some(vec!["me", "ca", "cb"]),
             ),
-            ("Single quote", "\"", vec!["\""]),
+            ("Single quote", "\"", None),
+            (
+                "Nested Parenthesis prefix",
+                "(alpha.beta.",
+                Some(vec!["alpha", "beta"]),
+            ),
+            ("Parenthesis prefix", "(single", Some(vec!["single"])),
+            (
+                "Nested curly brace prefix",
+                "{first.second",
+                Some(vec!["first", "second"]),
+            ),
+            ("Curly brace prefix", "{double.", Some(vec!["double"])),
         ];
         for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
             let expected: Option<Vec<_>> =
-                Some(expected.iter().cloned().map(String::from).collect());
+                expected.map(|path| path.iter().map(|s| String::from(*s)).collect());
             assert_eq!(actual, expected, "test failed: {}", case_name)
         }
     }
