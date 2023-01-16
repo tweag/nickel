@@ -196,12 +196,12 @@
           cargoArtifacts = craneLib.buildDepsOnly {
             inherit src;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
+            # pyo3 needs a Python interpreter in the build environment
+            # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
           };
 
           buildPackage = packageName:
-            let
-            in
             craneLib.buildPackage {
               inherit
                 src
@@ -215,7 +215,6 @@
         rec {
           nickel = buildPackage "nickel-lang";
           lsp-nls = buildPackage "nickel-lang-lsp";
-          utilities = buildPackage "nickel-lang-utilities";
           nickel-wasm-repl = buildPackage "nickel-repl";
 
           rustfmt = craneLib.cargoFmt {
@@ -406,7 +405,6 @@
         inherit (mkCraneArtifacts { })
           nickel
           lsp-nls
-          utilities
           nickel-wasm-repl
           clippy
           rustfmt;
