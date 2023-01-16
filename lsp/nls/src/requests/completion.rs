@@ -267,15 +267,26 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Vec<IdentWit
 }
 
 lazy_static! {
-    // unwrap is safe here because we know this is a correct regex.
-    // This regexp must be the reverse of the regexp in the lexer (nickel_lang::parser::lexer)
-    // to correctly parse identifiers.
-    static ref RE: regex::Regex = regex::Regex::new(r"[_a-zA-Z0-9-']*[a-zA-Z]_?").unwrap();
+    // unwraps are safe here because we know these are correct regexes.
+    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang::parser::lexer)
+    static ref RE: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
 
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
+    /// Remove quotes from a record field's name (if any) and return a
+    /// tuple of the field's name with the quotes removed and a bool
+    /// indicating if the field's name actually contained quotes.
+    fn remove_quotes(name: &str) -> (String, bool) {
+        let mut chars = name.chars();
+        if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
+            (String::from(&name[1..name.len() - 1]), true)
+        } else {
+            (String::from(name), false)
+        }
+    }
+
     // skip any `.` at the end of the text
     let text = {
         let mut text = String::from(text);
@@ -287,16 +298,21 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
     let path = result.iter().rev().next().cloned()?;
-    // Remove quotes from a record name
-    fn remove_quotes(name: &str) -> String {
-        let mut chars = name.chars();
-        if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
-            String::from(&name[1..name.len() - 1])
-        } else {
-            String::from(name)
-        }
-    }
-    Some(path.split('.').map(remove_quotes).collect())
+
+    let path = path
+        .split('.')
+        .map(|str| {
+            let (str, is_unicode) = remove_quotes(str);
+            if is_unicode {
+                // Nickel identifiers cannot contain unicode characters
+                Some(str)
+            } else {
+                RE.find(&str).map(|m| String::from(m.as_str()))
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    Some(path)
 }
 
 /// Get the identifiers before `.<text>` for record completion.
