@@ -47,7 +47,7 @@ pub enum Error {
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
     BlameError {
-        /// The argument failing the contract. If the argument has been forced by the contract, `tracked_arg` provides the final value.
+        /// The argument failing the contract. If the argument has been forced by the contract, `evaluated_arg` provides the final value.
         evaluated_arg: Option<RichTerm>,
         /// The label of the corresponding contract.
         label: label::Label,
