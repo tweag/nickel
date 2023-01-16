@@ -593,15 +593,17 @@ mod tests {
             ),
             ("Single quote", "\"", None),
             (
-                "Parenthesis prefix",
-                "(alpha.beta",
+                "Nested Parenthesis prefix",
+                "(alpha.beta.",
                 Some(vec!["alpha", "beta"]),
             ),
+            ("Parenthesis prefix", "(single", Some(vec!["single"])),
             (
-                "Curly brace prefix",
+                "Nested curly brace prefix",
                 "{first.second",
                 Some(vec!["first", "second"]),
             ),
+            ("Curly brace prefix", "{double.", Some(vec!["double"])),
         ];
         for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
