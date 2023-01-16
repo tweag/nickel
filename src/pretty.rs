@@ -592,10 +592,9 @@ where
             RecRecord(record_data, dyn_fields, _) => allocator
                 .line()
                 .append(allocator.fields(&record_data.fields, true))
-                // TODO: !todo() introdued by PR #XXX. The previous version of this code printing
+                // TODO: !todo() introduced by PR #XXX. The previous version of this code printing
                 // the dynamic fields was wrong and isn't currently tested. We delay fixing this to
                 // a later PR or commit.
-                // dynamic fields
                 .append(if record_data.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
