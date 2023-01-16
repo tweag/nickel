@@ -4,9 +4,13 @@
 //! information about the context of a contract failure.
 use std::rc::Rc;
 
-use crate::eval::cache::CacheIndex;
-use crate::position::{RawSpan, TermPos};
-use crate::types::{TypeF, Types};
+use crate::{
+    eval::cache::{Cache as EvalCache, CacheIndex},
+    position::{RawSpan, TermPos},
+    term::RichTerm,
+    types::{TypeF, Types},
+};
+
 use codespan::Files;
 
 pub mod ty_path {
@@ -355,6 +359,10 @@ impl Label {
             polarity: true,
             path: Vec::new(),
         }
+    }
+
+    pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<RichTerm> {
+        self.arg_idx.clone().map(|idx| cache.get(idx).body)
     }
 }
 

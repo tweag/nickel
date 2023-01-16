@@ -1,7 +1,7 @@
+use super::cache::CBNCache;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
-use crate::eval::cache::CBNCache;
 use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
@@ -43,11 +43,14 @@ fn identity_over_values() {
 
 #[test]
 fn blame_panics() {
-    let label = Label::dummy();
-    if let Err(EvalError::BlameError(l, ..)) =
-        eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(label.clone())))
+    let l = Label::dummy();
+    if let Err(EvalError::BlameError {
+        evaluated_arg: _,
+        label,
+        call_stack: _,
+    }) = eval_no_import(mk_term::op1(UnaryOp::Blame(), Term::Lbl(l.clone())))
     {
-        assert_eq!(l, label);
+        assert_eq!(label, l);
     } else {
         panic!("This evaluation should've returned a BlameError!");
     }

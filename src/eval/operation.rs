@@ -276,10 +276,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::Blame() => match_sharedterm! { t, with {
                     Term::Lbl(label) => Err(
-                        EvalError::BlameError(
+                        EvalError::BlameError {
+                            evaluated_arg: label.get_evaluated_arg(&self.cache),
                             label,
-                            std::mem::take(&mut self.call_stack),
-                        )),
+                            call_stack: std::mem::take(&mut self.call_stack),
+                        }),
                 } else
                     Err(EvalError::TypeError(
                         String::from("Label"),
@@ -639,6 +640,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
                                 return Err(EvalError::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::Map,
+                                    evaluated_arg: label.get_evaluated_arg(&self.cache),
                                     label,
                                     call_stack: std::mem::take(&mut self.call_stack),
                                 })
@@ -2784,8 +2786,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .clone()
                         .sealed_tail
                         .and_then(|t| t.unseal(s).cloned())
-                        .ok_or_else(|| {
-                            EvalError::BlameError(l.clone(), std::mem::take(&mut self.call_stack))
+                        .ok_or_else(|| EvalError::BlameError {
+                            evaluated_arg: l.get_evaluated_arg(&self.cache),
+                            label: l.clone(),
+                            call_stack: std::mem::take(&mut self.call_stack),
                         })
                         .map(|t| Closure { body: t, env: env3 }),
                     (Term::SealingKey(..), _, _) => Err(EvalError::TypeError(

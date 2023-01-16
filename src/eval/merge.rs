@@ -381,6 +381,7 @@ pub fn merge<C: Cache>(
             if let Some(record::SealedTail { label, .. }) = r1.sealed_tail.or(r2.sealed_tail) {
                 return Err(EvalError::IllegalPolymorphicTailAccess {
                     action: IllegalPolymorphicTailAction::Merge,
+                    evaluated_arg: label.get_evaluated_arg(cache),
                     label,
                     call_stack: std::mem::take(call_stack),
                 });
@@ -398,7 +399,11 @@ pub fn merge<C: Cache>(
                         left.keys().map(|field| format!("`{}`", field)).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     lbl.tag = format!("extra field{} {}", plural, fields.join(","));
-                    return Err(EvalError::BlameError(lbl, CallStack::new()));
+                    return Err(EvalError::BlameError {
+                        evaluated_arg: lbl.get_evaluated_arg(cache),
+                        label: lbl,
+                        call_stack: CallStack::new(),
+                    });
                 }
                 _ => (),
             };
@@ -423,18 +428,26 @@ pub fn merge<C: Cache>(
             // [crate::eval::lazy::Thunk::saturate].
             m.extend(
                 left.into_iter()
-                    .map(|(field, t)| (field, revert_closurize(t, &mut env, &env1))),
+                    .map(|(field, t)| (field, revert_closurize(cache, t, &mut env, &env1))),
             );
             m.extend(
                 right
                     .into_iter()
-                    .map(|(field, t)| (field, revert_closurize(t, &mut env, &env2))),
+                    .map(|(field, t)| (field, revert_closurize(cache, t, &mut env, &env2))),
             );
 
             for (field, (t1, t2)) in center.into_iter() {
                 m.insert(
                     field,
-                    fields_merge_closurize(&mut env, t1, &env1, t2, &env2, field_names.iter())?,
+                    fields_merge_closurize(
+                        cache,
+                        &mut env,
+                        t1,
+                        &env1,
+                        t2,
+                        &env2,
+                        field_names.iter(),
+                    )?,
                 );
             }
 
@@ -462,9 +475,11 @@ pub fn merge<C: Cache>(
         }
         (t1_, t2_) => match (mode, &t2_) {
             // We want to merge a non-record term with a record contract
-            (MergeMode::Contract(label), Term::Record(..)) => {
-                Err(EvalError::BlameError(label, call_stack.clone()))
-            }
+            (MergeMode::Contract(label), Term::Record(..)) => Err(EvalError::BlameError {
+                evaluated_arg: label.get_evaluated_arg(cache),
+                label,
+                call_stack: call_stack.clone(),
+            }),
             // The following cases are either errors or not yet implemented
             _ => Err(EvalError::MergeIncompatibleArgs(
                 RichTerm {
@@ -529,30 +544,34 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 /// If the expression is not a variable referring to a thunk (this can happen e.g. for numeric
 /// constants), we just return the term as it is, which falls into the zero dependencies special
 /// case.
-fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+    cache: &mut C,
     rt: RichTerm,
     env: &mut Environment,
     local_env: &Environment,
     fields: I,
 ) -> Result<RichTerm, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
-        let thunk = local_env
+        let idx = local_env
             .get(var_id)
             .cloned()
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
 
-        Ok(thunk.saturate(env, fields).with_pos(rt.pos))
+        Ok(cache.saturate(idx, env, fields).with_pos(rt.pos))
     } else {
         Ok(rt)
     }
 }
 
 /// Return the dependencies of a field when represented as a `RichTerm`.
-fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<FieldDeps, EvalError> {
+fn field_deps<C: Cache>(
+    cache: &C,
+    rt: &RichTerm,
+    local_env: &Environment,
+) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
-        local_env
-            .get(var_id)
-            .map(Thunk::deps)
+        cache
+            .deps(local_env.get(var_id).unwrap())
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
         Ok(FieldDeps::empty())
@@ -568,7 +587,8 @@ fn field_deps(rt: &RichTerm, local_env: &Environment) -> Result<FieldDeps, EvalE
 ///
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
-fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+    cache: &mut C,
     env: &mut Environment,
     t1: RichTerm,
     env1: &Environment,
@@ -578,11 +598,11 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 ) -> Result<RichTerm, EvalError> {
     let mut local_env = Environment::new();
 
-    let combined_deps = field_deps(&t1, env1)?.union(field_deps(&t2, env2)?);
+    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
-        saturate(t1, &mut local_env, env1, fields.clone())?,
-        saturate(t2, &mut local_env, env2, fields)?,
+        saturate(cache, t1, &mut local_env, env1, fields.clone())?,
+        saturate(cache, t2, &mut local_env, env2, fields)?,
     ));
 
     // We closurize the final result in a thunk with appropriate dependencies
@@ -595,7 +615,11 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
     env.insert(
         fresh_var,
-        Thunk::new_rev(closure, IdentKind::Record, combined_deps),
+        cache.add(
+            closure,
+            IdentKind::Record,
+            BindingType::Revertible(combined_deps),
+        ),
     );
 
     Ok(RichTerm::from(Term::Var(fresh_var)))
@@ -623,10 +647,15 @@ fn merge_closurize<C: Cache>(
 }
 
 /// Revert the thunk inside the provided field (if any), and closurize the result inside `env`.
-fn revert_closurize(rt: RichTerm, env: &mut Environment, local_env: &Environment) -> RichTerm {
+fn revert_closurize<C: Cache>(
+    cache: &mut C,
+    rt: RichTerm,
+    env: &mut Environment,
+    local_env: &Environment,
+) -> RichTerm {
     if let Term::Var(id) = rt.as_ref() {
-        // This create a fresh variable which is bound to a reverted copy of the original thunk
-        let reverted = local_env.get(id).unwrap().revert();
+        // This creates a fresh variable which is bound to a reverted copy of the original thunk
+        let reverted = cache.revert(local_env.get(id).unwrap());
         let fresh_id = Ident::fresh();
         env.insert(fresh_id, reverted);
         RichTerm::new(Term::Var(fresh_id), rt.pos)

@@ -46,7 +46,14 @@ pub enum Error {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
-    BlameError(label::Label, CallStack),
+    BlameError {
+        /// The argument failing the contract. If the argument has been forced by the contract, `evaluated_arg` provides the final value.
+        evaluated_arg: Option<RichTerm>,
+        /// The label of the corresponding contract.
+        label: label::Label,
+        /// The callstack when the blame error was raised.
+        call_stack: CallStack,
+    },
     /// A field required by a record contract is missing a definition.
     MissingFieldDef(Option<label::Label>, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
@@ -100,6 +107,7 @@ pub enum EvalError {
     /// A polymorphic record contract was broken somewhere.
     IllegalPolymorphicTailAccess {
         action: IllegalPolymorphicTailAction,
+        evaluated_arg: Option<RichTerm>,
         label: label::Label,
         call_stack: CallStack,
     },
@@ -760,28 +768,37 @@ impl ToDiagnostic<FileId> for EvalError {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            EvalError::BlameError(l, call_stack) => {
+            EvalError::BlameError {
+                evaluated_arg,
+                label,
+                call_stack,
+            } => {
                 let mut msg = String::new();
 
                 // Writing in a string should not raise an error, hence the fearless `unwrap()`
-                write!(&mut msg, "{}", blame_error::title(l)).unwrap();
+                write!(&mut msg, "{}", blame_error::title(label)).unwrap();
 
-                if !l.tag.is_empty() {
-                    write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
+                if !label.tag.is_empty() {
+                    write!(&mut msg, ": {}", &escape(&label.tag)).unwrap();
                 }
 
-                let (path_label, notes) = blame_error::report_ty_path(l, files);
-                let labels =
-                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
+                let (path_label, notes) = blame_error::report_ty_path(label, files);
+                let labels = blame_error::build_diagnostic_labels(
+                    evaluated_arg.clone(),
+                    label,
+                    path_label,
+                    files,
+                    contract_id,
+                );
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(blame_error::note(l));
+                diagnostics.push(blame_error::note(label));
 
-                if ty_path::has_no_dom(&l.path) {
+                if ty_path::has_no_dom(&label.path) {
                 } else if let Some(id) = contract_id {
                     diagnostics.extend_with_call_stack(id, call_stack);
                 }
@@ -1037,6 +1054,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::IllegalPolymorphicTailAccess {
                 action,
                 label: l,
+                evaluated_arg,
                 call_stack,
             } => {
                 let mut msg = String::new();
@@ -1048,8 +1066,13 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let (path_label, notes) = blame_error::report_ty_path(l, files);
-                let labels =
-                    blame_error::build_diagnostic_labels(l, path_label, files, contract_id);
+                let labels = blame_error::build_diagnostic_labels(
+                    evaluated_arg.clone(),
+                    l,
+                    path_label,
+                    files,
+                    contract_id,
+                );
 
                 let mut diagnostics = vec![Diagnostic::error()
                     .with_message(msg)
@@ -1081,6 +1104,7 @@ mod blame_error {
             ty_path::{self, PathSpan},
         },
         position::TermPos,
+        term::RichTerm,
     };
 
     use super::{primary, secondary, secondary_term};
@@ -1102,6 +1126,7 @@ mod blame_error {
 
     /// Constructs the diagnostic labels used when raising a blame error.
     pub fn build_diagnostic_labels(
+        evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files<String>,
@@ -1126,16 +1151,20 @@ mod blame_error {
         // If we have a reference to the thunk that was being tested, we can try to show
         // more information about the final, evaluated value that is responsible for the
         // blame.
-        if let Some(ref thunk) = blame_label.arg_idx {
-            let mut val = thunk.get_owned().body;
-
-            match (val.pos, blame_label.arg_pos.as_opt_ref(), contract_id) {
+        if let Some(mut evaluated_arg) = evaluated_arg {
+            match (
+                evaluated_arg.pos,
+                blame_label.arg_pos.as_opt_ref(),
+                contract_id,
+            ) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
                 (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
                 // Do not show the same thing twice: if arg_pos and val_pos are the same,
                 // the first label "applied to this value" is sufficient.
@@ -1147,21 +1176,25 @@ mod blame_error {
                 // print the actual value than referring to the same position as
                 // before.
                 (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
                 (TermPos::Inherited(ref val_pos), ..) => {
                     labels.push(secondary(val_pos).with_message("evaluated to this expression"));
-                    val.pos = TermPos::None;
-                    labels
-                        .push(secondary_term(&val, files).with_message("evaluated to this value"));
+                    evaluated_arg.pos = TermPos::None;
+                    labels.push(
+                        secondary_term(&evaluated_arg, files)
+                            .with_message("evaluated to this value"),
+                    );
                 }
-                (TermPos::None, ..) => {
-                    labels.push(secondary_term(&val, files).with_message("evaluated to this value"))
-                }
+                (TermPos::None, ..) => labels.push(
+                    secondary_term(&evaluated_arg, files).with_message("evaluated to this value"),
+                ),
             }
         }
 
