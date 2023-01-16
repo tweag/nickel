@@ -12,7 +12,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
-use crate::term::{RichTerm, Term};
+use crate::term::{RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
 use crate::types::Types;
 use crate::{eval, transform, typecheck};

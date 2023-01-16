@@ -3,7 +3,7 @@ use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{BindingType, LabeledType, RichTerm, Term, TraverseOrder},
+    term::{BindingType, LabeledType, RichTerm, Term, Traverse, TraverseOrder},
     typecheck::Wildcards,
     types::{TypeF, Types, UnboundTypeVariableError},
 };

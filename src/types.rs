@@ -54,7 +54,7 @@ use crate::{
     identifier::Ident,
     mk_app, mk_fun,
     term::make as mk_term,
-    term::{record::RecordData, RichTerm, Term, TraverseOrder},
+    term::{record::RecordData, RichTerm, Term, Traverse, TraverseOrder},
 };
 
 use std::{
@@ -549,7 +549,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 }
 
-impl RecordRows {
+impl Traverse<Types> for RecordRows {
     fn traverse<FTy, S, E>(
         self,
         f: &FTy,
@@ -904,17 +904,10 @@ impl Types {
             _ => false,
         }
     }
+}
 
-    /// Apply a transformation on a whole type by mapping a fallible function `f` on each node as
-    /// prescribed by the order.
-    ///
-    /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<FTy, S, E>(
-        self,
-        f: &FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<Self, E>
+impl Traverse<Types> for Types {
+    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
         FTy: Fn(Types, &mut S) -> Result<Types, E>,
     {
@@ -940,6 +933,20 @@ impl Types {
                 f(Types(traversed_depth_first), state)
             }
         }
+    }
+}
+
+impl Traverse<RichTerm> for Types {
+    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        FTy: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let mut f_on_type = |ty: Types, s: &mut S| match ty.0 {
+            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
+            _ => Ok(ty),
+        };
+
+        self.traverse(&f_on_type, state, order)
     }
 }
 

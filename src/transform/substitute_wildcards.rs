@@ -9,7 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use crate::{
     label::Label,
     match_sharedterm,
-    term::{LabeledType, MetaValue, RichTerm, Term, TraverseOrder, TypeAnnotation},
+    term::{LabeledType, MetaValue, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation},
     typecheck::Wildcards,
     types::{TypeF, Types},
 };

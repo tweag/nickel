@@ -190,6 +190,37 @@ impl Field {
     }
 }
 
+impl Traverse<RichTerm> for Field {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Field, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let Field { metadata, value } = self;
+
+        let contracts = metadata
+            .annotation
+            .contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let types = metadata
+            .annotation
+            .types
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .transpose()?;
+
+        let value = value.map(|v| v.traverse(f, state, order)).transpose()?;
+
+        let metadata = FieldMetadata {
+            annotation: TypeAnnotation { types, contracts },
+            ..metadata
+        };
+
+        Ok(Field { metadata, value })
+    }
+}
+
 /// The base structure of a Nickel record.
 ///
 /// Used to group together fields common to both the [super::Term::Record] and
