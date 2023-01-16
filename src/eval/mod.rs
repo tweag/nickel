@@ -346,7 +346,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
 
                     self.call_stack
-                        .enter_var(self.cache.ident_kind(idx.clone()), *x, pos);
+                        .enter_var(self.cache.ident_kind(&idx), *x, pos);
                     self.cache.get(idx.clone())
                 }
                 Term::App(t1, t2) => {

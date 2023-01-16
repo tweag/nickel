@@ -24,15 +24,15 @@ pub trait Cache: Clone {
     fn map_at_index<F: FnMut(&Closure) -> Closure>(&mut self, idx: &CacheIndex, f: F)
         -> CacheIndex;
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]);
-    fn ident_kind(&self, idx: CacheIndex) -> IdentKind;
+    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind;
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
         env: &mut Environment,
         fields: I,
     ) -> RichTerm;
-    fn revert(&mut self, idx: CacheIndex) -> CacheIndex;
-    fn deps(&self, idx: CacheIndex) -> Option<FieldDeps>;
+    fn revert(&mut self, idx: &CacheIndex) -> CacheIndex;
+    fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps>;
     fn make_update_index(&self, idx: &mut CacheIndex)
         -> Result<Self::UpdateIndex, BlackholedError>;
 }
@@ -108,7 +108,7 @@ impl Cache for CBNCache {
         idx.build_cached(rec_env)
     }
 
-    fn ident_kind(&self, idx: CacheIndex) -> IdentKind {
+    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
         idx.ident_kind()
     }
 
@@ -121,11 +121,11 @@ impl Cache for CBNCache {
         idx.saturate(env, fields)
     }
 
-    fn deps(&self, idx: CacheIndex) -> Option<FieldDeps> {
+    fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
         Some(idx.deps())
     }
 
-    fn revert(&mut self, idx: CacheIndex) -> CacheIndex {
+    fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
         idx.revert()
     }
 

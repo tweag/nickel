@@ -571,7 +571,7 @@ fn field_deps<C: Cache>(
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         cache
-            .deps(local_env.get(var_id).unwrap().clone())
+            .deps(&local_env.get(var_id).unwrap())
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
         Ok(FieldDeps::empty())
@@ -655,7 +655,7 @@ fn revert_closurize<C: Cache>(
 ) -> RichTerm {
     if let Term::Var(id) = rt.as_ref() {
         // This creates a fresh variable which is bound to a reverted copy of the original thunk
-        let reverted = cache.revert(local_env.get(id).unwrap().clone());
+        let reverted = cache.revert(&local_env.get(id).unwrap());
         let fresh_id = Ident::fresh();
         env.insert(fresh_id, reverted);
         RichTerm::new(Term::Var(fresh_id), rt.pos)
