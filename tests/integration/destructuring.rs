@@ -64,7 +64,7 @@ fn assign_fail() {
 fn closed_fail() {
     assert_matches!(
         eval_file("destructuring/closed_fail.ncl"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }
 
@@ -80,7 +80,7 @@ fn rest_fail() {
 fn typecontract_fail() {
     assert_matches!(
         eval_file("destructuring/typecontract_fail.ncl"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }
 

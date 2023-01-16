@@ -46,7 +46,14 @@ pub enum Error {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
-    BlameError(Option<RichTerm>, label::Label, CallStack),
+    BlameError {
+        /// The argument failing the contract. If the argument has been forced by the contract, `tracked_arg` provides the final value.
+        evaluated_arg: Option<RichTerm>,
+        /// The label of the corresponding contract.
+        label: label::Label,
+        /// The callstack when the blame error was raised.
+        call_stack: CallStack,
+    },
     /// A field required by a record contract is missing a definition.
     MissingFieldDef(Option<label::Label>, CallStack),
     /// Mismatch between the expected type and the actual type of an expression.
@@ -761,20 +768,24 @@ impl ToDiagnostic<FileId> for EvalError {
         contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            EvalError::BlameError(evaluated_arg, l, call_stack) => {
+            EvalError::BlameError {
+                evaluated_arg,
+                label,
+                call_stack,
+            } => {
                 let mut msg = String::new();
 
                 // Writing in a string should not raise an error, hence the fearless `unwrap()`
-                write!(&mut msg, "{}", blame_error::title(l)).unwrap();
+                write!(&mut msg, "{}", blame_error::title(label)).unwrap();
 
-                if !l.tag.is_empty() {
-                    write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
+                if !label.tag.is_empty() {
+                    write!(&mut msg, ": {}", &escape(&label.tag)).unwrap();
                 }
 
-                let (path_label, notes) = blame_error::report_ty_path(l, files);
+                let (path_label, notes) = blame_error::report_ty_path(label, files);
                 let labels = blame_error::build_diagnostic_labels(
                     evaluated_arg.clone(),
-                    l,
+                    label,
                     path_label,
                     files,
                     contract_id,
@@ -785,9 +796,9 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(blame_error::note(l));
+                diagnostics.push(blame_error::note(label));
 
-                if ty_path::has_no_dom(&l.path) {
+                if ty_path::has_no_dom(&label.path) {
                 } else if let Some(id) = contract_id {
                     diagnostics.extend_with_call_stack(id, call_stack);
                 }

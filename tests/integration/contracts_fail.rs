@@ -8,13 +8,13 @@ macro_rules! assert_raise_blame {
     ($term:expr) => {{
         assert_matches!(
             eval($term),
-            Err(Error::EvalError(EvalError::BlameError(..)))
+            Err(Error::EvalError(EvalError::BlameError {..}))
         )
     }};
     ($term:expr, $($arg:tt)+) => {{
         assert_matches!(
             eval($term),
-            Err(Error::EvalError(EvalError::BlameError(..))),
+            Err(Error::EvalError(EvalError::BlameError {..})),
             $($arg)+
         )
     }}
@@ -235,21 +235,25 @@ fn lists_contracts() {
 
     assert_matches!(
         eval("%force% ([1, \"a\"] | Array Num) 0"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
         eval("1 | Array Dyn"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
         eval("(fun x => x) | Array Dyn"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 
     let res = eval("%force% ([{a = [1]}] | Array {a: Array Str}) false");
     match &res {
-        Err(Error::EvalError(EvalError::BlameError(_, ref l, _))) => {
-            assert_matches!(l.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
+        Err(Error::EvalError(EvalError::BlameError {
+            evaluated_arg: _,
+            ref label,
+            call_stack: _,
+        })) => {
+            assert_matches!(label.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
         }
         err => panic!("expected blame error, got {:?}", err),
     }
@@ -262,8 +266,12 @@ fn lists_contracts() {
         "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
     );
     match &res {
-        Err(Error::EvalError(EvalError::BlameError(_, ref l, _))) => {
-            assert_matches!(l.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
+        Err(Error::EvalError(EvalError::BlameError {
+            evaluated_arg: _,
+            ref label,
+            call_stack: _,
+        })) => {
+            assert_matches!(label.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
         }
         err => panic!("expected blame error, got {:?}", err),
     }
@@ -293,7 +301,7 @@ fn type_path_with_aliases() {
     fn assert_blame_dont_panic(expr: &str) {
         let mut p = program_from_expr(expr);
         let result = p.eval();
-        assert_matches!(result, Err(Error::EvalError(EvalError::BlameError(..))));
+        assert_matches!(result, Err(Error::EvalError(EvalError::BlameError { .. })));
         // Check that the diagnostic is correctly produced
         p.report(result.unwrap_err());
     }

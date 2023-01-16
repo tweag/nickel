@@ -19,7 +19,7 @@ fn eval_file(file: &str) {
             let mut p = TestProgram::new_from_file(path).expect("could not load file as a program");
             assert_matches!(
                 p.eval_deep(),
-                Err(Error::EvalError(EvalError::BlameError(..)))
+                Err(Error::EvalError(EvalError::BlameError { .. }))
             );
         }
         ExampleAnnotation::Pass => {

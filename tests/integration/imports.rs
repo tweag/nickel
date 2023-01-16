@@ -53,7 +53,7 @@ fn contract_fail() {
     .unwrap();
     assert_matches!(
         prog.eval(),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }
 

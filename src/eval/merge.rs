@@ -399,11 +399,11 @@ pub fn merge<C: Cache>(
                         left.keys().map(|field| format!("`{}`", field)).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     lbl.tag = format!("extra field{} {}", plural, fields.join(","));
-                    return Err(EvalError::BlameError(
-                        lbl.get_evaluated_arg(cache),
-                        lbl,
-                        CallStack::new(),
-                    ));
+                    return Err(EvalError::BlameError {
+                        evaluated_arg: lbl.get_evaluated_arg(cache),
+                        label: lbl,
+                        call_stack: CallStack::new(),
+                    });
                 }
                 _ => (),
             };
@@ -475,11 +475,11 @@ pub fn merge<C: Cache>(
         }
         (t1_, t2_) => match (mode, &t2_) {
             // We want to merge a non-record term with a record contract
-            (MergeMode::Contract(label), Term::Record(..)) => Err(EvalError::BlameError(
-                label.get_evaluated_arg(cache),
-                label,
-                call_stack.clone(),
-            )),
+            (MergeMode::Contract(label), Term::Record(..)) => Err(EvalError::BlameError {
+                evaluated_arg: label.get_evaluated_arg(cache),
+                label: label,
+                call_stack: call_stack.clone(),
+            }),
             // The following cases are either errors or not yet implemented
             _ => Err(EvalError::MergeIncompatibleArgs(
                 RichTerm {

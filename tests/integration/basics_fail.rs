@@ -43,7 +43,7 @@ fn comparisons() {
 fn boolean_ops() {
     assert_matches!(
         eval("let throw | (fun l _v => %blame% l) = null in false || true && throw"),
-        Err(Error::EvalError(EvalError::BlameError(..)))
+        Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
         eval("0 && true"),
