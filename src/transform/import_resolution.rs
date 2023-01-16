@@ -3,7 +3,7 @@
 //! identifier directly.
 use super::ImportResolver;
 use crate::error::ImportError;
-use crate::term::{RichTerm, Term, TraverseOrder};
+use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
 use codespan::FileId;
 use std::path::PathBuf;
 

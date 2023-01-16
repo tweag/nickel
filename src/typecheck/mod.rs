@@ -54,7 +54,7 @@ use crate::{
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
-        LabeledType, MetaValue, RichTerm, StrChunk, Term, TraverseOrder, TypeAnnotation,
+        LabeledType, MetaValue, RichTerm, StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
     },
     types::{
         EnumRow, EnumRows, EnumRowsF, EnumRowsIterator, RecordRowF, RecordRows, RecordRowsF,
@@ -1911,7 +1911,7 @@ fn has_wildcards(ty: &Types) -> bool {
     let mut has_wildcard = false;
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
-            &|ty, has_wildcard| {
+            &|ty: Types, has_wildcard| {
                 if ty.0.is_wildcard() {
                     *has_wildcard = true;
                 }

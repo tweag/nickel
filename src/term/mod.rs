@@ -414,6 +414,21 @@ pub struct LabeledType {
     pub label: Label,
 }
 
+impl Traverse<RichTerm> for LabeledType {
+    // Note that this function doesn't traverse the label, which is most often what you want. The
+    // terms that may hide in a label are mostly types used for error reporting, but are never
+    // evaluated.
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<LabeledType, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let LabeledType { types, label } = self;
+        types
+            .traverse(&f, state, order)
+            .map(|types| LabeledType { types, label })
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct MetaValue {
     pub doc: Option<String>,
@@ -514,7 +529,7 @@ impl TypeAnnotation {
     /// Return the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
     pub fn first(&self) -> Option<&LabeledType> {
-        self.types.as_ref().or(self.contracts.first())
+        self.iter().next()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &LabeledType> {
@@ -1461,15 +1476,41 @@ impl RichTerm {
         self
     }
 
-    /// Apply a transformation on a whole term by mapping a faillible function `f` on each node in
-    /// manner as prescribed by the order.
+    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
+    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
+    /// than the bound, the string is truncated to `max_width` and the last character after
+    /// truncate is replaced by the ellipsis unicode character U+2026.
+    pub fn pretty_print_cap(&self, max_width: usize) -> String {
+        let output = format!("{}", self);
+
+        if output.len() <= max_width {
+            output
+        } else {
+            let (end, _) = output.char_indices().nth(max_width).unwrap();
+            let mut truncated = String::from(&output[..end]);
+
+            if max_width >= 2 {
+                truncated.pop();
+                truncated.push('\u{2026}');
+            }
+
+            truncated
+        }
+    }
+}
+
+pub trait Traverse<T>: Sized {
+    /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
+    /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
+    ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    pub fn traverse<F, S, E>(
-        self,
-        f: &F,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<RichTerm, E>
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(T, &mut S) -> Result<T, E>;
+}
+
+impl Traverse<RichTerm> for RichTerm {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
@@ -1572,15 +1613,8 @@ impl RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
-                        let value =
-                            field.value
-                            .map(|v| v.traverse(f, state, order))
-                            .transpose()?;
-
-                        Ok((id, Field {
-                            metadata: field.metadata,
-                            value,
-                        }))
+                        let field = field.traverse(f, state, order)?;
+                        Ok((id, field))
                     })
                     .collect();
                 RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
@@ -1592,29 +1626,17 @@ impl RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
-                        let value =
-                            field.value
-                            .map(|v| v.traverse(f, state, order))
-                            .transpose()?;
-
-                        Ok((id, Field {
-                            metadata: field.metadata,
-                            value,
-                        }))
+                        let field = field.traverse(f, state, order)?;
+                        Ok((id, field))
                     })
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, field)| {
-                        let value =
-                            field.value
-                            .map(|v| v.traverse(f, state, order))
-                            .transpose()?;
+                        let id_t = id_t.traverse(f, state, order)?;
+                        let field = field.traverse(f, state, order)?;
 
-                        Ok((
-                            id_t.traverse(f, state, order)?,
-                            Field { metadata: field.metadata, value },
-                        ))
+                        Ok((id_t, field,))
                     })
                     .collect();
                 RichTerm::new(
@@ -1699,28 +1721,6 @@ impl RichTerm {
         match order {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
-        }
-    }
-
-    /// Pretty print a term capped to a given max length (in characters). Useful to limit the size
-    /// of terms reported e.g. in typechecking errors. If the output of pretty printing is greater
-    /// than the bound, the string is truncated to `max_width` and the last character after
-    /// truncate is replaced by the ellipsis unicode character U+2026.
-    pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = format!("{}", self);
-
-        if output.len() <= max_width {
-            output
-        } else {
-            let (end, _) = output.char_indices().nth(max_width).unwrap();
-            let mut truncated = String::from(&output[..end]);
-
-            if max_width >= 2 {
-                truncated.pop();
-                truncated.push('\u{2026}');
-            }
-
-            truncated
         }
     }
 }
