@@ -1,5 +1,5 @@
 use super::*;
-use crate::{error::EvalError, identifier::Ident, label::Label, types::Types};
+use crate::{error::EvalError, identifier::Ident, label::Label};
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -206,6 +206,7 @@ pub struct RecordData {
 
 /// Error raised by [RecordData] methods when trying to access a field that doesn't have a
 /// definition and isn't optional.
+#[derive(Clone, Debug)]
 pub struct MissingFieldDefError {
     pub id: Ident,
     pub metadata: FieldMetadata,
@@ -295,30 +296,40 @@ impl RecordData {
         self.map_fields(|id, value| value.map(|v| f(id, v)))
     }
 
-    //TODO: wrong implementation. This ignores all field without a definition, even if not
-    // optional. We should return a `Result<_, Ident>` (or isomorphic to that) to indicate if a
-    // field is not optional but didn't have a definition.
-    pub fn into_iter_without_opts(self) -> impl Iterator<Item = (Ident, RichTerm)> {
-        self.fields.into_iter().filter_map(|(id, field)| {
-            if field.value.is_some() || !field.metadata.opt {
-                field.value.map(|v| (id, v))
-            } else {
-                None
-            }
-        })
+    /// Turn the record into an iterator over the fields' values, ignoring optional fields without
+    /// definition. Fields that aren't optional but yet don't have a definition are mapped to the
+    /// error `MissingFieldDefError`.
+    pub fn into_iter_without_opts(
+        self,
+    ) -> impl Iterator<Item = Result<(Ident, RichTerm), MissingFieldDefError>> {
+        self.fields
+            .into_iter()
+            .filter_map(|(id, field)| match field.value {
+                Some(v) => Some(Ok((id, v))),
+                None if !field.metadata.opt => Some(Err(MissingFieldDefError {
+                    id,
+                    metadata: field.metadata,
+                })),
+                None => None,
+            })
     }
 
-    //TODO: wrong implementation. This ignores all field without a definition, even if not
-    // optional. We should return a `Result<_, Ident>` (or isomorphic to that) to indicate if a
-    // field is not optional but didn't have a definition.
-    pub fn iter_without_opts(&self) -> impl Iterator<Item = (&Ident, &RichTerm)> {
-        self.fields.iter().filter_map(|(id, field)| {
-            if field.value.is_some() || !field.metadata.opt {
-                field.value.as_ref().map(|v| (id, v))
-            } else {
-                None
-            }
-        })
+    /// Return an iterator over the fields' values, ignoring optional fields without
+    /// definition. Fields that aren't optional but yet don't have a definition are mapped to the
+    /// error `MissingFieldDefError`.
+    pub fn iter_without_opts(
+        &self,
+    ) -> impl Iterator<Item = Result<(&Ident, &RichTerm), MissingFieldDefError>> {
+        self.fields
+            .iter()
+            .filter_map(|(id, field)| match field.value {
+                Some(ref v) => Some(Ok((id, v))),
+                None if !field.metadata.opt => Some(Err(MissingFieldDefError {
+                    id: *id,
+                    metadata: field.metadata.clone(),
+                })),
+                None => None,
+            })
     }
 
     /// Get the value of a field. Ignore optional fields without value: trying to get their value
