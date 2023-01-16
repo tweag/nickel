@@ -492,8 +492,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::FieldsOf() => match_sharedterm! {t, with {
                     Term::Record(record) => {
                         let mut fields: Vec<String> = record
-                            .into_iter_without_opts()
-                            .map(|(id, _)| id.to_string())
+                            .fields
+                            .into_iter()
+                            .filter_map(|(id, field)| (!field.metadata.opt).then(|| id.to_string()))
                             // Ignore optional fields without definitions.
                             .collect();
                         fields.sort();
@@ -515,7 +516,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             UnaryOp::ValuesOf() => match_sharedterm! {t, with {
                     Term::Record(record) => {
-                        let mut values: Vec<_> = record.into_iter_without_opts().collect();
+                        let mut values = record
+                            .into_iter_without_opts()
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|missing_def_err| missing_def_err.into_eval_err(pos, pos_op))?;
+
                         // Although it seems that sort_by_key would be easier here, it would actually
                         // require to copy the identifiers because of the lack of HKT. See
                         // https://github.com/rust-lang/rust/issues/34162.
@@ -712,17 +717,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Record(record) if !record.fields.is_empty() => {
                         let pos_record = pos;
                         let pos_access = pos_op;
-                        let terms = record.into_iter_without_opts().map(|(id, t)| {
+                        let defined = record
+                            .into_iter_without_opts()
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(|missing_def_err| {
+                                missing_def_err.into_eval_err(pos, pos_op)
+                            })?;
+
+                        let terms = defined.into_iter().map(|(id, value)| {
                             (
                                 Some(callstack::StackElem::Field {
                                     id,
                                     pos_record,
-                                    pos_field: t.pos,
+                                    pos_field: value.pos,
                                     pos_access,
                                 }),
-                                t,
+                                value,
                             )
                         });
+
                         Ok(Closure {
                             body: seq_terms(terms, pos_op),
                             env,

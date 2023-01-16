@@ -120,7 +120,17 @@ pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, 
 where
     S: Serializer,
 {
-    let mut entries: Vec<(_, _)> = record.iter_without_opts().collect();
+    // During serialization, we e
+    let mut entries = record
+        .iter_without_opts()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|missing_def_err| {
+            Error::custom(format!(
+                "missing field definition for `{}`",
+                missing_def_err.id
+            ))
+        })?;
+
     entries.sort_by_key(|(k, _)| *k);
 
     let mut map_ser = serializer.serialize_map(Some(entries.len()))?;
@@ -206,9 +216,12 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(record) => {
-                record
-                    .iter_without_opts()
-                    .try_for_each(|(_, rt)| validate(format, &rt))?;
+                record.iter_without_opts().try_for_each(|binding| {
+                    // unwrap(): terms must be fully evaluated before being validated for
+                    // serialization. Otherwise, it's an internal error.
+                    let (_, rt) = binding.unwrap_or_else(|err| panic!("encountered field without definition `{}` during pre-serialization validation", err.id));
+                    validate(format, &rt)
+                })?;
                 Ok(())
             }
             Array(array, _) => {
