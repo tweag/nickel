@@ -133,6 +133,8 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .collect();
 
                 //TODO: transform field metadata
+                // ^ Actually, this must taken care of by traverse, not here. Keeping the todo as a
+                // reminder
                 with_bindings(Term::RecRecord(record, dyn_fields, deps), bindings, pos)
             },
             Term::Array(ts, attrs) => {

@@ -204,7 +204,6 @@ FixedType: Types = {
 pub ExtendedTerm: ExtendedTerm = {
     "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
         if let Some(ann) = ann {
-            // TODO: actually use the doc once we have proper LetMetadata in the AST
             t = ann.annotation.attach_term(t);
         }
 
@@ -222,7 +221,6 @@ UniTerm: UniTerm = {
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
         if let Some(ann) = ann {
-            // TODO: actually use the doc once we have proper LetMetadata in the AST
             t1 = ann.annotation.attach_term(t1);
         }
 

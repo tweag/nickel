@@ -104,7 +104,7 @@ where
 
 /// Serializer for annotated values.
 pub fn serialize_annotated_value<S>(
-    annot: &TypeAnnotation,
+    _annot: &TypeAnnotation,
     t: &RichTerm,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -216,11 +216,14 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 Ok(())
             }
             //TODO: have a specific error for such missing value.
+            // TODO: get rid of metavalues
             MetaValue(term::MetaValue {
-                value: Some(ref t), ..
-            }) => validate(format, t),
+                value: Some(ref _t),
+                ..
+            }) => unimplemented!(),
             // Optional field without definition are accepted and ignored during serialization.
             // TODO: This shouldn't spin a new cache
+            // TODO: get rid of this once we've got rid of metavalues
             _ if is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()) => Ok(()),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }

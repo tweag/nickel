@@ -260,7 +260,6 @@ pub struct LetAttrs {
 }
 
 /// The metadata that can be attached to a let.
-// TODO: actually use this. For now, doc inside let is ignored.
 #[derive(Default, Clone)]
 pub struct LetMetadata {
     pub doc: Option<String>,

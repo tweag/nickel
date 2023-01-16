@@ -464,8 +464,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 env,
                             })
                         }
-                        //TODO: change MissingFieldDef to take the position of the error directly
-                        //instead of relying on the callstack
                         Some(Field {
                             value: None,
                             metadata,

@@ -523,10 +523,6 @@ impl FixTypeVars for Types {
             }
             TypeF::Forall {
                 ref var,
-                // TODO: pass a mutable ref to var_kind, and set the var kind while fixing type
-                // vars, depending on the position of type vars. Raise an error if the same type var
-                // appears in position with incompatible kinds (as a record rows and a type, for
-                // example).
                 ref mut var_kind,
                 ref mut body,
             } => {
@@ -535,7 +531,7 @@ impl FixTypeVars for Types {
                 // to set the right value for `var_kind`.
                 bound_vars.insert(*var, VarKindCell::new());
                 (*body).fix_type_vars_env(bound_vars.clone(), span)?;
-                // unwrap(): we just inseted a value for `var` above, and environment can never
+                // unwrap(): we just inserted a value for `var` above, and environment can never
                 // delete values.
                 *var_kind = bound_vars.get(var).unwrap().var_kind();
 
