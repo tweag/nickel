@@ -275,9 +275,9 @@ lazy_static! {
 
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
-    /// Remove quotes from a record field's name (if any) and return a
-    /// tuple of the field's name with the quotes removed and a bool
-    /// indicating if the field's name actually contained quotes.
+    /// Remove quotes from a record fields name (if any) and return a tuple
+    /// of a String (the fields name) with the quotes removed and a bool
+    /// indicating if the fields name actually contained quotes.
     fn remove_quotes(name: &str) -> (String, bool) {
         let mut chars = name.chars();
         if let (Some('"'), Some('"')) = (chars.next(), chars.last()) {
