@@ -572,6 +572,12 @@ mod tests {
                 vec!["me", "ca", "cb"],
             ),
             ("Single quote", "\"", vec!["\""]),
+            ("Parenthesis prefix", "(alpha.beta", vec!["alpha", "beta"]),
+            (
+                "Curly brace prefix",
+                "{first.second",
+                vec!["first", "second"],
+            ),
         ];
         for (case_name, input, expected) in tests {
             let actual = get_identifier_path(input);
