@@ -278,50 +278,51 @@ pub fn elaborate_field_path(
     let mut it = path.into_iter();
     let fst = it.next().unwrap();
 
-    let content = it.rev().fold(content, |acc, path_elem| match path_elem {
-        FieldPathElem::Ident(id) => {
-            // unwrap is safe here because every id should have a non-`TermPos::None` position
-            let id_span = id.pos.unwrap();
-            // unwrap is safe here becuase the initial content has a position,
-            // and we make sure we assign a position for the next field.
-            let acc_span = acc.pos.unwrap();
-            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-            // A record field and its value *must* be in the same file, so this is safe.
-            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+    let content = it.rev().fold(content, |acc, path_elem| {
+        // unwrap is safe here becuase the initial content has a position,
+        // and we make sure we assign a position for the next field.
+        let acc_span = acc.pos.unwrap();
+        match path_elem {
+            FieldPathElem::Ident(id) => {
+                // unwrap is safe here because every id should have a non-`TermPos::None` position
+                let id_span = id.pos.unwrap();
+                // `RawSpan::fuse` only returns `None` when the two spans are in different files.
+                // A record field and its value *must* be in the same file, so this is safe.
+                let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
 
-            let mut fields = HashMap::new();
-            fields.insert(id, acc);
-
-            RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
-        }
-        FieldPathElem::Expr(exp) => {
-            let static_access = match exp.term.as_ref() {
-                Term::StrChunks(chunks) => {
-                    chunks
-                        .iter()
-                        .fold(Some(String::new()), |acc, next| match (acc, next) {
-                            (Some(mut acc), StrChunk::Literal(lit)) => {
-                                acc.push_str(lit);
-                                Some(acc)
-                            }
-                            _ => None,
-                        })
-                }
-                _ => None,
-            };
-
-            let id_span = exp.pos.unwrap();
-            let acc_span = acc.pos.unwrap();
-            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
-
-            if let Some(static_access) = static_access {
-                let id = Ident::new_with_pos(static_access, exp.pos);
                 let mut fields = HashMap::new();
                 fields.insert(id, acc);
+
                 RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
-            } else {
-                let empty = Term::Record(RecordData::empty());
-                mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc).with_pos(pos)
+            }
+            FieldPathElem::Expr(exp) => {
+                let static_access = match exp.term.as_ref() {
+                    Term::StrChunks(chunks) => {
+                        chunks
+                            .iter()
+                            .fold(Some(String::new()), |acc, next| match (acc, next) {
+                                (Some(mut acc), StrChunk::Literal(lit)) => {
+                                    acc.push_str(lit);
+                                    Some(acc)
+                                }
+                                _ => None,
+                            })
+                    }
+                    _ => None,
+                };
+
+                let id_span = exp.pos.unwrap();
+                let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+
+                if let Some(static_access) = static_access {
+                    let id = Ident::new_with_pos(static_access, exp.pos);
+                    let mut fields = HashMap::new();
+                    fields.insert(id, acc);
+                    RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
+                } else {
+                    let empty = Term::Record(RecordData::empty());
+                    mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc).with_pos(pos)
+                }
             }
         }
     });
