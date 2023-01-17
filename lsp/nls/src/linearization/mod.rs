@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use codespan::{ByteIndex, FileId};
+use codespan::FileId;
 use log::debug;
 use nickel_lang::{
     cache::ImportResolver,
@@ -102,7 +102,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         &mut self,
         lin: &mut Linearization<Building>,
         term: &Term,
-        mut pos: TermPos,
+        pos: TermPos,
         ty: UnifType,
     ) {
         debug!("adding term: {:?} @ {:?}", term, pos);
@@ -116,19 +116,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             term,
             Term::Op1(UnaryOp::StaticAccess(_), _) | Term::MetaValue(_)
         ) {
-            if let Some((record, (offset, Ident { pos: field_pos, .. }))) = self
+            if let Some((record, (offset, _))) = self
                 .record_fields
                 .take()
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
-                if pos == TermPos::None {
-                    pos = field_pos.map(|mut x| {
-                        x.start = ByteIndex(u32::MAX);
-                        x.end = ByteIndex(u32::MAX);
-                        x
-                    });
-                }
-
                 if let Some(field) = lin.linearization.get_mut(record.index + offset.index) {
                     debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
