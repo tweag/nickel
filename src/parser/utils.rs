@@ -310,14 +310,22 @@ pub fn elaborate_field_path(
                 _ => None,
             };
 
+            let id_span = exp.pos.unwrap();
+            let acc_span = acc.pos.unwrap();
+            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+
             if let Some(static_access) = static_access {
                 let id = Ident::new_with_pos(static_access, exp.pos);
                 let mut fields = HashMap::new();
                 fields.insert(id, acc);
-                Term::Record(RecordData::with_fields(fields)).into()
+
+                RichTerm::with_pos(Term::Record(RecordData::with_fields(fields)).into(), pos)
             } else {
                 let empty = Term::Record(RecordData::empty());
-                mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc)
+                RichTerm::with_pos(
+                    mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc),
+                    pos,
+                )
             }
         }
     });
