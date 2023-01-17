@@ -6,7 +6,10 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     environment::Environment,
     position::{RawSpan, TermPos},
-    term::{record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
+    term::{
+        record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, StrChunk,
+        Term,
+    },
     types::{
         EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
         UnboundTypeVariableError, VarKind,
@@ -238,7 +241,51 @@ impl UniRecord {
                                     }
                                 }
                             }
-                            FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
+                            FieldPathElem::Expr(expr) => {
+                                let Term::StrChunks(chunks) = expr.term.as_ref() else {
+                                        return  Err(InvalidRecordTypeError(rt.pos))
+                                    };
+                                let Some(id) =
+                                    chunks.iter().fold(Some(String::new()), |acc, next| {
+                                        match (acc, next) {
+                                            (Some(mut acc), StrChunk::Literal(lit)) => {
+                                                acc.push_str(lit);
+                                                Some(acc)
+                                            }
+                                            _ => None,
+                                        }
+                                    }) else {
+                                        return  Err(InvalidRecordTypeError(rt.pos))
+                                    };
+                                let id = Ident::new_with_pos(id, rt.pos);
+                                match rt.term.into_owned() {
+                                    Term::MetaValue(MetaValue {
+                                        doc: None,
+                                        types: Some(ctrt),
+                                        contracts,
+                                        opt: false,
+                                        priority: MergePriority::Neutral,
+                                        value: None,
+                                    }) if contracts.is_empty() => {
+                                        Ok(RecordRows(RecordRowsF::Extend {
+                                            row: RecordRow {
+                                                id,
+                                                types: Box::new(ctrt.types),
+                                            },
+                                            tail: Box::new(acc),
+                                        }))
+                                    }
+                                    _ => {
+                                        // Position of identifiers must always be set at this stage
+                                        // (parsing)
+                                        let span_id = id.pos.unwrap();
+                                        let term_pos = rt.pos.into_opt().unwrap_or(span_id);
+                                        Err(InvalidRecordTypeError(TermPos::Original(
+                                            RawSpan::fuse(span_id, term_pos).unwrap(),
+                                        )))
+                                    }
+                                }
+                            }
                         }
                     }
                 },
