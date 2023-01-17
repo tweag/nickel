@@ -60,6 +60,13 @@ where
         self.text(s)
     }
 
+    fn multiline_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
+        let delimiter = "%".repeat(min_interpolate_sign(s));
+        self.hardline()
+            .append(self.intersperse(s.lines().map(|d| self.text(d.to_owned())), self.hardline()))
+            .enclose(format!("m{delimiter}\""), format!("\"{delimiter}"))
+    }
+
     fn metadata(&'a self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &mv.types {
             self.text(":")
@@ -71,20 +78,19 @@ where
         }
         .append(if with_doc {
             mv.doc
-                .clone()
+                .as_ref()
                 .map(|doc| {
                     self.text("|")
                         .append(self.space())
                         .append(self.text("doc"))
-                        .append(self.space())
-                        .append(
-                            self.hardline()
-                                .append(self.intersperse(
-                                    doc.lines().map(|d| self.escaped_string(d)),
-                                    self.hardline().clone(),
-                                ))
-                                .double_quotes(),
-                        )
+                        .append(self.hardline())
+                        .append({
+                            if doc.contains('\n') {
+                                self.multiline_string(doc)
+                            } else {
+                                self.escaped_string(doc).double_quotes()
+                            }
+                        })
                         .append(self.line())
                 })
                 .unwrap_or_else(|| self.nil())
