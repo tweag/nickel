@@ -61,13 +61,9 @@ where
     }
 
     fn multiline_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        let percent_count = s.split(|c| c != '%').map(|v| v.len()).max().unwrap();
-        let delimiter = "%".repeat(percent_count + 1);
+        let delimiter = "%".repeat(min_interpolate_sign(s));
         self.hardline()
-            .append(self.intersperse(
-                s.lines().map(|d| self.text(d.to_owned())),
-                self.hardline().clone(),
-            ))
+            .append(self.intersperse(s.lines().map(|d| self.text(d.to_owned())), self.hardline()))
             .enclose(format!("m{delimiter}\""), format!("\"{delimiter}"))
     }
 
