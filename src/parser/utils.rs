@@ -292,7 +292,7 @@ pub fn elaborate_field_path(
             let mut fields = HashMap::new();
             fields.insert(id, acc);
 
-            RichTerm::with_pos(Term::Record(RecordData::with_fields(fields)).into(), pos)
+            RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
         }
         FieldPathElem::Expr(exp) => {
             let static_access = match exp.term.as_ref() {
@@ -318,14 +318,10 @@ pub fn elaborate_field_path(
                 let id = Ident::new_with_pos(static_access, exp.pos);
                 let mut fields = HashMap::new();
                 fields.insert(id, acc);
-
-                RichTerm::with_pos(Term::Record(RecordData::with_fields(fields)).into(), pos)
+                RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
             } else {
                 let empty = Term::Record(RecordData::empty());
-                RichTerm::with_pos(
-                    mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc),
-                    pos,
-                )
+                mk_app!(mk_term::op2(BinaryOp::DynExtend(), exp, empty), acc).with_pos(pos)
             }
         }
     });
