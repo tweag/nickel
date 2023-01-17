@@ -157,13 +157,25 @@
 
       # Customize source filtering for Crane as Nickel uses non-standard-Rust
       # files like `*.lalrpop`.
-      filterNickelSrc = filterCargoSources:
+
+      allDirsFilter = _path: _type: true;
+
+      # check if a substring of `string` matches the regexp `regexp`.
+      # Automatically prepend `.*` because builtins.match requires that the
+      # match starts at the beginning of the string, which is most often not
+      # what we want when filtering files.
+      substrMatch = regexp: string: builtins.match (".*" + regexp) string != null;
+
+      filterNickelSrc =
+        { filterCargoSources
+        , dirFilter ? allDirsFilter
+        }:
         let
-          mkFilter = regexp: path: _type: builtins.match regexp path != null;
-          lalrpopFilter = mkFilter ".*lalrpop$";
-          nclFilter = mkFilter ".*ncl$";
-          txtFilter = mkFilter ".*txt$";
-          snapFilter = mkFilter ".*snap$";
+          mkFilter = regexp: path: _type: substrMatch regexp path;
+          lalrpopFilter = mkFilter "\\.lalrpop$";
+          nclFilter = mkFilter "\\.ncl$";
+          txtFilter = mkFilter "\\.txt$";
+          snapFilter = mkFilter "\\.snap$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -171,7 +183,8 @@
           # Combine our custom filters with the default one from Crane
           # See https://github.com/ipetkov/crane/blob/master/docs/API.md#libfiltercargosources
           filter = path: type:
-            builtins.any (filter: filter path type) [
+            dirFilter path type
+            && builtins.any (filter: filter path type) [
               lalrpopFilter
               nclFilter
               txtFilter
@@ -180,6 +193,16 @@
             ];
         };
 
+      excludeDirsFilter = dirs: path: type:
+        let name = baseNameOf path; in
+
+          !(type == "directory"
+            && builtins.any (dir: substrMatch "${dir}$" name) dirs);
+
+      nickelDirFilter = excludeDirsFilter [ "lsp" "pyckel" "nickel-wasm-repl" ];
+      nickelWasmDirFilter = excludeDirsFilter [ "lsp" "pyckel" ];
+      lspNlsDirFiler = excludeDirsFilter [ "pyckel" ];
+
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
       mkCraneArtifacts = { rust ? mkRust { } }:
@@ -187,38 +210,47 @@
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
-          src = filterNickelSrc craneLib.filterCargoSources;
+          # This includes the sources of all of the workspace.
+          srcAll = filterNickelSrc { inherit (craneLib) filterCargoSources; };
 
           # set of cargo args common to all builds
           cargoBuildExtraArgs = "--frozen --offline";
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            inherit src;
+            src = srcAll;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
           };
 
-          buildPackage = packageName:
+          buildPackage = { packageName, dirFilter ? allDirsFilter }:
             craneLib.buildPackage {
-              inherit
-                src
-                cargoArtifacts;
+              inherit cargoArtifacts;
+
+              src = filterNickelSrc {
+                inherit (craneLib) filterCargoSources;
+                inherit dirFilter;
+              };
 
               cargoExtraArgs = "${cargoBuildExtraArgs} --package ${packageName}";
             };
-
-
         in
+
         rec {
-          nickel = buildPackage "nickel-lang";
-          lsp-nls = buildPackage "nickel-lang-lsp";
+          nickel = buildPackage {
+            packageName = "nickel-lang";
+            dirFilter = nickelDirFilter;
+          };
+          lsp-nls = buildPackage {
+            packageName = "nickel-lang-lsp";
+            dirFilter = lspNlsDirFiler;
+          };
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
-            inherit src;
+            src = srcAll;
 
             cargoExtraArgs = "--all";
 
@@ -227,10 +259,9 @@
           };
 
           clippy = craneLib.cargoClippy {
-            inherit
-              src
-              cargoArtifacts;
+            inherit cargoArtifacts;
 
+            src = srcAll;
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
           };
@@ -274,7 +305,10 @@
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
-          src = filterNickelSrc craneLib.filterCargoSources;
+          src = filterNickelSrc {
+            inherit (craneLib) filterCargoSources;
+            dirFilter = nickelWasmDirFilter;
+          };
 
           cargoExtraArgs = "-p nickel-repl --target wasm32-unknown-unknown --frozen --offline";
           # *  --mode no-install prevents wasm-pack from trying to download and
