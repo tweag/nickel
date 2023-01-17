@@ -215,7 +215,6 @@
         rec {
           nickel = buildPackage "nickel-lang";
           lsp-nls = buildPackage "nickel-lang-lsp";
-          nickel-wasm-repl = buildPackage "nickel-repl";
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
@@ -405,7 +404,6 @@
         inherit (mkCraneArtifacts { })
           nickel
           lsp-nls
-          nickel-wasm-repl
           clippy
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
