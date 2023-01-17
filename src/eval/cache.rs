@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::{
     lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
     Closure, Environment, IdentKind,
@@ -37,8 +39,9 @@ pub trait Cache: Clone {
         -> Result<Self::UpdateIndex, BlackholedError>;
 }
 
-//pub type CacheIndex = usize;
+pub type CacheIndex = usize;
 
+/*
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CBNCache {}
 
@@ -134,5 +137,111 @@ impl Cache for CBNCache {
         idx: &mut CacheIndex,
     ) -> Result<Self::UpdateIndex, BlackholedError> {
         idx.mk_update_frame()
+    }
+}
+*/
+
+#[derive(Debug, Copy, Clone, Default)]
+pub enum IncNodeState {
+    #[default]
+    Suspended,
+    Blackholed,
+}
+
+#[derive(Debug, Clone)]
+pub struct IncNode {
+    orig: Closure,
+    cached: Option<Closure>,
+    kind: IdentKind,
+    bty: BindingType,
+    state: IncNodeState,
+}
+
+impl IncNode {
+    fn new(clos: Closure, kind: IdentKind, bty: BindingType) -> Self {
+        IncNode { orig: clos, cached: None, kind, bty, state: IncNodeState::default() }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IncCache {
+    store: HashMap<CacheIndex, IncNode>,
+    next: CacheIndex,
+}
+
+impl IncCache {
+    fn add_node(&mut self, node: IncNode) -> CacheIndex {
+        let idx = self.next;
+        self.store.insert(idx, node);
+        self.next += 1;
+
+        idx
+    }
+}
+
+impl Cache for IncCache {
+    type UpdateIndex = CacheIndex;
+
+    fn new() -> Self {
+        IncCache { store: HashMap::new(), next: 0 }
+    }
+
+    fn get(&self, idx: CacheIndex) -> Closure {
+        let node = self.store.get(&idx).unwrap();
+        
+        node.cached.unwrap_or(node.orig)
+    }
+
+    fn get_update_index(
+            &mut self,
+            idx: &mut CacheIndex,
+        ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
+        let node = self.store.get(idx).unwrap();
+
+        if let IncNodeState::Blackholed = node.state {
+            Err(BlackholedError)
+        } else if node.cached.is_some() {
+            Ok(None)
+        } else {
+            Ok(Some(*idx))
+        }
+    }
+
+    fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex {
+        let node = IncNode::new(clos, kind, bty);
+
+        self.add_node(node)
+    }
+
+    fn update(&mut self, clos: Closure, idx: Self::UpdateIndex) {
+        let node = self.store.get_mut(&idx).unwrap();
+
+        node.cached = Some(clos);
+    }
+
+    fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
+        let node = self.store.get(idx).unwrap();
+
+        let new_node = match node.bty {
+            BindingType::Normal => {
+                node.clone()
+            }
+            BindingType::Revertible(deps) => {
+                IncNode::new(node.orig.clone(), node.kind, node.bty.clone())
+            }
+        };
+
+        self.add_node(new_node)
+    }
+
+    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
+        self.store.get(idx).unwrap().kind
+    }
+
+    fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
+        match self.store.get(idx).unwrap().bty {
+            BindingType::Normal => None,
+            BindingType::Revertible(deps) => Some(deps),
+        }
     }
 }
