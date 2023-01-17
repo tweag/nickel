@@ -280,9 +280,19 @@ pub fn elaborate_field_path(
 
     let content = it.rev().fold(content, |acc, path_elem| match path_elem {
         FieldPathElem::Ident(id) => {
+            // unwrap is safe here because every id should have a non-`TermPos::None` position
+            let id_span = id.pos.unwrap();
+            // unwrap is safe here becuase the initial content has a position,
+            // and we make sure we assign a position for the next field.
+            let acc_span = acc.pos.unwrap();
+            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
+            // A record field and its value *must* to be in the same file, so this is safe.
+            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+
             let mut fields = HashMap::new();
             fields.insert(id, acc);
-            Term::Record(RecordData::with_fields(fields)).into()
+
+            RichTerm::with_pos(Term::Record(RecordData::with_fields(fields)).into(), pos)
         }
         FieldPathElem::Expr(exp) => {
             let static_access = match exp.term.as_ref() {
