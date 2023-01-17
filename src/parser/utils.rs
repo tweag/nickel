@@ -286,7 +286,7 @@ pub fn elaborate_field_path(
             // and we make sure we assign a position for the next field.
             let acc_span = acc.pos.unwrap();
             // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-            // A record field and its value *must* to be in the same file, so this is safe.
+            // A record field and its value *must* be in the same file, so this is safe.
             let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
 
             let mut fields = HashMap::new();
