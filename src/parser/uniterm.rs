@@ -170,10 +170,6 @@ impl UniRecord {
     /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
     /// `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
-        // An open record (with an ellipsis `..` at the end) can't be translated to a record type.
-        // `pos_ellipsis` should be set iff `attrs.open` is true.
-        debug_assert!((self.pos_ellipsis == TermPos::None) != self.attrs.open);
-
         fn term_to_record_rows(
             id: Ident,
             rt: RichTerm,
@@ -207,6 +203,10 @@ impl UniRecord {
                 }
             }
         }
+
+        // An open record (with an ellipsis `..` at the end) can't be translated to a record type.
+        // `pos_ellipsis` should be set iff `attrs.open` is true.
+        debug_assert!((self.pos_ellipsis == TermPos::None) != self.attrs.open);
 
         if let Some(raw_span) = self.pos_ellipsis.into_opt() {
             return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
