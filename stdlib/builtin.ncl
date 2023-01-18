@@ -224,5 +224,13 @@
       ```
       "%
     = fun msg x => %trace% msg x,
+
+    FailWith
+    | doc "TODO"
+    = fun msg label value => contract.blame_with msg label,
+
+    fail_with 
+    | doc "TODO"
+    = fun msg => null | FailWith msg,
   },
 }

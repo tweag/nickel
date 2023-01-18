@@ -280,5 +280,13 @@
           l
         else
           (sort cmp (parts.right)) @ [first] @ (sort cmp (parts.wrong)),
+
+    optionals : forall a. Bool -> Array a -> Array a
+      | doc "TODO"
+      = fun condition values => if condition then values else [],
+
+    flat_map : forall a b. (a -> Array b) -> Array a -> Array b
+      | doc "TODO"
+      = fun f xs => map f xs |> flatten,
   }
 }

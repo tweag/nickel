@@ -107,5 +107,22 @@
         else
           r in
         %record_insert% field r content,
+    
+    map_values: forall a b. (a -> b) -> {_: a} -> {_: b}
+    | doc "TODO"
+    = fun f => map (fun _field value => f value),
+
+    as_array : forall a. {_: a} -> Array {field: Str, value: a}
+    | doc "TODO"
+    = fun record =>
+      record
+      |> fields
+      |> array.map (fun field_ => {field = field_, value = record."%{field}"}),
+
+    is_empty : forall a. {_: a} -> Bool
+    = (==) {},
+
+    from_array : forall a. Array { field:Str, value: a} -> {_: a}
+     = array.foldl (fun acc binding => acc & { "%{binding.field}" = binding.value }) {},
   }
 }
