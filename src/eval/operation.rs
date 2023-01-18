@@ -25,8 +25,8 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
-        BinaryOp, MergePriority, MetaValue, NAryOp, PendingContract, RecordExtKind, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
+        StrChunk, Term, UnaryOp,
     },
     transform::{apply_contracts::apply_contracts, Closurizable},
 };
@@ -2903,79 +2903,85 @@ impl RecPriority {
     ) -> Closure {
         let mut new_env = Environment::new();
 
-        todo!();
-        // record.fields = record
-        //     .fields
-        //     .into_iter()
-        //     .filter_map(|(id, rt)| {
-        //         // There is a subtlety with respect to overriding here. Take:
-        //         //
-        //         // ```nickel
-        //         // ({foo = bar + 1, bar = 1} | rec default) & {bar = 2}
-        //         // ```
-        //         //
-        //         // In the example above, if we just map `$rec_default` on the value of `foo` and
-        //         // closurize it into a new, normal thunk (non revertible), we lose the ability to
-        //         // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
-        //         //
-        //         // What we want is that:
-        //         //
-        //         // ```nickel
-        //         // {foo = bar + 1, bar = 1} | rec default
-        //         // ```
-        //         //
-        //         // is equivalent to writing:
-        //         //
-        //         // ```nickel
-        //         // {foo | default = bar + 1, bar | default = 1}
-        //         // ```
-        //         //
-        //         // For revertible thunks, we don't want to only map the push operator on the
-        //         // current cached value, but also on the original expression.
-        //         //
-        //         // To do so, we create a new independent copy of the original thunk by mapping the
-        //         // function over both expressions (in the sense of both the original expression and
-        //         // the cached expression). This logic is encapsulated by `Thunk::map`.
-        //         (!is_empty_optional(cache, &rt, env)).then(|| {
-        //             let pos = rt.pos;
-        //
-        //             let idx = match rt.as_ref() {
-        //                 Term::Var(id) => {
-        //                     let idx = env.get(id).unwrap();
-        //                     cache.map_at_index(idx, |Closure { ref body, ref env }| Closure {
-        //                         body: self.apply_rec_prio_op(body.clone()),
-        //                         env: env.clone(),
-        //                     })
-        //                 }
-        //                 _ => cache.add(
-        //                     Closure {
-        //                         body: self.apply_rec_prio_op(rt),
-        //                         env: env.clone(),
-        //                     },
-        //                     eval::IdentKind::Record,
-        //                     crate::term::BindingType::Normal,
-        //                 ),
-        //             };
-        //
-        //             let fresh_id = Ident::fresh();
-        //             new_env.insert(fresh_id, idx);
-        //             (id, RichTerm::new(Term::Var(fresh_id), pos))
-        //         })
-        //     })
-        //     .collect();
-        //
-        // Closure {
-        //     body: RichTerm::new(Term::Record(record), pos),
-        //     env: new_env,
-        // }
+        let update_priority = |meta: &mut FieldMetadata| {
+            if let MergePriority::Neutral = meta.priority {
+                meta.priority = (*self).into();
+            }
+        };
+
+        record.fields = record
+            .fields
+            .into_iter()
+            .map(|(id, mut field)| {
+                // There is a subtlety with respect to overriding here. Take:
+                //
+                // ```nickel
+                // ({foo = bar + 1, bar = 1} | rec default) & {bar = 2}
+                // ```
+                //
+                // In the example above, if we just map `$rec_default` on the value of `foo` and
+                // closurize it into a new, normal thunk (non revertible), we lose the ability to
+                // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
+                //
+                // What we want is that:
+                //
+                // ```nickel
+                // {foo = bar + 1, bar = 1} | rec default
+                // ```
+                //
+                // is equivalent to writing:
+                //
+                // ```nickel
+                // {foo | default = bar + 1, bar | default = 1}
+                // ```
+                //
+                // For revertible thunks, we don't want to only map the push operator on the
+                // current cached value, but also on the original expression.
+                //
+                // To do so, we create a new independent copy of the original thunk by mapping the
+                // function over both expressions (in the sense of both the original expression and
+                // the cached expression). This logic is encapsulated by `Thunk::map`.
+                //
+
+                field.value = field.value.take().map(|value| {
+                    if let Term::Var(id_inner) = value.as_ref() {
+                        let idx = env.get(&id_inner).unwrap();
+
+                        let new_idx =
+                            cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
+                                Term::Record(record_data) => {
+                                    self.propagate_in_record(cache, record_data.clone(), env, pos)
+                                }
+                                t if t.is_whnf() => {
+                                    update_priority(&mut field.metadata);
+                                    inner.clone()
+                                }
+                                _ => panic!("rec_priority: expected an evaluated form"),
+                            });
+
+                        let fresh_id = Ident::fresh();
+                        new_env.insert(fresh_id, new_idx);
+                        RichTerm::new(Term::Var(fresh_id), pos)
+                    } else {
+                        // A record field that doesn't contain a variable is a constant (a number,
+                        // a string, etc.). It can't be a record, and we can thus update its
+                        // priority without recursing further.
+                        update_priority(&mut field.metadata);
+                        value
+                    }
+                });
+
+                (id, field)
+            })
+            .collect();
+
+        Closure {
+            body: RichTerm::new(Term::Record(record), pos),
+            env: new_env,
+        }
     }
 
     /// Push the priority into an evaluated expression.
-    ///
-    /// # Preconditions
-    ///
-    /// - `st` must represent an evaluated term (a weak head normal form), that is `st.is_whnf()`
-    ///   must be true. Otherwise, this function panics
     fn propagate_in_term<C: Cache>(
         &self,
         cache: &mut C,
@@ -2983,71 +2989,12 @@ impl RecPriority {
         env: Environment,
         pos: TermPos,
     ) -> Closure {
-        let update_priority = |meta: &mut MetaValue| {
-            if let MergePriority::Neutral = meta.priority {
-                meta.priority = (*self).into();
-            }
-        };
-
-        let t = st.into_owned();
-
-        if let Term::Record(record) = t {
-            self.propagate_in_record(cache, record, &env, pos)
-        } else {
-            // Extract the metavalue, or if `st` isn't a metavalue, wrap it in a new one to set the merge
-            // priority.
-            let (mut meta, mut env) = match t {
-                Term::MetaValue(meta) => (meta, env),
-                t => {
-                    let mut meta = MetaValue::new();
-                    let mut new_env = Environment::new();
-                    let rt = RichTerm::new(t, pos);
-
-                    if crate::transform::share_normal_form::should_share(rt.as_ref()) {
-                        meta.value = Some(rt.closurize(cache, &mut new_env, env));
-                    } else {
-                        meta.value = Some(rt);
-                    }
-
-                    (meta, new_env)
-                }
-            };
-
-            if let Some(inner) = meta.value.take() {
-                // The term is expected to be forced before calling to rec_priority, which means that
-                // inner is either a simple value, or a thunk containing a weak head normal form.
-                let (inner, env_inner) = if let Term::Var(id) = inner.as_ref() {
-                    let closure = cache.get(env.get(id).unwrap().clone());
-                    (closure.body, closure.env)
-                } else {
-                    (inner, env.clone())
-                };
-
-                let pos_inner = inner.pos;
-
-                match inner.term.into_owned() {
-                    Term::Record(record) => {
-                        let Closure {
-                            body,
-                            env: record_env,
-                        } = self.propagate_in_record(cache, record, &env_inner, pos_inner);
-                        meta.value = Some(body.closurize(cache, &mut env, record_env));
-                    }
-                    t if t.is_whnf() => {
-                        update_priority(&mut meta);
-                        meta.value =
-                            Some(RichTerm::new(t, pos_inner).closurize(cache, &mut env, env_inner));
-                    }
-                    _ => panic!("rec_priority: expected an evaluated form"),
-                }
-            } else {
-                update_priority(&mut meta);
-            }
-
-            Closure {
-                body: RichTerm::new(Term::MetaValue(meta), pos),
+        match st.into_owned() {
+            Term::Record(record_data) => self.propagate_in_record(cache, record_data, &env, pos),
+            t => Closure {
+                body: RichTerm::new(t, pos),
                 env,
-            }
+            },
         }
     }
 }
