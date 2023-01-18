@@ -11,7 +11,7 @@ use pyo3::{create_exception, exceptions::PyException, prelude::*};
 
 create_exception!(pyckel, NickelException, PyException);
 
-/// Turn a Nickel (Rust) error into a NickelException (Python)
+/// Turn an internal Nickel error into a PyErr with a fancy diagnostic message
 fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program<EC>) -> PyErr {
     NickelException::new_err(program.report_as_str(error.into()))
 }
