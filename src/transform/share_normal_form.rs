@@ -159,19 +159,6 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
                     RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
             },
-            Term::MetaValue(meta) if meta.value.as_ref().map(|t| should_share(&t.term)).unwrap_or(false) => {
-                    let mut meta = meta;
-                    let fresh_var = Ident::fresh();
-                    let t = meta.value.take().unwrap();
-                    meta.value
-                        .replace(RichTerm::new(Term::Var(fresh_var), t.pos));
-                    let inner = RichTerm::new(Term::MetaValue(meta), pos);
-                    let attrs = LetAttrs {
-                        binding_type: BindingType::Normal,
-                        rec: false,
-                    };
-                    RichTerm::new(Term::Let(fresh_var, t, inner, attrs), pos)
-            }
         } else rt
     }
 }

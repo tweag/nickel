@@ -165,15 +165,6 @@ impl CollectFreeVars for RichTerm {
                     }
                 }
             }
-            Term::MetaValue(meta) => {
-                for ctr in meta.contracts.iter_mut().chain(meta.types.iter_mut()) {
-                    ctr.types.collect_free_vars(free_vars)
-                }
-
-                if let Some(ref mut t) = meta.value {
-                    t.collect_free_vars(free_vars);
-                }
-            }
             Term::Annotated(annot, t) => {
                 for ctr in annot.iter_mut() {
                     ctr.types.collect_free_vars(free_vars)

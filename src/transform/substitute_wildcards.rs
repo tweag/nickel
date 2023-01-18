@@ -9,7 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use crate::{
     label::Label,
     match_sharedterm,
-    term::{LabeledType, MetaValue, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation},
+    term::{LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation},
     typecheck::Wildcards,
     types::{TypeF, Types},
 };
@@ -49,25 +49,6 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 
                 RichTerm::new(Term::Annotated(annot, inner), pos)
             },
-            Term::MetaValue(meta @ MetaValue {
-                types: Some(_),
-                ..
-            }) => {
-                let mut meta = meta;
-                let LabeledType { types, label } = meta.types.take().unwrap();  // Safe, we know there's a type
-
-                // Replace the type annotation and the blame label
-                let types = substitute_wildcards_recursively(types, wildcards);
-                let label_types = substitute_wildcards_recursively(label.types.as_ref().clone(), wildcards);
-
-                let label = Label {
-                    types: Rc::new(label_types),
-                    ..label
-                };
-                meta.types = Some(LabeledType { types, label });
-
-                RichTerm::new(Term::MetaValue(meta), pos)
-            }
         } else rt
     }
 }

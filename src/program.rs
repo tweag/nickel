@@ -317,7 +317,7 @@ impl From<ColorOpt> for ColorChoice {
 mod doc {
     use crate::cache::Cache;
     use crate::error::{Error, IOError};
-    use crate::term::{MetaValue, RichTerm, Term};
+    use crate::term::{RichTerm, Term};
     use codespan::FileId;
     use comrak::arena_tree::NodeEdge;
     use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};

@@ -53,8 +53,8 @@ use crate::{
     identifier::Ident,
     position::TermPos,
     term::{
-        record::{Field, FieldMetadata},
-        LabeledType, MetaValue, RichTerm, StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
+        record::Field,
+        LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
     },
     types::{
         EnumRow, EnumRows, EnumRowsF, EnumRowsIterator, RecordRowF, RecordRows, RecordRowsF,
@@ -947,28 +947,6 @@ fn walk<L: Linearizer>(
         Term::Annotated(annot, rt) => {
             walk_annotated(state, ctxt, lin, linearizer, annot, rt)
         }
-        // An type annotation switches mode to check.
-        Term::MetaValue(meta) => {
-            meta.contracts.iter().chain(meta.types.iter()).try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types))?;
-
-            match meta {
-                MetaValue {
-                types: Some(LabeledType { types: ty2, .. }),
-                value: Some(t),
-                ..
-                } => {
-                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
-                    type_check_(state, ctxt, lin, linearizer, t, instantiated)
-                }
-                MetaValue {value: Some(t), .. } =>  walk(state, ctxt, lin, linearizer, t),
-                // A metavalue without a body nor a type annotation is a record field without definition.
-                // TODO: we might have something to do with the linearizer to clear the current
-                // metadata. It looks like it may be unduly attached to the next field definition,
-                // which is not critical, but still a bug.
-                _ => Ok(()),
-            }
-        }
         Term::Sealed(_, t, _) => walk(state, ctxt, lin, linearizer, t)
    }
 }
@@ -1470,70 +1448,6 @@ fn type_check_<L: Linearizer>(
         Term::Annotated(annot, rt) => {
             type_check_annotated(state, ctxt, lin, linearizer, annot, rt, ty)
         }
-        Term::MetaValue(meta) => {
-            meta.contracts
-                .iter()
-                .chain(meta.types.iter())
-                .try_for_each(|ty| {
-                    walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
-                })?;
-
-            match meta {
-                MetaValue {
-                    types: Some(LabeledType { types: ty2, .. }),
-                    value: Some(t),
-                    ..
-                } => {
-                    let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-                    let instantiated =
-                        instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
-
-                    unify(state, &ctxt, uty2, ty)
-                        .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-                    type_check_(state, ctxt, lin, linearizer, t, instantiated)
-                }
-                // A metavalue without a type annotation but with a contract annotation switches
-                // the typechecker back to walk mode. If there are several contracts, we
-                // arbitrarily chose the first one as the apparent type.
-                MetaValue {
-                    contracts, value, ..
-                } if !contracts.is_empty() => {
-                    let ctr = contracts.get(0).unwrap();
-                    let LabeledType { types: ty2, .. } = ctr;
-
-                    unify(
-                        state,
-                        &ctxt,
-                        ty,
-                        UnifType::from_type(ty2.clone(), &ctxt.term_env),
-                    )
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-                    // if there's an inner value, we still have to walk it, as it may contain
-                    // statically typed blocks.
-                    if let Some(t) = value {
-                        walk(state, ctxt, lin, linearizer, t)
-                    } else {
-                        // TODO: we might have something to with the linearizer to clear the current
-                        // metadata. It looks like it may be unduly attached to the next field definition,
-                        // which is not critical, but still a bug.
-                        Ok(())
-                    }
-                }
-                // A non-empty metavalue without a type or a contract annotation is typechecked in
-                // the same way as its inner value
-                MetaValue { value: Some(t), .. } => {
-                    type_check_(state, ctxt, lin, linearizer, t, ty)
-                }
-                // A metavalue without a body nor a type annotation is a record field without definition.
-                // We infer it to be of type `Dyn` for now.
-                // TODO: we might have something to with the linearizer to clear the current
-                // metadata. It looks like it may be unduly attached to the next field definition,
-                // which is not critical, but still a bug.
-                _ => unify(state, &ctxt, ty, mk_uniftype::dynamic())
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-            }
-        }
         Term::SealingKey(_) => unify(state, &ctxt, ty, mk_uniftype::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         Term::Sealed(_, t, _) => type_check_(state, ctxt, lin, linearizer, t, ty),
@@ -1842,16 +1756,6 @@ pub fn apparent_type(
             .first()
             .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
             .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-        Term::MetaValue(MetaValue {
-            //types,
-            //contracts,
-            //value,
-            ..
-        }) => unimplemented!("code path to be deprecated"),
-        // extract_type_annot(types, contracts)
-        //     .map(ApparentType::Annotated)
-        //     .or_else(|| value.map(|v| apparent_type(v.as_ref(), env, resolver)))
-        //     .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn))),
         Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
         Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
         Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),

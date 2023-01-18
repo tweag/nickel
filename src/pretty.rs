@@ -3,7 +3,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
-    BinaryOp, MergePriority, MetaValue, RichTerm, Term, TypeAnnotation, UnaryOp,
+    BinaryOp, MergePriority, RichTerm, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -76,62 +76,47 @@ where
         metadata: &FieldMetadata,
         with_doc: bool,
     ) -> DocBuilder<'a, Self, A> {
-        if let Some(labeled_ty) = &metadata.annotation.types {
-            self.text(":")
-                .append(self.space())
-                .append(labeled_ty.types.clone().pretty(self))
-                .append(self.line())
-        } else {
-            self.nil()
-        }
-        .append(if with_doc {
-            metadata
-                .doc
-                .clone()
-                .map(|doc| {
-                    self.text("|")
-                        .append(self.space())
-                        .append(self.text("doc"))
-                        .append(self.space())
-                        .append(
-                            self.hardline()
-                                .append(self.intersperse(
-                                    doc.lines().map(|d| self.escaped_string(d)),
-                                    self.hardline().clone(),
-                                ))
-                                .double_quotes(),
-                        )
-                        .append(self.line())
-                })
-                .unwrap_or_else(|| self.nil())
-        } else {
-            self.nil()
-        })
-        .append(self.intersperse(
-            metadata.annotation.contracts.iter().map(|c| {
-                self.text("|")
+        self.annot_part(&metadata.annotation)
+            .append(if with_doc {
+                metadata
+                    .doc
+                    .clone()
+                    .map(|doc| {
+                        self.text("|")
+                            .append(self.space())
+                            .append(self.text("doc"))
+                            .append(self.space())
+                            .append(
+                                self.hardline()
+                                    .append(self.intersperse(
+                                        doc.lines().map(|d| self.escaped_string(d)),
+                                        self.hardline().clone(),
+                                    ))
+                                    .double_quotes(),
+                            )
+                            .append(self.line())
+                    })
+                    .unwrap_or_else(|| self.nil())
+            } else {
+                self.nil()
+            })
+            .append(if metadata.opt {
+                self.line().append(self.text("| optional"))
+            } else {
+                self.nil()
+            })
+            .append(match metadata.priority {
+                crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
+                crate::term::MergePriority::Neutral => self.nil(),
+                crate::term::MergePriority::Numeral(p) => self
+                    .line()
+                    .append(self.text("| priority"))
                     .append(self.space())
-                    .append(c.to_owned().types.pretty(self))
-            }),
-            self.line().clone(),
-        ))
-        .append(if metadata.opt {
-            self.line().append(self.text("| optional"))
-        } else {
-            self.nil()
-        })
-        .append(match metadata.priority {
-            crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
-            crate::term::MergePriority::Neutral => self.nil(),
-            crate::term::MergePriority::Numeral(p) => self
-                .line()
-                .append(self.text("| priority"))
-                .append(self.space())
-                .append(self.as_string(p)),
-            crate::term::MergePriority::Top => self.line().append(self.text("| force")),
-        })
-        .nest(2)
-        .group()
+                    .append(self.as_string(p)),
+                crate::term::MergePriority::Top => self.line().append(self.text("| force")),
+            })
+            .nest(2)
+            .group()
     }
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
@@ -186,20 +171,13 @@ where
         )
     }
 
-    //TODO: do not use MetaData anymore
     fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        self.metadata(
-            &MetaValue {
-                types: annot.types.clone(),
-                contracts: annot.contracts.clone(),
-                ..Default::default()
-            },
-            false,
-        )
+        self.annot_part(annot).nest(2).group()
     }
 
-    fn metadata(&'a self, mv: &MetaValue, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        if let Some(types) = &mv.types {
+    //TODO: do not use MetaData anymore
+    fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
+        if let Some(types) = &annot.types {
             self.text(":")
                 .append(self.space())
                 .append(types.types.clone().pretty(self))
@@ -207,52 +185,14 @@ where
         } else {
             self.nil()
         }
-        .append(if with_doc {
-            mv.doc
-                .as_ref()
-                .map(|doc| {
-                    self.text("|")
-                        .append(self.space())
-                        .append(self.text("doc"))
-                        .append(self.hardline())
-                        .append({
-                            if doc.contains('\n') {
-                                self.multiline_string(doc)
-                            } else {
-                                self.escaped_string(doc).double_quotes()
-                            }
-                        })
-                        .append(self.line())
-                })
-                .unwrap_or_else(|| self.nil())
-        } else {
-            self.nil()
-        })
         .append(self.intersperse(
-            mv.contracts.iter().map(|c| {
+            annot.contracts.iter().map(|c| {
                 self.text("|")
                     .append(self.space())
                     .append(c.to_owned().types.pretty(self))
             }),
-            self.line().clone(),
+            self.line(),
         ))
-        .append(if mv.opt {
-            self.line().append(self.text("| optional"))
-        } else {
-            self.nil()
-        })
-        .append(match mv.priority {
-            crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
-            crate::term::MergePriority::Neutral => self.nil(),
-            crate::term::MergePriority::Numeral(p) => self
-                .line()
-                .append(self.text("| priority"))
-                .append(self.space())
-                .append(self.as_string(p)),
-            crate::term::MergePriority::Top => self.line().append(self.text("| force")),
-        })
-        .nest(2)
-        .group()
     }
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
@@ -503,9 +443,7 @@ where
                 .text("let")
                 .append(allocator.space())
                 .append(allocator.as_string(id))
-                .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.space().append(allocator.metadata(mv, false))
-                } else if let Annotated(ref annot, _) = rt.as_ref() {
+                .append(if let Annotated(ref annot, _) = rt.as_ref() {
                     allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
@@ -514,11 +452,8 @@ where
                 .append(allocator.text("="))
                 .append(allocator.line())
                 .append(
-                    if let MetaValue(crate::term::MetaValue {
-                        value: Some(rt), ..
-                    }) = rt.as_ref()
-                    {
-                        rt
+                    if let Annotated(_, inner) = rt.as_ref() {
+                        inner
                     } else {
                         rt
                     }
@@ -551,9 +486,7 @@ where
                         .unwrap_or_else(|| allocator.nil()),
                 )
                 .append(dst.pretty(allocator))
-                .append(if let MetaValue(ref mv) = rt.as_ref() {
-                    allocator.space().append(allocator.metadata(mv, false))
-                } else if let Annotated(ref annot, _) = rt.as_ref() {
+                .append(if let Annotated(ref annot, _) = rt.as_ref() {
                     allocator.space().append(allocator.annot(annot))
                 } else {
                     allocator.nil()
@@ -562,11 +495,8 @@ where
                 .append(allocator.text("="))
                 .append(allocator.line())
                 .append(
-                    if let MetaValue(crate::term::MetaValue {
-                        value: Some(rt), ..
-                    }) = rt.as_ref()
-                    {
-                        rt
+                    if let Annotated(_, inner) = rt.as_ref() {
+                        inner
                     } else {
                         rt
                     }
@@ -726,14 +656,10 @@ where
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
             // TODO: do not use metavalue anymore
-            Annotated(annot, rt) => crate::term::MetaValue {
-                types: annot.types.clone(),
-                contracts: annot.contracts.clone(),
-                value: Some(rt.clone()),
-                ..Default::default()
-            }
-            .pretty(allocator),
-            MetaValue(mv) => mv.to_owned().pretty(allocator),
+            Annotated(annot, rt) => allocator
+                .atom(rt)
+                .append(allocator.space())
+                .append(allocator.annot(&annot)),
             Import(f) => allocator
                 .text("import")
                 .append(allocator.space())
@@ -742,22 +668,6 @@ where
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }
-    }
-}
-
-impl<'a, D, A> Pretty<'a, D, A> for MetaValue
-where
-    D: NickelAllocatorExt<'a, A>,
-    D::Doc: Clone,
-    A: Clone + 'a,
-{
-    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        if let Some(value) = &self.value {
-            allocator.atom(value).append(allocator.space())
-        } else {
-            allocator.nil()
-        }
-        .append(allocator.metadata(&self, false))
     }
 }
 

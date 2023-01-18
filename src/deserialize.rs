@@ -11,7 +11,7 @@ use serde::de::{
 use crate::identifier::Ident;
 use crate::term::array::{self, Array};
 use crate::term::record::Field;
-use crate::term::{MetaValue, RichTerm, Term};
+use crate::term::{RichTerm, Term};
 
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
@@ -52,7 +52,7 @@ macro_rules! deserialize_number_round {
 pub enum RustDeserializationError {
     InvalidType { expected: String, occurred: String },
     MissingValue,
-    EmptyMetaValue,
+    EmptyRecordField,
     UnimplementedType { occurred: String },
     InvalidRecordLength(usize),
     InvalidArrayLength(usize),
@@ -78,7 +78,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             }),
             Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
-            Term::MetaValue(_) => visitor.visit_unit(),
+            Term::Annotated(..) => visitor.visit_unit(),
             other => Err(RustDeserializationError::UnimplementedType {
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
             }),
@@ -378,12 +378,8 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
 fn unwrap_term(mut rich_term: RichTerm) -> Result<Term, RustDeserializationError> {
     loop {
         rich_term = match Term::from(rich_term) {
-            Term::MetaValue(MetaValue { value, .. }) => {
-                if let Some(rich_term) = value {
-                    rich_term
-                } else {
-                    break Err(RustDeserializationError::EmptyMetaValue);
-                }
+            Term::Annotated(_, value) => {
+                value
             }
             other => break Ok(other),
         }
@@ -449,7 +445,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
             // implementation of RFC005, which is to always fail on a field without definition.
             //
             // This should be relaxed in the future.
-            Some(Field { value: None, .. }) => Err(RustDeserializationError::EmptyMetaValue),
+            Some(Field { value: None, .. }) => Err(RustDeserializationError::EmptyRecordField),
             _ => Err(RustDeserializationError::MissingValue),
         }
     }
@@ -574,7 +570,7 @@ impl std::fmt::Display for RustDeserializationError {
                 ref occurred,
             } => write!(f, "invalid type: {occurred}, expected: {expected}"),
             RustDeserializationError::MissingValue => write!(f, "missing value"),
-            RustDeserializationError::EmptyMetaValue => write!(f, "empty Metavalue"),
+            RustDeserializationError::EmptyRecordField => write!(f, "empty Metavalue"),
             RustDeserializationError::InvalidRecordLength(len) => {
                 write!(f, "invalid record length, expected {len}")
             }

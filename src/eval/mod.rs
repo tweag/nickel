@@ -100,8 +100,7 @@ use crate::{
         array::ArrayAttrs,
         make as mk_term,
         record::{Field, RecordData},
-        BinaryOp, BindingType, LetAttrs, MetaValue, PendingContract, RichTerm, SharedTerm,
-        StrChunk, Term, UnaryOp,
+        BinaryOp, BindingType, LetAttrs, PendingContract, RichTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -246,18 +245,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ) -> Result<RichTerm, EvalError> {
         self.eval_mode = EvalMode::StopAtMeta;
         let (mut rt, env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
-
-        if let Term::MetaValue(ref mut meta) = *SharedTerm::make_mut(&mut rt.term) {
-            if let Some(t) = meta.value.take() {
-                self.reset();
-                let (evaluated, env) = self.eval_closure(Closure { body: t, env }, initial_env)?;
-                let substituted = subst(&self.cache, evaluated, initial_env, &env);
-
-                meta.value = Some(substituted);
-            }
-        };
-
-        Ok(rt)
+        todo!()
     }
 
     /// The main loop of evaluation.
@@ -572,45 +560,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 // Unwrapping of enriched terms
-                Term::MetaValue(meta) if self.eval_mode == EvalMode::UnwrapMeta => {
-                    if meta.value.is_some() {
-                        /* Since we are forcing a metavalue, we are morally evaluating `force t` rather
-                         * than `t` itself. Updating a thunk after having performed this forcing may
-                         * alter the semantics of the program in an unexpected way (see issue
-                         * https://github.com/tweag/nickel/issues/123): we update potential thunks now
-                         * so that their content remains a meta value.
-                         */
-                        let update_closure = Closure {
-                            body: RichTerm {
-                                term: shared_term.clone(),
-                                pos,
-                            },
-                            env,
-                        };
-                        update_at_indices(&mut self.cache, &mut self.stack, &update_closure);
-
-                        let Closure {
-                            body: RichTerm { term, .. },
-                            env,
-                        } = update_closure;
-
-                        match term.into_owned() {
-                            Term::MetaValue(MetaValue {
-                                value: Some(inner), ..
-                            }) => Closure { body: inner, env },
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        let label = meta
-                            .contracts
-                            .last()
-                            .or(meta.types.as_ref())
-                            .map(|ctr| ctr.label.clone());
-                        // return Err(EvalError::MissingFieldDef(label, self.call_stack.clone()));
-                        // TODO: get rid of metavalues
-                        panic!("missing field definition");
-                    }
-                }
                 Term::ResolvedImport(id) => {
                     if let Some(t) = self.import_resolver.get(*id) {
                         Closure::atomic_closure(t)
@@ -1013,117 +962,7 @@ pub fn subst<C: Cache>(
             // limit the work of `subst`.
             RichTerm::new(Term::Annotated(annot, subst(cache, t, initial_env, env)), pos)
         }
-        Term::MetaValue(meta) => {
-            // Currently, there is no interest in replacing variables inside contracts, thus we
-            // limit the work of `subst`. If this is needed at some point, just uncomment the
-            // following code.
-
-            // let contracts: Vec<_> = meta
-            //     .contracts
-            //     .into_iter()
-            //     .map(|ctr| {
-            //         let types = match ctr.types {
-            //             Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
-            //                 t,
-            //                 initial_env,
-            //                 env,
-            //                 Cow::Borrowed(bound.as_ref()),
-            //             ))),
-            //             ty => ty,
-            //         };
-            //
-            //         Contract { types, ..ctr }
-            //     })
-            //     .collect();
-            //
-            // let types = meta.types.map(|ctr| {
-            //     let types = match ctr.types {
-            //         Types(AbsType::Flat(t)) => Types(AbsType::Flat(subst(
-            //             t,
-            //             initial_env,
-            //             env,
-            //             Cow::Borrowed(bound.as_ref()),
-            //         ))),
-            //         ty => ty,
-            //     };
-            //
-            //     Contract { types, ..ctr }
-            // });
-
-            let value = meta.value.map(|t| subst(cache, t, initial_env, env));
-
-            let meta = MetaValue {
-                doc: meta.doc,
-                value,
-                ..meta
-            };
-
-            RichTerm::new(Term::MetaValue(meta), pos)
-        }
     }
-}
-
-/// Checks if the given term is a chain of nested and/or merged metavalues such that:
-///
-/// 1. At least one metavalue has the `optional` flag set
-/// 2. The final value is undefined
-///
-/// This function is used to determine if a record field is an optional field without definition,
-/// and should thus be ignored by record operations.
-///
-/// Beware: correctly checking that a value is an empty optional can incur arbitrary computations
-/// in principle, but this function is supposed to be a quick peek. It's a terminating
-/// approximation and hence is necessarily incomplete. In practice, this function is able to
-/// traverse merge expressions and follow variables links, but within a limit (in the number of
-/// variables followed).
-pub fn is_empty_optional<C: Cache>(cache: &C, rt: &RichTerm, env: &Environment) -> bool {
-    fn is_empty_optional_aux<C: Cache>(
-        cache: &C,
-        rt: &RichTerm,
-        env: &Environment,
-        is_opt: bool,
-        gas: &mut u8,
-    ) -> bool {
-        match rt.as_ref() {
-            Term::MetaValue(meta) => {
-                let is_opt = is_opt || meta.opt;
-
-                if let Some(ref next) = meta.value {
-                    is_empty_optional_aux(cache, next, env, is_opt, gas)
-                } else {
-                    is_opt
-                }
-            }
-            Term::Op2(BinaryOp::Merge(), ref t1, ref t2) => {
-                // The aggregated value for is_opt must follow the same logic as in the
-                // implementation of merge: a field is optional if both operands define it as
-                // optional.
-                //
-                // Thus the resulting value is an empty optional if either:
-                // - both branch are empty optionals
-                // - a wrapping metavalue is optional (is_opt is true at this point) and both
-                // branch are empty.
-                is_empty_optional_aux(cache, t1, env, is_opt, gas)
-                    && is_empty_optional_aux(cache, t2, env, is_opt, gas)
-            }
-            Term::Var(id) if *gas > 0 => {
-                if let Some(index) = env.get(id) {
-                    cache.get_then(index.clone(), |clos| {
-                        *gas -= 1;
-                        is_empty_optional_aux(cache, &clos.body, &clos.env, is_opt, gas)
-                    })
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    // The total amount of gas is rather abritrary, but in any case, it ought to stay low: remember
-    // that is_empty_optional may be called on each field of a record when evaluatinog some record
-    // operations.
-    is_empty_optional_aux(cache, rt, env, false, &mut 8)
 }
 
 #[cfg(test)]
