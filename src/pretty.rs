@@ -622,9 +622,6 @@ where
                 .line()
                 .append(allocator.fields(&record_data.fields, true))
                 .append(allocator.dyn_fields(dyn_fields, true))
-                // TODO: !todo() introduced by PR #XXX. The previous version of this code printing
-                // the dynamic fields was wrong and isn't currently tested. We delay fixing this to
-                // a later PR or commit.
                 .append(if record_data.attrs.open {
                     allocator.line().append(allocator.text(".."))
                 } else {
