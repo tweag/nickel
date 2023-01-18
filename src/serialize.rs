@@ -3,7 +3,7 @@ use crate::{
     error::SerializationError,
     eval::{
         self,
-        cache::{CBNCache, Cache},
+        cache::{IncCache, Cache},
         is_empty_optional,
     },
     term::{
@@ -113,7 +113,7 @@ where
         .iter()
         // Filtering out optional fields without a definition. All variable should have been
         // substituted at this point, so we pass an empty environment.
-        .filter(|(_, t)| !is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()))
+        .filter(|(_, t)| !is_empty_optional(&IncCache::new(), t, &eval::Environment::new()))
         .collect();
     entries.sort_by_key(|(k, _)| *k);
 
@@ -216,7 +216,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             }) => validate(format, t),
             // Optional field without definition are accepted and ignored during serialization.
             // TODO: This shouldn't spin a new cache
-            _ if is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()) => Ok(()),
+            _ if is_empty_optional(&IncCache::new(), t, &eval::Environment::new()) => Ok(()),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
     }
@@ -284,7 +284,7 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
-    type EC = CBNCache;
+    type EC = IncCache;
 
     fn mk_program(s: &str) -> Result<Program<EC>, Error> {
         let src = Cursor::new(s);

@@ -105,7 +105,7 @@ use crate::{
 pub mod cache;
 pub mod callstack;
 pub mod fixpoint;
-pub mod lazy;
+//pub mod lazy;
 pub mod merge;
 pub mod operation;
 pub mod stack;

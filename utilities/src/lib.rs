@@ -5,7 +5,7 @@ use nickel_lang::{
     cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
     eval::{
-        cache::{CBNCache, Cache as EvalCache},
+        cache::{IncCache, Cache as EvalCache},
         VirtualMachine,
     },
     parser::{grammar, lexer},
@@ -16,7 +16,7 @@ use nickel_lang::{
 
 use std::{io::Cursor, path::PathBuf};
 
-pub type EC = CBNCache;
+pub type EC = IncCache;
 pub type TestProgram = Program<EC>;
 
 /// Create a program from a Nickel expression provided as a string.

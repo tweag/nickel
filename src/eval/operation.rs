@@ -3221,10 +3221,10 @@ impl RecordDataExt for RecordData {
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
-    use crate::eval::cache::CBNCache;
+    use crate::eval::cache::IncCache;
     use crate::eval::Environment;
 
-    type EC = CBNCache;
+    type EC = IncCache;
 
     #[test]
     fn ite_operation() {

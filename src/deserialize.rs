@@ -597,7 +597,7 @@ mod tests {
     use nickel_lang_utilities::TestProgram;
     use serde::Deserialize;
 
-    use crate::{eval::cache::CBNCache, program::Program};
+    use crate::{eval::cache::IncCache, program::Program};
 
     use super::RustDeserializationError;
 
@@ -674,7 +674,7 @@ mod tests {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A;
 
-        let mut p = Program::<CBNCache>::new_from_source(
+        let mut p = Program::<IncCache>::new_from_source(
             Cursor::new(br#"fun a b => a + b"#.to_vec()),
             "source",
         )

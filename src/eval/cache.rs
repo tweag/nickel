@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 
 use super::{
-    lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
+    //lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
     Closure, Environment, IdentKind,
 };
 use crate::{
     identifier::Ident,
     term::{record::FieldDeps, BindingType, RichTerm},
 };
+
+/// A black-holed thunk was accessed, which would lead to infinite recursion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlackholedError;
 
 pub trait Cache: Clone {
     type UpdateIndex; // Temporary: we won't really need that once an alternative caching mechanism gets implemented
@@ -18,7 +22,7 @@ pub trait Cache: Clone {
         idx: &mut CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError>;
     fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex;
-    fn patch<F: FnOnce(&mut Closure)>(&mut self, idx: CacheIndex, f: F);
+    fn patch<F: Fn(&mut Closure)>(&mut self, idx: CacheIndex, f: F);
     fn get_then<T, F: FnOnce(&Closure) -> T>(&self, idx: CacheIndex, f: F) -> T;
     fn update(&mut self, clos: Closure, idx: Self::UpdateIndex);
     fn new() -> Self;
@@ -35,7 +39,7 @@ pub trait Cache: Clone {
     ) -> RichTerm;
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex;
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps>;
-    fn make_update_index(&self, idx: &mut CacheIndex)
+    fn make_update_index(&mut self, idx: &mut CacheIndex)
         -> Result<Self::UpdateIndex, BlackholedError>;
 }
 
@@ -141,7 +145,7 @@ impl Cache for CBNCache {
 }
 */
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum IncNodeState {
     #[default]
     Suspended,
@@ -159,7 +163,13 @@ pub struct IncNode {
 
 impl IncNode {
     fn new(clos: Closure, kind: IdentKind, bty: BindingType) -> Self {
-        IncNode { orig: clos, cached: None, kind, bty, state: IncNodeState::default() }
+        IncNode {
+            orig: clos,
+            cached: None,
+            kind,
+            bty,
+            state: IncNodeState::default(),
+        }
     }
 }
 
@@ -183,19 +193,22 @@ impl Cache for IncCache {
     type UpdateIndex = CacheIndex;
 
     fn new() -> Self {
-        IncCache { store: HashMap::new(), next: 0 }
+        IncCache {
+            store: HashMap::new(),
+            next: 0,
+        }
     }
 
     fn get(&self, idx: CacheIndex) -> Closure {
         let node = self.store.get(&idx).unwrap();
-        
-        node.cached.unwrap_or(node.orig)
+
+        node.cached.clone().unwrap_or(node.orig.clone())
     }
 
     fn get_update_index(
-            &mut self,
-            idx: &mut CacheIndex,
-        ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
+        &mut self,
+        idx: &mut CacheIndex,
+    ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
         let node = self.store.get(idx).unwrap();
 
         if let IncNodeState::Blackholed = node.state {
@@ -222,11 +235,9 @@ impl Cache for IncCache {
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
         let node = self.store.get(idx).unwrap();
 
-        let new_node = match node.bty {
-            BindingType::Normal => {
-                node.clone()
-            }
-            BindingType::Revertible(deps) => {
+        let new_node = match node.bty.clone() {
+            BindingType::Normal => node.clone(),
+            BindingType::Revertible(_) => {
                 IncNode::new(node.orig.clone(), node.kind, node.bty.clone())
             }
         };
@@ -239,9 +250,96 @@ impl Cache for IncCache {
     }
 
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
-        match self.store.get(idx).unwrap().bty {
+        let node = self.store.get(idx).unwrap();
+        match node.bty.clone() {
             BindingType::Normal => None,
             BindingType::Revertible(deps) => Some(deps),
         }
+    }
+
+    fn get_then<T, F: FnOnce(&Closure) -> T>(&self, idx: CacheIndex, f: F) -> T {
+        f(&self.get(idx))
+    }
+
+    fn patch<F: Fn(&mut Closure)>(&mut self, idx: CacheIndex, f: F) {
+        let node = self.store.get_mut(&idx).unwrap();
+
+        f(&mut node.orig);
+        node.cached.as_mut().map(|mut clos| f(&mut clos));
+    }
+
+    fn make_update_index(
+        &mut self,
+        idx: &mut CacheIndex,
+    ) -> Result<Self::UpdateIndex, BlackholedError> {
+        let node = self.store.get_mut(idx).unwrap();
+
+        if node.state == IncNodeState::Blackholed {
+            return Err(BlackholedError);
+        } else {
+            node.state = IncNodeState::Blackholed;
+
+            Ok(*idx)
+        }
+    }
+
+    fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
+        let node = self.store.get_mut(idx).unwrap();
+
+        node.state = IncNodeState::default();
+    }
+
+    fn map_at_index<F: FnMut(&Closure) -> Closure>(
+        &mut self,
+        idx: &CacheIndex,
+        mut f: F,
+    ) -> CacheIndex {
+        let node = self.store.get(idx).unwrap();
+
+        let new_node = IncNode {
+            orig: f(&node.orig.clone()),
+            cached: node.cached.clone().map(|clos| f(&clos)),
+            kind: node.kind,
+            bty: node.bty.clone(),
+            state: node.state,
+        };
+
+        self.add_node(new_node)
+    }
+
+    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
+        let node = self.store.get_mut(idx).unwrap();
+
+        assert!(
+            node.cached.is_none(),
+            "tried to build the cached value, but was already set"
+        );
+
+        let mut new_cached = Closure::clone(&node.orig);
+
+        match node.bty {
+            BindingType::Normal => (),
+            BindingType::Revertible(ref deps) => {
+                match deps {
+                    FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
+                    FieldDeps::Known(deps) if deps.is_empty() => (),
+                    FieldDeps::Known(deps) => new_cached
+                        .env
+                        .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+                }
+            }
+        }
+
+        node.cached = Some(new_cached);
+    }
+
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+            &mut self,
+            idx: CacheIndex,
+            env: &mut Environment,
+            fields: I,
+        ) -> RichTerm {
+        let node = self.store.get(&idx).unwrap();
+        node.orig.body.clone()
     }
 }

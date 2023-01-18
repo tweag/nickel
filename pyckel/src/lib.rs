@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use nickel_lang::{
     error::{Error, SerializationError},
-    eval::cache::CBNCache,
+    eval::cache::IncCache,
     program::Program,
     serialize,
 };
@@ -48,7 +48,7 @@ impl std::convert::From<NickelSerializationError> for PyErr {
 /// Evaluate from a Python str of a Nickel expression to a Python str of the resulting JSON.
 #[pyfunction]
 pub fn run(s: String) -> PyResult<String> {
-    let mut program: Program<CBNCache> =
+    let mut program: Program<IncCache> =
         Program::new_from_source(Cursor::new(s.to_string()), "python")?;
 
     let term = program.eval_full().map_err(NickelError)?;

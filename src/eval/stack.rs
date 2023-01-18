@@ -352,11 +352,11 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{cache::CBNCache, IdentKind};
+    use crate::eval::{cache::IncCache, IdentKind};
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
-    type EC = CBNCache;
+    type EC = IncCache;
 
     impl Stack<EC> {
         /// Count the number of thunks at the top of the stack.
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn thunk_blackhole() {
-        let mut eval_cache = CBNCache::new();
+        let mut eval_cache = IncCache::new();
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         let idx_upd = eval_cache.make_update_index(&mut idx);
         assert_matches!(idx_upd, Ok(..));
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn pushing_and_poping_strictness_markers() {
         let mut s = Stack::new();
-        let cache = CBNCache::new();
+        let cache = IncCache::new();
         assert_eq!(0, s.count_args());
 
         s.push_strictness(EvalMode::UnwrapMeta);
