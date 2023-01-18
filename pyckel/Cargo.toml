@@ -13,6 +13,7 @@ edition = "2018"
 [dependencies]
 nickel-lang = {default-features = false, path = "../", version = "0.3.1" }
 pyo3 = { version = "0.17.3", features = ["extension-module"] }
+codespan-reporting = "0.11"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

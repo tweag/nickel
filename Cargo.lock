@@ -1705,6 +1705,7 @@ dependencies = [
 name = "pyckel"
 version = "0.3.1"
 dependencies = [
+ "codespan-reporting",
  "nickel-lang",
  "pyo3",
 ]
