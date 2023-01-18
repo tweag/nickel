@@ -29,9 +29,9 @@ use crate::parser::lexer::Lexer;
 use crate::term::{RichTerm, Term};
 use crate::{eval, parser};
 use codespan::FileId;
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
-use std::io::{self, Read};
+use std::io::{self, Cursor, Read};
 use std::result::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -161,6 +161,28 @@ impl<EC: EvalCache> Program<EC> {
         E: ToDiagnostic<FileId>,
     {
         report(self.vm.import_resolver_mut(), error, self.color_opt)
+    }
+
+    /// Build an error report as a string and return it.
+    pub fn report_as_str<E>(&mut self, error: E) -> String
+    where
+        E: ToDiagnostic<FileId>,
+    {
+        let cache = self.vm.import_resolver_mut();
+        let contracts_id = cache.id_of("<stdlib/contract.ncl>");
+        let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
+        let mut buffer = Ansi::new(Cursor::new(Vec::new()));
+        let config = codespan_reporting::term::Config::default();
+        // write to `buffer`
+        diagnostics
+            .iter()
+            .try_for_each(|d| {
+                codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
+            })
+            // safe because writing to a cursor in memory
+            .unwrap();
+        // unwrap(): emit() should only print valid utf8 to the the buffer
+        String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
     /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`

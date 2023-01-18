@@ -1,8 +1,8 @@
 use std::io::Cursor;
 
 use nickel_lang::{
-    error::{Error, SerializationError},
-    eval::cache::CBNCache,
+    error::Error,
+    eval::cache::{CBNCache, Cache},
     program::Program,
     serialize,
 };
@@ -11,38 +11,9 @@ use pyo3::{create_exception, exceptions::PyException, prelude::*};
 
 create_exception!(pyckel, NickelException, PyException);
 
-// see https://pyo3.rs/v0.17.3/function/error_handling.html#foreign-rust-error-types
-struct NickelError(Error);
-struct NickelSerializationError(SerializationError);
-
-impl From<Error> for NickelError {
-    fn from(value: Error) -> Self {
-        Self(value)
-    }
-}
-
-impl std::convert::From<NickelError> for PyErr {
-    fn from(err: NickelError) -> PyErr {
-        match err {
-            // TODO better exceptions
-            NickelError(error) => NickelException::new_err(format!("{error:?}")),
-        }
-    }
-}
-
-impl From<SerializationError> for NickelSerializationError {
-    fn from(value: SerializationError) -> Self {
-        Self(value)
-    }
-}
-
-impl std::convert::From<NickelSerializationError> for PyErr {
-    fn from(err: NickelSerializationError) -> PyErr {
-        match err {
-            // TODO better exceptions
-            NickelSerializationError(error) => NickelException::new_err(format!("{error:?}")),
-        }
-    }
+/// Turn an internal Nickel error into a PyErr with a fancy diagnostic message
+fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program<EC>) -> PyErr {
+    NickelException::new_err(program.report_as_str(error.into()))
 }
 
 /// Evaluate from a Python str of a Nickel expression to a Python str of the resulting JSON.
@@ -51,12 +22,15 @@ pub fn run(s: String) -> PyResult<String> {
     let mut program: Program<CBNCache> =
         Program::new_from_source(Cursor::new(s.to_string()), "python")?;
 
-    let term = program.eval_full().map_err(NickelError)?;
+    let term = program
+        .eval_full()
+        .map_err(|error| error_to_exception(error, &mut program))?;
 
-    serialize::validate(serialize::ExportFormat::Json, &term).map_err(NickelSerializationError)?;
+    serialize::validate(serialize::ExportFormat::Json, &term)
+        .map_err(|error| error_to_exception(error, &mut program))?;
 
     let json_string = serialize::to_string(serialize::ExportFormat::Json, &term)
-        .map_err(NickelSerializationError)?;
+        .map_err(|error| error_to_exception(error, &mut program))?;
 
     Ok(json_string)
 }
