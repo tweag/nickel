@@ -261,7 +261,7 @@ impl UniRecord {
                                     }) else {
                                         return Err(InvalidRecordTypeError(rt.pos))
                                     };
-                                let id = Ident::new_with_pos(id, rt.pos);
+                                let id = Ident::new_with_pos(id, expr.pos);
                                 term_to_record_rows(id, rt, acc)
                             }
                         }
