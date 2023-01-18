@@ -163,29 +163,25 @@ impl<EC: EvalCache> Program<EC> {
         report(self.vm.import_resolver_mut(), error, self.color_opt)
     }
 
-    /// Wrapper for [`report`].
+    /// Build an error report as a string and return it.
     pub fn report_as_str<E>(&mut self, error: E) -> String
     where
         E: ToDiagnostic<FileId>,
     {
-        let contracts_id = self.vm.import_resolver().id_of("<stdlib/contract.ncl>");
-        let diagnostics =
-            error.to_diagnostic(self.vm.import_resolver_mut().files_mut(), contracts_id);
+        let cache = self.vm.import_resolver_mut();
+        let contracts_id = cache.id_of("<stdlib/contract.ncl>");
+        let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
         // write to `buffer`
         diagnostics
             .iter()
             .try_for_each(|d| {
-                codespan_reporting::term::emit(
-                    &mut buffer,
-                    &config,
-                    self.vm.import_resolver_mut().files_mut(),
-                    d,
-                )
+                codespan_reporting::term::emit(&mut buffer, &config, cache.files_mut(), d)
             })
             // safe because writing to a cursor in memory
             .unwrap();
+        // unwrap(): emit() should only print valid utf8 to the the buffer
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
