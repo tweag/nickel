@@ -6,10 +6,7 @@ use utils::{build_record, elaborate_field_path, FieldPath, FieldPathElem};
 use crate::{
     environment::Environment,
     position::{RawSpan, TermPos},
-    term::{
-        record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, StrChunk,
-        Term,
-    },
+    term::{record::RecordAttrs, Contract, MergePriority, MetaValue, RichTerm, SharedTerm, Term},
     types::{
         EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
         UnboundTypeVariableError, VarKind,
@@ -246,21 +243,9 @@ impl UniRecord {
                         match elem {
                             FieldPathElem::Ident(id) => term_to_record_rows(id, rt, acc),
                             FieldPathElem::Expr(expr) => {
-                                let Term::StrChunks(chunks) = expr.term.as_ref() else {
+                                let Some(id) = expr.term.as_ref().try_str_chunk_as_static_str() else {
                                         return Err(InvalidRecordTypeError(rt.pos))
-                                    };
-                                let Some(id) =
-                                    chunks.iter().fold(Some(String::new()), |acc, next| {
-                                        match (acc, next) {
-                                            (Some(mut acc), StrChunk::Literal(lit)) => {
-                                                acc.push_str(lit);
-                                                Some(acc)
-                                            }
-                                            _ => None,
-                                        }
-                                    }) else {
-                                        return Err(InvalidRecordTypeError(rt.pos))
-                                    };
+                                };
                                 let id = Ident::new_with_pos(id, expr.pos);
                                 term_to_record_rows(id, rt, acc)
                             }
