@@ -339,35 +339,6 @@ fn contract_eq_bounded<E: TermEnvironment>(
 
             value_eq && ty_eq
         }
-        // We must compare the inner values as well as the corresponding contracts or type
-        // annotations. Documentation and merge priority shouldn't impact the result on the
-        // other hand.
-        (MetaValue(m1), MetaValue(m2)) => {
-            let value_eq = match (&m1.value, &m2.value) {
-                (None, None) => true,
-                (Some(v1), Some(v2)) => contract_eq_bounded(state, v1, env1, v2, env2),
-                _ => false,
-            };
-
-            // We use the same logic as in the typechecker: the type associated to an annotated
-            // value is either the type annotation, or the first contract annotation.
-            let ty1 = m1.types.as_ref().or_else(|| m1.contracts.first());
-            let ty2 = m2.types.as_ref().or_else(|| m2.contracts.first());
-
-            let ty_eq = match (ty1, ty2) {
-                (None, None) => true,
-                (Some(ctr1), Some(ctr2)) => type_eq_bounded(
-                    state,
-                    &GenericUnifType::from_type(ctr1.types.clone(), env1), // &TypeWrapper::from(ctr1.types.clone()),
-                    env1,
-                    &GenericUnifType::from_type(ctr2.types.clone(), env2), // &TypeWrapper::from(ctr1.types.clone()),
-                    env2,
-                ),
-                _ => false,
-            };
-
-            value_eq && ty_eq
-        }
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
             id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
         }

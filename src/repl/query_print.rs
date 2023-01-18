@@ -1,6 +1,6 @@
 //! Rendering of the results of a metadata query.
 use crate::identifier::Ident;
-use crate::term::{MergePriority, MetaValue, Term};
+use crate::term::{MergePriority, Term};
 use std::{io, io::Write};
 
 /// A query printer. The implementation may differ depending on the activation of markdown

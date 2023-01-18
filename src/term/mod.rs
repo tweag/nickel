@@ -163,10 +163,6 @@ pub enum Term {
     #[serde(skip)]
     Sealed(SealingKey, RichTerm, Label),
 
-    #[serde(serialize_with = "crate::serialize::serialize_meta_value")]
-    #[serde(skip_deserializing)]
-    MetaValue(MetaValue),
-
     /// A term with a type and/or contract annotation.
     #[serde(serialize_with = "crate::serialize::serialize_annotated_value")]
     #[serde(skip_deserializing)]
@@ -211,12 +207,6 @@ pub enum Term {
 }
 
 pub type SealingKey = i32;
-
-impl From<MetaValue> for Term {
-    fn from(m: MetaValue) -> Self {
-        Term::MetaValue(m)
-    }
-}
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible thunks at evaluation, which are devices used for the implementation of recursive
@@ -429,95 +419,6 @@ impl Traverse<RichTerm> for LabeledType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
-pub struct MetaValue {
-    pub doc: Option<String>,
-    pub types: Option<LabeledType>,
-    pub contracts: Vec<LabeledType>,
-    /// If the field is optional.
-    pub opt: bool,
-    pub priority: MergePriority,
-    pub value: Option<RichTerm>,
-}
-
-impl From<RichTerm> for MetaValue {
-    fn from(rt: RichTerm) -> Self {
-        MetaValue {
-            value: Some(rt),
-            ..Default::default()
-        }
-    }
-}
-
-impl MetaValue {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn contracts_to_string(&self) -> Option<String> {
-        if !self.contracts.is_empty() {
-            Some(
-                self.contracts
-                    .iter()
-                    .map(|contract| format!("{}", contract.label.types,))
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )
-        } else {
-            None
-        }
-    }
-
-    /// Flatten two nested metavalues into one, combining their metadata. If data that can't be
-    /// combined (typically, the documentation or the type annotation) are set by both metavalues,
-    /// outer's one are kept.
-    ///
-    /// Note that no environment management such as closurization takes place, because this
-    /// function is expected to be used on the AST before the evaluation (in the parser or during
-    /// program transformation).
-    ///
-    /// # Preconditions
-    ///
-    /// - `outer.value` is assumed to be `inner`. While `flatten` may still work fine if this
-    ///   condition is not fulfilled, the value of the final metavalue is set to be `inner`'s one,
-    ///   and `outer`'s one is dropped.
-    pub fn flatten(mut outer: MetaValue, mut inner: MetaValue) -> MetaValue {
-        // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
-        // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
-        // so on).
-        // Keep the inner value.
-
-        if outer.types.is_some() {
-            // If both have type annotations, the result will have the outer one as a type annotation.
-            // However we still need to enforce the corresponding contract to preserve the operational
-            // semantics. Thus, the inner type annotation is derelicted to a contract.
-            if let Some(ctr) = inner.types.take() {
-                outer.contracts.push(ctr)
-            }
-        }
-
-        outer.contracts.extend(inner.contracts.into_iter());
-
-        let priority = match (outer.priority, inner.priority) {
-            // Neutral corresponds to the case where no priority was specified. In that case, the
-            // other priority takes precedence.
-            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
-            // Otherwise, we keep the maximum of both priorities, as we would do when merging
-            // values.
-            (p1, p2) => std::cmp::max(p1, p2),
-        };
-
-        MetaValue {
-            doc: outer.doc.or(inner.doc),
-            types: outer.types.or(inner.types),
-            contracts: outer.contracts,
-            opt: outer.opt || inner.opt,
-            priority,
-            value: inner.value,
-        }
-    }
-}
-
 /// A type and/or contract annotation.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TypeAnnotation {
@@ -538,6 +439,18 @@ impl TypeAnnotation {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
         self.types.iter_mut().chain(self.contracts.iter_mut())
+    }
+
+    /// Return a string representation of the contracts (without the static type annotation) as a
+    /// comma-separated list.
+    pub fn contracts_to_string(&self) -> Option<String> {
+        (!self.contracts.is_empty()).then(|| {
+            self.contracts
+                .iter()
+                .map(|contract| format!("{}", contract.label.types,))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
     }
 }
 
@@ -620,16 +533,6 @@ impl Term {
             | Sealed(_, ref mut t, _) => {
                 func(t);
             }
-            MetaValue(ref mut meta) => {
-                meta.contracts
-                    .iter_mut()
-                    .for_each(|LabeledType { types, .. }| {
-                        if let TypeF::Flat(ref mut rt) = types.0 {
-                            func(rt)
-                        }
-                    });
-                meta.value.iter_mut().for_each(func);
-            }
             Annotated(ref mut annot, ref mut t) => {
                 annot.iter_mut().for_each(|LabeledType { types, .. }| {
                     if let TypeF::Flat(ref mut rt) = types.0 {
@@ -677,7 +580,6 @@ impl Term {
             Term::Array(..) => Some("Array"),
             Term::SealingKey(_) => Some("SealingKey"),
             Term::Sealed(..) => Some("Sealed"),
-            Term::MetaValue(_) => Some("Metavalue"),
             Term::Annotated(..) => Some("Annotated"),
             Term::Let(..)
             | Term::LetPattern(..)
@@ -731,29 +633,6 @@ impl Term {
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
             Term::Sealed(..) => String::from("<sealed>"),
-            Term::MetaValue(ref meta) => {
-                let mut content = String::new();
-
-                if meta.doc.is_some() {
-                    content.push_str("doc,");
-                }
-                if !meta.contracts.is_empty() {
-                    content.push_str("contract,");
-                }
-
-                let value_label = if meta.priority == MergePriority::Bottom {
-                    "default"
-                } else {
-                    "value"
-                };
-                let value = if let Some(t) = &meta.value {
-                    t.as_ref().shallow_repr()
-                } else {
-                    String::from("none")
-                };
-
-                format!("<{}{}={}>", content, value_label, value)
-            }
             Term::Annotated(annot, t) => t.as_ref().shallow_repr(),
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
@@ -827,7 +706,6 @@ impl Term {
             | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(_)
             | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -838,9 +716,9 @@ impl Term {
         }
     }
 
-    /// Determine if a term is a metavalue.
-    pub fn is_metavalue(&self) -> bool {
-        matches!(self, Term::MetaValue(..))
+    /// Determine if a term is annotated.
+    pub fn is_annotated(&self) -> bool {
+        matches!(self, Term::Annotated(..))
     }
 
     /// Determine if a term is a constant.
@@ -869,7 +747,6 @@ impl Term {
             | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(_)
             | Term::Annotated(..)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -915,7 +792,6 @@ impl Term {
             | Term::Op2(..)
             | Term::OpN(..)
             | Term::Sealed(..)
-            | Term::MetaValue(..)
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
@@ -1671,52 +1547,7 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             },
-            Term::MetaValue(meta) => {
-                let mut f_on_type = |ty: Types, s: &mut S| {
-                    match ty.0 {
-                        TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
-                        _ => Ok(ty),
-                    }
-                };
-
-                let contracts: Result<Vec<LabeledType>, _> = meta
-                    .contracts
-                    .into_iter()
-                    .map(|ctr| {
-                        let LabeledType {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| LabeledType { types, label })
-                    })
-                    .collect();
-                let contracts = contracts?;
-
-                let types = meta
-                    .types
-                    .map(|ctr| {
-                        let LabeledType {types, label} = ctr;
-                        types.traverse(&f_on_type, state, order).map(|types| LabeledType { types, label })
-                    })
-                    .transpose()?;
-
-                let value = meta
-                    .value
-                    .map(|t| t.traverse(f, state, order))
-                    .transpose()?;
-
-                let meta = MetaValue {
-                        doc: meta.doc,
-                        types,
-                        contracts,
-                        opt: meta.opt,
-                        priority: meta.priority,
-                        value,
-                    };
-
-                RichTerm::new(
-                    Term::MetaValue(meta),
-                    pos,
-                )
-            }} else rt
-        };
+        } else rt};
 
         match order {
             TraverseOrder::TopDown => Ok(result),

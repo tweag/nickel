@@ -32,22 +32,6 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
                 let inner_transfd = apply_contracts(inner, ctrs.into_iter(), pos_inh);
                 RichTerm::new(Term::Annotated(annot, inner_transfd), pos)
             },
-            Term::MetaValue(meta) if meta.value.is_some() => {
-                let mut meta = meta;
-                let pos_inh = pos.into_inherited();
-
-                let ctrs = meta
-                    .types
-                    .iter()
-                    .chain(meta.contracts.iter())
-                    .map(|ctr| Ok(PendingContract::new(ctr.types.contract()?, ctr.label.clone())))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                let inner = apply_contracts(meta.value.take().unwrap(), ctrs.into_iter(), pos_inh);
-
-                meta.value.replace(inner);
-                RichTerm::new(Term::MetaValue(meta), pos)
-            }
         } else rt
     };
     Ok(result)

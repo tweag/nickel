@@ -557,7 +557,7 @@ impl Thunk {
     /// worth updating.
     pub fn should_update(&self) -> bool {
         let term = &self.borrow().body.term;
-        !term.is_whnf() && !term.is_metavalue()
+        !term.is_whnf() && !term.is_annotated()
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See

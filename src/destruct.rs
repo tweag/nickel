@@ -7,7 +7,7 @@ use crate::{
     position::RawSpan,
     term::{
         record::{Field, RecordAttrs, RecordData},
-        LabeledType, MetaValue, RichTerm, Term,
+        LabeledType, Term,
     },
     types::{TypeF, Types},
 };

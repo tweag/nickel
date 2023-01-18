@@ -58,7 +58,7 @@ use crate::position::TermPos;
 use crate::term::{
     make as mk_term,
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, LabeledType, MetaValue, RichTerm, SharedTerm, Term, TypeAnnotation,
+    BinaryOp, LabeledType, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
 use crate::transform::Closurizable;
 use std::collections::HashMap;
@@ -97,22 +97,6 @@ pub fn merge<C: Cache>(
     mode: MergeMode,
     call_stack: &mut CallStack,
 ) -> Result<Closure, EvalError> {
-    // Merging a simple value and a metavalue is equivalent to first wrapping the simple value in a
-    // new metavalue (with no attribute set excepted the value), and then merging the two
-    let (t1, t2) = match (t1.term.is_metavalue(), t2.term.is_metavalue()) {
-        (true, false) => {
-            let pos = t2.pos;
-            let t = Term::MetaValue(MetaValue::from(t2));
-            (t1, RichTerm::new(t, pos))
-        }
-        (false, true) => {
-            let pos = t1.pos;
-            let t = Term::MetaValue(MetaValue::from(t1));
-            (RichTerm::new(t, pos), t2)
-        }
-        _ => (t1, t2),
-    };
-
     let RichTerm {
         term: t1,
         pos: pos1,
@@ -235,10 +219,6 @@ pub fn merge<C: Cache>(
                 Term::Array(arr1, ArrayAttrs::new().closurized()),
                 pos_op.into_inherited(),
             )))
-        }
-        (Term::MetaValue(_meta1), Term::MetaValue(_meta2)) => {
-            // TODO: remove
-            unimplemented!("will get rid of generic metavalues")
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms

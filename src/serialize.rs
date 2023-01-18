@@ -1,15 +1,10 @@
 //! Serialization of an evaluated program to various data format.
 use crate::{
     error::SerializationError,
-    eval::{
-        self,
-        cache::{CBNCache, Cache},
-        is_empty_optional,
-    },
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        MetaValue, RichTerm, Term, TypeAnnotation,
+        RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -87,19 +82,6 @@ where
     }
 
     n.serialize(serializer)
-}
-
-/// Serializer for metavalues.
-pub fn serialize_meta_value<S>(meta: &MetaValue, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    if let Some(ref t) = meta.value {
-        t.serialize(serializer)
-    } else {
-        // This error should not happen if the input term is validated before serialization
-        Err(Error::custom("empty metavalue"))
-    }
 }
 
 /// Serializer for annotated values.
@@ -201,7 +183,6 @@ impl<'de> Deserialize<'de> for RichTerm {
 /// TODO: We should have a NoCache impl of Cache or adapt the signature of [is_empty_optional()]
 /// (todo fixed once we got rid of metavalues)
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
-    use crate::term;
     use Term::*;
 
     if format == ExportFormat::Raw {
@@ -229,16 +210,6 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 array.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
-            //TODO: have a specific error for such missing value.
-            // TODO: get rid of metavalues
-            MetaValue(term::MetaValue {
-                value: Some(ref _t),
-                ..
-            }) => unimplemented!(),
-            // Optional field without definition are accepted and ignored during serialization.
-            // TODO: This shouldn't spin a new cache
-            // TODO: get rid of this once we've got rid of metavalues
-            _ if is_empty_optional(&CBNCache::new(), t, &eval::Environment::new()) => Ok(()),
             _ => Err(SerializationError::NonSerializable(t.clone())),
         }
     }
