@@ -1,0 +1,6 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+builtin.trace: Hello, world!
+true
