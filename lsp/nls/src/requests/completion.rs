@@ -413,30 +413,61 @@ fn get_completion_identifiers(
                 .unwrap_or_default()
         }
         Some(..) | None => {
-            // This is also record completion, but it is in the form
-            // <record path>.<partially-typed-field>
-            // we also want to give completion based on <record path> in this case.
             if let Some(path) = get_identifiers_before_field(source) {
+                // This is also record completion, but it is in the form
+                // <record path>.<partially-typed-field>
+                // we also want to give completion based on <record path> in this case.
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
                 complete(item, name, server, &mut path).unwrap_or_default()
             } else {
-                // variable name completion
-                let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
-                linearization
-                    .get_in_scope(item, &server.lin_cache)
-                    .iter()
-                    .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _) => Some(IdentWithType {
-                            ident,
-                            item: Some(item.clone()),
-                            ty: ty.clone(),
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
+                if let TermKind::RecordField { record, .. } = item.kind {
+                    // Context completion
+                    // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
+                    let parent = linearization.get_item(record, &server.lin_cache).unwrap();
+                    let Some(meta) = parent.meta.as_ref().map(|meta| &meta.contracts) else {
+                        // I'm not *entirely* sure we want to do this here.
+                        // Alternative: if we cannot find a meta on any record,
+                        //              we just switch to "Global name completion"
+                        return Ok(Vec::new())
+                    };
+                    let contract = meta.first().unwrap();
+                    let result = match &contract.types {
+                        Types(TypeF::Flat(RichTerm { pos, .. })) => {
+                            let span = pos.unwrap();
+                            let locator = (span.src_id, span.start);
+                            let item = linearization.item_at(&locator).unwrap();
+                            find_fields_from_term_kind(
+                                linearization,
+                                item.id,
+                                &mut Vec::new(),
+                                &server.lin_cache,
+                            )
+                        }
+                        Types(TypeF::Record(rrows)) => {
+                            find_fields_from_type(rrows, &mut Vec::new())
+                        }
+                        _ => Vec::new(),
+                    };
+                    result
+                } else {
+                    // Global name completion
+                    let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
+                    linearization
+                        .get_in_scope(item, &server.lin_cache)
+                        .iter()
+                        .filter_map(|i| match i.kind {
+                            TermKind::Declaration(ident, _, _) => Some(IdentWithType {
+                                ident,
+                                item: Some(item.clone()),
+                                ty: ty.clone(),
+                            }),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                }
             }
         }
     };
