@@ -400,8 +400,9 @@ fn get_completion_identifiers(
     }
 
     let in_scope = match trigger {
-        // Record Completion
         Some(server::DOT_COMPL_TRIGGER) => {
+            // Record completion
+            // TODO: Context completion can also happen here
             get_identifier_path(source)
                 .and_then(|path| {
                     let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
@@ -425,8 +426,43 @@ fn get_completion_identifiers(
             } else {
                 if let TermKind::RecordField { record, .. } = item.kind {
                     // Context completion
-                    // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
-                    let parent = linearization.get_item(record, &server.lin_cache).unwrap();
+
+                    /// Find the topmost record that contains a particular record field.
+                    /// It returns an an item (which is the containing record), and the
+                    /// field path from the field to the topmost record (not including the
+                    /// record field's ident)
+                    fn find_topmost_record<'a>(
+                        linearization: &'a Completed,
+                        server: &'a Server,
+                        record: ItemId,
+                        mut path: Vec<Ident>,
+                    ) -> (&'a LinearizationItem<Types>, Vec<Ident>) {
+                        // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
+                        let parent = linearization.get_item(record, &server.lin_cache).unwrap();
+                        let next =
+                            // Oops.. linear search
+                            linearization
+                                .linearization
+                                .iter()
+                                .find_map(|item| match item.kind {
+                                    TermKind::RecordField {
+                                        ident,
+                                        record,
+                                        value: ValueState::Known(value),
+                                        ..
+                                    } if value == parent.id => Some((ident, record)),
+                                    _ => None,
+                                });
+                        match next {
+                            None => (parent, path),
+                            Some((name, record)) => {
+                                path.push(name);
+                                find_topmost_record(linearization, server, record, path)
+                            }
+                        }
+                    }
+                    let (parent, mut path) =
+                        find_topmost_record(linearization, server, record, Vec::new());
                     let Some(meta) = parent.meta.as_ref().map(|meta| &meta.contracts) else {
                         // I'm not *entirely* sure we want to do this here.
                         // Alternative: if we cannot find a meta on any record,
@@ -442,13 +478,11 @@ fn get_completion_identifiers(
                             find_fields_from_term_kind(
                                 linearization,
                                 item.id,
-                                &mut Vec::new(),
+                                &mut path,
                                 &server.lin_cache,
                             )
                         }
-                        Types(TypeF::Record(rrows)) => {
-                            find_fields_from_type(rrows, &mut Vec::new())
-                        }
+                        Types(TypeF::Record(rrows)) => find_fields_from_type(rrows, &mut path),
                         _ => Vec::new(),
                     };
                     result
