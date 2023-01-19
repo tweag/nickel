@@ -223,6 +223,8 @@ pub enum NormalToken<'input> {
     ValuesOf,
     #[token("%pow%")]
     Pow,
+    #[token("%trace%")]
+    Trace,
 
     #[token("%has_field%")]
     HasField,

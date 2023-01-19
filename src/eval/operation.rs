@@ -1258,6 +1258,29 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             },
+            UnaryOp::Trace() => {
+                if let Term::Str(s) = &*t {
+                    println!("builtin.trace: {s}");
+                    Ok(())
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("trace"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }?;
+
+                if self.stack.count_args() >= 1 {
+                    let (next, ..) = self
+                        .stack
+                        .pop_arg(&self.cache)
+                        .expect("Condition already checked.");
+                    Ok(next)
+                } else {
+                    Err(EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
+                }
+            }
         }
     }
 

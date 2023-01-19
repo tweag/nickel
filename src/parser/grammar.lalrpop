@@ -596,6 +596,7 @@ UOp: UnaryOp = {
     "rec_force_op" => UnaryOp::RecForce(),
     "rec_default_op" => UnaryOp::RecDefault(),
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
+    "trace" => UnaryOp::Trace(),
 };
 
 MatchCase: MatchCase = {
@@ -937,6 +938,7 @@ extern {
         "pow" => Token::Normal(NormalToken::Pow),
         "rec_force_op" => Token::Normal(NormalToken::RecForceOp),
         "rec_default_op" => Token::Normal(NormalToken::RecDefaultOp),
+        "trace" => Token::Normal(NormalToken::Trace),
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),

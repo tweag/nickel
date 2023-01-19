@@ -210,5 +210,8 @@
       "%
     = fun x => %to_str% x,
 
+    trace : forall a. Str -> a -> a
+    | doc "TODO"
+    = fun msg x => %trace% msg x,
   },
 }

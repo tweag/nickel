@@ -1047,6 +1047,10 @@ pub enum UnaryOp {
     /// define a `field_diff` function that preserves the sealed polymorphic
     /// tail of its argument.
     RecordEmptyWithTail(),
+
+    /// Print a message when encountered during evaluation. Operationally the same as the identity
+    /// function
+    Trace(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
