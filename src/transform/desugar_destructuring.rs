@@ -102,7 +102,7 @@ pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
 }
 
 /// Main transformation function to desugar let patterns. WARNING: In a real usage case, you will
-/// want to generate also the metavalue associated to this pattern destructuring. Do not consider
+/// want to generate also the contract associated to this pattern destructuring. Do not consider
 /// this function as the entry point of the transformation. For that, use `desugar_with_contract`.
 pub fn desugar(rt: RichTerm) -> RichTerm {
     match_sharedterm!(rt.term,

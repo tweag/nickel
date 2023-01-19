@@ -655,7 +655,6 @@ where
                 .append(allocator.hardline()),
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
-            // TODO: do not use metavalue anymore
             Annotated(annot, rt) => allocator
                 .atom(rt)
                 .append(allocator.space())

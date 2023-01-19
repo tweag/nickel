@@ -1071,8 +1071,6 @@ fn walk_with_annot<L: Linearizer>(
             )
         }
         (_, Some(value)) => walk(state, ctxt.clone(), lin, linearizer.scope(), value),
-        // A metavalue without a body nor a type annotation is a record field
-        // without definition. There is nothing left to do in that case.
         // TODO: we might have something to do with the linearizer to clear the current
         // metadata. It looks like it may be unduly attached to the next field definition,
         // which is not critical, but still a bug.
@@ -1684,8 +1682,7 @@ fn replace_wildcards_with_var(
 /// is.
 #[derive(Debug)]
 pub enum ApparentType {
-    /// The apparent type is given by a user-provided annotation, such as an `Assume`, a `Promise`,
-    /// or a metavalue.
+    /// The apparent type is given by a user-provided annotation.
     Annotated(Types),
     /// The apparent type has been inferred from a simple expression.
     Inferred(Types),
@@ -1736,8 +1733,8 @@ fn field_apparent_type(
 /// Then, future occurrences of `x` can be given this type when used in a `Promise` block.
 ///
 /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
-/// - if `bound_exp` is annotated by an `Assume`, a `Promise` or a metavalue, return the
-///   user-provided type, unless that type is a wildcard.
+/// - if `bound_exp` is annotated by a type or contract annotation, return the user-provided type,
+///   unless that type is a wildcard.
 /// - if `bound_exp` is a constant (string, number, boolean or symbol) which type can be deduced
 ///   directly without unfolding the expression further, return the corresponding exact type.
 /// - if `bound_exp` is an array, return `Array Dyn`.

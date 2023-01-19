@@ -180,8 +180,6 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
-/// TODO: We should have a NoCache impl of Cache or adapt the signature of [is_empty_optional()]
-/// (todo fixed once we got rid of metavalues)
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
     use Term::*;
 

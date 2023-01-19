@@ -1,9 +1,9 @@
 //! Generate contract applications from annotations.
 //!
 //! During the evaluation, the following invariant is enforced: any contract (be it the type
-//! annotation or a contract annotation) contained in a `MetaValue` must have been applied to the
-//! inner value of this metavalue. This invariant is false just after parsing, as there's merely no
-//! direct `Assume` in the output AST. This transformation makes it true after program
+//! annotation or a contract annotation) contained in a `Annotated` or in a field's metadata must
+//! have been applied to the inner value. This invariant is false just after parsing, as there's
+//! merely no direct `Assume` in the output AST. This transformation makes it true after program
 //! transformations by generating corresponding assume.
 //!
 //! It must be run before `share_normal_form` to avoid rechecking contracts each time the inner

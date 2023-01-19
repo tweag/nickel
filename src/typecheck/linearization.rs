@@ -132,7 +132,7 @@ pub trait Linearizer {
 
     /// Create a scope for the processing of terms potentially contained in metadata (contracts
     /// expressions in the annotations). When walking such terms, scoping behaves differently with
-    /// respect to the previous state (pending record fields, let binding, metavalue, etc.).
+    /// respect to the previous state (pending record fields, let binding, field metadata, etc.).
     /// Mostly, the `self` linearizer keeps the state while the returned one has a clean state.
     fn scope_meta(&mut self) -> Self;
 }
