@@ -21,13 +21,16 @@
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::cache::*;
-use crate::error::{Error, ToDiagnostic};
+use crate::error::{Error, ParseError, ToDiagnostic};
+use crate::eval;
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
-use crate::parser::lexer::Lexer;
-use crate::term::{RichTerm, Term};
-use crate::{eval, parser};
+use crate::parser::{
+    lexer::{Lexer, NormalToken, StringToken, Token},
+    utils::mk_span,
+};
+use crate::term::{record::Field, RichTerm};
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
@@ -50,6 +53,108 @@ impl std::str::FromStr for ColorOpt {
             "always" => Ok(Self::Always),
             "never" => Ok(Self::Never),
             _ => Err("possible values are 'auto', 'always' or 'never'."),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct QueryPath(pub Vec<Ident>);
+
+impl QueryPath {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
+        // The current state of the path parser. We're either expecting an ident (or a quoted
+        // ident: a string), a dot after an ident, or we are parsing a string.
+        enum State {
+            ExpectIdent,
+            ExpectDot,
+            ParsingStr { buffer: String },
+        }
+
+        let mut state = State::ExpectIdent;
+        let format_name = "query-path";
+        let input_id = cache.add_tmp(format_name, input);
+
+        let s = cache.source(input_id);
+        // We piggy back on the Nickel lexer. That way, we always stay in sync with the syntax, we
+        // don't duplicate lexing logic, and spinning up a lexer should ideally be pretty fast.
+        let lexer = Lexer::new(s);
+        let mut idents = Vec::new();
+
+        for token_res in lexer {
+            let (left, token, right) = token_res.map_err(|err| {
+                ParseError::from_lalrpop::<()>(lalrpop_util::ParseError::from(err), input_id)
+            })?;
+
+            match state {
+                State::ExpectIdent => match token {
+                    Token::Normal(NormalToken::Identifier(id_str)) => {
+                        idents.push(Ident::new(id_str));
+                        state = State::ExpectDot;
+                    }
+                    Token::Normal(NormalToken::DoubleQuote) => {
+                        state = State::ParsingStr {
+                            buffer: String::new(),
+                        };
+                    }
+                    _ => {
+                        return Err(ParseError::ExternalFormatError(
+                            String::from(format_name),
+                            String::from("unexpected token, expected an identifier"),
+                            Some(mk_span(input_id, left, right)),
+                        ))
+                    }
+                },
+                State::ExpectDot => match token {
+                    Token::Normal(NormalToken::Dot) => {
+                        state = State::ExpectIdent;
+                    }
+                    _ => {
+                        return Err(ParseError::ExternalFormatError(
+                            String::from(format_name),
+                            String::from("unexpected token, expected `.` or end of input"),
+                            Some(mk_span(input_id, left, right)),
+                        ))
+                    }
+                },
+                State::ParsingStr { mut buffer } => match token {
+                    Token::Str(StringToken::Literal(s))
+                    | Token::Str(StringToken::EscapedAscii(s)) => {
+                        buffer.push_str(s);
+                        state = State::ParsingStr { buffer }
+                    }
+                    Token::Str(StringToken::EscapedChar(c)) => {
+                        buffer.push(c);
+                        state = State::ParsingStr { buffer }
+                    }
+                    Token::Str(StringToken::DoubleQuote) => {
+                        idents.push(Ident::new(buffer));
+                        state = State::ExpectDot;
+                    }
+                    _ => {
+                        return Err(ParseError::ExternalFormatError(
+                            String::from(format_name),
+                            String::from("unexpected token while parsing a quoted identifier"),
+                            Some(mk_span(input_id, left, right)),
+                        ))
+                    }
+                },
+            }
+        }
+
+        match state {
+            State::ExpectDot => Ok(QueryPath(idents)),
+            State::ExpectIdent => Err(ParseError::UnexpectedEOF(
+                input_id,
+                vec![String::from("<identifier>")],
+            )),
+            State::ParsingStr { .. } => Err(ParseError::UnexpectedEOF(
+                input_id,
+                vec![String::from("\"")],
+            )),
         }
     }
 }
@@ -130,9 +235,13 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Wrapper for [`query`].
-    pub fn query(&mut self, path: Option<String>) -> Result<Term, Error> {
+    pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
         let initial_env = self.vm.prepare_stdlib()?;
-        query(&mut self.vm, self.main_id, &initial_env, path)
+        let query_path = path
+            .map(|p| QueryPath::parse(self.vm.import_resolver_mut(), p))
+            .transpose()?
+            .unwrap_or_default();
+        query(&mut self.vm, self.main_id, &initial_env, query_path)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
@@ -227,53 +336,25 @@ impl<EC: EvalCache> Program<EC> {
 
 /// Query the metadata of a path of a term in the cache.
 ///
-/// The path is a list of dot separated identifiers. For example, querying `{a = {b  = ..}}` with
-/// path `a.b` will return a "weak" (see below) evaluation of `b`.
-///
-/// "Weak" means that as opposed to normal evaluation, it does not try to unwrap the content of a
-/// metavalue: the evaluation stops as soon as a metavalue is encountered, although the potential
-/// term inside the meta-value is forced, so that the concrete value of the field may also be
-/// reported when present.
-//TODO: more robust implementation than `let x = (y.path) in %seq% x x`, with respect to e.g.
-//error message in case of syntax error or missing file.
+/// The path is a list of dot separated identifiers. For example, querying `{a = {b  = ..}}` (call
+/// it `exp`) with path `a.b` will evaluate `exp.a` and retrieve the `b` field. `b` is forced as
+/// well, in order to print its value (note that forced just means evaluated to a WHNF, it isn't
+/// deeply - or recursively - evaluated).
 //TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
-//would additionally report `type: Num` for example.
+//would additionally report `type: Num` for example. Maybe use the LSP infrastructure?
 //TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn query<EC: EvalCache>(
     vm: &mut VirtualMachine<Cache, EC>,
     file_id: FileId,
     initial_env: &Envs,
-    path: Option<String>,
-) -> Result<Term, Error> {
+    path: QueryPath,
+) -> Result<Field, Error> {
     vm.import_resolver_mut()
         .prepare(file_id, &initial_env.type_ctxt)?;
-    let t = if let Some(p) = path {
-        // Parsing `y.path`. We `seq` it to force the evaluation of the underlying value,
-        // which can be then showed to the user. The newline gives better messages in case of
-        // errors.
-        let source = format!("x.{}", p);
-        let query_file_id = vm.import_resolver_mut().add_tmp("<query>", source.clone());
-        let new_term =
-            parser::grammar::TermParser::new().parse_term(query_file_id, Lexer::new(&source))?;
 
-        // Substituting `y` for `t`
-        let mut env = eval::Environment::new();
-        let rt = vm.import_resolver().get_owned(file_id).unwrap();
-        eval::env_add(
-            &mut vm.cache,
-            &mut env,
-            Ident::from("x"),
-            rt,
-            eval::Environment::new(),
-        );
-        eval::subst(&vm.cache, new_term, &eval::Environment::new(), &env)
-    } else {
-        vm.import_resolver().get_owned(file_id).unwrap()
-    };
-
-    vm.reset();
-    Ok(vm.eval_meta(t, &initial_env.eval_env)?.into())
+    let rt = vm.import_resolver().get_owned(file_id).unwrap();
+    Ok(vm.query(rt, path, &initial_env.eval_env)?)
 }
 
 /// Pretty-print an error.

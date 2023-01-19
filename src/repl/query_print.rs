@@ -1,6 +1,9 @@
 //! Rendering of the results of a metadata query.
 use crate::identifier::Ident;
-use crate::term::{MergePriority, Term};
+use crate::term::{
+    record::{Field, FieldMetadata},
+    MergePriority, Term,
+};
 use std::{io, io::Write};
 
 /// A query printer. The implementation may differ depending on the activation of markdown
@@ -163,7 +166,7 @@ impl Default for Attributes {
 /// Wrapper around `write_query_result_` that selects an adapted query printer at compile time.
 pub fn write_query_result(
     out: &mut impl Write,
-    term: &Term,
+    field: &Field,
     selected_attrs: Attributes,
 ) -> io::Result<()> {
     #[cfg(feature = "markdown")]
@@ -172,14 +175,13 @@ pub fn write_query_result(
     #[cfg(not(feature = "markdown"))]
     let renderer = SimpleRenderer {};
 
-    write_query_result_(out, term, selected_attrs, &renderer)
+    write_query_result_(out, field, selected_attrs, &renderer)
 }
 
-/// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`crate::eval::VirtualMachine::eval_meta`] and [`crate::program::query`]).
+/// Print the result of a metadata query.
 fn write_query_result_<R: QueryPrinter>(
     out: &mut impl Write,
-    term: &Term,
+    field: &Field,
     selected_attrs: Attributes,
     renderer: &R,
 ) -> io::Result<()> {
@@ -187,10 +189,10 @@ fn write_query_result_<R: QueryPrinter>(
     fn write_fields<R: QueryPrinter>(
         out: &mut impl Write,
         renderer: &R,
-        t: &Term,
+        value: &Term,
     ) -> io::Result<()> {
         writeln!(out)?;
-        match t {
+        match value {
             Term::Record(record) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
                 fields.sort();
@@ -208,82 +210,80 @@ fn write_query_result_<R: QueryPrinter>(
         }
     }
 
-    match term {
-        Term::MetaValue(meta) => {
-            let mut found = false;
-            if selected_attrs.contract && !meta.contracts.is_empty() {
-                let ctrs: Vec<String> = meta
-                    .contracts
-                    .iter()
-                    // We use the original user-written type stored in the label. Using
-                    // `ctr.types` instead is unreadable most of the time, as it can have been
-                    // altered by closurizations or other run-time rewriting
-                    .map(|ctr| ctr.label.types.to_string())
-                    .collect();
-                renderer.write_metadata(out, "contract", &ctrs.join(","))?;
-                found = true;
-            }
+    let mut found = false;
+    let metadata = &field.metadata;
 
-            if selected_attrs.types && meta.types.is_some() {
-                renderer.write_metadata(
-                    out,
-                    "type",
-                    &meta.types.as_ref().unwrap().types.to_string(),
-                )?;
-                found = true;
-            }
+    if selected_attrs.contract && !metadata.annotation.contracts.is_empty() {
+        let ctrs: Vec<String> = metadata
+            .annotation
+            .contracts
+            .iter()
+            // We use the original user-written type stored in the label. Using
+            // `ctr.types` instead is unreadable most of the time, as it can have been
+            // altered by closurizations or other run-time rewriting
+            .map(|ctr| ctr.label.types.to_string())
+            .collect();
+        renderer.write_metadata(out, "contract", &ctrs.join(","))?;
+        found = true;
+    }
 
-            match &meta {
-                MetaValue {
+    if selected_attrs.types && metadata.annotation.types.is_some() {
+        renderer.write_metadata(
+            out,
+            "type",
+            &metadata
+                .annotation
+                .types
+                .as_ref()
+                .unwrap()
+                .types
+                .to_string(),
+        )?;
+        found = true;
+    }
+
+    match &field {
+        Field {
+            metadata:
+                FieldMetadata {
                     priority: MergePriority::Bottom,
-                    value: Some(t),
                     ..
-                } if selected_attrs.default => {
-                    renderer.write_metadata(out, "default", &t.as_ref().shallow_repr())?;
-                    found = true;
-                }
-                MetaValue {
+                },
+            value: Some(t),
+        } if selected_attrs.default => {
+            renderer.write_metadata(out, "default", &t.as_ref().shallow_repr())?;
+            found = true;
+        }
+        Field {
+            metadata:
+                FieldMetadata {
                     priority: MergePriority::Numeral(n),
-                    value: Some(t),
                     ..
-                } if selected_attrs.value => {
-                    renderer.write_metadata(out, "priority", &format!("{}", n))?;
-                    renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;
-                    found = true;
-                }
-                _ => (),
-            }
-
-            match meta.doc {
-                Some(ref s) if selected_attrs.doc => {
-                    renderer.write_doc(out, s)?;
-                    found = true;
-                }
-                _ => (),
-            }
-
-            if !found {
-                println!("Requested metadata were not found for this value.");
-                meta.value
-                    .iter()
-                    .try_for_each(|rt| write_fields(out, renderer, rt.as_ref()))?;
-            }
-
-            meta.value
-                .iter()
-                .try_for_each(|rt| write_fields(out, renderer, rt.as_ref()))?;
+                },
+            value: Some(t),
+        } if selected_attrs.value => {
+            renderer.write_metadata(out, "priority", &format!("{}", n))?;
+            renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;
+            found = true;
         }
-        t @ Term::Record(..) | t @ Term::RecRecord(..) => {
-            writeln!(out, "No metadata found for this value.")?;
-            write_fields(out, renderer, t)?;
+        _ => (),
+    }
+
+    match metadata.doc {
+        Some(ref s) if selected_attrs.doc => {
+            renderer.write_doc(out, s)?;
+            found = true;
         }
-        t => {
-            writeln!(out, "No metadata found for this value.\n")?;
-            if selected_attrs.value {
-                renderer.write_metadata(out, "value", &t.shallow_repr())?;
-            }
-        }
-    };
+        _ => (),
+    }
+
+    if !found {
+        println!("Requested metadata were not found for this value.");
+    }
+
+    if let Some(ref value) = field.value {
+        write_fields(out, renderer, value.as_ref())?;
+    }
 
     Ok(())
 }

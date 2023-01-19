@@ -89,6 +89,7 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
+use crate::term::record::FieldMetadata;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     environment::Environment as GenericEnvironment,
@@ -96,6 +97,7 @@ use crate::{
     identifier::Ident,
     match_sharedterm,
     position::TermPos,
+    program::QueryPath,
     term::{
         array::ArrayAttrs,
         make as mk_term,
@@ -233,19 +235,85 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
     }
 
-    /// Evaluate a Nickel Term, stopping when a meta value is encountered at the top-level without
-    /// unwrapping it. Then evaluate the underlying value, and substitute variables in order to obtain
-    /// a WHNF that is printable.
+    /// Query the value and the metadata of a record field in an expression.
     ///
-    /// Used to query the metadata of a value.
-    pub fn eval_meta(
+    /// Querying `foo.bar.baz` on a term `exp` will evaluate `exp.foo.bar` and extract the field
+    /// `baz`. The content of `baz` is evaluated as well, and variables are substituted, in order
+    /// to obtain a value that can be printed. The metadata and the evaluated value are returned as
+    /// a new field.
+    pub fn query(
         &mut self,
         t: RichTerm,
+        path: QueryPath,
         initial_env: &Environment,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_mode = EvalMode::StopAtMeta;
-        let (mut rt, env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
-        todo!()
+    ) -> Result<Field, EvalError> {
+        let (rt, mut env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
+
+        let mut prev_pos = rt.pos;
+        let mut field: Field = rt.into();
+
+        for id in path.0 {
+            match field.value.as_ref().map(|rt| (rt.as_ref(), rt.pos)) {
+                None => {
+                    return Err(EvalError::MissingFieldDef {
+                        id,
+                        metadata: FieldMetadata::default(),
+                        pos_record: prev_pos,
+                        pos_access: id.pos,
+                    })
+                }
+                Some((Term::Record(record_data), pos_record)) => {
+                    let mut next_field = record_data.fields.get(&id).cloned();
+                    prev_pos = pos_record;
+
+                    if let Some(Field {
+                        metadata: metadata_next,
+                        value: mut value_next,
+                    }) = next_field.take()
+                    {
+                        // We evaluate the fields' value, either to handle the next ident of the
+                        // path, or to show the value if we are treating the last ident of the path
+                        value_next = value_next
+                            .map(|value| -> Result<RichTerm, EvalError> {
+                                let (new_value, new_env) = self.eval_closure(
+                                    Closure {
+                                        body: value,
+                                        env: std::mem::take(&mut env),
+                                    },
+                                    initial_env,
+                                )?;
+                                env = new_env;
+
+                                Ok(new_value)
+                            })
+                            .transpose()?;
+
+                        field = Field {
+                            metadata: metadata_next.clone(),
+                            value: value_next,
+                        };
+                    } else {
+                        return Err(EvalError::FieldMissing(
+                            id.to_string(),
+                            String::from("query"),
+                            RichTerm::new(Term::Record(record_data.clone()), pos_record),
+                            id.pos,
+                        ));
+                    }
+                }
+                Some(_) => {
+                    //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
+                    return Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("query"),
+                        prev_pos,
+                        field.value.unwrap(),
+                    ));
+                }
+            }
+        }
+
+        Ok(field)
     }
 
     /// The main loop of evaluation.

@@ -306,6 +306,10 @@ impl Cache {
         Ok(self.add_string(source_name, buffer))
     }
 
+    pub fn source(&self, id: FileId) -> &str {
+        self.files.source(id)
+    }
+
     /// Load a new source as a string and add it to the name-id table.
     ///
     /// Do not check if a source with the same name already exists: if it is the case, this one
