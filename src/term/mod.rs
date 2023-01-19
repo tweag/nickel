@@ -26,7 +26,6 @@ use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use crate::{
     destruct::Destruct,
     error::{EvalError, ParseError},
-    eval::EvalMode,
     identifier::Ident,
     label::Label,
     match_sharedterm,
@@ -1115,13 +1114,6 @@ pub enum OpPos {
 }
 
 impl UnaryOp {
-    pub fn eval_mode(&self) -> EvalMode {
-        match self {
-            UnaryOp::RecDefault() | UnaryOp::RecForce() => EvalMode::StopAtMeta,
-            _ => EvalMode::default(),
-        }
-    }
-
     pub fn pos(&self) -> OpPos {
         use UnaryOp::*;
         match self {
@@ -1230,13 +1222,6 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    pub fn eval_mode(&self) -> EvalMode {
-        match self {
-            BinaryOp::Merge() => EvalMode::StopAtMeta,
-            _ => EvalMode::default(),
-        }
-    }
-
     pub fn pos(&self) -> OpPos {
         use BinaryOp::*;
         match self {
@@ -1290,10 +1275,6 @@ impl NAryOp {
             | NAryOp::RecordUnsealTail() => 3,
             NAryOp::RecordSealTail() => 4,
         }
-    }
-
-    pub fn eval_mode(&self) -> EvalMode {
-        EvalMode::default()
     }
 }
 
@@ -1852,14 +1833,16 @@ mod tests {
 
     /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
     #[test]
-    fn metavalue_flatten() {
-        let mut inner = MetaValue::new();
+    fn annot_flatten() {
+        use crate::parser::utils::Annot;
+
+        let mut inner = TypeAnnotation::default();
         inner.types = Some(LabeledType {
             types: Types(TypeF::Num),
             label: Label::dummy(),
         });
-        let outer = MetaValue::new();
-        let res = MetaValue::flatten(outer, inner);
+        let outer = TypeAnnotation::default();
+        let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.types, None);
     }
 }

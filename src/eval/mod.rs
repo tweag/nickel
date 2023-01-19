@@ -64,22 +64,6 @@
 //!   environment to the specific implementation of the operator (located in [operation], or in
 //!   [merge] for `merge`).
 //!
-//! ## Enriched values
-//!
-//! The evaluation of enriched values is controlled by the parameter `eval_mode`. If it is
-//! set to `UnwrapMeta` (which is usually the case), the machine tries to extract a simple
-//! value from it:
-//!  - **Contract**: raise an error. This usually means that an access to a field was attempted,
-//!    and that this field had a contract to satisfy, but it was never defined.
-//!  - **Default(value)**: an access to a field which has a default value. Proceed with the
-//!    evaluation of this value
-//!  - **ContractDefault(type, label, value)**: same as above, but the field also has an attached
-//!    contract.  Proceed with the evaluation of `Assume(type, label, value)` to ensure that the
-//!    default value satisfies this contract.
-//!
-//! If `eval_mode` is set to StopAtMeta, as it is when evaluating `merge`, the machine does not
-//! evaluate enriched values further, and consider the term evaluated.
-//!
 //! # Garbage collection
 //!
 //! Currently the machine relies on Rust's reference counting to manage memory. Precisely, the
@@ -128,22 +112,8 @@ impl AsRef<Vec<StackElem>> for CallStack {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EvalMode {
-    UnwrapMeta,
-    StopAtMeta,
-}
-
-impl Default for EvalMode {
-    fn default() -> Self {
-        EvalMode::UnwrapMeta
-    }
-}
-
 // The current state of the Nickel virtual machine.
 pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // Behavior of evaluation with respect to metavalues.
-    eval_mode: EvalMode,
     // The main stack, storing arguments, thunks and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -158,7 +128,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R) -> Self {
         VirtualMachine {
             import_resolver,
-            eval_mode: Default::default(),
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
@@ -168,7 +137,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn new_with_cache(import_resolver: R, cache: C) -> Self {
         VirtualMachine {
             import_resolver,
-            eval_mode: Default::default(),
             call_stack: Default::default(),
             stack: Stack::new(),
             cache,
@@ -177,18 +145,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
     pub fn reset(&mut self) {
-        self.eval_mode = Default::default();
         self.call_stack.0.clear();
         self.stack.reset(&mut self.cache);
         self.cache = Cache::new();
-    }
-
-    fn set_mode(&mut self, new_mode: EvalMode) {
-        if self.eval_mode != new_mode {
-            self.stack.push_strictness(self.eval_mode);
-        }
-
-        self.eval_mode = new_mode;
     }
 
     pub fn import_resolver(&self) -> &R {
@@ -348,10 +307,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 mut env,
             } = clos;
 
-            if let Some(eval_mode) = self.stack.pop_strictness_marker() {
-                self.eval_mode = eval_mode;
-            }
-
             clos = match &*shared_term {
                 Term::Sealed(_, inner, lbl) => {
                     let stack_item = self.stack.peek_op_cont();
@@ -435,7 +390,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
-                    self.set_mode(EvalMode::UnwrapMeta);
 
                     self.stack.push_arg(
                         Closure {
@@ -473,8 +427,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
 
                 Term::Op1(op, t) => {
-                    self.set_mode(op.eval_mode());
-
                     self.stack.push_op_cont(
                         OperationCont::Op1(op.clone(), t.pos),
                         self.call_stack.len(),
@@ -496,8 +448,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Op2(op, fst, snd) => {
-                    self.set_mode(op.eval_mode());
-
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
                             op.clone(),
@@ -516,8 +466,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::OpN(op, args) => {
-                    self.set_mode(op.eval_mode());
-
                     // Arguments are passed as a stack to the operation continuation, so we reverse the
                     // original list.
                     let mut args_iter = args.iter();
@@ -560,7 +508,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 StrChunk::Expr(e, indent) => (e.clone(), *indent),
                             };
 
-                            self.set_mode(EvalMode::UnwrapMeta);
                             self.stack.push_str_chunks(chunks_iter.cloned());
                             self.stack.push_str_acc(String::new(), indent, env.clone());
 

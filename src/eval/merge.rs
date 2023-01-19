@@ -584,7 +584,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     Ok(Field { metadata, value })
 }
 
-/// Merge the two optional documentations of a metavalue.
+/// Merge two optional documentations.
 fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     //FIXME: how to merge documentation? Just concatenate?
     doc1.or(doc2)

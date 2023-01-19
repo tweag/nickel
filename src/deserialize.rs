@@ -696,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_deserialize_ignore_metavalue() {
+    fn rust_deserialize_ignore_annotation() {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A {
             a: f64,

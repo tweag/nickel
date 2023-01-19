@@ -320,7 +320,7 @@ pub fn combine_match_annots(
 
 /// Some constructs are introduced with the metadata pipe operator `|`, but aren't metadata per se
 /// (ex: `rec force`/`rec default`). Those are collected in this extended annotation and then
-/// desugared into a standard metavalue.
+/// desugared into standard metadata.
 #[derive(Clone, Debug, Default)]
 pub struct FieldExtAnnot {
     /// Standard metadata.
@@ -493,7 +493,7 @@ where
     )
 }
 
-/// Merge two fields by performing the merge of both their value and MetaValue if any.
+/// Merge two fields by performing the merge of both their value and metadata if any.
 fn merge_fields(field1: Field, field2: Field) -> Field {
     let value = match (field1.value, field2.value) {
         (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
@@ -775,7 +775,7 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     chunks
 }
 
-/// Strip the indentation of a documentation metavalue. Wrap it as a literal string chunk and call
+/// Strip the indentation of a doc metadata. Wrap it as a literal string chunk and call
 /// [`strip_indent`].
 pub fn strip_indent_doc(doc: String) -> String {
     let chunk = vec![StrChunk::Literal(doc)];

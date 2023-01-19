@@ -12,8 +12,8 @@ use crate::{
     types::{TypeF, Types},
 };
 
-/// A match field in a `Destruct` pattern. Every field can contain a `MetaValue` either because
-/// they are annotated with a type, with contracts or with a default value.
+/// A match field in a `Destruct` pattern. Every field can be annotated with a type, with contracts
+/// or with a default value.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
@@ -53,7 +53,7 @@ pub enum Destruct {
 }
 
 impl Destruct {
-    /// generate the metavalue containing the contract representing this pattern.
+    /// Generate the contract elaborated from this pattern.
     pub fn into_contract(self) -> LabeledType {
         let label = self.label();
         self.into_contract_with_lbl(label)
@@ -110,8 +110,8 @@ impl Destruct {
 }
 
 impl Match {
-    /// Convert the `Match` to a metavalue. It's used to generate the record contract representing
-    /// a record pattern destructuring.
+    /// Convert the `Match` to a field with metadata. It's used to generate the record contract
+    /// representing a record pattern destructuring.
     pub fn as_field(self) -> (Ident, Field) {
         match self {
             Match::Assign(id, field, (_, Destruct::Empty)) | Match::Simple(id, field) => {
