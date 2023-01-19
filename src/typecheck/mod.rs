@@ -53,8 +53,8 @@ use crate::{
     identifier::Ident,
     position::TermPos,
     term::{
-        record::Field,
-        LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder, TypeAnnotation,
+        record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
+        TypeAnnotation,
     },
     types::{
         EnumRow, EnumRows, EnumRowsF, EnumRowsIterator, RecordRowF, RecordRows, RecordRowsF,
@@ -1751,8 +1751,7 @@ pub fn apparent_type(
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType {
     match t {
-        Term::Annotated(annot, value) =>
-            annot
+        Term::Annotated(annot, value) => annot
             .first()
             .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
             .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),

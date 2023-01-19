@@ -378,9 +378,7 @@ impl<'de> SeqAccess<'de> for ArrayDeserializer {
 fn unwrap_term(mut rich_term: RichTerm) -> Result<Term, RustDeserializationError> {
     loop {
         rich_term = match Term::from(rich_term) {
-            Term::Annotated(_, value) => {
-                value
-            }
+            Term::Annotated(_, value) => value,
             other => break Ok(other),
         }
     }

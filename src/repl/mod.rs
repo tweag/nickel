@@ -12,7 +12,8 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ExtendedTerm};
-use crate::term::{RichTerm, Term, Traverse};
+use crate::program::QueryPath;
+use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
 use crate::types::Types;
 use crate::{eval, transform, typecheck};
@@ -62,7 +63,7 @@ pub trait Repl {
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
-    fn query(&mut self, exp: &str) -> Result<Term, Error>;
+    fn query(&mut self, exp: &str) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
     fn cache_mut(&mut self) -> &mut Cache;
 }
@@ -291,14 +292,14 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         .into())
     }
 
-    fn query(&mut self, exp: &str) -> Result<Term, Error> {
+    fn query(&mut self, exp: &str) -> Result<Field, Error> {
         use crate::program;
 
         let file_id = self
             .vm
             .import_resolver_mut()
             .add_tmp("<repl-query>", String::from(exp));
-        program::query(&mut self.vm, file_id, &self.env, None)
+        program::query(&mut self.vm, file_id, &self.env, QueryPath::default())
     }
 
     fn cache_mut(&mut self) -> &mut Cache {
