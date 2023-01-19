@@ -1,7 +1,7 @@
 //! Define the type of an identifier.
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::hash::Hash;
 
 use crate::position::TermPos;
@@ -9,12 +9,20 @@ use crate::position::TermPos;
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident {
     symbol: interner::Symbol,
     pub pos: TermPos,
     generated: bool,
+}
+
+impl Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Ident")
+            .field("label", &self.label())
+            .finish()
+    }
 }
 
 impl Ident {
