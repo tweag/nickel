@@ -2949,9 +2949,12 @@ impl RecPriority {
 
                         let new_idx =
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
-                                Term::Record(record_data) => {
-                                    self.propagate_in_record(cache, record_data.clone(), env, pos)
-                                }
+                                Term::Record(record_data) => self.propagate_in_record(
+                                    cache,
+                                    record_data.clone(),
+                                    &inner.env,
+                                    pos,
+                                ),
                                 t if t.is_whnf() => {
                                     update_priority(&mut field.metadata);
                                     inner.clone()
