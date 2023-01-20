@@ -208,7 +208,7 @@ fn find_fields_from_contract<'a>(
 fn find_fields_from_meta_value<'a>(
     meta_value: &'a MetaValue,
     path: &'a mut Vec<Ident>,
-    info @ LinInfo { .. }: &'a LinInfo<'a>,
+    info @ LinInfo { linearization, .. }: &'a LinInfo<'a>,
 ) -> Vec<IdentWithType> {
     meta_value
         .contracts
@@ -216,6 +216,13 @@ fn find_fields_from_meta_value<'a>(
         .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
             Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
+            Types(TypeF::Flat(term)) if matches!(term.as_ref(), Term::Var(..)) => {
+                let pos = term.pos;
+                let span = pos.unwrap();
+                let locator = (span.src_id, span.start);
+                let item = linearization.item_at(&locator).unwrap();
+                find_fields_from_term_kind(item.id, path, &info)
+            }
             Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
             _ => Vec::new(),
         })
