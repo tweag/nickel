@@ -3252,20 +3252,20 @@ impl RecordDataExt for RecordData {
             .into_iter()
             .filter_map(|(id, field)| {
                 (!field.is_empty_optional()).then(|| {
-                    let value = field
-                        .value
-                        .map(|value| f(id, value).closurize(cache, shared_env, env.clone()))
-                        .ok_or(record::MissingFieldDefError {
+                    let value = field.value.map(|value| f(id, value)).ok_or(
+                        record::MissingFieldDefError {
                             id,
                             metadata: field.metadata.clone(),
-                        })?;
-                    Ok((
-                        id,
-                        Field {
-                            value: Some(value),
-                            ..field
                         },
-                    ))
+                    )?;
+
+                    let field = Field {
+                        value: Some(value),
+                        ..field
+                    }
+                    .closurize(cache, shared_env, env.clone());
+
+                    Ok((id, field))
                 })
             })
             .collect();
