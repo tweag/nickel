@@ -402,7 +402,7 @@ fn cross_apply_contracts<'a, C: Cache>(
         // before the implementation of full-fledged lazy contract application. This code is
         // expected to be transitory.
         Term::Var(id) => {
-            let idx = env.get(&id).unwrap();
+            let idx = env1.get(&id).unwrap();
             let fresh_idx = cache.map_at_index(
                 idx,
                 //FIXME: the `unwrap` below should be properly handled. It can happen when an
