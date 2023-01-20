@@ -1,8 +1,13 @@
-use std::{collections::{HashMap, HashSet}, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use super::{
     //lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
-    Closure, Environment, IdentKind,
+    Closure,
+    Environment,
+    IdentKind,
 };
 use crate::{
     identifier::Ident,
@@ -312,35 +317,33 @@ impl Cache for IncCache {
         let node = self.store.get_mut(idx).unwrap();
 
         if node.cached.is_none() {
-            return ()
+            return ();
         }
 
         let mut new_cached = Closure::clone(&node.orig);
 
         match node.bty {
             BindingType::Normal => (),
-            BindingType::Revertible(ref deps) => {
-                match deps {
-                    FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
-                    FieldDeps::Known(deps) if deps.is_empty() => (),
-                    FieldDeps::Known(deps) => new_cached
-                        .env
-                        .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
-                }
-            }
+            BindingType::Revertible(ref deps) => match deps {
+                FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
+                FieldDeps::Known(deps) if deps.is_empty() => (),
+                FieldDeps::Known(deps) => new_cached
+                    .env
+                    .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+            },
         }
 
         node.cached = Some(new_cached);
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
-            &mut self,
-            idx: CacheIndex,
-            env: &mut Environment,
-            fields: I,
-        ) -> RichTerm {
+        &mut self,
+        idx: CacheIndex,
+        env: &mut Environment,
+        fields: I,
+    ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
-        
+
         let deps = match node.bty.clone() {
             BindingType::Normal => FieldDeps::Known(Rc::new(HashSet::new())),
             BindingType::Revertible(deps) => deps.clone(),
@@ -351,25 +354,33 @@ impl Cache for IncCache {
             FieldDeps::Unknown => Box::new(|_: &&Ident| true),
         };
 
-        let Closure {body, env: env_orig} = node.orig.clone();
+        let Closure {
+            body,
+            env: env_orig,
+        } = node.orig.clone();
 
-        let as_function =
-            fields.clone().filter(&mut deps_filter).rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
+        let as_function = fields
+            .clone()
+            .filter(&mut deps_filter)
+            .rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
 
         let fresh_var = Ident::fresh();
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
 
-        let node_as_function = self.add_node(IncNode::new(Closure {
-            body: as_function,
-            env: env_orig,
-        }, IdentKind::Lambda, BindingType::Normal));
+        let node_as_function = self.add_node(IncNode::new(
+            Closure {
+                body: as_function,
+                env: env_orig,
+            },
+            IdentKind::Lambda,
+            BindingType::Normal,
+        ));
 
         env.insert(fresh_var, node_as_function);
 
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
         })
-        
     }
 }
