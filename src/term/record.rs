@@ -197,23 +197,11 @@ impl Traverse<RichTerm> for Field {
     {
         let Field { metadata, value } = self;
 
-        let contracts = metadata
-            .annotation
-            .contracts
-            .into_iter()
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let types = metadata
-            .annotation
-            .types
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
-            .transpose()?;
-
+        let annotation = metadata.annotation.traverse(f, state, order)?;
         let value = value.map(|v| v.traverse(f, state, order)).transpose()?;
 
         let metadata = FieldMetadata {
-            annotation: TypeAnnotation { types, contracts },
+            annotation,
             ..metadata
         };
 
