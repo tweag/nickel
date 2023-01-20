@@ -849,6 +849,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 diags
             }
             EvalError::TypeError(expd, msg, orig_pos_opt, t) => {
+                println!("type error term: {} / {:#?}", t, t);
                 let label = format!(
                     "this expression has type {}, but {} was expected",
                     t.term

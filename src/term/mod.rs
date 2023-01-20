@@ -462,6 +462,26 @@ impl From<TypeAnnotation> for LetMetadata {
     }
 }
 
+impl Traverse<RichTerm> for TypeAnnotation {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let TypeAnnotation { types, contracts } = self;
+
+        let contracts = contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let types = types
+            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .transpose()?;
+
+        Ok(TypeAnnotation { types, contracts })
+    }
+}
+
 /// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
 /// interpolated expression.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1528,6 +1548,14 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             },
+            Term::Annotated(annot, term) => {
+                let annot = annot.traverse(f, state, order)?;
+                let term = term.traverse(f, state, order)?;
+                RichTerm::new(
+                    Term::Annotated(annot, term),
+                    pos,
+                )
+            }
         } else rt};
 
         match order {
