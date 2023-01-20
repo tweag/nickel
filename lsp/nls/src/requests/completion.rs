@@ -111,13 +111,20 @@ impl IdentWithType {
     }
 }
 
+pub struct LinInfo<'a> {
+    linearization: &'a Completed,
+    lin_cache: &'a HashMap<FileId, Completed>,
+}
+
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
-fn find_fields_from_term_kind(
-    linearization: &Completed,
+fn find_fields_from_term_kind<'a>(
     id: ItemId,
-    path: &mut Vec<Ident>,
-    lin_cache: &HashMap<FileId, Completed>,
+    path: &'a mut Vec<Ident>,
+    info @ LinInfo {
+        linearization,
+        lin_cache,
+    }: &'a LinInfo<'a>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
@@ -147,7 +154,14 @@ fn find_fields_from_term_kind(
                 let Some(new_id) = fields.get(&name) else {
                     return Vec::new()
                 };
-                find_fields_from_term_kind(linearization, *new_id, path, lin_cache)
+                find_fields_from_term_kind(
+                    *new_id,
+                    path,
+                    &LinInfo {
+                        linearization,
+                        lin_cache,
+                    },
+                )
             }
         }
         TermKind::RecordField {
@@ -155,10 +169,10 @@ fn find_fields_from_term_kind(
             ..
         }
         | TermKind::Declaration(_, _, ValueState::Known(new_id)) => {
-            find_fields_from_term_kind(linearization, new_id, path, lin_cache)
+            find_fields_from_term_kind(new_id, path, info)
         }
         TermKind::Usage(UsageState::Resolved(new_id)) => {
-            find_fields_from_term_kind(linearization, new_id, path, lin_cache)
+            find_fields_from_term_kind(new_id, path, info)
         }
         _ => Vec::new(),
     }
@@ -166,21 +180,23 @@ fn find_fields_from_term_kind(
 
 /// Find the record fields associated with an ID in the linearization using
 /// its contract information.
-fn find_fields_from_contract(
-    linearization: &Completed,
+fn find_fields_from_contract<'a>(
     id: ItemId,
-    path: &mut Vec<Ident>,
-    lin_cache: &HashMap<FileId, Completed>,
+    path: &'a mut Vec<Ident>,
+    info @ LinInfo {
+        linearization,
+        lin_cache,
+    }: &'a LinInfo<'a>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
     match &item.meta {
-        Some(meta_value) => find_fields_from_meta_value(meta_value, path),
+        Some(meta_value) => find_fields_from_meta_value(meta_value, path, info),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
-                find_fields_from_contract(linearization, new_id, path, lin_cache)
+                find_fields_from_contract(new_id, path, info)
             }
             _ => Vec::new(),
         },
@@ -189,24 +205,29 @@ fn find_fields_from_contract(
 
 /// Find record field associated associated with a MetaValue.
 /// This can be gotten from the type or the contracts.
-fn find_fields_from_meta_value(
-    meta_value: &MetaValue,
-    path: &mut Vec<Ident>,
+fn find_fields_from_meta_value<'a>(
+    meta_value: &'a MetaValue,
+    path: &'a mut Vec<Ident>,
+    info @ LinInfo { .. }: &'a LinInfo<'a>,
 ) -> Vec<IdentWithType> {
     meta_value
         .contracts
         .iter()
         .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
-            Types(TypeF::Record(row)) => find_fields_from_type(row, path),
-            Types(TypeF::Flat(term)) => find_fields_from_term(term, path),
+            Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
+            Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
             _ => Vec::new(),
         })
         .collect()
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<IdentWithType> {
+fn find_fields_from_type<'a>(
+    rrows: &'a RecordRows,
+    path: &'a mut Vec<Ident>,
+    info @ LinInfo { .. }: &'a LinInfo<'a>,
+) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
             RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.types.clone()),
@@ -215,9 +236,9 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
 
         match type_of_current {
             Some(Types(TypeF::Record(rrows_current))) => {
-                find_fields_from_type(&rrows_current, path)
+                find_fields_from_type(&rrows_current, path, info)
             }
-            Some(Types(TypeF::Flat(term))) => find_fields_from_term(&term, path),
+            Some(Types(TypeF::Flat(term))) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
         }
     } else {
@@ -237,7 +258,11 @@ fn find_fields_from_type(rrows: &RecordRows, path: &mut Vec<Ident>) -> Vec<Ident
 }
 
 /// Extract record fields from a record term.
-fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Vec<IdentWithType> {
+fn find_fields_from_term<'a>(
+    term: &'a RichTerm,
+    path: &'a mut Vec<Ident>,
+    info @ LinInfo { .. }: &'a LinInfo<'a>,
+) -> Vec<IdentWithType> {
     let current = path.pop();
     match (term.as_ref(), current) {
         (Term::Record(data) | Term::RecRecord(data, ..), None) => data
@@ -254,14 +279,14 @@ fn find_fields_from_term(term: &RichTerm, path: &mut Vec<Ident>) -> Vec<IdentWit
             let Some(term) = data.fields.get(&name) else {
                 return Vec::new()
             };
-            find_fields_from_term(term, path)
+            find_fields_from_term(term, path, info)
         }
         (Term::MetaValue(meta_value), Some(ident)) => {
             // We don't need to pop here, as the metavalue wraps the actual record
             path.push(ident);
-            find_fields_from_meta_value(meta_value, path)
+            find_fields_from_meta_value(meta_value, path, info)
         }
-        (Term::MetaValue(meta_value), None) => find_fields_from_meta_value(meta_value, path),
+        (Term::MetaValue(meta_value), None) => find_fields_from_meta_value(meta_value, path, info),
         _ => Vec::new(),
     }
 }
@@ -348,13 +373,17 @@ fn collect_record_info(
     path: &mut Vec<Ident>,
     lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
+    let info = LinInfo {
+        linearization,
+        lin_cache,
+    };
     linearization
         .get_item(id, lin_cache)
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path),
+                (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path, &info),
                 (
                     TermKind::Declaration(_, _, ValueState::Known(body_id))
                     | TermKind::RecordField {
@@ -366,10 +395,8 @@ fn collect_record_info(
                     // The path is mutable, so the first case would consume the path
                     // so we have to clone it so that it can be correctly used for the second case.
                     let mut p = path.clone();
-                    let mut fst =
-                        find_fields_from_contract(linearization, *body_id, path, lin_cache);
-                    let snd =
-                        find_fields_from_term_kind(linearization, *body_id, &mut p, lin_cache);
+                    let mut fst = find_fields_from_contract(*body_id, path, &info);
+                    let snd = find_fields_from_term_kind(*body_id, &mut p, &info);
                     fst.extend(snd);
                     fst
                 }
@@ -469,20 +496,22 @@ fn get_completion_identifiers(
                         //              we just switch to "Global name completion"
                         return Ok(Vec::new())
                     };
+                    let info = LinInfo {
+                        linearization,
+                        lin_cache: &server.lin_cache,
+                    };
                     let contract = meta.first().unwrap();
                     let result = match &contract.types {
                         Types(TypeF::Flat(RichTerm { pos, .. })) => {
                             let span = pos.unwrap();
                             let locator = (span.src_id, span.start);
                             let item = linearization.item_at(&locator).unwrap();
-                            find_fields_from_term_kind(
-                                linearization,
-                                item.id,
-                                &mut path,
-                                &server.lin_cache,
-                            )
+
+                            find_fields_from_term_kind(item.id, &mut path, &info)
                         }
-                        Types(TypeF::Record(rrows)) => find_fields_from_type(rrows, &mut path),
+                        Types(TypeF::Record(rrows)) => {
+                            find_fields_from_type(rrows, &mut path, &info)
+                        }
                         _ => Vec::new(),
                     };
                     result
@@ -691,11 +720,18 @@ mod tests {
         let mut path = vec![Ident::from("b"), Ident::from("a")];
         // unwrap: the conversion must succeed because we built a type without unification variable
         // nor type constants
-        let result: Vec<_> =
-            find_fields_from_type(&Box::new(a_record_type.try_into().unwrap()), &mut path)
-                .iter()
-                .map(|iwm| iwm.ident)
-                .collect();
+        let info = LinInfo {
+            linearization: &Default::default(),
+            lin_cache: &HashMap::new(),
+        };
+        let result: Vec<_> = find_fields_from_type(
+            &Box::new(a_record_type.try_into().unwrap()),
+            &mut path,
+            &info,
+        )
+        .iter()
+        .map(|iwm| iwm.ident)
+        .collect();
         let expected: Vec<_> = vec![IdentWithType::from("c1"), IdentWithType::from("c2")]
             .iter()
             .map(|iwm| iwm.ident)
@@ -771,11 +807,14 @@ mod tests {
             expected.sort();
             let completed = make_completed(linearization);
             for id in ids {
-                let mut actual: Vec<_> =
-                    find_fields_from_term_kind(&completed, id, &mut Vec::new(), &HashMap::new())
-                        .iter()
-                        .map(|iwm| iwm.ident)
-                        .collect();
+                let info = LinInfo {
+                    linearization: &completed,
+                    lin_cache: &HashMap::new(),
+                };
+                let mut actual: Vec<_> = find_fields_from_term_kind(id, &mut Vec::new(), &info)
+                    .iter()
+                    .map(|iwm| iwm.ident)
+                    .collect();
                 actual.sort();
                 assert_eq!(actual, expected)
             }
