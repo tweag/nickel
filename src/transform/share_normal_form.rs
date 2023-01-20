@@ -119,7 +119,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .enumerate()
                     .map(|(index, (id_t, field))| {
                         match field.value {
-                            Some(value) if value.as_ref().is_constant() => {
+                            Some(value) if !value.as_ref().is_constant() => {
                                 let fresh_var = Ident::fresh();
                                 let pos_v = value.pos;
                                 let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
