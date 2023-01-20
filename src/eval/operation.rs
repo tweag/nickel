@@ -672,17 +672,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
             }
-            UnaryOp::Seq() => {
-                if self.stack.count_args() >= 1 {
-                    let (next, ..) = self
-                        .stack
-                        .pop_arg(&self.cache)
-                        .expect("Condition already checked.");
-                    Ok(next)
-                } else {
-                    Err(EvalError::NotEnoughArgs(2, String::from("seq"), pos_op))
-                }
-            }
+            UnaryOp::Seq() => self
+                .stack
+                .pop_arg(&self.cache)
+                .map(|(next, ..)| next)
+                .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("seq"), pos_op)),
             UnaryOp::DeepSeq(_) => {
                 /// Build a RichTerm that forces a given list of terms, and at the end resumes the
                 /// evaluation of the argument on the top of the stack. The argument must iterate over
@@ -1271,15 +1265,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }?;
 
-                if self.stack.count_args() >= 1 {
-                    let (next, ..) = self
-                        .stack
-                        .pop_arg(&self.cache)
-                        .expect("Condition already checked.");
-                    Ok(next)
-                } else {
-                    Err(EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
-                }
+                self.stack
+                    .pop_arg(&self.cache)
+                    .map(|(next, ..)| next)
+                    .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
         }
     }
