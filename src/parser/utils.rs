@@ -299,20 +299,7 @@ pub fn elaborate_field_path(
                 RichTerm::new(Term::Record(RecordData::with_fields(fields)), pos)
             }
             FieldPathElem::Expr(exp) => {
-                let static_access = match exp.term.as_ref() {
-                    Term::StrChunks(chunks) => {
-                        chunks
-                            .iter()
-                            .fold(Some(String::new()), |acc, next| match (acc, next) {
-                                (Some(mut acc), StrChunk::Literal(lit)) => {
-                                    acc.push_str(lit);
-                                    Some(acc)
-                                }
-                                _ => None,
-                            })
-                    }
-                    _ => None,
-                };
+                let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
                 if let Some(static_access) = static_access {
                     let id = Ident::new_with_pos(static_access, exp.pos);
                     let mut fields = HashMap::new();

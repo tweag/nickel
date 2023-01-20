@@ -91,6 +91,9 @@ let typecheck = [
   ({bla = true, blo = 1}.blo : Num),
   let r : {bla : Bool, blo : Num} = {blo = 1, bla = true} in
     ((if r.bla then r.blo else 2) : Num),
+  # Regression tests for https://github.com/tweag/nickel/issues/888
+  {"fo京o" = "bar"} : {"fo京o" : Str},
+  {foo = 1} : { "foo" : Num},
 
   let f : forall a r. {bla : Bool, blo : a, ble : a ; r} -> a =
       fun r => if r.bla then r.blo else r.ble in

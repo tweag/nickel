@@ -167,6 +167,40 @@ impl UniRecord {
     /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
     /// `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
+        fn term_to_record_rows(
+            id: Ident,
+            rt: RichTerm,
+            tail: RecordRows,
+        ) -> Result<RecordRows, InvalidRecordTypeError> {
+            // At parsing stage, all `Rc`s must be 1-counted. We can thus call
+            // `into_owned()` without risking to actually clone anything.
+            match rt.term.into_owned() {
+                Term::MetaValue(MetaValue {
+                    doc: None,
+                    types: Some(ctrt),
+                    contracts,
+                    opt: false,
+                    priority: MergePriority::Neutral,
+                    value: None,
+                }) if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
+                    row: RecordRow {
+                        id,
+                        types: Box::new(ctrt.types),
+                    },
+                    tail: Box::new(tail),
+                })),
+                _ => {
+                    // Position of identifiers must always be set at this stage
+                    // (parsing)
+                    let span_id = id.pos.unwrap();
+                    let term_pos = rt.pos.into_opt().unwrap_or(span_id);
+                    Err(InvalidRecordTypeError(TermPos::Original(
+                        RawSpan::fuse(span_id, term_pos).unwrap(),
+                    )))
+                }
+            }
+        }
+
         // An open record (with an ellipsis `..` at the end) can't be translated to a record type.
         // `pos_ellipsis` should be set iff `attrs.open` is true.
         debug_assert!((self.pos_ellipsis == TermPos::None) != self.attrs.open);
@@ -207,38 +241,14 @@ impl UniRecord {
                     } else {
                         let elem = path.pop().unwrap();
                         match elem {
-                            FieldPathElem::Ident(id) => {
-                                // At parsing stage, all `Rc`s must be 1-counted. We can thus call
-                                // `into_owned()` without risking to actually clone anything.
-                                match rt.term.into_owned() {
-                                    Term::MetaValue(MetaValue {
-                                        doc: None,
-                                        types: Some(ctrt),
-                                        contracts,
-                                        opt: false,
-                                        priority: MergePriority::Neutral,
-                                        value: None,
-                                    }) if contracts.is_empty() => {
-                                        Ok(RecordRows(RecordRowsF::Extend {
-                                            row: RecordRow {
-                                                id,
-                                                types: Box::new(ctrt.types),
-                                            },
-                                            tail: Box::new(acc),
-                                        }))
-                                    }
-                                    _ => {
-                                        // Position of identifiers must always be set at this stage
-                                        // (parsing)
-                                        let span_id = id.pos.unwrap();
-                                        let term_pos = rt.pos.into_opt().unwrap_or(span_id);
-                                        Err(InvalidRecordTypeError(TermPos::Original(
-                                            RawSpan::fuse(span_id, term_pos).unwrap(),
-                                        )))
-                                    }
-                                }
+                            FieldPathElem::Ident(id) => term_to_record_rows(id, rt, acc),
+                            FieldPathElem::Expr(expr) => {
+                                let Some(id) = expr.term.as_ref().try_str_chunk_as_static_str() else {
+                                        return Err(InvalidRecordTypeError(rt.pos))
+                                };
+                                let id = Ident::new_with_pos(id, expr.pos);
+                                term_to_record_rows(id, rt, acc)
                             }
-                            FieldPathElem::Expr(rt) => Err(InvalidRecordTypeError(rt.pos)),
                         }
                     }
                 },

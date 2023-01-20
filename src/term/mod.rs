@@ -792,6 +792,25 @@ impl Term {
             | Term::ParseError(_) => false,
         }
     }
+
+    /// Extract the static literal from string chunk. It only returns a `Some(..)`
+    /// when the term is a `Term::StrChunk` and all the chunks are `StrChunk::Literal(..)`
+    pub fn try_str_chunk_as_static_str(&self) -> Option<String> {
+        match self {
+            Term::StrChunks(chunks) => {
+                chunks
+                    .iter()
+                    .fold(Some(String::new()), |acc, next| match (acc, next) {
+                        (Some(mut acc), StrChunk::Literal(lit)) => {
+                            acc.push_str(lit);
+                            Some(acc)
+                        }
+                        _ => None,
+                    })
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
