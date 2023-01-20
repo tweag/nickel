@@ -365,9 +365,9 @@ impl Cache for IncCache {
             env,
         }, IdentKind::Lambda, BindingType::Normal));
 
-        let take_node_back = self.store.get_mut(&node_as_function).unwrap();
+        let node_mut = self.store.get_mut(&node_as_function).unwrap();
 
-        take_node_back.orig.env.insert(fresh_var, node_as_function);
+        node_mut.orig.env.insert(fresh_var, node_as_function);
 
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
