@@ -461,16 +461,15 @@ fn get_completion_identifiers(
                 if let TermKind::RecordField { record, .. } = item.kind {
                     // Context completion
 
-                    /// Find the topmost record that contains a particular record field.
-                    /// It returns an an item (which is the containing record), and the
-                    /// field path from the field to the topmost record (not including the
-                    /// record field's ident)
-                    fn find_topmost_record<'a>(
+                    /// As we traverse a nested record all the way to the topmost record,
+                    /// accumulate all the record metadata and corresponding path.
+                    fn accumulate_record_meta_data<'a>(
                         linearization: &'a Completed,
                         server: &'a Server,
                         record: ItemId,
                         mut path: Vec<Ident>,
-                    ) -> (&'a LinearizationItem<Types>, Vec<Ident>) {
+                        mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
+                    ) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
                         // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
                         let parent = linearization.get_item(record, &server.lin_cache).unwrap();
                         let next =
@@ -487,27 +486,41 @@ fn get_completion_identifiers(
                                     } if value == parent.id => Some((ident, record)),
                                     _ => None,
                                 });
+                        result.push((parent, path.clone()));
                         match next {
-                            None => (parent, path),
+                            None => result,
                             Some((name, record)) => {
                                 path.push(name);
-                                find_topmost_record(linearization, server, record, path)
+                                accumulate_record_meta_data(
+                                    linearization,
+                                    server,
+                                    record,
+                                    path,
+                                    result,
+                                )
                             }
                         }
                     }
-                    let (parent, mut path) =
-                        find_topmost_record(linearization, server, record, Vec::new());
-                    let Some(meta) = parent.meta.as_ref() else {
-                        // I'm not *entirely* sure we want to do this here.
-                        // Alternative: if we cannot find a meta on any record,
-                        //              we just switch to "Global name completion"
-                        return Ok(Vec::new())
-                    };
-                    let info = LinInfo {
+
+                    accumulate_record_meta_data(
                         linearization,
-                        lin_cache: &server.lin_cache,
-                    };
-                    find_fields_from_meta_value(meta, &mut path, &info)
+                        server,
+                        record,
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                    .into_iter()
+                    .flat_map(|(parent, mut path)| {
+                        let Some(meta) = parent.meta.as_ref() else {
+                               return Vec::new()
+                            };
+                        let info = LinInfo {
+                            linearization,
+                            lin_cache: &server.lin_cache,
+                        };
+                        find_fields_from_meta_value(meta, &mut path, &info)
+                    })
+                    .collect()
                 } else {
                     // Global name completion
                     let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
