@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::{HashMap, HashSet}, rc::Rc};
 
 use super::{
     //lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     identifier::Ident,
-    term::{record::FieldDeps, BindingType, RichTerm},
+    term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
 
 /// A black-holed thunk was accessed, which would lead to infinite recursion.
@@ -340,6 +340,38 @@ impl Cache for IncCache {
             fields: I,
         ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
-        node.orig.body.clone()
+        
+        let deps = match node.bty.clone() {
+            BindingType::Normal => FieldDeps::Known(Rc::new(HashSet::new())),
+            BindingType::Revertible(deps) => deps.clone(),
+        };
+
+        let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match deps {
+            FieldDeps::Known(deps) => Box::new(move |id: &&Ident| deps.contains(id)),
+            FieldDeps::Unknown => Box::new(|_: &&Ident| true),
+        };
+
+        let Closure {body, mut env} = node.orig.clone();
+
+        let as_function =
+            fields.clone().filter(&mut deps_filter).rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
+
+        let fresh_var = Ident::fresh();
+        let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
+        let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
+
+        let node_as_function = self.add_node(IncNode::new(Closure {
+            body: as_function,
+            env,
+        }, IdentKind::Lambda, BindingType::Normal));
+
+        let take_node_back = self.store.get_mut(&node_as_function).unwrap();
+
+        take_node_back.orig.env.insert(fresh_var, node_as_function);
+
+        args.fold(as_function_closurized, |partial_app, arg| {
+            RichTerm::from(Term::App(partial_app, arg))
+        })
+        
     }
 }
