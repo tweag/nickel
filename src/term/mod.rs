@@ -413,7 +413,7 @@ impl Traverse<RichTerm> for LabeledType {
     {
         let LabeledType { types, label } = self;
         types
-            .traverse(&f, state, order)
+            .traverse(f, state, order)
             .map(|types| LabeledType { types, label })
     }
 }
