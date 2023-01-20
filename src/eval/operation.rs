@@ -1254,7 +1254,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             UnaryOp::Trace() => {
                 if let Term::Str(s) = &*t {
-                    println!("builtin.trace: {s}");
+                    eprintln!("builtin.trace: {s}");
                     Ok(())
                 } else {
                     Err(EvalError::TypeError(
