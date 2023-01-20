@@ -497,7 +497,7 @@ fn get_completion_identifiers(
                     }
                     let (parent, mut path) =
                         find_topmost_record(linearization, server, record, Vec::new());
-                    let Some(meta) = parent.meta.as_ref().map(|meta| &meta.contracts) else {
+                    let Some(meta) = parent.meta.as_ref() else {
                         // I'm not *entirely* sure we want to do this here.
                         // Alternative: if we cannot find a meta on any record,
                         //              we just switch to "Global name completion"
@@ -507,21 +507,7 @@ fn get_completion_identifiers(
                         linearization,
                         lin_cache: &server.lin_cache,
                     };
-                    let contract = meta.first().unwrap();
-                    let result = match &contract.types {
-                        Types(TypeF::Flat(RichTerm { pos, .. })) => {
-                            let span = pos.unwrap();
-                            let locator = (span.src_id, span.start);
-                            let item = linearization.item_at(&locator).unwrap();
-
-                            find_fields_from_term_kind(item.id, &mut path, &info)
-                        }
-                        Types(TypeF::Record(rrows)) => {
-                            find_fields_from_type(rrows, &mut path, &info)
-                        }
-                        _ => Vec::new(),
-                    };
-                    result
+                    find_fields_from_meta_value(meta, &mut path, &info)
                 } else {
                     // Global name completion
                     let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
