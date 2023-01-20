@@ -19,7 +19,7 @@ pub trait Cache: Clone {
     fn get(&self, idx: CacheIndex) -> Closure;
     fn get_update_index(
         &mut self,
-        idx: &mut CacheIndex,
+        idx: &CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError>;
     fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex;
     fn patch<F: Fn(&mut Closure)>(&mut self, idx: CacheIndex, f: F);
@@ -39,7 +39,7 @@ pub trait Cache: Clone {
     ) -> RichTerm;
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex;
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps>;
-    fn make_update_index(&mut self, idx: &mut CacheIndex)
+    fn make_update_index(&mut self, idx: &CacheIndex)
         -> Result<Self::UpdateIndex, BlackholedError>;
 }
 
@@ -207,7 +207,7 @@ impl Cache for IncCache {
 
     fn get_update_index(
         &mut self,
-        idx: &mut CacheIndex,
+        idx: &CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
         let node = self.store.get(idx).unwrap();
 
@@ -230,6 +230,7 @@ impl Cache for IncCache {
         let node = self.store.get_mut(&idx).unwrap();
 
         node.cached = Some(clos);
+        node.state = IncNodeState::default();
     }
 
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
@@ -270,7 +271,7 @@ impl Cache for IncCache {
 
     fn make_update_index(
         &mut self,
-        idx: &mut CacheIndex,
+        idx: &CacheIndex,
     ) -> Result<Self::UpdateIndex, BlackholedError> {
         let node = self.store.get_mut(idx).unwrap();
 
@@ -310,10 +311,9 @@ impl Cache for IncCache {
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         let node = self.store.get_mut(idx).unwrap();
 
-        assert!(
-            node.cached.is_none(),
-            "tried to build the cached value, but was already set"
-        );
+        if node.cached.is_none() {
+            return ()
+        }
 
         let mut new_cached = Closure::clone(&node.orig);
 
@@ -351,7 +351,7 @@ impl Cache for IncCache {
             FieldDeps::Unknown => Box::new(|_: &&Ident| true),
         };
 
-        let Closure {body, mut env} = node.orig.clone();
+        let Closure {body, env: env_orig} = node.orig.clone();
 
         let as_function =
             fields.clone().filter(&mut deps_filter).rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
@@ -362,12 +362,10 @@ impl Cache for IncCache {
 
         let node_as_function = self.add_node(IncNode::new(Closure {
             body: as_function,
-            env,
+            env: env_orig,
         }, IdentKind::Lambda, BindingType::Normal));
 
-        let node_mut = self.store.get_mut(&node_as_function).unwrap();
-
-        node_mut.orig.env.insert(fresh_var, node_as_function);
+        env.insert(fresh_var, node_as_function);
 
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
