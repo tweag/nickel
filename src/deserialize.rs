@@ -23,7 +23,8 @@ macro_rules! deserialize_number {
                 Term::Num(n) => visitor.$visit(n as $type),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Num".to_string(),
-                    occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    // occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    occurred: RichTerm::from(other).to_string(),
                 }),
             }
         }
@@ -40,7 +41,8 @@ macro_rules! deserialize_number_round {
                 Term::Num(n) => visitor.$visit(n.round() as $type),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Num".to_string(),
-                    occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    // occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
+                    occurred: RichTerm::from(other).to_string(),
                 }),
             }
         }
@@ -78,7 +80,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             }),
             Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
-            Term::Annotated(..) => visitor.visit_unit(),
+            Term::Annotated(..) => unreachable!(),
             other => Err(RustDeserializationError::UnimplementedType {
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
             }),

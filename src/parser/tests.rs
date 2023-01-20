@@ -251,6 +251,8 @@ fn enum_terms() {
 
 #[test]
 fn record_terms() {
+    use crate::term::record::Field;
+
     assert_eq!(
         parse_without_pos("{ a = 1, b = 2, c = 3}"),
         RecRecord(
@@ -282,7 +284,11 @@ fn record_terms() {
             ),
             vec![(
                 StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
-                mk_app!(mk_term::op1(UnaryOp::Ite(), Num(4.)), Num(5.), Num(6.))
+                Field::from(mk_app!(
+                    mk_term::op1(UnaryOp::Ite(), Num(4.)),
+                    Num(5.),
+                    Num(6.)
+                ))
             )],
             None,
         )

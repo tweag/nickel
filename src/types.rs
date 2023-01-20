@@ -1035,7 +1035,7 @@ mod test {
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Types {
-        use crate::term::MetaValue;
+        use crate::term::TypeAnnotation;
 
         // Wrap the type in a contract to have it accepted by the parser.
         let wrapper = format!("null | {}", s);
@@ -1047,7 +1047,7 @@ mod test {
             .unwrap();
 
         match rt.term.into_owned() {
-            Term::MetaValue(MetaValue { mut contracts, .. }) if contracts.len() == 1 => {
+            Term::Annotated(TypeAnnotation { mut contracts, .. }, _) if contracts.len() == 1 => {
                 contracts.remove(0).types
             }
             _ => panic!("types::test::parse_type(): expected contract"),
