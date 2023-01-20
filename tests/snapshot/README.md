@@ -18,6 +18,11 @@ nix dev shell, `cargo-insta` is already on your path. Most of this guide will
 assume you have `cargo-insta` installed. If you'd prefer not to install it,
 please read [this section](#without-cargo-insta).
 
+The snapshot tests for `nickel export` capture both `stdout` and `stderr`. For
+easier reviewability in `cargo insta review` this is done with two separate
+assertions. As an unfortunate side effect, adding a new test input requires
+running `cargo insta review` twice, once for `stdout` and once for `stderr`.
+
 ## What to do if a snapshot test fails
 
 1. Run `cargo insta review`.
@@ -33,7 +38,9 @@ please read [this section](#without-cargo-insta).
 3. You'll see a failure message, noting that the test was a new snapshot.
 4. Run `cargo insta review`.
 5. If you're happy with the output, accept it.
-6. Commit the input file and the generated snapshot. You're done!
+6. Run the snapshot tests again with `cargo test --test snapshot`. If anything
+   still fails, go to step 4.
+7. Commit the input file and the generated snapshot. You're done!
 
 ## Without `cargo-insta`
 

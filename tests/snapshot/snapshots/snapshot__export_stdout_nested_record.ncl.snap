@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: snapshot.stdout
 ---
 {
   "a_num": 1,

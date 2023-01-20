@@ -1,0 +1,12 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+builtin.trace: too few arguments
+error: not enough arguments
+  ┌─ [INPUTS_PATH]/errors/trace_not_saturated.ncl:1:1
+  │
+1 │ %trace% "too few arguments"
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^ trace expects 2 arguments, but not enough were provided
+
+

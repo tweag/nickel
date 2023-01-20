@@ -24,9 +24,10 @@ fn check_export_snapshots(file: &str) {
     let snapshot = NickelInvocation::new()
         .subcommand("export")
         .file(&file)
-        .snapshot_stdout();
+        .snapshot_output();
 
-    insta::assert_snapshot!(file.prefixed_test_name("export"), snapshot)
+    insta::assert_snapshot!(file.prefixed_test_name("export_stdout"), snapshot.stdout);
+    insta::assert_snapshot!(file.prefixed_test_name("export_stderr"), snapshot.stderr);
 }
 
 #[test_resources("tests/snapshot/inputs/errors/*.ncl")]
@@ -78,6 +79,11 @@ struct NickelInvocation {
     cmd: Command,
 }
 
+struct NickelOutput {
+    stdout: String,
+    stderr: String,
+}
+
 impl NickelInvocation {
     fn new() -> Self {
         let nickel_loc = env!("CARGO_BIN_EXE_nickel");
@@ -106,5 +112,13 @@ impl NickelInvocation {
 
     fn snapshot_stdout(&mut self) -> String {
         String::from_utf8(self.run().stdout).expect("Output should be utf8")
+    }
+
+    fn snapshot_output(&mut self) -> NickelOutput {
+        let o = self.run();
+        NickelOutput {
+            stdout: String::from_utf8(o.stdout).expect("Output should be utf8"),
+            stderr: String::from_utf8(o.stderr).expect("Output should be utf8"),
+        }
     }
 }
