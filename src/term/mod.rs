@@ -1048,7 +1048,8 @@ pub enum UnaryOp {
     /// tail of its argument.
     RecordEmptyWithTail(),
 
-    /// Print a message when encountered during evaluation. Operationally the same as the identity
+    /// Print a message when encountered during evaluation and proceed with the evaluation of the argument
+    /// on the top of the stack. Operationally the same as the identity
     /// function
     Trace(),
 }
