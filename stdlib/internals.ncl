@@ -113,6 +113,6 @@
 
   # Recursive priorities operators
 
-  "$rec_force" = fun val => %deep_seq% val (%rec_force% val),
-  "$rec_default" = fun val => %deep_seq% val (%rec_default% val),
+  "$rec_force" = fun val => %rec_force% (%force% val),
+  "$rec_default" = fun val => %rec_default% (%force% val),
 }
