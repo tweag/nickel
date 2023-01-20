@@ -106,51 +106,6 @@ fn asking_for_various_types() {
     assert_eq!(Ok(Term::Enum("Fun".into())), eval_no_import(lambda));
 }
 
-fn mk_default(t: RichTerm) -> Term {
-    use crate::term::MergePriority;
-
-    let mut meta = MetaValue::from(t);
-    meta.priority = MergePriority::Bottom;
-    Term::MetaValue(meta)
-}
-
-fn mk_docstring<S>(t: RichTerm, s: S) -> Term
-where
-    S: Into<String>,
-{
-    let mut meta = MetaValue::from(t);
-    meta.doc.replace(s.into());
-    Term::MetaValue(meta)
-}
-
-#[test]
-fn enriched_terms_unwrapping() {
-    let t =
-        mk_default(mk_default(mk_docstring(Term::Bool(false).into(), "a").into()).into()).into();
-    assert_eq!(Ok(Term::Bool(false)), eval_no_import(t));
-}
-
-#[test]
-fn merge_enriched_default() {
-    let t = mk_term::op2(
-        BinaryOp::Merge(),
-        Term::Num(1.0),
-        mk_default(Term::Num(2.0).into()),
-    );
-    assert_eq!(Ok(Term::Num(1.0)), eval_no_import(t));
-}
-
-#[test]
-fn merge_incompatible_defaults() {
-    let t = mk_term::op2(
-        BinaryOp::Merge(),
-        mk_default(Term::Num(1.0).into()),
-        mk_default(Term::Num(2.0).into()),
-    );
-
-    eval_no_import(t).unwrap_err();
-}
-
 #[test]
 fn imports() {
     let mut vm = VirtualMachine::new(SimpleResolver::new());

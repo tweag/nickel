@@ -1707,7 +1707,7 @@ pub mod make {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
                 let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
-                $crate::term::RichTerm::from(Term::Array(ts, $attrs))
+                $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
             }
         };
         ( $( $terms:expr ),* ) => {
