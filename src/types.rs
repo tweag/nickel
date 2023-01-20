@@ -937,9 +937,9 @@ impl Traverse<Types> for Types {
 }
 
 impl Traverse<RichTerm> for Types {
-    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
-        FTy: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let f_on_type = |ty: Types, s: &mut S| match ty.0 {
             TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
