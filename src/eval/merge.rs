@@ -61,6 +61,7 @@ use crate::term::{
     BinaryOp, LabeledType, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
 use crate::transform::Closurizable;
+use crate::types::{TypeF, Types};
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -276,19 +277,16 @@ pub fn merge<C: Cache>(
             // The fields in the intersection (center) need a slightly more general treatment to
             // correctly propagate the recursive values down each field: saturation. See
             // [crate::eval::lazy::Thunk::saturate].
-            m.extend(left.into_iter().map(|(id, field)| {
-                (
-                    id,
-                    field.map_value(|value| revert_closurize(cache, value, &mut env, &env1)),
-                )
-            }));
+            m.extend(
+                left.into_iter()
+                    .map(|(id, field)| (id, field.revert_closurize(cache, &mut env, env1.clone()))),
+            );
 
-            m.extend(right.into_iter().map(|(id, field)| {
-                (
-                    id,
-                    field.map_value(|value| revert_closurize(cache, value, &mut env, &env2)),
-                )
-            }));
+            m.extend(
+                right
+                    .into_iter()
+                    .map(|(id, field)| (id, field.revert_closurize(cache, &mut env, env2.clone()))),
+            );
 
             for (id, (field1, field2)) in center.into_iter() {
                 m.insert(
@@ -509,68 +507,48 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
-            Some(revert_closurize(t1, env_final, &val_env1)),
+            Some(t1.revert_closurize(cache, env_final, val_env1.clone())),
             metadata1.priority,
         ),
         (Some(t1), None) => (
-            Some(revert_closurize(t1, env_final, &val_env1)),
+            Some(t1.revert_closurize(cache, env_final, val_env1.clone())),
             metadata1.priority,
         ),
         (_, Some(t2)) if metadata2.priority > metadata1.priority => (
-            Some(revert_closurize(t2, env_final, &val_env2)),
+            Some(t2.revert_closurize(cache, env_final, val_env2.clone())),
             metadata2.priority,
         ),
         (None, Some(t2)) => (
-            Some(revert_closurize(t2, env_final, &val_env2)),
+            Some(t2.revert_closurize(cache, env_final, val_env2.clone())),
             metadata2.priority,
         ),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
 
-    // Finally, we also need to closurize the contracts in the final envirnment.
-    let mut contracts1: Vec<LabeledType> = metadata1
+    let mut annot1 = metadata1
         .annotation
-        .contracts
-        .into_iter()
-        .map(|ctr| ctr.closurize(cache, env_final, env1.clone()))
-        .collect();
-
-    // Clippy is wrong to complain about the useless `collect` here:
-    // it's necessary to release the mutable borrow on `env`
-    // See https://github.com/rust-lang/rust-clippy/issues/7526
-    #[allow(clippy::needless_collect)]
-    let contracts2: Vec<LabeledType> = metadata2
+        .revert_closurize(cache, env_final, env1.clone());
+    let mut annot2 = metadata2
         .annotation
-        .contracts
-        .into_iter()
-        .map(|ctr| ctr.closurize(cache, env_final, env2.clone()))
-        .collect();
-
-    let types1 = metadata1
-        .annotation
-        .types
-        .map(|ctr| ctr.closurize(cache, env_final, env1));
-    let types2 = metadata2
-        .annotation
-        .types
-        .map(|ctr| ctr.closurize(cache, env_final, env2));
+        .revert_closurize(cache, env_final, env2.clone());
 
     // If both have type annotations, we arbitrarily choose the first one. At this point we are
     // evaluating, and types annotations and contracts make no difference operationnally. Even for
     // a query, it's strange to show multiple static types. So if both are set, we turn types2 to a
     // contract and keep type1 as the main type annotation.
-    let types = match types2 {
-        Some(ctr) if types1.is_some() => {
-            contracts1.push(ctr);
-            types1
+    let types = match (annot1.types.take(), annot2.types.take()) {
+        (Some(ctr1), Some(ctr2)) => {
+            annot1.contracts.push(ctr2);
+            Some(ctr1)
         }
-        _ => types1,
+        (ty1, ty2) => ty1.or(ty2),
     };
 
-    let contracts: Vec<_> = contracts1
+    let contracts: Vec<_> = annot1
+        .contracts
         .into_iter()
-        .chain(contracts2.into_iter())
+        .chain(annot2.contracts.into_iter())
         .collect();
     let metadata = FieldMetadata {
         doc: merge_doc(metadata1.doc, metadata2.doc),
@@ -678,23 +656,115 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
     Ok(RichTerm::from(Term::Var(fresh_var)))
 }
 
-/// Revert the thunk inside the provided field (if any), and closurize the result inside `env`.
-fn revert_closurize<C: Cache>(
-    cache: &mut C,
-    rt: RichTerm,
-    env: &mut Environment,
-    local_env: &Environment,
-) -> RichTerm {
-    if let Term::Var(id) = rt.as_ref() {
-        // This creates a fresh variable which is bound to a reverted copy of the original thunk
-        let reverted = cache.revert(local_env.get(id).unwrap());
-        let fresh_id = Ident::fresh();
-        env.insert(fresh_id, reverted);
-        RichTerm::new(Term::Var(fresh_id), rt.pos)
-    } else {
-        // Otherwise, if it is not a variable after the share normal form transformations, it
-        // should be a constant and we don't need to revert anything
-        rt
+/// Same as [Closurizable], but also revert the thunk if the term is a variable.
+trait RevertClosurize {
+    /// Revert the thunk inside the term (if any), and closurize the result inside `env`.
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> Self;
+}
+
+impl RevertClosurize for RichTerm {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> RichTerm {
+        if let Term::Var(id) = self.as_ref() {
+            //TODO: actually use the cache after rebase
+            // This create a fresh variable which is bound to a reverted copy of the original thunk
+            let reverted = cache.revert(with_env.get(id).unwrap());
+            let fresh_id = Ident::fresh();
+            env.insert(fresh_id, reverted);
+            RichTerm::new(Term::Var(fresh_id), self.pos)
+        } else {
+            // Otherwise, if it is not a variable after the share normal form transformations, it
+            // should be a constant and we don't need to revert anything
+            self
+        }
+    }
+}
+
+impl RevertClosurize for Field {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> Field {
+        let metadata = self.metadata.revert_closurize(cache, env, with_env.clone());
+        let value = self
+            .value
+            .map(|value| value.revert_closurize(cache, env, with_env));
+
+        Field { metadata, value }
+    }
+}
+
+impl RevertClosurize for Types {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> Types {
+        Types(TypeF::Flat(
+            self.contract()
+                .unwrap()
+                .revert_closurize(cache, env, with_env),
+        ))
+    }
+}
+
+impl RevertClosurize for LabeledType {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> LabeledType {
+        LabeledType {
+            types: self.types.revert_closurize(cache, env, with_env),
+            label: self.label,
+        }
+    }
+}
+
+impl RevertClosurize for TypeAnnotation {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> TypeAnnotation {
+        let types = self
+            .types
+            .map(|ty| ty.revert_closurize(cache, env, with_env.clone()));
+        let contracts = self
+            .contracts
+            .into_iter()
+            .map(|labeled_ty| labeled_ty.revert_closurize(cache, env, with_env.clone()))
+            .collect();
+
+        TypeAnnotation { types, contracts }
+    }
+}
+
+impl RevertClosurize for FieldMetadata {
+    fn revert_closurize<C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        with_env: Environment,
+    ) -> FieldMetadata {
+        FieldMetadata {
+            annotation: self.annotation.revert_closurize(cache, env, with_env),
+            ..self
+        }
     }
 }
 
