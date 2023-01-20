@@ -41,8 +41,10 @@ let {Assert, check, ..} =  import "lib/assert.ncl" in
     d = 1,
   } | Assert,
 
-  {foo | rec default = 1} & {foo = 2} == {foo = 2} | Assert,
-  {foo | rec force = 1} & {foo = 2} == {foo = 1} | Assert,
+  # TODO: restore (or not?). The previous behavior is harder to simulate after
+  # RFC005.
+  # {foo | rec default = 1} & {foo = 2} == {foo = 2} | Assert,
+  # {foo | rec force = 1} & {foo = 2} == {foo = 1} | Assert,
   {val | rec default = {foo = 1}} & {val.foo = 2} == {val.foo = 2} | Assert,
   {val | rec force = {foo = 1}} & {val.foo = 2} == {val.foo = 1} | Assert,
 
