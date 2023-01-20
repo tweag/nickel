@@ -632,7 +632,7 @@ impl Term {
             Term::Array(..) => String::from("[ ... ]"),
             Term::SealingKey(_) => String::from("<sealing key>"),
             Term::Sealed(..) => String::from("<sealed>"),
-            Term::Annotated(annot, t) => t.as_ref().shallow_repr(),
+            Term::Annotated(_, t) => t.as_ref().shallow_repr(),
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
             Term::RuntimeError(_) => String::from("<runtime error>"),

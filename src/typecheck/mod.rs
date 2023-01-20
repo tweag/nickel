@@ -1026,7 +1026,7 @@ fn walk_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
-    mut linearizer: L,
+    linearizer: L,
     annot: &TypeAnnotation,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
