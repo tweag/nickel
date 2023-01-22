@@ -8,36 +8,45 @@ use crate::term::make::{self, if_then_else};
 use crate::term::{record::RecordData, BinaryOp, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
-use rnix;
-use rnix::types::{BinOp, EntryHolder, TokenWrapper, TypedNode, UnaryOp as UniOp};
+use rnix::ast::{BinOp as NixBinOp, Path as NixPath, Str as NixStr, UnaryOp as NixUniOp};
 use std::collections::HashMap;
 
-impl ToNickel for UniOp {
+impl ToNickel for NixStr {
     fn translate(self, state: &State) -> RichTerm {
-        use rnix::types::UnaryOpKind::*;
-        let value = self.value().unwrap().translate(state);
-        match self.operator() {
+        use rnix::ast::InterpolPart;
+        Term::StrChunks(
+            self.parts()
+                .enumerate()
+                .map(|(i, c)| match c {
+                    InterpolPart::Literal(s) => crate::term::StrChunk::Literal(s.to_string()),
+                    InterpolPart::Interpolation(interp) => {
+                        crate::term::StrChunk::Expr(interp.expr().unwrap().translate(state), i)
+                    }
+                })
+                .collect(),
+        )
+        .into()
+    }
+}
+
+impl ToNickel for NixUniOp {
+    fn translate(self, state: &State) -> RichTerm {
+        use rnix::ast::UnaryOpKind::*;
+        let value = self.expr().unwrap().translate(state);
+        match self.operator().unwrap() {
             Negate => make::op2(BinaryOp::Sub(), Term::Num(0.), value),
             Invert => make::op1(UnaryOp::BoolNot(), value),
         }
     }
 }
 
-impl ToNickel for BinOp {
+impl ToNickel for NixBinOp {
     fn translate(self, state: &State) -> RichTerm {
-        use rnix::types::BinOpKind::*;
+        use rnix::ast::BinOpKind::*;
         let lhs = self.lhs().unwrap().translate(state);
         let rhs = self.rhs().unwrap().translate(state);
         match self.operator().unwrap() {
             Concat => make::op2(BinaryOp::ArrayConcat(), lhs, rhs),
-            IsSet => {
-                let rhs = if self.rhs().unwrap().kind() == rnix::SyntaxKind::NODE_IDENT {
-                    Term::Str(self.rhs().unwrap().to_string()).into()
-                } else {
-                    rhs
-                };
-                make::op2(BinaryOp::HasField(), rhs, lhs)
-            }
             Update => unimplemented!(),
 
             Add => mk_app!(crate::stdlib::compat::add(), lhs, rhs),
@@ -60,80 +69,59 @@ impl ToNickel for BinOp {
     }
 }
 
-impl ToNickel for rnix::SyntaxNode {
+impl ToNickel for rnix::ast::Expr {
     fn translate(self, state: &State) -> RichTerm {
-        use rnix::types::{self, ParsedType, Wrapper};
-        use rnix::value;
-        use rnix::SyntaxKind::*;
-        let pos = self.text_range();
+        use rnix::ast::{self, Expr};
+        use rowan::ast::AstNode;
+        let pos = self.syntax().text_range();
         let file_id = state.file_id.clone();
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
         println!("{:?}: {}", self, self);
-        let node: ParsedType = self.try_into().unwrap();
-        match node {
-            ParsedType::Error(_) => {
+        match self {
+            Expr::Error(_) => {
                 Term::ParseError(crate::error::ParseError::NixParseError(file_id)).into()
+                // TODO:
+                // Improve
+                // error
+                // management
             }
-            ParsedType::Root(n) => n.inner().unwrap().translate(state),
-            ParsedType::Paren(n) => n.inner().unwrap().translate(state),
-            ParsedType::Dynamic(n) => n.inner().unwrap().translate(state),
+            Expr::Root(n) => n.expr().unwrap().translate(state),
+            Expr::Paren(n) => n.expr().unwrap().translate(state),
 
-            ParsedType::Assert(n) => unimplemented!(),
+            Expr::Assert(n) => unimplemented!(),
 
-            ParsedType::Value(n) => match n.to_value().unwrap() {
-                value::Value::Float(v) => Term::Num(v),
-                value::Value::Integer(v) => Term::Num(v as f64),
-                value::Value::String(v) => Term::Str(v),
+            Expr::Literal(n) => match n.kind() {
+                rnix::ast::LiteralKind::Float(v) => Term::Num(v.value().unwrap()),
+                rnix::ast::LiteralKind::Integer(v) => Term::Num(v.value().unwrap() as f64),
                 // TODO: How to manage Paths in nickel?
-                value::Value::Path(a, v) => {
-                    use value::Anchor::*;
-                    let strpath = match a {
-                        Absolute => format!("/{}", v),
-                        Relative => format!("./{}", v),
-                        Home => format!("~/{}", v),
-                        Store => format!("<{}>", v),
-                    };
-                    Term::Str(strpath)
-                }
+                rnix::ast::LiteralKind::Uri(v) => Term::Str(v.to_string()),
             }
             .into(),
-            ParsedType::Str(n) => {
-                let parts = n.parts();
-                Term::StrChunks(
-                    parts
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, c)| match c {
-                            rnix::value::StrPart::Literal(s) => crate::term::StrChunk::Literal(s),
-                            rnix::value::StrPart::Ast(a) => crate::term::StrChunk::Expr(
-                                a.first_child().unwrap().translate(state),
-                                i,
-                            ),
-                        })
-                        .collect(),
-                )
-                .into()
-            }
-            ParsedType::List(n) => Term::Array(
+            Expr::Str(n) => n.translate(state),
+            Expr::List(n) => Term::Array(
                 n.items().map(|elm| elm.translate(state)).collect(),
                 Default::default(),
             )
             .into(),
-            ParsedType::AttrSet(n) => {
+            Expr::AttrSet(n) => {
                 use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
+                use rnix::ast::HasEntry;
                 let fields: Vec<(_, _)> = n
-                    .entries()
+                    .attrpath_values()
                     .map(|kv| {
                         let val = kv.value().unwrap().translate(state);
                         let p: Vec<_> = kv
-                            .key()
+                            .attrpath()
                             .unwrap()
-                            .path()
-                            .map(|p| match p.kind() {
-                                NODE_IDENT => FieldPathElem::Ident(
-                                    rnix::types::Ident::cast(p).unwrap().as_str().into(),
-                                ),
-                                _ => FieldPathElem::Expr(p.translate(state)),
+                            .attrs()
+                            .map(|p| match p {
+                                rnix::ast::Attr::Ident(id) => {
+                                    FieldPathElem::Ident(id.to_string().into())
+                                }
+                                rnix::ast::Attr::Dynamic(d) => {
+                                    FieldPathElem::Expr(d.expr().unwrap().translate(state))
+                                }
+                                rnix::ast::Attr::Str(s) => FieldPathElem::Expr(s.translate(state)),
                             })
                             .collect();
                         elaborate_field_path(p, val)
@@ -145,7 +133,7 @@ impl ToNickel for rnix::SyntaxNode {
             // In nix it's allowed to define vars named `true`, `false` or `null`.
             // But we prefer to not support it. If we try to redefine one of these builtins, nickel
             // will panic (see below in the `LetIn` arm).
-            ParsedType::Ident(n) => match n.as_str() {
+            Expr::Ident(id) => match id.to_string().as_str() {
                 "true" => Term::Bool(true),
                 "false" => Term::Bool(false),
                 "null" => Term::Null,
@@ -161,31 +149,30 @@ impl ToNickel for rnix::SyntaxNode {
                 }
             }
             .into(),
-            ParsedType::LegacyLet(_) => panic!("Legacy let form is not supported"), // Probably useless to suport it in a short term.
+            Expr::LegacyLet(_) => panic!("Legacy let form is not supported"), // Probably useless to suport it in a short term.
             // `let ... in` blocks are recursive in Nix and not in Nickel. To emulate this, we use
             // a `let <pattern> = <recrecord> in`. The record provide recursivity then the values
             // are destructured by the pattern.
-            ParsedType::LetIn(n) => {
+            Expr::LetIn(n) => {
                 use crate::destruct;
+                use rnix::ast::HasEntry;
                 let mut destruct_vec = Vec::new();
                 let mut fields = HashMap::new();
                 let mut state = state.clone();
-                state.env.extend(n.entries().map(|kv| {
-                    types::Ident::cast(kv.key().unwrap().path().next().unwrap())
-                        .unwrap()
-                        .as_str()
-                        .to_string()
+                state.env.extend(n.attrpath_values().map(|kv| {
+                    kv.attrpath().unwrap().attrs().next().unwrap().to_string() // TODO: does not work if the let contains Dynamic or Str. Is
+                                                                               // it possible in Nix?
                 }));
-                for kv in n.entries() {
+                for kv in n.attrpath_values() {
                     // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
                     // element.
-                    let id = types::Ident::cast(kv.key().unwrap().path().next().unwrap()).unwrap();
+                    let id = kv.attrpath().unwrap().attrs().next().unwrap();
                     // Check we don't try to redefine builtin values. Even if it's possible in Nix,
                     // we don't suport it.
-                    let id: Ident = match id.as_str() {
+                    let id: Ident = match id.to_string().as_str() {
                         "true" | "false" | "null" => panic!(
                             "`let {}` is forbiden. Can not redifine `true`, `false` or `nul`",
-                            id.as_str()
+                            id.to_string()
                         ),
                         s => s.into(),
                     };
@@ -205,25 +192,26 @@ impl ToNickel for rnix::SyntaxNode {
                     n.body().unwrap().translate(&state),
                 )
             }
-            ParsedType::With(n) => {
+            Expr::With(n) => {
                 let mut state = state.clone();
                 state.with.push(n.namespace().unwrap().translate(&state));
                 n.body().unwrap().translate(&state)
             }
 
-            ParsedType::Lambda(n) => {
-                let arg = n.arg().unwrap();
-                match arg.kind() {
-                    NODE_IDENT => {
-                        Term::Fun(arg.to_string().into(), n.body().unwrap().translate(state))
-                    }
-                    NODE_PATTERN => {
+            Expr::Lambda(n) => {
+                match n.param().unwrap() {
+                    rnix::ast::Param::IdentParam(idp) => Term::Fun(
+                        idp.ident().unwrap().to_string().into(),
+                        n.body().unwrap().translate(state),
+                    ),
+                    rnix::ast::Param::Pattern(pat) => {
                         use crate::destruct::*;
-                        let pat = rnix::types::Pattern::cast(arg).unwrap();
-                        let at = pat.at().map(|id| id.as_str().into());
+                        let at = pat
+                            .pat_bind()
+                            .map(|id| id.ident().unwrap().to_string().into());
                         // TODO: manage default values:
                         let matches = pat
-                            .entries()
+                            .pat_entries()
                             .map(|e| {
                                 let mv = if let Some(def) = e.default() {
                                     MetaValue {
@@ -234,12 +222,12 @@ impl ToNickel for rnix::SyntaxNode {
                                 } else {
                                     Default::default()
                                 };
-                                Match::Simple(e.name().unwrap().as_str().into(), mv)
+                                Match::Simple(e.ident().unwrap().to_string().into(), mv)
                             })
                             .collect();
                         let dest = Destruct::Record {
                             matches,
-                            open: pat.ellipsis(),
+                            open: pat.ellipsis_token().is_some(),
                             rest: None,
                             span,
                         };
@@ -250,46 +238,41 @@ impl ToNickel for rnix::SyntaxNode {
             }
             .into(),
 
-            ParsedType::Apply(n) => Term::App(
+            Expr::Apply(n) => Term::App(
                 n.lambda().unwrap().translate(state),
-                n.value().unwrap().translate(state),
+                n.argument().unwrap().translate(state),
             )
             .into(),
-            ParsedType::IfElse(n) => if_then_else(
+            Expr::IfElse(n) => if_then_else(
                 n.condition().unwrap().translate(state),
                 n.body().unwrap().translate(state),
                 n.else_body().unwrap().translate(state),
             ),
-            ParsedType::BinOp(n) => n.translate(state),
-            ParsedType::UnaryOp(n) => n.translate(state),
-            ParsedType::Select(n) => match ParsedType::try_from(n.index().unwrap()).unwrap() {
-                ParsedType::Ident(id) => Term::Op1(
-                    UnaryOp::StaticAccess(id.as_str().into()),
-                    n.set().unwrap().translate(state),
-                )
-                .into(),
-                _ => Term::Op2(
-                    BinaryOp::DynAccess(),
-                    n.index().unwrap().translate(state),
-                    n.set().unwrap().translate(state),
-                )
-                .into(),
-            },
-            ParsedType::OrDefault(n) => unimplemented!(),
-
-            // TODO: what are these?
-            ParsedType::PatBind(_) | ParsedType::PathWithInterpol(_) => {
-                unimplemented!()
+            Expr::BinOp(n) => n.translate(state),
+            Expr::UnaryOp(n) => n.translate(state),
+            Expr::Select(n) => {
+                n.attrpath()
+                    .unwrap()
+                    .attrs()
+                    .fold(n.expr().unwrap().translate(state), |acc, i| {
+                        match i {
+                            rnix::ast::Attr::Ident(id) => {
+                                Term::Op1(UnaryOp::StaticAccess(id.to_string().into()), acc)
+                            }
+                            rnix::ast::Attr::Dynamic(d) => Term::Op2(
+                                BinaryOp::DynAccess(),
+                                d.expr().unwrap().translate(state),
+                                acc,
+                            ),
+                            rnix::ast::Attr::Str(s) => {
+                                Term::Op2(BinaryOp::DynAccess(), s.translate(state), acc)
+                            }
+                        }
+                        .into()
+                    })
             }
-
-            // The following nodes aren't `RichTerm`s but sub-parts of other nodes higher in the syntax tree.
-            // They can't be parsed independently of a term and should never occur at this level of the translation.
-            ParsedType::Pattern(_)
-            | ParsedType::PatEntry(_)
-            | ParsedType::Inherit(..)
-            | ParsedType::InheritFrom(..)
-            | ParsedType::Key(..)
-            | ParsedType::KeyValue(..) => unreachable!(),
+            Expr::Path(_) | Expr::HasAttr(_) => unimplemented!(), // TODO: What is the diff with
+                                                                  // Select / operator HasField?
         }
         .with_pos(crate::position::TermPos::Original(span))
     }
@@ -297,6 +280,7 @@ impl ToNickel for rnix::SyntaxNode {
 
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
     let source = cache.files().source(file_id);
-    let nixast = rnix::parse(source).as_result()?;
-    Ok(nixast.node().to_nickel(file_id))
+    let root = rnix::Root::parse(source).ok()?; // TODO: we could return a list of errors calling
+                                                // `errors()` could improve error management.
+    Ok(root.expr().unwrap().to_nickel(file_id))
 }
