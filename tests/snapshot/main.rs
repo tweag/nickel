@@ -18,16 +18,27 @@ fn check_pretty_print_snapshots(file: &str) {
 }
 
 #[test_resources("tests/snapshot/inputs/export/*.ncl")]
-fn check_export_snapshots(file: &str) {
+fn check_export_stdout_snapshots(file: &str) {
     let file = TestFile::from_project_path(file);
 
     let snapshot = NickelInvocation::new()
         .subcommand("export")
         .file(&file)
-        .snapshot_output();
+        .snapshot_stdout();
 
-    insta::assert_snapshot!(file.prefixed_test_name("export_stdout"), snapshot.stdout);
-    insta::assert_snapshot!(file.prefixed_test_name("export_stderr"), snapshot.stderr);
+    insta::assert_snapshot!(file.prefixed_test_name("export_stdout"), snapshot);
+}
+
+#[test_resources("tests/snapshot/inputs/export/*.ncl")]
+fn check_export_stderr_snapshots(file: &str) {
+    let file = TestFile::from_project_path(file);
+
+    let snapshot = NickelInvocation::new()
+        .subcommand("export")
+        .file(&file)
+        .snapshot_stderr();
+
+    insta::assert_snapshot!(file.prefixed_test_name("export_stderr"), snapshot);
 }
 
 #[test_resources("tests/snapshot/inputs/errors/*.ncl")]
@@ -79,11 +90,6 @@ struct NickelInvocation {
     cmd: Command,
 }
 
-struct NickelOutput {
-    stdout: String,
-    stderr: String,
-}
-
 impl NickelInvocation {
     fn new() -> Self {
         let nickel_loc = env!("CARGO_BIN_EXE_nickel");
@@ -112,13 +118,5 @@ impl NickelInvocation {
 
     fn snapshot_stdout(&mut self) -> String {
         String::from_utf8(self.run().stdout).expect("Output should be utf8")
-    }
-
-    fn snapshot_output(&mut self) -> NickelOutput {
-        let o = self.run();
-        NickelOutput {
-            stdout: String::from_utf8(o.stdout).expect("Output should be utf8"),
-            stderr: String::from_utf8(o.stderr).expect("Output should be utf8"),
-        }
     }
 }
