@@ -165,7 +165,7 @@ Let us now have a quick tour of the type system. The basic types are:
 - `Num`: the only number type. Currently implemented as a 64bits float.
 - `Str`: a string, which must always be valid UTF8.
 - `Bool`: a boolean, that is either `true` or `false`.
-<!-- - `Lbl`: a contract label. You usually don't need to use it or worry about it, -->
+<!-- - `Lbl`: a contract label. You usually don't need to use it or worry about it,-->
 <!--     it is more of an internal thing.  -->
 
 The following type constructors are available:
@@ -398,21 +398,21 @@ could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Num, subtotal: Num ; a} -> Num`.
 
-<!-- Note that row polymorphism also works with enums, with the same intuition of a -->
-<!-- tail that can be substituted for something else. For example: -->
-<!--  -->
-<!-- ```nickel -->
-<!-- let portOf : forall a. <http, ftp | a> -> Num = fun protocol => -->
-<!-- switch { -->
-<!--   `http -> 80, -->
-<!--   `ftp -> 21, -->
-<!--   _ -> 8000, -->
-<!-- } protocol -->
-<!-- ``` -->
-<!--  -->
-<!-- Because the `switch` statement has a catch-all case `_`, this function is indeed -->
-<!-- able to handle other tags than `http` and `ftp`, as expressed by its polymorphic -->
-<!-- type. -->
+Note that row polymorphism also works with enums, with the same intuition of a
+tail that can be substituted for something else. For example:
+
+```nickel
+let port_of : forall a. [| `http, `ftp; a |] -> Num =
+  match {
+    `http => 80,
+    `ftp => 21,
+    _ => 8000,
+  }
+```
+
+Because the `match` statement has a catch-all case `_`, this function is indeed
+able to handle other tags than `http` and `ftp`, as expressed by its polymorphic
+type.
 
 ### Take-away
 

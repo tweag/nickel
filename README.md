@@ -249,7 +249,8 @@ See [RATIONALE.md](./RATIONALE.md) for the design rationale and a more detailed
 comparison with these languages.
 
 ### Comparison with other configuration languages
-<!-- Intentionally duplicated in `RATIONALE.md`, please update the other one for any change done here -->
+<!-- Intentionally duplicated in `RATIONALE.md`, please update the other one for
+any change done here -->
 
 | Language | Typing                        | Recursion  | Evaluation | Side-effects                                     |
 |----------|-------------------------------|------------|------------|--------------------------------------------------|
