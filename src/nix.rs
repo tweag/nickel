@@ -281,6 +281,6 @@ impl ToNickel for rnix::ast::Expr {
 pub fn parse(cache: &Cache, file_id: FileId) -> Result<RichTerm, rnix::parser::ParseError> {
     let source = cache.files().source(file_id);
     let root = rnix::Root::parse(source).ok()?; // TODO: we could return a list of errors calling
-                                                // `errors()` could improve error management.
+                                                // `errors()` to improve error management.
     Ok(root.expr().unwrap().to_nickel(file_id))
 }
