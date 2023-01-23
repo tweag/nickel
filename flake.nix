@@ -175,6 +175,7 @@
               mkFilter = regexp: path: _type: builtins.match regexp path != null;
               lalrpopFilter = mkFilter ".*lalrpop$";
               nclFilter = mkFilter ".*ncl$";
+              nixFilter = mkFilter ".*/tests/nix/.+\\.nix$";
               txtFilter = mkFilter ".*txt$";
             in
             pkgs.lib.cleanSourceWith {
@@ -186,6 +187,7 @@
                 builtins.any (filter: filter path type) [
                   lalrpopFilter
                   nclFilter
+                  nixFilter
                   txtFilter
                   craneLib.filterCargoSources
                 ];
