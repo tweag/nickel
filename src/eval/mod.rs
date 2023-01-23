@@ -175,7 +175,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self.eval_mode = Default::default();
         self.call_stack.0.clear();
         self.stack.reset(&mut self.cache);
-        self.cache = Cache::new();
+        //self.cache = Cache::new();
     }
 
     fn set_mode(&mut self, new_mode: EvalMode) {

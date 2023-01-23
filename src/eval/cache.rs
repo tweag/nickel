@@ -192,6 +192,30 @@ impl IncCache {
 
         idx
     }
+
+    fn revnode_as_explicit_fun<'a, I>(node: &IncNode, args: I) -> IncNode
+    where
+        I: DoubleEndedIterator<Item = &'a Ident>,
+    {
+        match &node.bty {
+            BindingType::Revertible(deps) if !deps.is_empty() => {
+                let Closure { body, env } = node.orig.clone();
+
+                // Build a list of the arguments that the function will need in the same order as
+                // the original iterator. If the identifiers inside `args` are `a`, `b` and `c`, in
+                // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need a
+                // reverse fold.
+                let as_function =
+                    args.rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
+
+                IncNode::new(Closure {
+                    body: as_function,
+                    env,
+                }, node.kind, node.bty.clone())
+            }
+            _ => node.clone(),
+        }
+    }
 }
 
 impl Cache for IncCache {
@@ -214,9 +238,15 @@ impl Cache for IncCache {
         &mut self,
         idx: &CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
+        let len = self.store.len();
+
+        if *idx >= len {
+        println!("{len}, {idx}");
+        }
+
         let node = self.store.get(idx).unwrap();
 
-        if let IncNodeState::Blackholed = node.state {
+        if node.state == IncNodeState::Blackholed {
             Err(BlackholedError)
         } else if node.cached.is_some() {
             Ok(None)
@@ -303,7 +333,7 @@ impl Cache for IncCache {
         let node = self.store.get(idx).unwrap();
 
         let new_node = IncNode {
-            orig: f(&node.orig.clone()),
+            orig: f(&node.orig),
             cached: node.cached.clone().map(|clos| f(&clos)),
             kind: node.kind,
             bty: node.bty.clone(),
@@ -316,7 +346,7 @@ impl Cache for IncCache {
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         let node = self.store.get_mut(idx).unwrap();
 
-        if node.cached.is_none() {
+        if node.cached.is_some() {
             return ();
         }
 
@@ -337,47 +367,25 @@ impl Cache for IncCache {
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
-        &mut self,
-        idx: CacheIndex,
-        env: &mut Environment,
-        fields: I,
-    ) -> RichTerm {
+            &mut self,
+            idx: CacheIndex,
+            env: &mut Environment,
+            fields: I,
+        ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
-
-        let deps = match node.bty.clone() {
-            BindingType::Normal => FieldDeps::Known(Rc::new(HashSet::new())),
-            BindingType::Revertible(deps) => deps.clone(),
+        
+        let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
+            BindingType::Revertible(FieldDeps::Known(deps)) => Box::new(move |id: &&Ident| deps.contains(id)),
+            _ => Box::new(|_: &&Ident| true),
         };
 
-        let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match deps {
-            FieldDeps::Known(deps) => Box::new(move |id: &&Ident| deps.contains(id)),
-            FieldDeps::Unknown => Box::new(|_: &&Ident| true),
-        };
-
-        let Closure {
-            body,
-            env: env_orig,
-        } = node.orig.clone();
-
-        let as_function = fields
-            .clone()
-            .filter(&mut deps_filter)
-            .rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
+        let node_as_function = self.add_node(IncCache::revnode_as_explicit_fun(node, fields.clone().filter(&mut deps_filter)));
 
         let fresh_var = Ident::fresh();
+        env.insert(fresh_var, node_as_function);
+
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
-
-        let node_as_function = self.add_node(IncNode::new(
-            Closure {
-                body: as_function,
-                env: env_orig,
-            },
-            IdentKind::Lambda,
-            BindingType::Normal,
-        ));
-
-        env.insert(fresh_var, node_as_function);
 
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
