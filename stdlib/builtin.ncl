@@ -207,8 +207,22 @@
         "Foo"
       from null =>
         "null"
+      ```
       "%
     = fun x => %to_str% x,
 
+    trace : forall a. Str -> a -> a
+    | doc m%"
+      `builtin.trace msg x` prints `msg` to standard output when encountered by the evaluator,
+      and proceed with the evaluation of `x`.
+
+      For example:
+      ```nickel
+      builtin.trace "Hello, world!" true =>
+        builtin.trace: Hello, world!
+        true
+      ```
+      "%
+    = fun msg x => %trace% msg x,
   },
 }

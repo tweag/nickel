@@ -211,6 +211,12 @@ pub fn get_uop_type(
             (ty.clone(), ty)
         }
         UnaryOp::RecordEmptyWithTail() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+
+        // forall a. Str -> a -> a
+        UnaryOp::Trace() => {
+            let ty = UnifType::UnifVar(state.table.fresh_type_var_id());
+            (mk_uniftype::str(), mk_uty_arrow!(ty.clone(), ty))
+        }
     })
 }
 
