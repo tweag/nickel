@@ -348,7 +348,8 @@ feature static types, contracts or enriched values, and thus can't type library
 code and has no principled approach to data validation.
 
 ### Comparison with other configuration languages
-<!-- Intentionally duplicated in `README.md`, please update the other one for any change done here -->
+<!-- Intentionally duplicated in `README.md`, please update the other one for
+any change done here -->
 
 | Language | Typing                        | Recursion  | Evaluation | Side-effects                                     |
 |----------|-------------------------------|------------|------------|--------------------------------------------------|

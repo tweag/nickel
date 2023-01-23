@@ -44,13 +44,3 @@ record level. It makes code more navigable and `query`-friendly, but at the
 expense of repetition and duplicated contract checks. It is also currently
 required for polymorphic functions because of [the following
 bug](https://github.com/tweag/nickel/issues/360).
-
-<!-- # Note: we already have type wildcard, but they don't "export" the inferred type. -->
-<!-- A better solution will probably be implemented in the future: type wildcard (TODO: -->
-<!--  -->
-<!-- ```nickel -->
-<!-- { -->
-<!--   foo : Num -> Num = fun x => x + 1, -->
-<!--   bar : Num -> Num = foo, -->
-<!-- } : _ -->
-<!-- ``` -->
