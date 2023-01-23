@@ -18,7 +18,7 @@ fn check_pretty_print_snapshots(file: &str) {
 }
 
 #[test_resources("tests/snapshot/inputs/export/*.ncl")]
-fn check_export_snapshots(file: &str) {
+fn check_export_stdout_snapshots(file: &str) {
     let file = TestFile::from_project_path(file);
 
     let snapshot = NickelInvocation::new()
@@ -26,7 +26,19 @@ fn check_export_snapshots(file: &str) {
         .file(&file)
         .snapshot_stdout();
 
-    insta::assert_snapshot!(file.prefixed_test_name("export"), snapshot)
+    insta::assert_snapshot!(file.prefixed_test_name("export_stdout"), snapshot);
+}
+
+#[test_resources("tests/snapshot/inputs/export/*.ncl")]
+fn check_export_stderr_snapshots(file: &str) {
+    let file = TestFile::from_project_path(file);
+
+    let snapshot = NickelInvocation::new()
+        .subcommand("export")
+        .file(&file)
+        .snapshot_stderr();
+
+    insta::assert_snapshot!(file.prefixed_test_name("export_stderr"), snapshot);
 }
 
 #[test_resources("tests/snapshot/inputs/errors/*.ncl")]
