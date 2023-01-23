@@ -114,28 +114,33 @@ fn main() {
         #[cfg(not(feature = "repl"))]
         eprintln!("error: this executable was not compiled with REPL support");
     } else if let Some(Command::Nixin) = opts.command {
-        use nickel_lang::cache::Cache;
-        use nickel_lang::cache::ErrorTolerance;
-        use nickel_lang::pretty::*;
-        use pretty::BoxAllocator;
+        #[cfg(feature = "nix")]
+        {
+            use nickel_lang::cache::Cache;
+            use nickel_lang::cache::ErrorTolerance;
+            use nickel_lang::pretty::*;
+            use pretty::BoxAllocator;
 
-        let mut buf = String::new();
-        let mut cache = Cache::new(ErrorTolerance::Strict);
-        let mut out: Vec<u8> = Vec::new();
-        opts.file
-            .map(std::fs::File::open)
-            .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
-            .unwrap_or_else(|| std::io::stdin().read_to_string(&mut buf))
-            .unwrap_or_else(|err| {
-                eprintln!("Error when reading input: {}", err);
-                process::exit(1)
-            });
-        let allocator = BoxAllocator;
-        let file_id = cache.add_source("<stdin>.nix", buf.as_bytes()).unwrap();
-        let rt = nickel_lang::nix::parse(&cache, file_id).unwrap();
-        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
-        doc.render(80, &mut out).unwrap();
-        println!("{}", String::from_utf8_lossy(&out).as_ref());
+            let mut buf = String::new();
+            let mut cache = Cache::new(ErrorTolerance::Strict);
+            let mut out: Vec<u8> = Vec::new();
+            opts.file
+                .map(std::fs::File::open)
+                .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
+                .unwrap_or(std::io::stdin().read_to_string(&mut buf))
+                .unwrap_or_else(|err| {
+                    eprintln!("Error when reading input: {}", err);
+                    process::exit(1)
+                });
+            let allocator = BoxAllocator;
+            let file_id = cache.add_source("<stdin>.nix", buf.as_bytes()).unwrap();
+            let rt = nickel_lang::nix::parse(&cache, file_id).unwrap();
+            let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
+            doc.render(80, &mut out).unwrap();
+            println!("{}", String::from_utf8_lossy(&out).as_ref());
+        }
+        #[cfg(not(feature = "nix"))]
+        eprintln!("error: this executable was not compiled with Nix evaluation support");
     } else {
         let mut program = opts
             .file

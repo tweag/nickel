@@ -24,6 +24,7 @@ markdown = ["termimad"]
 repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 doc = [ "comrak" ]
+nix = [ "rnix", "rowan" ]
 
 [build-dependencies]
 lalrpop = "0.19.6"
@@ -63,8 +64,10 @@ pretty = "0.11.3"
 comrak = { version = "0.12.1", optional = true, features = [] }
 once_cell = "1.14.0"
 typed-arena = "2.0.1"
-rnix = "0.11"
-rowan = "0.15.10"
+
+# needed dependencies to be able to interpret nix expr with nickel
+rnix = { version = "0.11", optional = true }
+rowan = { version = "0.15.10", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"

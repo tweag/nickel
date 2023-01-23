@@ -7,6 +7,7 @@ pub mod error;
 pub mod eval;
 pub mod identifier;
 pub mod label;
+#[cfg(feature = "nix")]
 pub mod nix;
 pub mod parser;
 pub mod position;

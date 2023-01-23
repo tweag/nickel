@@ -1,3 +1,5 @@
+#![cfg(feature = "nix")]
+
 use nickel_lang::term::Term;
 use nickel_lang_utilities::eval;
 
