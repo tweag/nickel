@@ -1792,6 +1792,13 @@ pub mod make {
         Term::Op1(op, t.into()).into()
     }
 
+    pub fn op1_with_pos<T>(op: UnaryOp, t: T, pos: TermPos) -> RichTerm
+    where
+        T: Into<RichTerm>,
+    {
+        RichTerm::new(Term::Op1(op, t.into()), pos)
+    }
+
     pub fn op2<T1, T2>(op: BinaryOp, t1: T1, t2: T2) -> RichTerm
     where
         T1: Into<RichTerm>,
