@@ -162,6 +162,7 @@
           mkFilter = regexp: path: _type: builtins.match regexp path != null;
           lalrpopFilter = mkFilter ".*lalrpop$";
           nclFilter = mkFilter ".*ncl$";
+          nixFilter = mkFilter ".*/tests/nix/.+\\.nix$";
           txtFilter = mkFilter ".*txt$";
           snapFilter = mkFilter ".*snap$";
         in
@@ -174,6 +175,7 @@
             builtins.any (filter: filter path type) [
               lalrpopFilter
               nclFilter
+              nixFilter
               txtFilter
               snapFilter
               filterCargoSources
