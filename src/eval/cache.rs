@@ -205,10 +205,14 @@ impl IncCache {
                 let as_function =
                     args.rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
 
-                IncNode::new(Closure {
-                    body: as_function,
-                    env,
-                }, node.kind, node.bty.clone())
+                IncNode::new(
+                    Closure {
+                        body: as_function,
+                        env,
+                    },
+                    node.kind,
+                    node.bty.clone(),
+                )
             }
             _ => node.clone(),
         }
@@ -238,7 +242,7 @@ impl Cache for IncCache {
         let len = self.store.len();
 
         if *idx >= len {
-        println!("{len}, {idx}");
+            println!("{len}, {idx}");
         }
 
         let node = self.store.get(idx).unwrap();
@@ -364,19 +368,24 @@ impl Cache for IncCache {
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
-            &mut self,
-            idx: CacheIndex,
-            env: &mut Environment,
-            fields: I,
-        ) -> RichTerm {
+        &mut self,
+        idx: CacheIndex,
+        env: &mut Environment,
+        fields: I,
+    ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
-        
+
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
-            BindingType::Revertible(FieldDeps::Known(deps)) => Box::new(move |id: &&Ident| deps.contains(id)),
+            BindingType::Revertible(FieldDeps::Known(deps)) => {
+                Box::new(move |id: &&Ident| deps.contains(id))
+            }
             _ => Box::new(|_: &&Ident| true),
         };
 
-        let node_as_function = self.add_node(IncCache::revnode_as_explicit_fun(node, fields.clone().filter(&mut deps_filter)));
+        let node_as_function = self.add_node(IncCache::revnode_as_explicit_fun(
+            node,
+            fields.clone().filter(&mut deps_filter),
+        ));
 
         let fresh_var = Ident::fresh();
         env.insert(fresh_var, node_as_function);

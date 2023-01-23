@@ -571,7 +571,8 @@ fn field_deps<C: Cache>(
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         local_env
-            .get(var_id).map(|idx| cache.deps(idx).unwrap_or_else(FieldDeps::empty))
+            .get(var_id)
+            .map(|idx| cache.deps(idx).unwrap_or_else(FieldDeps::empty))
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
         Ok(FieldDeps::empty())
