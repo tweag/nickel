@@ -483,16 +483,23 @@ fn get_completion_identifiers(
                     /// As we traverse a nested record all the way to the topmost record,
                     /// accumulate all the record metadata and corresponding path.
                     fn accumulate_record_meta_data<'a>(
-                        linearization: &'a Completed,
-                        server: &'a Server,
                         record: ItemId,
+                        info @ LinInfo {
+                            linearization,
+                            lin_cache,
+                        }: &'a LinInfo<'a>,
                         mut path: Vec<Ident>,
                         mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
                     ) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
                         // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
-                        let parent = linearization.get_item(record, &server.lin_cache).unwrap();
+                        let parent = linearization.get_item(record, lin_cache).unwrap();
                         let next =
                             // Oops.. linear search
+                            // we can do better!
+                            // a record field comes before it's value for sure
+                            // 1. we can split the linearization and search the left.
+                            // 2. we can use the position and our knowledge from the linearization
+                            //    algorithm to calculate the exact position.
                             linearization
                                 .linearization
                                 .iter()
@@ -505,41 +512,30 @@ fn get_completion_identifiers(
                                     } if value == parent.id => Some((ident, record)),
                                     _ => None,
                                 });
+
                         result.push((parent, path.clone()));
                         match next {
                             None => result,
                             Some((name, record)) => {
                                 path.push(name);
-                                accumulate_record_meta_data(
-                                    linearization,
-                                    server,
-                                    record,
-                                    path,
-                                    result,
-                                )
+                                accumulate_record_meta_data(record, info, path, result)
                             }
                         }
                     }
 
-                    accumulate_record_meta_data(
+                    let info = LinInfo {
                         linearization,
-                        server,
-                        record,
-                        Vec::new(),
-                        Vec::new(),
-                    )
-                    .into_iter()
-                    .flat_map(|(parent, mut path)| {
-                        let Some(meta) = parent.meta.as_ref() else {
-                               return Vec::new()
+                        lin_cache: &server.lin_cache,
+                    };
+                    accumulate_record_meta_data(record, &info, Vec::new(), Vec::new())
+                        .into_iter()
+                        .flat_map(|(parent, mut path)| {
+                            let Some(meta) = parent.meta.as_ref() else {
+                                return Vec::new()
                             };
-                        let info = LinInfo {
-                            linearization,
-                            lin_cache: &server.lin_cache,
-                        };
-                        find_fields_from_meta_value(meta, &mut path, &info)
-                    })
-                    .collect()
+                            find_fields_from_meta_value(meta, &mut path, &info)
+                        })
+                        .collect()
                 } else {
                     // Global name completion
                     let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
