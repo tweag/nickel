@@ -493,25 +493,19 @@ fn get_completion_identifiers(
                     ) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
                         // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
                         let parent = linearization.get_item(record, lin_cache).unwrap();
-                        let next =
-                            // Oops.. linear search
-                            // we can do better!
-                            // a record field comes before it's value for sure
-                            // 1. we can split the linearization and search the left.
-                            // 2. we can use the position and our knowledge from the linearization
-                            //    algorithm to calculate the exact position.
-                            linearization
-                                .linearization
-                                .iter()
-                                .find_map(|item| match item.kind {
-                                    TermKind::RecordField {
-                                        ident,
-                                        record,
-                                        value: ValueState::Known(value),
-                                        ..
-                                    } if value == parent.id => Some((ident, record)),
-                                    _ => None,
-                                });
+
+                        // The element just before a value should be the record field, because the linearization
+                        // items are sorted wrt. position
+                        let (next, _) = linearization.get_items_adjacent(parent.id);
+                        let next = next.and_then(|item| match item.kind {
+                            TermKind::RecordField {
+                                ident,
+                                record,
+                                value: ValueState::Known(value),
+                                ..
+                            } if value == parent.id => Some((ident, record)),
+                            _ => None,
+                        });
 
                         result.push((parent, path.clone()));
                         match next {
