@@ -174,6 +174,9 @@ fn find_fields_from_term_kind<'a>(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
+        _ if item.meta.is_some() => {
+            find_fields_from_meta_value(item.meta.as_ref().unwrap(), path, info)
+        }
         _ => Vec::new(),
     }
 }
@@ -217,6 +220,13 @@ fn find_fields_from_meta_value<'a>(
         .flat_map(|contract| match &contract.types {
             Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
             Types(TypeF::Flat(term)) if matches!(term.as_ref(), Term::Var(..)) => {
+            Types(TypeF::Dict(ty)) => {
+                if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path.pop()) {
+                    find_fields_from_term(term, path, info)
+                } else {
+                    Vec::new()
+                }
+            }
                 let pos = term.pos;
                 let span = pos.unwrap();
                 let locator = (span.src_id, span.start);
