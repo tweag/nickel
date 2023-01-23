@@ -460,7 +460,7 @@ impl Cache {
                 Ok((t, parse_errs))
             }
             InputFormat::Nix => Ok((
-                crate::nix::parse(&self, file_id).unwrap(),
+                crate::nix::parse(self, file_id).unwrap(),
                 ParseErrors::default(),
             )),
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))

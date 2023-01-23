@@ -146,7 +146,6 @@ pub mod internals {
 /// Contains functions helper for Nix evaluation by Nickel.
 pub mod compat {
     use super::*;
-    use crate::identifier::*;
     use crate::mk_app;
     use crate::term::make::op1;
     use crate::term::{array::Array, Term, UnaryOp};
