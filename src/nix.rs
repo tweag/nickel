@@ -8,7 +8,7 @@ use crate::term::make::{self, if_then_else};
 use crate::term::{record::RecordData, BinaryOp, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
-use rnix::ast::{BinOp as NixBinOp, Path as NixPath, Str as NixStr, UnaryOp as NixUniOp};
+use rnix::ast::{BinOp as NixBinOp, Str as NixStr, UnaryOp as NixUniOp};
 use std::collections::HashMap;
 
 impl ToNickel for NixStr {
@@ -71,10 +71,10 @@ impl ToNickel for NixBinOp {
 
 impl ToNickel for rnix::ast::Expr {
     fn translate(self, state: &State) -> RichTerm {
-        use rnix::ast::{self, Expr};
+        use rnix::ast::Expr;
         use rowan::ast::AstNode;
         let pos = self.syntax().text_range();
-        let file_id = state.file_id.clone();
+        let file_id = state.file_id;
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
         println!("{:?}: {}", self, self);
         match self {
@@ -85,7 +85,7 @@ impl ToNickel for rnix::ast::Expr {
             Expr::Root(n) => n.expr().unwrap().translate(state),
             Expr::Paren(n) => n.expr().unwrap().translate(state),
 
-            Expr::Assert(n) => unimplemented!(),
+            Expr::Assert(_) => unimplemented!(),
 
             Expr::Literal(n) => match n.kind() {
                 rnix::ast::LiteralKind::Float(v) => Term::Num(v.value().unwrap()),
@@ -169,13 +169,13 @@ impl ToNickel for rnix::ast::Expr {
                     let id: Ident = match id.to_string().as_str() {
                         "true" | "false" | "null" => panic!(
                             "`let {}` is forbiden. Can not redifine `true`, `false` or `nul`",
-                            id.to_string()
+                            id
                         ),
                         s => s.into(),
                     };
                     let rt = kv.value().unwrap().translate(&state);
-                    destruct_vec.push(destruct::Match::Simple(id.clone(), Default::default()));
-                    fields.insert(id.into(), rt);
+                    destruct_vec.push(destruct::Match::Simple(id, Default::default()));
+                    fields.insert(id, rt);
                 }
                 make::let_pat::<Ident, _, _, _>(
                     None,
@@ -230,7 +230,6 @@ impl ToNickel for rnix::ast::Expr {
                         };
                         Term::FunPattern(at, dest, n.body().unwrap().translate(state))
                     }
-                    _ => unreachable!(),
                 }
             }
             .into(),
