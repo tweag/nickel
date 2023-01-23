@@ -10,7 +10,7 @@ use lsp_types::{
 };
 use nickel_lang::{
     identifier::Ident,
-    term::{MetaValue, RichTerm, Term},
+    term::{MetaValue, RichTerm, Term, UnaryOp},
     types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
@@ -211,7 +211,7 @@ fn find_fields_from_contract<'a>(
 fn find_fields_from_meta_value<'a>(
     meta_value: &'a MetaValue,
     path: &'a mut Vec<Ident>,
-    info @ LinInfo { linearization, .. }: &'a LinInfo<'a>,
+    info @ LinInfo { lin_cache, .. }: &'a LinInfo<'a>,
 ) -> Vec<IdentWithType> {
     meta_value
         .contracts
@@ -219,7 +219,6 @@ fn find_fields_from_meta_value<'a>(
         .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
             Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
-            Types(TypeF::Flat(term)) if matches!(term.as_ref(), Term::Var(..)) => {
             Types(TypeF::Dict(ty)) => {
                 if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path.pop()) {
                     find_fields_from_term(term, path, info)
@@ -227,9 +226,19 @@ fn find_fields_from_meta_value<'a>(
                     Vec::new()
                 }
             }
+            Types(TypeF::Flat(term))
+                if matches!(
+                    term.as_ref(),
+                    Term::Var(..) | Term::Op1(UnaryOp::StaticAccess(..), _)
+                ) =>
+            {
                 let pos = term.pos;
                 let span = pos.unwrap();
                 let locator = (span.src_id, span.start);
+                // This unwrap is safe becuase we're geting an expression from
+                // a linearized file, so all terms in the file and all terms in its
+                // dependencies must have being linearized and stored in the cache.
+                let linearization = lin_cache.get(&span.src_id).unwrap();
                 let item = linearization.item_at(&locator).unwrap();
                 find_fields_from_term_kind(item.id, path, &info)
             }
