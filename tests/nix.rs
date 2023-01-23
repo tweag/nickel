@@ -24,3 +24,8 @@ fn basics_nix() {
 fn records_nix() {
     run("records.nix");
 }
+
+#[test]
+fn with_nix() {
+    run("with.nix");
+}
