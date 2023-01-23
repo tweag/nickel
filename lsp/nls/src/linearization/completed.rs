@@ -35,8 +35,9 @@ impl Completed {
         Option<&LinearizationItem<Resolved>>,
         Option<&LinearizationItem<Resolved>>,
     ) {
-        // this unwrap might not be safe, we can't make assumptions about the caller
-        let index = self.id_to_index.get(&id).copied().unwrap();
+        let Some(index) = self.id_to_index.get(&id).copied() else {
+            return (None, None)
+        };
         let (left_index, right_index) = (index - 1, index + 1);
         let left = self.linearization.get(left_index);
         let right = self.linearization.get(right_index);
