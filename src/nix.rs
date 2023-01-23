@@ -80,10 +80,7 @@ impl ToNickel for rnix::ast::Expr {
         match self {
             Expr::Error(_) => {
                 Term::ParseError(crate::error::ParseError::NixParseError(file_id)).into()
-                // TODO:
-                // Improve
-                // error
-                // management
+                // TODO: Improve error management
             }
             Expr::Root(n) => n.expr().unwrap().translate(state),
             Expr::Paren(n) => n.expr().unwrap().translate(state),
