@@ -7,10 +7,11 @@ use nickel_lang::repl::query_print;
 use nickel_lang::repl::rustyline_frontend;
 use nickel_lang::term::{RichTerm, Term};
 use nickel_lang::{serialize, serialize::ExportFormat};
+#[cfg(feature = "nix")]
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
-    io::Read,
     process,
 };
 // use std::ffi::OsStr;
@@ -127,7 +128,7 @@ fn main() {
             opts.file
                 .map(std::fs::File::open)
                 .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
-                .unwrap_or(std::io::stdin().read_to_string(&mut buf))
+                .unwrap_or_else(|| std::io::stdin().read_to_string(&mut buf))
                 .unwrap_or_else(|err| {
                     eprintln!("Error when reading input: {}", err);
                     process::exit(1)
