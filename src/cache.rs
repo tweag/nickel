@@ -474,7 +474,7 @@ impl Cache {
                 #[cfg(feature = "nix")]
                 {
                     Ok((
-                        crate::nix::parse(&self, file_id).unwrap(),
+                        crate::nix::parse(self, file_id).unwrap(),
                         ParseErrors::default(),
                     ))
                 }
