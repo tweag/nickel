@@ -60,7 +60,6 @@ use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
     BinaryOp, LabeledType, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
-use crate::transform::Closurizable;
 use crate::types::{TypeF, Types};
 use std::collections::HashMap;
 
@@ -348,95 +347,112 @@ pub fn merge<C: Cache>(
     }
 }
 
-/// Apply a series of contract to the value of a field as well as the necessary closurize
-/// operations.
+/// Apply a series of contract to the value of a field as well as the necessary saturation (see
+/// [saturate]) and closurize operations.
+///
+/// The contracts are expected to be closurized, ie be of the form `Types(TypeF(Term::Var(_)))`.
+/// Both the contract and the field are saturated, and the result is closurized. The
+/// result is revertible if either one of the contract or the record is, with the dependencies.
+///
+/// If the contract is not closurized, then it's just considered not to be revertible.
 ///
 /// # Parameters
 ///
 /// - the value is given by `value1` in its environment `env1`
 /// - the contracts are given as an iterator `it2` together with their (common) environment `env2`
-fn cross_apply_contracts<'a, C: Cache>(
+fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ident> + Clone>(
     cache: &mut C,
     value1: RichTerm,
     env1: Environment,
     mut it2: impl Iterator<Item = &'a LabeledType>,
     env2: &Environment,
+    deps2: FieldDeps,
+    fields: &I,
 ) -> Result<Closure, EvalError> {
-    let mut env = Environment::new();
+    // The environment of `%assume% ctr1 (%assume% ctr2 (... field)...)`. `ctr` and `field` will be saturated, ie of the form
+    // `%head% field1 .. fieldn`.
+    let mut local_env = Environment::new();
 
     let pos = value1.pos.into_inherited();
+    let combined_deps = field_deps(&value1, &env1)?.union(deps2);
 
     // Produce the concrete sequence of application of the `assume` primop to the contract argument.
-    let mut apply_contracts = |cache: &mut C,
-                               value: RichTerm,
-                               mut local_env: Environment|
-     -> Result<Closure, EvalError> {
-        let body = it2.try_fold(value, |acc, ctr| {
-            let ty_closure = ctr
-                .types
-                .clone()
-                .closurize(cache, &mut local_env, env2.clone());
-            mk_term::assume(ty_closure, ctr.label.clone(), acc)
-                .map_err(|crate::types::UnboundTypeVariableError(id)| {
-                    let pos = id.pos;
-                    EvalError::UnboundIdentifier(id, pos)
-                })
-                .map(|rt| rt.with_pos(pos))
-        })?;
+    let value_saturated = value1.saturate(cache, &mut local_env, &env1, fields.clone())?;
+    let body = it2.try_fold(value_saturated, |acc, ctr| -> Result<RichTerm, EvalError> {
+        let ty_saturated = ctr
+            .types
+            .clone()
+            .saturate(cache, &mut local_env, &env2, fields.clone())
+            .unwrap();
+        Ok(mk_term::assume(ty_saturated, ctr.label.clone(), acc).map(|rt| rt.with_pos(pos))?)
+    })?;
 
-        Ok(Closure {
-            body,
-            env: local_env,
-        })
+    // We closurize the final result in a new thunk with appropriate dependencies and
+    // revertibility.
+    let closure = Closure {
+        body,
+        env: local_env,
     };
+    let mut final_env = Environment::new();
+    let fresh_var = Ident::fresh();
 
-    match value1.as_ref() {
-        // In the general case, the value is stored in a thunk and might be recursive. In this
-        // case, we use `map_at_index`, which preserves the recursivity/late-binding (when
-        // revertible thunks are seen as functions, this maps "under the function", so to speak).
-        //
-        // Doing so, we are sure to pick the latest value for recursive fields, and not earlier,
-        // partially built values. It's a trick to get rid of some of the issue mentioned in RFC005
-        // before the implementation of full-fledged lazy contract application. This code is
-        // expected to be transitory.
-        Term::Var(id) => {
-            let idx = env1.get(&id).unwrap();
-            let fresh_idx = cache.map_at_index(
-                idx,
-                //FIXME: the `unwrap` below should be properly handled. It can happen when an
-                // unbound type variable or identifier occurs in a type or contract.
-                //
-                // However, this should be checked by the typechecker during a normal execution, so
-                // this arguably corresponds to a bug/internal error. Secondly, this code is
-                // temporary, as a transition during the implementation of RFC005: we should get
-                // rid of cross-application altogether soon and use lazy contract application
-                // instead (see RFC005). Thus, we keep a dirty `unwrap()` for now.
-                |cache,
-                 Closure {
-                     ref body,
-                     env: ref local_env,
-                 }| {
-                    apply_contracts(cache, body.clone(), local_env.clone()).unwrap()
-                },
-            );
+    // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
+    final_env.insert(
+        fresh_var,
+        Thunk::new_rev(closure, IdentKind::Record, combined_deps),
+    );
 
-            let fresh_id = Ident::fresh();
-            env.insert(fresh_id, fresh_idx);
-            Ok(Closure {
-                body: RichTerm::new(Term::Var(fresh_id), value1.pos),
-                env,
-            })
-        }
-        _ => {
-            let Closure {
-                body,
-                env: local_env,
-            } = apply_contracts(cache, value1.clone(), env1)?;
-            let body = body.closurize(cache, &mut env, local_env);
-
-            Ok(Closure { body, env })
-        }
-    }
+    Ok(Closure {
+        body: RichTerm::from(Term::Var(fresh_var)),
+        env: final_env,
+    })
+    // match value1.as_ref() {
+    //     // In the general case, the value is stored in a thunk and might be recursive. In this
+    //     // case, we use `map_at_index`, which preserves the recursivity/late-binding (when
+    //     // revertible thunks are seen as functions, this maps "under the function", so to speak).
+    //     //
+    //     // Doing so, we are sure to pick the latest value for recursive fields, and not earlier,
+    //     // partially built values. It's a trick to get rid of some of the issue mentioned in RFC005
+    //     // before the implementation of full-fledged lazy contract application. This code is
+    //     // expected to be transitory.
+    //     Term::Var(id) => {
+    //         let idx = env1.get(&id).unwrap();
+    //         let fresh_idx = cache.map_at_index(
+    //             idx,
+    //             //FIXME: the `unwrap` below should be properly handled. It can happen when an
+    //             // unbound type variable or identifier occurs in a type or contract.
+    //             //
+    //             // However, this should be checked by the typechecker during a normal execution, so
+    //             // this arguably corresponds to a bug/internal error. Secondly, this code is
+    //             // temporary, as a transition during the implementation of RFC005: we should get
+    //             // rid of cross-application altogether soon and use lazy contract application
+    //             // instead (see RFC005). Thus, we keep a dirty `unwrap()` for now.
+    //             |cache,
+    //              Closure {
+    //                  ref body,
+    //                  env: ref local_env,
+    //              }| {
+    //                 apply_contracts(cache, body.clone(), local_env.clone()).unwrap()
+    //             },
+    //         );
+    //
+    //         let fresh_id = Ident::fresh();
+    //         env.insert(fresh_id, fresh_idx);
+    //         Ok(Closure {
+    //             body: RichTerm::new(Term::Var(fresh_id), value1.pos),
+    //             env,
+    //         })
+    //     }
+    //     _ => {
+    //         let Closure {
+    //             body,
+    //             env: local_env,
+    //         } = apply_contracts(cache, value1.clone(), env1)?;
+    //         let body = body.closurize(cache, &mut env, local_env);
+    //
+    //         Ok(Closure { body, env })
+    //     }
+    // }
 }
 
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
@@ -470,40 +486,53 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     //
     // Then, we apply field2's contracts to field1. This creates a new value and a new
     // intermediate environment.
-    let (value1, val_env1) = match value1 {
-        Some(v1)
-            if (metadata2.annotation.first().is_some())
-                && (metadata1.priority >= metadata2.priority || value2.is_none()) =>
+    let (value1, val_env1) = match (value1, metadata2.annotation.first()) {
+        (Some(v1), Some(fst_ctr))
+            if (metadata1.priority >= metadata2.priority || value2.is_none()) =>
         {
-            let Closure { body, env } =
-                cross_apply_contracts(cache, v1, env1.clone(), metadata2.annotation.iter(), &env2)?;
+            let Closure { body, env } = cross_apply_contracts(
+                cache,
+                v1,
+                env1.clone(),
+                metadata2.annotation.iter(),
+                &env2,
+                ty_field_deps(&fst_ctr.types, &env2).unwrap(),
+                &fields,
+            )?;
             (Some(body), env)
         }
-        v1 => (v1, env1.clone()),
+        (v1, _) => (v1, env1.clone()),
     };
 
     // Cross-application (in the process of being removed, see RFC005)
     //
     // Dually, we cross apply meta1's contracts to meta2's value.
-    let (value2, val_env2) = match value2 {
-        Some(v2)
-            if (metadata1.annotation.first().is_some())
-                && (metadata2.priority >= metadata1.priority || value1.is_none()) =>
+    let (value2, val_env2) = match (value2, metadata1.annotation.first()) {
+        (Some(v2), Some(fst_ctr))
+            if (metadata2.priority >= metadata1.priority || value1.is_none()) =>
         {
-            let Closure { body, env } =
-                cross_apply_contracts(cache, v2, env2.clone(), metadata1.annotation.iter(), &env1)?;
+            let Closure { body, env } = cross_apply_contracts(
+                cache,
+                v2,
+                env2.clone(),
+                metadata1.annotation.iter(),
+                &env1,
+                ty_field_deps(&fst_ctr.types, &env1)?,
+                &fields,
+            )?;
             (Some(body), env)
         }
-        v2 => (v2, env2.clone()),
+        (v2, _) => (v2, env2.clone()),
     };
 
     // Selecting either meta1's value, meta2's value, or the merge of the two values,
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
-            Some(fields_merge_closurize(
-                env_final, t1, &val_env1, t2, &val_env2, fields,
-            )?),
+            Some(
+                fields_merge_closurize(cache, env_final, t1, &val_env1, t2, &val_env2, fields)
+                    .unwrap(),
+            ),
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
@@ -568,28 +597,66 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
-/// Take the content of a record field, and saturate the potential revertible thunk with the given
-/// fields. See [crate::eval::lazy::Thunk::saturate].
-///
-/// If the expression is not a variable referring to a thunk (this can happen e.g. for numeric
-/// constants), we just return the term as it is, which falls into the zero dependencies special
-/// case.
-fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
-    cache: &mut C,
-    rt: RichTerm,
-    env: &mut Environment,
-    local_env: &Environment,
-    fields: I,
-) -> Result<RichTerm, EvalError> {
-    if let Term::Var(var_id) = &*rt.term {
-        let idx = local_env
-            .get(var_id)
-            .cloned()
-            .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))?;
+trait Saturate: Sized {
+    /// Take the content of a record field, and saturate the potential revertible thunk with the given
+    /// fields. See [crate::eval::lazy::Thunk::saturate].
+    ///
+    /// If the expression is not a variable referring to a thunk (this can happen e.g. for numeric
+    /// constants), we just return the term as it is, which falls into the zero dependencies special
+    /// case.
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        local_env: &Environment,
+        fields: I,
+    ) -> Result<Self, EvalError>;
+}
 
-        Ok(cache.saturate(idx, env, fields).with_pos(rt.pos))
-    } else {
-        Ok(rt)
+impl Saturate for RichTerm {
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        local_env: &Environment,
+        fields: I,
+    ) -> Result<RichTerm, EvalError> {
+        if let Term::Var(var_id) = &*self.term {
+            let idx = local_env
+                .get(var_id)
+                .cloned()
+                .ok_or(EvalError::UnboundIdentifier(*var_id, self.pos))?;
+
+            Ok(cache.saturate(idx, env, fields).with_pos(self.pos))
+        } else {
+            Ok(self)
+        }
+    }
+}
+
+impl Saturate for Types {
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+        self,
+        cache: &mut C,
+        env: &mut Environment,
+        local_env: &Environment,
+        fields: I,
+    ) -> Result<Types, EvalError> {
+        match self {
+            // Currently, either:
+            // 1. the contract is part of a recursive records and MUST have been closurized as a
+            //    revertible thunk during program transformation:
+            Types(TypeF::Flat(ctr)) if matches!(ctr.as_ref(), Term::Var(id) if id.is_generated()) => {
+                Ok(Types(TypeF::Flat(
+                    ctr.saturate(cache, env, local_env, fields)?,
+                )))
+            }
+            // 2. or it is the contract of a non-recursive record (e.g. the contract generated by
+            //    pattern matching or desugaring `foo.bar.baz = value`) and doesn't need to be
+            //    saturated at all, as it can't be recursive. This contract can still capture
+            //    variables from the environment, so we need to closurize it nontheless
+            ty => Ok(ty.closurize(cache, env, local_env.clone())),
+        }
     }
 }
 
@@ -608,6 +675,17 @@ fn field_deps<C: Cache>(
         Ok(FieldDeps::empty())
     }
 }
+
+/// Return the dependencies of a contract when represented as a `Types`.
+fn ty_field_deps(ty: &Types, local_env: &Environment) -> Result<FieldDeps, EvalError> {
+    if let Types(TypeF::Flat(ctr)) = ty {
+        field_deps(ctr, local_env)
+    } else {
+        Ok(FieldDeps::empty())
+    }
+}
+
+/// Return the dependencies of a contract when represented as a `Type`.
 
 /// Take the current environment, two fields with their local environment, and return a term which
 /// is the merge of the two fields, closurized in the provided final environment.
@@ -629,11 +707,11 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 ) -> Result<RichTerm, EvalError> {
     let mut local_env = Environment::new();
 
-    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
+    let combined_deps = field_deps(&t1, env1)?.union(field_deps(&t2, env2).unwrap());
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
-        saturate(cache, t1, &mut local_env, env1, fields.clone())?,
-        saturate(cache, t2, &mut local_env, env2, fields)?,
+        t1.saturate(cache, &mut local_env, env1, fields.clone())?,
+        t2.saturate(cache, &mut local_env, env2, fields)?,
     ));
 
     // We closurize the final result in a thunk with appropriate dependencies
@@ -670,7 +748,7 @@ trait RevertClosurize {
 impl RevertClosurize for RichTerm {
     fn revert_closurize<C: Cache>(
         self,
-        cache: &mut C,
+        _cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
     ) -> RichTerm {
@@ -712,11 +790,19 @@ impl RevertClosurize for Types {
         env: &mut Environment,
         with_env: Environment,
     ) -> Types {
-        Types(TypeF::Flat(
-            self.contract()
-                .unwrap()
-                .revert_closurize(cache, env, with_env),
-        ))
+        match self {
+            // Currently, either:
+            // 1. the contract is part of a recursive records and MUST have been closurized as a
+            //    revertible thunk during program transformation:
+            Types(TypeF::Flat(ctr)) if matches!(ctr.as_ref(), Term::Var(id) if id.is_generated()) => {
+                Types(TypeF::Flat(ctr.revert_closurize(cache, env, with_env)))
+            }
+            // 2. or it is the contract of a non-recursive record (e.g. the contract generated by
+            //    pattern matching or desugaring `foo.bar.baz = value`) and doesn't need to be
+            //    saturated at all, as it can't be recursive. This contract can still capture
+            //    variables from the environment, so we need to closurize it nontheless
+            ty => ty.closurize(cache, env, with_env),
+        }
     }
 }
 
