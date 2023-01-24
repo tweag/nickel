@@ -942,12 +942,12 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record.map_fields_with_value(|_, value| subst(cache, value, initial_env, env));
+            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record.map_fields_with_value(|_, value| subst(cache, value, initial_env, env));
+            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()

@@ -97,7 +97,7 @@ pub fn patch_field<C: Cache>(
     }
 
     // We must patch the contracts contained in the fields' metadata as well, since they can depend
-    // recursively on other fileds, as in:
+    // recursively on other fields, as in:
     //
     // ```
     // let Variant = match {

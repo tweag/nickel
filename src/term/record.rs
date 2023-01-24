@@ -286,7 +286,7 @@ impl RecordData {
     ///
     /// Note that `f` is taken as `mut` in order to allow it to mutate
     /// external state while iterating.
-    pub fn map_fields<F>(self, mut f: F) -> Self
+    pub fn map_values<F>(self, mut f: F) -> Self
     where
         F: FnMut(Ident, Option<RichTerm>) -> Option<RichTerm>,
     {
@@ -308,11 +308,11 @@ impl RecordData {
 
     /// Returns the record resulting from applying the provided function to each field with a
     /// defined value. Fields without a value are left unchanged.
-    pub fn map_fields_with_value<F>(self, mut f: F) -> Self
+    pub fn map_defined_values<F>(self, mut f: F) -> Self
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
     {
-        self.map_fields(|id, value| value.map(|v| f(id, v)))
+        self.map_values(|id, value| value.map(|v| f(id, v)))
     }
 
     /// Turn the record into an iterator over the fields' values, ignoring optional fields without

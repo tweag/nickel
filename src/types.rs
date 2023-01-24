@@ -50,7 +50,7 @@
 //! enriched values `Contract` or `ContractDefault`. They ensure sane interaction between typed and
 //! untyped parts.
 use crate::{
-    error::{ParseError, ParseErrors, TypecheckError},
+    error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
     mk_app, mk_fun,
     term::make as mk_term,
@@ -571,6 +571,14 @@ impl Traverse<Types> for RecordRows {
 
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub Ident);
+
+impl From<UnboundTypeVariableError> for EvalError {
+    fn from(err: UnboundTypeVariableError) -> Self {
+        let UnboundTypeVariableError(id) = err;
+        let pos = id.pos;
+        EvalError::UnboundIdentifier(id, pos)
+    }
+}
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
