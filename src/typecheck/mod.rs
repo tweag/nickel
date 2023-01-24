@@ -1246,7 +1246,7 @@ fn type_check_<L: Linearizer>(
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`
-        Term::RecRecord(record, dynamic, _, inh) if !dynamic.is_empty() => {
+        Term::RecRecord(record, dynamic, _, _inh) if !dynamic.is_empty() => {
             let ty_dict = state.table.fresh_type_uvar();
 
             for id in record.fields.keys() {
@@ -1283,9 +1283,9 @@ fn type_check_<L: Linearizer>(
                     let rec_tyw = state.table.fresh_rrows_uvar();
                     let rec_tyw = ids.iter().fold(rec_tyw, |tail, id| {
                         let tyw = state.table.fresh_type_uvar();
-                        ctxt.type_env.insert(id.clone(), tyw.clone());
+                        ctxt.type_env.insert(*id, tyw.clone());
                         linearizer.retype_ident(lin, id, tyw.clone());
-                        mk_uty_row!((id.clone(), tyw); tail)
+                        mk_uty_row!((*id, tyw); tail)
                     });
                     type_check_(
                         state,
@@ -1347,12 +1347,10 @@ fn type_check_<L: Linearizer>(
                     },
                 )?;
                 let rows = if let Term::RecRecord(_, _, _, inh) = rt.as_ref() {
-                    inh.iter()
-                        .flat_map(|(ids, _)| ids)
-                        .fold(rows.clone(), |acc, id| {
-                            let ty = ctxt.type_env.get(id).unwrap();
-                            mk_uty_row!((*id, ty.clone()); acc)
-                        })
+                    inh.iter().flat_map(|(ids, _)| ids).fold(rows, |acc, id| {
+                        let ty = ctxt.type_env.get(id).unwrap();
+                        mk_uty_row!((*id, ty.clone()); acc)
+                    })
                 } else {
                     rows
                 };

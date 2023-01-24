@@ -793,7 +793,7 @@ pub fn env_add_term<C: Cache>(
     env: &mut Environment,
     rt: RichTerm,
 ) -> Result<(), EnvBuildError> {
-    /// TODO: Should we do something here for inherited fields? Have they been transformed already?
+    // TODO: Should we do something here for inherited fields? Have they been transformed already?
     match_sharedterm! {rt.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
                 let ext = record.fields.into_iter().map(|(id, t)| {

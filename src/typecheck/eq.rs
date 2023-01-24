@@ -283,7 +283,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 env2,
             ) && r1.attrs == r2.attrs
         }
-        (RecRecord(r1, dyn_fields1, _, inh1), RecRecord(r2, dyn_fields2, _, inh2)) =>
+        (RecRecord(r1, dyn_fields1, _, _inh1), RecRecord(r2, dyn_fields2, _, _inh2)) =>
         //TODO should
         //manage
         //inherits

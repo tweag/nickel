@@ -34,12 +34,14 @@
     in
     { inherit (r2) a b; } == { a = 1; b = 2; }
   )
-  #(let
-  #  r1 = {a = 1;};
-  #  r2 = {inherit (r1) a; b = 2;};
-  #  r3 = {inherit r2;};
-  #in
-  #{ inherit (r3.r2) a b;} == {a = 1; b = 2;})
+  (
+    let
+      r1 = { a = 1; };
+      r2 = { inherit (r1) a; b = 2; };
+      r3 = { inherit r2; };
+    in
+    { inherit (r3.r2) a b; } == { a = 1; b = 2; }
+  )
 
   # test of alternative operator `or`
   #({a = 1;}.a or 2 == 1)

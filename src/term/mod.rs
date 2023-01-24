@@ -505,9 +505,10 @@ impl Term {
                     func(t1);
                     func(t2);
                 });
-                inh.iter_mut().for_each(|(_, t)| match t {
-                    Some(t) => func(t),
-                    _ => (),
+                inh.iter_mut().for_each(|(_, t)| {
+                    if let Some(t) = t.as_mut() {
+                        func(t)
+                    }
                 });
             }
             Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)

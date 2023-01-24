@@ -112,7 +112,7 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::RecRecord(record, dyn_fields, deps, inh) => {
+            Term::RecRecord(record, dyn_fields, deps, _inh) => {
                 let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
