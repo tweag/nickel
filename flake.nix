@@ -232,7 +232,7 @@
               cargoArtifacts;
 
             cargoExtraArgs = cargoBuildExtraArgs;
-            cargoClippyExtraArgs = "--all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
+            cargoClippyExtraArgs = "--all-features --all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
           };
         };
 
