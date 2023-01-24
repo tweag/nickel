@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::{
     //lazy::{BlackholedError, Thunk, ThunkState, ThunkUpdateFrame},
     Closure,
@@ -178,7 +176,7 @@ impl IncNode {
 
 #[derive(Debug, Clone)]
 pub struct IncCache {
-    store: HashMap<CacheIndex, IncNode>,
+    store: Vec<IncNode>,
     next: CacheIndex,
 }
 
@@ -225,13 +223,13 @@ impl Cache for IncCache {
 
     fn new() -> Self {
         IncCache {
-            store: HashMap::new(),
+            store: Vec::new(),
             next: 0,
         }
     }
 
     fn get(&self, idx: CacheIndex) -> Closure {
-        let node = self.store.get(&idx).unwrap();
+        let node = self.store.get(idx).unwrap();
 
         node.cached.clone().unwrap_or(node.orig.clone())
     }
@@ -240,7 +238,7 @@ impl Cache for IncCache {
         &mut self,
         idx: &CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
-        let node = self.store.get_mut(idx).unwrap();
+        let node = self.store.get_mut(*idx).unwrap();
 
         if node.state == IncNodeState::Blackholed {
             Err(BlackholedError)
@@ -259,14 +257,14 @@ impl Cache for IncCache {
     }
 
     fn update(&mut self, clos: Closure, idx: Self::UpdateIndex) {
-        let node = self.store.get_mut(&idx).unwrap();
+        let node = self.store.get_mut(idx).unwrap();
 
         node.cached = Some(clos);
         node.state = IncNodeState::Evaluated;
     }
 
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
-        let node = self.store.get(idx).unwrap();
+        let node = self.store.get(*idx).unwrap();
 
         let new_node = match node.bty.clone() {
             BindingType::Normal => node.clone(),
@@ -279,11 +277,11 @@ impl Cache for IncCache {
     }
 
     fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
-        self.store.get(idx).unwrap().kind
+        self.store.get(*idx).unwrap().kind
     }
 
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
-        let node = self.store.get(idx).unwrap();
+        let node = self.store.get(*idx).unwrap();
         match node.bty.clone() {
             BindingType::Normal => None,
             BindingType::Revertible(deps) => Some(deps),
@@ -295,7 +293,7 @@ impl Cache for IncCache {
     }
 
     fn patch<F: Fn(&mut Closure)>(&mut self, idx: CacheIndex, f: F) {
-        let node = self.store.get_mut(&idx).unwrap();
+        let node = self.store.get_mut(idx).unwrap();
 
         f(&mut node.orig);
         node.cached.as_mut().map(|mut clos| f(&mut clos));
@@ -305,7 +303,7 @@ impl Cache for IncCache {
         &mut self,
         idx: &CacheIndex,
     ) -> Result<Self::UpdateIndex, BlackholedError> {
-        let node = self.store.get_mut(idx).unwrap();
+        let node = self.store.get_mut(*idx).unwrap();
 
         if node.state == IncNodeState::Blackholed {
             return Err(BlackholedError);
@@ -317,7 +315,7 @@ impl Cache for IncCache {
     }
 
     fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
-        let node = self.store.get_mut(idx).unwrap();
+        let node = self.store.get_mut(*idx).unwrap();
 
         node.state = IncNodeState::default();
     }
@@ -327,7 +325,7 @@ impl Cache for IncCache {
         idx: &CacheIndex,
         mut f: F,
     ) -> CacheIndex {
-        let node = self.store.get(idx).unwrap();
+        let node = self.store.get(*idx).unwrap();
 
         let new_node = IncNode {
             orig: f(&node.orig),
@@ -341,7 +339,7 @@ impl Cache for IncCache {
     }
 
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
-        let node = self.store.get_mut(idx).unwrap();
+        let node = self.store.get_mut(*idx).unwrap();
 
         if node.cached.is_some() {
             return ();
@@ -369,7 +367,7 @@ impl Cache for IncCache {
         env: &mut Environment,
         fields: I,
     ) -> RichTerm {
-        let node = self.store.get(&idx).unwrap();
+        let node = self.store.get(idx).unwrap();
 
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
             BindingType::Revertible(FieldDeps::Known(deps)) => {
