@@ -152,6 +152,7 @@ pub enum IncNodeState {
     #[default]
     Suspended,
     Blackholed,
+    Evaluated,
 }
 
 #[derive(Debug, Clone)]
@@ -239,19 +240,14 @@ impl Cache for IncCache {
         &mut self,
         idx: &CacheIndex,
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
-        let len = self.store.len();
-
-        if *idx >= len {
-            println!("{len}, {idx}");
-        }
-
-        let node = self.store.get(idx).unwrap();
+        let node = self.store.get_mut(idx).unwrap();
 
         if node.state == IncNodeState::Blackholed {
             Err(BlackholedError)
-        } else if node.cached.is_some() {
+        } else if node.state == IncNodeState::Evaluated {
             Ok(None)
         } else {
+            node.state = IncNodeState::Blackholed;
             Ok(Some(*idx))
         }
     }
@@ -266,7 +262,7 @@ impl Cache for IncCache {
         let node = self.store.get_mut(&idx).unwrap();
 
         node.cached = Some(clos);
-        node.state = IncNodeState::default();
+        node.state = IncNodeState::Evaluated;
     }
 
     fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
@@ -375,14 +371,12 @@ impl Cache for IncCache {
     ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
 
-        println!("node body: {}", node.orig.body);
-        println!("node bty: {:?}", node.bty);
-
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
             BindingType::Revertible(FieldDeps::Known(deps)) => {
                 Box::new(move |id: &&Ident| deps.contains(id))
             }
-            _ => Box::new(|_: &&Ident| true),
+            BindingType::Revertible(FieldDeps::Unknown) => Box::new(|_: &&Ident| true),
+            BindingType::Normal => Box::new(|_: &&Ident| false),
         };
 
         let node_as_function = self.add_node(IncCache::revnode_as_explicit_fun(
@@ -390,23 +384,14 @@ impl Cache for IncCache {
             fields.clone().filter(&mut deps_filter),
         ));
 
-        let node_as_fn_test = self.store.get(&node_as_function).unwrap();
-        println!("node as fn body: {}", node_as_fn_test.orig.body);
-        println!("node as fn bty: {:?}", node_as_fn_test.bty);
-
         let fresh_var = Ident::fresh();
         env.insert(fresh_var, node_as_function);
 
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
 
-        let app = args.fold(as_function_closurized, |partial_app, arg| {
+        args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
-        });
-
-
-        println!("app: {}", app);
-
-        app
+        })
     }
 }
