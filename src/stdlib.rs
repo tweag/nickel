@@ -150,6 +150,14 @@ pub mod compat {
     use crate::term::make::op1;
     use crate::term::{array::Array, Term, UnaryOp};
 
+    /// helper function to check if a record has a nested field.
+    pub fn has_field_path() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("has_field_path".into()),
+            Term::Var("compat".into()),
+        )
+    }
+
     /// Generate the `with` compatibility Nickel function which may be applied to an `Ident`
     /// you have to pass a list of with records in ordered from outer-most to inner-most one.
     pub fn with(array: Array) -> RichTerm {
