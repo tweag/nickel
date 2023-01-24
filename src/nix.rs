@@ -8,17 +8,20 @@ use crate::term::make::{self, if_then_else};
 use crate::term::{record::RecordData, BinaryOp, UnaryOp};
 use crate::term::{MergePriority, MetaValue, RichTerm, Term};
 use codespan::FileId;
-use rnix::ast::{BinOp as NixBinOp, Str as NixStr, UnaryOp as NixUniOp, Attr as NixAttr};
+use rnix::ast::{
+    Attr as NixAttr, BinOp as NixBinOp, Ident as NixIdent, Str as NixStr, UnaryOp as NixUniOp,
+};
+use rowan::ast::AstNode;
 use std::collections::HashMap;
-use std::iter::repeat_with;
 
-fn path_elem_from_nix(attr: NixAttr, state: &State) -> FieldPathElem {
-    match attr {
-        NixAttr::Ident(id) => FieldPathElem::Ident(id.to_string().into()),
-        NixAttr::Str(s) => FieldPathElem::Expr(s.translate(state)),
-        NixAttr::Dynamic(d) => FieldPathElem::Expr(d.expr().unwrap().translate(state)),
-    }
-}
+// kept for future use.
+//fn path_elem_from_nix(attr: NixAttr, state: &State) -> FieldPathElem {
+//    match attr {
+//        NixAttr::Ident(id) => FieldPathElem::Ident(id.to_string().into()),
+//        NixAttr::Str(s) => FieldPathElem::Expr(s.translate(state)),
+//        NixAttr::Dynamic(d) => FieldPathElem::Expr(d.expr().unwrap().translate(state)),
+//    }
+//}
 
 fn path_elem_rt(attr: NixAttr, state: &State) -> RichTerm {
     match attr {
@@ -30,9 +33,15 @@ fn path_elem_rt(attr: NixAttr, state: &State) -> RichTerm {
 
 fn path_rts_from_nix<T>(n: rnix::ast::Attrpath, state: &State) -> T
 where
-T: FromIterator<RichTerm>
+    T: FromIterator<RichTerm>,
 {
     n.attrs().map(|a| path_elem_rt(a, state)).collect()
+}
+
+fn id_from_nix(id: NixIdent, state: &State) -> Ident {
+    let pos = id.syntax().text_range();
+    let span = mk_span(state.file_id, pos.start().into(), pos.end().into());
+    Ident::new_with_pos(id.to_string(), crate::position::TermPos::Original(span))
 }
 
 impl ToNickel for NixStr {
@@ -96,7 +105,6 @@ impl ToNickel for NixBinOp {
 impl ToNickel for rnix::ast::Expr {
     fn translate(self, state: &State) -> RichTerm {
         use rnix::ast::Expr;
-        use rowan::ast::AstNode;
         let pos = self.syntax().text_range();
         let file_id = state.file_id;
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
@@ -125,7 +133,7 @@ impl ToNickel for rnix::ast::Expr {
             )
             .into(),
             Expr::AttrSet(n) => {
-                use crate::parser::utils::{build_record, elaborate_field_path, FieldPathElem};
+                use crate::parser::utils::{build_record, elaborate_field_path};
                 use rnix::ast::HasEntry;
                 let fields: Vec<(_, _)> = n
                     .attrpath_values()
@@ -137,7 +145,7 @@ impl ToNickel for rnix::ast::Expr {
                             .attrs()
                             .map(|p| match p {
                                 rnix::ast::Attr::Ident(id) => {
-                                    FieldPathElem::Ident(id.to_string().into())
+                                    FieldPathElem::Ident(id_from_nix(id, state))
                                 }
                                 rnix::ast::Attr::Dynamic(d) => {
                                     FieldPathElem::Expr(d.expr().unwrap().translate(state))
@@ -158,13 +166,13 @@ impl ToNickel for rnix::ast::Expr {
                 "true" => Term::Bool(true),
                 "false" => Term::Bool(false),
                 "null" => Term::Null,
-                id => {
-                    if state.env.contains(id) || state.with.is_empty() {
-                        Term::Var(id.into())
+                id_str => {
+                    if state.env.contains(id_str) || state.with.is_empty() {
+                        Term::Var(id_from_nix(id, state))
                     } else {
                         Term::App(
                             crate::stdlib::compat::with(state.with.clone().into_iter().collect()),
-                            Term::Str(id.into()).into(),
+                            Term::Str(id.to_string()).into(),
                         )
                     }
                 }
@@ -294,7 +302,11 @@ impl ToNickel for rnix::ast::Expr {
             Expr::HasAttr(n) => {
                 let path = path_rts_from_nix(n.attrpath().unwrap(), state);
                 let path = Term::Array(path, Default::default());
-                mk_app!(crate::stdlib::compat::has_field_path(), path, n.expr().unwrap().translate(state))
+                mk_app!(
+                    crate::stdlib::compat::has_field_path(),
+                    path,
+                    n.expr().unwrap().translate(state)
+                )
             }
             Expr::Path(_) => unimplemented!(), // TODO: What is the diff with select?
         }
