@@ -375,6 +375,9 @@ impl Cache for IncCache {
     ) -> RichTerm {
         let node = self.store.get(&idx).unwrap();
 
+        println!("{}", node.orig.body);
+        println!("{:?}", node.bty);
+
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
             BindingType::Revertible(FieldDeps::Known(deps)) => {
                 Box::new(move |id: &&Ident| deps.contains(id))
@@ -387,14 +390,22 @@ impl Cache for IncCache {
             fields.clone().filter(&mut deps_filter),
         ));
 
+        let node_as_fn_test = self.store.get(&node_as_function).unwrap();
+        println!("{}", node_as_fn_test.orig.body);
+        println!("{:?}", node_as_fn_test.bty);
+
         let fresh_var = Ident::fresh();
         env.insert(fresh_var, node_as_function);
 
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
 
-        args.fold(as_function_closurized, |partial_app, arg| {
+        let app = args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
-        })
+        });
+
+        println!("{}", app);
+        
+        app
     }
 }
