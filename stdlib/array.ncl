@@ -108,12 +108,17 @@
             6
         ```
         "%
-      = fun f acc l =>
-        if %length% l == 0 then
-          acc
+    = fun f acc l =>
+        let length = %length% l in
+        if length == 0 then acc
         else
-          let newAcc = f acc (%head% l) in
-          %seq% newAcc (foldl f newAcc (%tail% l)),
+          let rec loop = fun acc n => 
+            if n == length then acc
+            else 
+              let next_acc = %elem_at% l n |> f acc in
+              %seq% next_acc (loop next_acc (n+1))
+          in
+          loop acc 0,
 
     fold : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
@@ -128,10 +133,12 @@
         ```
         "%
       = fun f fst l =>
-        if %length% l == 0 then
-          fst
-        else
-          f (%head% l) (fold f fst (%tail% l)),
+        let rec go = fun n =>
+          if n == %length% l then
+            fst 
+          else
+            go (n+1) |> f (%elem_at% l n)
+        in go 0,
 
     cons : forall a. a -> Array a -> Array a
       | doc m%"
