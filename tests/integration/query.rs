@@ -22,6 +22,7 @@ pub fn test_query_with_wildcard() {
     let path = Some(String::from("value"));
 
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
+    #[track_caller]
     fn assert_types_eq(lhs: &str, rhs: &str, path: Option<String>) {
         let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests")
             .unwrap()
@@ -58,7 +59,10 @@ pub fn test_query_with_wildcard() {
             },
         ) = (term1, term2)
         {
-            assert_eq!(contract1.types, contract2.types);
+            // Since RFC005, we closurize the contracts attached to fields, which makes comparing
+            // them after transformation quite hard. We can only rely on the original types as
+            // stored inside the label, which is the one used for reporting anyway.
+            // assert_eq!(contract1.types, contract2.types);
             assert_eq!(
                 contract1.label.types.as_ref(),
                 contract2.label.types.as_ref()
@@ -72,7 +76,7 @@ pub fn test_query_with_wildcard() {
     let mut program =
         TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests").unwrap();
     let result = program.query(path.clone()).unwrap();
-    assert!(!matches!(
+    assert!(matches!(
         result,
         Field {
             metadata: FieldMetadata {
@@ -88,15 +92,15 @@ pub fn test_query_with_wildcard() {
 
     // Wildcard infers record type
     assert_types_eq(
-        r#"{val : _ = {foo = "quux"}}"#,
-        r#"{val : {foo: Str} = {foo = "quux"}}"#,
+        r#"{value : _ = {foo = "quux"}}"#,
+        r#"{value : {foo: Str} = {foo = "quux"}}"#,
         path.clone(),
     );
 
     // Wildcard infers function type, infers inside `let`
     assert_types_eq(
-        r#"{val : _ = let f = fun x => x + 1 in f}"#,
-        r#"{val : Num -> Num = (fun x => x + 1)}"#,
+        r#"{value : _ = let f = fun x => x + 1 in f}"#,
+        r#"{value : Num -> Num = (fun x => x + 1)}"#,
         path.clone(),
     );
 }
