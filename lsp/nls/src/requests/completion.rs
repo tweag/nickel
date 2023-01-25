@@ -433,6 +433,43 @@ fn collect_record_info(
         .unwrap_or_default()
 }
 
+/// As we traverse a nested record all the way to the topmost record,
+/// accumulate all the record metadata and corresponding path.
+fn accumulate_record_meta_data<'a>(
+    record: ItemId,
+    info @ ComplInfo {
+        linearization,
+        lin_cache,
+    }: &'a ComplInfo<'a>,
+    mut path: Vec<Ident>,
+    mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
+) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
+    // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
+    let parent = linearization.get_item(record, lin_cache).unwrap();
+
+    // The element just before a value should be the record field, because the linearization
+    // items are sorted wrt. position
+    let (next, _) = linearization.get_items_adjacent(parent.id);
+    let next = next.and_then(|item| match item.kind {
+        TermKind::RecordField {
+            ident,
+            record,
+            value: ValueState::Known(value),
+            ..
+        } if value == parent.id => Some((ident, record)),
+        _ => None,
+    });
+
+    result.push((parent, path.clone()));
+    match next {
+        None => result,
+        Some((name, record)) => {
+            path.push(name);
+            accumulate_record_meta_data(record, info, path, result)
+        }
+    }
+}
+
 /// Generate possible completion identifiers given a source text, its linearization
 /// and the current item the cursor points at.
 fn get_completion_identifiers(
@@ -447,25 +484,59 @@ fn get_completion_identifiers(
         name: Ident,
         server: &Server,
         path: &mut Vec<Ident>,
-    ) -> Option<Vec<IdentWithType>> {
-        let item_id = item.env.get(&name)?;
+    ) -> Vec<IdentWithType> {
+        let Some(item_id) = item.env.get(&name) else {
+            return Vec::new()
+        };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
-        Some(collect_record_info(lin, *item_id, path, &server.lin_cache))
+        collect_record_info(lin, *item_id, path, &server.lin_cache)
     }
 
-    let in_scope = match trigger {
+    fn context_complete(
+        item: &'_ LinearizationItem<Types>,
+        info: &'_ ComplInfo<'_>,
+        path: Vec<Ident>,
+    ) -> Vec<IdentWithType> {
+        if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
+            (&item.kind, item.id)
+        {
+            accumulate_record_meta_data(record, info, path, Vec::new())
+                .into_iter()
+                .flat_map(|(parent, mut path)| {
+                    let Some(meta) = parent.meta.as_ref() else {
+                        return Vec::new()
+                    };
+                    find_fields_from_meta_value(meta, &mut path, &info)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    let info = ComplInfo {
+        linearization,
+        lin_cache: &server.lin_cache,
+    };
+
+    let in_scope: Vec<_> = match trigger {
         Some(server::DOT_COMPL_TRIGGER) => {
             // Record completion
-            // TODO: Context completion can also happen here
-            get_identifier_path(source)
-                .and_then(|path| {
-                    let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
-                    // unwrap is safe here because we are guaranteed by `get_identifier_path`
-                    // that it will return a non-empty vector
-                    let name = path.pop().unwrap();
-                    complete(item, name, server, &mut path)
-                })
-                .unwrap_or_default()
+            let Some(path) = get_identifier_path(source) else {
+                return Ok(Vec::new())
+            };
+            let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+
+            let context_path = path.clone();
+            let contextual_result = context_complete(item, &info, context_path);
+
+            // unwrap is safe here because we are guaranteed by `get_identifier_path`
+            // that it will return a non-empty vector
+            let name = path.pop().unwrap();
+            complete(item, name, server, &mut path)
+                .into_iter()
+                .chain(contextual_result)
+                .collect()
         }
         Some(..) | None => {
             if let Some(path) = get_identifiers_before_field(source) {
@@ -473,82 +544,38 @@ fn get_completion_identifiers(
                 // <record path>.<partially-typed-field>
                 // we also want to give completion based on <record path> in this case.
                 let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+
+                // TODO: We need to adjust the linearization item here.
+                // Say we have: `config.dat`, this parses as a nested record.
+                // The item we get is the uncompleted `dat` field name as the item.
+                // What we *really* want as the item is the `config` field name.
+                let context_path = path.clone();
+                let contextual_result = context_complete(item, &info, context_path);
+
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
                 let name = path.pop().unwrap();
-                complete(item, name, server, &mut path).unwrap_or_default()
+                complete(item, name, server, &mut path)
+                    .into_iter()
+                    .chain(contextual_result)
+                    .collect()
             } else {
-                if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
-                    (&item.kind, item.id)
-                {
-                    // Context completion
-
-                    /// As we traverse a nested record all the way to the topmost record,
-                    /// accumulate all the record metadata and corresponding path.
-                    fn accumulate_record_meta_data<'a>(
-                        record: ItemId,
-                        info @ ComplInfo {
-                            linearization,
-                            lin_cache,
-                        }: &'a ComplInfo<'a>,
-                        mut path: Vec<Ident>,
-                        mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
-                    ) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
-                        // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
-                        let parent = linearization.get_item(record, lin_cache).unwrap();
-
-                        // The element just before a value should be the record field, because the linearization
-                        // items are sorted wrt. position
-                        let (next, _) = linearization.get_items_adjacent(parent.id);
-                        let next = next.and_then(|item| match item.kind {
-                            TermKind::RecordField {
-                                ident,
-                                record,
-                                value: ValueState::Known(value),
-                                ..
-                            } if value == parent.id => Some((ident, record)),
-                            _ => None,
-                        });
-
-                        result.push((parent, path.clone()));
-                        match next {
-                            None => result,
-                            Some((name, record)) => {
-                                path.push(name);
-                                accumulate_record_meta_data(record, info, path, result)
-                            }
-                        }
-                    }
-
-                    let info = ComplInfo {
-                        linearization,
-                        lin_cache: &server.lin_cache,
-                    };
-                    accumulate_record_meta_data(record, &info, Vec::new(), Vec::new())
-                        .into_iter()
-                        .flat_map(|(parent, mut path)| {
-                            let Some(meta) = parent.meta.as_ref() else {
-                                return Vec::new()
-                            };
-                            find_fields_from_meta_value(meta, &mut path, &info)
-                        })
-                        .collect()
-                } else {
-                    // Global name completion
-                    let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
-                    linearization
-                        .get_in_scope(item, &server.lin_cache)
-                        .iter()
-                        .filter_map(|i| match i.kind {
-                            TermKind::Declaration(ident, _, _) => Some(IdentWithType {
-                                ident,
-                                item: Some(item.clone()),
-                                ty: ty.clone(),
-                            }),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                }
+                let contextual_result = context_complete(item, &info, Vec::new());
+                // Global name completion
+                let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
+                linearization
+                    .get_in_scope(item, &server.lin_cache)
+                    .iter()
+                    .filter_map(|i| match i.kind {
+                        TermKind::Declaration(ident, _, _) => Some(IdentWithType {
+                            ident,
+                            item: Some(item.clone()),
+                            ty: ty.clone(),
+                        }),
+                        _ => None,
+                    })
+                    .chain(contextual_result)
+                    .collect()
             }
         }
     };
