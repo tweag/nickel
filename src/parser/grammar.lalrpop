@@ -396,7 +396,19 @@ RecordField: (FieldPath, RichTerm) = {
         };
 
         (path, term)
-    }
+    },
+     <l: @L> <t: !> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        errors.push(t.clone());
+
+        let expr = RichTerm::new(Term::ParseError(
+            crate::error::ParseError::from_lalrpop(t.error, src_id)), pos);
+
+        let elem = FieldPathElem::Expr(expr);
+        let path = vec![elem];
+        let term = RichTerm::new(Term::MetaValue(MetaValue::new()), pos);
+        (path, term)
+    },
 };
 
 RecordLastField: RecordLastField = {
