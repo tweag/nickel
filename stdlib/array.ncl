@@ -133,8 +133,9 @@
         ```
         "%
       = fun f fst l =>
+        let length = %length% l in
         let rec go = fun n =>
-          if n == %length% l then
+          if n == length then
             fst 
           else
             go (n+1) |> f (%elem_at% l n)
