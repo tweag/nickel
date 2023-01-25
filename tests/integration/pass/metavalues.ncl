@@ -112,13 +112,23 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let Contract = {foo | Num, opt | Str | optional} in
   let with_ctr | Contract = {foo = 0.5 + 0.5} in
   # Same as above: we have to repeat `foo` with the same value because of #710
-  # opt is required by the right hand side of the merge: it's still undefined,
-  # but should be visible
+  # repeating `opt` without an `optional` attribute makes it required, but as
+  # long as we don't extract it (nor map onto the record), everything should be
+  # fine
   let value = with_ctr & {foo = 1, opt} in
   (
-    (record.has_field "foo" value | Assert) &&
-    (record.has_field "opt" value | Assert) &&
-    (record.fields value == ["foo", "opt"] | Assert)
+    # record.has_field/record.fields have a dictionnary contract `{_ : T}`
+    # attached, which currently uses `record.map` under the hood, which will
+    # throw an error for `opt` missing a defnition. They
+    # probably shouldn't, but for the time being, we bypass them using the
+    # lowlevel primop. Uncomment the 3 following line once #XXX is closed
+    # (https://github.com/tweag/nickel/issues/892)
+    # (record.has_field "foo" value | Assert) &&
+    # (record.has_field "opt" value | Assert) &&
+    # (record.fields value == ["foo", "opt"] | Assert)
+    (%has_field% "foo" value | Assert) &&
+    (%has_field% "opt" value | Assert) &&
+    (%fields% value == ["foo", "opt"] | Assert)
   ),
 ]
 |> check
