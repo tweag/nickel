@@ -16,7 +16,7 @@
     | doc "TODO"
     = fun f x y => f y x,
 
-    fst
+    fst : forall a b. a -> b -> a
     | doc "TODO"
     = const,
 
