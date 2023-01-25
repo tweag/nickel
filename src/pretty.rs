@@ -60,7 +60,8 @@ where
         let s = s
             .replace('\\', "\\\\")
             .replace("%{", "\\%{")
-            .replace('\"', "\\\"");
+            .replace('\"', "\\\"")
+            .replace('\n', "\\n");
         self.text(s)
     }
 
@@ -114,8 +115,16 @@ where
             .append(self.intersperse(
                 chunks.into_iter().cloned().rev().map(|c| {
                     match c {
-                        StrChunk::Literal(s) => self
-                            .intersperse(s.lines().map(|s| self.text_(s)), self.hardline().clone()),
+                        StrChunk::Literal(s) => {
+                            if multiline {
+                                self.intersperse(
+                                    s.lines().map(|s| self.text_(s)),
+                                    self.hardline().clone(),
+                                )
+                            } else {
+                                self.escaped_string(&s)
+                            }
+                        }
                         StrChunk::Expr(e, _i) => self
                             .text(interp.clone())
                             .append(self.text("{"))
