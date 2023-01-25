@@ -6,6 +6,7 @@ use pretty::BoxAllocator;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
+#[track_caller]
 fn diff(s1: &str, s2: &str) {
     use similar::*;
     let diff = TextDiff::from_lines(s1, s2);
@@ -31,6 +32,7 @@ fn pretty(rt: &RichTerm) -> String {
     String::from_utf8_lossy(&ret).into_owned()
 }
 
+#[track_caller]
 fn check_file(file: &str) {
     let mut buffer = String::new();
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

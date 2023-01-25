@@ -262,7 +262,7 @@ Forall: Types =
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm = {
-    "import" <s: StaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
     AsUniTerm<TypeArray>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
         UniTerm::from(mk_app!(t1, t2)),
@@ -573,7 +573,22 @@ Interpolation = { "%{", "multstr %{" };
 // Used to implement `StaticString` as well as `StringEnumTag`.
 DelimitedStaticString<Start, End>: String = Start <s: ChunkLiteral?> End => s.unwrap_or_default();
 
-StaticString = DelimitedStaticString<StringStart, StringEnd>;
+StandardStaticString = DelimitedStaticString<"\"", "\"">;
+
+MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
+    // strip the common indentation prefix
+    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::Literal(<>)];
+    match strip_indent(chunks).pop().unwrap() {
+        StrChunk::Literal(s) => s,
+        // We build 
+        _ => unreachable!(),
+    }
+};
+
+StaticString : String = {
+    StandardStaticString,
+    MultilineStaticString,
+}
 
 StringEnumTag = DelimitedStaticString<"`\"", "\"">;
 

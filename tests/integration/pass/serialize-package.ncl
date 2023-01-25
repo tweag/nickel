@@ -1,21 +1,24 @@
 let ctr = {
-  Derivation | doc "
-            A package natively specified in Nickel."
+  Derivation 
+    | doc m%"
+            A package natively specified in Nickel.
+          "%
           = {
-    name | doc "
-           The package name."
+    name | doc m%"
+              The package name.
+           "%
          | Str,
 
-    buildInputs | doc "
+    buildInputs | doc m%"
                   The list of inputs for this package, specified as a
-                  `NixPackage`."
+                  `NixPackage`."%
                 | Array NixPackage,
     # Many more missing
   },
 
   Shell = Derivation & {},
 
-  NixPackage | doc "
+  NixPackage | doc m%"
                Interchange format representing a package only accessible on the
                nix side. The nix interop code then translate this back to an
                actual package.
@@ -34,22 +37,22 @@ let ctr = {
                  name = \"myPkg\",
                  buildInputs = [nixpkgs.hello],
                }
-               ```"
+               ```"%
              = {
     package | Str
-            | doc "
+            | doc m%"
               The package name, given as a string. Dot-separated paths are not yet
-              supported",
+              supported"%,
 
     input | Str
-          | doc "
+          | doc m%"
             The inputs where to fetch the package from. Must be a variable name
-            that is in scope on the Nix side."
+            that is in scope on the Nix side."%
           | default = "nixpkgs",
 
-    _type | doc "
+    _type | doc m%"
             Used by the interop Nix code. Forced to a fixed value. Please
-            do not override."
+            do not override."%
           = "package",
   }
 } in
