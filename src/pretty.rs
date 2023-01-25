@@ -3,7 +3,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
-    BinaryOp, MergePriority, RichTerm, Term, TypeAnnotation, UnaryOp,
+    BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
@@ -64,11 +64,70 @@ where
         self.text(s)
     }
 
-    fn multiline_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        let delimiter = "%".repeat(min_interpolate_sign(s));
-        self.hardline()
-            .append(self.intersperse(s.lines().map(|d| self.text(d.to_owned())), self.hardline()))
-            .enclose(format!("m{delimiter}\""), format!("\"{delimiter}"))
+    // Honestly, I didn't take the time to really understand what's happening, but if I try to
+    // inline this function inside `chunks`, then there is a borrowing error ¯\_(ツ)_/¯
+    fn text_(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
+        self.text(String::from(s))
+    }
+
+    fn chunks(
+        &'a self,
+        chunks: &Vec<StrChunk<RichTerm>>,
+        multiline: bool,
+    ) -> DocBuilder<'a, Self, A> {
+        let nb_perc = chunks
+            .iter()
+            .map(
+                |c| {
+                    if let StrChunk::Literal(s) = c {
+                        min_interpolate_sign(s)
+                    } else {
+                        1
+                    }
+                }, // be sure we have at least 1 `%` sign when an interpolation is present
+            )
+            .max()
+            .unwrap_or(1);
+
+        let interp: String = "%".repeat(nb_perc);
+
+        let line_maybe = if multiline {
+            self.hardline()
+        } else {
+            self.nil()
+        };
+
+        let start_delimiter = if multiline {
+            format!("m{interp}")
+        } else {
+            String::new()
+        };
+
+        let end_delimiter = if multiline {
+            interp.clone()
+        } else {
+            String::new()
+        };
+
+        line_maybe
+            .clone()
+            .append(self.intersperse(
+                chunks.into_iter().cloned().rev().map(|c| {
+                    match c {
+                        StrChunk::Literal(s) => self
+                            .intersperse(s.lines().map(|s| self.text_(s)), self.hardline().clone()),
+                        StrChunk::Expr(e, _i) => self
+                            .text(interp.clone())
+                            .append(self.text("{"))
+                            .append(e.to_owned().pretty(self))
+                            .append(self.text("}")),
+                    }
+                }),
+                self.nil(),
+            ))
+            .append(line_maybe)
+            .double_quotes()
+            .enclose(start_delimiter, end_delimiter)
     }
 
     fn field_metadata(
@@ -82,18 +141,12 @@ where
                     .doc
                     .clone()
                     .map(|doc| {
-                        self.text("|")
+                        self.line()
+                            .append(self.text("|"))
                             .append(self.space())
                             .append(self.text("doc"))
                             .append(self.space())
-                            .append(
-                                self.hardline()
-                                    .append(self.intersperse(
-                                        doc.lines().map(|d| self.escaped_string(d)),
-                                        self.hardline().clone(),
-                                    ))
-                                    .double_quotes(),
-                            )
+                            .append(self.chunks(&vec![StrChunk::Literal(doc.clone())], true))
                             .append(self.line())
                     })
                     .unwrap_or_else(|| self.nil())
@@ -106,14 +159,14 @@ where
                 self.nil()
             })
             .append(match metadata.priority {
-                crate::term::MergePriority::Bottom => self.line().append(self.text("| default")),
-                crate::term::MergePriority::Neutral => self.nil(),
-                crate::term::MergePriority::Numeral(p) => self
+                MergePriority::Bottom => self.line().append(self.text("| default")),
+                MergePriority::Neutral => self.nil(),
+                MergePriority::Numeral(p) => self
                     .line()
                     .append(self.text("| priority"))
                     .append(self.space())
                     .append(self.as_string(p)),
-                crate::term::MergePriority::Top => self.line().append(self.text("| force")),
+                MergePriority::Top => self.line().append(self.text("| force")),
             })
             .nest(2)
             .group()
@@ -187,7 +240,8 @@ where
         }
         .append(self.intersperse(
             annot.contracts.iter().map(|c| {
-                self.text("|")
+                self.space()
+                    .append(self.text("|"))
                     .append(self.space())
                     .append(c.to_owned().types.pretty(self))
             }),
@@ -350,50 +404,7 @@ where
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.escaped_string(v).double_quotes(),
-            StrChunks(chunks) => {
-                let multiline = chunks.len() > 1;
-                let nb_perc = chunks
-                    .iter()
-                    .map(
-                        |c| {
-                            if let crate::term::StrChunk::Literal(s) = c {
-                                min_interpolate_sign(s)
-                            } else {
-                                1
-                            }
-                        }, // be sure we have at least 1 `%` sign when an interpolation is present
-                    )
-                    .max()
-                    .unwrap_or(1);
-                let interp: String = "%".repeat(nb_perc);
-                allocator
-                    .intersperse(
-                        chunks.iter().rev().map(|c| match c {
-                            crate::term::StrChunk::Literal(s) => {
-                                if multiline {
-                                    allocator.as_string(s)
-                                } else {
-                                    allocator.escaped_string(s)
-                                }
-                            }
-                            crate::term::StrChunk::Expr(e, _i) => allocator
-                                .text(interp.clone())
-                                .append(allocator.text("{"))
-                                .append(e.to_owned().pretty(allocator))
-                                .append(allocator.text("}")),
-                        }),
-                        allocator.nil(),
-                    )
-                    .double_quotes()
-                    .enclose(
-                        if multiline {
-                            format!("m{}", interp)
-                        } else {
-                            "".to_string()
-                        },
-                        if multiline { interp } else { "".to_string() },
-                    )
-            }
+            StrChunks(chunks) => allocator.chunks(chunks, chunks.len() > 1),
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;
