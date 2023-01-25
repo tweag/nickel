@@ -11,7 +11,7 @@ fn records_access() {
     );
     assert_matches!(
         eval("({ \"%{(if false then \"foo\" else \"bar\")}\" = false, bar = true, }).foo"),
-        Err(Error::EvalError(EvalError::Other(msg, ..))) if msg.starts_with("$[ .. ]"));
+        Err(Error::EvalError(EvalError::Other(msg, ..))) if msg.starts_with("insert:"));
 }
 
 #[test]
