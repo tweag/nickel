@@ -478,8 +478,8 @@ fn get_completion_identifiers(
                 let name = path.pop().unwrap();
                 complete(item, name, server, &mut path).unwrap_or_default()
             } else {
-                if let ((TermKind::RecordField { record, .. }, _) | TermKind::Record(..), record) =
-                    (item.kind, item.id)
+                if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
+                    (&item.kind, item.id)
                 {
                     // Context completion
 
