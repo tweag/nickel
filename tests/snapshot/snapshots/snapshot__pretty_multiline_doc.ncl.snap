@@ -3,8 +3,8 @@ source: tests/snapshot/main.rs
 expression: snapshot
 ---
 {
-  field | doc
-    m%%"
+  field
+    | doc m%%"
     Contract to enforce the value is a string that represents a boolean literal. Additionally casts "True" to "true"
     and "False" to "false". This shouldn't interpolate: %{null}
     
@@ -16,6 +16,7 @@ expression: snapshot
         error
       (true | BoolLiteral) =>
         error
-    ```"%%
-     = 1,
+    ```
+    "%%
+    = 1,
 }

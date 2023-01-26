@@ -76,12 +76,6 @@ where
         self.text(s)
     }
 
-    // Honestly, I didn't take the time to really understand what's happening, but if I try to
-    // inline this function inside `chunks`, then there is a borrowing error ¯\_(ツ)_/¯
-    fn text_(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        self.text(String::from(s))
-    }
-
     /// Print string chunks, either in the single line or multiline style.
     fn chunks(
         &'a self,
@@ -131,7 +125,7 @@ where
                         StrChunk::Literal(s) => {
                             if multiline {
                                 self.intersperse(
-                                    s.lines().map(|s| self.text_(s)),
+                                    s.lines().map(|s| self.text(s.to_owned())),
                                     self.hardline().clone(),
                                 )
                             } else {
@@ -172,7 +166,6 @@ where
                                 &vec![StrChunk::Literal(doc.clone())],
                                 StringRenderStyle::Multiline,
                             ))
-                            .append(self.line())
                     })
                     .unwrap_or_else(|| self.nil())
             } else {
@@ -217,10 +210,18 @@ where
     fn field_body(&'a self, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
         self.field_metadata(&field.metadata, with_doc)
             .append(if let Some(ref value) = field.value {
-                self.space()
-                    .append(self.text("="))
-                    .append(self.line())
-                    .append(value.to_owned().pretty(self).nest(2))
+                let has_metadata = field.metadata != FieldMetadata::default();
+
+                if has_metadata {
+                    self.line()
+                } else {
+                    self.space()
+                }
+                .append(
+                    self.text("=")
+                        .append(self.softline())
+                        .append(value.to_owned().pretty(self).nest(2)),
+                ).nest(2)
             } else {
                 self.nil()
             })
@@ -255,17 +256,21 @@ where
 
     fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &annot.types {
-            self.text(":")
+            self.line()
+                .append(self.text(":"))
                 .append(self.space())
                 .append(types.types.clone().pretty(self))
-                .append(self.line())
         } else {
             self.nil()
         }
+        .append(if !annot.contracts.is_empty() {
+            self.line()
+        } else {
+            self.nil()
+        })
         .append(self.intersperse(
             annot.contracts.iter().map(|c| {
-                self.space()
-                    .append(self.text("|"))
+                self.text("|")
                     .append(self.space())
                     .append(c.to_owned().types.pretty(self))
             }),
