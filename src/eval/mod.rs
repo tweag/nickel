@@ -360,7 +360,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
 
-                    self.call_stack.enter_var(self.cache.ident_kind(&idx), *x, pos);
+                    self.call_stack
+                        .enter_var(self.cache.ident_kind(&idx), *x, pos);
 
                     // If we are fetching a recursive field from the environment that doesn't have
                     // a definition, we complete the error with the additional information of where

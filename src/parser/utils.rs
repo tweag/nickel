@@ -125,7 +125,11 @@ impl FieldDef {
             };
             // unwrap is safe here because every id should have a non-`TermPos::None` position
             let id_span = pos.unwrap();
-            let acc_span = acc.value.as_ref().map(|value| value.pos.unwrap()).unwrap_or(id_span);
+            let acc_span = acc
+                .value
+                .as_ref()
+                .map(|value| value.pos.unwrap())
+                .unwrap_or(id_span);
 
             // `RawSpan::fuse` only returns `None` when the two spans are in different files.
             // A record field and its value *must* be in the same file, so this is safe.
@@ -135,7 +139,13 @@ impl FieldDef {
                 FieldPathElem::Ident(id) => {
                     let mut fields = HashMap::new();
                     fields.insert(id, acc);
-                    Field::from(RichTerm::new(Term::Record(RecordData { fields, ..Default::default() }), pos))
+                    Field::from(RichTerm::new(
+                        Term::Record(RecordData {
+                            fields,
+                            ..Default::default()
+                        }),
+                        pos,
+                    ))
                 }
                 FieldPathElem::Expr(exp) => {
                     let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
@@ -144,12 +154,21 @@ impl FieldDef {
                         let id = Ident::new_with_pos(static_access, exp.pos);
                         let mut fields = HashMap::new();
                         fields.insert(id, acc);
-                        Field::from(RichTerm::new(Term::Record(RecordData { fields, ..Default::default() }), pos))
+                        Field::from(RichTerm::new(
+                            Term::Record(RecordData {
+                                fields,
+                                ..Default::default()
+                            }),
+                            pos,
+                        ))
                     } else {
                         // The record we create isn't recursive, because it is only comprised of one
                         // dynamic field. It's just simpler to use the infrastructure of `RecRecord` to
                         // handle dynamic fields at evaluation time rather than right here
-                        Field::from(RichTerm::new(Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None), pos))
+                        Field::from(RichTerm::new(
+                            Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
+                            pos,
+                        ))
                     }
                 }
             }

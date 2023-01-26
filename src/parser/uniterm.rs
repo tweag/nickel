@@ -191,15 +191,13 @@ impl UniRecord {
                             opt: false,
                             priority: MergePriority::Neutral,
                         },
-                } if contracts.is_empty() => {
-                    Ok(RecordRows(RecordRowsF::Extend {
-                        row: RecordRow {
-                            id,
-                            types: Box::new(labeled_ty.types),
-                        },
-                        tail: Box::new(tail),
-                    }))
-                }
+                } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
+                    row: RecordRow {
+                        id,
+                        types: Box::new(labeled_ty.types),
+                    },
+                    tail: Box::new(tail),
+                })),
                 _ => {
                     // Position of identifiers must always be set at this stage
                     // (parsing)
