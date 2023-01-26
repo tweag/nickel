@@ -112,13 +112,13 @@
         let length = %length% l in
         if length == 0 then acc
         else
-          let rec loop = fun acc n => 
+          let rec go = fun acc n => 
             if n == length then acc
             else 
               let next_acc = %elem_at% l n |> f acc in
-              %seq% next_acc (loop next_acc (n+1))
+              %seq% next_acc (go next_acc (n+1))
           in
-          loop acc 0,
+          go acc 0,
 
     fold : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
@@ -138,7 +138,8 @@
           if n == length then
             fst 
           else
-            go (n+1) |> f (%elem_at% l n)
+            go (n+1)
+            |> f (%elem_at% l n)
         in go 0,
 
     cons : forall a. a -> Array a -> Array a
