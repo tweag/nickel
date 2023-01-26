@@ -372,7 +372,7 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
     let mut local_env = Environment::new();
 
     let pos = value1.pos.into_inherited();
-    let combined_deps = field_deps(&value1, &env1)?.union(deps2);
+    let combined_deps = field_deps(cache, &value1, &env1)?.union(deps2);
 
     // Produce the concrete sequence of application of the `assume` primop to the contract argument.
     let value_saturated = value1.saturate(cache, &mut local_env, &env1, fields.clone())?;
@@ -397,7 +397,11 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
     // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
     final_env.insert(
         fresh_var,
-        Thunk::new_rev(closure, IdentKind::Record, combined_deps),
+        cache.add(
+            closure,
+            IdentKind::Record,
+            BindingType::Revertible(combined_deps),
+        ),
     );
 
     Ok(Closure {
@@ -450,7 +454,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
                 env1.clone(),
                 metadata2.annotation.iter(),
                 &env2,
-                ty_field_deps(&fst_ctr.types, &env2).unwrap(),
+                ty_field_deps(cache, &fst_ctr.types, &env2).unwrap(),
                 &fields,
             )?;
             (Some(body), env)
@@ -471,7 +475,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
                 env2.clone(),
                 metadata1.annotation.iter(),
                 &env1,
-                ty_field_deps(&fst_ctr.types, &env1)?,
+                ty_field_deps(cache, &fst_ctr.types, &env1)?,
                 &fields,
             )?;
             (Some(body), env)
@@ -638,9 +642,13 @@ fn field_deps<C: Cache>(
 }
 
 /// Return the dependencies of a contract when represented as a `Types`.
-fn ty_field_deps(ty: &Types, local_env: &Environment) -> Result<FieldDeps, EvalError> {
+fn ty_field_deps<C: Cache>(
+    cache: &C,
+    ty: &Types,
+    local_env: &Environment,
+) -> Result<FieldDeps, EvalError> {
     if let Types(TypeF::Flat(ctr)) = ty {
-        field_deps(ctr, local_env)
+        field_deps(cache, ctr, local_env)
     } else {
         Ok(FieldDeps::empty())
     }
@@ -668,7 +676,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 ) -> Result<RichTerm, EvalError> {
     let mut local_env = Environment::new();
 
-    let combined_deps = field_deps(&t1, env1)?.union(field_deps(&t2, env2).unwrap());
+    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2).unwrap());
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.saturate(cache, &mut local_env, env1, fields.clone())?,
@@ -709,7 +717,7 @@ trait RevertClosurize {
 impl RevertClosurize for RichTerm {
     fn revert_closurize<C: Cache>(
         self,
-        _cache: &mut C,
+        cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
     ) -> RichTerm {
