@@ -433,8 +433,8 @@ fn accumulate_record_meta_data<'a>(
         lin_cache,
     }: &'a ComplCtx<'a>,
     mut path: Vec<Ident>,
-    mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
-) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
+    result: &mut Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
+) {
     // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
     let parent = linearization.get_item(record, lin_cache).unwrap();
 
@@ -453,7 +453,7 @@ fn accumulate_record_meta_data<'a>(
 
     result.push((parent, path.clone()));
     match next {
-        None => result,
+        None => {}
         Some((name, record)) => {
             path.push(name);
             accumulate_record_meta_data(record, info, path, result)
@@ -491,7 +491,10 @@ fn get_completion_identifiers(
         if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
             (&item.kind, item.id)
         {
-            accumulate_record_meta_data(record, info, path, Vec::new())
+            let mut result = Vec::new();
+            accumulate_record_meta_data(record, info, path, &mut result);
+
+            result
                 .into_iter()
                 .flat_map(|(parent, mut path)| {
                     let Some(meta) = parent.meta.as_ref() else {
