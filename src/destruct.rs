@@ -65,11 +65,7 @@ impl Destruct {
         LabeledType {
             types: Types(TypeF::Flat(
                 Term::Record(RecordData::new(
-                    self.inner()
-                        .into_iter()
-                        .map(|mtch| mtch.as_field())
-                        .map(|(id, value)| (id, Field::from(value)))
-                        .collect(),
+                    self.inner().into_iter().map(Match::as_binding).collect(),
                     RecordAttrs { open: is_open },
                     None,
                 ))
@@ -110,9 +106,9 @@ impl Destruct {
 }
 
 impl Match {
-    /// Convert the `Match` to a field with metadata. It's used to generate the record contract
-    /// representing a record pattern destructuring.
-    pub fn as_field(self) -> (Ident, Field) {
+    /// Convert the `Match` to a field binding with metadata. It's used to generate the record
+    /// contract representing a record pattern destructuring.
+    pub fn as_binding(self) -> (Ident, Field) {
         match self {
             Match::Assign(id, field, (_, Destruct::Empty)) | Match::Simple(id, field) => {
                 (id, field)

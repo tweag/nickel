@@ -1868,11 +1868,13 @@ mod tests {
     fn annot_flatten() {
         use crate::parser::utils::Annot;
 
-        let mut inner = TypeAnnotation::default();
-        inner.types = Some(LabeledType {
-            types: Types(TypeF::Num),
-            label: Label::dummy(),
-        });
+        let inner = TypeAnnotation {
+            types: Some(LabeledType {
+                types: Types(TypeF::Num),
+                label: Label::dummy(),
+            }),
+            ..Default::default()
+        };
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.types, None);

@@ -79,7 +79,7 @@ where
     /// Print string chunks, either in the single line or multiline style.
     fn chunks(
         &'a self,
-        chunks: &Vec<StrChunk<RichTerm>>,
+        chunks: &[StrChunk<RichTerm>],
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self, A> {
         let multiline = string_style == StringRenderStyle::Multiline;
@@ -120,7 +120,7 @@ where
         line_maybe
             .clone()
             .append(self.intersperse(
-                chunks.into_iter().cloned().rev().map(|c| {
+                chunks.iter().cloned().rev().map(|c| {
                     match c {
                         StrChunk::Literal(s) => {
                             if multiline {
@@ -135,7 +135,7 @@ where
                         StrChunk::Expr(e, _i) => self
                             .text(interp.clone())
                             .append(self.text("{"))
-                            .append(e.to_owned().pretty(self))
+                            .append(e.pretty(self))
                             .append(self.text("}")),
                     }
                 }),
@@ -162,10 +162,12 @@ where
                             .append(self.space())
                             .append(self.text("doc"))
                             .append(self.space())
-                            .append(self.chunks(
-                                &vec![StrChunk::Literal(doc.clone())],
-                                StringRenderStyle::Multiline,
-                            ))
+                            .append(
+                                self.chunks(
+                                    &[StrChunk::Literal(doc)],
+                                    StringRenderStyle::Multiline,
+                                ),
+                            )
                     })
                     .unwrap_or_else(|| self.nil())
             } else {
@@ -191,7 +193,7 @@ where
     }
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        self.quote_if_needed(&id)
+        self.quote_if_needed(id)
             .append(self.field_body(field, with_doc))
     }
 
@@ -221,7 +223,8 @@ where
                     self.text("=")
                         .append(self.softline())
                         .append(value.to_owned().pretty(self).nest(2)),
-                ).nest(2)
+                )
+                .nest(2)
             } else {
                 self.nil()
             })
@@ -385,7 +388,7 @@ where
                                 } => allocator
                                     .text("?")
                                     .append(allocator.space())
-                                    .append(allocator.atom(&value))
+                                    .append(allocator.atom(value))
                                     .append(allocator.field_metadata(
                                         &FieldMetadata {
                                             annotation: annotation.clone(),
@@ -705,7 +708,7 @@ where
             Annotated(annot, rt) => allocator
                 .atom(rt)
                 .append(allocator.space())
-                .append(allocator.annot(&annot)),
+                .append(allocator.annot(annot)),
             Import(f) => allocator
                 .text("import")
                 .append(allocator.space())

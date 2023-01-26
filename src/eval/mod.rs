@@ -546,7 +546,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     name_as_term.pos
                                 };
 
-                                fixpoint::patch_field(&mut self.cache, &field, &rec_env, &env)?;
+                                fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
 
                                 let ext_kind = field.extension_kind();
                                 let Field { metadata, value } = field;

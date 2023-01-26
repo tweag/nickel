@@ -609,10 +609,9 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
                         field
                             .value
                             .as_ref()
-                            .expect(&format!(
-                                "expected stdlib module {} to have a definition",
-                                id
-                            ))
+                            .unwrap_or_else(|| {
+                                panic!("expected stdlib module {} to have a definition", id)
+                            })
                             .clone(),
                     )
                 }))
@@ -1043,7 +1042,7 @@ fn walk_with_annot<L: Linearizer>(
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
 ) -> Result<(), TypecheckError> {
-    if let Some(ref value) = value {
+    if let Some(value) = value {
         walk(state, ctxt.clone(), lin, linearizer.scope(), value)?;
     }
 
@@ -1061,16 +1060,9 @@ fn walk_with_annot<L: Linearizer>(
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
             let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
-            type_check_(
-                state,
-                ctxt.clone(),
-                lin,
-                linearizer.scope(),
-                value,
-                instantiated,
-            )
+            type_check_(state, ctxt, lin, linearizer.scope(), value, instantiated)
         }
-        (_, Some(value)) => walk(state, ctxt.clone(), lin, linearizer.scope(), value),
+        (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
         // TODO: we might have something to do with the linearizer to clear the current
         // metadata. It looks like it may be unduly attached to the next field definition,
         // which is not critical, but still a bug.
@@ -1505,6 +1497,7 @@ fn type_check_annotated<L: Linearizer>(
 /// always `Some(_)`) as well as field definiitions (where `value` may or may not be defined).
 ///
 /// The last argument is a position to use for error reporting when `value` is `None`.
+#[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
 fn type_check_with_annot<L: Linearizer>(
     state: &mut State,
     ctxt: Context,

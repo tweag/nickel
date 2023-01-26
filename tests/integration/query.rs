@@ -101,6 +101,6 @@ pub fn test_query_with_wildcard() {
     assert_types_eq(
         r#"{value : _ = let f = fun x => x + 1 in f}"#,
         r#"{value : Num -> Num = (fun x => x + 1)}"#,
-        path.clone(),
+        path,
     );
 }

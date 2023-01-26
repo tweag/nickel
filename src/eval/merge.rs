@@ -380,7 +380,7 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
         let ty_saturated = ctr
             .types
             .clone()
-            .saturate(cache, &mut local_env, &env2, fields.clone())
+            .saturate(cache, &mut local_env, env2, fields.clone())
             .unwrap();
         Ok(mk_term::assume(ty_saturated, ctr.label.clone(), acc).map(|rt| rt.with_pos(pos))?)
     })?;
