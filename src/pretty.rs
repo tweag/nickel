@@ -515,9 +515,26 @@ where
                 record,
                 dyn_fields, /* field whose name is defined by interpolation */
                 _deps,      /* dependency tracking between fields. None before the free var pass */
-                _inh, /* inherited fields. As for `deep_repr` does not print it because the syntax is not defined already for Nickel TODO */
+                inh, /* inherited fields. Print it between `<...>` because the syntax is not defined already for Nickel TODO */
             ) => allocator
                 .line()
+                .append(allocator.intersperse(
+                    inh.iter().map(|(ids, rt)| {
+                        allocator
+                            .text("<inherit ")
+                            .append(if let Some(rt) = rt {
+                                rt.to_owned().pretty(allocator).parens()
+                            } else {
+                                allocator.nil()
+                            })
+                            .append(allocator.intersperse(
+                                ids.iter().map(|id| allocator.quote_if_needed(id)),
+                                allocator.text(", "),
+                            ))
+                            .append(allocator.text(">"))
+                    }),
+                    allocator.line(),
+                ))
                 .append(
                     allocator.intersperse(
                         sorted_map(&record.fields)
