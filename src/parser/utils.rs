@@ -93,6 +93,8 @@ pub enum ChunkLiteralPart<'input> {
     Char(char),
 }
 
+/// A field definition atom. A field is defined by a path, a potential value, and associated
+/// metadata.
 #[derive(Clone, Debug)]
 pub struct FieldDef {
     pub path: FieldPath,
@@ -200,15 +202,15 @@ impl InfixOp {
 }
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
-/// Pedantically, `Annot` describes a monoid.
+/// Pedantically, `Annot` is just a monoid.
 pub trait Annot: Default {
     /// Combine two annotations.
     fn combine(outer: Self, inner: Self) -> Self;
 }
 
-/// Trait for structures representing annotations which can be combined with a term to build a
-/// term, or another structure holding a term, such as a field.
-/// `T` is the said target structure.
+/// Trait for structures representing annotations which can be combined with a term to build
+/// another term, or another structure holding a term, such as a field. `T` is the said target
+/// structure.
 pub trait AttachTerm<T> {
     fn attach_term(self, rt: RichTerm) -> T;
 }
@@ -265,12 +267,6 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
         RichTerm::new(Term::Annotated(self, rt), pos)
     }
 }
-
-// impl From<FieldMetadata> for TypeAnnotation {
-//     fn from(metadata: FieldMetadata) -> Self {
-//         metadata.annotation
-//     }
-// }
 
 /// Used to combine annotations in a pattern. If at least one annotation is not `None`, then this
 /// just calls [`Annot::combine`] and substitute a potential `None` by the default value.
@@ -493,7 +489,8 @@ where
     )
 }
 
-/// Merge two fields by performing the merge of both their value and metadata if any.
+/// Merge two fields by performing the merge of both their value (dynamically, by introducing a
+/// merging operator) and their metadata (statically).
 fn merge_fields(field1: Field, field2: Field) -> Field {
     let value = match (field1.value, field2.value) {
         (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
@@ -532,10 +529,10 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on `pat` being empty or not) from a the parsing
-/// of a let definition. This function fails if the definition has both a non-empty pattern and
-/// is recursive (`pat != Destruct::Empty && rec`), because recursive let-patterns are currently
-/// not supported.
+/// Generate a `Let` or a `LetPattern` (depending on `pat` being empty or not) from the parsing of
+/// a let definition. This function fails if the definition has both a non-empty pattern and is
+/// recursive (`pat != Destruct::Empty && rec`), because recursive let-patterns are currently not
+/// supported.
 pub fn mk_let(
     rec: bool,
     id: Option<Ident>,

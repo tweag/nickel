@@ -421,7 +421,9 @@ impl Traverse<RichTerm> for LabeledType {
 /// A type and/or contract annotation.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TypeAnnotation {
+    /// The type annotation (using `:`).
     pub types: Option<LabeledType>,
+    /// The contracts annotation (using `|`).
     pub contracts: Vec<LabeledType>,
 }
 
@@ -432,10 +434,12 @@ impl TypeAnnotation {
         self.iter().next()
     }
 
+    /// Iterate over the annotations, starting by the type and followed by the contracts.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledType> {
         self.types.iter().chain(self.contracts.iter())
     }
 
+    /// Mutably iterate over the annotations, starting by the type and followed by the contracts.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
         self.types.iter_mut().chain(self.contracts.iter_mut())
     }

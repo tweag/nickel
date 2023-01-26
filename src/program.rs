@@ -57,6 +57,7 @@ impl std::str::FromStr for ColorOpt {
     }
 }
 
+/// Attribute path provided when querying metadata.
 #[derive(Clone, Default)]
 pub struct QueryPath(pub Vec<Ident>);
 
@@ -65,6 +66,9 @@ impl QueryPath {
         Self::default()
     }
 
+    /// Parse a string as a query path. A query path is a sequence of dot-separated identifiers.
+    /// Identifiers can be enclosed by double quotes when they contain characters that aren't
+    /// allowed inside bare identifiers.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
         // The current state of the path parser. We're either expecting an ident (or a quoted
         // ident: a string), a dot after an ident, or we are parsing a string.
