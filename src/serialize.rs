@@ -267,7 +267,7 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::{Environment, VirtualMachine};
+    use crate::eval::{cache::CBNCache, Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
