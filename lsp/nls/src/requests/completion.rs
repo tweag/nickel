@@ -119,13 +119,13 @@ pub struct ComplInfo<'a> {
 
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
-fn find_fields_from_term_kind<'a>(
+fn find_fields_from_term_kind(
     id: ItemId,
-    path: &'a mut Vec<Ident>,
+    path: &mut Vec<Ident>,
     info @ ComplInfo {
         linearization,
         lin_cache,
-    }: &'a ComplInfo<'a>,
+    }: &'_ ComplInfo<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
@@ -184,13 +184,13 @@ fn find_fields_from_term_kind<'a>(
 
 /// Find the record fields associated with an ID in the linearization using
 /// its contract information.
-fn find_fields_from_contract<'a>(
+fn find_fields_from_contract(
     id: ItemId,
-    path: &'a mut Vec<Ident>,
+    path: &mut Vec<Ident>,
     info @ ComplInfo {
         linearization,
         lin_cache,
-    }: &'a ComplInfo<'a>,
+    }: &'_ ComplInfo<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
@@ -209,10 +209,10 @@ fn find_fields_from_contract<'a>(
 
 /// Find record field associated associated with a MetaValue.
 /// This can be gotten from the type or the contracts.
-fn find_fields_from_meta_value<'a>(
-    meta_value: &'a MetaValue,
-    path: &'a mut Vec<Ident>,
-    info @ ComplInfo { lin_cache, .. }: &'a ComplInfo<'a>,
+fn find_fields_from_meta_value(
+    meta_value: &MetaValue,
+    path: &mut Vec<Ident>,
+    info @ ComplInfo { .. }: &'_ ComplInfo<'_>,
 ) -> Vec<IdentWithType> {
     meta_value
         .contracts
@@ -234,10 +234,10 @@ fn find_fields_from_meta_value<'a>(
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type<'a>(
-    rrows: &'a RecordRows,
-    path: &'a mut Vec<Ident>,
-    info @ ComplInfo { .. }: &'a ComplInfo<'a>,
+fn find_fields_from_type(
+    rrows: &RecordRows,
+    path: &mut Vec<Ident>,
+    info @ ComplInfo { .. }: &'_ ComplInfo<'_>,
 ) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
@@ -484,7 +484,7 @@ fn get_completion_identifiers(
     }
 
     fn context_complete(
-        item: &'_ LinearizationItem<Types>,
+        item: &LinearizationItem<Types>,
         info: &'_ ComplInfo<'_>,
         path: Vec<Ident>,
     ) -> Vec<IdentWithType> {
