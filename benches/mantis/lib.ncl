@@ -14,9 +14,9 @@
     Smaller = fun x => contract.from_predicate (fun y => y < x),
     SmallerEq = fun x => contract.from_predicate (fun y => y <= x),
     MatchRegexp = fun regex label value =>
-      let match = string.is_match regex in
+      let str_match = string.is_match regex in
       if builtin.is_str value then
-        if match value then
+        if str_match value then
           value
         else
           contract.blame_with "no match" label
