@@ -1,6 +1,6 @@
 use crate::destruct::{self, Destruct};
 use crate::identifier::Ident;
-use crate::parser::{lexer::KEYWORDS, utils::StringKind};
+use crate::parser::lexer::KEYWORDS;
 
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -10,6 +10,12 @@ use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, Typ
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 use std::collections::HashMap;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StringRenderStyle {
+    Monoline,
+    Multiline,
+}
 
 /// Helper to find the min number of `%` sign needed to interpolate a string containing this chunk.
 fn min_interpolate_sign(text: &str) -> usize {
@@ -80,9 +86,9 @@ where
     fn chunks(
         &'a self,
         chunks: &Vec<StrChunk<RichTerm>>,
-        string_kind: StringKind,
+        string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self, A> {
-        let multiline = string_kind == StringKind::Multiline;
+        let multiline = string_style == StringRenderStyle::Multiline;
         let nb_perc = chunks
             .iter()
             .map(
@@ -164,7 +170,7 @@ where
                             .append(self.space())
                             .append(self.chunks(
                                 &vec![StrChunk::Literal(doc.clone())],
-                                StringKind::Multiline,
+                                StringRenderStyle::Multiline,
                             ))
                             .append(self.line())
                     })
@@ -425,9 +431,9 @@ where
             StrChunks(chunks) => allocator.chunks(
                 chunks,
                 if chunks.len() > 1 {
-                    StringKind::Multiline
+                    StringRenderStyle::Multiline
                 } else {
-                    StringKind::Standard
+                    StringRenderStyle::Monoline
                 },
             ),
             Fun(id, rt) => {
