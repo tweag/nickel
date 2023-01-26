@@ -9,29 +9,48 @@ and then export it as a YAML file for a program consuming it.
 
 ## Step 1: Install nickel
 
+The first step is to obtain nickel on your system. There are different
+methods to install Nickel, they are all covered on the [Getting
+started](https://nickel-lang.org/getting-started/#getting-started)
+page of Nickel project website.
+
 ## Step 2: Think about the schema
 
-Our current YAML has different fields, such as `name`, `ssh-keys`,
-`is-admin` or `extra-groups`. To create a Nickel contract that correctly
-specifies the shape of this data, we first need to think about the
-types of each field
+The YAML we want to produce as different fiels with different types
+(lists, booleans, strings), here is a sample of what we need:
 
-Nickel provides a lot of types, but also structures. In our case,
-we want `ssh-keys` to allow multiple keys, so this will be an array,
-`name` is a sequence of characters, so a type `Str` (for String),
-the field `is-admin` can be either true or false, so this is a
-`Bool`, finally, `extra-groups` is a list of group names,
-which translates as an array of string.
+```yaml
+users:
+  - name: Aisha
+    is-admin: true
+    ssh-keys:
+      - AAAAApqCA8oKAB5S/47f...... aisha@work
+  - name: Violet
+    extra-groups:
+      - accounting
+```
 
-We can also mark fields as optional, so you don't have
-to fill them if they don't have any value, `extra-groups` and `ssh-keys`
-can be empty in our case, we will make them optional by applying `|
-optional`. 
+We can spot attributes such as `name`, `ssh-keys`, `is-admin` or
+`extra-groups`. To create a Nickel contract that correctly specifies
+the shape of this data, we need to think about the type needed for
+each attribute.
 
-The field `is-admin` must be present in the YAML we output, but
-for most users it will be set to `false`. We can give the field
-a default value of `false`, which means it only needs to be 
-present in Nickel code when the user is actually an admin.
+For example, the attribute `name` is a string, which translates as `Str`
+in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is
+an list of strings, written as `Array Str` in Nickel. `is-admin` is a
+boolean, written as `Bool`. Finally, `extra-groups` is a list of group
+names, which is the same type used for `ssh-keys`, we need `Array Str`.
+
+We can also mark fields as optional so you won't have to explicitly write
+about them if they don't have any value, `extra-groups` and `ssh-keys`
+can be empty in the example, we will make them optional by using the
+`optional` keyword.
+
+The field `is-admin` must always be present in the YAML file, but
+for most of our users it will be set to `false`. Fortunately, we can
+assign the default value `false` to this field , which means you only
+need write `is-admin = true` in Nickel code when the user is actually
+an administrator.
 
 ## Step 3: Write a contract
 
