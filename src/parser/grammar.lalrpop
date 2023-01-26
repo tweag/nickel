@@ -311,7 +311,7 @@ RecordOperand: UniTerm = {
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
-    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1_with_pos(UnaryOp::StaticAccess(id), t, id.pos),
+    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
     <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
