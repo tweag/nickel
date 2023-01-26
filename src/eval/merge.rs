@@ -350,11 +350,9 @@ pub fn merge<C: Cache>(
 /// Apply a series of contract to the value of a field as well as the necessary saturation (see
 /// [saturate]) and closurize operations.
 ///
-/// The contracts are expected to be closurized, ie be of the form `Types(TypeF(Term::Var(_)))`.
-/// Both the contract and the field are saturated, and the result is closurized. The
-/// result is revertible if either one of the contract or the record is, with the dependencies.
-///
-/// If the contract is not closurized, then it's just considered not to be revertible.
+/// Both the contract and the field are saturated, and the result is closurized. The result is
+/// revertible if either one of the contract or the record is, with the union of their
+/// dependencies.
 ///
 /// # Parameters
 ///
@@ -406,55 +404,11 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
         body: RichTerm::from(Term::Var(fresh_var)),
         env: final_env,
     })
-    // match value1.as_ref() {
-    //     // In the general case, the value is stored in a thunk and might be recursive. In this
-    //     // case, we use `map_at_index`, which preserves the recursivity/late-binding (when
-    //     // revertible thunks are seen as functions, this maps "under the function", so to speak).
-    //     //
-    //     // Doing so, we are sure to pick the latest value for recursive fields, and not earlier,
-    //     // partially built values. It's a trick to get rid of some of the issue mentioned in RFC005
-    //     // before the implementation of full-fledged lazy contract application. This code is
-    //     // expected to be transitory.
-    //     Term::Var(id) => {
-    //         let idx = env1.get(&id).unwrap();
-    //         let fresh_idx = cache.map_at_index(
-    //             idx,
-    //             //FIXME: the `unwrap` below should be properly handled. It can happen when an
-    //             // unbound type variable or identifier occurs in a type or contract.
-    //             //
-    //             // However, this should be checked by the typechecker during a normal execution, so
-    //             // this arguably corresponds to a bug/internal error. Secondly, this code is
-    //             // temporary, as a transition during the implementation of RFC005: we should get
-    //             // rid of cross-application altogether soon and use lazy contract application
-    //             // instead (see RFC005). Thus, we keep a dirty `unwrap()` for now.
-    //             |cache,
-    //              Closure {
-    //                  ref body,
-    //                  env: ref local_env,
-    //              }| {
-    //                 apply_contracts(cache, body.clone(), local_env.clone()).unwrap()
-    //             },
-    //         );
-    //
-    //         let fresh_id = Ident::fresh();
-    //         env.insert(fresh_id, fresh_idx);
-    //         Ok(Closure {
-    //             body: RichTerm::new(Term::Var(fresh_id), value1.pos),
-    //             env,
-    //         })
-    //     }
-    //     _ => {
-    //         let Closure {
-    //             body,
-    //             env: local_env,
-    //         } = apply_contracts(cache, value1.clone(), env1)?;
-    //         let body = body.closurize(cache, &mut env, local_env);
-    //
-    //         Ok(Closure { body, env })
-    //     }
-    // }
 }
 
+/// Take two record fields in their respective environment and combine both their metadat and
+/// values. Apply the required saturate, revert or closurize operation, including on the final
+/// field returned.
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     cache: &mut C,
     field1: Field,
@@ -597,6 +551,13 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
+/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks is
+/// used when we must combine different values with different recursive dependencies (say, the two
+/// values of fields being merged) into one expression.
+///
+/// Saturation is first and foremost a transformation of terms, but like
+/// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence
+/// the trait.
 trait Saturate: Sized {
     /// Take the content of a record field, and saturate the potential revertible thunk with the given
     /// fields. See [crate::eval::lazy::Thunk::saturate].

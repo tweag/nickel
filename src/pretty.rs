@@ -1,6 +1,7 @@
 use crate::destruct::{self, Destruct};
 use crate::identifier::Ident;
-use crate::parser::lexer::KEYWORDS;
+use crate::parser::{lexer::KEYWORDS, utils::StringKind};
+
 use crate::term::{
     record::{Field, FieldMetadata},
     BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
@@ -47,6 +48,8 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
+    /// Add quote around an ident if it contains characters that aren't normally allowed inside
+    /// bare identifiers.
     fn quote_if_needed(&'a self, id: &Ident) -> DocBuilder<'a, Self, A> {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
         if reg.is_match(id.as_ref()) && !KEYWORDS.contains(&id.as_ref()) {
@@ -56,6 +59,8 @@ where
         }
     }
 
+    /// Escape the special characters in a string, including the newline character, so that it can
+    /// be enclosed by double quotes a be a valid Nickel string.
     fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
         let s = s
             .replace('\\', "\\\\")
@@ -71,11 +76,13 @@ where
         self.text(String::from(s))
     }
 
+    /// Print string chunks, either in the single line or multiline style.
     fn chunks(
         &'a self,
         chunks: &Vec<StrChunk<RichTerm>>,
-        multiline: bool,
+        string_kind: StringKind,
     ) -> DocBuilder<'a, Self, A> {
+        let multiline = string_kind == StringKind::Multiline;
         let nb_perc = chunks
             .iter()
             .map(
@@ -155,7 +162,10 @@ where
                             .append(self.space())
                             .append(self.text("doc"))
                             .append(self.space())
-                            .append(self.chunks(&vec![StrChunk::Literal(doc.clone())], true))
+                            .append(self.chunks(
+                                &vec![StrChunk::Literal(doc.clone())],
+                                StringKind::Multiline,
+                            ))
                             .append(self.line())
                     })
                     .unwrap_or_else(|| self.nil())
@@ -237,7 +247,6 @@ where
         self.annot_part(annot).nest(2).group()
     }
 
-    //TODO: do not use MetaData anymore
     fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
         if let Some(types) = &annot.types {
             self.text(":")
@@ -413,7 +422,14 @@ where
             Bool(v) => allocator.as_string(v),
             Num(v) => allocator.as_string(v),
             Str(v) => allocator.escaped_string(v).double_quotes(),
-            StrChunks(chunks) => allocator.chunks(chunks, chunks.len() > 1),
+            StrChunks(chunks) => allocator.chunks(
+                chunks,
+                if chunks.len() > 1 {
+                    StringKind::Multiline
+                } else {
+                    StringKind::Standard
+                },
+            ),
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;

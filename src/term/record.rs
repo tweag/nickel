@@ -5,8 +5,11 @@ use std::{
     rc::Rc,
 };
 
+/// Additional attributes for record.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
 pub struct RecordAttrs {
+    /// If the record is an open record, ie ending with `..`. Open records have a different
+    /// behavior when used as a record contract: they allow additional fields to be present.
     pub open: bool,
 }
 
@@ -142,7 +145,7 @@ impl FieldMetadata {
     }
 }
 
-/// A record field with meta
+/// A record field with its metadata.
 #[derive(Clone, Default, PartialEq, Debug)]
 pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
@@ -160,6 +163,7 @@ impl From<RichTerm> for Field {
 }
 
 impl Field {
+    /// Map a function over the value of the field, if any.
     pub fn map_value(self, f: impl FnOnce(RichTerm) -> RichTerm) -> Self {
         Field {
             metadata: self.metadata,
@@ -167,6 +171,7 @@ impl Field {
         }
     }
 
+    /// Map a fallible function over the value of the field, if any.
     pub fn try_map_value<E>(
         self,
         f: impl FnOnce(RichTerm) -> Result<RichTerm, E>,
@@ -177,10 +182,14 @@ impl Field {
         })
     }
 
+    /// Determine if a field is optional and without a defined value. In that case, it is usually
+    /// silently ignored by most record operations (`has_field`, `values`, etc.).
     pub fn is_empty_optional(&self) -> bool {
         self.value.is_none() && self.metadata.opt
     }
 
+    /// Required by the dynamic extension operator to know if the field being treated has a defined
+    /// value that must be obtained from the stack or not.
     pub fn extension_kind(&self) -> RecordExtKind {
         if self.value.is_some() {
             RecordExtKind::WithValue

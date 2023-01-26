@@ -227,7 +227,7 @@ fn transform_rec_field(
 
 fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
     // If the fields has an empty set of dependencies, we can eschew the
-    // useless introduction of a revertible thunk. Note that if
+    // useless introduction of a revertible thunk. Note that
     // `field_deps` being `None` doesn't mean "empty dependencies" but
     // rather that the dependencies haven't been computed. In the latter
     // case, we must be conservative and assume the field is potentially

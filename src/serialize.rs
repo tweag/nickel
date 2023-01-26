@@ -102,7 +102,6 @@ pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, 
 where
     S: Serializer,
 {
-    // During serialization, we e
     let mut entries = record
         .iter_without_opts()
         .collect::<Result<Vec<_>, _>>()
