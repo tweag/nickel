@@ -227,22 +227,6 @@ fn find_fields_from_meta_value<'a>(
                     Vec::new()
                 }
             }
-            Types(TypeF::Flat(term))
-                if matches!(
-                    term.as_ref(),
-                    Term::Var(..) | Term::Op1(UnaryOp::StaticAccess(..), _)
-                ) =>
-            {
-                let pos = term.pos;
-                let span = pos.unwrap();
-                let locator = (span.src_id, span.start);
-                // This unwrap is safe becuase we're geting an expression from
-                // a linearized file, so all terms in the file and all terms in its
-                // dependencies must have being linearized and stored in the cache.
-                let linearization = lin_cache.get(&span.src_id).unwrap();
-                let item = linearization.item_at(&locator).unwrap();
-                find_fields_from_term_kind(item.id, path, &info)
-            }
             Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
             _ => Vec::new(),
         })
@@ -285,35 +269,42 @@ fn find_fields_from_type<'a>(
 }
 
 /// Extract record fields from a record term.
-fn find_fields_from_term<'a>(
-    term: &'a RichTerm,
-    path: &'a mut Vec<Ident>,
-    info @ ComplInfo { .. }: &'a ComplInfo<'a>,
+fn find_fields_from_term(
+    term: &RichTerm,
+    path: &mut Vec<Ident>,
+    info @ ComplInfo { lin_cache, .. }: &'_ ComplInfo<'_>,
 ) -> Vec<IdentWithType> {
-    let current = path.pop();
-    match (term.as_ref(), current) {
-        (Term::Record(data) | Term::RecRecord(data, ..), None) => data
-            .fields
-            .keys()
-            .copied()
-            .map(|ident| IdentWithType {
-                ident,
-                ty: Types(TypeF::Flat(term.clone())),
-                item: None,
-            })
-            .collect(),
-        (Term::Record(data) | Term::RecRecord(data, ..), Some(name)) => {
-            let Some(term) = data.fields.get(&name) else {
-                return Vec::new()
-            };
-            find_fields_from_term(term, path, info)
+    match term.as_ref() {
+        Term::Record(data) | Term::RecRecord(data, ..) => match path.pop() {
+            None => data
+                .fields
+                .keys()
+                .copied()
+                .map(|ident| IdentWithType {
+                    ident,
+                    ty: Types(TypeF::Flat(term.clone())),
+                    item: None,
+                })
+                .collect(),
+            Some(name) => {
+                let Some(term) = data.fields.get(&name) else {
+                    return Vec::new()
+                };
+                find_fields_from_term(term, path, info)
+            }
+        },
+        Term::MetaValue(meta_value) => find_fields_from_meta_value(meta_value, path, info),
+        Term::Var(..) | Term::Op1(UnaryOp::StaticAccess(..), _) => {
+            let pos = term.pos;
+            let span = pos.unwrap();
+            let locator = (span.src_id, span.start);
+            // This unwrap is safe becuase we're geting an expression from
+            // a linearized file, so all terms in the file and all terms in its
+            // dependencies must have being linearized and stored in the cache.
+            let linearization = lin_cache.get(&span.src_id).unwrap();
+            let item = linearization.item_at(&locator).unwrap();
+            find_fields_from_term_kind(item.id, path, &info)
         }
-        (Term::MetaValue(meta_value), Some(ident)) => {
-            // We don't need to pop here, as the metavalue wraps the actual record
-            path.push(ident);
-            find_fields_from_meta_value(meta_value, path, info)
-        }
-        (Term::MetaValue(meta_value), None) => find_fields_from_meta_value(meta_value, path, info),
         _ => Vec::new(),
     }
 }
