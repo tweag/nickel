@@ -123,7 +123,7 @@ pub fn patch_field<C: Cache>(
                     if let Term::Var(var_id) = &*contract.term {
                         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
                         let mut idx = env
-                            .get(&var_id)
+                            .get(var_id)
                             .cloned()
                             .ok_or(EvalError::UnboundIdentifier(*var_id, contract.pos))?;
 

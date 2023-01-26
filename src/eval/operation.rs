@@ -2941,11 +2941,10 @@ impl RecPriority {
                 // To do so, we create a new independent copy of the original thunk by mapping the
                 // function over both expressions (in the sense of both the original expression and
                 // the cached expression). This logic is encapsulated by `Thunk::map`.
-                //
 
                 field.value = field.value.take().map(|value| {
                     if let Term::Var(id_inner) = value.as_ref() {
-                        let idx = env.get(&id_inner).unwrap();
+                        let idx = env.get(id_inner).unwrap();
 
                         let new_idx =
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {

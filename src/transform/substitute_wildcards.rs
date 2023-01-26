@@ -90,7 +90,7 @@ impl SubstWildcard for LabeledType {
 impl SubstWildcard for Label {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Label {
         Label {
-            types: Rc::new((&*self.types).clone().subst_wildcards(wildcards)),
+            types: Rc::new((*self.types).clone().subst_wildcards(wildcards)),
             ..self
         }
     }

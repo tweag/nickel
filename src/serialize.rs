@@ -199,7 +199,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
                     let (_, rt) = binding.unwrap_or_else(|err| panic!("encountered field without definition `{}` during pre-serialization validation", err.id));
-                    validate(format, &rt)
+                    validate(format, rt)
                 })?;
                 Ok(())
             }
