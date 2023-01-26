@@ -12,9 +12,9 @@ and then export it as a YAML file for a program consuming it.
 ## Step 2: Think about the schema
 
 Our current YAML has different fields, such as `name`, `ssh-keys`,
-`is-admin` or `extra-groups`. To create a Nickel contract that produce
-what we want, and validates input, we need to think about the type of
-each field.
+`is-admin` or `extra-groups`. To create a Nickel contract that correctly
+specifies the shape of this data, we first need to think about the
+types of each field
 
 Nickel provides a lot of types, but also structures. In our case,
 we want `ssh-keys` to allow multiple keys, so this will be an array,
@@ -23,13 +23,15 @@ the field `is-admin` can be either true or false, so this is a
 `Bool`, finally, `extra-groups` is a list of group names,
 which translates as an array of string.
 
-We can also define some fields optionals, so you don't have
+We can also mark fields as optional, so you don't have
 to fill them if they don't have any value, `extra-groups` and `ssh-keys`
 can be empty in our case, we will make them optional by applying `|
-optional`. The field `is-admin` must be provided to our program consuming
-the YAML, but we don't want to fill it when it's false, we can apply
-a default value of `false`, so we will only define it in our file when
-the user is actually an admin, this makes the file maintenance easier.
+optional`. 
+
+The field `is-admin` must be present in the YAML we output, but
+for most users it will be set to `false`. We can give the field
+a default value of `false`, which means it only needs to be 
+present in Nickel code when the user is actually an admin.
 
 ## Step 3: Write a contract
 
