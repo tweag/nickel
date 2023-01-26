@@ -111,8 +111,8 @@ impl IdentWithType {
     }
 }
 
-/// General data structures required by most completion functions.
-pub struct ComplInfo<'a> {
+/// Completion Context: General data structures required by most completion functions.
+pub struct ComplCtx<'a> {
     linearization: &'a Completed,
     lin_cache: &'a HashMap<FileId, Completed>,
 }
@@ -122,10 +122,10 @@ pub struct ComplInfo<'a> {
 fn find_fields_from_term_kind(
     id: ItemId,
     path: &mut Vec<Ident>,
-    info @ ComplInfo {
+    info @ ComplCtx {
         linearization,
         lin_cache,
-    }: &'_ ComplInfo<'_>,
+    }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
@@ -158,7 +158,7 @@ fn find_fields_from_term_kind(
                 find_fields_from_term_kind(
                     *new_id,
                     path,
-                    &ComplInfo {
+                    &ComplCtx {
                         linearization,
                         lin_cache,
                     },
@@ -187,10 +187,10 @@ fn find_fields_from_term_kind(
 fn find_fields_from_contract(
     id: ItemId,
     path: &mut Vec<Ident>,
-    info @ ComplInfo {
+    info @ ComplCtx {
         linearization,
         lin_cache,
-    }: &'_ ComplInfo<'_>,
+    }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
@@ -212,7 +212,7 @@ fn find_fields_from_contract(
 fn find_fields_from_meta_value(
     meta_value: &MetaValue,
     path: &mut Vec<Ident>,
-    info @ ComplInfo { .. }: &'_ ComplInfo<'_>,
+    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     meta_value
         .contracts
@@ -237,7 +237,7 @@ fn find_fields_from_meta_value(
 fn find_fields_from_type(
     rrows: &RecordRows,
     path: &mut Vec<Ident>,
-    info @ ComplInfo { .. }: &'_ ComplInfo<'_>,
+    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
@@ -272,7 +272,7 @@ fn find_fields_from_type(
 fn find_fields_from_term(
     term: &RichTerm,
     path: &mut Vec<Ident>,
-    info @ ComplInfo { lin_cache, .. }: &'_ ComplInfo<'_>,
+    info @ ComplCtx { lin_cache, .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     match term.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => match path.pop() {
@@ -391,7 +391,7 @@ fn collect_record_info(
     path: &mut Vec<Ident>,
     lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
-    let info = ComplInfo {
+    let info = ComplCtx {
         linearization,
         lin_cache,
     };
@@ -428,10 +428,10 @@ fn collect_record_info(
 /// accumulate all the record metadata and corresponding path.
 fn accumulate_record_meta_data<'a>(
     record: ItemId,
-    info @ ComplInfo {
+    info @ ComplCtx {
         linearization,
         lin_cache,
-    }: &'a ComplInfo<'a>,
+    }: &'a ComplCtx<'a>,
     mut path: Vec<Ident>,
     mut result: Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
 ) -> Vec<(&'a LinearizationItem<Types>, Vec<Ident>)> {
@@ -485,7 +485,7 @@ fn get_completion_identifiers(
 
     fn context_complete(
         item: &LinearizationItem<Types>,
-        info: &'_ ComplInfo<'_>,
+        info: &'_ ComplCtx<'_>,
         path: Vec<Ident>,
     ) -> Vec<IdentWithType> {
         if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
@@ -505,7 +505,7 @@ fn get_completion_identifiers(
         }
     }
 
-    let info = ComplInfo {
+    let info = ComplCtx {
         linearization,
         lin_cache: &server.lin_cache,
     };
@@ -756,7 +756,7 @@ mod tests {
         let mut path = vec![Ident::from("b"), Ident::from("a")];
         // unwrap: the conversion must succeed because we built a type without unification variable
         // nor type constants
-        let info = ComplInfo {
+        let info = ComplCtx {
             linearization: &Default::default(),
             lin_cache: &HashMap::new(),
         };
@@ -843,7 +843,7 @@ mod tests {
             expected.sort();
             let completed = make_completed(linearization);
             for id in ids {
-                let info = ComplInfo {
+                let info = ComplCtx {
                     linearization: &completed,
                     lin_cache: &HashMap::new(),
                 };
