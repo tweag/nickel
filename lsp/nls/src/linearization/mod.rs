@@ -227,13 +227,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     self.env.insert(ident.to_owned(), id);
                     let kind = match term {
                         Term::LetPattern(..) => {
-                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, true)
+                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, false)
                         }
                         Term::FunPattern(..) => TermKind::Declaration(
                             ident.to_owned(),
                             Vec::new(),
                             ValueState::Unknown,
-                            true,
+                            false,
                         ),
                         _ => unreachable!(),
                     };
