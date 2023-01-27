@@ -9,6 +9,14 @@ compat | doc "Nix compatibility layer. This library should not be used by Nickel
     then a ++ b
     else a + b,
 
+  # The update operator of Nix `//`. It's a "general form" of the `record.update` of Nickel.
+  # TODO: May be intresting to be addapted and integrated the the actual Nickel stdlib.
+  update_from_rec = fun r1 r2 =>
+    array.fold
+      (fun key acc => record.update key r2."%{key}" acc)
+      r1
+      (record.fields r2),
+
   has_field_path = fun fields record =>
       %length% fields == 0 || # Because it's only used by generated code, this length will never be initialy 0. So if it's 0, it mean the end of the path.
       (
