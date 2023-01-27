@@ -201,13 +201,14 @@
             buildInputs = [ pkgs.python3 ];
           };
 
-          buildPackage = packageName:
+          buildPackage = pname:
             craneLib.buildPackage {
               inherit
+                pname
                 src
                 cargoArtifacts;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} --package ${packageName}";
+              cargoExtraArgs = "${cargoBuildExtraArgs} --package ${pname}";
             };
 
 
@@ -377,8 +378,13 @@
     in
     rec {
       packages = {
-        nickel = (mkCraneArtifacts { }).nickel;
-        default = packages.nickel;
+        inherit (mkCraneArtifacts { })
+          nickel
+          lsp-nls;
+        default = pkgs.buildEnv {
+          name = "nickel";
+          paths = [ packages.nickel packages.lsp-nls ];
+        };
         nickelWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.nickel; # TODO: docker image should be a passthru
         inherit vscodeExtension;
