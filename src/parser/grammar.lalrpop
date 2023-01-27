@@ -238,13 +238,8 @@ UniTerm: UniTerm = {
     },
     "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
         UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
-    <l: @L> <t: !> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        errors.push(t.clone());
-
-        UniTerm::from(RichTerm::new(Term::ParseError(
-            crate::error::ParseError::from_lalrpop(t.error, src_id)
-        ), pos))
+    <err: Error> => {
+        UniTerm::from(err)
     },
 };
 
@@ -311,7 +306,7 @@ RecordOperand: UniTerm = {
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
-    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t),
+    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
     <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
@@ -396,7 +391,22 @@ RecordField: (FieldPath, RichTerm) = {
         };
 
         (path, term)
-    }
+    },
+    <err: Error> => {
+        let pos = err.pos;
+        let path = vec![FieldPathElem::Expr(err)];
+        let term = RichTerm::new(Term::MetaValue(MetaValue::new()), pos);
+        (path, term)
+    },
+};
+
+// An error recovery handler.
+Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        errors.push(t.clone());
+
+        RichTerm::new(Term::ParseError(
+            crate::error::ParseError::from_lalrpop(t.error, src_id)), pos)
 };
 
 RecordLastField: RecordLastField = {

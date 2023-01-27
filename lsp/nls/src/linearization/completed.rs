@@ -25,6 +25,25 @@ impl Completed {
         }
     }
 
+    /// Returns the closest item to the left (if any) and to the right (if any) of
+    /// a specified item. The "closeness" metric in this context is just the source
+    /// position.
+    pub fn get_items_adjacent(
+        &self,
+        id: ItemId,
+    ) -> (
+        Option<&LinearizationItem<Resolved>>,
+        Option<&LinearizationItem<Resolved>>,
+    ) {
+        let Some(index) = self.id_to_index.get(&id).copied() else {
+            return (None, None)
+        };
+        let (left_index, right_index) = (index - 1, index + 1);
+        let left = self.linearization.get(left_index);
+        let right = self.linearization.get(right_index);
+        (left, right)
+    }
+
     pub fn get_item<'a>(
         &'a self,
         id: ItemId,
