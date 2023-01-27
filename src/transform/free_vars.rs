@@ -240,11 +240,6 @@ fn bind_pattern(dest_pat: &Destruct, free_vars: &mut HashSet<Ident>) {
                 free_vars.remove(rest);
             }
         }
-        Destruct::Array { matches, .. } => {
-            for m in matches {
-                bind_match(m, free_vars);
-            }
-        }
         Destruct::Empty => {}
     }
 }

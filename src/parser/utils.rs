@@ -561,7 +561,7 @@ pub fn mk_let(
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
     let result = match pat {
-        d @ (Destruct::Record { .. } | Destruct::Array { .. }) => {
+        d @ Destruct::Record { .. } => {
             if rec {
                 return Err(ParseError::RecursiveLetPattern(span));
             }
