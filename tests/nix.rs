@@ -21,6 +21,11 @@ fn basics_nix() {
 }
 
 #[test]
+fn lets_nix() {
+    run("lets.nix");
+}
+
+#[test]
 fn records_nix() {
     run("records.nix");
 }
