@@ -326,31 +326,56 @@ impl ToNickel for rnix::ast::Expr {
             Expr::UnaryOp(n) => n.translate(state),
 
             // static or dynamic records field access.
-            Expr::Select(n) => n
-                .attrpath()
-                .unwrap()
-                .attrs()
-                // a nested access is an iterator on attrs from left to right.
-                .fold(
-                    n.expr().unwrap().translate(state), // the fold is initialized with the
-                    // record accessed.
-                    |acc, i| {
-                        match i {
-                            rnix::ast::Attr::Ident(id) => {
-                                Term::Op1(UnaryOp::StaticAccess(id_from_nix(id, state)), acc)
+            Expr::Select(n) => {
+                let select = n
+                    .attrpath()
+                    .unwrap()
+                    .attrs()
+                    // a nested access is an iterator on attrs from left to right.
+                    .fold(
+                        n.expr().unwrap().translate(state), // the fold is initialized with the
+                        // record accessed.
+                        |acc, i| {
+                            match i {
+                                rnix::ast::Attr::Ident(id) => {
+                                    Term::Op1(UnaryOp::StaticAccess(id_from_nix(id, state)), acc)
+                                }
+                                rnix::ast::Attr::Dynamic(d) => Term::Op2(
+                                    BinaryOp::DynAccess(),
+                                    d.expr().unwrap().translate(state),
+                                    acc,
+                                ),
+                                rnix::ast::Attr::Str(s) => {
+                                    Term::Op2(BinaryOp::DynAccess(), s.translate(state), acc)
+                                }
                             }
-                            rnix::ast::Attr::Dynamic(d) => Term::Op2(
-                                BinaryOp::DynAccess(),
-                                d.expr().unwrap().translate(state),
-                                acc,
-                            ),
-                            rnix::ast::Attr::Str(s) => {
-                                Term::Op2(BinaryOp::DynAccess(), s.translate(state), acc)
-                            }
-                        }
-                        .into()
-                    },
-                ),
+                            .into()
+                        },
+                    );
+                // if the selection contains a `... or <default>` suffix
+                if let Some(def) = n.default_expr() {
+                    let path = path_rts_from_nix(n.attrpath().unwrap(), state);
+                    let path = Term::Array(path, Default::default());
+                    // we transform it to something like the following pseudo code:
+                    //
+                    // ```
+                    // if has_field_path <path> <record>
+                    // then <record>.<path>
+                    // else <default>
+                    // ```
+                    if_then_else(
+                        mk_app!(
+                            crate::stdlib::compat::has_field_path(),
+                            path,
+                            n.expr().unwrap().translate(state)
+                        ),
+                        select,
+                        def.translate(state),
+                    )
+                } else {
+                    select
+                }
+            }
 
             // The Nix `?` operator.
             Expr::HasAttr(n) => {
