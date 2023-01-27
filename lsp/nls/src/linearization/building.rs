@@ -5,7 +5,7 @@ use log::debug;
 use nickel_lang::{
     cache::Cache,
     identifier::Ident,
-    term::{MetaValue, RichTerm, Term},
+    term::record::Field,
     typecheck::{linearization::LinearizationState, UnifType},
     types::TypeF,
 };
@@ -102,11 +102,11 @@ impl<'b> Building<'b> {
     pub(super) fn register_fields(
         &mut self,
         current_file: FileId,
-        record_fields: &HashMap<Ident, RichTerm>,
+        record_fields: &HashMap<Ident, Field>,
         record: ItemId,
         env: &mut Environment,
     ) {
-        for (ident, value) in record_fields.iter() {
+        for (ident, field) in record_fields.iter() {
             let id = ItemId {
                 file_id: current_file,
                 index: self.id_gen().get_and_advance(),
@@ -123,13 +123,7 @@ impl<'b> Building<'b> {
                     usages: Vec::new(),
                     value: ValueState::Unknown,
                 },
-                meta: match value.term.as_ref() {
-                    Term::MetaValue(meta @ MetaValue { .. }) => Some(MetaValue {
-                        value: None,
-                        ..meta.clone()
-                    }),
-                    _ => None,
-                },
+                metadata: Some(field.metadata.clone()),
             });
             let key = *ident;
             env.insert(key, id);
@@ -150,7 +144,7 @@ impl<'b> Building<'b> {
             TermKind::Record(ref mut fields) => {
                 fields.insert(field_ident, reference_id);
             }
-            _ => unreachable!(),
+            _ => panic!(),
         }
     }
 
