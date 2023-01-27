@@ -17,6 +17,7 @@ pub struct State {
     pub file_id: FileId,
     /// Variables in scope.
     pub env: HashSet<String>,
+    /// With scope. List of the records on which has been applied a with in the current scope.
     pub with: Vec<RichTerm>,
 }
 
@@ -30,5 +31,8 @@ pub trait ToNickel: Sized {
         };
         self.translate(&state)
     }
+
+    /// Use to convert an expression or a term of the source language to nickel.
+    /// For a complet exemple, you can see `crate::nix`, the convertion from Nix to Nickel.
     fn translate(self, state: &State) -> RichTerm;
 }
