@@ -170,7 +170,7 @@ fn find_fields_from_term_kind(
             value: ValueState::Known(new_id),
             ..
         }
-        | TermKind::Declaration(_, _, ValueState::Known(new_id)) => {
+        | TermKind::Declaration(_, _, ValueState::Known(new_id), _) => {
             find_fields_from_term_kind(new_id, path, info)
         }
         TermKind::Usage(UsageState::Resolved(new_id)) => {
@@ -197,7 +197,7 @@ fn find_fields_from_contract(
     match &item.metadata {
         Some(metadata) => find_fields_from_contracts(&metadata.annotation, path, info),
         None => match item.kind {
-            TermKind::Declaration(_, _, ValueState::Known(new_id))
+            TermKind::Declaration(_, _, ValueState::Known(new_id), _)
             | TermKind::RecordField {
                 value: ValueState::Known(new_id),
                 ..
@@ -440,7 +440,7 @@ fn collect_record_info(
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
                 (
-                    TermKind::Declaration(_, _, ValueState::Known(body_id))
+                    TermKind::Declaration(_, _, ValueState::Known(body_id), _)
                     | TermKind::RecordField {
                         value: ValueState::Known(body_id),
                         ..
@@ -599,7 +599,7 @@ fn get_completion_identifiers(
                     .get_in_scope(item, &server.lin_cache)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _)
+                        TermKind::Declaration(ident, _, _, _)
                         | TermKind::RecordField { ident, .. } => Some(IdentWithType {
                             ident,
                             meta: item.metadata.clone(),
@@ -907,6 +907,7 @@ mod tests {
                 Ident::from("a"),
                 vec![ItemId { file_id, index: 3 }],
                 ValueState::Known(ItemId { file_id, index: 1 }),
+                false,
             ),
             None,
         );
@@ -926,6 +927,7 @@ mod tests {
                 Ident::from("d"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 4 }),
+                false,
             ),
             None,
         );
@@ -952,6 +954,7 @@ mod tests {
                 Ident::from("a"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 1 }),
+                false,
             ),
             None,
         );
@@ -972,6 +975,7 @@ mod tests {
                 Ident::from("d"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 13 }),
+                false,
             ),
             None,
         );
@@ -981,6 +985,7 @@ mod tests {
                 Ident::from("e"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 14 }),
+                false,
             ),
             None,
         );
@@ -990,6 +995,7 @@ mod tests {
                 Ident::from("f"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 15 }),
+                false,
             ),
             None,
         );
@@ -1038,6 +1044,7 @@ mod tests {
                 Ident::from("a"),
                 Vec::new(),
                 ValueState::Known(ItemId { file_id, index: 1 }),
+                false,
             ),
             None,
         );
