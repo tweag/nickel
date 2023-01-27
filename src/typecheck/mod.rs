@@ -1008,9 +1008,11 @@ fn walk_field<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
-    linearizer: L,
+    mut linearizer: L,
     field: &Field,
 ) -> Result<(), TypecheckError> {
+    linearizer.add_field_metadata(lin, field);
+
     walk_with_annot(
         state,
         ctxt,
@@ -1463,11 +1465,13 @@ fn type_check_field<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
-    linearizer: L,
+    mut linearizer: L,
     id: Ident,
     field: &Field,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
+    linearizer.add_field_metadata(lin, field);
+
     type_check_with_annot(
         state,
         ctxt,

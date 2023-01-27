@@ -10,7 +10,10 @@ use lsp_types::{
 };
 use nickel_lang::{
     identifier::Ident,
-    term::{MetaValue, RichTerm, Term, UnaryOp},
+    term::{
+        record::{Field, FieldMetadata},
+        RichTerm, Term, TypeAnnotation, UnaryOp,
+    },
     types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
 };
 use serde_json::Value;
@@ -65,12 +68,15 @@ impl IdentWithType {
         self.item
             .as_ref()
             .and_then(|item| {
-                item.meta.as_ref().and_then(|meta| {
-                    meta.types
-                        .as_ref()
-                        .map(|ty| ty.types.to_string())
-                        .or_else(|| meta.contracts_to_string())
-                })
+                item.metadata
+                    .as_ref()
+                    .and_then(|FieldMetadata { annotation, .. }| {
+                        annotation
+                            .types
+                            .as_ref()
+                            .map(|ty| ty.types.to_string())
+                            .or_else(|| annotation.contracts_to_string())
+                    })
             })
             .unwrap_or_else(|| self.ty.to_string())
     }
@@ -93,7 +99,7 @@ impl IdentWithType {
         }
         let doc = || {
             let item = self.item.as_ref()?;
-            let meta = item.meta.as_ref()?;
+            let meta = item.metadata.as_ref()?;
             let doc = meta.doc.as_ref()?;
             let doc = Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -175,8 +181,8 @@ fn find_fields_from_term_kind(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
-        _ if item.meta.is_some() => {
-            find_fields_from_meta_value(item.meta.as_ref().unwrap(), path, info)
+        _ if item.metadata.is_some() => {
+            find_fields_from_contracts(&item.metadata.as_ref().unwrap().annotation, path, info)
         }
         _ => Vec::new(),
     }
@@ -195,8 +201,8 @@ fn find_fields_from_contract(
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
-    match &item.meta {
-        Some(meta_value) => find_fields_from_meta_value(meta_value, path, info),
+    match &item.metadata {
+        Some(metadata) => find_fields_from_contracts(&metadata.annotation, path, info),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
@@ -207,17 +213,15 @@ fn find_fields_from_contract(
     }
 }
 
-/// Find record field associated associated with a MetaValue.
-/// This can be gotten from the type or the contracts.
-fn find_fields_from_meta_value(
-    meta_value: &MetaValue,
+/// Find record field associated with a field's metadata. This can be gotten from the type or the
+/// contracts.
+fn find_fields_from_contracts(
+    annot: &TypeAnnotation,
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    meta_value
-        .contracts
+    annot
         .iter()
-        .chain(meta_value.types.iter())
         .flat_map(|contract| match &contract.types {
             Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
             Types(TypeF::Dict(ty)) => {
@@ -268,6 +272,31 @@ fn find_fields_from_type(
     }
 }
 
+fn find_fields_from_field(
+    field: &Field,
+    path: &mut Vec<Ident>,
+    info: &'_ ComplCtx<'_>,
+) -> Vec<IdentWithType> {
+    find_fields_from_term_with_annot(&field.metadata.annotation, field.value.as_ref(), path, info)
+}
+
+// TODO: impl a trait FindField to avoid having long names
+fn find_fields_from_term_with_annot(
+    annot: &TypeAnnotation,
+    value: Option<&RichTerm>,
+    path: &mut Vec<Ident>,
+    info: &'_ ComplCtx<'_>,
+) -> Vec<IdentWithType> {
+    let mut path_copy = path.clone();
+    let mut info_from_metadata = find_fields_from_contracts(annot, &mut path_copy, info);
+
+    if let Some(value) = value {
+        info_from_metadata.extend(find_fields_from_term(value, path, info).into_iter());
+    }
+
+    info_from_metadata
+}
+
 /// Extract record fields from a record term.
 fn find_fields_from_term(
     term: &RichTerm,
@@ -286,14 +315,15 @@ fn find_fields_from_term(
                     item: None,
                 })
                 .collect(),
-            Some(name) => {
-                let Some(term) = data.fields.get(&name) else {
-                    return Vec::new()
-                };
-                find_fields_from_term(term, path, info)
-            }
+            Some(name) => data
+                .fields
+                .get(&name)
+                .map(|field| find_fields_from_field(field, path, info))
+                .unwrap_or_default(),
         },
-        Term::MetaValue(meta_value) => find_fields_from_meta_value(meta_value, path, info),
+        Term::Annotated(annot, term) => {
+            find_fields_from_term_with_annot(annot, Some(term), path, info)
+        }
         Term::Var(..) | Term::Op1(UnaryOp::StaticAccess(..), _) => {
             let pos = term.pos;
             let span = pos.unwrap();
@@ -497,10 +527,11 @@ fn get_completion_identifiers(
             result
                 .into_iter()
                 .flat_map(|(parent, mut path)| {
-                    let Some(meta) = parent.meta.as_ref() else {
-                        return Vec::new()
-                    };
-                    find_fields_from_meta_value(meta, &mut path, &info)
+                    parent
+                        .metadata
+                        .as_ref()
+                        .map(|meta| find_fields_from_contracts(&meta.annotation, &mut path, &info))
+                        .unwrap_or_default()
                 })
                 .collect()
         } else {
@@ -652,7 +683,7 @@ mod tests {
     fn make_lin_item(
         id: ItemId,
         kind: TermKind,
-        meta: Option<MetaValue>,
+        metadata: Option<FieldMetadata>,
     ) -> LinearizationItem<Types> {
         LinearizationItem {
             env: Environment::new(),
@@ -660,7 +691,7 @@ mod tests {
             pos: TermPos::None,
             ty: Types(TypeF::Dyn),
             kind,
-            meta,
+            metadata,
         }
     }
 
@@ -1003,14 +1034,16 @@ mod tests {
             None,
         );
 
-        let meta = MetaValue {
+        let meta = FieldMetadata {
             doc: Some("doc".to_string()),
-            types: None,
-            contracts: Vec::new(),
+            annotation: TypeAnnotation {
+                types: None,
+                contracts: Vec::new(),
+            },
             opt: false,
             priority: MergePriority::Neutral,
-            value: None,
         };
+
         let c = make_lin_item(ItemId { file_id, index: 2 }, TermKind::Structure, None);
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
