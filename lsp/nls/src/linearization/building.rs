@@ -82,7 +82,7 @@ impl<'b> Building<'b> {
             .expect("Could not find parent")
         {
             TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages, _)
+            TermKind::Declaration(_, ref mut usages, _, _)
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
     }
@@ -94,7 +94,7 @@ impl<'b> Building<'b> {
         value: ItemId,
     ) {
         let kind = self.get_item_kind_mut(current_file, declaration);
-        if let Some(TermKind::Declaration(_, _, value_state)) = kind {
+        if let Some(TermKind::Declaration(_, _, value_state, _)) = kind {
             *value_state = ValueState::Known(value)
         }
     }
@@ -163,7 +163,7 @@ impl<'b> Building<'b> {
                     .and_then(|value_index| self.get_item_kind(current_file, value_index))
             }
             // if declaration is a let binding resolve its value
-            TermKind::Declaration(_, _, ValueState::Known(value)) => {
+            TermKind::Declaration(_, _, ValueState::Known(value), _) => {
                 self.get_item_kind(current_file, *value)
             }
 
