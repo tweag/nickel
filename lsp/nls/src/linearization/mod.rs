@@ -165,6 +165,20 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     },
                 );
             }
+
+            if let Some(decls) = self.let_pattern_binding.take() {
+                let offset = self.access.as_ref().map(|v| v.len()).unwrap_or(0);
+                for decl in decls {
+                    lin.inform_declaration(
+                        self.file,
+                        decl,
+                        ItemId {
+                            file_id: self.file,
+                            index: id_gen.get() + offset,
+                        },
+                    );
+                }
+            }
         }
 
         if pos == TermPos::None {
