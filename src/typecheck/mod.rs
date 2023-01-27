@@ -1044,10 +1044,6 @@ fn walk_with_annot<L: Linearizer>(
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
 ) -> Result<(), TypecheckError> {
-    if let Some(value) = value {
-        walk(state, ctxt.clone(), lin, linearizer.scope(), value)?;
-    }
-
     annot.iter().try_for_each(|ty| {
         walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.types)
     })?;
