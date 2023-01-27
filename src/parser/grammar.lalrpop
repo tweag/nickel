@@ -403,20 +403,21 @@ RecordField: FieldDef = {
     <err: Error> => {
         FieldDef {
           pos: err.pos,
-          path: vec![FieldPathElem::Expr(err)],
-          term: RichTerm::new(Term::MetaValue(MetaValue::new()), pos),
+          path: vec![FieldPathElem::Expr(err.clone())],
+          field: Field::from(err),
         }
     },
 };
 
 // An error recovery handler.
 Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        errors.push(t.clone());
+    let pos = mk_pos(src_id, l, r);
+    errors.push(t.clone());
 
-        RichTerm::new(Term::ParseError(
-            crate::error::ParseError::from_lalrpop(t.error, src_id)), pos)
-    }
+    RichTerm::new(Term::ParseError(
+      crate::error::ParseError::from_lalrpop(t.error, src_id)),
+      pos,
+    )
 };
 
 RecordLastField: RecordLastField = {
