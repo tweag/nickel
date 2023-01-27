@@ -54,6 +54,10 @@ an administrator.
 
 ## Step 3: Write a contract
 
+Create a text file named `users-schema.ncl`, we will
+write our contract defining attributes and associated constraints such
+as a type, marking the attribute optional, and a default value if any.
+
 ```nickel
 {
   UserSchema =
@@ -67,6 +71,10 @@ an administrator.
 ```
 
 ## Step 4: Write users
+
+Now, create a text file named `users.ncl` that will import our contract
+file created previously. This file will contain the actual data we need
+to use.
 
 ```nickel
 let {UserSchema, ..} = import "users-schema.ncl" in
@@ -131,3 +139,41 @@ users:
     is-admin: true
     name: Grace
 ```
+
+## Step 6: Try to make a mistake
+
+In this extra step, we will make a mistake on purpose in the file
+`users.ncl` and try to export the data as YAML. We will see what happens
+when Nickel detects that a contract use is incorrect.
+
+Edit the file `users.ncl` and delete the line `name = "Alice",`, now
+export the file again using `nickel -f users.ncl export --export yaml`,
+you should have the following error:
+
+```
+error: missing definition for `name`
+   ┌─ /tmp/users.ncl:6:5
+   │
+ 6 │ ╭     {
+ 7 │ │       is-admin = true,
+ 8 │ │       extra-groups = [ "support"],
+ 9 │ │       ssh-keys = [
+   · │
+12 │ │       ],
+13 │ │     },
+   │ ╰─────^ in this record
+
+note:
+  ┌─ /tmp/users-contract.ncl:5:12
+  │
+5 │     name | Str,
+  │            ^^^ bound here
+```
+
+The first part tells you that in the first record in the users list,
+the attribute `name` has no value while it should have one. This is to
+be expected as we removed it earlier.
+
+The second part shows the contract attribute that produced the error,
+in this case it's showing that `name` should be a `Str`, and as there
+is no `optional` keyword, this attribute must be set.
