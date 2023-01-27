@@ -150,9 +150,9 @@ Edit the file `users.ncl` and delete the line `name = "Alice",`, now
 export the file again using `nickel -f users.ncl export --export yaml`,
 you should have the following error:
 
-```
+```shell
 error: missing definition for `name`
-   ┌─ /tmp/users.ncl:6:5
+   ┌─ /tmp/example/users.ncl:6:5
    │
  6 │ ╭     {
  7 │ │       is-admin = true,
@@ -164,7 +164,7 @@ error: missing definition for `name`
    │ ╰─────^ in this record
 
 note:
-  ┌─ /tmp/users-contract.ncl:5:12
+  ┌─ /tmp/example/users-contract.ncl:5:12
   │
 5 │     name | Str,
   │            ^^^ bound here
