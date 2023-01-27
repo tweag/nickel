@@ -150,6 +150,14 @@ pub mod compat {
     use crate::term::make::op1;
     use crate::term::{array::Array, Term, UnaryOp};
 
+    /// helper function to perform a Nix like update (`//` operator).
+    pub fn update() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("update_from_rec".into()),
+            Term::Var("compat".into()),
+        )
+    }
+
     /// helper function to check if a record has a nested field.
     pub fn has_field_path() -> RichTerm {
         op1(

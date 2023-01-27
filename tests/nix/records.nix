@@ -16,4 +16,9 @@
   ({ a.b = "ab"; }.a or "x" == { b = "ab"; })
   ({ a.b = "ab"; }.a.b or "x" == "ab")
   ({ a.b = "ab"; }.a.c or "x" == "x")
+
+  # the '//' update operator.
+  ({ a = 1; b = 2; } // { b = 3; c = 4; } == { a = 1; b = 3; c = 4; })
+  (let r = { a = 1; }; in r // { } == r)
+  (let r = { a = 1; }; in { } // r == r)
 ]
