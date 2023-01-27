@@ -313,6 +313,7 @@ impl ToDiagnostic<FileId> for ParseErrors {
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
+    #[cfg(feature = "nix")]
     /// Temporary Nix error variant.
     /// TODO: because parsing errors are almost the same between Nix and Nickel, Have a seamless
     /// convertion from Nix errors to Nickel ones could be a good improvement.
@@ -1375,6 +1376,7 @@ impl ToDiagnostic<FileId> for ParseError {
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             // TODO: improve error management for nix parser.
+            #[cfg(feature = "nix")]
             ParseError::NixParseError(file_id) => {
                 let end = files.source_span(*file_id).end();
                 let start = files.source_span(*file_id).start();
