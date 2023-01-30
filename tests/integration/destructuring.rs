@@ -55,3 +55,15 @@ fn typecontract_fail() {
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }
+
+#[test]
+fn type_mismatch_fail() {
+    assert_matches!(
+        eval_file("destructuring/type_mismatch_fail.ncl"),
+        // Note: ideally this would be a typechecker error, but currently
+        //       annotated types in destructuring patterns are just converted
+        //       into contracts. This should be revisted once the metadata
+        //       rework from RFC005 is implemented
+        Err(Error::EvalError(EvalError::BlameError { .. }))
+    )
+}
