@@ -88,7 +88,7 @@ use crate::{
         record::{Field, RecordData},
         BinaryOp, BindingType, LetAttrs, PendingContract, RichTerm, StrChunk, Term, UnaryOp,
     },
-    transform::{gen_pending_contracts::apply_contracts, Closurizable},
+    transform::Closurizable,
 };
 
 pub mod cache;
@@ -657,7 +657,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Annotated(annot, inner) => {
                     let contracts = annot.as_pending_contracts()?;
                     let pos = inner.pos;
-                    let inner_with_ctr = apply_contracts(inner.clone(), contracts.into_iter(), pos);
+                    let inner_with_ctr =
+                        PendingContract::apply_all(inner.clone(), contracts.into_iter(), pos);
 
                     Closure {
                         body: inner_with_ctr,

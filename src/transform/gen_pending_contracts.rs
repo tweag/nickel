@@ -63,17 +63,3 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     };
     Ok(result)
 }
-
-/// Apply a series of pending contracts to a given term.
-pub fn apply_contracts<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
-where
-    I: Iterator<Item = PendingContract>,
-{
-    contracts.fold(rt, |acc, ctr| {
-        mk_app!(
-            mk_term::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
-            acc
-        )
-        .with_pos(pos)
-    })
-}

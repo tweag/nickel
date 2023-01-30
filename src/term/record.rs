@@ -326,7 +326,11 @@ impl RecordData {
     }
 
     /// Turn the record into an iterator over the fields' values, ignoring optional fields without
-    /// definition. Fields that aren't optional but yet don't have a definition are mapped to the
+    /// definition.
+    ///
+    /// The returned interator applies pending contracts to each value.
+    ///
+    /// Fields that aren't optional but yet don't have a definition are mapped to the
     /// error `MissingFieldDefError`.
     pub fn into_iter_without_opts(
         self,
@@ -334,7 +338,13 @@ impl RecordData {
         self.fields
             .into_iter()
             .filter_map(|(id, field)| match field.value {
-                Some(v) => Some(Ok((id, v))),
+                Some(v) => {
+                    let pos = v.pos;
+                    Some(Ok((
+                        id,
+                        PendingContract::apply_all(v, field.pending_contracts.into_iter(), pos),
+                    )))
+                }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {
                     id,
                     metadata: field.metadata,
@@ -364,7 +374,12 @@ impl RecordData {
     /// Get the value of a field. Ignore optional fields without value: trying to get their value
     /// returns `None`, as if they weren't present at all. Trying to extract a field without value
     /// which is non optional return an error.
-    pub fn get_value(&self, id: &Ident) -> Result<Option<&RichTerm>, MissingFieldDefError> {
+    ///
+    /// This method automatically applies the potential pending contracts
+    pub fn get_value_with_ctrs(
+        &self,
+        id: &Ident,
+    ) -> Result<Option<RichTerm>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
@@ -374,7 +389,19 @@ impl RecordData {
                 id: *id,
                 metadata: metadata.clone(),
             }),
-            field_opt => Ok(field_opt.and_then(|field| field.value.as_ref())),
+            Some(Field {
+                value: Some(value),
+                pending_contracts,
+                ..
+            }) => {
+                let pos = value.pos;
+                Ok(Some(PendingContract::apply_all(
+                    value.clone(),
+                    pending_contracts.iter().cloned(),
+                    pos,
+                )))
+            }
+            _ => Ok(None),
         }
     }
 }

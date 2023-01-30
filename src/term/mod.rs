@@ -237,6 +237,22 @@ impl PendingContract {
     pub fn new(contract: RichTerm, label: Label) -> Self {
         PendingContract { contract, label }
     }
+
+    /// Apply a series of pending contracts to a given term.
+    pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
+    where
+        I: Iterator<Item = Self>,
+    {
+        use crate::mk_app;
+
+        contracts.fold(rt, |acc, ctr| {
+            mk_app!(
+                make::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
+                acc
+            )
+            .with_pos(pos)
+        })
+    }
 }
 
 impl std::convert::TryFrom<LabeledType> for PendingContract {
