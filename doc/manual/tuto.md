@@ -4,8 +4,8 @@ slug: tutorial
 
 # Managing users
 
-In this tutorial, you will learn how to use Nickel to manage a list of users,
-and then export it as a YAML file for a program consuming it.
+In this tutorial, you will learn how to use Nickel to manage a list of
+users, and then export it as a YAML file for a program consuming it.
 
 ## Step 1: Install nickel
 
@@ -36,27 +36,31 @@ the shape of this data, we need to think about the type needed for
 each attribute.
 
 For example, the attribute `name` is a string, which translates to `Str`
-in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is
-a list of strings, written as `Array Str` in Nickel. The field `is-admin` is a
-boolean, written as `Bool`. Finally, `extra-groups` is a list of group
-names, so we need `Array Str`, the same type used for `ssh-keys`.
+in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is a
+list of strings, written as `Array Str` in Nickel. The field `is-admin`
+is a boolean, written as `Bool`. Finally, `extra-groups` is a list of
+group names, so we need `Array Str`, the same type used for `ssh-keys`.
 
-We can also mark fields as `optional` so you won't have to explicitly write
-them if they don't have any value. In the example,`extra-groups` and `ssh-keys`
-can be empty, so we will mark them as optional using the
+We can also mark fields as `optional` so you won't have to explicitly
+write them if they don't have any value. In the example,`extra-groups`
+and `ssh-keys` can be empty, so we will mark them as optional using the
 `optional` keyword.
 
-The field `is-admin` must always be present in the YAML file, but
-for most of our users it will be set to `false`. Fortunately, we can
-assign the default value `false` to this field , which means you only
-need to write `is-admin = true` in Nickel code when the user is actually
+The field `is-admin` must always be present in the YAML file, but for
+most of our users it will be set to `false`. Fortunately, we can assign
+the default value `false` to this field , which means you only need
+to write `is-admin = true` in Nickel code when the user is actually
 an administrator.
 
 ## Step 3: Write a contract
 
-Create a text file named `users-schema.ncl`. We will
-write our contract defining attributes and associated constraints such
-as a type, marking the attribute optional, and a default value if there is one.
+Create a text file named `users-schema.ncl`. We will write our contract
+defining attributes and associated constraints such as a type, marking
+the attribute optional, and a default value if there is one.
+
+Please note that using a contract isn't mandatory per-se to use Nickel,
+but it will allow you to validate your input data (See Step 6 for an
+example).
 
 Please note that using a contract isn't mandatory per-se to use Nickel,
 but it will allow you to validate your input data (See Step 6 for an
@@ -115,8 +119,8 @@ let {UserSchema, ..} = import "users-schema.ncl" in
 
 ## Step 5: Export as YAML
 
-By default, nickel exports data as JSON. But we can change that using the extra
-parameter `--format yaml` to export as YAML.
+By default, nickel exports data as JSON. But we can change that using
+the extra parameter `--format yaml` to export as YAML.
 
 ```shell
 nickel -f users.ncl export --export yaml
