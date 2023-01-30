@@ -56,11 +56,9 @@ use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{
-    make as mk_term,
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, LabeledType, RichTerm, SharedTerm, Term, TypeAnnotation,
+    BinaryOp, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
-use crate::types::{TypeF, Types};
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -347,69 +345,6 @@ pub fn merge<C: Cache>(
     }
 }
 
-/// Apply a series of contracts to the value of a field as well as the necessary saturation (see
-/// [saturate]) and closurize operations.
-///
-/// Both the contract and the field are saturated, and the result is closurized. The result is
-/// revertible if either the contract or the record is, with the union of their
-/// dependencies.
-///
-/// # Parameters
-///
-/// - the value is given by `value1` in its environment `env1`
-/// - the contracts are given as an iterator `it2` together with their (common) environment `env2`
-fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ident> + Clone>(
-    cache: &mut C,
-    value1: RichTerm,
-    env1: Environment,
-    mut it2: impl Iterator<Item = &'a LabeledType>,
-    env2: &Environment,
-    deps2: FieldDeps,
-    fields: &I,
-) -> Result<Closure, EvalError> {
-    // The environment of `%assume% ctr1 (%assume% ctr2 (... field)...)`. `ctr` and `field` will be saturated, ie of the form
-    // `%head% field1 .. fieldn`.
-    let mut local_env = Environment::new();
-
-    let pos = value1.pos.into_inherited();
-    let combined_deps = field_deps(cache, &value1, &env1)?.union(deps2);
-
-    // Produce the concrete sequence of application of the `assume` primop to the contract argument.
-    let value_saturated = value1.saturate(cache, &mut local_env, &env1, fields.clone())?;
-    let body = it2.try_fold(value_saturated, |acc, ctr| -> Result<RichTerm, EvalError> {
-        let ty_saturated = ctr
-            .types
-            .clone()
-            .saturate(cache, &mut local_env, env2, fields.clone())
-            .unwrap();
-        Ok(mk_term::assume(ty_saturated, ctr.label.clone(), acc).map(|rt| rt.with_pos(pos))?)
-    })?;
-
-    // We closurize the final result in a new thunk with appropriate dependencies and
-    // revertibility.
-    let closure = Closure {
-        body,
-        env: local_env,
-    };
-    let mut final_env = Environment::new();
-    let fresh_var = Ident::fresh();
-
-    // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
-    final_env.insert(
-        fresh_var,
-        cache.add(
-            closure,
-            IdentKind::Record,
-            BindingType::Revertible(combined_deps),
-        ),
-    );
-
-    Ok(Closure {
-        body: RichTerm::from(Term::Var(fresh_var)),
-        env: final_env,
-    })
-}
-
 /// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
@@ -436,96 +371,47 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         pending_contracts: pending_contracts2,
     } = field2;
 
-    // Cross-application (in the process of being removed, see RFC005)
-    //
-    // If:
-    // 1. field1 has a value
-    // 2. field2 has a contract
-    // 3. The priorities (or the fact that field2's value is not defined) are such that
-    //    field1's value will be used in the final value
-    //
-    // Then, we apply field2's contracts to field1. This creates a new value and a new
-    // intermediate environment.
-    let (value1, val_env1) = match (value1, metadata2.annotation.first()) {
-        (Some(v1), Some(fst_ctr))
-            if (metadata1.priority >= metadata2.priority || value2.is_none()) =>
-        {
-            let Closure { body, env } = cross_apply_contracts(
-                cache,
-                v1,
-                env1.clone(),
-                metadata2.annotation.iter(),
-                &env2,
-                ty_field_deps(cache, &fst_ctr.types, &env2).unwrap(),
-                &fields,
-            )?;
-            (Some(body), env)
-        }
-        (v1, _) => (v1, env1.clone()),
-    };
-
-    // Cross-application (in the process of being removed, see RFC005)
-    //
-    // Dually, we cross apply meta1's contracts to meta2's value.
-    let (value2, val_env2) = match (value2, metadata1.annotation.first()) {
-        (Some(v2), Some(fst_ctr))
-            if (metadata2.priority >= metadata1.priority || value1.is_none()) =>
-        {
-            let Closure { body, env } = cross_apply_contracts(
-                cache,
-                v2,
-                env2.clone(),
-                metadata1.annotation.iter(),
-                &env1,
-                ty_field_deps(cache, &fst_ctr.types, &env1)?,
-                &fields,
-            )?;
-            (Some(body), env)
-        }
-        (v2, _) => (v2, env2.clone()),
-    };
-
     // Selecting either meta1's value, meta2's value, or the merge of the two values,
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
-            Some(
-                fields_merge_closurize(cache, env_final, t1, &val_env1, t2, &val_env2, fields)
-                    .unwrap(),
-            ),
+            Some(fields_merge_closurize(cache, env_final, t1, &env1, t2, &env2, fields).unwrap()),
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
-            Some(t1.revert_closurize(cache, env_final, val_env1.clone())),
+            Some(t1.revert_closurize(cache, env_final, env1.clone())),
             metadata1.priority,
         ),
         (Some(t1), None) => (
-            Some(t1.revert_closurize(cache, env_final, val_env1.clone())),
+            Some(t1.revert_closurize(cache, env_final, env1.clone())),
             metadata1.priority,
         ),
         (_, Some(t2)) if metadata2.priority > metadata1.priority => (
-            Some(t2.revert_closurize(cache, env_final, val_env2.clone())),
+            Some(t2.revert_closurize(cache, env_final, env2.clone())),
             metadata2.priority,
         ),
         (None, Some(t2)) => (
-            Some(t2.revert_closurize(cache, env_final, val_env2.clone())),
+            Some(t2.revert_closurize(cache, env_final, env2.clone())),
             metadata2.priority,
         ),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
 
-    let mut annot1 = metadata1
-        .annotation
-        .revert_closurize(cache, env_final, env1.clone());
-    let mut annot2 = metadata2
-        .annotation
-        .revert_closurize(cache, env_final, env2.clone());
+    let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
+    pending_contracts.extend(
+        pending_contracts2
+            .revert_closurize(cache, env_final, env2.clone())
+            .into_iter(),
+    );
 
-    // If both have type annotations, we arbitrarily choose the first one. At this point we are
-    // evaluating, and types annotations and contracts make no difference operationnally. Even for
-    // a query, it's strange to show multiple static types. So if both are set, we turn types2 to a
-    // contract and keep type1 as the main type annotation.
+    // Annotation aren't use anymore at runtime. We still accumulate them to answer metadata
+    // queries, but we don't need to e.g. closurize or revert them.
+    let mut annot1 = metadata1.annotation;
+    let mut annot2 = metadata2.annotation;
+
+    // If both have type annotations, we arbitrarily choose the first one as the type annotation
+    // for the resulting field. This doesn't make any difference operationally.
     let types = match (annot1.types.take(), annot2.types.take()) {
         (Some(ctr1), Some(ctr2)) => {
             annot1.contracts.push(ctr2);
@@ -539,6 +425,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         .into_iter()
         .chain(annot2.contracts.into_iter())
         .collect();
+
     let metadata = FieldMetadata {
         doc: merge_doc(metadata1.doc, metadata2.doc),
         annotation: TypeAnnotation { types, contracts },
@@ -551,7 +438,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     Ok(Field {
         metadata,
         value,
-        pending_contracts: todo!(),
+        pending_contracts,
     })
 }
 
@@ -605,32 +492,6 @@ impl Saturate for RichTerm {
     }
 }
 
-impl Saturate for Types {
-    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
-        self,
-        cache: &mut C,
-        env: &mut Environment,
-        local_env: &Environment,
-        fields: I,
-    ) -> Result<Types, EvalError> {
-        match self {
-            // Currently, either:
-            // 1. the contract is part of a recursive records and MUST have been closurized as a
-            //    revertible thunk during program transformation:
-            Types(TypeF::Flat(ctr)) if matches!(ctr.as_ref(), Term::Var(id) if id.is_generated()) => {
-                Ok(Types(TypeF::Flat(
-                    ctr.saturate(cache, env, local_env, fields)?,
-                )))
-            }
-            // 2. or it is the contract of a non-recursive record (e.g. the contract generated by
-            //    pattern matching or desugaring `foo.bar.baz = value`) and doesn't need to be
-            //    saturated at all, as it can't be recursive. This contract can still capture
-            //    variables from the environment, so we need to closurize it nontheless
-            ty => Ok(ty.closurize(cache, env, local_env.clone())),
-        }
-    }
-}
-
 /// Return the dependencies of a field when represented as a `RichTerm`.
 fn field_deps<C: Cache>(
     cache: &C,
@@ -646,21 +507,6 @@ fn field_deps<C: Cache>(
         Ok(FieldDeps::empty())
     }
 }
-
-/// Return the dependencies of a contract when represented as a `Types`.
-fn ty_field_deps<C: Cache>(
-    cache: &C,
-    ty: &Types,
-    local_env: &Environment,
-) -> Result<FieldDeps, EvalError> {
-    if let Types(TypeF::Flat(ctr)) = ty {
-        field_deps(cache, ctr, local_env)
-    } else {
-        Ok(FieldDeps::empty())
-    }
-}
-
-/// Return the dependencies of a contract when represented as a `Type`.
 
 /// Take the current environment, two fields with their local environment, and return a term which
 /// is the merge of the two fields, closurized in the provided final environment.
@@ -749,87 +595,43 @@ impl RevertClosurize for Field {
         env: &mut Environment,
         with_env: Environment,
     ) -> Field {
-        let metadata = self.metadata.revert_closurize(cache, env, with_env.clone());
         let value = self
             .value
-            .map(|value| value.revert_closurize(cache, env, with_env));
+            .map(|value| value.revert_closurize(cache, env, with_env.clone()));
+
+        let pending_contracts = self
+            .pending_contracts
+            .revert_closurize(cache, env, with_env);
 
         Field {
-            metadata,
+            metadata: self.metadata,
             value,
-            pending_contracts: self.pending_contracts,
+            pending_contracts,
         }
     }
 }
 
-impl RevertClosurize for Types {
+impl RevertClosurize for PendingContract {
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Types {
-        match self {
-            // Currently, either:
-            // 1. the contract is part of a recursive records and MUST have been closurized as a
-            //    revertible thunk during program transformation:
-            Types(TypeF::Flat(ctr)) if matches!(ctr.as_ref(), Term::Var(id) if id.is_generated()) => {
-                Types(TypeF::Flat(ctr.revert_closurize(cache, env, with_env)))
-            }
-            // 2. or it is the contract of a non-recursive record (e.g. the contract generated by
-            //    pattern matching or desugaring `foo.bar.baz = value`) and doesn't need to be
-            //    saturated at all, as it can't be recursive. This contract can still capture
-            //    variables from the environment, so we need to closurize it nontheless
-            ty => ty.closurize(cache, env, with_env),
-        }
+    ) -> PendingContract {
+        self.map_contract(|ctr| ctr.revert_closurize(cache, env, with_env))
     }
 }
 
-impl RevertClosurize for LabeledType {
+impl RevertClosurize for Vec<PendingContract> {
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> LabeledType {
-        LabeledType {
-            types: self.types.revert_closurize(cache, env, with_env),
-            label: self.label,
-        }
-    }
-}
-
-impl RevertClosurize for TypeAnnotation {
-    fn revert_closurize<C: Cache>(
-        self,
-        cache: &mut C,
-        env: &mut Environment,
-        with_env: Environment,
-    ) -> TypeAnnotation {
-        let types = self
-            .types
-            .map(|ty| ty.revert_closurize(cache, env, with_env.clone()));
-        let contracts = self
-            .contracts
-            .into_iter()
-            .map(|labeled_ty| labeled_ty.revert_closurize(cache, env, with_env.clone()))
-            .collect();
-
-        TypeAnnotation { types, contracts }
-    }
-}
-
-impl RevertClosurize for FieldMetadata {
-    fn revert_closurize<C: Cache>(
-        self,
-        cache: &mut C,
-        env: &mut Environment,
-        with_env: Environment,
-    ) -> FieldMetadata {
-        FieldMetadata {
-            annotation: self.annotation.revert_closurize(cache, env, with_env),
-            ..self
-        }
+    ) -> Vec<PendingContract> {
+        self.into_iter()
+            .map(|pending_contract| pending_contract.revert_closurize(cache, env, with_env.clone()))
+            .collect()
     }
 }
 

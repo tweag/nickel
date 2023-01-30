@@ -238,6 +238,16 @@ impl PendingContract {
         PendingContract { contract, label }
     }
 
+    pub fn map_contract<F>(self, f: F) -> Self
+    where
+        F: FnOnce(RichTerm) -> RichTerm,
+    {
+        PendingContract {
+            contract: f(self.contract),
+            ..self
+        }
+    }
+
     /// Apply a series of pending contracts to a given term.
     pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
     where

@@ -3,12 +3,9 @@ use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{
-        record::{Field, FieldMetadata},
-        BindingType, LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation,
-    },
+    term::{record::Field, BindingType, PendingContract, RichTerm, Term, Traverse, TraverseOrder},
     typecheck::Wildcards,
-    types::{TypeF, Types, UnboundTypeVariableError},
+    types::UnboundTypeVariableError,
 };
 
 pub mod desugar_destructuring;
@@ -159,68 +156,27 @@ impl Closurizable for RichTerm {
     }
 }
 
-impl Closurizable for Types {
-    /// Pack the contract of a type together with an environment as a closure.
-    ///
-    /// Extract the underlying contract, closurize it and wrap it back as a flat type (an opaque
-    /// type defined by a custom contract).
+impl Closurizable for PendingContract {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Types {
-        Types(TypeF::Flat(
-            self.contract().unwrap().closurize(cache, env, with_env),
-        ))
+    ) -> PendingContract {
+        self.map_contract(|ctr| ctr.closurize(cache, env, with_env))
     }
 }
 
-impl Closurizable for LabeledType {
+impl Closurizable for Vec<PendingContract> {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> LabeledType {
-        LabeledType {
-            types: self.types.closurize(cache, env, with_env),
-            label: self.label,
-        }
-    }
-}
-
-impl Closurizable for TypeAnnotation {
-    fn closurize<C: Cache>(
-        self,
-        cache: &mut C,
-        env: &mut Environment,
-        with_env: Environment,
-    ) -> TypeAnnotation {
-        let types = self
-            .types
-            .map(|ty| ty.closurize(cache, env, with_env.clone()));
-        let contracts = self
-            .contracts
-            .into_iter()
-            .map(|labeled_ty| labeled_ty.closurize(cache, env, with_env.clone()))
-            .collect();
-
-        TypeAnnotation { types, contracts }
-    }
-}
-
-impl Closurizable for FieldMetadata {
-    fn closurize<C: Cache>(
-        self,
-        cache: &mut C,
-        env: &mut Environment,
-        with_env: Environment,
-    ) -> FieldMetadata {
-        FieldMetadata {
-            annotation: self.annotation.closurize(cache, env, with_env),
-            ..self
-        }
+    ) -> Vec<PendingContract> {
+        self.into_iter()
+            .map(|pending_contract| pending_contract.closurize(cache, env, with_env.clone()))
+            .collect()
     }
 }
 
@@ -231,16 +187,16 @@ impl Closurizable for Field {
         env: &mut Environment,
         with_env: Environment,
     ) -> Field {
-        let metadata = self.metadata.closurize(cache, env, with_env.clone());
         let value = self
             .value
-            .map(|value| value.closurize(cache, env, with_env));
+            .map(|value| value.closurize(cache, env, with_env.clone()));
 
-        //TODO: closurize pending_contracts instead of the metadata of the field
+        let pending_contracts = self.pending_contracts.closurize(cache, env, with_env);
+
         Field {
-            metadata,
+            metadata: self.metadata,
             value,
-            pending_contracts: self.pending_contracts,
+            pending_contracts,
         }
     }
 }
