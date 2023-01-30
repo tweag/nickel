@@ -88,7 +88,7 @@ use crate::{
         record::{Field, RecordData},
         BinaryOp, BindingType, LetAttrs, PendingContract, RichTerm, StrChunk, Term, UnaryOp,
     },
-    transform::Closurizable,
+    transform::{gen_pending_contracts::apply_contracts, Closurizable},
 };
 
 pub mod cache;
@@ -649,16 +649,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
-                // long as we generate the corresponding contract application at one point
-                // (currently ahead-of-time during program transformations).
+                // long as we generate the corresponding contract application when consuming it.
                 //
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
-                Term::Annotated(_, inner) => Closure {
-                    body: inner.clone(),
-                    env,
-                },
+                Term::Annotated(annot, inner) => {
+                    let contracts = annot.as_pending_contracts()?;
+                    let pos = inner.pos;
+                    let inner_with_ctr = apply_contracts(inner.clone(), contracts.into_iter(), pos);
+
+                    Closure {
+                        body: inner_with_ctr,
+                        env,
+                    }
+                }
                 // Continuation of operations and thunk update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {

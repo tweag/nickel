@@ -239,6 +239,17 @@ impl PendingContract {
     }
 }
 
+impl std::convert::TryFrom<LabeledType> for PendingContract {
+    type Error = UnboundTypeVariableError;
+
+    fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
+        Ok(PendingContract::new(
+            labeled_ty.types.contract()?,
+            labeled_ty.label.clone(),
+        ))
+    }
+}
+
 /// The attributes of a let binding.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct LetAttrs {
@@ -455,6 +466,14 @@ impl TypeAnnotation {
                 .collect::<Vec<_>>()
                 .join(",")
         })
+    }
+
+    /// Build a list of pending contracts from this type annotation.
+    pub fn as_pending_contracts(&self) -> Result<Vec<PendingContract>, UnboundTypeVariableError> {
+        self.iter()
+            .cloned()
+            .map(PendingContract::try_from)
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 

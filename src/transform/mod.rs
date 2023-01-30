@@ -11,9 +11,9 @@ use crate::{
     types::{TypeF, Types, UnboundTypeVariableError},
 };
 
-pub mod apply_contracts;
 pub mod desugar_destructuring;
 pub mod free_vars;
+pub mod gen_pending_contracts;
 pub mod import_resolution;
 pub mod share_normal_form;
 pub mod substitute_wildcards;
@@ -46,7 +46,7 @@ pub fn transform_no_free_vars(
             // before anything, we have to desugar the syntax
             let rt = desugar_destructuring::transform_one(rt);
             // We need to do contract generation before wrapping stuff in variables
-            let rt = apply_contracts::transform_one(rt)?;
+            let rt = gen_pending_contracts::transform_one(rt)?;
             Ok(rt)
         },
         &mut (),

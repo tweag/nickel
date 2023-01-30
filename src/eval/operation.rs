@@ -28,7 +28,7 @@ use crate::{
         BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
         StrChunk, Term, UnaryOp,
     },
-    transform::{apply_contracts::apply_contracts, Closurizable},
+    transform::{gen_pending_contracts::apply_contracts, Closurizable},
 };
 
 use md5::digest::Digest;
