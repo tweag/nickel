@@ -9,8 +9,9 @@ users, and then export it as a YAML file.
 
 ## Step 1: Install nickel
 
-The first step is to make Nickel available on your system. Please refer to the different installation methods documented in [Getting
-started](https://nickel-lang.org/getting-started/#getting-started).
+The first step is to make Nickel available on your system. Please refer
+to the different installation methods documented in
+[Getting started](https://nickel-lang.org/getting-started/#getting-started).
 
 ## Step 2: Think about the schema
 
@@ -57,9 +58,8 @@ defining fields and associated constraints such as a type, marking
 the attribute optional, and a default value if there is one.
 
 Please note that using a contract isn't mandatory per-se to use Nickel,
-but it will allow you to validate your input data (See Step 6 for an
-example).
-
+but it will allow you to validate your input data
+(See [Step 6](#step-6-try-to-make-a-mistake) for an example).
 
 ```nickel
 {
