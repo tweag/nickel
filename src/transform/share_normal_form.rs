@@ -32,10 +32,9 @@ use crate::{
     match_sharedterm,
     position::TermPos,
     term::{
-        record::{Field, FieldDeps, FieldMetadata, RecordData},
-        BindingType, LabeledType, LetAttrs, RichTerm, Term, TypeAnnotation,
+        record::{Field, FieldDeps, RecordData},
+        BindingType, LetAttrs, RichTerm, Term,
     },
-    types::{TypeF, Types},
 };
 
 struct Binding {
@@ -120,87 +119,51 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     }
 }
 
-/// Transform a record field. Take care of transforming the contracts contained in the field
-/// metadata as well, as those might be recursively depending on other fields.
+/// Transform the field of a recursive record. Take care of transforming the pending contracts
+/// attached to the field, as those might be recursively depending on other fields.
 ///
-/// When a recursive record is evaluated, all fields need to be turned to closures
-/// anyway (see the corresponding case in `eval::eval()`), which is what the share
-/// normal form transformation does. This is why the test is more lax here than for
-/// other constructors: it is not only about sharing, but also about the future
-/// evaluation of recursive records. Only constants are not required to be
-/// closurized.
+/// When a recursive record is evaluated, all fields need to be turned to closures anyway (see the
+/// corresponding case in `eval::eval()`), which is what the share normal form transformation does.
+/// This is why the test is more lax here than for other constructors: it is not only about
+/// sharing, but also about the future evaluation of recursive records. Only constant are not
+/// required to be closurized.
 ///
-/// In theory, the variable case is one exception: if the field is already a bare
-/// variable, it seems useless to add one more indirection through a generated
-/// variable. However, it is currently fundamental for recursive record merging that
-/// the share normal form transformation ensures the following post-condition: the
-/// fields of recursive records contain either a constant or a *generated* variable,
-/// but never a user-supplied variable directly (the former starts with a special
-/// marker). See comments inside [`crate::RichTerm::closurize`] for more details.
+/// In theory, the variable case is one exception: if the field is already a bare variable, it
+/// seems useless to add one more indirection through a generated variable. However, it is
+/// currently fundamental for recursive record merging that the sare normal form transformation
+/// ensure the following post-condition: the fields of recursive records contain either a constant
+/// or a *generated* variable, but never a user-supplied variable directly (the former starts with
+/// a special marker). See comments inside [`crate::RichTerm::closurize`] for more details.
 fn transform_rec_field(
     field: Field,
     field_deps: Option<FieldDeps>,
     bindings: &mut Vec<Binding>,
 ) -> Field {
-    let annotation = field.metadata.annotation;
-
-    let types = annotation.types.map(|labeled_ty| {
-        let as_contract = labeled_ty.types.contract().unwrap();
-
-        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-        // explained above.
-        let contract = if !as_contract.as_ref().is_constant() {
-            let fresh_var = Ident::fresh();
-            let pos_contract = as_contract.pos;
-            let binding_type = mk_binding_type(field_deps.clone());
-            bindings.push(Binding {
-                fresh_var,
-                term: as_contract,
-                binding_type,
-            });
-            RichTerm::new(Term::Var(fresh_var), pos_contract)
-        } else {
-            as_contract
-        };
-
-        LabeledType {
-            types: Types(TypeF::Flat(contract)),
-            ..labeled_ty
-        }
-    });
-
-    let contracts = annotation
-        .contracts
+    let pending_contracts = field
+        .pending_contracts
         .into_iter()
-        .map(|labeled_ty| {
-            let as_contract = labeled_ty.types.contract().unwrap();
-
-            // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-            // explained above.
-            let contract = if !as_contract.as_ref().is_constant() {
-                let fresh_var = Ident::fresh();
-                let pos_contract = as_contract.pos;
-                let binding_type = mk_binding_type(field_deps.clone());
-                bindings.push(Binding {
-                    fresh_var,
-                    term: as_contract,
-                    binding_type,
-                });
-                RichTerm::new(Term::Var(fresh_var), pos_contract)
-            } else {
-                as_contract
-            };
-
-            LabeledType {
-                types: Types(TypeF::Flat(contract)),
-                ..labeled_ty
-            }
+        .map(|pending_contract| {
+            pending_contract.map_contract(|ctr| {
+                if !ctr.as_ref().is_constant() {
+                    let fresh_var = Ident::fresh();
+                    let pos_contract = ctr.pos;
+                    let binding_type = mk_binding_type(field_deps.clone());
+                    bindings.push(Binding {
+                        fresh_var,
+                        term: ctr,
+                        binding_type,
+                    });
+                    RichTerm::new(Term::Var(fresh_var), pos_contract)
+                } else {
+                    ctr
+                }
+            })
         })
         .collect();
 
     let value = field.value.map(|value| {
         // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-        // explained above.
+        // explained in this module top-level documentation.
         if !value.as_ref().is_constant() {
             let fresh_var = Ident::fresh();
             let pos_v = value.pos;
@@ -218,12 +181,8 @@ fn transform_rec_field(
 
     Field {
         value,
-        metadata: FieldMetadata {
-            annotation: TypeAnnotation { types, contracts },
-            ..field.metadata
-        },
-        //TODO: apply the share_normal_form to pending_contracts instead of metadata
-        pending_contracts: todo!(),
+        metadata: field.metadata,
+        pending_contracts,
     }
 }
 
