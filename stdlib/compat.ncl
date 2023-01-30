@@ -11,7 +11,7 @@ compat | doc "Nix compatibility layer. This library should not be used by Nickel
 
   # The update operator of Nix `//`. It's a "general form" of the `record.update` of Nickel.
   # TODO: May be intresting to be addapted and integrated the the actual Nickel stdlib.
-  update_from_rec = fun r1 r2 =>
+  update_all = fun r1 r2 =>
     array.fold
       (fun key acc => record.update key r2."%{key}" acc)
       r1
