@@ -1,8 +1,25 @@
 //! Compute the fixpoint of a recursive record.
 use super::*;
 use crate::position::TermPos;
-use crate::term::{Traverse, TraverseOrder};
-use crate::types::{TypeF, Types};
+
+fn patch_term<C: Cache>(
+    cache: &mut C,
+    term: &RichTerm,
+    rec_env: &[(Ident, CacheIndex)],
+    env: &Environment,
+) -> Result<(), EvalError> {
+    if let Term::Var(var_id) = &*term.term {
+        // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
+        let mut idx = env
+            .get(var_id)
+            .cloned()
+            .ok_or(EvalError::UnboundIdentifier(*var_id, term.pos))?;
+
+        cache.build_cached(&mut idx, rec_env);
+    };
+
+    Ok(())
+}
 
 /// Build a recursive environment from record bindings. For each field, `rec_env` either extracts
 /// the corresponding thunk from the environment in the general case, or create a closure on the
@@ -17,6 +34,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
+                //TODO[LAZYPROP]: apply pending contracts
                 match value.as_ref() {
                     Term::Var(ref var_id) => {
                         let idx = env
@@ -81,23 +99,11 @@ pub fn patch_field<C: Cache>(
     env: &Environment,
 ) -> Result<(), EvalError> {
     if let Some(ref value) = field.value {
-        if let Term::Var(var_id) = &*value.term {
-            // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
-            let mut idx = env
-                .get(var_id)
-                .cloned()
-                .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?;
-
-            cache.build_cached(&mut idx, rec_env);
-        }
-
-        // Thanks to the share normal form transformation, the content is either a constant or a
-        // variable. In the constant case, the environment is irrelevant and we don't have to do
-        // anything in the `else` case.
+        patch_term(cache, value, rec_env, env)?;
     }
 
-    // We must patch the contracts contained in the fields' metadata as well, since they can depend
-    // recursively on other fields, as in:
+    // We must patch the contracts contained in the fields' pending contracts as well, since they
+    // can depend recursively on other fields, as in:
     //
     // ```
     // let Variant = match {
@@ -113,32 +119,8 @@ pub fn patch_field<C: Cache>(
     // ```
     //
     // Here, `Variant` depends on `tag` recursively.
-    for labeled_ty in field.metadata.annotation.iter() {
-        // It's a bit sad to clone just to be able to call `traverse` here, but it would be also
-        // sad to reimplement the whole traversal just to operate on references. One hope is to
-        // use `Rc` for `Types` one day, instead of `Box`, so that cloning is cheap.
-        labeled_ty.types.clone().traverse(
-            &|ty: Types, cache: &mut C| -> Result<Types, EvalError> {
-                if let TypeF::Flat(contract) = &ty.0 {
-                    if let Term::Var(var_id) = &*contract.term {
-                        // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
-                        let mut idx = env
-                            .get(var_id)
-                            .cloned()
-                            .ok_or(EvalError::UnboundIdentifier(*var_id, contract.pos))?;
-
-                        cache.build_cached(&mut idx, rec_env);
-                    };
-                };
-
-                // Thanks to the share normal form transformation, the content is either a constant or a
-                // variable. In the constant case, the environment is irrelevant and we don't have to do
-                // anything in the `else` case.
-                Ok(ty)
-            },
-            cache,
-            TraverseOrder::TopDown,
-        )?;
+    for pending_contract in field.pending_contracts.iter() {
+        patch_term(cache, &pending_contract.contract, rec_env, env)?;
     }
 
     Ok(())
