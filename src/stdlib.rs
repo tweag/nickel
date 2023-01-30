@@ -153,7 +153,7 @@ pub mod compat {
     /// helper function to perform a Nix like update (`//` operator).
     pub fn update() -> RichTerm {
         op1(
-            UnaryOp::StaticAccess("update_from_rec".into()),
+            UnaryOp::StaticAccess("update_all".into()),
             Term::Var("compat".into()),
         )
     }
