@@ -404,7 +404,7 @@ RecordField: FieldDef = {
         FieldDef {
           pos: err.pos,
           path: vec![FieldPathElem::Expr(err.clone())],
-          field: Field::from(err),
+          field: Default::default(),
         }
     },
 };
