@@ -34,7 +34,6 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
-                //TODO[LAZYPROP]: apply pending contracts
                 match value.as_ref() {
                     Term::Var(ref var_id) => {
                         let idx = env

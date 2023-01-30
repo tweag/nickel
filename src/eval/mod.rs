@@ -558,10 +558,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pending_contracts,
                                 } = field;
 
-                                //TODO: pass the pending contracts to `DynExtend`? Or generate them
-                                //here on-the-fly?
+                                //TODO[LAZYPROP]: should probably closurize the pending_contracts.
+                                //It seems to work currently, but looks fragile.
                                 let extend = mk_term::op2(
-                                    BinaryOp::DynExtend(metadata.clone(), ext_kind),
+                                    BinaryOp::DynExtend {
+                                        metadata: metadata.clone(),
+                                        pending_contracts: pending_contracts.clone(),
+                                        ext_kind,
+                                    },
                                     name_as_term.clone(),
                                     acc,
                                 );

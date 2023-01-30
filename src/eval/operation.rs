@@ -658,7 +658,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            // TODO[LAZYPROP]: should we share the same env for both operations?
                             let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
                                 let pos = t.pos.into_inherited();
 
@@ -1955,7 +1954,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             },
-            BinaryOp::DynExtend(metadata, extension_kind) => {
+            BinaryOp::DynExtend {
+                metadata,
+                pending_contracts,
+                ext_kind,
+            } => {
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm! {t2, with {
                             Term::Record(record) => {
@@ -1963,7 +1966,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                 // If a defined value is expected for this field, it must be
                                 // provided as an additional argument, so we pop it from the stack
-                                let value = if let RecordExtKind::WithValue = extension_kind {
+                                let value = if let RecordExtKind::WithValue = ext_kind {
                                     let (value_closure, _) = self
                                         .stack
                                         .pop_arg(&self.cache)
@@ -1976,7 +1979,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     None
                                 };
 
-                                match fields.insert(Ident::from(id), Field {value, metadata, pending_contracts: todo!() }) {
+                                match fields.insert(Ident::from(id), Field {value, metadata, pending_contracts }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
                                     Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
@@ -3237,13 +3240,10 @@ fn eq<C: Cache>(
 trait RecordDataExt: Sized {
     /// Returns the record resulting from:
     ///
-    /// 1. Appplying the pending contracts to each fields
-    /// 2. Then apply the provided function
-    /// 3. Remove any field which is an empty optional
-    /// 4. Closurize the result into the shared environment.
-    ///
-    /// Note that `f` is taken as `mut` in order to allow it to mutate external state while
-    /// iterating.
+    /// 1. Filtering out any field which is an empty optional
+    /// 2. Appplying the pending contracts to each fields
+    /// 3. Applying the provided function
+    /// 4. Closurizing each result into the shared environment.
     fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,

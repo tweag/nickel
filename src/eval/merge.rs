@@ -574,7 +574,6 @@ impl RevertClosurize for RichTerm {
         with_env: Environment,
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
-            //TODO: actually use the cache after rebase
             // This create a fresh variable which is bound to a reverted copy of the original thunk
             let reverted = cache.revert(with_env.get(id).unwrap());
             let fresh_id = Ident::fresh();
