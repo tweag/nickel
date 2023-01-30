@@ -4,7 +4,7 @@ slug: tutorial
 
 # Managing users
 
-In this tutorial, you will learn how use Nickel to manage a list of users,
+In this tutorial, you will learn how to use Nickel to manage a list of users,
 and then export it as a YAML file for a program consuming it.
 
 ## Step 1: Install nickel
@@ -16,8 +16,8 @@ page of Nickel project website.
 
 ## Step 2: Think about the schema
 
-The YAML we want to produce as different fiels with different types
-(lists, booleans, strings), here is a sample of what we need:
+The YAML we want to produce has different fields with different types
+(lists, booleans, strings). Here is a sample of what we need:
 
 ```yaml
 users:
@@ -35,28 +35,28 @@ We can spot attributes such as `name`, `ssh-keys`, `is-admin` or
 the shape of this data, we need to think about the type needed for
 each attribute.
 
-For example, the attribute `name` is a string, which translates as `Str`
+For example, the attribute `name` is a string, which translates to `Str`
 in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is
-an list of strings, written as `Array Str` in Nickel. `is-admin` is a
+a list of strings, written as `Array Str` in Nickel. The field `is-admin` is a
 boolean, written as `Bool`. Finally, `extra-groups` is a list of group
-names, which is the same type used for `ssh-keys`, we need `Array Str`.
+names, so we need `Array Str`, the same type used for `ssh-keys`.
 
-We can also mark fields as optional so you won't have to explicitly write
-about them if they don't have any value, `extra-groups` and `ssh-keys`
-can be empty in the example, we will make them optional by using the
+We can also mark fields as `optional` so you won't have to explicitly write
+them if they don't have any value. In the example,`extra-groups` and `ssh-keys`
+can be empty, so we will mark them as optional using the
 `optional` keyword.
 
 The field `is-admin` must always be present in the YAML file, but
 for most of our users it will be set to `false`. Fortunately, we can
 assign the default value `false` to this field , which means you only
-need write `is-admin = true` in Nickel code when the user is actually
+need to write `is-admin = true` in Nickel code when the user is actually
 an administrator.
 
 ## Step 3: Write a contract
 
-Create a text file named `users-schema.ncl`, we will
+Create a text file named `users-schema.ncl`. We will
 write our contract defining attributes and associated constraints such
-as a type, marking the attribute optional, and a default value if any.
+as a type, marking the attribute optional, and a default value if there is one.
 
 ```nickel
 {
@@ -111,7 +111,7 @@ let {UserSchema, ..} = import "users-schema.ncl" in
 
 ## Step 5: Export as YAML
 
-By default, nickel exports as JSON type, so we need to use the extra
+By default, nickel exports data as JSON. But we can change that using the extra
 parameter `--format yaml` to export as YAML.
 
 ```shell
@@ -144,11 +144,11 @@ users:
 
 In this extra step, we will make a mistake on purpose in the file
 `users.ncl` and try to export the data as YAML. We will see what happens
-when Nickel detects that a contract use is incorrect.
+when Nickel detects that a value doesn't satisfy a contract.
 
-Edit the file `users.ncl` and delete the line `name = "Alice",`, now
-export the file again using `nickel -f users.ncl export --export yaml`,
-you should have the following error:
+Edit the file `users.ncl` and delete the line `name = "Alice",`. Now
+export the file again using `nickel -f users.ncl export --export yaml`.
+You should see the following error:
 
 ```shell
 error: missing definition for `name`
@@ -174,6 +174,6 @@ The first part tells you that in the first record in the users list,
 the attribute `name` has no value while it should have one. This is to
 be expected as we removed it earlier.
 
-The second part shows the contract attribute that produced the error,
-in this case it's showing that `name` should be a `Str`, and as there
+The second part shows the contract attribute that produced the error.
+In this case it's showing that `name` should be a `Str`, and as there
 is no `optional` keyword, this attribute must be set.
