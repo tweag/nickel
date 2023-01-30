@@ -58,6 +58,10 @@ Create a text file named `users-schema.ncl`. We will
 write our contract defining attributes and associated constraints such
 as a type, marking the attribute optional, and a default value if there is one.
 
+Please note that using a contract isn't mandatory per-se to use Nickel,
+but it will allow you to validate your input data (See Step 6 for an
+example).
+
 ```nickel
 {
   UserSchema =
