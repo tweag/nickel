@@ -43,7 +43,12 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     }
 
     fn apply_to_field(field: Field) -> Result<Field, UnboundTypeVariableError> {
-        let Field { metadata, value } = field;
+        //TODO: change apply contracts
+        let Field {
+            metadata,
+            value,
+            pending_contracts,
+        } = field;
         let value = value
             .map(|v| {
                 let pos_v = v.pos;
@@ -51,7 +56,11 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             })
             .transpose()?;
 
-        Ok(Field { value, metadata })
+        Ok(Field {
+            value,
+            metadata,
+            pending_contracts,
+        })
     }
 
     let pos = rt.pos;

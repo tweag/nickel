@@ -236,6 +236,11 @@ impl Closurizable for Field {
             .value
             .map(|value| value.closurize(cache, env, with_env));
 
-        Field { metadata, value }
+        //TODO: closurize pending_contracts instead of the metadata of the field
+        Field {
+            metadata,
+            value,
+            pending_contracts: self.pending_contracts,
+        }
     }
 }

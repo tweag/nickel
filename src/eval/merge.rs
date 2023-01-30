@@ -428,10 +428,12 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     let Field {
         metadata: metadata1,
         value: value1,
+        pending_contracts: pending_contracts1,
     } = field1;
     let Field {
         metadata: metadata2,
         value: value2,
+        pending_contracts: pending_contracts2,
     } = field2;
 
     // Cross-application (in the process of being removed, see RFC005)
@@ -546,7 +548,11 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         priority,
     };
 
-    Ok(Field { metadata, value })
+    Ok(Field {
+        metadata,
+        value,
+        pending_contracts: todo!(),
+    })
 }
 
 /// Merge two optional documentations.
@@ -748,7 +754,11 @@ impl RevertClosurize for Field {
             .value
             .map(|value| value.revert_closurize(cache, env, with_env));
 
-        Field { metadata, value }
+        Field {
+            metadata,
+            value,
+            pending_contracts: self.pending_contracts,
+        }
     }
 }
 

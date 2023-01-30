@@ -385,6 +385,7 @@ where
                                             priority: MergePriority::Bottom,
                                             ..
                                         },
+                                    ..
                                 } => allocator
                                     .text("?")
                                     .append(allocator.space())

@@ -467,6 +467,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Some(Field {
                             value: None,
                             metadata,
+                            ..
                         }) => Err(EvalError::MissingFieldDef {
                             id,
                             metadata: metadata.clone(),
@@ -1972,10 +1973,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     None
                                 };
 
-                                match fields.insert(Ident::from(id), Field {value, metadata }) {
+                                match fields.insert(Ident::from(id), Field {value, metadata, pending_contracts: todo!() }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
-                                    Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {}, but it already exists", id), pos_op)),
+                                    Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
                                     _ => Ok(Closure {
                                         body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
@@ -2016,6 +2017,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     | Some(Field {
                                         value: None,
                                         metadata: FieldMetadata { opt: true, ..},
+                                        ..
                                       }) =>
                                     {
                                         Err(EvalError::FieldMissing(
@@ -3118,6 +3120,7 @@ fn eq<C: Cache>(
                             Field {
                                 value: value1 @ None,
                                 metadata,
+                                ..
                             },
                             Field { value: Some(_), .. },
                         )
@@ -3129,6 +3132,7 @@ fn eq<C: Cache>(
                             Field {
                                 value: None,
                                 metadata,
+                                ..
                             },
                         ) => {
                             let pos_record = if value1.is_none() { pos1 } else { pos2 };

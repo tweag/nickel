@@ -228,10 +228,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Some(Field {
                         metadata: metadata_next,
                         value: mut value_next,
+                        pending_contracts,
                     }) = next_field.take()
                     {
-                        // We evaluate the fields' value, either to handle the next ident of the
-                        // path, or to show the value if we are treating the last ident of the path
+                        todo!(); // Apply pending contracts
+                                 // We evaluate the fields' value, either to handle the next ident of the
+                                 // path, or to show the value if we are treating the last ident of the path
                         value_next = value_next
                             .map(|value| -> Result<RichTerm, EvalError> {
                                 let (new_value, new_env) = self.eval_closure(
@@ -250,6 +252,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         field = Field {
                             metadata: metadata_next.clone(),
                             value: value_next,
+                            pending_contracts: Default::default(),
                         };
                     } else {
                         return Err(EvalError::FieldMissing(
@@ -549,8 +552,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
 
                                 let ext_kind = field.extension_kind();
-                                let Field { metadata, value } = field;
+                                let Field {
+                                    metadata,
+                                    value,
+                                    pending_contracts,
+                                } = field;
 
+                                //TODO: pass the pending contracts to `DynExtend`? Or generate them
+                                //here on-the-fly?
                                 let extend = mk_term::op2(
                                     BinaryOp::DynExtend(metadata.clone(), ext_kind),
                                     name_as_term.clone(),

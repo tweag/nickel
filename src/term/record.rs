@@ -144,6 +144,9 @@ pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<RichTerm>,
     pub metadata: FieldMetadata,
+    /// List of contracts yet to be applied.
+    /// These are only observed when data enter or leave the record.
+    pub pending_contracts: Vec<PendingContract>,
 }
 
 impl From<RichTerm> for Field {
@@ -159,8 +162,8 @@ impl Field {
     /// Map a function over the value of the field, if any.
     pub fn map_value(self, f: impl FnOnce(RichTerm) -> RichTerm) -> Self {
         Field {
-            metadata: self.metadata,
             value: self.value.map(f),
+            ..self
         }
     }
 
@@ -170,8 +173,8 @@ impl Field {
         f: impl FnOnce(RichTerm) -> Result<RichTerm, E>,
     ) -> Result<Self, E> {
         Ok(Field {
-            metadata: self.metadata,
             value: self.value.map(f).transpose()?,
+            ..self
         })
     }
 
@@ -197,17 +200,22 @@ impl Traverse<RichTerm> for Field {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let Field { metadata, value } = self;
-
-        let annotation = metadata.annotation.traverse(f, state, order)?;
-        let value = value.map(|v| v.traverse(f, state, order)).transpose()?;
+        let annotation = self.metadata.annotation.traverse(f, state, order)?;
+        let value = self
+            .value
+            .map(|v| v.traverse(f, state, order))
+            .transpose()?;
 
         let metadata = FieldMetadata {
             annotation,
-            ..metadata
+            ..self.metadata
         };
 
-        Ok(Field { metadata, value })
+        Ok(Field {
+            metadata,
+            value,
+            ..self
+        })
     }
 }
 
@@ -299,8 +307,8 @@ impl RecordData {
                 (
                     id,
                     Field {
-                        metadata: field.metadata,
                         value: f(id, field.value),
+                        ..field
                     },
                 )
             })

@@ -250,6 +250,7 @@ fn write_query_result_<R: QueryPrinter>(
                     ..
                 },
             value: Some(t),
+            ..
         } if selected_attrs.default => {
             renderer.write_metadata(out, "default", &t.as_ref().shallow_repr())?;
             found = true;
@@ -261,6 +262,7 @@ fn write_query_result_<R: QueryPrinter>(
                     ..
                 },
             value: Some(t),
+            ..
         } if selected_attrs.value => {
             renderer.write_metadata(out, "priority", &format!("{}", n))?;
             renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;

@@ -222,6 +222,8 @@ fn transform_rec_field(
             annotation: TypeAnnotation { types, contracts },
             ..field.metadata
         },
+        //TODO: apply the share_normal_form to pending_contracts instead of metadata
+        pending_contracts: todo!(),
     }
 }
 
