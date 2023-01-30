@@ -5,14 +5,12 @@ slug: tutorial
 # Managing users
 
 In this tutorial, you will learn how to use Nickel to manage a list of
-users, and then export it as a YAML file for a program consuming it.
+users, and then export it as a YAML file.
 
 ## Step 1: Install nickel
 
-The first step is to obtain nickel on your system. There are different
-methods to install Nickel, they are all covered on the [Getting
-started](https://nickel-lang.org/getting-started/#getting-started)
-page of Nickel project website.
+The first step is to make Nickel available on your system. Please refer to the different installation methods documented in [Getting
+started](https://nickel-lang.org/getting-started/#getting-started).
 
 ## Step 2: Think about the schema
 
@@ -30,12 +28,12 @@ users:
       - accounting
 ```
 
-We can spot attributes such as `name`, `ssh-keys`, `is-admin` or
+We can spot fields such as `name`, `ssh-keys`, `is-admin` or
 `extra-groups`. To create a Nickel contract that correctly specifies
 the shape of this data, we need to think about the type needed for
 each attribute.
 
-For example, the attribute `name` is a string, which translates to `Str`
+For example, the field `name` is a string, which translates to `Str`
 in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is a
 list of strings, written as `Array Str` in Nickel. The field `is-admin`
 is a boolean, written as `Bool`. Finally, `extra-groups` is a list of
@@ -49,31 +47,34 @@ and `ssh-keys` can be empty, so we will mark them as optional using the
 The field `is-admin` must always be present in the YAML file, but for
 most of our users it will be set to `false`. Fortunately, we can assign
 the default value `false` to this field , which means you only need
-to write `is-admin = true` in Nickel code when the user is actually
+to write `is-admin = true` when the user is actually
 an administrator.
 
 ## Step 3: Write a contract
 
 Create a text file named `users-schema.ncl`. We will write our contract
-defining attributes and associated constraints such as a type, marking
+defining fields and associated constraints such as a type, marking
 the attribute optional, and a default value if there is one.
 
 Please note that using a contract isn't mandatory per-se to use Nickel,
 but it will allow you to validate your input data (See Step 6 for an
 example).
 
-Please note that using a contract isn't mandatory per-se to use Nickel,
-but it will allow you to validate your input data (See Step 6 for an
-example).
 
 ```nickel
 {
   UserSchema =
   {
     name | Str,
-    ssh-keys | Array Str | optional,
-    is-admin | Bool | default = false,
-    extra-groups | Array Str | optional,
+    ssh-keys
+        | Array Str
+        | optional,
+    is-admin
+      | Bool
+      | default = false,
+    extra-groups
+      | Array Str
+      | optional,
   },
 }
 ```
