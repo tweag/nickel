@@ -231,15 +231,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pending_contracts,
                     }) = next_field.take()
                     {
-                        todo!(); // Apply pending contracts
-                                 // We evaluate the fields' value, either to handle the next ident of the
-                                 // path, or to show the value if we are treating the last ident of the path
+                        // We evaluate the fields' value, either to handle the next ident of the
+                        // path, or to show the value if we are treating the last ident of the path
+
                         value_next = value_next
                             .map(|value| -> Result<RichTerm, EvalError> {
+                                let pos_value = value.pos;
+                                let value_with_ctr = PendingContract::apply_all(
+                                    value,
+                                    pending_contracts.into_iter(),
+                                    pos_value,
+                                );
                                 let (new_value, new_env) = self.eval_closure(
                                     Closure {
-                                        body: value,
-                                        env: std::mem::take(&mut env),
+                                        body: value_with_ctr,
+                                        env: env.clone(),
                                     },
                                     initial_env,
                                 )?;
