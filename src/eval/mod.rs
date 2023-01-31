@@ -533,11 +533,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     //instead of `match` in the main eval loop, if possible
                     let static_part = RichTerm::new(Term::Record(record.clone()), pos);
 
-                    // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
-                    // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
-                    // `%record_insert% exp1 (... (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)) dyn_val1`
-                    // The `dyn_val` are given access to the recursive environment, but the recursive
-                    // environment only contains the static fields, and not the dynamic fields.
+                    // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
+                    // dynamic part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of
+                    // extensions
+                    //
+                    // ```
+                    // %record_insert% exp1
+                    //   (...
+                    //     (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)
+                    //   ...)
+                    //   dyn_val1
+                    //
+                    // ```
+                    //
+                    // The `dyn_val` are given access to the recursive environment, but the
+                    // recursive environment only contains the static fields, and not the dynamic
+                    // fields.
                     let extended = dyn_fields
                         .iter()
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
@@ -558,8 +569,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pending_contracts,
                                 } = field;
 
-                                //TODO[LAZYPROP]: should probably closurize the pending_contracts.
-                                //It seems to work currently, but looks fragile.
+                                //TODO[LAZYPROP]: we should probably closurize the pending
+                                //contracts. It seems to work currently, but looks a bit fragile
+                                //with respect to refactoring/changes.
                                 let extend = mk_term::op2(
                                     BinaryOp::DynExtend {
                                         metadata: metadata.clone(),
@@ -587,7 +599,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                // Unwrapping of enriched terms
                 Term::ResolvedImport(id) => {
                     if let Some(t) = self.import_resolver.get(*id) {
                         Closure::atomic_closure(t)
