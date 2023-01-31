@@ -8,12 +8,10 @@
 //! transformed as well.
 use crate::{
     identifier::Ident,
-    match_sharedterm, mk_app,
-    position::TermPos,
+    match_sharedterm,
     term::{
-        make as mk_term,
         record::{Field, RecordData},
-        BinaryOp, PendingContract, RichTerm, Term,
+        RichTerm, Term,
     },
     types::UnboundTypeVariableError,
 };
