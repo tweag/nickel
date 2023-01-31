@@ -561,7 +561,8 @@ fn get_completion_identifiers(
                     .get_in_scope(item, &server.lin_cache)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _) => Some(IdentWithType {
+                        TermKind::Declaration(ident, _, _)
+                        | TermKind::RecordField { ident, .. } => Some(IdentWithType {
                             ident,
                             item: Some(item.clone()),
                             ty: ty.clone(),
