@@ -78,6 +78,9 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             }),
             Term::Record(record) => visit_record(record.fields, visitor),
             Term::Array(v, _) => visit_array(v, visitor),
+            // unreachable(): `unwrap_term` recursively unwraps `Annotated` nodes until it
+            // encounters a different node, or it fails. Thus, if `unwrap_term` succeeds, the
+            // result can't be `Annotated`.
             Term::Annotated(..) => unreachable!(),
             other => Err(RustDeserializationError::UnimplementedType {
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),

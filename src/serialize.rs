@@ -236,6 +236,8 @@ where
                 .map_err(|err| SerializationError::Other(err.to_string())),
             t => Err(SerializationError::Other(format!(
                 "raw export requires a `Str`, got {}",
+                // unwrap(): terms must be fully evaluated before serialization,
+                // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
             ))),
         },
@@ -256,6 +258,8 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
             Term::Str(s) => Ok(s.clone()),
             t => Err(SerializationError::Other(format!(
                 "raw export requires a `Str`, got {}",
+                // unwrap(): terms must be fully evaluated before serialization,
+                // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
             ))),
         },
