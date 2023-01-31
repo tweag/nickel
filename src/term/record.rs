@@ -211,10 +211,16 @@ impl Traverse<RichTerm> for Field {
             ..self.metadata
         };
 
+        let pending_contracts = self
+            .pending_contracts
+            .into_iter()
+            .map(|pending_contract| pending_contract.traverse(f, state, order))
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(Field {
             metadata,
             value,
-            ..self
+            pending_contracts,
         })
     }
 }

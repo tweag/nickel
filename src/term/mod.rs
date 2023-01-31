@@ -265,6 +265,16 @@ impl PendingContract {
     }
 }
 
+impl Traverse<RichTerm> for PendingContract {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let contract = self.contract.traverse(f, state, order)?;
+        Ok(PendingContract { contract, ..self })
+    }
+}
+
 impl std::convert::TryFrom<LabeledType> for PendingContract {
     type Error = UnboundTypeVariableError;
 

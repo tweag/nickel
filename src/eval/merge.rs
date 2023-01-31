@@ -528,7 +528,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 ) -> Result<RichTerm, EvalError> {
     let mut local_env = Environment::new();
 
-    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2).unwrap());
+    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(),
         t1.saturate(cache, &mut local_env, env1, fields.clone())?,
