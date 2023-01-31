@@ -163,10 +163,10 @@ fn transform_rec_field(
     let pending_contracts = field
         .pending_contracts
         .into_iter()
-        .map(|pending_contract| pending_contract.map_contract(|ctr| share_normal_form(ctr)))
+        .map(|pending_contract| pending_contract.map_contract(&mut share_normal_form))
         .collect();
 
-    let value = field.value.map(share_normal_form);
+    let value = field.value.map(&mut share_normal_form);
 
     Field {
         value,

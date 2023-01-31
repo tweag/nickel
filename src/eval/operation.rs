@@ -465,10 +465,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     {
                         Some(value) => {
                             self.call_stack.enter_field(id, pos, value.pos, pos_op);
-                            Ok(Closure {
-                                body: value.clone(),
-                                env,
-                            })
+                            Ok(Closure { body: value, env })
                         }
                         None => Err(EvalError::FieldMissing(
                             id.into_label(),
@@ -1916,7 +1913,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 Some(value) => {
                                     self.call_stack.enter_field(Ident::from(id), pos2, value.pos, pos_op);
                                     Ok(Closure {
-                                        body: value.clone(),
+                                        body: value,
                                         env: env2,
                                     })
                                 }

@@ -281,7 +281,7 @@ impl std::convert::TryFrom<LabeledType> for PendingContract {
     fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
         Ok(PendingContract::new(
             labeled_ty.types.contract()?,
-            labeled_ty.label.clone(),
+            labeled_ty.label,
         ))
     }
 }
