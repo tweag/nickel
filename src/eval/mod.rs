@@ -641,7 +641,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
                 // long as we generate the corresponding contract application at one point
-                // (currently ahead-of-team during program transformations).
+                // (currently ahead-of-time during program transformations).
                 //
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
