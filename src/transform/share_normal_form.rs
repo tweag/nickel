@@ -112,9 +112,9 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
-            Term::Annotated(annot, t) if should_share(&rt.term) => {
+            Term::Annotated(annot, t) if should_share(&t.term) => {
                 let fresh_var = Ident::fresh();
-                let shared = RichTerm::new(Term::Var(fresh_var), rt.pos);
+                let shared = RichTerm::new(Term::Var(fresh_var), t.pos);
                 let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
                 RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
             },
