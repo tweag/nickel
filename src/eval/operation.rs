@@ -3244,6 +3244,9 @@ trait RecordDataExt: Sized {
     /// 2. Appplying the pending contracts to each fields
     /// 3. Applying the provided function
     /// 4. Closurizing each result into the shared environment.
+    ///
+    /// Because we applied the pending contracts in 2., they are dropped in the result: all fields
+    /// have an empty set of pending contracts.
     fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
@@ -3289,6 +3292,7 @@ impl RecordDataExt for RecordData {
 
                     let field = Field {
                         value: Some(value),
+                        pending_contracts: Vec::new(),
                         ..field
                     }
                     .closurize(cache, shared_env, env.clone());
