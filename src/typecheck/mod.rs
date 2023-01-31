@@ -1698,7 +1698,9 @@ impl From<ApparentType> for Types {
     }
 }
 
-//TODO: doc
+/// Return the apparent type of a field, by first looking at the type annotation, if any, the at
+/// the contracts annotation, and if there is none, fall back to the apparent type of the value. If
+/// there is no value, `Approximated(Dyn)` is returned.
 fn field_apparent_type(
     field: &Field,
     env: Option<&Environment>,
