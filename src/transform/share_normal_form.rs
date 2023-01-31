@@ -55,21 +55,24 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
-            Term::Record(record) => {
-                let mut bindings = Vec::with_capacity(record.fields.len());
+            // CAUTION: if currently the records literal written by an user are always recursive
+            // record, other phase of program transformation (such as desugaring of field paths
+            // like `{foo.bar.baz = val}` or desugaring of destructuring) do introduce non
+            // recursive record.
+            //
+            // I've scratched my head more that once on a transformation seemingly not happening
+            // only for record elaborated by the destructuring desguaring phase, to find that the
+            // `Term::Record` case below has been forgotten, and only the case `Term::RecRecord`
+            // was updated.
+            Term::Record(record_data) => {
+                let mut bindings = Vec::with_capacity(record_data.fields.len());
+                let empty_deps = FieldDeps::empty();
 
-                let record = record.map_defined_values(|id, t| {
-                    if should_share(&t.term) {
-                        let fresh_var = Ident::fresh();
-                        let pos_t = t.pos;
-                        bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
-                        RichTerm::new(Term::Var(fresh_var), pos_t)
-                    } else {
-                        t
-                    }
-                });
+                let fields = record_data.fields.into_iter().map(|(id, field)| {
+                    (id, transform_rec_field(field, Some(empty_deps.clone()), &mut bindings))
+                }).collect();
 
-                with_bindings(Term::Record(record), bindings, pos)
+                with_bindings(Term::Record(RecordData { fields, ..record_data }), bindings, pos)
             },
             Term::RecRecord(record_data, dyn_fields, deps) => {
                 let mut bindings = Vec::with_capacity(record_data.fields.len());
@@ -139,45 +142,31 @@ fn transform_rec_field(
     field_deps: Option<FieldDeps>,
     bindings: &mut Vec<Binding>,
 ) -> Field {
+    let mut share_normal_form = |rt: RichTerm| {
+        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
+        // explained in this method's documentation above.
+        if !rt.as_ref().is_constant() {
+            let fresh_var = Ident::fresh();
+            let pos_contract = rt.pos;
+            let binding_type = mk_binding_type(field_deps.clone());
+            bindings.push(Binding {
+                fresh_var,
+                term: rt,
+                binding_type,
+            });
+            RichTerm::new(Term::Var(fresh_var), pos_contract)
+        } else {
+            rt
+        }
+    };
+
     let pending_contracts = field
         .pending_contracts
         .into_iter()
-        .map(|pending_contract| {
-            pending_contract.map_contract(|ctr| {
-                if !ctr.as_ref().is_constant() {
-                    let fresh_var = Ident::fresh();
-                    let pos_contract = ctr.pos;
-                    let binding_type = mk_binding_type(field_deps.clone());
-                    bindings.push(Binding {
-                        fresh_var,
-                        term: ctr,
-                        binding_type,
-                    });
-                    RichTerm::new(Term::Var(fresh_var), pos_contract)
-                } else {
-                    ctr
-                }
-            })
-        })
+        .map(|pending_contract| pending_contract.map_contract(|ctr| share_normal_form(ctr)))
         .collect();
 
-    let value = field.value.map(|value| {
-        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-        // explained in this module top-level documentation.
-        if !value.as_ref().is_constant() {
-            let fresh_var = Ident::fresh();
-            let pos_v = value.pos;
-            let binding_type = mk_binding_type(field_deps);
-            bindings.push(Binding {
-                fresh_var,
-                term: value,
-                binding_type,
-            });
-            RichTerm::new(Term::Var(fresh_var), pos_v)
-        } else {
-            value
-        }
-    });
+    let value = field.value.map(share_normal_form);
 
     Field {
         value,
