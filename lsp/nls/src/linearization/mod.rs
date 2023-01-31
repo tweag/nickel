@@ -456,7 +456,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
     }
 
-    fn add_field_metadata(&mut self, lin: &mut Linearization<Building>, field: &Field) {
+    fn add_field_metadata(&mut self, _lin: &mut Linearization<Building>, field: &Field) {
         // Notice 1: No push to lin for the `FieldMetadata` itself
         // Notice 2: we discard the encoded value as anything we
         //           would do with the value will be handled in the following
