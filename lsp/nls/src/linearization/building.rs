@@ -162,6 +162,18 @@ impl<'b> Building<'b> {
                     .as_option()
                     .and_then(|value_index| self.get_item_kind(current_file, value_index))
             }
+            TermKind::Declaration(ident, _, ValueState::Known(value), true) => {
+                let item = self.get_item_kind(current_file, *value)?;
+                let item = self.resolve_reference(current_file, item)?;
+                match item {
+                    TermKind::Record(fields) => {
+                        let item = fields.get(ident)?;
+                        let item = self.get_item_kind(current_file, *item)?;
+                        Some(item)
+                    }
+                    _ => None,
+                }
+            }
             // if declaration is a let binding resolve its value
             TermKind::Declaration(_, _, ValueState::Known(value), _) => {
                 self.get_item_kind(current_file, *value)
