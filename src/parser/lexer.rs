@@ -42,7 +42,7 @@ fn symbolic_string_prefix_and_length<'input>(
         .expect("The logos regexp ensures this succeeds");
     SymbolicStringStart {
         prefix,
-        percent_count: postfix.len(),
+        length: postfix.len(),
     }
 }
 
@@ -342,7 +342,7 @@ pub const KEYWORDS: &[&str] = &[
 #[derive(Debug, Clone, PartialEq)]
 pub struct SymbolicStringStart<'input> {
     pub prefix: &'input str,
-    pub percent_count: usize,
+    pub length: usize,
 }
 
 /// The tokens in string mode.
@@ -630,8 +630,7 @@ impl<'input> Iterator for Lexer<'input> {
             Some(Normal(
                 NormalToken::MultiStringStart(delim_size)
                 | NormalToken::SymbolicStringStart(SymbolicStringStart {
-                    percent_count: delim_size,
-                    ..
+                    length: delim_size, ..
                 }),
             )) => {
                 // for interpolation & closing delimeters we only care about
