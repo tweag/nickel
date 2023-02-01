@@ -33,6 +33,10 @@
         "%
       = fun l => %head% l,
 
+    last : forall a. Array a -> a
+      | doc "TODO"
+      = fun l => %elem_at% l (%length% l - 1),
+
     tail : forall a. Array a -> Array a
       | doc m%"
         Results in the tail (everything but the first element) of the given array.
@@ -44,6 +48,21 @@
         ```
         "%
       = fun l => %tail% l,
+
+    tail_but_reverse_bikeshed_me : forall a. Array a -> Array a
+      | doc "TODO"
+      # TODO: we need a slice primop
+      = fun l => l
+        |> reverse
+        |> tail
+        |> reverse,
+
+    # slice
+    # split_at
+    # replicate
+    # range
+
+    # unfold : forall a b. (b -> { action: [| `Continue, `Stop |], value: a, state: b}) -> b -> Array a,
 
     length : forall a. Array a -> Num
       | doc m%"
@@ -153,6 +172,19 @@
         ```
         "%
       = fun x l => [x] @ l,
+
+    append : forall a. a -> Array a -> Array a
+      | doc m%"
+        TODO
+
+        For example:
+        ```nickel
+          append 3 [ 1, 2 ] =>
+            [ 1, 2, 3 ]
+        ```
+        "%
+      = fun x l => l @ [x],
+
 
     reverse : forall a. Array a -> Array a
       | doc m%"
