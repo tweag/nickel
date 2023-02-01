@@ -160,7 +160,7 @@
       if %length% l == 0 then
         ""
       else
-        %head% l ++ array.foldl (fun acc s => acc ++ sep ++ s) "" (%tail% l),
+        %head% l ++ array.fold_left (fun acc s => acc ++ sep ++ s) "" (%tail% l),
 
     split : Str -> Str -> Array Str
     | doc m%"

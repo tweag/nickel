@@ -1,13 +1,13 @@
 # test: pass
 
 # Example array functions. This code is illustrative: prefer using the array 
-# stdlib functions `array.map` and `array.fold` instead.
+# stdlib functions `array.map` and `array.fold_right` instead.
 let my_array_lib = {
   map : forall a b. (a -> b) -> Array a -> Array b = fun f arr =>
     if arr == [] then
       []
     else
-      let head = array.head arr in
+      let head = array.first arr in
       let tail = array.tail arr in
       [f head] @ map f tail,
 
@@ -16,7 +16,7 @@ let my_array_lib = {
         if arr == [] then
           first
         else
-          let head = array.head arr in
+          let head = array.first arr in
           let tail = array.tail arr in
           f head (fold f tail first),
 } in

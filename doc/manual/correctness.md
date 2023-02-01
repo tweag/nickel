@@ -142,7 +142,7 @@ first wrapping it in an array:
 # lib.ncl
 {
   split = fun pairs =>
-    array.fold (fun pair acc =>
+    array.fold_right (fun pair acc =>
       {
         # problem: the right expression to use is [pair.key]
         keys = acc.keys @ pair.key,

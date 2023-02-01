@@ -1,6 +1,6 @@
 {
   contracts = {
-    AllOf = fun contracts label value => array.fold (fun c acc => c label
+    AllOf = fun contracts label value => array.fold_right (fun c acc => c label
       acc) contracts value,
     Dummy = fun label value => value,
     OneOf = fun values => contract.from_predicate (fun value => array.elem value
@@ -22,7 +22,7 @@
           contract.blame_with "no match" label
       else contract.blame_with "not a string" label,
     PseudoOr = fun alts label value =>
-      array.fold (fun ctr rest =>
+      array.fold_right (fun ctr rest =>
         if ctr.pred value then
           ctr.contract value
         else

@@ -439,7 +439,7 @@ Examples:
     increment 41
 42
 
-> let flatten = array.fold (@) [] in flatten [[1, 2], [3], [4, 5]]
+> let flatten = array.fold_right (@) [] in flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 
@@ -455,12 +455,12 @@ Examples:
 
 > "Hello World"
   |> string.split " "
-  |> array.head
+  |> array.first
 "Hello"
 
 > "Hello World"
   |> string.split " "
-  |> array.head
+  |> array.first
   |> string.uppercase
 "HELLO"
 ```

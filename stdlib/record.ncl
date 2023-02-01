@@ -177,7 +177,7 @@
         => { foo = 1, bar = 2 }
       ```
     "%
-    = array.foldl (&) {},
+    = array.fold_left (&) {},
 
     filter : forall a. (Str -> a -> Bool) -> {_: a} -> {_: a}
     | doc m%"

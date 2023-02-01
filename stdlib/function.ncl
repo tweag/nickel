@@ -70,6 +70,6 @@
         => "Hello, World!"
       ```
     "%%
-    = fun x fs => array.foldl (|>) x fs,
+    = fun x fs => array.fold_left (|>) x fs,
   }
 }
