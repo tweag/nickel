@@ -94,7 +94,7 @@ fn serialize() {
             )
             .as_bytes(),
         ),
-        "shoud success",
+        "should success",
     )
     .unwrap();
     assert_eq!(prog.eval().map(Term::from), Ok(Term::Bool(true)));

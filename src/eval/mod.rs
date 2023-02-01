@@ -15,7 +15,7 @@
 //!     to garbage collection (currently reference counting based)
 //! - A [callstack], mainly for error reporting purpose
 //!
-//! Depending on the shape of the current term, the following actions are preformed:
+//! Depending on the shape of the current term, the following actions are performed:
 //!
 //! ## Core calculus
 //! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update thunk is
@@ -582,7 +582,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
                 // Closurize the array if it's not already done.
-                // This *should* make it unecessary to call closurize in [operation].
+                // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
                     let mut local_env = Environment::new();
@@ -1063,8 +1063,8 @@ pub fn is_empty_optional<C: Cache>(cache: &C, rt: &RichTerm, env: &Environment) 
         }
     }
 
-    // The total amount of gas is rather abritrary, but in any case, it ought to stay low: remember
-    // that is_empty_optional may be called on each field of a record when evaluatinog some record
+    // The total amount of gas is rather arbitrary, but in any case, it ought to stay low: remember
+    // that is_empty_optional may be called on each field of a record when evaluating some record
     // operations.
     is_empty_optional_aux(cache, rt, env, false, &mut 8)
 }

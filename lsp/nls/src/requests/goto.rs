@@ -55,7 +55,7 @@ pub fn handle_to_definition(
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
             let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
             if server.cache.is_stdlib_module(definition.id.file_id) {
-                // The standard library files are embeded in the executable,
+                // The standard library files are embedded in the executable,
                 // so we can't possibly go to their definition on disk.
                 server.reply(Response::new_ok(id, Value::Null));
                 return Ok(());

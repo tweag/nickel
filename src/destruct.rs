@@ -14,7 +14,7 @@ use crate::types::{TypeF, Types};
 #[derive(Debug, PartialEq, Clone)]
 pub enum Match {
     /// `{..., a=b, ...}` will bind the field a of the record to variable a. Here, a is the first
-    /// field of this variant and b the optional one. The last field can actualy be a nested
+    /// field of this variant and b the optional one. The last field can actually be a nested
     /// destruct pattern.
     Assign(Ident, MetaValue, (Option<Ident>, Destruct)),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
@@ -27,7 +27,7 @@ pub enum LastMatch {
     /// The last field is a normal match. In this case the pattern is "closed" so every record
     /// fields should be matched.
     Match(Box<Match>),
-    /// The pattern is "open" `, ..}`. Optionaly you can bind a record containing the remaining
+    /// The pattern is "open" `, ..}`. Optionally you can bind a record containing the remaining
     /// fields to an `Identifier` using the syntax `, ..y}`.
     Ellipsis(Option<Ident>),
 }
@@ -44,7 +44,7 @@ pub enum Destruct {
     },
     /// An array destructuring. Not implemented.
     Array { matches: Vec<Match>, span: RawSpan },
-    /// An empty destructuring. In this case, the pattern is a clasical `let var = something in
+    /// An empty destructuring. In this case, the pattern is a classical `let var = something in
     /// body` form.
     Empty,
 }

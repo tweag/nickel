@@ -157,8 +157,8 @@ never requires recursion, this is not the case with library code. Allowing
 recursion makes it possible for programmers to implement new generic
 functionalities \[2\].
 
-\[1\]: [Why Dhall is not Turing complete](http://neilmitchell.blogspot.com/2020/11/turing-incomplete-languages.html)\
-\[2\]: [Turing incomplete languages](http://www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
+\[1\]: [Why Dhall is not Turing complete](https://neilmitchell.blogspot.com/2020/11/turing-incomplete-languages.html)\
+\[2\]: [Turing incomplete languages](https://www.haskellforall.com/2020/01/why-dhall-advertises-absence-of-turing.html)
 
 ### Side-Effects
 

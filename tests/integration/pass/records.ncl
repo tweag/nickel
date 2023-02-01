@@ -24,7 +24,7 @@ let {check, ..} = import "lib/assert.ncl" in
   |> record.insert "foo" 1
   |> record.has_field "foo",
 
-  # lazyness of map
+  # laziness of map
   (record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
     == 2,
 

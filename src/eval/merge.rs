@@ -322,7 +322,7 @@ pub fn merge<C: Cache>(
                 _ => unreachable!(),
             };
 
-            // Finally, we also need to closurize the contracts in the final envirnment.
+            // Finally, we also need to closurize the contracts in the final environment.
             let mut contracts1: Vec<Contract> = contracts1
                 .into_iter()
                 .map(|ctr| ctr.closurize(cache, &mut env, env1.clone()))
@@ -358,7 +358,7 @@ pub fn merge<C: Cache>(
                 doc,
                 types,
                 contracts,
-                // If one of the record requires this field, then it musn't be optional. The
+                // If one of the record requires this field, then it mustn't be optional. The
                 // resulting field is optional iff both are.
                 opt: opt1 && opt2,
                 priority,

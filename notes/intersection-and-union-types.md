@@ -52,7 +52,7 @@ I think there are some nice properties we should try to show (at least informall
 
 We have two ways of proceeding, as far as I understand:
  * The first would be to increase the language in some way to add dependencies to the labels, something like `check` and `set` fields. Every time we find `blame l` we first check that everything it depends on has been set, if that's true, we set everything that depends on this.
- * The second would be to provide powerful primitives per usecase, for instance, `split_union l` would generate two sublabels (that would depend on each other) that, if raised, would blame `l`.
+ * The second would be to provide powerful primitives per use case, for instance, `split_union l` would generate two sublabels (that would depend on each other) that, if raised, would blame `l`.
 
 There are still a few hard to solve challenges:
  * **Context tracking**: since negative blame depends on the context, in order to raise it we need to make sure it's the same label, and the same context, both papers solve this in different ways:
@@ -71,6 +71,6 @@ The most similar implementation I could find is [TreatJS], which has a nice blam
 
 
 
-[wadler]: http://homepages.inf.ed.ac.uk/wadler/papers/root-blame/root-blame.pdf
+[wadler]: https://homepages.inf.ed.ac.uk/wadler/papers/root-blame/root-blame.pdf
 [treatjs]: https://proglang.informatik.uni-freiburg.de/treatjs/index.html
 [keil]: http://matthias-keil.de/papers/icfp2015-blame.pdf

@@ -912,7 +912,7 @@ weakEval e = ...
 
 ### Semantics
 
-Now that we defined merge trees, we need to extract a potential merge fonction
+Now that we defined merge trees, we need to extract a potential merge function
 from it:
 
 ```text
@@ -962,7 +962,7 @@ tree of this expression. It needs to be accessible even after evaluation by the
 implementation.
 
 In practice, we can't update a thunk that contains `e1 & e2` with the result of
-the evaluation. This is already the case with `default` values currenlty
+the evaluation. This is already the case with `default` values currently
 (`default (1 + 1)` isn't updated to `2`, but to `default 2`, otherwise the
 semantics would change). A good view on this is that the semantics is inherently
 call-by-name, and that any caching mechanism (including call-by-need) is a

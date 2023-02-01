@@ -127,7 +127,7 @@ mod interner {
 
     use typed_arena::Arena;
 
-    /// A symbol is a correspondance between an [Ident](super::Ident) and its string representation stored in the [Interner].
+    /// A symbol is a correspondence between an [Ident](super::Ident) and its string representation stored in the [Interner].
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Symbol(u32);
 

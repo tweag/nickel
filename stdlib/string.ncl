@@ -148,7 +148,7 @@
 
     join : Str -> Array Str -> Str
     | doc m%"
-      Joins a array of strings given a seperator.
+      Joins a array of strings given a separator.
 
       For example:
       ```nickel
@@ -286,7 +286,7 @@
 
     replace: Str -> Str -> Str -> Str
     | doc m%"
-      `replace sub repl str` replaces every occurence of `sub` in `str` with `repl`.
+      `replace sub repl str` replaces every occurrence of `sub` in `str` with `repl`.
 
       For example:
       ```nickel

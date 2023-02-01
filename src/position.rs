@@ -43,7 +43,7 @@ impl RawSpan {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum TermPos {
     /// The term exactly corresponds to an original expression in the source, or is a construct
-    /// introduced by program transformation that correponds to an original span in the source.
+    /// introduced by program transformation that corresponds to an original span in the source.
     Original(RawSpan),
     /// The term is the result of the evaluation of an original expression in the source.
     Inherited(RawSpan),
