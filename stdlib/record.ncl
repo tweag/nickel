@@ -109,17 +109,45 @@
         %record_insert% field r content,
     
     map_values: forall a b. (a -> b) -> {_: a} -> {_: b}
-    | doc "TODO"
+    | doc m%"
+      Maps a function over every field value of a record.
+
+      For example:
+      ```nickel
+        map_values (fun x => x + 1) { hi = 2 } =>
+          { hi = 3 }
+        map (fun x => x + 1) { hello = 1, world = 2 } =>
+          { hello = 2, world = 3 }
+      ```
+    "%
     = fun f => map (fun _field value => f value),
 
     as_array : forall a. {_: a} -> Array {field: Str, value: a}
-    | doc "TODO"
+    | doc m%"
+      Converts a record into an array of key-value pairs.
+
+      For example:
+      ```nickel
+        as_array { hello = "world", foo = "bar" } =>
+          [ { field = "hello", value = "world" },
+            { field = "foo", value = "bar" }
+          ]
+      ```
+    "%
     = fun record =>
       record
       |> fields
       |> array.map (fun field_ => {field = field_, value = record."%{field}"}),
 
     is_empty : forall a. {_: a} -> Bool
+    | doc m%"
+      Check whether a record is empty.
+
+      ```nickel
+      is_empty {} => true
+      is_empty { foo = 1 } => false
+      ```
+    "%
     = (==) {},
 
     from_array : forall a. Array { field:Str, value: a} -> {_: a}

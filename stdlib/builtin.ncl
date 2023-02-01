@@ -226,11 +226,37 @@
     = fun msg x => %trace% msg x,
 
     FailWith
-    | doc "TODO"
+    | doc m%"
+      A contract that always fails with a given message.
+
+      For example:
+      ```nickel
+      1 | FailWith "message" =>
+        error: contract broken by a value: message
+          ┌─ :1:1
+          │
+        1 │ FailWith "message"
+          │ ---------------------------- expected type
+          │
+          ┌─ repl-input-0:1:1
+          │
+        1 │ 1 | FailWith "message"
+          │ ^ applied to this expression
+      ```
+    "%
     = fun msg label value => contract.blame_with msg label,
 
-    fail_with 
-    | doc "TODO"
+    fail_with | Str -> Dyn
+    | doc m%"
+      Unconditionally abort evaluation with the given message.
+
+      For example:
+      ```nickel
+      fail_with "message" =>
+        error: contract broken by a value: message
+      ```
+    "%
     = fun msg => null | FailWith msg,
+
   },
 }
