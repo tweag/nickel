@@ -302,12 +302,13 @@ fn find_fields_from_term(
         Term::Record(data) | Term::RecRecord(data, ..) => match path.pop() {
             None => data
                 .fields
-                .keys()
-                .copied()
-                .map(|ident| IdentWithType {
-                    ident,
-                    ty: Types(TypeF::Flat(term.clone())),
-                    meta: None,
+                .iter()
+                .map(|(ident, field)| IdentWithType {
+                    ident: *ident,
+                    // This Dyn type is only displayed if the metadata's
+                    // contract or type annotation is not present.
+                    ty: Types(TypeF::Dyn),
+                    meta: Some(field.metadata.clone()),
                 })
                 .collect(),
             Some(name) => data
