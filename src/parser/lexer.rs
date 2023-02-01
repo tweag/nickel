@@ -6,10 +6,10 @@
 //! following string:
 //!
 //! ```text
-//! "hello, I have 1 + ${ {a = "40"}.a } + 1 bananas."
+//! "hello, I have 1 + %{ {a = "40"}.a } + 1 bananas."
 //! ```
 //!
-//! Once the `${` token is encountered, the lexer has to switch back to lexing expressions as
+//! Once the `%{` token is encountered, the lexer has to switch back to lexing expressions as
 //! usual. But at the end of the interpolated expression, `+ 1 bananas.` needs to be parsed as a
 //! string again, and not as normal program tokens. Since the interpolated expression is arbitrary,
 //! it can contains nested `{` and `}` (as here, with records) and strings which themselves have
@@ -23,7 +23,7 @@
 //! decide if a closing brace `}` belongs to the expression or is actually the closing brace of the
 //! interpolated expression, indicating that we should switch back to string mode.
 //!
-//! When entering a string, the `Str` mode is entered. When a `${` is encountered in a string,
+//! When entering a string, the `Str` mode is entered. When a `%{` is encountered in a string,
 //! starting an interpolated expression, the normal mode is pushed. At each starting `{` in normal
 //! mode, the brace counter is incremented. At each closing '}', it is decremented. When it reaches
 //! `0`, this is the end of the current interpolated expressions, and we leave the normal mode and
