@@ -40,7 +40,7 @@ use crate::{
 struct IdentWithType {
     ident: Ident,
     ty: Types,
-    item: Option<LinearizationItem<Types>>,
+    meta: Option<FieldMetadata>,
 }
 
 impl From<Ident> for IdentWithType {
@@ -48,7 +48,7 @@ impl From<Ident> for IdentWithType {
         IdentWithType {
             ident,
             ty: Types(TypeF::Dyn),
-            item: None,
+            meta: None,
         }
     }
 }
@@ -58,25 +58,21 @@ impl From<&str> for IdentWithType {
         IdentWithType {
             ident: Ident::from(ident),
             ty: Types(TypeF::Dyn),
-            item: None,
+            meta: None,
         }
     }
 }
 
 impl IdentWithType {
     fn detail(&self) -> String {
-        self.item
+        self.meta
             .as_ref()
-            .and_then(|item| {
-                item.metadata
+            .and_then(|FieldMetadata { annotation, .. }| {
+                annotation
+                    .types
                     .as_ref()
-                    .and_then(|FieldMetadata { annotation, .. }| {
-                        annotation
-                            .types
-                            .as_ref()
-                            .map(|ty| ty.types.to_string())
-                            .or_else(|| annotation.contracts_to_string())
-                    })
+                    .map(|ty| ty.types.to_string())
+                    .or_else(|| annotation.contracts_to_string())
             })
             .unwrap_or_else(|| self.ty.to_string())
     }
@@ -98,8 +94,7 @@ impl IdentWithType {
             }
         }
         let doc = || {
-            let item = self.item.as_ref()?;
-            let meta = item.metadata.as_ref()?;
+            let meta = self.meta.as_ref()?;
             let doc = meta.doc.as_ref()?;
             let doc = Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -150,7 +145,7 @@ fn find_fields_from_term_kind(
                         IdentWithType {
                             ident,
                             ty,
-                            item: Some(item.clone()),
+                            meta: item.metadata.clone(),
                         }
                     })
                     .collect()
@@ -265,7 +260,7 @@ fn find_fields_from_type(
             })
             .map(|(ident, types)| IdentWithType {
                 ident,
-                item: None,
+                meta: None,
                 ty: types.clone(),
             })
             .collect()
@@ -312,7 +307,7 @@ fn find_fields_from_term(
                 .map(|ident| IdentWithType {
                     ident,
                     ty: Types(TypeF::Flat(term.clone())),
-                    item: None,
+                    meta: None,
                 })
                 .collect(),
             Some(name) => data
@@ -594,7 +589,7 @@ fn get_completion_identifiers(
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration(ident, _, _) => Some(IdentWithType {
                             ident,
-                            item: Some(item.clone()),
+                            meta: item.metadata.clone(),
                             ty: ty.clone(),
                         }),
                         _ => None,
