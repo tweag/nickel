@@ -518,8 +518,9 @@ StrChunks: RichTerm = {
             }).collect();
 
             RichTerm::from(build_record([
+                (FieldPathElem::Ident("tag".into()), RichTerm::from(Term::Enum("SymbolicString".into()))),
                 (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Str(prefix.to_owned()))),
-                (FieldPathElem::Ident("chunks".into()), RichTerm::from(Term::Array(terms, Default::default())))
+                (FieldPathElem::Ident("fragments".into()), RichTerm::from(Term::Array(terms, Default::default())))
             ], Default::default()))
         } else {
             let mut chunks = chunks;
@@ -914,7 +915,7 @@ extern {
         "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
         "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart(
-          SymbolicStringStart{prefix: <&'input str>, percent_count: <usize>})),
+          SymbolicStringStart{prefix: <&'input str>, length: <usize>})),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),

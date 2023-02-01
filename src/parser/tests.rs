@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, Token};
+use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
 use crate::identifier::Ident;
@@ -42,11 +42,15 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
     build_record(
         [
             (
+                FieldPathElem::Ident("tag".into()),
+                RichTerm::from(Term::Enum("SymbolicString".into())),
+            ),
+            (
                 FieldPathElem::Ident("prefix".into()),
                 RichTerm::from(Term::Str(prefix.to_owned())),
             ),
             (
-                FieldPathElem::Ident("chunks".into()),
+                FieldPathElem::Ident("fragments".into()),
                 RichTerm::from(Array(
                     Array::new(Rc::new([Str(String::from(s)).into()])),
                     Default::default(),
@@ -388,7 +392,10 @@ fn string_lexing() {
             "empty symbolic string lexes like multi-line str",
             r#"foo-s%""%"#,
             vec![
-                Token::Normal(NormalToken::SymbolicStringStart(("foo", 3))),
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "foo",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),
@@ -396,7 +403,10 @@ fn string_lexing() {
             "symbolic string with interpolation",
             r#"foo-s%"text %{ 1 } etc."%"#,
             vec![
-                Token::Normal(NormalToken::SymbolicStringStart(("foo", 3))),
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "foo",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::Literal("text ")),
                 Token::MultiStr(MultiStringToken::Interpolation),
                 Token::Normal(NormalToken::NumLiteral(1.0)),
@@ -409,7 +419,10 @@ fn string_lexing() {
             "empty symbolic string with tag",
             r#"tf-s%""%"#,
             vec![
-                Token::Normal(NormalToken::SymbolicStringStart(("tf", 3))),
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "tf",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),
