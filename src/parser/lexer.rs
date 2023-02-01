@@ -341,7 +341,10 @@ pub const KEYWORDS: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SymbolicStringStart<'input> {
+    /// The prefix for the symbolic string, e.g. `nix-s%""%` has prefix `"nix"`
     pub prefix: &'input str,
+    /// The length of the string delimiter, excluding `prefix` and `-`. E.g. `nix-s%%""%` has
+    /// `length` 4, the length of `s%%"`
     pub length: usize,
 }
 
