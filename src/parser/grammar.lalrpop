@@ -46,7 +46,7 @@ use lalrpop_util::ErrorRecovery;
 use super::{
     ExtendedTerm,
     utils::*,
-    lexer::{Token, NormalToken, StringToken, MultiStringToken},
+    lexer::{Token, NormalToken, StringToken, MultiStringToken, SymbolicStringStart},
     error::ParseError,
     uniterm::*,
 };
@@ -913,7 +913,8 @@ extern {
         "\"" => Token::Normal(NormalToken::DoubleQuote),
         "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
-        "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart((<&'input str>, <usize>))),
+        "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart(
+          SymbolicStringStart{prefix: <&'input str>, percent_count: <usize>})),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),
