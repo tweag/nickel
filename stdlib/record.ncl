@@ -139,10 +139,27 @@
       |> fields
       |> array.map (fun field_ => {field = field_, value = record."%{field}"}),
 
+    from_array | forall a. Array { field: Str, value: a} -> {_: a}
+    | doc m%"
+      Convert an array of key-value pairs into a record.
+
+      For example:
+      ```nickel
+        from_array [ { field = "hello", value = "world" },
+                     { field = "foo", value = "bar" }
+                   ]
+          => { hello = "world", foo = "bar" }
+      ```
+    "%
+    = fun bindings =>
+      bindings
+      |> array.map (fun binding => { "%{binding.field}" = binding.value })
+      |> merge_array,
+
     is_empty : forall a. {_: a} -> Bool
     | doc m%"
       Check whether a record is empty.
-
+      
       ```nickel
       is_empty {} => true
       is_empty { foo = 1 } => false
@@ -150,7 +167,33 @@
     "%
     = (==) {},
 
-    from_array : forall a. Array { field:Str, value: a} -> {_: a}
-     = array.foldl (fun acc binding => acc & { "%{binding.field}" = binding.value }) {},
+    merge_array | forall a. Array {_: a} -> {_: a}
+    | doc m%"
+      Merge an array of records.
+
+      For example:
+      ```nickel
+      merge_array [ { foo = 1 }, { bar = 2 } ]
+        => { foo = 1, bar = 2 }
+      ```
+    "%
+    = array.foldl (fun acc r => acc & r) {},
+
+    filter | (Str -> Dyn -> Bool) -> {_: Dyn} -> {_: Dyn}
+    | doc m%"
+      Filter a record using the given function, which is passed the name and
+      value for each key to make a decision.
+
+      For example:
+      ```nickel
+      filter (fun name x => x % 2 == 0) { even = 2, odd = 3 }
+        => { even = 2 }
+      ```
+    "%
+    = fun f record =>
+      record
+      |> as_array
+      |> array.filter (fun { field, value } => f field value)
+      |> from_array,
   }
 }

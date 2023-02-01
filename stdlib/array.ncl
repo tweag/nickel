@@ -306,5 +306,24 @@
         ```
       "%
       = fun f xs => map f xs |> flatten,
+
+    intersperse : forall a. a -> Array a -> Array a
+      | doc m%"
+        Intersperse the passed value between the elements of an array.
+
+        For example:
+        ```nickel
+        intersperse ", " [ "Hello", "wonderful", "world!" ]
+          => [ "Hello", ", ", "wonderful", ", ", "world!" ]
+        intersperse ", " [ "Hello" ]
+          => [ "Hello" ]
+        intersperse ", " []
+          => []
+        ```
+      "%
+      = fun v arr =>
+        if length arr <= 1
+        then arr
+        else [ head arr ] @ (tail arr |> flat_map (fun a => [v, a])),
   }
 }
