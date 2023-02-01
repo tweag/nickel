@@ -35,12 +35,15 @@ use std::ops::Range;
 
 fn symbolic_string_prefix_and_length<'input>(
     lex: &mut logos::Lexer<'input, NormalToken<'input>>,
-) -> (&'input str, usize) {
+) -> SymbolicStringStart<'input> {
     let slice = lex.slice();
     let (prefix, postfix) = slice
         .rsplit_once('-')
         .expect("The logos regexp ensures this succeeds");
-    (prefix, postfix.len())
+    SymbolicStringStart {
+        prefix,
+        percent_count: postfix.len(),
+    }
 }
 
 // **IMPORTANT**
@@ -170,7 +173,7 @@ pub enum NormalToken<'input> {
     #[regex("m(%+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
     #[regex("[a-zA-Z][_a-zA-Z0-9-']*-s(%+)\"", symbolic_string_prefix_and_length)]
-    SymbolicStringStart((&'input str, usize)),
+    SymbolicStringStart(SymbolicStringStart<'input>),
 
     #[token("%tag%")]
     Tag,
@@ -335,6 +338,12 @@ pub const KEYWORDS: &[&str] = &[
     "match", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
     "priority", "force",
 ];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolicStringStart<'input> {
+    pub prefix: &'input str,
+    pub percent_count: usize,
+}
 
 /// The tokens in string mode.
 #[derive(Logos, Debug, PartialEq, Eq, Clone)]
@@ -620,7 +629,10 @@ impl<'input> Iterator for Lexer<'input> {
             }
             Some(Normal(
                 NormalToken::MultiStringStart(delim_size)
-                | NormalToken::SymbolicStringStart((_, delim_size)),
+                | NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    percent_count: delim_size,
+                    ..
+                }),
             )) => {
                 // for interpolation & closing delimeters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
