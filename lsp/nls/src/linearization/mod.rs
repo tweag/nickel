@@ -346,17 +346,49 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 );
 
                 let key = ident.to_owned();
+                let mut pointed = self.env.get(&key).copied();
+
+                let pointed = loop {
+                    match pointed {
+                        None => break pointed,
+                        Some(id) => {
+                            let kind = if id.file_id == self.file {
+                                let item =
+                                    lin.linearization.iter().find(|item| item.id == id).unwrap();
+                                &item.kind
+                            } else {
+                                let item = lin
+                                    .lin_cache
+                                    .get(&id.file_id)
+                                    .unwrap()
+                                    .get_item(id, lin.lin_cache)
+                                    .unwrap();
+                                &item.kind
+                            };
+
+                            match kind {
+                                TermKind::Declaration(_, _, ValueState::Known(id), true)
+                                | TermKind::Usage(UsageState::Resolved(id)) => pointed = Some(*id),
+
+                                TermKind::Record(fields) => break fields.get(&key).copied(),
+
+                                _ => break None,
+                            }
+                        }
+                    }
+                };
+
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
                     ty: UnifType::Concrete(TypeF::Dyn),
-                    kind: TermKind::Usage(UsageState::from(self.env.get(&key).copied())),
+                    kind: TermKind::Usage(UsageState::from(pointed)),
                     metadata: self.meta.take(),
                 });
 
-                if let Some(referenced) = self.env.get(&key) {
-                    lin.add_usage(self.file, *referenced, root_id)
+                if let Some(referenced) = pointed {
+                    lin.add_usage(self.file, referenced, root_id)
                 }
 
                 if let Some(chain) = self.access.take() {
