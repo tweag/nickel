@@ -1,5 +1,5 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{cache::CacheIndex, Closure, Environment, IdentKind};
+use super::{CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
     term::{record::FieldDeps, RichTerm, Term},
@@ -448,7 +448,7 @@ impl Thunk {
         }
     }
 
-    pub fn build_cached(&mut self, rec_env: &[(Ident, CacheIndex)]) {
+    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         self.data.borrow_mut().init_cached(rec_env)
     }
 
@@ -600,3 +600,101 @@ impl ThunkUpdateFrame {
         }
     }
 }
+
+/*
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CBNCache {}
+
+impl Cache for CBNCache {
+    type UpdateIndex = ThunkUpdateFrame;
+
+    fn get(&self, idx: CacheIndex) -> Closure {
+        idx.get_owned()
+    }
+
+    fn get_update_index(
+        &mut self,
+        idx: &mut CacheIndex,
+    ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
+        if idx.state() != ThunkState::Evaluated {
+            if idx.should_update() {
+                idx.mk_update_frame().map(Some)
+            }
+            // If the thunk isn't to be updated, directly set the evaluated flag.
+            else {
+                idx.set_evaluated();
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex {
+        match bty {
+            BindingType::Normal => Thunk::new(clos, kind),
+            BindingType::Revertible(deps) => Thunk::new_rev(clos, kind, deps),
+        }
+    }
+
+    fn patch<F: FnOnce(&mut Closure)>(&mut self, mut idx: CacheIndex, f: F) {
+        f(&mut idx.borrow_mut());
+    }
+
+    fn get_then<T, F: FnOnce(&Closure) -> T>(&self, idx: CacheIndex, f: F) -> T {
+        f(&idx.borrow())
+    }
+
+    fn update(&mut self, clos: Closure, uidx: Self::UpdateIndex) {
+        uidx.update(clos);
+    }
+
+    fn new() -> Self {
+        CBNCache {}
+    }
+
+    fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
+        idx.reset_state();
+    }
+
+    fn map_at_index<F: FnMut(&Closure) -> Closure>(
+        &mut self,
+        idx: &CacheIndex,
+        f: F,
+    ) -> CacheIndex {
+        idx.map(f)
+    }
+
+    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
+        idx.build_cached(rec_env)
+    }
+
+    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
+        idx.ident_kind()
+    }
+
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+        &mut self,
+        idx: CacheIndex,
+        env: &mut Environment,
+        fields: I,
+    ) -> RichTerm {
+        idx.saturate(env, fields)
+    }
+
+    fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
+        Some(idx.deps())
+    }
+
+    fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
+        idx.revert()
+    }
+
+    fn make_update_index(
+        &self,
+        idx: &mut CacheIndex,
+    ) -> Result<Self::UpdateIndex, BlackholedError> {
+        idx.mk_update_frame()
+    }
+}
+*/
