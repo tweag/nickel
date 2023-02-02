@@ -310,7 +310,7 @@ being the lowest possible one.
 #### Forcing values
 
 Dually, values with the `force` annotation are given the highest priority. Such
-a value can never be overriden, and will either take precedence over another
+a value can never be overridden, and will either take precedence over another
 value or be tentatively merged if the other value is forcing as well.
 
 #### Recursive priorities

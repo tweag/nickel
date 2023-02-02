@@ -362,7 +362,7 @@ mod doc {
                 document.append(parse_documentation(header_level, arena, md, options))
             }
             Term::Record(record) | Term::RecRecord(record, _, _) => {
-                // Sorting fields for a determinstic output
+                // Sorting fields for a deterministic output
                 let mut entries: Vec<(_, _)> = record.fields.iter().collect();
                 entries.sort_by_key(|(k, _)| *k);
 

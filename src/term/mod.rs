@@ -1130,7 +1130,7 @@ impl UnaryOp {
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
-    /// Substraction of numerals.
+    /// Subtraction of numerals.
     Sub(),
     /// Multiplication of numerals.
     Mult(),
@@ -1144,11 +1144,11 @@ pub enum BinaryOp {
     StrConcat(),
     /// Polymorphic equality.
     Eq(),
-    /// Stricty less than comparison operator.
+    /// Strictly less than comparison operator.
     LessThan(),
     /// Less than or equal comparison operator.
     LessOrEq(),
-    /// Stricty greater than comparison operator.
+    /// Strictly greater than comparison operator.
     GreaterThan(),
     /// Greater than or equal comparison operator.
     GreaterOrEq(),

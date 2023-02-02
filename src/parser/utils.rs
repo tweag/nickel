@@ -53,8 +53,8 @@ impl StringStartDelimiter<'_> {
     }
 }
 
-/// Distinguish between the standard string closing delimter `"` and the "special" string
-/// closing delimeter `"%`.
+/// Distinguish between the standard string closing delimiter `"` and the "special" string
+/// closing delimiter `"%`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StringEndDelimiter {
     Standard,
@@ -282,7 +282,7 @@ pub fn elaborate_field_path(
     let fst = it.next().unwrap();
 
     let content = it.rev().fold(content, |acc, path_elem| {
-        // unwrap is safe here becuase the initial content has a position,
+        // unwrap is safe here because the initial content has a position,
         // and we make sure we assign a position for the next field.
         let acc_span = acc.pos.unwrap();
         let pos = match path_elem {

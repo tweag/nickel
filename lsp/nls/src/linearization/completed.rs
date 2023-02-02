@@ -75,7 +75,7 @@ impl Completed {
     }
 
     /// Finds the index of a linearization item for a given location
-    /// The linearization is a list of items that are sorted by their physical occurence.
+    /// The linearization is a list of items that are sorted by their physical occurrence.
     /// - Each element has a corresponding span in the source
     /// - Spans are either equal (same starting point, same length)
     ///   or shorter but never intersecting

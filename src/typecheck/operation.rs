@@ -241,7 +241,7 @@ pub fn get_bop_type(
         // Str -> Str -> Str
         BinaryOp::StrConcat() => (mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::str()),
         // Ideally: Contract -> Label -> Dyn -> Dyn
-        // Currenty: Dyn -> Dyn -> (Dyn -> Dyn)
+        // Currently: Dyn -> Dyn -> (Dyn -> Dyn)
         BinaryOp::Assume() => (
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),

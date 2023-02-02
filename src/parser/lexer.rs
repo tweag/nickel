@@ -636,7 +636,7 @@ impl<'input> Iterator for Lexer<'input> {
                     length: delim_size, ..
                 }),
             )) => {
-                // for interpolation & closing delimeters we only care about
+                // for interpolation & closing delimiters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).
                 let size_without_kind_marker = delim_size - 1;

@@ -682,7 +682,7 @@ pub struct State<'a> {
 }
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
-/// It is basically an owned-subset of the typecheking state.
+/// It is basically an owned-subset of the typechecking state.
 pub struct Extra {
     pub table: UnifTable,
     pub names: HashMap<VarId, Ident>,

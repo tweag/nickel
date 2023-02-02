@@ -15,7 +15,7 @@ impl ResolutionState for Unresolved {}
 pub type Resolved = Types;
 impl ResolutionState for Resolved {}
 
-/// Abstact term kinds.
+/// Abstract term kinds.
 /// Currently tracks
 /// 1. Declarations
 /// 2. Usages
