@@ -47,7 +47,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
             ),
             (
                 FieldPathElem::Ident("prefix".into()),
-                RichTerm::from(Term::Str(prefix.to_owned())),
+                RichTerm::from(Term::Enum(prefix.into())),
             ),
             (
                 FieldPathElem::Ident("fragments".into()),
