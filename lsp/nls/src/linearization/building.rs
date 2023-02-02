@@ -227,36 +227,6 @@ impl<'b> Building<'b> {
                     _ => None,
                 });
 
-            let referenced_declaration =
-                referenced_declaration.and_then(|(id, referenced)| match &referenced {
-                    TermKind::Usage(UsageState::Resolved(pointed)) => {
-                        self.get_item_kind_with_id(current_file, *pointed)
-                    }
-                    TermKind::RecordField { value, .. } => value
-                        // retrieve record
-                        .as_option()
-                        .and_then(|value_index| self.get_item_kind(current_file, value_index))
-                        // retrieve field
-                        .and_then(|record| match &record {
-                            TermKind::Record(fields) => {
-                                debug!(
-                                    "parent referenced a nested record indirectly`: {:?}",
-                                    fields
-                                );
-                                fields.get(child_ident).and_then(|accessor_id| {
-                                    self.get_item_kind_with_id(current_file, *accessor_id)
-                                })
-                            }
-                            TermKind::Usage(UsageState::Resolved(pointed)) => {
-                                self.get_item_kind_with_id(current_file, *pointed)
-                            }
-                            _ => None,
-                        })
-                        .or(Some((id, referenced))),
-
-                    _ => Some((id, referenced)),
-                });
-
             let referenced_id = referenced_declaration.map(|(id, _)| *id);
 
             debug!(
