@@ -131,7 +131,9 @@ fn find_fields_from_term_kind(
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
-    match item.kind {
+    let mut path_clone = path.clone();
+    let contract_result = find_fields_from_contract(item.id, &mut path_clone, info);
+    let result = match item.kind {
         TermKind::Record(ref fields) => {
             if path.is_empty() {
                 fields
@@ -176,11 +178,9 @@ fn find_fields_from_term_kind(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
-        _ if item.metadata.is_some() => {
-            find_fields_from_contracts(&item.metadata.as_ref().unwrap().annotation, path, info)
-        }
         _ => Vec::new(),
-    }
+    };
+    result.into_iter().chain(contract_result).collect()
 }
 
 /// Find the record fields associated with an ID in the linearization using
