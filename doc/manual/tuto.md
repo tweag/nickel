@@ -186,3 +186,85 @@ be expected as we removed it earlier.
 The second part shows the contract attribute that produced the error.
 In this case it's showing that `name` should be a `Str`, and as there
 is no `optional` keyword, this attribute must be set.
+
+## Step 7: Document your Nickel file
+
+Beside contracts, you can attach various kinds of metadata to
+record fields in Nickel. In particular, it is good practice to
+include documentation when writing contracts.
+
+In this step, we will reuse our file `users-contract.ncl` to add some
+documentation to each field, using `| doc "some text"` like we would
+do for a contract.
+
+```nickel
+{
+  UserSchema =
+  {
+    name
+        | Str
+        | doc "Name of the user",
+    ssh-keys
+        | Array Str
+        | optional
+        | doc "List of ssh-keys in OpenSSH-specific format",
+    is-admin
+      | Bool
+      | doc "Allows the user to run some system tasks as administrator"
+      | default = false,
+    extra-groups
+      | Array Str
+      | optional
+      | doc m%"
+         List of system groups the user belongs to.
+         
+         # Examples
+         
+         ```nickel
+         extra_groups = ["administrative", "developer", "guest"]
+         ```
+      "%,
+  },
+}
+```
+
+Now we can render the documentation for this (simple) contract, using
+the command: `nickel -f users-contract.ncl doc -o /dev/stdout`
+
+You should obtain the following output in your terminal:
+
+<!-- markdownlint-disable MD031 -->
+<!-- markdownlint-disable MD040 -->
+
+```nickel
+# `UserSchema`
+
+## `extra-groups`
+
+List of system groups the user belongs to.
+
+### Examples
+
+```nickel
+extra_groups = ["administrative", "developer", "guest"]
+```
+
+## `is-admin`
+
+Allows the user to run some system tasks as administrator
+
+## `name`
+
+Name of the user
+
+## `ssh-keys`
+
+List of ssh-keys in OpenSSH-specific format
+```
+
+<!-- markdownlint-enable MD031 -->
+<!-- markdownlint-enable MD040 -->
+
+Please note that we used `-o /dev/stdout` in the example above to display
+the result in the terminal. Otherwise, `nickel -f users-contract.ncl doc`
+would create a a file in `~/.nickel/doc/users-contract.md`.
