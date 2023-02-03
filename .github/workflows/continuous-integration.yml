@@ -42,12 +42,6 @@ jobs:
         extra_nix_config: |
           experimental-features = nix-command flakes
 
-    - name: Setup Cachix
-      uses: cachix/cachix-action@v12
-      with:
-        name: tweag-nickel
-        authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
-
     - name: Run all checks
       run: |
-        nix flake check --print-build-logs
+        nix flake check --print-build-logs --accept-flake-config
