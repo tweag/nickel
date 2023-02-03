@@ -189,10 +189,9 @@ is no `optional` keyword, this attribute must be set.
 
 ## Step 7: Document your Nickel file
 
-Nickel supports metadata on fields, this mean you can actually write
-documentation to explain your Nickel code. This way, your team can
-easily reuse a Nickel code without having to ask the author about a
-contract usage.
+Beside contracts, you can attach various kinds of metadata to
+record fields in Nickel. In particular, it is good practice to
+include documentation when writing contracts.
 
 In this step, we will reuse our file `users-contract.ncl` to add some
 documentation to each field, using `| doc "some text"` like we would
@@ -216,7 +215,15 @@ do for a contract.
     extra-groups
       | Array Str
       | optional
-      | doc "List of system groups the user belongs to" ,
+      | doc m%"
+         List of system groups the user belongs to.
+         
+         # Examples
+         
+         ```nickel
+         extra_groups = ["sudo", "sound", "nix"]
+         ```
+      "%,
   },
 }
 ```
