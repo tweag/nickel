@@ -221,13 +221,15 @@ fn find_fields_from_contracts(
             let mut path_copy = path.clone();
             match &contract.types {
                 Types(TypeF::Record(row)) => find_fields_from_type(row, &mut path_copy, info),
-                Types(TypeF::Dict(ty)) => {
-                    if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path_copy.pop()) {
+                Types(TypeF::Dict(ty)) => match (&**ty, path_copy.pop()) {
+                    (Types(TypeF::Flat(term)), Some(_)) => {
                         find_fields_from_term(term, &mut path_copy, info)
-                    } else {
-                        Vec::new()
                     }
-                }
+                    (Types(TypeF::Record(rrows)), Some(_)) => {
+                        find_fields_from_type(rrows, &mut path_copy, info)
+                    }
+                    _ => Vec::new(),
+                },
                 Types(TypeF::Flat(term)) => find_fields_from_term(term, &mut path_copy, info),
                 _ => Vec::new(),
             }
