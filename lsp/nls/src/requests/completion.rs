@@ -217,17 +217,20 @@ fn find_fields_from_contracts(
 ) -> Vec<IdentWithType> {
     annot
         .iter()
-        .flat_map(|contract| match &contract.types {
-            Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
-            Types(TypeF::Dict(ty)) => {
-                if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path.pop()) {
-                    find_fields_from_term(term, path, info)
-                } else {
-                    Vec::new()
+        .flat_map(|contract| {
+            let mut path_copy = path.clone();
+            match &contract.types {
+                Types(TypeF::Record(row)) => find_fields_from_type(row, &mut path_copy, info),
+                Types(TypeF::Dict(ty)) => {
+                    if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path_copy.pop()) {
+                        find_fields_from_term(term, &mut path_copy, info)
+                    } else {
+                        Vec::new()
+                    }
                 }
+                Types(TypeF::Flat(term)) => find_fields_from_term(term, &mut path_copy, info),
+                _ => Vec::new(),
             }
-            Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
-            _ => Vec::new(),
         })
         .collect()
 }
