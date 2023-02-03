@@ -221,7 +221,7 @@ do for a contract.
          # Examples
          
          ```nickel
-         extra_groups = ["sudo", "sound", "nix"]
+         extra_groups = ["administrative", "developer", "guest"]
          ```
       "%,
   },
@@ -233,12 +233,21 @@ the command: `nickel -f users-contract.ncl doc -o /dev/stdout`
 
 You should obtain the following output in your terminal:
 
-```markdown
+<!-- markdownlint-disable MD031 -->
+<!-- markdownlint-disable MD040 -->
+
+```nickel
 # `UserSchema`
 
 ## `extra-groups`
 
-List of system groups the user belongs to
+List of system groups the user belongs to.
+
+### Examples
+
+```nickel
+extra_groups = ["administrative", "developer", "guest"]
+```
 
 ## `is-admin`
 
@@ -252,6 +261,9 @@ Name of the user
 
 List of ssh-keys in OpenSSH-specific format
 ```
+
+<!-- markdownlint-enable MD031 -->
+<!-- markdownlint-enable MD040 -->
 
 Please note that we used `-o /dev/stdout` in the example above to display
 the result in the terminal. Otherwise, `nickel -f users-contract.ncl doc`
