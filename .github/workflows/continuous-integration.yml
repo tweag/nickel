@@ -54,6 +54,6 @@ jobs:
 
     - name: Compile and typecheck benchmarks
       run: |
-        nix develop
+        nix develop --accept-flake-config
         cargo bench --no-run
-        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- -f file typecheck
+        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run --accept-flake-config . -- -f file typecheck
