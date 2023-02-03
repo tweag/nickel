@@ -441,11 +441,11 @@ fn collect_record_info(
                 ) => {
                     // The path is mutable, so the first case would consume the path
                     // so we have to clone it so that it can be correctly used for the second case.
-                    let mut p = path.clone();
-                    let mut fst = find_fields_from_contract(*body_id, path, &info);
-                    let snd = find_fields_from_term_kind(*body_id, &mut p, &info);
-                    fst.extend(snd);
-                    fst
+                    let mut path_copy = path.clone();
+                    find_fields_from_contract(*body_id, path, &info)
+                        .into_iter()
+                        .chain(find_fields_from_term_kind(*body_id, &mut path_copy, &info))
+                        .collect()
                 }
                 _ => Vec::new(),
             }
