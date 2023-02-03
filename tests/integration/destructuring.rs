@@ -67,3 +67,23 @@ fn type_mismatch_fail() {
         Err(Error::EvalError(EvalError::BlameError { .. }))
     )
 }
+
+#[test]
+fn repeated_ident() {
+    assert_matches!(
+        eval_file("destructuring/repeated_ident.ncl"),
+        // Note: currently a repeated identifier in a pattern isn't caught
+        //       unless we're explicitly typechecking. There's an open issue
+        //       (#1098) to handle this when we compile the pattern at which
+        //       point this error will likely change.
+        Err(Error::TypecheckError(TypecheckError::MissingRow(..)))
+    )
+}
+
+#[test]
+fn nonexistent_idents() {
+    assert_matches!(
+        eval_file("destructuring/nonexistent_idents.ncl"),
+        Err(Error::TypecheckError(TypecheckError::MissingRow(..)))
+    )
+}
