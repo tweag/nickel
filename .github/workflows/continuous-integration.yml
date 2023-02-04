@@ -58,5 +58,4 @@ jobs:
         nix develop
         cargo bench --no-run
 
-        nix shell .#nickel
-        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nickel -f file typecheck
+        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- -f file typecheck
