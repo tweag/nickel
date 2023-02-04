@@ -56,4 +56,6 @@ jobs:
       run: |
         nix develop --accept-flake-config
         cargo bench --no-run
-        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run --accept-flake-config . -- -f file typecheck
+
+        nix shell --accept-flake-config
+        find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nickel -f file typecheck
