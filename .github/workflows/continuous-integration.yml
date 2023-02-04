@@ -41,6 +41,7 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
         extra_nix_config: |
           experimental-features = nix-command flakes
+          accept-flake-config = true
 
     - name: Setup Cachix
       uses: cachix/cachix-action@v12
@@ -54,8 +55,8 @@ jobs:
 
     - name: Compile and typecheck benchmarks
       run: |
-        nix develop --accept-flake-config
+        nix develop
         cargo bench --no-run
 
-        nix shell --accept-flake-config
+        nix shell
         find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nickel -f file typecheck
