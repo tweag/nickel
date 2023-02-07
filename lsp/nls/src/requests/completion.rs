@@ -198,6 +198,10 @@ fn find_fields_from_contract(
         Some(metadata) => find_fields_from_contracts(&metadata.annotation, path, info),
         None => match item.kind {
             TermKind::Declaration(_, _, ValueState::Known(new_id))
+            | TermKind::RecordField {
+                value: ValueState::Known(new_id),
+                ..
+            }
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
                 find_fields_from_contract(new_id, path, info)
             }
