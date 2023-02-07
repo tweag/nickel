@@ -152,20 +152,18 @@ fn find_fields_from_term_kind(
                     })
                     .collect()
             } else {
-                let Some(name) = path.pop() else {
-                    return Vec::new()
-                };
-                let Some(new_id) = fields.get(&name) else {
-                    return Vec::new()
-                };
-                find_fields_from_term_kind(
-                    *new_id,
-                    path,
-                    &ComplCtx {
-                        linearization,
-                        lin_cache,
-                    },
-                )
+                let id = path.pop().and_then(|name| fields.get(&name));
+                match id {
+                    Some(id) => find_fields_from_term_kind(
+                        *id,
+                        path,
+                        &ComplCtx {
+                            linearization,
+                            lin_cache,
+                        },
+                    ),
+                    None => Vec::new(),
+                }
             }
         }
         TermKind::RecordField {
