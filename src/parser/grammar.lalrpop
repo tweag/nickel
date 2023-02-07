@@ -519,7 +519,7 @@ StrChunks: RichTerm = {
 
             RichTerm::from(build_record([
                 (FieldPathElem::Ident("tag".into()), RichTerm::from(Term::Enum("SymbolicString".into()))),
-                (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Str(prefix.to_owned()))),
+                (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Enum(prefix.into()))),
                 (FieldPathElem::Ident("fragments".into()), RichTerm::from(Term::Array(terms, Default::default())))
             ], Default::default()))
         } else {
