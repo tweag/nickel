@@ -220,13 +220,13 @@ fn find_fields_from_contracts(
         .flat_map(|contract| {
             let mut path_copy = path.clone();
             match &contract.types {
-                Types(TypeF::Record(row)) => find_fields_from_type(row, &mut path_copy, info),
+                Types(TypeF::Record(row)) => find_fields_from_rrows(row, &mut path_copy, info),
                 Types(TypeF::Dict(ty)) => match (&**ty, path_copy.pop()) {
                     (Types(TypeF::Flat(term)), Some(_)) => {
                         find_fields_from_term(term, &mut path_copy, info)
                     }
                     (Types(TypeF::Record(rrows)), Some(_)) => {
-                        find_fields_from_type(rrows, &mut path_copy, info)
+                        find_fields_from_rrows(rrows, &mut path_copy, info)
                     }
                     _ => Vec::new(),
                 },
@@ -238,7 +238,7 @@ fn find_fields_from_contracts(
 }
 
 /// Extract the fields from a given record type.
-fn find_fields_from_type(
+fn find_fields_from_rrows(
     rrows: &RecordRows,
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
@@ -251,7 +251,7 @@ fn find_fields_from_type(
 
         match type_of_current {
             Some(Types(TypeF::Record(rrows_current))) => {
-                find_fields_from_type(&rrows_current, path, info)
+                find_fields_from_rrows(&rrows_current, path, info)
             }
             Some(Types(TypeF::Flat(term))) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
@@ -432,7 +432,7 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path, &info),
+                (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
                 (
                     TermKind::Declaration(_, _, ValueState::Known(body_id))
                     | TermKind::RecordField {
@@ -795,7 +795,7 @@ mod tests {
             linearization: &Default::default(),
             lin_cache: &HashMap::new(),
         };
-        let result: Vec<_> = find_fields_from_type(
+        let result: Vec<_> = find_fields_from_rrows(
             &Box::new(a_record_type.try_into().unwrap()),
             &mut path,
             &info,
