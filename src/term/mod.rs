@@ -397,6 +397,7 @@ impl fmt::Display for MergePriority {
     }
 }
 
+/// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LabeledType {
     pub types: Types,

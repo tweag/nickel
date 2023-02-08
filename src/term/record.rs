@@ -76,13 +76,6 @@ pub struct RecordDeps {
     pub dyn_fields: Vec<FieldDeps>,
 }
 
-/// A type or a contract together with its corresponding label.
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct LabeledType {
-//     pub types: Types,
-//     pub label: Label,
-// }
-
 /// The metadata attached to record fields.
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct FieldMetadata {
