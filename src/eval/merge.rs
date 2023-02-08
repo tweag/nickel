@@ -410,7 +410,7 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
     })
 }
 
-/// Take two record fields in their respective environment and combine both their metadat and
+/// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
