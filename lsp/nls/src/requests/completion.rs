@@ -219,22 +219,26 @@ fn find_fields_from_contracts(
         .iter()
         .flat_map(|contract| {
             let mut path_copy = path.clone();
-            match &contract.types {
-                Types(TypeF::Record(row)) => find_fields_from_rrows(row, &mut path_copy, info),
-                Types(TypeF::Dict(ty)) => match (&**ty, path_copy.pop()) {
-                    (Types(TypeF::Flat(term)), Some(_)) => {
-                        find_fields_from_term(term, &mut path_copy, info)
-                    }
-                    (Types(TypeF::Record(rrows)), Some(_)) => {
-                        find_fields_from_rrows(rrows, &mut path_copy, info)
-                    }
-                    _ => Vec::new(),
-                },
-                Types(TypeF::Flat(term)) => find_fields_from_term(term, &mut path_copy, info),
-                _ => Vec::new(),
-            }
+            find_fields_from_type(&contract.types, &mut path_copy, info)
         })
         .collect()
+}
+
+/// Find the fields that can be found from a type.
+fn find_fields_from_type(
+    ty: &Types,
+    path: &mut Vec<Ident>,
+    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
+) -> Vec<IdentWithType> {
+    match ty {
+        Types(TypeF::Record(row)) => find_fields_from_rrows(row, path, info),
+        Types(TypeF::Dict(ty)) => match path.pop() {
+            Some(..) => find_fields_from_type(ty, path, info),
+            _ => Vec::new(),
+        },
+        Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
+        _ => Vec::new(),
+    }
 }
 
 /// Extract the fields from a given record type.
