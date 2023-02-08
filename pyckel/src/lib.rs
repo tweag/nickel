@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use nickel_lang::{
     error::{Error, SerializationError},
-    eval::cache::IncCache,
+    eval::cache::incremental::IncCache,
     program::Program,
     serialize,
 };

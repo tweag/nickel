@@ -3221,7 +3221,7 @@ impl RecordDataExt for RecordData {
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
-    use crate::eval::cache::IncCache;
+    use crate::eval::cache::incremental::IncCache;
     use crate::eval::Environment;
 
     type EC = IncCache;

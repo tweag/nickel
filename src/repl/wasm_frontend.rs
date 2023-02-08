@@ -3,7 +3,7 @@ use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{Repl, ReplImpl};
 use crate::cache::Cache;
 use crate::error::ToDiagnostic;
-use crate::eval::cache::IncCache;
+use crate::eval::cache::incremental::IncCache;
 use crate::serialize::ExportFormat;
 use codespan::{FileId, Files};
 use codespan_reporting::{

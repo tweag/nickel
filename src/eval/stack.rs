@@ -352,7 +352,7 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{cache::IncCache, IdentKind};
+    use crate::eval::{cache::incremental::IncCache, IdentKind};
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 

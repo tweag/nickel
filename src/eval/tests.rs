@@ -1,4 +1,4 @@
-use super::cache::IncCache;
+use super::cache::incremental::IncCache;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;

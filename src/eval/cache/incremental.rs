@@ -19,6 +19,7 @@ pub struct IncNode {
     kind: IdentKind,
     bty: BindingType,
     state: IncNodeState,
+    backlinks: Vec<CacheIndex>,
 }
 
 impl IncNode {
@@ -29,6 +30,7 @@ impl IncNode {
             kind,
             bty,
             state: IncNodeState::default(),
+            backlinks: Vec::new(),
         }
     }
 }
@@ -75,6 +77,8 @@ impl IncCache {
             _ => node.clone(),
         }
     }
+
+    fn add_backlinks(&mut self, idx: &CacheIndex) {}
 }
 
 impl Cache for IncCache {
@@ -192,6 +196,7 @@ impl Cache for IncCache {
             kind: node.kind,
             bty: node.bty.clone(),
             state: node.state,
+            backlinks: node.backlinks.clone(),
         };
 
         self.add_node(new_node)

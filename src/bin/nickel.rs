@@ -1,6 +1,6 @@
 //! Entry point of the program.
 use nickel_lang::error::{Error, IOError};
-use nickel_lang::eval::cache::IncCache;
+use nickel_lang::eval::cache::incremental::IncCache;
 use nickel_lang::program::{ColorOpt, Program};
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]

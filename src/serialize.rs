@@ -3,7 +3,7 @@ use crate::{
     error::SerializationError,
     eval::{
         self,
-        cache::{Cache, IncCache},
+        cache::{incremental::IncCache, Cache},
         is_empty_optional,
     },
     term::{

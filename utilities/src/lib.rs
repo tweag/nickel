@@ -5,7 +5,7 @@ use nickel_lang::{
     cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
     eval::{
-        cache::{Cache as EvalCache, IncCache},
+        cache::{incremental::IncCache, Cache as EvalCache},
         VirtualMachine,
     },
     parser::{grammar, lexer},

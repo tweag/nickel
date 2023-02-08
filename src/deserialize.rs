@@ -597,7 +597,7 @@ mod tests {
     use nickel_lang_utilities::TestProgram;
     use serde::Deserialize;
 
-    use crate::{eval::cache::IncCache, program::Program};
+    use crate::{eval::cache::incremental::IncCache, program::Program};
 
     use super::RustDeserializationError;
 
