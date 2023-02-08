@@ -127,7 +127,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// anyway (see the corresponding case in `eval::eval()`), which is what the share
 /// normal form transformation does. This is why the test is more lax here than for
 /// other constructors: it is not only about sharing, but also about the future
-/// evaluation of recursive records. Only constant are not required to be
+/// evaluation of recursive records. Only constants are not required to be
 /// closurized.
 ///
 /// In theory, the variable case is one exception: if the field is already a bare
