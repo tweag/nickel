@@ -555,7 +555,7 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
-/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks is
+/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks that is
 /// used when we must combine different values with different recursive dependencies (say, the two
 /// values of fields being merged) into one expression.
 ///
