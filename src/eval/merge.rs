@@ -347,11 +347,11 @@ pub fn merge<C: Cache>(
     }
 }
 
-/// Apply a series of contract to the value of a field as well as the necessary saturation (see
+/// Apply a series of contracts to the value of a field as well as the necessary saturation (see
 /// [saturate]) and closurize operations.
 ///
 /// Both the contract and the field are saturated, and the result is closurized. The result is
-/// revertible if either one of the contract or the record is, with the union of their
+/// revertible if either the contract or the record is, with the union of their
 /// dependencies.
 ///
 /// # Parameters
