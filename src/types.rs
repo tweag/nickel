@@ -80,7 +80,7 @@ pub struct RecordRowF<Ty> {
 /// a sequence of `EnumRow`s, ending potentially with a type variable tail position.
 ///
 /// `EnumRowF` is the same as `EnumRow` and doesn't have any type parameter. We introduce the alias
-/// nontheless for consistency with other parametrized type definitions. See [`TypeF`] for more
+/// nonetheless for consistency with other parametrized type definitions. See [`TypeF`] for more
 /// details.
 pub type EnumRowF = Ident;
 pub type EnumRow = EnumRowF;
@@ -1065,7 +1065,7 @@ mod test {
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
     /// same string as the original argument.
     ///
-    /// Note that their are infintely many string representations of the same type since, for
+    /// Note that there are infinitely many string representations of the same type since, for
     /// example, spaces are ignored: for the outcome of this function to be meaningful, the
     /// original type must be written in the same way as types are formatted.
     fn assert_format_eq(s: &str) {

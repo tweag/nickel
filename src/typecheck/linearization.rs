@@ -72,7 +72,7 @@ pub trait LinearizationState {}
 impl LinearizationState for () {}
 impl LinearizationState for Uninit {}
 
-/// The linearizer trait is what is refered to during typechecking.
+/// The linearizer trait is what is referred to during typechecking.
 /// It is the interface to recording terms (while tracking their scope)
 /// and finalizing a linearization using generically defined external information
 ///
@@ -138,7 +138,7 @@ pub trait Linearizer {
     /// Ensures the scope structure of the source can be represented in the
     /// linearization.
     /// The specific implementations need to take care of how to represent
-    /// decending into a lower scope.
+    /// descending into a lower scope.
     /// Notice, the resulting instance is a fresh value, any resource that is
     /// required or produced in parallel instances should therefore be put
     /// into the Building State `L` which is passed

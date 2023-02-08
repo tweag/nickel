@@ -46,7 +46,7 @@ use lalrpop_util::ErrorRecovery;
 use super::{
     ExtendedTerm,
     utils::*,
-    lexer::{Token, NormalToken, StringToken, MultiStringToken},
+    lexer::{Token, NormalToken, StringToken, MultiStringToken, SymbolicStringStart},
     error::ParseError,
     uniterm::*,
 };
@@ -524,12 +524,26 @@ StrChunks: RichTerm = {
             chunks
         };
 
-        if start == StringStartDelimiter::Symbolic {
+        if let StringStartDelimiter::Symbolic(prefix) = start {
             let terms = chunks.into_iter().map(|chunk| match chunk {
                 StrChunk::Literal(l) => Term::Str(l).into(),
                 StrChunk::Expr(e, _) => e,
             }).collect();
-            RichTerm::from(Term::Array(terms, Default::default()))
+
+            RichTerm::from(build_record([
+                (
+                  FieldPathElem::Ident("tag".into()),
+                  Field::from(RichTerm::from(Term::Enum("SymbolicString".into())))
+                ),
+                (
+                  FieldPathElem::Ident("prefix".into()),
+                  Field::from(RichTerm::from(Term::Enum(prefix.into())))
+                ),
+                (
+                  FieldPathElem::Ident("fragments".into()),
+                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                )
+            ], Default::default()))
         } else {
             let mut chunks = chunks;
             chunks.reverse();
@@ -538,10 +552,10 @@ StrChunks: RichTerm = {
     },
 };
 
-StringStart : StringStartDelimiter = {
+StringStart : StringStartDelimiter<'input> = {
     "\"" => StringStartDelimiter::Standard,
     "m%\"" => StringStartDelimiter::Multiline,
-    "s%\"" => StringStartDelimiter::Symbolic,
+    "symbolic string start" => StringStartDelimiter::Symbolic(<>.0),
 };
 
 StringEnd : StringEndDelimiter = {
@@ -940,7 +954,8 @@ extern {
         "\"" => Token::Normal(NormalToken::DoubleQuote),
         "\"%" => Token::MultiStr(MultiStringToken::End),
         "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
-        "s%\"" => Token::Normal(NormalToken::SymbolicStringStart(<usize>)),
+        "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart(
+          SymbolicStringStart{prefix: <&'input str>, length: <usize>})),
 
         "Num" => Token::Normal(NormalToken::Num),
         "Dyn" => Token::Normal(NormalToken::Dyn),

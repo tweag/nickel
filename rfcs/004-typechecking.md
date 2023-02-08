@@ -138,7 +138,7 @@ annotations:
 
 ```nickel
 {
-  serialized : Arry Str =
+  serialized : Array Str =
     let some_data = {script = "echo ${hello}", vars = ["hello"] } in
     let other_data = ["one", "two", "three"] in
     [

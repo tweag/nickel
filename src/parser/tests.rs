@@ -1,9 +1,13 @@
-use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, Token};
+use std::rc::Rc;
+
+use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
+use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::parser::error::ParseError as InternalParseError;
-use crate::term::make as mk_term;
+use crate::term::array::Array;
 use crate::term::Term::*;
+use crate::term::{make as mk_term, Term};
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
 use crate::{mk_app, mk_match};
 use assert_matches::assert_matches;
@@ -32,6 +36,32 @@ fn lex_without_pos(s: &str) -> Result<Vec<Token>, InternalParseError> {
 /// Wrap a single string literal in a `StrChunks`.
 fn mk_single_chunk(s: &str) -> RichTerm {
     StrChunks(vec![StrChunk::Literal(String::from(s))]).into()
+}
+
+fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
+    use crate::term::record::Field;
+
+    build_record(
+        [
+            (
+                FieldPathElem::Ident("tag".into()),
+                Field::from(RichTerm::from(Term::Enum("SymbolicString".into()))),
+            ),
+            (
+                FieldPathElem::Ident("prefix".into()),
+                Field::from(RichTerm::from(Term::Enum(prefix.into()))),
+            ),
+            (
+                FieldPathElem::Ident("fragments".into()),
+                Field::from(RichTerm::from(Array(
+                    Array::new(Rc::new([Str(String::from(s)).into()])),
+                    Default::default(),
+                ))),
+            ),
+        ],
+        Default::default(),
+    )
+    .into()
 }
 
 #[test]
@@ -72,6 +102,14 @@ fn strings() {
         )
         .into()
     )
+}
+
+#[test]
+fn symbolic_strings() {
+    assert_eq!(
+        parse_without_pos(r#"foo-s%"hello world"%"#),
+        mk_symbolic_single_chunk("foo", "hello world"),
+    );
 }
 
 #[test]
@@ -360,22 +398,39 @@ fn string_lexing() {
         ),
         (
             "empty symbolic string lexes like multi-line str",
-            r#"s%""%"#,
+            r#"foo-s%""%"#,
             vec![
-                Token::Normal(NormalToken::SymbolicStringStart(3)),
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "foo",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),
         (
             "symbolic string with interpolation",
-            r#"s%"text %{ 1 } etc."%"#,
+            r#"foo-s%"text %{ 1 } etc."%"#,
             vec![
-                Token::Normal(NormalToken::SymbolicStringStart(3)),
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "foo",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::Literal("text ")),
                 Token::MultiStr(MultiStringToken::Interpolation),
                 Token::Normal(NormalToken::NumLiteral(1.0)),
                 Token::Normal(NormalToken::RBrace),
                 Token::MultiStr(MultiStringToken::Literal(" etc.")),
+                Token::MultiStr(MultiStringToken::End),
+            ],
+        ),
+        (
+            "empty symbolic string with tag",
+            r#"tf-s%""%"#,
+            vec![
+                Token::Normal(NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    prefix: "tf",
+                    length: 3,
+                })),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),

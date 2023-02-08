@@ -6,10 +6,10 @@
 //! following string:
 //!
 //! ```text
-//! "hello, I have 1 + ${ {a = "40"}.a } + 1 bananas."
+//! "hello, I have 1 + %{ {a = "40"}.a } + 1 bananas."
 //! ```
 //!
-//! Once the `${` token is encountered, the lexer has to switch back to lexing expressions as
+//! Once the `%{` token is encountered, the lexer has to switch back to lexing expressions as
 //! usual. But at the end of the interpolated expression, `+ 1 bananas.` needs to be parsed as a
 //! string again, and not as normal program tokens. Since the interpolated expression is arbitrary,
 //! it can contains nested `{` and `}` (as here, with records) and strings which themselves have
@@ -23,7 +23,7 @@
 //! decide if a closing brace `}` belongs to the expression or is actually the closing brace of the
 //! interpolated expression, indicating that we should switch back to string mode.
 //!
-//! When entering a string, the `Str` mode is entered. When a `${` is encountered in a string,
+//! When entering a string, the `Str` mode is entered. When a `%{` is encountered in a string,
 //! starting an interpolated expression, the normal mode is pushed. At each starting `{` in normal
 //! mode, the brace counter is incremented. At each closing '}', it is decremented. When it reaches
 //! `0`, this is the end of the current interpolated expressions, and we leave the normal mode and
@@ -33,10 +33,22 @@ use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
 
+fn symbolic_string_prefix_and_length<'input>(
+    lex: &mut logos::Lexer<'input, NormalToken<'input>>,
+) -> SymbolicStringStart<'input> {
+    let slice = lex.slice();
+    let (prefix, postfix) = slice
+        .rsplit_once('-')
+        .expect("The logos regexp ensures this succeeds");
+    SymbolicStringStart {
+        prefix,
+        length: postfix.len(),
+    }
+}
+
 // **IMPORTANT**
 // When adding or removing tokens that might be parsed as identifiers,
-// please update the KEYWORDS array
-// list
+// please update the [KEYWORDS] array
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum NormalToken<'input> {
@@ -160,8 +172,8 @@ pub enum NormalToken<'input> {
     Underscore,
     #[regex("m(%+)\"", |lex| lex.slice().len())]
     MultiStringStart(usize),
-    #[regex("s(%+)\"", |lex| lex.slice().len())]
-    SymbolicStringStart(usize),
+    #[regex("[a-zA-Z][_a-zA-Z0-9-']*-s(%+)\"", symbolic_string_prefix_and_length)]
+    SymbolicStringStart(SymbolicStringStart<'input>),
 
     #[token("%tag%")]
     Tag,
@@ -326,6 +338,15 @@ pub const KEYWORDS: &[&str] = &[
     "match", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
     "priority", "force",
 ];
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolicStringStart<'input> {
+    /// The prefix for the symbolic string, e.g. `nix-s%""%` has prefix `"nix"`
+    pub prefix: &'input str,
+    /// The length of the string delimiter, excluding `prefix` and `-`. E.g. `nix-s%%""%` has
+    /// `length` 4, the length of `s%%"`
+    pub length: usize,
+}
 
 /// The tokens in string mode.
 #[derive(Logos, Debug, PartialEq, Eq, Clone)]
@@ -611,9 +632,11 @@ impl<'input> Iterator for Lexer<'input> {
             }
             Some(Normal(
                 NormalToken::MultiStringStart(delim_size)
-                | NormalToken::SymbolicStringStart(delim_size),
+                | NormalToken::SymbolicStringStart(SymbolicStringStart {
+                    length: delim_size, ..
+                }),
             )) => {
-                // for interpolation & closing delimeters we only care about
+                // for interpolation & closing delimiters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).
                 let size_without_kind_marker = delim_size - 1;

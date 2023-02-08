@@ -333,7 +333,7 @@ fn find_fields_from_term(
             let pos = term.pos;
             let span = pos.unwrap();
             let locator = (span.src_id, span.start);
-            // This unwrap is safe becuase we're geting an expression from
+            // This unwrap is safe because we're getting an expression from
             // a linearized file, so all terms in the file and all terms in its
             // dependencies must have being linearized and stored in the cache.
             let linearization = lin_cache.get(&span.src_id).unwrap();
@@ -597,7 +597,8 @@ fn get_completion_identifiers(
                     .get_in_scope(item, &server.lin_cache)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _) => Some(IdentWithType {
+                        TermKind::Declaration(ident, _, _)
+                        | TermKind::RecordField { ident, .. } => Some(IdentWithType {
                             ident,
                             meta: item.metadata.clone(),
                             ty: ty.clone(),

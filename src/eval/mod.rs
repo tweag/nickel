@@ -15,7 +15,7 @@
 //!     to garbage collection (currently reference counting based)
 //! - A [callstack], mainly for error reporting purpose
 //!
-//! Depending on the shape of the current term, the following actions are preformed:
+//! Depending on the shape of the current term, the following actions are performed:
 //!
 //! ## Core calculus
 //! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update thunk is
@@ -592,7 +592,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
                 // Closurize the array if it's not already done.
-                // This *should* make it unecessary to call closurize in [operation].
+                // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
                     let mut local_env = Environment::new();

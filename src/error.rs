@@ -1404,7 +1404,7 @@ impl ToDiagnostic<FileId> for ParseError {
                 ])
                 .with_notes(vec![
                     String::from("Using a polymorphic tail in a record `{ ..; a}` requires the rest of the record to be only composed of type annotations, of the form `<field>: <type>`."),
-                    String::from("Value assignements, such as `<field> = <expr>`, metadata, etc. are forbidden."),
+                    String::from("Value assignments, such as `<field> = <expr>`, metadata, etc. are forbidden."),
                 ]),
             ParseError::RecursiveLetPattern(span) => Diagnostic::error()
                 .with_message("recursive destructuring is not supported")

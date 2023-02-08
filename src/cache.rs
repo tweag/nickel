@@ -670,8 +670,8 @@ impl Cache {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.get(&file_id).unwrap();
-                    // okay, for now these clones are here becuase the function call below
-                    // short circuts, and then we don't put back the item in cache, so the
+                    // okay, for now these clones are here because the function call below
+                    // short circuits, and then we don't put back the item in cache, so the
                     // linearization of a file fails if we can't resolve any of it's imports
                     // The current solution is not to remove the item from the cache, and
                     // put it back when done, but to get a reference and clone it.

@@ -347,11 +347,11 @@ pub fn merge<C: Cache>(
     }
 }
 
-/// Apply a series of contract to the value of a field as well as the necessary saturation (see
+/// Apply a series of contracts to the value of a field as well as the necessary saturation (see
 /// [saturate]) and closurize operations.
 ///
 /// Both the contract and the field are saturated, and the result is closurized. The result is
-/// revertible if either one of the contract or the record is, with the union of their
+/// revertible if either the contract or the record is, with the union of their
 /// dependencies.
 ///
 /// # Parameters
@@ -410,7 +410,7 @@ fn cross_apply_contracts<'a, 'b, C: Cache, I: DoubleEndedIterator<Item = &'b Ide
     })
 }
 
-/// Take two record fields in their respective environment and combine both their metadat and
+/// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
@@ -555,7 +555,7 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
-/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks is
+/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks that is
 /// used when we must combine different values with different recursive dependencies (say, the two
 /// values of fields being merged) into one expression.
 ///

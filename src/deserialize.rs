@@ -644,11 +644,11 @@ mod tests {
                     ),
                     "source"
                 )
-                .expect("program should't fail")
+                .expect("program shouldn't fail")
                 .eval_full()
-                .expect("evaluation should't fail")
+                .expect("evaluation shouldn't fail")
             )
-            .expect("deserialization should't fail"),
+            .expect("deserialization shouldn't fail"),
             A {
                 a: 10.0,
                 b: "test string".to_string(),
@@ -667,11 +667,11 @@ mod tests {
         assert_eq!(
             Vec::<f64>::deserialize(
                 TestProgram::new_from_source(Cursor::new(br#"[1, 2, 3, 4]"#.to_vec()), "source")
-                    .expect("program should't fail")
+                    .expect("program shouldn't fail")
                     .eval_full()
-                    .expect("evaluation should't fail")
+                    .expect("evaluation shouldn't fail")
             )
-            .expect("deserialization should't fail"),
+            .expect("deserialization shouldn't fail"),
             vec![1.0, 2.0, 3.0, 4.0]
         )
     }
@@ -685,9 +685,9 @@ mod tests {
             Cursor::new(br#"fun a b => a + b"#.to_vec()),
             "source",
         )
-        .expect("program should't fail");
+        .expect("program shouldn't fail");
 
-        let q = p.eval_full().expect("evaluation should't fail");
+        let q = p.eval_full().expect("evaluation shouldn't fail");
 
         assert_eq!(
             A::deserialize(q),
@@ -711,11 +711,11 @@ mod tests {
                     Cursor::new(br#"{ a = (10 | Num) }"#.to_vec()),
                     "source"
                 )
-                .expect("program should't fail")
+                .expect("program shouldn't fail")
                 .eval_full()
-                .expect("evaluation should't fail")
+                .expect("evaluation shouldn't fail")
             )
-            .expect("deserialization should't fail"),
+            .expect("deserialization shouldn't fail"),
             A { a: 10.0 }
         )
     }

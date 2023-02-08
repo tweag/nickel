@@ -553,7 +553,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let mut shared_env = Environment::new();
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
-                            // Array elements are closurized to preserve lazyness of data structures. It
+                            // Array elements are closurized to preserve laziness of data structures. It
                             // maintains the invariant that any data structure only contain thunks (that is,
                             // currently, variables).
                             let ts = ts
@@ -596,7 +596,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if n < 0.0 || n.fract() != 0.0 {
                         Err(EvalError::Other(
                             format!(
-                            "generate: expected the 1st agument to be a positive integer, got {}",
+                            "generate: expected the 1st argument to be a positive integer, got {}",
                             n
                         ),
                             pos_op,
@@ -605,7 +605,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let mut shared_env = Environment::new();
                         let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
-                        // Array elements are closurized to preserve lazyness of data structures. It
+                        // Array elements are closurized to preserve laziness of data structures. It
                         // maintains the invariant that any data structure only contain thunks (that is,
                         // currently, variables).
                         let ts = (0..n_int)
@@ -940,7 +940,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::CharFromCode() => {
                 if let Term::Num(code) = *t {
                     if code.fract() != 0.0 {
-                        Err(EvalError::Other(format!("charFromCode: expected the agument to be an integer, got the floating-point value {}", code), pos_op))
+                        Err(EvalError::Other(format!("charFromCode: expected the argument to be an integer, got the floating-point value {}", code), pos_op))
                     } else if code < 0.0 || code > (u32::MAX as f64) {
                         Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
                     } else if let Some(car) = std::char::from_u32(code as u32) {
@@ -2185,7 +2185,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let n_int = *n as usize;
                     if n.fract() != 0.0 {
-                        Err(EvalError::Other(format!("elemAt: expected the 2nd agument to be an integer, got the floating-point value {}", n), pos_op))
+                        Err(EvalError::Other(format!("elemAt: expected the 2nd argument to be an integer, got the floating-point value {}", n), pos_op))
                     } else if *n < 0.0 || n_int >= ts.len() {
                         Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                     } else {
@@ -2585,7 +2585,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let end_int = *end as usize;
 
                         if start.fract() != 0.0 {
-                            Err(EvalError::Other(format!("substring: expected the 2nd agument (start) to be an integer, got the floating-point value {}", start), pos_op))
+                            Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be an integer, got the floating-point value {}", start), pos_op))
                         } else if !s.is_char_boundary(start_int) {
                             Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
                         } else if end.fract() != 0.0 {
@@ -3013,7 +3013,7 @@ impl RecPriority {
 /// # Return
 ///
 /// If the comparison is successful, returns a bool indicating whether the values were equal,
-/// otherwise returns an [`EvalError`] indiciating that the values cannot be compared.
+/// otherwise returns an [`EvalError`] indicating that the values cannot be compared.
 fn eq<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
@@ -3037,7 +3037,7 @@ fn eq<C: Cache>(
     } = c2;
 
     // Take a list of subequalities, and either return `EqResult::Bool(true)` if it is empty, or
-    // generate an approriate `EqResult::Eqs` variant with closurized terms in it.
+    // generate an appropriate `EqResult::Eqs` variant with closurized terms in it.
     fn gen_eqs<I, C: Cache>(
         cache: &mut C,
         mut it: I,

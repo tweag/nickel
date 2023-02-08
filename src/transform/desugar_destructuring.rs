@@ -40,7 +40,7 @@ use crate::term::{BinaryOp::DynRemove, RichTerm, Term, TypeAnnotation, UnaryOp::
 /// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
 /// its arguments).
 /// ## Warning:
-/// The transformation is generaly not recursive. The result can contain patterns itself.
+/// The transformation is generally not recursive. The result can contain patterns itself.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match *rt.term {
         Term::LetPattern(..) => desugar_with_contract(rt),
@@ -50,7 +50,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 }
 
 /// Desugar a function with patterns as arguments.
-/// This function does not perform nested transformation because internaly it's only used in a top
+/// This function does not perform nested transformation because internally it's only used in a top
 /// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
 /// `Term::FunPattern` and `Term::LetPattern` inside.
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {

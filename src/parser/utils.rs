@@ -27,32 +27,35 @@ use crate::{
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string
 /// opening delimter `m%"`, and the symbolic string opening delimiter `s%"`.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum StringStartDelimiter {
+pub enum StringStartDelimiter<'input> {
     Standard,
     Multiline,
-    Symbolic,
+    Symbolic(&'input str),
 }
 
-impl StringStartDelimiter {
+impl StringStartDelimiter<'_> {
     pub fn is_closed_by(&self, close: &StringEndDelimiter) -> bool {
         matches!(
             (self, close),
             (StringStartDelimiter::Standard, StringEndDelimiter::Standard)
                 | (StringStartDelimiter::Multiline, StringEndDelimiter::Special)
-                | (StringStartDelimiter::Symbolic, StringEndDelimiter::Special)
+                | (
+                    StringStartDelimiter::Symbolic(_),
+                    StringEndDelimiter::Special
+                )
         )
     }
 
     pub fn needs_strip_indent(&self) -> bool {
         match self {
             StringStartDelimiter::Standard => false,
-            StringStartDelimiter::Multiline | StringStartDelimiter::Symbolic => true,
+            StringStartDelimiter::Multiline | StringStartDelimiter::Symbolic(_) => true,
         }
     }
 }
 
-/// Distinguish between the standard string closing delimter `"` and the "special" string
-/// closing delimeter `"%`.
+/// Distinguish between the standard string closing delimiter `"` and the "special" string
+/// closing delimiter `"%`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StringEndDelimiter {
     Standard,

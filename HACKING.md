@@ -130,7 +130,7 @@ raised during evaluation.
 Each of these `.ncl` files is structured as an array of `Bool` expressions, which
 is ultimately passed to a `check` function defined in
 `tests/integration/pass/lib/assert.ncl`. This function applies an `Assert` contract
-to each value in the array, which checks that the value it is applied to evalutes
+to each value in the array, which checks that the value it is applied to evaluates
 to `true`. The benefit of using a contract for this is that if a test fails we
 can simply run the file directly using Nickel, which gives better error messages
 than the ones we get by default from `cargo test`.
