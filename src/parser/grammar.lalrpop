@@ -531,9 +531,18 @@ StrChunks: RichTerm = {
             }).collect();
 
             RichTerm::from(build_record([
-                (FieldPathElem::Ident("tag".into()), RichTerm::from(Term::Enum("SymbolicString".into()))),
-                (FieldPathElem::Ident("prefix".into()), RichTerm::from(Term::Enum(prefix.into()))),
-                (FieldPathElem::Ident("fragments".into()), RichTerm::from(Term::Array(terms, Default::default())))
+                (
+                  FieldPathElem::Ident("tag".into()),
+                  Field::from(RichTerm::from(Term::Enum("SymbolicString".into())))
+                ),
+                (
+                  FieldPathElem::Ident("prefix".into()),
+                  Field::from(RichTerm::from(Term::Enum(prefix.into())))
+                ),
+                (
+                  FieldPathElem::Ident("fragments".into()),
+                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                )
             ], Default::default()))
         } else {
             let mut chunks = chunks;

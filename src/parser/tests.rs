@@ -39,22 +39,24 @@ fn mk_single_chunk(s: &str) -> RichTerm {
 }
 
 fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
+    use crate::term::record::Field;
+
     build_record(
         [
             (
                 FieldPathElem::Ident("tag".into()),
-                RichTerm::from(Term::Enum("SymbolicString".into())),
+                Field::from(RichTerm::from(Term::Enum("SymbolicString".into()))),
             ),
             (
                 FieldPathElem::Ident("prefix".into()),
-                RichTerm::from(Term::Enum(prefix.into())),
+                Field::from(RichTerm::from(Term::Enum(prefix.into()))),
             ),
             (
                 FieldPathElem::Ident("fragments".into()),
-                RichTerm::from(Array(
+                Field::from(RichTerm::from(Array(
                     Array::new(Rc::new([Str(String::from(s)).into()])),
                     Default::default(),
-                )),
+                ))),
             ),
         ],
         Default::default(),
