@@ -102,7 +102,7 @@ pub mod stack;
 use callstack::*;
 use codespan::FileId;
 use operation::OperationCont;
-use stack::Stack;
+use stack::{Stack, StrAccData};
 
 use self::cache::{Cache, CacheIndex};
 
@@ -509,7 +509,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             };
 
                             self.stack.push_str_chunks(chunks_iter.cloned());
-                            self.stack.push_str_acc(String::new(), indent, env.clone());
+                            self.stack.push_str_acc(StrAccData {
+                                acc: String::new(),
+                                env: env.clone(),
+                                curr_indent: indent,
+                                curr_pos: arg.pos,
+                            });
 
                             Closure {
                                 body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), arg), pos),
