@@ -131,7 +131,9 @@ fn find_fields_from_term_kind(
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
-    match item.kind {
+    let mut path_clone = path.clone();
+    let contract_result = find_fields_from_contract(item.id, &mut path_clone, info);
+    let result = match item.kind {
         TermKind::Record(ref fields) => {
             if path.is_empty() {
                 fields
@@ -176,11 +178,9 @@ fn find_fields_from_term_kind(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
-        _ if item.metadata.is_some() => {
-            find_fields_from_contracts(&item.metadata.as_ref().unwrap().annotation, path, info)
-        }
         _ => Vec::new(),
-    }
+    };
+    result.into_iter().chain(contract_result).collect()
 }
 
 /// Find the record fields associated with an ID in the linearization using
@@ -217,23 +217,32 @@ fn find_fields_from_contracts(
 ) -> Vec<IdentWithType> {
     annot
         .iter()
-        .flat_map(|contract| match &contract.types {
-            Types(TypeF::Record(row)) => find_fields_from_type(row, path, info),
-            Types(TypeF::Dict(ty)) => {
-                if let (Types(TypeF::Flat(term)), Some(_)) = (&**ty, path.pop()) {
-                    find_fields_from_term(term, path, info)
-                } else {
-                    Vec::new()
-                }
-            }
-            Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
-            _ => Vec::new(),
+        .flat_map(|contract| {
+            let mut path_copy = path.clone();
+            find_fields_from_type(&contract.types, &mut path_copy, info)
         })
         .collect()
 }
 
-/// Extract the fields from a given record type.
+/// Find the fields that can be found from a type.
 fn find_fields_from_type(
+    ty: &Types,
+    path: &mut Vec<Ident>,
+    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
+) -> Vec<IdentWithType> {
+    match ty {
+        Types(TypeF::Record(row)) => find_fields_from_rrows(row, path, info),
+        Types(TypeF::Dict(ty)) => match path.pop() {
+            Some(..) => find_fields_from_type(ty, path, info),
+            _ => Vec::new(),
+        },
+        Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
+        _ => Vec::new(),
+    }
+}
+
+/// Extract the fields from a given record type.
+fn find_fields_from_rrows(
     rrows: &RecordRows,
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
@@ -246,7 +255,7 @@ fn find_fields_from_type(
 
         match type_of_current {
             Some(Types(TypeF::Record(rrows_current))) => {
-                find_fields_from_type(&rrows_current, path, info)
+                find_fields_from_rrows(&rrows_current, path, info)
             }
             Some(Types(TypeF::Flat(term))) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
@@ -427,7 +436,7 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
             match (&item.kind, ty) {
                 // Get record fields from static type info
-                (_, Types(TypeF::Record(rrows))) => find_fields_from_type(&rrows, path, &info),
+                (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
                 (
                     TermKind::Declaration(_, _, ValueState::Known(body_id))
                     | TermKind::RecordField {
@@ -438,11 +447,11 @@ fn collect_record_info(
                 ) => {
                     // The path is mutable, so the first case would consume the path
                     // so we have to clone it so that it can be correctly used for the second case.
-                    let mut p = path.clone();
-                    let mut fst = find_fields_from_contract(*body_id, path, &info);
-                    let snd = find_fields_from_term_kind(*body_id, &mut p, &info);
-                    fst.extend(snd);
-                    fst
+                    let mut path_copy = path.clone();
+                    find_fields_from_contract(*body_id, path, &info)
+                        .into_iter()
+                        .chain(find_fields_from_term_kind(*body_id, &mut path_copy, &info))
+                        .collect()
                 }
                 _ => Vec::new(),
             }
@@ -791,7 +800,7 @@ mod tests {
             linearization: &Default::default(),
             lin_cache: &HashMap::new(),
         };
-        let result: Vec<_> = find_fields_from_type(
+        let result: Vec<_> = find_fields_from_rrows(
             &Box::new(a_record_type.try_into().unwrap()),
             &mut path,
             &info,
