@@ -86,9 +86,10 @@ the `nickel-lang` crate documentation).
    - with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
      with `nix run nickel` (which pulls it from the global flakes
      registry), or with `nix run github:tweag/nickel` (which pulls it
-     from the repo). You can use [our binary cache](https://nickel.cachix.org) to
-     prevent rebuilding a lot of packages. You pass in arguments with
-     an extra `--` as in `nix run nickel -- repl`,
+     from the repo). You can use
+     [our binary cache](https://tweag-nickel.cachix.org/) to prevent rebuilding
+     a lot of packages. You pass in arguments with an extra `--` as in `nix run
+     nickel -- repl`,
    - with `./nickel`, after [building](#build) this repo, depending on the
      location of the executable and passing in arguments directly,
    - or with `cargo run` after [building](#build), passing in arguments with
@@ -154,8 +155,9 @@ highlighting and NLS.
      nix develop
      ```
 
-     to be dropped in a shell, ready to build. You can use [our binary
-     cache](https://nickel.cachix.org) to prevent rebuilding a lot of packages.
+     to be dropped in a shell, ready to build. You can use
+     [our binary cache](https://tweag-nickel.cachix.org/) to prevent rebuilding
+     a lot of packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
      and Cargo first.
 
