@@ -114,7 +114,10 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         // `record` is the id [LinearizatonItem] of the enclosing record
         // `offset` is used to find the [LinearizationItem] representing the field
         // Field items are inserted immediately after the record
-        if !matches!(term, Term::Op1(UnaryOp::StaticAccess(_), _)) {
+        if !matches!(
+            term,
+            Term::Op1(UnaryOp::StaticAccess(_), _) | Term::Annotated(..)
+        ) {
             if let Some((record, (offset, _))) = self
                 .record_fields
                 // We call take because each record field will be linearized in a different scope.
