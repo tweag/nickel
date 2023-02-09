@@ -166,7 +166,15 @@
           snapFilter = mkFilter ".*snap$";
         in
         pkgs.lib.cleanSourceWith {
-          src = pkgs.lib.cleanSource ./.;
+          # Exclude paths that would trigger unnecessary rebuilds
+          src = pkgs.lib.cleanSourceWith {
+            src = pkgs.lib.cleanSource ./.;
+
+            filter = path: _type:
+              let basename = builtins.baseNameOf path; in
+
+              basename != ".github" && basename != ".vscode";
+          };
 
           # Combine our custom filters with the default one from Crane
           # See https://github.com/ipetkov/crane/blob/master/docs/API.md#libfiltercargosources
