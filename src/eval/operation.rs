@@ -9,6 +9,7 @@
 use super::{
     callstack, merge,
     merge::{merge, MergeMode},
+    stack::StrAccData,
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
 
@@ -833,7 +834,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::ChunksConcat() => {
-                let (mut acc, indent, env_chunks) = self.stack.pop_str_acc().unwrap();
+                let StrAccData {
+                    mut acc,
+                    curr_indent: indent,
+                    env: env_chunks,
+                    curr_pos,
+                } = self.stack.pop_str_acc().unwrap();
 
                 if let Term::Str(s) = &*t {
                     let s = if indent != 0 {
@@ -856,7 +862,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
 
                     if let Some(StrChunk::Expr(e, indent)) = next_opt {
-                        self.stack.push_str_acc(acc, indent, env_chunks.clone());
+                        self.stack.push_str_acc(StrAccData {
+                            acc,
+                            curr_indent: indent,
+                            env: env_chunks.clone(),
+                            curr_pos: e.pos,
+                        });
 
                         Ok(Closure {
                             body: RichTerm::new(Term::Op1(UnaryOp::ChunksConcat(), e), pos_op_inh),
@@ -874,7 +885,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(EvalError::TypeError(
                         String::from("String"),
                         String::from("interpolated string"),
-                        pos_op,
+                        curr_pos,
                         RichTerm { term: t, pos },
                     ))
                 }

@@ -7,6 +7,18 @@ use crate::eval::{Closure, Environment, IdentKind};
 use crate::position::TermPos;
 use crate::term::{BindingType, RichTerm, StrChunk};
 
+pub struct StrAccData {
+    /// The accumulator.
+    pub acc: String,
+    /// The common environment of chunks.
+    pub env: Environment,
+    /// The indentation level of the chunk currently being evaluated.
+    pub curr_indent: usize,
+    /// The position of the original (unevaluated) expression of the chunk currently being
+    /// evaluated.
+    pub curr_pos: TermPos,
+}
+
 /// An element of the stack.
 pub enum Marker<C: Cache> {
     /// An equality to test.
@@ -41,11 +53,7 @@ pub enum Marker<C: Cache> {
     StrChunk(StrChunk<RichTerm>),
     /// A string accumulator. Used by `ChunksConcat` to store additional state, that is the string being
     /// constructed, the indentation of the chunk being evaluated, and the common initial environment of chunks.
-    StrAcc(
-        String,      /* the accumulator */
-        usize,       /* the indentation level of the chunk currently evaluated */
-        Environment, /* the common environment of chunks */
-    ),
+    StrAcc(StrAccData),
 }
 
 impl<C: Cache> std::fmt::Debug for Marker<C> {
@@ -57,7 +65,7 @@ impl<C: Cache> std::fmt::Debug for Marker<C> {
             Marker::UpdateIndex(_) => write!(f, "UpdateIndex"),
             Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
             Marker::StrChunk(_) => write!(f, "StrChunk"),
-            Marker::StrAcc(_, _, _) => write!(f, "StrAcc"),
+            Marker::StrAcc { .. } => write!(f, "StrAcc"),
         }
     }
 }
@@ -84,7 +92,7 @@ impl<C: Cache> Marker<C> {
     }
 
     pub fn is_str_acc(&self) -> bool {
-        matches!(*self, Marker::StrAcc(..))
+        matches!(*self, Marker::StrAcc { .. })
     }
 }
 
@@ -169,8 +177,8 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Push a string accumulator on the stack.
-    pub fn push_str_acc(&mut self, acc: String, indent: usize, env: Environment) {
-        self.0.push(Marker::StrAcc(acc, indent, env));
+    pub fn push_str_acc(&mut self, str_acc_data: StrAccData) {
+        self.0.push(Marker::StrAcc(str_acc_data));
     }
 
     /// Try to pop an argument from the top of the stack. If `None` is returned, the top element
@@ -252,7 +260,7 @@ impl<C: Cache> Stack<C> {
         if self.0.last().map(Marker::is_eq).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::Eq(c1, c2)) => Some((c1, c2)),
-                _ => panic!(),
+                _ => unreachable!(),
             }
         } else {
             None
@@ -261,11 +269,11 @@ impl<C: Cache> Stack<C> {
 
     /// Try to pop the a string accumulator from the stack. If `None` is returned, the top element
     /// was not a string accumulator and the stack is left unchanged.
-    pub fn pop_str_acc(&mut self) -> Option<(String, usize, Environment)> {
+    pub fn pop_str_acc(&mut self) -> Option<StrAccData> {
         if self.0.last().map(Marker::is_str_acc).unwrap_or(false) {
             match self.0.pop() {
-                Some(Marker::StrAcc(acc, indent, env)) => Some((acc, indent, env)),
-                _ => panic!(),
+                Some(Marker::StrAcc(str_acc_data)) => Some(str_acc_data),
+                _ => unreachable!(),
             }
         } else {
             None
@@ -278,7 +286,7 @@ impl<C: Cache> Stack<C> {
         if self.0.last().map(Marker::is_str_chunk).unwrap_or(false) {
             match self.0.pop() {
                 Some(Marker::StrChunk(c)) => Some(c),
-                _ => panic!(),
+                _ => unreachable!(),
             }
         } else {
             None
