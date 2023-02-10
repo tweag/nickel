@@ -264,7 +264,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         id,
                         // TODO: get type from pattern
                         ty: UnifType::Concrete(TypeF::Dyn),
-                        pos: ident.pos,
+                        pos: new_ident.pos,
                         kind: TermKind::Declaration(
                             new_ident.to_owned(),
                             Vec::new(),
