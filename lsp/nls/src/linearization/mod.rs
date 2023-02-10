@@ -227,13 +227,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     self.env.insert(ident.to_owned(), id);
                     let kind = match term {
                         Term::LetPattern(..) => {
-                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, false)
+                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, None)
                         }
                         Term::FunPattern(..) => TermKind::Declaration(
                             ident.to_owned(),
                             Vec::new(),
                             ValueState::Unknown,
-                            false,
+                            None,
                         ),
                         _ => unreachable!(),
                     };
@@ -257,8 +257,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
 
                     let_pattern_bindings.push(id);
-                    let ident = bind_ident.unwrap_or(ident);
-                    self.env.insert(ident, id);
+                    let new_ident = bind_ident.unwrap_or(ident);
+                    self.env.insert(new_ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         id,
@@ -266,10 +266,10 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         ty: UnifType::Concrete(TypeF::Dyn),
                         pos: ident.pos,
                         kind: TermKind::Declaration(
-                            ident.to_owned(),
+                            new_ident.to_owned(),
                             Vec::new(),
                             ValueState::Unknown,
-                            true,
+                            Some(ident),
                         ),
                         metadata: Some(field.metadata),
                     });
@@ -313,13 +313,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 );
                 let kind = match term {
                     Term::Let(..) => {
-                        TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, false)
+                        TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, None)
                     }
                     Term::Fun(..) => TermKind::Declaration(
                         ident.to_owned(),
                         Vec::new(),
                         ValueState::Unknown,
-                        false,
+                        None,
                     ),
                     _ => unreachable!(),
                 };
