@@ -417,7 +417,6 @@ where
                 })
                 .braces(),
             Destruct::Empty => allocator.nil(),
-            _ => unimplemented!(),
         }
     }
 }

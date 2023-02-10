@@ -47,7 +47,6 @@
 //! [`apparent_type`]).
 use crate::{
     cache::ImportResolver,
-    destruct::*,
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::Ident,
@@ -70,6 +69,7 @@ use std::{
 
 use self::linearization::{Linearization, Linearizer, StubHost};
 
+mod destructuring;
 pub mod error;
 pub mod linearization;
 pub mod operation;
@@ -835,7 +835,8 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(*id, binding_type(state, t.as_ref(), &ctxt, false));
             }
 
-            inject_pat_vars(pat, &mut ctxt.type_env);
+            let pattern_ty = destructuring::build_pattern_type(state, pat);
+            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
             walk(state, ctxt, lin, linearizer, t)
         }
         Term::Array(terms, _) => terms
@@ -877,7 +878,8 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(*x, ty_let);
             }
 
-            inject_pat_vars(pat, &mut ctxt.type_env);
+            let pattern_ty = destructuring::build_pattern_type(state, pat);
+            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
 
             walk(state, ctxt, lin, linearizer, rt)
         }
@@ -1068,26 +1070,6 @@ fn walk_with_annot<L: Linearizer>(
     }
 }
 
-// TODO: The insertion of values in the type environment is done but everything is
-// typed as `Dyn`.
-fn inject_pat_vars(pat: &Destruct, env: &mut Environment) {
-    if let Destruct::Record { matches, rest, .. } = pat {
-        if let Some(id) = rest {
-            env.insert(*id, UnifType::Concrete(TypeF::Dyn));
-        }
-        matches.iter().for_each(|m| match m {
-            Match::Simple(id, ..) => env.insert(*id, UnifType::Concrete(TypeF::Dyn)),
-            Match::Assign(id, _, (bind_id, pat)) => {
-                let id = bind_id.as_ref().unwrap_or(id);
-                env.insert(*id, UnifType::Concrete(TypeF::Dyn));
-                if !pat.is_empty() {
-                    inject_pat_vars(pat, env);
-                }
-            }
-        });
-    }
-}
-
 /// Typecheck a term against a specific type.
 ///
 /// # Arguments
@@ -1158,16 +1140,17 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src = state.table.fresh_type_uvar();
+            let src = destructuring::build_pattern_type(state, pat);
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
-                ctxt.type_env.insert(*x, src);
+                ctxt.type_env.insert(*x, src.clone());
             }
-            inject_pat_vars(pat, &mut ctxt.type_env);
+
+            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src);
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
@@ -1224,7 +1207,14 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
+            // The inferred type of the pattern w/ unification vars
+            let pattern_type = destructuring::build_pattern_type(state, pat);
+            // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
+
+            unify(state, &ctxt, ty_let.clone(), pattern_type)
+                .map_err(|e| e.into_typecheck_err(state, re.pos))?;
+
             type_check_(
                 state,
                 ctxt.clone(),
@@ -1236,9 +1226,11 @@ fn type_check_<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(*x, ty_let);
+                ctxt.type_env.insert(*x, ty_let.clone());
             }
-            inject_pat_vars(pat, &mut ctxt.type_env);
+
+            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, ty_let);
+
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::App(e, t) => {

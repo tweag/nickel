@@ -1,55 +1,27 @@
+use std::ffi::OsString;
+use std::path::PathBuf;
+
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError, TypecheckError};
 use nickel_lang::term::Term;
 
-use nickel_lang_utilities::eval_file;
+use nickel_lang_utilities::{eval_file, TestProgram};
+use test_generator::test_resources;
 
-#[test]
-fn simple() {
-    assert_eq!(eval_file("destructuring/simple.ncl"), Ok(Term::Bool(true)));
-}
+#[test_resources("tests/integration/destructuring/pass/*.ncl")]
+fn pass(file: &str) {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push(file);
 
-#[test]
-fn assign() {
-    assert_eq!(eval_file("destructuring/assign.ncl"), Ok(Term::Bool(true)));
-}
+    let path: OsString = path.into();
 
-#[test]
-fn atbind() {
-    assert_eq!(eval_file("destructuring/atbind.ncl"), Ok(Term::Bool(true)));
-}
-
-#[test]
-fn open() {
-    assert_eq!(eval_file("destructuring/open.ncl"), Ok(Term::Bool(true)));
-}
-
-#[test]
-fn nested() {
-    assert_eq!(eval_file("destructuring/nested.ncl"), Ok(Term::Bool(true)));
-}
-
-#[test]
-fn rest() {
-    assert_eq!(eval_file("destructuring/rest.ncl"), Ok(Term::Bool(true)));
-}
-
-#[test]
-fn default() {
-    assert_eq!(eval_file("destructuring/default.ncl"), Ok(Term::Bool(true)));
-}
-
-#[test]
-fn typecontract() {
+    let mut p = TestProgram::new_from_file(path.clone()).expect("could not load file as program");
     assert_eq!(
-        eval_file("destructuring/typecontract.ncl"),
-        Ok(Term::Bool(true))
-    );
-}
-
-#[test]
-fn mixed() {
-    assert_eq!(eval_file("destructuring/mixed.ncl"), Ok(Term::Bool(true)));
+        p.eval().map(Term::from),
+        Ok(Term::Bool(true)),
+        "error evaluating {}",
+        path.to_string_lossy()
+    )
 }
 
 #[test]
@@ -85,6 +57,33 @@ fn typecontract_fail() {
 }
 
 #[test]
-fn fun() {
-    assert_eq!(eval_file("destructuring/fun.ncl"), Ok(Term::Bool(true)));
+fn type_mismatch_fail() {
+    assert_matches!(
+        eval_file("destructuring/type_mismatch_fail.ncl"),
+        // Note: ideally this would be a typechecker error, but currently
+        //       annotated types in destructuring patterns are just converted
+        //       into contracts. This should be revisted once the metadata
+        //       rework from RFC005 is implemented
+        Err(Error::EvalError(EvalError::BlameError { .. }))
+    )
+}
+
+#[test]
+fn repeated_ident() {
+    assert_matches!(
+        eval_file("destructuring/repeated_ident.ncl"),
+        // Note: currently a repeated identifier in a pattern isn't caught
+        //       unless we're explicitly typechecking. There's an open issue
+        //       (#1098) to handle this when we compile the pattern at which
+        //       point this error will likely change.
+        Err(Error::TypecheckError(TypecheckError::MissingRow(..)))
+    )
+}
+
+#[test]
+fn nonexistent_idents() {
+    assert_matches!(
+        eval_file("destructuring/nonexistent_idents.ncl"),
+        Err(Error::TypecheckError(TypecheckError::MissingRow(..)))
+    )
 }
