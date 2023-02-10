@@ -28,7 +28,7 @@ pub enum TermKind {
         Ident,
         Vec<ItemId>,
         ValueState,
-        /* pattern binding? */ bool,
+        /* pattern binding? */ Option<Ident>,
     ),
     Usage(UsageState),
     Record(HashMap<Ident, ItemId>),
