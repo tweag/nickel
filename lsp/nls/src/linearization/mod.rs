@@ -249,7 +249,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                 let mut let_pattern_bindings = Vec::new();
                 for matched in destruct.to_owned().inner() {
-                    let (ident, field) = matched.as_binding();
+                    let (ident, field, bind_ident) = matched.as_binding_with_bind();
 
                     let id = ItemId {
                         file_id: self.file,
@@ -257,6 +257,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
 
                     let_pattern_bindings.push(id);
+                    let ident = bind_ident.unwrap_or(ident);
                     self.env.insert(ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -346,38 +347,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 );
 
                 let key = ident.to_owned();
-                let mut pointed = self.env.get(&key).copied();
-
-                let pointed = loop {
-                    match pointed {
-                        None => break pointed,
-                        Some(id) => {
-                            let kind = if id.file_id == self.file {
-                                let item =
-                                    lin.linearization.iter().find(|item| item.id == id).unwrap();
-                                &item.kind
-                            } else {
-                                let item = lin
-                                    .lin_cache
-                                    .get(&id.file_id)
-                                    .unwrap()
-                                    .get_item(id, lin.lin_cache)
-                                    .unwrap();
-                                &item.kind
-                            };
-
-                            match kind {
-                                TermKind::Declaration(_, _, ValueState::Known(id), true)
-                                | TermKind::Usage(UsageState::Resolved(id)) => pointed = Some(*id),
-
-                                TermKind::Record(fields) => break fields.get(&key).copied(),
-
-                                _ => break None,
-                            }
-                        }
-                    }
-                };
-
+                let pointed = self.env.get(&key).copied();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id: root_id,

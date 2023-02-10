@@ -130,4 +130,29 @@ impl Match {
             }
         }
     }
+
+    pub fn as_binding_with_bind(self) -> (Ident, Field, Option<Ident>) {
+        match self {
+            Match::Simple(id, field) => (id, field, None),
+            Match::Assign(id, field, (bind_id, Destruct::Empty)) => (id, field, bind_id),
+
+            // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
+            // because we can have two cases:
+            //
+            // - extra field on the destructuring `d`
+            // - missing field on the `id`
+            Match::Assign(id, mut field, (bind_id, destruct @ Destruct::Record { .. })) => {
+                let mut label = destruct.label();
+                label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
+                field
+                    .metadata
+                    .annotation
+                    .contracts
+                    .push(destruct.into_contract_with_lbl(label));
+
+                (id, field, bind_id)
+            }
+            Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
+        }
+    }
 }
