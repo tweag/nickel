@@ -7,8 +7,8 @@ use crate::{
 };
 
 use super::{
-    mk_uniftype, Environment, GenericUnifRecordRowsIteratorItem, GenericUnifType, State,
-    UnifRecordRows, UnifType,
+    Environment, GenericUnifRecordRowsIteratorItem, GenericUnifType, State, UnifRecordRows,
+    UnifType,
 };
 
 /// Build a `UnifType` from a `Destruct` pattern, creating fresh unification
@@ -115,12 +115,9 @@ pub fn inject_pattern_variables(
 /// pattern and its type. As well as keeping track of which identifiers
 /// have already been "used" in the pattern, to ensure that we can
 /// correctly construct the type of a `..rest` match, if it exists.
-enum RecordTypes {
-    Rows {
-        known_types: HashMap<Ident, UnifType>,
-        tail: UnifRecordRows,
-    },
-    Dyn,
+struct RecordTypes {
+    known_types: HashMap<Ident, UnifType>,
+    tail: UnifRecordRows,
 }
 
 impl From<&UnifType> for RecordTypes {
@@ -147,12 +144,12 @@ impl From<&UnifType> for RecordTypes {
                                 (m, Some(UnifRecordRows::Constant(n)))
                             }
                         });
-                RecordTypes::Rows {
+                RecordTypes {
                     known_types: tys,
                     tail: tail.unwrap_or(UnifRecordRows::Concrete(RecordRowsF::Empty)),
                 }
             }
-            _ => RecordTypes::Dyn,
+            _ => panic!("RecordTypes can only be constructed from a record type."),
         }
     }
 }
@@ -164,35 +161,26 @@ impl RecordTypes {
     /// map, so that it won't be considered as part of the "tail type"
     /// when `rest` is called.
     fn get_type(&mut self, id: &Ident) -> UnifType {
-        match self {
-            Self::Rows {
-                known_types: h,
-                tail: _,
-            } => h
-                .remove(id)
-                .expect("Scopes of identifiers in destruct patterns should be checked already"),
-            Self::Dyn => mk_uniftype::dynamic(),
-        }
+        let Self { known_types, .. } = self;
+        known_types
+            .remove(id)
+            .expect("Scopes of identifiers in destruct patterns should be checked already")
     }
 
     /// Returns the "tail type" of the record. I.e., the record's tail
     /// plus any "unused" matches from `known_types`.
     fn rest(self) -> UnifType {
-        match self {
-            Self::Rows { known_types, tail } => {
-                let rows = known_types.iter().map(|(id, ty)| RecordRowF {
-                    id: *id,
-                    types: Box::new(ty.clone()),
-                });
-                let rrows = rows.fold(tail, |tail, row| {
-                    UnifRecordRows::Concrete(RecordRowsF::Extend {
-                        row,
-                        tail: Box::new(tail),
-                    })
-                });
-                UnifType::Concrete(TypeF::Record(rrows))
-            }
-            Self::Dyn => mk_uniftype::dyn_record(mk_uniftype::dynamic()),
-        }
+        let Self { known_types, tail } = self;
+        let rows = known_types.iter().map(|(id, ty)| RecordRowF {
+            id: *id,
+            types: Box::new(ty.clone()),
+        });
+        let rrows = rows.fold(tail, |tail, row| {
+            UnifRecordRows::Concrete(RecordRowsF::Extend {
+                row,
+                tail: Box::new(tail),
+            })
+        });
+        UnifType::Concrete(TypeF::Record(rrows))
     }
 }
