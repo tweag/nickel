@@ -165,6 +165,8 @@ impl<'b> Building<'b> {
             TermKind::Declaration(_, _, ValueState::Known(value), Some(ident)) => {
                 let item = self.get_item_kind(current_file, *value)?;
                 let item = self.resolve_reference(current_file, item)?;
+                // TODO: fix this
+                let ident = ident.last().unwrap();
                 match item {
                     TermKind::Record(fields) => {
                         let item = fields.get(ident)?;
