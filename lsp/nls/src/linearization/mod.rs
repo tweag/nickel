@@ -248,16 +248,21 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
 
                 let mut let_pattern_bindings = Vec::new();
-                for matched in destruct.to_owned().inner() {
-                    let (ident, field, bind_ident) = matched.as_binding_with_bind();
-
+                for (path, bind_ident, field) in destruct
+                    .to_owned()
+                    .inner()
+                    .into_iter()
+                    .flat_map(|matched| matched.clone().as_pattern_info())
+                {
+                    // We cannot have an empty vec, so this is safe
+                    let ident = path.first().unwrap();
                     let id = ItemId {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
                     };
 
                     let_pattern_bindings.push(id);
-                    let new_ident = bind_ident.unwrap_or(ident);
+                    let new_ident = bind_ident.unwrap_or(*ident);
                     self.env.insert(new_ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -269,7 +274,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             new_ident.to_owned(),
                             Vec::new(),
                             ValueState::Unknown,
-                            Some(ident),
+                            Some(path),
                         ),
                         metadata: Some(field.metadata),
                     });

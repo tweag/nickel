@@ -166,8 +166,10 @@ fn find_fields_from_term_kind(
                 }
             }
         }
-        TermKind::Declaration(_, _, ValueState::Known(body_id), Some(ident)) => {
-            path.push(ident.clone());
+        TermKind::Declaration(_, _, ValueState::Known(body_id), Some(ref idents)) => {
+            for ident in idents {
+                path.push(ident.clone())
+            }
             find_fields_from_term_kind(body_id, path, &info)
         }
         TermKind::RecordField {
@@ -443,8 +445,10 @@ fn collect_record_info(
             match (&item.kind, ty) {
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
-                (TermKind::Declaration(_, _, ValueState::Known(body_id), Some(ident)), _) => {
-                    path.push(ident.clone());
+                (TermKind::Declaration(_, _, ValueState::Known(body_id), Some(idents)), _) => {
+                    for ident in idents {
+                        path.push(ident.clone())
+                    }
                     find_fields_from_term_kind(*body_id, path, &info)
                 }
                 (

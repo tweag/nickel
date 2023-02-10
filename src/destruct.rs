@@ -131,17 +131,21 @@ impl Match {
         }
     }
 
-    pub fn as_binding_with_bind(self) -> (Ident, Field, Option<Ident>) {
+    /// Returns info about each variable bound in a particular pattern.
+    /// It also tells the "path" to the bound variable; this is just the
+    /// record field names traversed to get to a pattern.
+    pub fn as_pattern_info(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
         match self {
-            Match::Simple(id, field) => (id, field, None),
-            Match::Assign(id, field, (bind_id, Destruct::Empty)) => (id, field, bind_id),
-
-            // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
-            // because we can have two cases:
-            //
-            // - extra field on the destructuring `d`
-            // - missing field on the `id`
-            Match::Assign(id, mut field, (bind_id, destruct @ Destruct::Record { .. })) => {
+            Match::Simple(id, field) => vec![(vec![id], None, field)],
+            Match::Assign(id, field, (bind_id, Destruct::Empty)) => {
+                vec![(vec![id], bind_id, field)]
+            }
+            Match::Assign(
+                id,
+                mut field,
+                (bind_id, ref destruct @ Destruct::Record { ref matches, .. }),
+            ) => {
+                let destruct = destruct.clone();
                 let mut label = destruct.label();
                 label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
                 field
@@ -150,7 +154,23 @@ impl Match {
                     .contracts
                     .push(destruct.into_contract_with_lbl(label));
 
-                (id, field, bind_id)
+                let inner = matches
+                    .iter()
+                    .flat_map(|m| m.clone().as_pattern_info())
+                    .map(|(mut path, bind, field)| {
+                        path.push(id);
+                        (path, bind, field)
+                    });
+
+                // We only want to return the outer if we actually have a variable name
+                // bound to it.
+                let outer = if bind_id.is_some() {
+                    vec![(vec![id], bind_id, field)]
+                } else {
+                    Vec::new()
+                };
+
+                inner.chain(outer).collect()
             }
             Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
         }
