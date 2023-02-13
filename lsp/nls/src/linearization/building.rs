@@ -162,19 +162,38 @@ impl<'b> Building<'b> {
                     .as_option()
                     .and_then(|value_index| self.get_item_kind(current_file, value_index))
             }
-            TermKind::Declaration(_, _, ValueState::Known(value), Some(ident)) => {
+            TermKind::Declaration(_, _, ValueState::Known(value), Some(idents)) => {
                 let item = self.get_item_kind(current_file, *value)?;
                 let item = self.resolve_reference(current_file, item)?;
-                // TODO: fix this
-                let ident = ident.last().unwrap();
-                match item {
-                    TermKind::Record(fields) => {
-                        let item = fields.get(ident)?;
-                        let item = self.get_item_kind(current_file, *item)?;
-                        Some(item)
+
+                let mut ids = idents.clone();
+                // (previous value, current value)
+                let mut result = (item, item);
+                while let Some(id) = ids.pop() {
+                    match result.1 {
+                        TermKind::Record(ref fields) => {
+                            let item = fields.get(&id)?;
+                            let item = self.get_item_kind(current_file, *item)?;
+                            match item {
+                                TermKind::RecordField {
+                                    value: ValueState::Known(next_item),
+                                    ..
+                                } => {
+                                    result.0 = item;
+                                    let item = self.get_item_kind(current_file, *next_item)?;
+                                    result.1 = item;
+                                    continue;
+                                }
+                                // the value from a record is always a record field
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => break,
                     }
-                    _ => None,
                 }
+                // return the previous value becuase that was the record field we were
+                // looking for
+                Some(result.0)
             }
             // if declaration is a let binding resolve its value
             TermKind::Declaration(_, _, ValueState::Known(value), _) => {
