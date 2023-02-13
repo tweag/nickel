@@ -222,9 +222,7 @@
 
             pnameSuffix = "-bench";
 
-            buildPhaseCargoCommand = ''
-              cargo bench --no-run
-            '';
+            buildPhaseCargoCommand = "cargo bench";
 
             doCheck = false;
             doInstallCargoArtifacts = false;
@@ -393,6 +391,7 @@
       packages = {
         inherit (mkCraneArtifacts { })
           nickel
+          benchmarks
           lsp-nls;
         default = pkgs.buildEnv {
           name = "nickel";
@@ -424,8 +423,10 @@
           nickel
           lsp-nls
           clippy
-          benchmarks
           rustfmt;
+        compileBenchmarks = (mkCraneArtifacts { }).benchmarks.overrideAttrs (old: {
+          buildPhase = "cargo bench --no-run";
+        });
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile
         nickelWasm = buildNickelWasm { profile = "dev"; };
