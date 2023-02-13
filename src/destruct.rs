@@ -172,7 +172,6 @@ impl Match {
 
                 inner.chain(outer).collect()
             }
-            Match::Assign(_id, _m, (_, _d @ Destruct::Array { .. })) => unimplemented!(),
         }
     }
 }
