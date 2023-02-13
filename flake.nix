@@ -217,6 +217,19 @@
           nickel = buildPackage "nickel-lang";
           lsp-nls = buildPackage "nickel-lang-lsp";
 
+          benchmarks = craneLib.mkCargoDerivation {
+            inherit src cargoArtifacts;
+
+            pnameSuffix = "-bench";
+
+            buildPhaseCargoCommand = ''
+              cargo bench --no-run
+            '';
+
+            doCheck = false;
+            doInstallCargoArtifacts = false;
+          };
+
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
             inherit src;
@@ -411,6 +424,7 @@
           nickel
           lsp-nls
           clippy
+          benchmarks
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile
