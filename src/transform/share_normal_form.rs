@@ -55,10 +55,10 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
-            // CAUTION: if currently the records literal written by an user are always recursive
-            // record, other phase of program transformation (such as desugaring of field paths
+            // CAUTION: currently, if the record literals written by a user are always recursive
+            // records, other phases of program transformation (such as desugaring of field paths
             // like `{foo.bar.baz = val}` or desugaring of destructuring) do introduce non
-            // recursive record.
+            // recursive records.
             //
             // I've scratched my head more that once on a transformation seemingly not happening
             // only for record elaborated by the destructuring desguaring phase, to find that the
