@@ -663,11 +663,13 @@ impl Cache {
         &mut self,
         file_id: FileId,
         resillient: bool,
-    ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<(Vec<FileId>, Vec<ImportError>)>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
+            Some(state) if state >= EntryState::ImportsResolved => {
+                Ok(CacheOp::Cached((Vec::new(), Vec::new())))
+            }
             Some(state) if state >= EntryState::Parsed => {
-                let pending = if state < EntryState::ImportsResolving {
+                let (pending, errors) = if state < EntryState::ImportsResolving {
                     let CachedTerm {
                         term, parse_errs, ..
                     } = self.terms.get(&file_id).unwrap();
@@ -678,12 +680,11 @@ impl Cache {
                     // put it back when done, but to get a reference and clone it.
                     let term = term.clone();
                     let parse_errs = parse_errs.clone();
-                    let (term, pending) = if resillient {
-                        let (term, pending, _errors) =
-                            import_resolution::resolve_imports_resillient(term, self);
-                        (term, pending)
+                    let (term, pending, errors) = if resillient {
+                        import_resolution::resolve_imports_resillient(term, self)
                     } else {
-                        import_resolution::resolve_imports(term, self)?
+                        let (term, pending) = import_resolution::resolve_imports(term, self)?;
+                        (term, pending, Vec::new())
                     };
 
                     self.terms.insert(
@@ -695,29 +696,33 @@ impl Cache {
                         },
                     );
 
-                    pending
-                        .iter()
-                        .flat_map(|id| {
-                            if let Ok(CacheOp::Done(mut ps)) = self.resolve_imports(*id, resillient)
-                            {
-                                ps.push(*id);
-                                ps
-                            } else {
-                                Vec::new()
-                            }
-                        })
-                        .collect()
+                    (
+                        pending
+                            .iter()
+                            .flat_map(|id| {
+                                if let Ok(CacheOp::Done((mut ps, _))) =
+                                    self.resolve_imports(*id, resillient)
+                                {
+                                    ps.push(*id);
+                                    ps
+                                } else {
+                                    Vec::new()
+                                }
+                            })
+                            .collect(),
+                        errors,
+                    )
                 } else {
                     let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
 
                     for id in &pending {
                         self.resolve_imports(*id, resillient)?;
                     }
-                    pending.into_iter().collect()
+                    (pending.into_iter().collect(), Vec::new())
                 };
 
                 self.update_state(file_id, EntryState::ImportsResolved);
-                Ok(CacheOp::Done(pending))
+                Ok(CacheOp::Done((pending, errors)))
             }
             _ => Err(CacheError::NotParsed),
         }

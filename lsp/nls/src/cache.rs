@@ -1,19 +1,24 @@
 use std::{collections::HashMap, ffi::OsString, io};
 
 use codespan::FileId;
-use lsp_server::Connection;
+use lsp_server::{Connection, Message};
+use lsp_types::{PublishDiagnosticsParams, Url};
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
-    error::TypecheckError,
+    error::{ToDiagnostic, TypecheckError},
     typecheck::{self, linearization::Linearization},
 };
 
-use crate::linearization::{building::Building, completed::Completed, AnalysisHost, Environment};
+use crate::{
+    diagnostic::DiagnosticCompat,
+    linearization::{building::Building, completed::Completed, AnalysisHost, Environment},
+};
 
 pub trait CacheExt {
     fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
     fn typecheck_with_analysis(
         &mut self,
+        url: Url,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
@@ -37,6 +42,7 @@ impl CacheExt for Cache {
 
     fn typecheck_with_analysis<'a>(
         &mut self,
+        uri: Url,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
@@ -47,14 +53,33 @@ impl CacheExt for Cache {
             return Err(CacheError::NotParsed);
         }
 
-        // self.connection
-        // .sender
-        // .send(Message::Notification(notification))
-        // .unwrap();
+        if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id, true) {
+            let diagnostics = errors
+                .iter()
+                .flat_map(|error| error.to_diagnostic(self.files_mut(), None))
+                .collect::<Vec<_>>();
 
-        if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id, true) {
+            let diagnostics = diagnostics
+                .into_iter()
+                .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.files_mut()))
+                .collect();
+
+            let notification = lsp_server::Notification::new(
+                "textDocument/publishDiagnostics".into(),
+                PublishDiagnosticsParams {
+                    uri: uri.clone(),
+                    diagnostics,
+                    version: None,
+                },
+            );
+            server_connection
+                .sender
+                .send(Message::Notification(notification))
+                .unwrap();
+
             for id in ids {
                 self.typecheck_with_analysis(
+                    uri.clone(),
                     id,
                     initial_ctxt,
                     initial_env,

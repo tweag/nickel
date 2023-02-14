@@ -70,10 +70,11 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     Ok(())
 }
 
-fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
+fn typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
         .cache
         .typecheck_with_analysis(
+            uri,
             file_id,
             &server.initial_ctxt,
             &server.initial_env,
@@ -97,7 +98,7 @@ fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result
                 .inner()
                 .to_diagnostic(server.cache.files_mut(), None);
             trace!("Parsed, checking types");
-            let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
+            let _ = typecheck(server, uri.clone(), file_id).map_err(|mut ty_d| d.append(&mut ty_d));
             d
         })
         .unwrap_or_else(|d| d);
