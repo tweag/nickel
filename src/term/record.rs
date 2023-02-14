@@ -334,7 +334,7 @@ impl RecordData {
     /// Turn the record into an iterator over the fields' values, ignoring optional fields without
     /// definition.
     ///
-    /// The returned interator applies pending contracts to each value.
+    /// The returned iterator applies pending contracts to each value.
     ///
     /// Fields that aren't optional but yet don't have a definition are mapped to the
     /// error `MissingFieldDefError`.
