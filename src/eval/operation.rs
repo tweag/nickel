@@ -1904,7 +1904,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::DynAccess() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
-                            // We have to apply potentially pending contracts. Right now, this
+                            // We have to apply potential pending contracts. Right now, this
                             // means that repeated field access will re-apply the contract again
                             // and again, which is not optimal. The same thing happens with array
                             // contracts. There are several way to improve this, but this is left
