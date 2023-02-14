@@ -405,7 +405,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
             .into_iter(),
     );
 
-    // Annotation aren't use anymore at runtime. We still accumulate them to answer metadata
+    // Annotation aren't used anymore at runtime. We still accumulate them to answer metadata
     // queries, but we don't need to e.g. closurize or revert them.
     let mut annot1 = metadata1.annotation;
     let mut annot2 = metadata2.annotation;
