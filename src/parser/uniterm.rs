@@ -191,7 +191,7 @@ impl UniRecord {
                             opt: false,
                             priority: MergePriority::Neutral,
                         },
-                    // At this stage this field should always be empty. It's a run-time thing, and
+                    // At this stage, this field should always be empty. It's a run-time thing, and
                     // is only filled during program transformation.
                     pending_contracts: _,
                 } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
