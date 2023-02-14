@@ -238,6 +238,7 @@ impl PendingContract {
         PendingContract { contract, label }
     }
 
+    /// Map a function over the term representing the underlying contract.
     pub fn map_contract<F>(self, f: F) -> Self
     where
         F: FnOnce(RichTerm) -> RichTerm,

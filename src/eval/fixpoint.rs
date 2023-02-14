@@ -2,6 +2,13 @@
 use super::*;
 use crate::position::TermPos;
 
+// Update the environment of a term by extending it with a recursive environment. In the general
+// case, the term is expected to be a variable pointing to the thunk to be patched. Otherwise, it's
+// considered to have no dependencies and is left untouched.
+//
+// This function achieve the same as `patch_field`, but is somehow lower-level, as it operates on a
+// general `RichTerm` instead of a `Field`. In practice, the patched term is either the value of a
+// field or one of its pending contract.
 fn patch_term<C: Cache>(
     cache: &mut C,
     term: &RichTerm,
