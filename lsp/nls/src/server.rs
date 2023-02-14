@@ -152,6 +152,7 @@ impl Server {
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_env,
+                    &self.connection,
                     &mut self.lin_cache,
                 )
                 .unwrap();

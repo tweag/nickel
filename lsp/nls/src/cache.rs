@@ -1,6 +1,7 @@
 use std::{collections::HashMap, ffi::OsString, io};
 
 use codespan::FileId;
+use lsp_server::Connection;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::TypecheckError,
@@ -16,6 +17,7 @@ pub trait CacheExt {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
+        server_connection: &Connection,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
 }
@@ -38,16 +40,28 @@ impl CacheExt for Cache {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
+        server_connection: &Connection,
         lin_cache: &mut HashMap<FileId, Completed>,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
         }
 
-        if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id) {
+        // self.connection
+        // .sender
+        // .send(Message::Notification(notification))
+        // .unwrap();
+
+        if let Ok(CacheOp::Done(ids)) = self.resolve_imports(file_id, true) {
             for id in ids {
-                self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
-                    .unwrap();
+                self.typecheck_with_analysis(
+                    id,
+                    initial_ctxt,
+                    initial_env,
+                    server_connection,
+                    lin_cache,
+                )
+                .unwrap();
             }
         }
 
