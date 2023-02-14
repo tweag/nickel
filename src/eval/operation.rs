@@ -3303,20 +3303,6 @@ impl RecordDataExt for RecordData {
             ..self
         })
     }
-
-    // /// Return the data of a new record where all pending contracts have been pushed down the
-    // /// values. Perform the required closurization operation, and preserve the revertible nature of
-    // /// thunks (if either a field, the applied contract or both recursively depend on other fields,
-    // /// the newly introduced thunks is revertible as well with dependencies being the union of the
-    // /// field's and the contract's ones).
-    // fn apply_pending_contracts<C: Cache>(
-    //     self,
-    //     cache: &mut C,
-    //     shared_env: &mut Environment,
-    //     env: &Environment,
-    // ) -> Result<Self, record::MissingFieldDefError> {
-    //     todo!()
-    // }
 }
 
 #[cfg(test)]
