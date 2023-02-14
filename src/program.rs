@@ -255,7 +255,7 @@ impl<EC: EvalCache> Program<EC> {
         let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
         self.vm
             .import_resolver_mut()
-            .resolve_imports(self.main_id)
+            .resolve_imports(self.main_id, false)
             .map_err(|cache_err| {
                 cache_err.unwrap_error("program::typecheck(): expected source to be parsed")
             })?;

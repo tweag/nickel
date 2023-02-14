@@ -662,6 +662,7 @@ impl Cache {
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
+        resillient: bool,
     ) -> Result<CacheOp<Vec<FileId>>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::ImportsResolved => Ok(CacheOp::Cached(Vec::new())),
@@ -677,7 +678,13 @@ impl Cache {
                     // put it back when done, but to get a reference and clone it.
                     let term = term.clone();
                     let parse_errs = parse_errs.clone();
-                    let (term, pending) = import_resolution::resolve_imports(term, self)?;
+                    let (term, pending) = if resillient {
+                        let (term, pending, _errors) =
+                            import_resolution::resolve_imports_resillient(term, self);
+                        (term, pending)
+                    } else {
+                        import_resolution::resolve_imports(term, self)?
+                    };
 
                     self.terms.insert(
                         file_id,
@@ -691,7 +698,8 @@ impl Cache {
                     pending
                         .iter()
                         .flat_map(|id| {
-                            if let Ok(CacheOp::Done(mut ps)) = self.resolve_imports(*id) {
+                            if let Ok(CacheOp::Done(mut ps)) = self.resolve_imports(*id, resillient)
+                            {
                                 ps.push(*id);
                                 ps
                             } else {
@@ -703,7 +711,7 @@ impl Cache {
                     let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
 
                     for id in &pending {
-                        self.resolve_imports(*id)?;
+                        self.resolve_imports(*id, resillient)?;
                     }
                     pending.into_iter().collect()
                 };
@@ -729,7 +737,7 @@ impl Cache {
             result = CacheOp::Done(());
         }
 
-        let import_res = self.resolve_imports(file_id).map_err(|cache_err| {
+        let import_res = self.resolve_imports(file_id, false).map_err(|cache_err| {
             cache_err.unwrap_error(
                 "cache::prepare(): expected source to be parsed before imports resolutions",
             )

@@ -225,7 +225,7 @@ macro_rules! ncl_bench_group {
                                 resolve_imports(t.clone(), &mut cache).unwrap();
                             if bench.eval_mode == $crate::EvalMode::TypeCheck {
                                 cache.parse(id).unwrap();
-                                cache.resolve_imports(id).unwrap();
+                                cache.resolve_imports(id, false).unwrap();
                             }
                             (cache, id, t)
                         },
