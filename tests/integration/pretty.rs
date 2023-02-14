@@ -36,7 +36,7 @@ fn pretty(rt: &RichTerm) -> String {
 fn check_file(file: &str) {
     let mut buffer = String::new();
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("tests/integration/pass/{}", file));
+    path.push(format!("tests/integration/pass/{file}"));
     std::fs::File::open(&path)
         .and_then(|mut file| file.read_to_string(&mut buffer))
         .unwrap();

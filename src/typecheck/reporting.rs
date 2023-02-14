@@ -37,7 +37,7 @@ fn mk_name(names: &HashMap<usize, Ident>, counter: &mut usize, id: usize) -> Str
     match names.get(&id) {
         // First check if that constant or variable was introduced by a forall. If it was, try
         // to use the same name.
-        Some(orig) => format!("{}", orig),
+        Some(orig) => format!("{orig}"),
         None => {
             //Otherwise, generate a new character
             let next = *counter;
@@ -60,11 +60,11 @@ fn select_uniq(name_reg: &mut NameReg, mut name: String, id: usize) -> Ident {
     if name_reg.taken.contains(&name) {
         let mut suffix = 1;
 
-        while name_reg.taken.contains(&format!("{}{}", name, suffix)) {
+        while name_reg.taken.contains(&format!("{name}{suffix}")) {
             suffix += 1;
         }
 
-        name = format!("{}{}", name, suffix);
+        name = format!("{name}{suffix}");
     }
 
     let ident = Ident::from(name);

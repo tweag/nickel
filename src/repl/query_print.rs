@@ -29,7 +29,7 @@ pub struct SimpleRenderer {}
 /// Helper to render the result of the `query` sub-command without markdown support.
 impl QueryPrinter for SimpleRenderer {
     fn write_metadata(&self, out: &mut impl Write, attr: &str, value: &str) -> io::Result<()> {
-        writeln!(out, "* {}: {}", attr, value)
+        writeln!(out, "* {attr}: {value}")
     }
 
     fn write_doc(&self, out: &mut impl Write, content: &str) -> io::Result<()> {
@@ -37,7 +37,7 @@ impl QueryPrinter for SimpleRenderer {
             self.write_metadata(out, "documentation", content)
         } else {
             writeln!(out, "* documentation\n")?;
-            writeln!(out, "{}", content)
+            writeln!(out, "{content}")
         }
     }
 
@@ -48,7 +48,7 @@ impl QueryPrinter for SimpleRenderer {
         writeln!(out, "Available fields:")?;
 
         for field in fields {
-            writeln!(out, " - {}", field)?;
+            writeln!(out, " - {field}")?;
         }
 
         Ok(())
@@ -72,7 +72,7 @@ fn termimad_to_io(err: termimad::Error) -> io::Error {
         // query printer functions just for this variant that is specific to the termimad backend
         // doesn't seem to worth it.
         termimad::Error::InsufficientWidth(err) => {
-            io::Error::new(io::ErrorKind::Other, format!("{}", err))
+            io::Error::new(io::ErrorKind::Other, format!("{err}"))
         }
     }
 }
@@ -93,13 +93,13 @@ impl QueryPrinter for MarkdownRenderer {
         let text = expander.expand(&template);
         let (width, _) = terminal_size();
         let fmt_text = FmtText::from_text(&self.skin, text, Some(width as usize));
-        write!(out, "{}", fmt_text)
+        write!(out, "{fmt_text}")
     }
 
     fn write_doc(&self, out: &mut impl Write, content: &str) -> io::Result<()> {
         if content.find('\n').is_none() {
             self.skin
-                .write_text_on(out, &format!("* **documentation**: {}", content))
+                .write_text_on(out, &format!("* **documentation**: {content}"))
                 .map_err(termimad_to_io)
         } else {
             self.skin
@@ -130,7 +130,7 @@ impl QueryPrinter for MarkdownRenderer {
             expander.set("field", field.to_string());
             let text = expander.expand(&template);
             let fmt_text = FmtText::from_text(&self.skin, text, Some(width as usize));
-            write!(out, "{}", fmt_text)?;
+            write!(out, "{fmt_text}")?;
         }
 
         Ok(())
@@ -262,7 +262,7 @@ fn write_query_result_<R: QueryPrinter>(
                 },
             value: Some(t),
         } if selected_attrs.value => {
-            renderer.write_metadata(out, "priority", &format!("{}", n))?;
+            renderer.write_metadata(out, "priority", &format!("{n}"))?;
             renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;
             found = true;
         }

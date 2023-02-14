@@ -381,10 +381,7 @@ where
     });
     match result {
         Ok(()) => (),
-        Err(err) => panic!(
-            "Program::report: could not print an error on stderr: {}",
-            err
-        ),
+        Err(err) => panic!("Program::report: could not print an error on stderr: {err}"),
     };
 }
 
@@ -535,7 +532,7 @@ mod tests {
 
         let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
             Error::EvalError(EvalError::Other(
-                format!("IO error: {}", io_err),
+                format!("IO error: {io_err}"),
                 TermPos::None,
             ))
         })?;
@@ -547,7 +544,7 @@ mod tests {
 
         let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
             Error::EvalError(EvalError::Other(
-                format!("IO error: {}", io_err),
+                format!("IO error: {io_err}"),
                 TermPos::None,
             ))
         })?;

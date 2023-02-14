@@ -228,7 +228,7 @@ where
         ExportFormat::Toml => toml::Value::try_from(rt)
             .map_err(|err| SerializationError::Other(err.to_string()))
             .and_then(|v| {
-                write!(writer, "{}", v).map_err(|err| SerializationError::Other(err.to_string()))
+                write!(writer, "{v}").map_err(|err| SerializationError::Other(err.to_string()))
             }),
         ExportFormat::Raw => match rt.as_ref() {
             Term::Str(s) => writer
@@ -252,7 +252,7 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, Serializ
             serde_yaml::to_string(&rt).map_err(|err| SerializationError::Other(err.to_string()))
         }
         ExportFormat::Toml => toml::Value::try_from(rt)
-            .map(|v| format!("{}", v))
+            .map(|v| format!("{v}"))
             .map_err(|err| SerializationError::Other(err.to_string())),
         ExportFormat::Raw => match rt.as_ref() {
             Term::Str(s) => Ok(s.clone()),
@@ -285,7 +285,7 @@ mod tests {
 
         Program::new_from_source(src, "<test>").map_err(|io_err| {
             Error::EvalError(EvalError::Other(
-                format!("IO error: {}", io_err),
+                format!("IO error: {io_err}"),
                 TermPos::None,
             ))
         })

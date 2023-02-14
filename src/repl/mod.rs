@@ -400,8 +400,8 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             let mut aliases = cmd.aliases().into_iter();
 
             if let Some(fst) = aliases.next() {
-                write!(w, "Aliases: `{}`", fst)?;
-                aliases.try_for_each(|alias| write!(w, ", `{}`", alias))?;
+                write!(w, "Aliases: `{fst}`")?;
+                aliases.try_for_each(|alias| write!(w, ", `{alias}`"))?;
                 writeln!(w)?;
             }
 
@@ -410,7 +410,7 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
 
         match arg.parse::<CommandType>() {
             Ok(c @ CommandType::Help) => {
-                writeln!(out, ":{} [command]", c)?;
+                writeln!(out, ":{c} [command]")?;
                 print_aliases(out, c)?;
                 writeln!(
                     out,
@@ -418,12 +418,12 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Query) => {
-                writeln!(out, ":{} <expression>", c)?;
+                writeln!(out, ":{c} <expression>")?;
                 print_aliases(out, c)?;
                 writeln!(out, "Print the metadata attached to an attribute")?;
             }
             Ok(c @ CommandType::Load) => {
-                writeln!(out, ":{} <file>", c)?;
+                writeln!(out, ":{c} <file>")?;
                 print_aliases(out, c)?;
                 write!(out,"Evaluate the content of <file> to a record and load its attributes in the environment.")?;
                 writeln!(
@@ -432,7 +432,7 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Typecheck) => {
-                writeln!(out, ":{} <expression>", c)?;
+                writeln!(out, ":{c} <expression>")?;
                 print_aliases(out, c)?;
                 writeln!(
                     out,
@@ -440,17 +440,17 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Print) => {
-                writeln!(out, ":{} <expression>", c)?;
+                writeln!(out, ":{c} <expression>")?;
                 print_aliases(out, c)?;
                 writeln!(out, "Evaluate and print <expression> recursively")?;
             }
             Ok(c @ CommandType::Exit) => {
-                writeln!(out, ":{}", c)?;
+                writeln!(out, ":{c}")?;
                 print_aliases(out, c)?;
                 writeln!(out, "Exit the REPL session")?;
             }
             Err(UnknownCommandError {}) => {
-                writeln!(out, "Unknown command `{}`.", arg)?;
+                writeln!(out, "Unknown command `{arg}`.")?;
                 writeln!(out, "Available commands: ? help query load typecheck")?;
             }
         };

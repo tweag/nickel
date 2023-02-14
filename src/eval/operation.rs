@@ -87,10 +87,10 @@ pub enum OperationCont {
 impl std::fmt::Debug for OperationCont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OperationCont::Op1(op, _) => write!(f, "Op1 {:?}", op),
-            OperationCont::Op2First(op, _, _) => write!(f, "Op2First {:?}", op),
-            OperationCont::Op2Second(op, _, _, _) => write!(f, "Op2Second {:?}", op),
-            OperationCont::OpN { op, .. } => write!(f, "OpN {:?}", op),
+            OperationCont::Op1(op, _) => write!(f, "Op1 {op:?}"),
+            OperationCont::Op2First(op, _, _) => write!(f, "Op2First {op:?}"),
+            OperationCont::Op2Second(op, _, _, _) => write!(f, "Op2Second {op:?}"),
+            OperationCont::OpN { op, .. } => write!(f, "OpN {op:?}"),
         }
     }
 }
@@ -597,8 +597,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if n < 0.0 || n.fract() != 0.0 {
                         Err(EvalError::Other(
                             format!(
-                            "generate: expected the 1st argument to be a positive integer, got {}",
-                            n
+                            "generate: expected the 1st argument to be a positive integer, got {n}"
                         ),
                             pos_op,
                         ))
@@ -951,7 +950,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::CharFromCode() => {
                 if let Term::Num(code) = *t {
                     if code.fract() != 0.0 {
-                        Err(EvalError::Other(format!("charFromCode: expected the argument to be an integer, got the floating-point value {}", code), pos_op))
+                        Err(EvalError::Other(format!("charFromCode: expected the argument to be an integer, got the floating-point value {code}"), pos_op))
                     } else if code < 0.0 || code > (u32::MAX as f64) {
                         Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
                     } else if let Some(car) = std::char::from_u32(code as u32) {
@@ -961,7 +960,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     } else {
                         Err(EvalError::Other(
-                            format!("charFromCode: invalid character code {}", code),
+                            format!("charFromCode: invalid character code {code}"),
                             pos_op,
                         ))
                     }
@@ -1041,7 +1040,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
                     let n = s.parse::<f64>().map_err(|_| {
-                        EvalError::Other(format!("numFrom: invalid num literal `{}`", s), pos)
+                        EvalError::Other(format!("numFrom: invalid num literal `{s}`"), pos)
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n),
@@ -1986,7 +1985,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 match fields.insert(Ident::from(id), Field {value, metadata }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
-                                    Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {}, but it already exists", id), pos_op)),
+                                    Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
                                     _ => Ok(Closure {
                                         body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
@@ -2196,7 +2195,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let n_int = *n as usize;
                     if n.fract() != 0.0 {
-                        Err(EvalError::Other(format!("elemAt: expected the 2nd argument to be an integer, got the floating-point value {}", n), pos_op))
+                        Err(EvalError::Other(format!("elemAt: expected the 2nd argument to be an integer, got the floating-point value {n}"), pos_op))
                     } else if *n < 0.0 || n_int >= ts.len() {
                         Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                     } else {
@@ -2366,21 +2365,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             "Json" => serde_json::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("json"),
-                                    format!("{}", err),
+                                    format!("{err}"),
                                     pos_op,
                                 )
                             })?,
                             "Yaml" => serde_yaml::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("yaml"),
-                                    format!("{}", err),
+                                    format!("{err}"),
                                     pos_op,
                                 )
                             })?,
                             "Toml" => toml::from_str(s).map_err(|err| {
                                 EvalError::DeserializationError(
                                     String::from("toml"),
-                                    format!("{}", err),
+                                    format!("{err}"),
                                     pos_op,
                                 )
                             })?,
@@ -2554,7 +2553,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                     (Term::Str(_), Term::Str(_), _) => Err(EvalError::TypeError(
                         String::from("Str"),
-                        format!("{}, 3rd argument", n_op),
+                        format!("{n_op}, 3rd argument"),
                         thd_pos,
                         RichTerm {
                             term: thd,
@@ -2563,7 +2562,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     )),
                     (Term::Str(_), _, _) => Err(EvalError::TypeError(
                         String::from("Str"),
-                        format!("{}, 2nd argument", n_op),
+                        format!("{n_op}, 2nd argument"),
                         snd_pos,
                         RichTerm {
                             term: snd,
@@ -2572,7 +2571,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     )),
                     (_, _, _) => Err(EvalError::TypeError(
                         String::from("Str"),
-                        format!("{}, 1st argument", n_op),
+                        format!("{n_op}, 1st argument"),
                         fst_pos,
                         RichTerm {
                             term: fst,
@@ -2596,11 +2595,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let end_int = *end as usize;
 
                         if start.fract() != 0.0 {
-                            Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be an integer, got the floating-point value {}", start), pos_op))
+                            Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be an integer, got the floating-point value {start}"), pos_op))
                         } else if !s.is_char_boundary(start_int) {
                             Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
                         } else if end.fract() != 0.0 {
-                            Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {}", end), pos_op))
+                            Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {end}"), pos_op))
                         } else if end <= start || !s.is_char_boundary(end_int) {
                             Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
                         } else {
