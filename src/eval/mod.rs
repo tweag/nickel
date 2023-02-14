@@ -585,7 +585,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Closure::atomic_closure(t)
                     } else {
                         return Err(EvalError::InternalError(
-                            format!("Resolved import not found ({:?})", id),
+                            format!("Resolved import not found ({id:?})"),
                             pos,
                         ));
                     }
@@ -901,8 +901,8 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
         }
-        p @ Term::LetPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
-        p @ Term::FunPattern(..) => panic!("Pattern {:?} has not been transformed before evaluation", p),
+        p @ Term::LetPattern(..) => panic!("Pattern {p:?} has not been transformed before evaluation"),
+        p @ Term::FunPattern(..) => panic!("Pattern {p:?} has not been transformed before evaluation"),
         Term::App(t1, t2) => {
             let t1 = subst(cache, t1, initial_env, env);
             let t2 = subst(cache, t2, initial_env, env);

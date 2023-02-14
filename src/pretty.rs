@@ -316,7 +316,7 @@ where
                 .append(allocator.as_string(id))
                 .append(allocator.space()),
             op => allocator
-                .text(format!("%{:?}%", op).to_lowercase())
+                .text(format!("%{op:?}%").to_lowercase())
                 .append(allocator.space()),
         }
     }
@@ -352,7 +352,7 @@ where
             DynAccess() => allocator.text("."),
             ArrayElemAt() => allocator.text("%elem_at%"),
 
-            op => allocator.as_string(format!("%{:?}%", op).to_lowercase()),
+            op => allocator.as_string(format!("%{op:?}%").to_lowercase()),
         }
     }
 }
@@ -662,7 +662,7 @@ where
                             .text("if")
                             .append(allocator.space())
                             .append(rt.to_owned().pretty(allocator)),
-                        op => panic!("pretty print is not impleented for {:?}", op),
+                        op => panic!("pretty print is not impleented for {op:?}"),
                     }
                 }
             },
@@ -700,7 +700,7 @@ where
                 .group(),
 
             SealingKey(sym) => allocator
-                .text(format!("#<sealing key: {}>", sym))
+                .text(format!("#<sealing key: {sym}>"))
                 .append(allocator.hardline()),
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
@@ -712,7 +712,7 @@ where
                 .text("import")
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
-            ResolvedImport(id) => allocator.text(format!("import <file_id: {:?}>", id)),
+            ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }

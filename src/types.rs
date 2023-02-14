@@ -965,12 +965,12 @@ impl Display for RecordRows {
                 write!(f, "{}: {}", row.id, row.types)?;
 
                 match tail.0 {
-                    RecordRowsF::Extend { .. } => write!(f, ", {}", tail),
-                    _ => write!(f, "{}", tail),
+                    RecordRowsF::Extend { .. } => write!(f, ", {tail}"),
+                    _ => write!(f, "{tail}"),
                 }
             }
             RecordRowsF::Empty => Ok(()),
-            RecordRowsF::TailVar(id) => write!(f, " ; {}", id),
+            RecordRowsF::TailVar(id) => write!(f, " ; {id}"),
             RecordRowsF::TailDyn => write!(f, " ; Dyn"),
         }
     }
@@ -980,15 +980,15 @@ impl Display for EnumRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             EnumRowsF::Extend { ref row, ref tail } => {
-                write!(f, "`{}", row)?;
+                write!(f, "`{row}")?;
 
                 match tail.0 {
-                    EnumRowsF::Extend { .. } => write!(f, ", {}", tail),
-                    _ => write!(f, "{}", tail),
+                    EnumRowsF::Extend { .. } => write!(f, ", {tail}"),
+                    _ => write!(f, "{tail}"),
                 }
             }
             EnumRowsF::Empty => Ok(()),
-            EnumRowsF::TailVar(id) => write!(f, " ; {}", id),
+            EnumRowsF::TailVar(id) => write!(f, " ; {id}"),
         }
     }
 }
@@ -1004,29 +1004,29 @@ impl Display for Types {
                 write!(f, "Array ")?;
 
                 if ty.fmt_is_atom() {
-                    write!(f, "{}", ty)
+                    write!(f, "{ty}")
                 } else {
-                    write!(f, "({})", ty)
+                    write!(f, "({ty})")
                 }
             }
             TypeF::Sym => write!(f, "Sym"),
             TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
-            TypeF::Var(var) => write!(f, "{}", var),
+            TypeF::Var(var) => write!(f, "{var}"),
             TypeF::Forall { var, ref body, .. } => {
                 let mut curr: &Types = body.as_ref();
-                write!(f, "forall {}", var)?;
+                write!(f, "forall {var}")?;
                 while let Types(TypeF::Forall { var, ref body, .. }) = curr {
-                    write!(f, " {}", var)?;
+                    write!(f, " {var}")?;
                     curr = body;
                 }
-                write!(f, ". {}", curr)
+                write!(f, ". {curr}")
             }
-            TypeF::Enum(row) => write!(f, "[|{}|]", row),
-            TypeF::Record(row) => write!(f, "{{{}}}", row),
-            TypeF::Dict(ty) => write!(f, "{{_: {}}}", ty),
+            TypeF::Enum(row) => write!(f, "[|{row}|]"),
+            TypeF::Record(row) => write!(f, "{{{row}}}"),
+            TypeF::Dict(ty) => write!(f, "{{_: {ty}}}"),
             TypeF::Arrow(dom, codom) => match dom.0 {
-                TypeF::Arrow(_, _) => write!(f, "({}) -> {}", dom, codom),
-                _ => write!(f, "{} -> {}", dom, codom),
+                TypeF::Arrow(_, _) => write!(f, "({dom}) -> {codom}"),
+                _ => write!(f, "{dom} -> {codom}"),
             },
             TypeF::Wildcard(_) => write!(f, "_"),
         }
@@ -1046,8 +1046,8 @@ mod test {
         use crate::term::TypeAnnotation;
 
         // Wrap the type in a contract to have it accepted by the parser.
-        let wrapper = format!("null | {}", s);
-        println!("{}", wrapper);
+        let wrapper = format!("null | {s}");
+        println!("{wrapper}");
         let id = Files::new().add("<test>", wrapper.clone());
 
         let rt = TermParser::new()
@@ -1070,7 +1070,7 @@ mod test {
     /// original type must be written in the same way as types are formatted.
     fn assert_format_eq(s: &str) {
         let ty = parse_type(s);
-        assert_eq!(s, &format!("{}", ty));
+        assert_eq!(s, &format!("{ty}"));
     }
 
     #[test]

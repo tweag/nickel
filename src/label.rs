@@ -139,7 +139,7 @@ pub mod ty_path {
         // different blocks.
         let forall_offset = match (&ty.0, path_it.peek()) {
             (_, None) => {
-                let repr = format!("{}", ty);
+                let repr = format!("{ty}");
                 return PathSpan {
                     start: 0,
                     end: repr.len(),
@@ -223,7 +223,7 @@ pub mod ty_path {
                                 last,
                                 last_arrow_elem,
                             } = span(path_it, ty);
-                            let full_offset = start_offset + format!("{}", id).len() + id_offset;
+                            let full_offset = start_offset + format!("{id}").len() + id_offset;
 
                             return PathSpan {
                                 start: full_offset + sub_start,
@@ -234,9 +234,9 @@ pub mod ty_path {
                         }
                         RecordRowsIteratorItem::Row(RecordRowF { id, types: ty }) => {
                             // The last +1 is for the
-                            start_offset += format!("{}", id).len()
+                            start_offset += format!("{id}").len()
                                 + id_offset
-                                + format!("{}", ty).len()
+                                + format!("{ty}").len()
                                 + end_offset;
                         }
                         RecordRowsIteratorItem::TailDyn | RecordRowsIteratorItem::TailVar(_) => (),
@@ -275,7 +275,7 @@ but this field doesn't exist in {}",
             }
             // The type and the path don't match, we stop here.
             _ => {
-                let repr = format!("{}", ty);
+                let repr = format!("{ty}");
                 PathSpan {
                     start: 0,
                     end: repr.len(),

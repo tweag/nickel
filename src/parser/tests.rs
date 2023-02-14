@@ -234,7 +234,7 @@ fn enum_terms() {
 
     for (name, input, expected) in success_cases {
         let actual = parse_without_pos(input);
-        assert_eq!(actual, expected, "test case \"{}\" failed", name,);
+        assert_eq!(actual, expected, "test case \"{name}\" failed",);
     }
 
     let failure_cases = [
@@ -435,12 +435,7 @@ fn string_lexing() {
             ],
         ),
     ] {
-        assert_eq!(
-            lex_without_pos(input),
-            Ok(expected),
-            "Case failed: {}",
-            name
-        )
+        assert_eq!(lex_without_pos(input), Ok(expected), "Case failed: {name}")
     }
 }
 

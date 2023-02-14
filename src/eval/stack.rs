@@ -63,7 +63,7 @@ impl<C: Cache> std::fmt::Debug for Marker<C> {
             Marker::Arg(_, _) => write!(f, "Arg"),
             Marker::TrackedArg(_, _) => write!(f, "TrackedArg"),
             Marker::UpdateIndex(_) => write!(f, "UpdateIndex"),
-            Marker::Cont(op, sz, _) => write!(f, "Cont {:?} (callstack size {})", op, sz),
+            Marker::Cont(op, sz, _) => write!(f, "Cont {op:?} (callstack size {sz})"),
             Marker::StrChunk(_) => write!(f, "StrChunk"),
             Marker::StrAcc { .. } => write!(f, "StrAcc"),
         }
@@ -329,7 +329,7 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "--- STACK ---")?;
         for marker in self.0.iter().rev() {
-            writeln!(f, "| {:?}", marker)?;
+            writeln!(f, "| {marker:?}")?;
         }
         writeln!(f, "---  END  ---")
     }

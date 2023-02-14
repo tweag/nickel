@@ -86,7 +86,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                         _ => (),
                     }),
                     Ok(Command::Typecheck(exp)) => {
-                        repl.typecheck(&exp).map(|types| println!("Ok: {}", types))
+                        repl.typecheck(&exp).map(|types| println!("Ok: {types}"))
                     }
                     Ok(Command::Query(exp)) => repl.query(&exp).map(|field| {
                         query_print::write_query_result(
@@ -137,7 +137,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 let _ = editor.save_history(&histfile);
                 program::report(
                     repl.cache_mut(),
-                    Error::IOError(IOError(format!("{}", err))),
+                    Error::IOError(IOError(format!("{err}"))),
                     color_opt,
                 );
             }

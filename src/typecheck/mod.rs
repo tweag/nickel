@@ -610,7 +610,7 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
                             .value
                             .as_ref()
                             .unwrap_or_else(|| {
-                                panic!("expected stdlib module {} to have a definition", id)
+                                panic!("expected stdlib module {id} to have a definition")
                             })
                             .clone(),
                     )

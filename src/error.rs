@@ -831,7 +831,7 @@ impl ToDiagnostic<FileId> for EvalError {
                 }
 
                 let mut diags = vec![Diagnostic::error()
-                    .with_message(format!("missing definition for `{}`", id,))
+                    .with_message(format!("missing definition for `{id}`",))
                     .with_labels(labels)
                     .with_notes(vec![])];
 
@@ -897,18 +897,15 @@ impl ToDiagnostic<FileId> for EvalError {
                 if let Some(span) = span_opt.into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
-                            .with_message(format!("this requires field {} to exist", field)),
+                            .with_message(format!("this requires field {field} to exist")),
                     );
                 } else {
-                    notes.push(format!(
-                        "field {} was required by the operator {}",
-                        field, op
-                    ));
+                    notes.push(format!("field {field} was required by the operator {op}"));
                 }
 
                 if let Some(span) = t.pos.as_opt_ref() {
                     labels.push(
-                        secondary(span).with_message(format!("field {} is missing here", field)),
+                        secondary(span).with_message(format!("field {field} is missing here")),
                     );
                 }
 
@@ -919,10 +916,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::NotEnoughArgs(count, op, span_opt) => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
-                let msg = format!(
-                    "{} expects {} arguments, but not enough were provided",
-                    op, count
-                );
+                let msg = format!("{op} expects {count} arguments, but not enough were provided");
 
                 if let Some(span) = span_opt.into_opt() {
                     labels.push(
@@ -988,7 +982,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .unwrap_or_default();
 
                 vec![Diagnostic::error()
-                    .with_message(format!("internal error: {}", msg))
+                    .with_message(format!("internal error: {msg}"))
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
@@ -1000,7 +994,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .unwrap_or_default();
 
                 vec![Diagnostic::error()
-                    .with_message(format!("{} parse error: {}", format, msg))
+                    .with_message(format!("{format} parse error: {msg}"))
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
@@ -1190,7 +1184,7 @@ mod blame_error {
                     .map(|ident| ident.to_string())
                     .unwrap_or_else(|| String::from("<func>"));
                 Diagnostic::note().with_labels(vec![
-                    primary(&cdescr.span).with_message(format!("While calling to {}", name))
+                    primary(&cdescr.span).with_message(format!("While calling to {name}"))
                 ])
             });
             let diags =
@@ -1381,7 +1375,7 @@ impl ToDiagnostic<FileId> for ParseError {
                     .unwrap_or_default();
 
                 Diagnostic::error()
-                    .with_message(format!("{} parse error: {}", format, msg))
+                    .with_message(format!("{format} parse error: {msg}"))
                     .with_labels(labels)
             }
             ParseError::UnboundTypeVariables(idents, span) => Diagnostic::error()
@@ -1389,7 +1383,7 @@ impl ToDiagnostic<FileId> for ParseError {
                     "unbound type variable(s): {}",
                     idents
                         .iter()
-                        .map(|x| format!("`{}`", x))
+                        .map(|x| format!("`{x}`"))
                         .collect::<Vec<_>>()
                         .join(",")
                 ))
@@ -1415,7 +1409,7 @@ impl ToDiagnostic<FileId> for ParseError {
                     String::from("Note: you can reference other fields of a record recursively from within a field, so you might not need the recursive let."),
                 ]),
             ParseError::TypeVariableKindMismatch { ty_var, span } => Diagnostic::error()
-                .with_message(format!("the type variable {} is used in conflicting ways", ty_var))
+                .with_message(format!("the type variable {ty_var} is used in conflicting ways"))
                 .with_labels(vec![
                     primary(span),
                 ])
@@ -1451,11 +1445,11 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 }
             TypecheckError::MissingRow(ident, expd, actual, span_opt) =>
                 vec![Diagnostic::error()
-                    .with_message(format!("type error: missing row `{}`", ident))
+                    .with_message(format!("type error: missing row `{ident}`"))
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}` which contains the field `{}`", expd, ident),
-                        format!("The type of the expression was inferred to be `{}`, which does not contain the field `{}`", actual, ident),
+                        format!("The type of the expression was expected to be `{expd}` which contains the field `{ident}`"),
+                        format!("The type of the expression was inferred to be `{actual}`, which does not contain the field `{ident}`"),
                     ])]
             ,
             TypecheckError::MissingDynTail(expd, actual, span_opt) =>
@@ -1463,18 +1457,18 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message(String::from("type error: missing dynamic tail `| Dyn`"))
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}` which contains the tail `| Dyn`", expd),
-                        format!("The type of the expression was inferred to be `{}`, which does not contain the tail `| Dyn`", actual),
+                        format!("The type of the expression was expected to be `{expd}` which contains the tail `| Dyn`"),
+                        format!("The type of the expression was inferred to be `{actual}`, which does not contain the tail `| Dyn`"),
                     ])]
             ,
 
             TypecheckError::ExtraRow(ident, expd, actual, span_opt) =>
                 vec![Diagnostic::error()
-                    .with_message(format!("type error: extra row `{}`", ident))
+                    .with_message(format!("type error: extra row `{ident}`"))
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}`, which does not contain the field `{}`", expd, ident),
-                        format!("The type of the expression was inferred to be `{}`, which contains the extra field `{}`", actual, ident),
+                        format!("The type of the expression was expected to be `{expd}`, which does not contain the field `{ident}`"),
+                        format!("The type of the expression was inferred to be `{actual}`, which contains the extra field `{ident}`"),
                     ])]
             ,
             TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
@@ -1482,8 +1476,8 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message(String::from("type error: extra dynamic tail `| Dyn`"))
                     .with_labels(mk_expr_label(span_opt))
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}`, which does not contain the tail `| Dyn`", expd),
-                        format!("The type of the expression was inferred to be `{}`, which contains the extra tail `| Dyn`", actual),
+                        format!("The type of the expression was expected to be `{expd}`, which does not contain the tail `| Dyn`"),
+                        format!("The type of the expression was inferred to be `{actual}`, which contains the extra tail `| Dyn`"),
                     ])]
             ,
 
@@ -1492,7 +1486,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message(String::from("unbound type variable"))
                     .with_labels(vec![primary_alt(span_opt.into_opt(), ident.to_string(), files).with_message("this type variable is unbound")])
                     .with_notes(vec![
-                        format!("Maybe you forgot to put a `forall {}.` somewhere in the enclosing type ?", ident),
+                        format!("Maybe you forgot to put a `forall {ident}.` somewhere in the enclosing type ?"),
                     ])]
             ,
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
@@ -1531,7 +1525,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_message("incompatible row kinds")
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
-                            format!("The row type of `{}` was expected to be `{}`, but was inferred to be `{}`", ident, expd_str, actual_str),
+                            format!("The row type of `{ident}` was expected to be `{expd_str}`, but was inferred to be `{actual_str}`"),
                             String::from("Enum row types and record row types are not compatible"),
                         ])]
             }
@@ -1549,13 +1543,13 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     err = next;
                 }
 
-                let path_str: Vec<String> = path.clone().into_iter().map(|ident| format!("{}", ident)).collect();
+                let path_str: Vec<String> = path.clone().into_iter().map(|ident| format!("{ident}")).collect();
                 let field = path_str.join(".");
 
                 //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
                 //than doing this match.
-                let row_msg = |word, field, ty| format!("The type of the expression was {} to have the row `{}: {}`", word, field, ty);
-                let default_msg = |word, ty| format!("The type of the expression was {} to be `{}`", word, ty);
+                let row_msg = |word, field, ty| format!("The type of the expression was {word} to have the row `{field}: {ty}`");
+                let default_msg = |word, ty| format!("The type of the expression was {word} to be `{ty}`");
 
                 let note1 = if let TypeF::Record(rrows) = &expd.0 {
                     match rrows.row_find_path(path.as_slice()) {
@@ -1581,7 +1575,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_notes(vec![
                         note1,
                         note2,
-                        format!("Could not match the two declaration of `{}`", field),
+                        format!("Could not match the two declaration of `{field}`"),
                     ])
                 ];
 
@@ -1602,7 +1596,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         .with_labels(mk_expr_label(span_opt))
                         .with_notes(vec![
                             format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
-                            format!("But this type appears inside another row type, which already has a declaration for the field `{}`", ident),
+                            format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
                             String::from("A type cannot have two conflicting declaration for the same row"),
                         ])]
             }
@@ -1612,12 +1606,12 @@ impl ToDiagnostic<FileId> for TypecheckError {
 
                 let mut labels = vec![
                     Label::secondary(
-                        files.add("", format!("{}", expd)),
+                        files.add("", format!("{expd}")),
                         expd_start..expd_end,
                     )
                         .with_message("this part of the expected type"),
                     Label::secondary(
-                        files.add("", format!("{}", actual)),
+                        files.add("", format!("{actual}")),
                         actual_start..actual_end,
                     )
                         .with_message("does not match this part of the inferred type"),
@@ -1628,8 +1622,8 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     .with_message("function types mismatch")
                     .with_labels(labels)
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}`", expd),
-                        format!("The type of the expression was inferred to be `{}`", actual),
+                        format!("The type of the expression was expected to be `{expd}`"),
+                        format!("The type of the expression was inferred to be `{actual}`"),
                         String::from("Could not match the two function types"),
                     ])
                 ];
@@ -1687,7 +1681,7 @@ impl ToDiagnostic<FileId> for ImportError {
                     .unwrap_or_default();
 
                 vec![Diagnostic::error()
-                    .with_message(format!("import of {} failed: {}", path, error))
+                    .with_message(format!("import of {path} failed: {error}"))
                     .with_labels(labels)]
             }
             ImportError::ParseErrors(error, span_opt) => {
@@ -1725,7 +1719,7 @@ impl ToDiagnostic<FileId> for SerializationError {
                 ))
                 .with_labels(vec![primary_term(rt, files)])],
             SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
-                .with_message(format!("{} doesn't support null values", format))
+                .with_message(format!("{format} doesn't support null values"))
                 .with_labels(vec![primary_term(rt, files)])],
             SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
@@ -1757,7 +1751,7 @@ impl ToDiagnostic<FileId> for ReplError {
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
-                .with_message(format!("unknown command `{}`", s))
+                .with_message(format!("unknown command `{s}`"))
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
@@ -1767,12 +1761,11 @@ impl ToDiagnostic<FileId> for ReplError {
                     .map(|msg| vec![msg.clone()])
                     .unwrap_or_default();
                 notes.push(format!(
-                    "type `:? {}` or `:help {}` for more information.",
-                    cmd, cmd
+                    "type `:? {cmd}` or `:help {cmd}` for more information."
                 ));
 
                 vec![Diagnostic::error()
-                    .with_message(format!("{}: missing argument", cmd))
+                    .with_message(format!("{cmd}: missing argument"))
                     .with_notes(notes)]
             }
         }
