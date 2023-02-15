@@ -1,4 +1,4 @@
-use crate::destruct::{self, RecordPattern};
+use crate::destructuring::{self, RecordPattern};
 use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 
@@ -374,7 +374,7 @@ where
         allocator
             .intersperse(
                 matches.iter().map(|m| match m {
-                    destruct::Match::Simple(id, field) => allocator
+                    destructuring::Match::Simple(id, field) => allocator
                         .as_string(id)
                         .append(allocator.space())
                         .append(match field {

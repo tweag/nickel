@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destruct::{Match, RecordPattern},
+    destructuring::{Match, RecordPattern},
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},

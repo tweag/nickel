@@ -10,7 +10,7 @@ use codespan::FileId;
 use super::error::ParseError;
 
 use crate::{
-    destruct::RecordPattern,
+    destructuring::RecordPattern,
     eval::operation::RecPriority,
     identifier::Ident,
     label::Label,

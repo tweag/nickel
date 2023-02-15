@@ -30,7 +30,7 @@
 //!     <do_something>
 //! ) in ...
 //! ```
-use crate::destruct::{Match, RecordPattern};
+use crate::destructuring::{Match, RecordPattern};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};

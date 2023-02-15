@@ -56,7 +56,7 @@ use crate::{
     mk_opn,
     mk_fun,
     identifier::Ident,
-    destruct::{Match, LastMatch, RecordPattern},
+    destructuring::{Match, LastMatch, RecordPattern},
     term::{
         *,
         record::{RecordAttrs, Field, FieldMetadata},

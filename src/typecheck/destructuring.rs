@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    destruct::{Match, RecordPattern},
+    destructuring::{Match, RecordPattern},
     identifier::Ident,
     types::{RecordRowF, RecordRowsF, TypeF},
 };

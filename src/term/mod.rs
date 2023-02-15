@@ -24,7 +24,7 @@ use array::{Array, ArrayAttrs};
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 
 use crate::{
-    destruct::RecordPattern,
+    destructuring::RecordPattern,
     error::{EvalError, ParseError},
     identifier::Ident,
     label::Label,
