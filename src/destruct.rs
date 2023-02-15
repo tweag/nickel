@@ -19,7 +19,7 @@ pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant and `b` the optional one. The last field can actualy be a
     /// nested destruct pattern.
-    Assign(Ident, Field, (Option<Ident>, Option<Destruct>)),
+    Assign(Ident, Field, (Option<Ident>, Option<RecordPattern>)),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
     Simple(Ident, Field),
 }
@@ -35,19 +35,16 @@ pub enum LastMatch {
     Ellipsis(Option<Ident>),
 }
 
-/// A destructuring pattern without the `x @` part.
+/// A destructured record pattern
 #[derive(Debug, PartialEq, Clone)]
-pub enum Destruct {
-    /// A record pattern, the only one implemented for now.
-    Record {
-        matches: Vec<Match>,
-        open: bool,
-        rest: Option<Ident>,
-        span: RawSpan,
-    },
+pub struct RecordPattern {
+    pub matches: Vec<Match>,
+    pub open: bool,
+    pub rest: Option<Ident>,
+    pub span: RawSpan,
 }
 
-impl Destruct {
+impl RecordPattern {
     /// Generate the contract elaborated from this pattern.
     pub fn into_contract(self) -> LabeledType {
         let label = self.label();
@@ -72,24 +69,20 @@ impl Destruct {
 
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
-        match self {
-            Destruct::Record { matches, .. } => matches,
-        }
+        self.matches
     }
 
     // Generate a label for this `Destruct`. if `Empty`, return default label.
     fn label(&self) -> Label {
-        match *self {
-            Destruct::Record { span, .. } => Label {
-                span,
-                ..Default::default()
-            },
+        Label {
+            span: self.span,
+            ..Default::default()
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
-        matches!(self, Destruct::Record { open: true, .. })
+        self.open
     }
 }
 
@@ -131,7 +124,7 @@ impl Match {
             Match::Assign(
                 id,
                 mut field,
-                (bind_id, Some(ref destruct @ Destruct::Record { ref matches, .. })),
+                (bind_id, Some(ref destruct @ RecordPattern { ref matches, .. })),
             ) => {
                 let destruct = destruct.clone();
                 let mut label = destruct.label();

@@ -10,7 +10,7 @@ use codespan::FileId;
 use super::error::ParseError;
 
 use crate::{
-    destruct::Destruct,
+    destruct::RecordPattern,
     eval::operation::RecPriority,
     identifier::Ident,
     label::Label,
@@ -565,7 +565,7 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
 pub fn mk_let(
     rec: bool,
     id: Option<Ident>,
-    pat: Option<Destruct>,
+    pat: Option<RecordPattern>,
     t1: RichTerm,
     t2: RichTerm,
     span: RawSpan,
@@ -596,7 +596,7 @@ pub fn mk_let(
 /// Generate a `Fun` or a `FunPattern` (depending on `pat` being empty or not) from the
 /// parsing of a function definition. This function panics if the definition somehow
 /// has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
-pub fn mk_fun(id: Option<Ident>, pat: Option<Destruct>, body: RichTerm) -> Term {
+pub fn mk_fun(id: Option<Ident>, pat: Option<RecordPattern>, body: RichTerm) -> Term {
     match pat {
         Some(d) => Term::FunPattern(id, d, body),
         None => {

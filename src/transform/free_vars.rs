@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destruct::{Destruct, Match},
+    destruct::{Match, RecordPattern},
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
@@ -229,17 +229,14 @@ impl CollectFreeVars for Field {
 }
 
 /// Remove the variables bound by a destructuring pattern from a set of free variables.
-fn bind_pattern(dest_pat: &Destruct, free_vars: &mut HashSet<Ident>) {
-    match dest_pat {
-        Destruct::Record { matches, rest, .. } => {
-            for m in matches {
-                bind_match(m, free_vars);
-            }
+fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
+    let RecordPattern { matches, rest, .. } = dest_pat;
+    for m in matches {
+        bind_match(m, free_vars);
+    }
 
-            if let Some(rest) = rest {
-                free_vars.remove(rest);
-            }
-        }
+    if let Some(rest) = rest {
+        free_vars.remove(rest);
     }
 }
 

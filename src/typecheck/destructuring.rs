@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    destruct::{Destruct, Match},
+    destruct::{Match, RecordPattern},
     identifier::Ident,
     types::{RecordRowF, RecordRowsF, TypeF},
 };
@@ -10,42 +10,38 @@ use super::{Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRow
 
 /// Build a `UnifType` from a `Destruct` pattern, creating fresh unification
 /// variables wherever specific types are unknown.
-pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifRecordRows {
-    match pat {
-        Destruct::Record { matches, open, .. } => {
-            let tail = if *open {
-                state.table.fresh_rrows_uvar()
-            } else {
-                UnifRecordRows::Concrete(RecordRowsF::Empty)
-            };
+pub fn build_pattern_type(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
+    let tail = if pat.open {
+        state.table.fresh_rrows_uvar()
+    } else {
+        UnifRecordRows::Concrete(RecordRowsF::Empty)
+    };
 
-            let rows = matches.iter().map(|m| match m {
-                Match::Simple(id, _) => RecordRowF {
-                    id: *id,
-                    types: Box::new(state.table.fresh_type_uvar()),
-                },
-                Match::Assign(id, _, (_, None)) => RecordRowF {
-                    id: *id,
-                    types: Box::new(state.table.fresh_type_uvar()),
-                },
-                Match::Assign(id, _, (_, Some(r_pat))) => {
-                    let row_tys = build_pattern_type(state, r_pat);
-                    let ty = UnifType::Concrete(TypeF::Record(row_tys));
-                    RecordRowF {
-                        id: *id,
-                        types: Box::new(ty),
-                    }
-                }
-            });
-
-            rows.fold(tail, |tail, row| {
-                UnifRecordRows::Concrete(RecordRowsF::Extend {
-                    row,
-                    tail: Box::new(tail),
-                })
-            })
+    let rows = pat.matches.iter().map(|m| match m {
+        Match::Simple(id, _) => RecordRowF {
+            id: *id,
+            types: Box::new(state.table.fresh_type_uvar()),
+        },
+        Match::Assign(id, _, (_, None)) => RecordRowF {
+            id: *id,
+            types: Box::new(state.table.fresh_type_uvar()),
+        },
+        Match::Assign(id, _, (_, Some(r_pat))) => {
+            let row_tys = build_pattern_type(state, r_pat);
+            let ty = UnifType::Concrete(TypeF::Record(row_tys));
+            RecordRowF {
+                id: *id,
+                types: Box::new(ty),
+            }
         }
-    }
+    });
+
+    rows.fold(tail, |tail, row| {
+        UnifRecordRows::Concrete(RecordRowsF::Extend {
+            row,
+            tail: Box::new(tail),
+        })
+    })
 }
 
 /// Extend `env` with any new bindings brought into scope in `pat`. The
@@ -57,54 +53,49 @@ pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifRecordRows {
 pub fn inject_pattern_variables(
     state: &State,
     env: &mut Environment,
-    pat: &Destruct,
+    pat: &RecordPattern,
     pat_ty: UnifRecordRows,
 ) {
     let pat_ty = pat_ty.into_root(state.table);
+    let mut type_map = RecordTypes::from(&pat_ty);
 
-    match pat {
-        Destruct::Record { matches, rest, .. } => {
-            let mut type_map = RecordTypes::from(&pat_ty);
+    pat.matches.iter().for_each(|m| match m {
+        Match::Simple(id, ..) => {
+            let ty = type_map.get_type(id);
+            env.insert(*id, ty);
+        }
+        Match::Assign(id, _, (bind_id, pat)) => {
+            let ty = type_map.get_type(id);
 
-            matches.iter().for_each(|m| match m {
-                Match::Simple(id, ..) => {
-                    let ty = type_map.get_type(id);
-                    env.insert(*id, ty);
-                }
-                Match::Assign(id, _, (bind_id, pat)) => {
-                    let ty = type_map.get_type(id);
+            // If we don't have a `bind_id`, we can infer that `id` is
+            // an intermediate value that isn't accessible from the code.
+            // e.g. the `foo` in a binding like:
+            //
+            // ```
+            //   let { foo = { bar = baz } } = { foo.bar = 1 } in ...
+            // ```
+            //
+            // As such, we don't need to add it to the environment.
+            if let Some(id) = bind_id {
+                env.insert(*id, ty.clone());
+            }
 
-                    // If we don't have a `bind_id`, we can infer that `id` is
-                    // an intermediate value that isn't accessible from the code.
-                    // e.g. the `foo` in a binding like:
-                    //
-                    // ```
-                    //   let { foo = { bar = baz } } = { foo.bar = 1 } in ...
-                    // ```
-                    //
-                    // As such, we don't need to add it to the environment.
-                    if let Some(id) = bind_id {
-                        env.insert(*id, ty.clone());
-                    }
-
-                    // A non-None `pat` here means we have a nested destructuring,
-                    // so we recursively call this function.
-                    if let Some(pat) = pat {
-                        let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+            // A non-None `pat` here means we have a nested destructuring,
+            // so we recursively call this function.
+            if let Some(pat) = pat {
+                let UnifType::Concrete(TypeF::Record(rs)) = ty else {
                             unreachable!("since this is a destructured record, \
                                 its type was constructed by build_pattern_ty, \
                                 so it must be a concrete record type")
                         };
-                        inject_pattern_variables(state, env, pat, rs)
-                    }
-                }
-            });
-
-            if let Some(id) = rest {
-                let rest_ty = type_map.rest();
-                env.insert(*id, rest_ty);
+                inject_pattern_variables(state, env, pat, rs)
             }
         }
+    });
+
+    if let Some(id) = pat.rest {
+        let rest_ty = type_map.rest();
+        env.insert(id, rest_ty);
     }
 }
 

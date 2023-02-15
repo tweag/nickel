@@ -1,4 +1,4 @@
-use crate::destruct::{self, Destruct};
+use crate::destruct::{self, RecordPattern};
 use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 
@@ -358,67 +358,66 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &Destruct
+impl<'a, D, A> Pretty<'a, D, A> for &RecordPattern
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        match self {
-            Destruct::Record {
-                matches,
-                open,
-                rest,
-                ..
-            } => allocator
-                .intersperse(
-                    matches.iter().map(|m| match m {
-                        destruct::Match::Simple(id, field) => allocator
-                            .as_string(id)
-                            .append(allocator.space())
-                            .append(match field {
-                                Field {
-                                    value: Some(value),
-                                    metadata:
-                                        FieldMetadata {
-                                            annotation,
-                                            priority: MergePriority::Bottom,
-                                            ..
-                                        },
-                                    ..
-                                } => allocator
-                                    .text("?")
-                                    .append(allocator.space())
-                                    .append(allocator.atom(value))
-                                    .append(allocator.field_metadata(
-                                        &FieldMetadata {
-                                            annotation: annotation.clone(),
-                                            ..Default::default()
-                                        },
-                                        false,
-                                    )),
-                                field => allocator.field_metadata(&field.metadata, false),
-                            }),
-                        _ => unimplemented!(),
-                    }),
-                    allocator.text(",").append(allocator.space()),
-                )
-                .append(if *open {
-                    allocator
-                        .text(",")
+        let RecordPattern {
+            matches,
+            open,
+            rest,
+            ..
+        } = self;
+        allocator
+            .intersperse(
+                matches.iter().map(|m| match m {
+                    destruct::Match::Simple(id, field) => allocator
+                        .as_string(id)
                         .append(allocator.space())
-                        .append(allocator.text(".."))
-                        .append(if let Some(rest) = rest {
-                            allocator.as_string(rest)
-                        } else {
-                            allocator.nil()
-                        })
-                } else {
-                    allocator.nil()
-                })
-                .braces(),
-        }
+                        .append(match field {
+                            Field {
+                                value: Some(value),
+                                metadata:
+                                    FieldMetadata {
+                                        annotation,
+                                        priority: MergePriority::Bottom,
+                                        ..
+                                    },
+                                ..
+                            } => allocator
+                                .text("?")
+                                .append(allocator.space())
+                                .append(allocator.atom(value))
+                                .append(allocator.field_metadata(
+                                    &FieldMetadata {
+                                        annotation: annotation.clone(),
+                                        ..Default::default()
+                                    },
+                                    false,
+                                )),
+                            field => allocator.field_metadata(&field.metadata, false),
+                        }),
+                    _ => unimplemented!(),
+                }),
+                allocator.text(",").append(allocator.space()),
+            )
+            .append(if *open {
+                allocator
+                    .text(",")
+                    .append(allocator.space())
+                    .append(allocator.text(".."))
+                    .append(if let Some(rest) = rest {
+                        allocator.as_string(rest)
+                    } else {
+                        allocator.nil()
+                    })
+            } else {
+                allocator.nil()
+            })
+            .braces()
     }
 }
 

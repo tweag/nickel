@@ -30,7 +30,7 @@
 //!     <do_something>
 //! ) in ...
 //! ```
-use crate::destruct::{Destruct, Match};
+use crate::destruct::{Match, RecordPattern};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
@@ -132,21 +132,21 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
 /// `x` is the identifier pointing to the full record. If having `val @ {...} = ... in ...` the
 /// variable x should be `Ident("val")` but if we have a `@` binding less form, you will probably
 /// generate a fresh variable.
-fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
+fn bind_open_field(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let (matches, var) = match pat {
-        Destruct::Record {
+        RecordPattern {
             matches,
             open: true,
             rest: Some(x),
             ..
         } => (matches, *x),
-        Destruct::Record {
+        RecordPattern {
             matches,
             open: true,
             rest: None,
             ..
         } => (matches, Ident::fresh()),
-        Destruct::Record {
+        RecordPattern {
             open: false,
             rest: None,
             ..
@@ -168,36 +168,35 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
 
 /// Core of the destructuring. Bind all the variables of the pattern except the "open" (`..y`)
 /// part. For that, see `bind_open_field`.
-fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
+fn destruct_term(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let pos = body.pos;
-    match pat {
-        Destruct::Record { matches, .. } => matches.iter().fold(body, move |t, m| match m {
-            Match::Simple(id, _) => RichTerm::new(
-                Term::Let(
-                    *id,
-                    op1(StaticAccess(*id), Term::Var(x)),
-                    t,
-                    Default::default(),
-                ),
-                pos,
+    let RecordPattern { matches, .. } = pat;
+    matches.iter().fold(body, move |t, m| match m {
+        Match::Simple(id, _) => RichTerm::new(
+            Term::Let(
+                *id,
+                op1(StaticAccess(*id), Term::Var(x)),
+                t,
+                Default::default(),
             ),
-            Match::Assign(f, _, (id, Some(pat))) => desugar(RichTerm::new(
-                Term::LetPattern(*id, pat.clone(), op1(StaticAccess(*f), Term::Var(x)), t),
-                pos,
-            )),
-            Match::Assign(f, _, (Some(id), None)) => desugar(RichTerm::new(
-                Term::Let(
-                    *id,
-                    op1(StaticAccess(*f), Term::Var(x)),
-                    t,
-                    LetAttrs {
-                        binding_type: BindingType::Normal,
-                        rec: false,
-                    },
-                ),
-                pos,
-            )),
-            _ => unreachable!("Match::Assign always has either an ident or a pattern"),
-        }),
-    }
+            pos,
+        ),
+        Match::Assign(f, _, (id, Some(pat))) => desugar(RichTerm::new(
+            Term::LetPattern(*id, pat.clone(), op1(StaticAccess(*f), Term::Var(x)), t),
+            pos,
+        )),
+        Match::Assign(f, _, (Some(id), None)) => desugar(RichTerm::new(
+            Term::Let(
+                *id,
+                op1(StaticAccess(*f), Term::Var(x)),
+                t,
+                LetAttrs {
+                    binding_type: BindingType::Normal,
+                    rec: false,
+                },
+            ),
+            pos,
+        )),
+        _ => unreachable!("Match::Assign always has either an ident or a pattern"),
+    })
 }
