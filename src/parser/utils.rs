@@ -583,6 +583,18 @@ pub fn mk_let(
     Ok(result)
 }
 
+pub fn mk_fun(id: Option<Ident>, pat: Destruct, body: RichTerm) -> Term {
+    match pat {
+        d @ Destruct::Record { .. } => Term::FunPattern(id, d, body),
+        Destruct::Empty => {
+            let Some(id) = id else {
+                unreachable!("functions must always have either a non-empty pattern or ident")
+            };
+            Term::Fun(id, body)
+        }
+    }
+}
+
 /// Determine the minimal level of indentation of a multi-line string.
 ///
 /// The result is determined by computing the minimum indentation level among all lines, where the

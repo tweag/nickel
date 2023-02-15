@@ -229,7 +229,7 @@ UniTerm: UniTerm = {
     <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         let rt = pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
-            term: SharedTerm::new(Term::FunPattern(id, destruct, t)),
+            term: SharedTerm::new(mk_fun(id, destruct, t)),
             pos,
         });
 
