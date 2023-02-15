@@ -30,7 +30,7 @@ let typecheck = [
     ((if (f true 3) then (f 2 false) else 3) : Num),
 
   let f : forall a. (forall b. b -> b) -> a -> a = fun f x => f x in
-    f (fun z => z : forall y. y -> y),
+    f ((fun z => z) : forall y. y -> y),
 
   # forall nested
   let f : forall a. a -> a =

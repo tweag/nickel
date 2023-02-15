@@ -593,6 +593,21 @@ pub fn mk_let(
     Ok(result)
 }
 
+/// Generate a `Fun` or a `FunPattern` (depending on `pat` being empty or not) from the
+/// parsing of a function definition. This function panics if the definition somehow
+/// has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
+pub fn mk_fun(id: Option<Ident>, pat: Destruct, body: RichTerm) -> Term {
+    match pat {
+        d @ Destruct::Record { .. } => Term::FunPattern(id, d, body),
+        Destruct::Empty => {
+            let Some(id) = id else {
+                unreachable!("functions always have either a non-Empty pattern or an ident")
+            };
+            Term::Fun(id, body)
+        }
+    }
+}
+
 /// Determine the minimal level of indentation of a multi-line string.
 ///
 /// The result is determined by computing the minimum indentation level among all lines, where the
