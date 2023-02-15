@@ -6,14 +6,11 @@ use crate::{
     types::{RecordRowF, RecordRowsF, TypeF},
 };
 
-use super::{
-    Environment, GenericUnifRecordRowsIteratorItem, GenericUnifType, State, UnifRecordRows,
-    UnifType,
-};
+use super::{Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows, UnifType};
 
 /// Build a `UnifType` from a `Destruct` pattern, creating fresh unification
 /// variables wherever specific types are unknown.
-pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifType {
+pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifRecordRows {
     match pat {
         Destruct::Record { matches, open, .. } => {
             let tail = if *open {
@@ -32,7 +29,8 @@ pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifType {
                     types: Box::new(state.table.fresh_type_uvar()),
                 },
                 Match::Assign(id, _, (_, r_pat @ Destruct::Record { .. })) => {
-                    let ty = build_pattern_type(state, r_pat);
+                    let rows = build_pattern_type(state, r_pat);
+                    let ty = UnifType::Concrete(TypeF::Record(rows));
                     RecordRowF {
                         id: *id,
                         types: Box::new(ty),
@@ -40,16 +38,14 @@ pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifType {
                 }
             });
 
-            let rrows = rows.fold(tail, |tail, row| {
+            rows.fold(tail, |tail, row| {
                 UnifRecordRows::Concrete(RecordRowsF::Extend {
                     row,
                     tail: Box::new(tail),
                 })
-            });
-
-            UnifType::Concrete(TypeF::Record(rrows))
+            })
         }
-        Destruct::Empty => state.table.fresh_type_uvar(),
+        Destruct::Empty => panic!("Empty patterns cannot be destructured"),
     }
 }
 
@@ -63,13 +59,13 @@ pub fn inject_pattern_variables(
     state: &State,
     env: &mut Environment,
     pat: &Destruct,
-    pat_ty: UnifType,
+    row_pat_ty: UnifRecordRows,
 ) {
-    let pat_ty = pat_ty.into_root(state.table);
+    let row_pat_ty = row_pat_ty.into_root(state.table);
 
     match pat {
         Destruct::Record { matches, rest, .. } => {
-            let mut type_map = RecordTypes::from(&pat_ty);
+            let mut type_map = RecordTypes::from(&row_pat_ty);
 
             matches.iter().for_each(|m| match m {
                 Match::Simple(id, ..) => {
@@ -91,11 +87,13 @@ pub fn inject_pattern_variables(
                     if let Some(id) = bind_id {
                         env.insert(*id, ty.clone());
                     }
-
                     // A non-empty `pat` here means we have a nested destructuring,
                     // so we recursively call this function.
                     if !pat.is_empty() {
-                        inject_pattern_variables(state, env, pat, ty)
+                        let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+                            unreachable!("only records can be destructured")
+                        };
+                        inject_pattern_variables(state, env, pat, rs)
                     }
                 }
             });
@@ -120,36 +118,31 @@ struct RecordTypes {
     tail: UnifRecordRows,
 }
 
-impl From<&UnifType> for RecordTypes {
-    fn from(u: &UnifType) -> Self {
-        match u {
-            GenericUnifType::Concrete(TypeF::Record(t)) => {
-                let (tys, tail) =
-                    t.iter()
-                        .fold((HashMap::new(), None), |(mut m, _), ty| match ty {
-                            GenericUnifRecordRowsIteratorItem::Row(rt) => {
-                                m.insert(rt.id, rt.types.clone());
-                                (m, None)
-                            }
-                            GenericUnifRecordRowsIteratorItem::TailDyn => {
-                                (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailDyn)))
-                            }
-                            GenericUnifRecordRowsIteratorItem::TailVar(v) => {
-                                (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailVar(*v))))
-                            }
-                            GenericUnifRecordRowsIteratorItem::TailUnifVar(n) => {
-                                (m, Some(UnifRecordRows::UnifVar(n)))
-                            }
-                            GenericUnifRecordRowsIteratorItem::TailConstant(n) => {
-                                (m, Some(UnifRecordRows::Constant(n)))
-                            }
-                        });
-                RecordTypes {
-                    known_types: tys,
-                    tail: tail.unwrap_or(UnifRecordRows::Concrete(RecordRowsF::Empty)),
-                }
-            }
-            _ => panic!("RecordTypes can only be constructed from a record type."),
+impl From<&UnifRecordRows> for RecordTypes {
+    fn from(rs: &UnifRecordRows) -> Self {
+        let (known_types, tail) =
+            rs.iter()
+                .fold((HashMap::new(), None), |(mut m, _), ty| match ty {
+                    GenericUnifRecordRowsIteratorItem::Row(rt) => {
+                        m.insert(rt.id, rt.types.clone());
+                        (m, None)
+                    }
+                    GenericUnifRecordRowsIteratorItem::TailDyn => {
+                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailDyn)))
+                    }
+                    GenericUnifRecordRowsIteratorItem::TailVar(v) => {
+                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailVar(*v))))
+                    }
+                    GenericUnifRecordRowsIteratorItem::TailUnifVar(n) => {
+                        (m, Some(UnifRecordRows::UnifVar(n)))
+                    }
+                    GenericUnifRecordRowsIteratorItem::TailConstant(n) => {
+                        (m, Some(UnifRecordRows::Constant(n)))
+                    }
+                });
+        RecordTypes {
+            known_types,
+            tail: tail.unwrap_or(UnifRecordRows::Concrete(RecordRowsF::Empty)),
         }
     }
 }
