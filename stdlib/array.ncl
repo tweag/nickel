@@ -281,19 +281,6 @@
         else
           (sort cmp (parts.right)) @ [first] @ (sort cmp (parts.wrong)),
 
-    optionals : forall a. Bool -> Array a -> Array a
-      | doc m%"
-        Takes a Bool and an Array and returns the array back if it's true,
-        otherwise, it returns an empty array.
-
-        For example:
-        ```nickel
-          optionals true [1, 2, 3] => [1, 2, 3]
-          optionals false [`a, `b, `c] => []
-        ```
-      "%
-      = fun condition values => if condition then values else [],
-
     flat_map : forall a b. (a -> Array b) -> Array a -> Array b
       | doc m%"
         First maps the given function over the array and then flattens the
