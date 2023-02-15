@@ -226,7 +226,6 @@
               cargo bench ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
 
-            doCheck = false;
             doInstallCargoArtifacts = false;
           };
 
