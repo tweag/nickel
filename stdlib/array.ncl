@@ -296,8 +296,8 @@
 
     flat_map : forall a b. (a -> Array b) -> Array a -> Array b
       | doc m%"
-        The flatmap operation for arrays. First maps the given function over the
-        array and then concatenates the result.
+        First maps the given function over the array and then flattens the
+        result.
 
         For example:
         ```nickel

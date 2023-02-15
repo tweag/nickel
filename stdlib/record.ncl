@@ -122,13 +122,13 @@
     "%
     = fun f => map (fun _field value => f value),
 
-    as_array : forall a. {_: a} -> Array {field: Str, value: a}
+    to_array : forall a. {_: a} -> Array {field: Str, value: a}
     | doc m%"
       Converts a record into an array of key-value pairs.
 
       For example:
       ```nickel
-        as_array { hello = "world", foo = "bar" } =>
+        to_array { hello = "world", foo = "bar" } =>
           [ { field = "hello", value = "world" },
             { field = "foo", value = "bar" }
           ]
@@ -137,9 +137,9 @@
     = fun record =>
       record
       |> fields
-      |> array.map (fun field_ => {field = field_, value = record."%{field}"}),
+      |> array.map (fun field' => {field = field', value = record."%{field'}"}),
 
-    from_array | forall a. Array { field: Str, value: a} -> {_: a}
+    from_array : forall a. Array { field: Str, value: a} -> {_: a}
     | doc m%"
       Convert an array of key-value pairs into a record.
 
@@ -154,7 +154,7 @@
     = fun bindings =>
       bindings
       |> array.map (fun binding => { "%{binding.field}" = binding.value })
-      |> merge_array,
+      |> merge_all,
 
     is_empty : forall a. {_: a} -> Bool
     | doc m%"
@@ -167,7 +167,7 @@
     "%
     = (==) {},
 
-    merge_array | forall a. Array {_: a} -> {_: a}
+    merge_all | forall a. Array {_: a} -> {_: a}
     | doc m%"
       Merge an array of records.
 
@@ -177,7 +177,7 @@
         => { foo = 1, bar = 2 }
       ```
     "%
-    = array.foldl (fun acc r => acc & r) {},
+    = array.foldl (&) {},
 
     filter | (Str -> Dyn -> Bool) -> {_: Dyn} -> {_: Dyn}
     | doc m%"
@@ -192,7 +192,7 @@
     "%
     = fun f record =>
       record
-      |> as_array
+      |> to_array
       |> array.filter (fun { field, value } => f field value)
       |> from_array,
   }
