@@ -826,14 +826,13 @@ fn walk<L: Linearizer>(
                 })
         }
         Term::Fun(id, t) => {
-            // The parameter of an un-annotated function is assigned the type `Dyn`.
-            ctxt.type_env.insert(*id, mk_uniftype::dynamic());
+            let bt = binding_type(state, t.as_ref(), &ctxt, false);
+            ctxt.type_env.insert(*id, bt);
             walk(state, ctxt, lin, linearizer, t)
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
                 let bt = binding_type(state, t.as_ref(), &ctxt, false);
-                println!("Inserting {id} with binding type {bt:?}");
                 ctxt.type_env.insert(*id, bt);
             }
 
