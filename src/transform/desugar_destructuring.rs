@@ -68,8 +68,7 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
         },
         Term::FunPattern(Some(x), Destruct::Empty, t_) => RichTerm::new(Term::Fun(x, t_), rt.pos),
         t@Term::FunPattern(..) => panic!(
-            "A function can not have empty pattern without name in {:?}",
-            t
+            "A function can not have empty pattern without name in {t:?}"
         ),
     } else rt
     }

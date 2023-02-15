@@ -82,8 +82,7 @@ fn merge_compose_contract() {
             "let Even = fun l x => if x % 2 == 0 then x else %blame% l in
         let DivBy3 = fun l x => if x % 3 ==  0 then x else %blame% l in
         let composed = {{a | Even}} & {{a | DivBy3}} in
-        (({{a = {},}}) & composed).a",
-            arg
+        (({{a = {arg},}}) & composed).a"
         )
     };
 
@@ -215,7 +214,7 @@ fn records_contracts_poly() {
     // for that reason, you can just move the examples into the array above.
     let bad_acc = "let f | forall a. { ; a} -> { ; a} = fun x => %seq% x.a x in f";
     assert_matches!(
-        eval(format!("{} {{a=1}}", bad_acc)),
+        eval(format!("{bad_acc} {{a=1}}")),
         Err(Error::EvalError(EvalError::FieldMissing(..)))
     );
 
@@ -255,7 +254,7 @@ fn lists_contracts() {
         })) => {
             assert_matches!(label.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
         }
-        err => panic!("expected blame error, got {:?}", err),
+        err => panic!("expected blame error, got {err:?}"),
     }
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
     // the error message but just check that it can be built.
@@ -273,7 +272,7 @@ fn lists_contracts() {
         })) => {
             assert_matches!(label.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
         }
-        err => panic!("expected blame error, got {:?}", err),
+        err => panic!("expected blame error, got {err:?}"),
     }
     res.unwrap_err().to_diagnostic(&mut files, None);
 }

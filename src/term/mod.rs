@@ -391,7 +391,7 @@ impl fmt::Display for MergePriority {
         match self {
             MergePriority::Bottom => write!(f, "default"),
             MergePriority::Neutral => write!(f, "{}", NumeralPriority::zero()),
-            MergePriority::Numeral(p) => write!(f, "{}", p),
+            MergePriority::Numeral(p) => write!(f, "{p}"),
             MergePriority::Top => write!(f, "force"),
         }
     }
@@ -627,8 +627,8 @@ impl Term {
             Term::Null => String::from("null"),
             Term::Bool(true) => String::from("true"),
             Term::Bool(false) => String::from("false"),
-            Term::Num(n) => format!("{}", n),
-            Term::Str(s) => format!("\"{}\"", s),
+            Term::Num(n) => format!("{n}"),
+            Term::Str(s) => format!("\"{s}\""),
             Term::StrChunks(chunks) => {
                 let chunks_str: Vec<String> = chunks
                     .iter()
@@ -648,9 +648,9 @@ impl Term {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
                 let s = id.to_string();
                 if re.is_match(&s) {
-                    format!("`{}", s)
+                    format!("`{s}")
                 } else {
-                    format!("`\"{}\"", s)
+                    format!("`\"{s}\"")
                 }
             }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
@@ -683,7 +683,7 @@ impl Term {
                         if let Some(ref value) = field.value {
                             format!("{} = {}", ident, value.as_ref().deep_repr())
                         } else {
-                            format!("{}", ident)
+                            format!("{ident}")
                         }
                     })
                     .collect();
@@ -1363,7 +1363,7 @@ impl RichTerm {
     /// than the bound, the string is truncated to `max_width` and the last character after
     /// truncate is replaced by the ellipsis unicode character U+2026.
     pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = format!("{}", self);
+        let output = format!("{self}");
 
         if output.len() <= max_width {
             output

@@ -1082,7 +1082,7 @@ impl ImportResolver for Cache {
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
                 path_buf.to_string_lossy().into_owned(),
-                format!("{}", err),
+                format!("{err}"),
                 *pos,
             )
         })?;

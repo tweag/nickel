@@ -41,7 +41,7 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
             let deps = deps.unwrap();
             dyns.len() == deps.dyn_fields.len() && dyn_free_vars_incl(&deps.dyn_fields, expected)
         }
-        _ => panic!("{} hasn't been parsed as a record", expr),
+        _ => panic!("{expr} hasn't been parsed as a record"),
     }
 }
 
@@ -59,7 +59,7 @@ fn check_stat_vars(expr: &str, expected: HashMap<&str, Vec<&str>>) -> bool {
             record.fields.len() == deps.stat_fields.len()
                 && stat_free_vars_incl(&deps.stat_fields, expected)
         }
-        _ => panic!("{} hasn't been parsed as a record", expr),
+        _ => panic!("{expr} hasn't been parsed as a record"),
     }
 }
 

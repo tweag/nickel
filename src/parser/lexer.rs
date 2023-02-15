@@ -540,7 +540,7 @@ impl<'input> Lexer<'input> {
                 // We can only enter string mode from normal mode
                 self.count = match self.stack.pop() {
                     Some(ModeElt::Normal(count)) => count,
-                    mode => panic!("lexer::leave_str (popped mode {:?})", mode),
+                    mode => panic!("lexer::leave_str (popped mode {mode:?})"),
                 };
 
                 self.lexer = Some(ModalLexer::Normal(lexer.morph()));
@@ -555,7 +555,7 @@ impl<'input> Lexer<'input> {
                 // We can only enter string mode from normal mode
                 self.count = match self.stack.pop() {
                     Some(ModeElt::Normal(count)) => count,
-                    mode => panic!("lexer::leave_str (popped mode {:?})", mode),
+                    mode => panic!("lexer::leave_str (popped mode {mode:?})"),
                 };
 
                 self.lexer = Some(ModalLexer::Normal(lexer.morph()));
@@ -574,7 +574,7 @@ impl<'input> Lexer<'input> {
                         self.count = count;
                         self.lexer = Some(ModalLexer::MultiStr(lexer.morph()))
                     }
-                    mode => panic!("lexer::leave_normal (popped mode {:?})", mode),
+                    mode => panic!("lexer::leave_normal (popped mode {mode:?})"),
                 };
             }
             _ => panic!("lexer::leave_normal"),

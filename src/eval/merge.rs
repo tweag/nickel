@@ -246,7 +246,7 @@ pub fn merge<C: Cache>(
             match mode {
                 MergeMode::Contract(mut lbl) if !r2.attrs.open && !left.is_empty() => {
                     let fields: Vec<String> =
-                        left.keys().map(|field| format!("`{}`", field)).collect();
+                        left.keys().map(|field| format!("`{field}`")).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     lbl.tag = format!("extra field{} {}", plural, fields.join(","));
                     return Err(EvalError::BlameError {

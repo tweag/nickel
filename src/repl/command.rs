@@ -112,7 +112,7 @@ impl FromStr for Command {
                 } else {
                     arg
                 };
-                println!("{}", arg);
+                println!("{arg}");
                 Ok(Command::Load(OsString::from(arg)))
             }
             CommandType::Typecheck => {

@@ -25,7 +25,7 @@ fn parse(s: &str) -> Option<RichTerm> {
     grammar::TermParser::new()
         .parse_term(id, lexer::Lexer::new(s))
         .map(RichTerm::without_pos)
-        .map_err(|err| println!("{:?}", err))
+        .map_err(|err| println!("{err:?}"))
         .ok()
 }
 

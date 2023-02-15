@@ -117,7 +117,7 @@ fn main() {
             .map(Program::new_from_file)
             .unwrap_or_else(Program::new_from_stdin)
             .unwrap_or_else(|err| {
-                eprintln!("Error when reading input: {}", err);
+                eprintln!("Error when reading input: {err}");
                 process::exit(1)
             });
 

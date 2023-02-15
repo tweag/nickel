@@ -76,7 +76,7 @@ impl TestFile {
             .file_name()
             .and_then(|f| f.to_str())
             .expect("Could not extract file name");
-        format!("{}_{}", prefix, file_name)
+        format!("{prefix}_{file_name}")
     }
 
     fn as_nickel_argument(&self) -> &str {
