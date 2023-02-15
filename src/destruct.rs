@@ -19,7 +19,7 @@ pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant and `b` the optional one. The last field can actualy be a
     /// nested destruct pattern.
-    Assign(Ident, Field, (Option<Ident>, Destruct)),
+    Assign(Ident, Field, (Option<Ident>, Option<Destruct>)),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
     Simple(Ident, Field),
 }
@@ -45,9 +45,6 @@ pub enum Destruct {
         rest: Option<Ident>,
         span: RawSpan,
     },
-    /// An empty destructuring. In this case, the pattern is a classical `let var = something in
-    /// body` form.
-    Empty,
 }
 
 impl Destruct {
@@ -77,7 +74,6 @@ impl Destruct {
     pub fn inner(self) -> Vec<Match> {
         match self {
             Destruct::Record { matches, .. } => matches,
-            Destruct::Empty => vec![],
         }
     }
 
@@ -88,18 +84,12 @@ impl Destruct {
                 span,
                 ..Default::default()
             },
-            Destruct::Empty => Label::default(),
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
         matches!(self, Destruct::Record { open: true, .. })
-    }
-
-    /// check if the pattern is empty.
-    pub fn is_empty(&self) -> bool {
-        matches!(self, Destruct::Empty)
     }
 }
 
@@ -108,16 +98,14 @@ impl Match {
     /// contract representing a record pattern destructuring.
     pub fn as_binding(self) -> (Ident, Field) {
         match self {
-            Match::Assign(id, field, (_, Destruct::Empty)) | Match::Simple(id, field) => {
-                (id, field)
-            }
+            Match::Assign(id, field, (_, None)) | Match::Simple(id, field) => (id, field),
 
             // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
             // because we can have two cases:
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            Match::Assign(id, mut field, (_, destruct @ Destruct::Record { .. })) => {
+            Match::Assign(id, mut field, (_, Some(destruct))) => {
                 let mut label = destruct.label();
                 label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
                 field
@@ -137,13 +125,13 @@ impl Match {
     pub fn as_flattened_bindings(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
         match self {
             Match::Simple(id, field) => vec![(vec![id], None, field)],
-            Match::Assign(id, field, (bind_id, Destruct::Empty)) => {
+            Match::Assign(id, field, (bind_id, None)) => {
                 vec![(vec![id], bind_id, field)]
             }
             Match::Assign(
                 id,
                 mut field,
-                (bind_id, ref destruct @ Destruct::Record { ref matches, .. }),
+                (bind_id, Some(ref destruct @ Destruct::Record { ref matches, .. })),
             ) => {
                 let destruct = destruct.clone();
                 let mut label = destruct.label();

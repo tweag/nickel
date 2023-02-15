@@ -35,6 +35,7 @@ use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
 use crate::term::{BinaryOp::DynRemove, RichTerm, Term, TypeAnnotation, UnaryOp::StaticAccess};
+use crate::term::{BindingType, LetAttrs};
 
 /// Entry point of the patterns desugaring.
 /// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
@@ -54,23 +55,26 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
 /// `Term::FunPattern` and `Term::LetPattern` inside.
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {
-    match_sharedterm! {rt.term, with {
-        Term::FunPattern(x, pat, t_) if !pat.is_empty() => {
-            let x = x.unwrap_or_else(Ident::fresh);
-            let t_pos = t_.pos;
-            RichTerm::new(
-                Term::Fun(
-                    x,
-                    RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
-                ),
-                rt.pos,
-            )
-        },
-        Term::FunPattern(Some(x), Destruct::Empty, t_) => RichTerm::new(Term::Fun(x, t_), rt.pos),
-        t@Term::FunPattern(..) => panic!(
-            "A function can not have empty pattern without name in {t:?}"
-        ),
-    } else rt
+    match_sharedterm! { rt.term,
+        with {
+            Term::FunPattern(x, pat, t_) => {
+                let x = x.unwrap_or_else(Ident::fresh);
+                let t_pos = t_.pos;
+                RichTerm::new(
+                    Term::Fun(
+                        x,
+                        RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
+                    ),
+                    rt.pos,
+                )
+            },
+            t@Term::FunPattern(..) => panic!(
+                "A function can not have empty pattern without name in {t:?}"
+            ),
+        }
+        else {
+            rt
+        }
     }
 }
 
@@ -146,8 +150,7 @@ fn bind_open_field(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
             open: false,
             rest: None,
             ..
-        }
-        | Destruct::Empty => return body,
+        } => return body,
         _ => panic!("A closed pattern can not have a rest binding"),
     };
     Term::Let(
@@ -178,11 +181,23 @@ fn destruct_term(x: Ident, pat: &Destruct, body: RichTerm) -> RichTerm {
                 ),
                 pos,
             ),
-            Match::Assign(f, _, (id, pat)) => desugar(RichTerm::new(
+            Match::Assign(f, _, (id, Some(pat))) => desugar(RichTerm::new(
                 Term::LetPattern(*id, pat.clone(), op1(StaticAccess(*f), Term::Var(x)), t),
                 pos,
             )),
+            Match::Assign(f, _, (Some(id), None)) => desugar(RichTerm::new(
+                Term::Let(
+                    *id,
+                    op1(StaticAccess(*f), Term::Var(x)),
+                    t,
+                    LetAttrs {
+                        binding_type: BindingType::Normal,
+                        rec: false,
+                    },
+                ),
+                pos,
+            )),
+            _ => unreachable!("Match::Assign always has either an ident or a pattern"),
         }),
-        _ => body,
     }
 }

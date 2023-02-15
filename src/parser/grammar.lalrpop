@@ -450,9 +450,9 @@ LastMatch: LastMatch = {
 
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
-Pattern: (Option<Ident>,Destruct) = {
-    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
-    Ident => (Some(<>),Destruct::Empty),
+Pattern: (Option<Ident>, Option<Destruct>) = {
+    <id:(<Ident> "@")?> <pat:Destruct> => (id, Some(pat)),
+    Ident => (Some(<>), None),
 };
 
 // A full pattern at the left-hand side of a destructuring let.

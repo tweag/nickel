@@ -240,7 +240,6 @@ fn bind_pattern(dest_pat: &Destruct, free_vars: &mut HashSet<Ident>) {
                 free_vars.remove(rest);
             }
         }
-        Destruct::Empty => {}
     }
 }
 
@@ -252,7 +251,9 @@ fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
             if let Some(id) = id {
                 free_vars.remove(id);
             }
-            bind_pattern(sub_pat, free_vars);
+            if let Some(sub_pat) = sub_pat {
+                bind_pattern(sub_pat, free_vars);
+            }
         }
         Match::Simple(id, _) => {
             free_vars.remove(id);

@@ -418,7 +418,6 @@ where
                     allocator.nil()
                 })
                 .braces(),
-            Destruct::Empty => allocator.nil(),
         }
     }
 }
@@ -470,11 +469,9 @@ where
                 let mut rt = &self;
                 while let FunPattern(id, dst, t) = rt.as_ref() {
                     params.push(if let Some(id) = id {
-                        allocator.as_string(id).append(if !dst.is_empty() {
-                            allocator.text("@").append(dst.pretty(allocator))
-                        } else {
-                            allocator.nil()
-                        })
+                        allocator
+                            .as_string(id)
+                            .append(allocator.text("@").append(dst.pretty(allocator)))
                     } else {
                         dst.pretty(allocator)
                     });
@@ -525,14 +522,12 @@ where
                 .append(
                     (*opt_id)
                         .map(|id| {
-                            allocator.as_string(id).append(if dst.is_empty() {
-                                allocator.nil()
-                            } else {
+                            allocator.as_string(id).append(
                                 allocator
                                     .space()
                                     .append(allocator.text("@"))
-                                    .append(allocator.space())
-                            })
+                                    .append(allocator.space()),
+                            )
                         })
                         .unwrap_or_else(|| allocator.nil()),
                 )

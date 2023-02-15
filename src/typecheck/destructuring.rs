@@ -24,11 +24,11 @@ pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifRecordRows {
                     id: *id,
                     types: Box::new(state.table.fresh_type_uvar()),
                 },
-                Match::Assign(id, _, (_, Destruct::Empty)) => RecordRowF {
+                Match::Assign(id, _, (_, None)) => RecordRowF {
                     id: *id,
                     types: Box::new(state.table.fresh_type_uvar()),
                 },
-                Match::Assign(id, _, (_, r_pat @ Destruct::Record { .. })) => {
+                Match::Assign(id, _, (_, Some(r_pat))) => {
                     let row_tys = build_pattern_type(state, r_pat);
                     let ty = UnifType::Concrete(TypeF::Record(row_tys));
                     RecordRowF {
@@ -45,7 +45,6 @@ pub fn build_pattern_type(state: &mut State, pat: &Destruct) -> UnifRecordRows {
                 })
             })
         }
-        Destruct::Empty => unreachable!("empty patterns should be handled at parsing time"),
     }
 }
 
@@ -88,9 +87,9 @@ pub fn inject_pattern_variables(
                         env.insert(*id, ty.clone());
                     }
 
-                    // A non-empty `pat` here means we have a nested destructuring,
+                    // A non-None `pat` here means we have a nested destructuring,
                     // so we recursively call this function.
-                    if !pat.is_empty() {
+                    if let Some(pat) = pat {
                         let UnifType::Concrete(TypeF::Record(rs)) = ty else {
                             unreachable!("since this is a destructured record, \
                                 its type was constructed by build_pattern_ty, \
@@ -106,7 +105,6 @@ pub fn inject_pattern_variables(
                 env.insert(*id, rest_ty);
             }
         }
-        Destruct::Empty => (),
     }
 }
 
