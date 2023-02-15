@@ -588,11 +588,13 @@ pub fn mk_fun(id: Option<Ident>, pat: Destruct, body: RichTerm) -> Term {
         d @ Destruct::Record { .. } => Term::FunPattern(id, d, body),
         Destruct::Empty => {
             let Some(id) = id else {
-                unreachable!("functions must always have either a non-empty pattern or ident")
+                unreachable!("functions always have either a non-empty pattern or ident")
             };
+            println!("Parsing fun with body {body}");
             Term::Fun(id, body)
         }
     }
+    // Term::FunPattern(id, pat, body)
 }
 
 /// Determine the minimal level of indentation of a multi-line string.

@@ -705,9 +705,11 @@ where
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
             Annotated(annot, rt) => allocator
-                .atom(rt)
+                .text("(")
+                .append(allocator.atom(rt))
                 .append(allocator.space())
-                .append(allocator.annot(annot)),
+                .append(allocator.annot(annot))
+                .append(allocator.text(")")),
             Import(f) => allocator
                 .text("import")
                 .append(allocator.space())

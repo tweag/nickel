@@ -832,7 +832,9 @@ fn walk<L: Linearizer>(
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
-                ctxt.type_env.insert(*id, binding_type(state, t.as_ref(), &ctxt, false));
+                let bt = binding_type(state, t.as_ref(), &ctxt, false);
+                println!("Inserting {id} with binding type {bt:?}");
+                ctxt.type_env.insert(*id, bt);
             }
 
             let pattern_ty = destructuring::build_pattern_type(state, pat);
@@ -1245,6 +1247,7 @@ fn type_check_<L: Linearizer>(
             let arr = mk_uty_arrow!(src.clone(), ty);
 
             type_check_(state, ctxt.clone(), lin, linearizer.scope(), e, arr)?;
+
             type_check_(state, ctxt, lin, linearizer, t, src)
         }
         Term::Match { cases, default } => {

@@ -29,6 +29,7 @@ let typecheck = [
   let f : forall a. (forall b. a -> b -> a) = fun x y => x in
     ((if (f true 3) then (f 2 false) else 3) : Num),
 
+  # TODO: this typechecks as a FunPattern but not as a Fun...
   let f : forall a. (forall b. b -> b) -> a -> a = fun f x => f x in
     f (fun z => z : forall y. y -> y),
 
