@@ -1141,17 +1141,19 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src = destructuring::build_pattern_type(state, pat);
+            let src_rows_ty = destructuring::build_pattern_type(state, pat);
+            let src = UnifType::Concrete(TypeF::Record(src_rows_ty.clone()));
+
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
             // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
-                ctxt.type_env.insert(*x, src.clone());
+                ctxt.type_env.insert(*x, src);
             }
 
-            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src);
+            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src_rows_ty);
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
@@ -1209,7 +1211,8 @@ fn type_check_<L: Linearizer>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             // The inferred type of the pattern w/ unification vars
-            let pattern_type = destructuring::build_pattern_type(state, pat);
+            let pattern_rows_type = destructuring::build_pattern_type(state, pat);
+            let pattern_type = UnifType::Concrete(TypeF::Record(pattern_rows_type.clone()));
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
@@ -1227,10 +1230,15 @@ fn type_check_<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(*x, ty_let.clone());
+                ctxt.type_env.insert(*x, ty_let);
             }
 
-            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, ty_let);
+            destructuring::inject_pattern_variables(
+                state,
+                &mut ctxt.type_env,
+                pat,
+                pattern_rows_type,
+            );
 
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
