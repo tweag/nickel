@@ -5,7 +5,7 @@
     = fun x => x,
 
     const : forall a b. a -> b -> a
-    | doc "The const function, results in the first argument."
+    | doc "Results in the first argument."
     = fun x y => x,
 
     compose : forall a b c. (b -> c) -> (a -> b) -> (a -> c)
@@ -24,7 +24,7 @@
     | doc "Always returns the second argument."
     = flip const,
 
-    pipe | Dyn -> Array (Dyn -> Dyn) -> Dyn
+    pipe : forall a. a -> Array (a -> a) -> a
     | doc m%%"
       Apply an array of functions to a value, in order.
 
