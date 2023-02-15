@@ -108,7 +108,7 @@
           r in
         %record_insert% field r content,
     
-    map_values: forall a b. (a -> b) -> {_: a} -> {_: b}
+    map_values : forall a b. (a -> b) -> {_: a} -> {_: b}
     | doc m%"
       Maps a function over every field value of a record.
 
@@ -179,7 +179,7 @@
     "%
     = array.foldl (&) {},
 
-    filter | (Str -> Dyn -> Bool) -> {_: Dyn} -> {_: Dyn}
+    filter : forall a. (Str -> a -> Bool) -> {_: a} -> {_: a}
     | doc m%"
       Filter a record using the given function, which is passed the name and
       value for each key to make a decision.
