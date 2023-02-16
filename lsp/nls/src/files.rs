@@ -80,7 +80,10 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
             &mut server.lin_cache,
         )
         .map_err(|error| match error {
-            CacheError::Error(tc_error) => tc_error.to_diagnostic(server.cache.files_mut(), None),
+            CacheError::Error(tc_error) => tc_error
+                .into_iter()
+                .flat_map(|err| err.to_diagnostic(server.cache.files_mut(), None))
+                .collect(),
             CacheError::NotParsed => unreachable!(),
         })
 }
