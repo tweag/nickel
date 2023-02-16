@@ -43,9 +43,6 @@ pub fn transform_no_free_vars(
             // We desugar destructuring before other transformations, as this step generates new
             // record contracts and terms that must be themselves transformed.
             let rt = desugar_destructuring::transform_one(rt);
-            // We need to do contract generation before the share normal form transformation,
-            // because `gen_pending_contracts` generates record contracts
-            let rt = gen_pending_contracts::transform_one(rt)?;
             Ok(rt)
         },
         &mut (),
@@ -54,7 +51,10 @@ pub fn transform_no_free_vars(
 
     Ok(rt
         .traverse(
-            &|rt: RichTerm, _| -> Result<RichTerm, ()> {
+            &|rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+                // We need to do contract generation before the share normal form transformation,
+                // because `gen_pending_contracts` generates record contracts
+                let rt = gen_pending_contracts::transform_one(rt)?;
                 let rt = share_normal_form::transform_one(rt);
                 Ok(rt)
             },
