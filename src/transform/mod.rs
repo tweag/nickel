@@ -54,6 +54,14 @@ pub fn transform_no_free_vars(
             &|rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
                 // We need to do contract generation before the share normal form transformation,
                 // because `gen_pending_contracts` generates record contracts
+                //
+                // `gen_pending_contracts` is applied bottom-up, because it might generate
+                // additional terms down the AST (pending contracts pushed down the fields of a
+                // record). In a top-down workflow, we would then visit those new duplicated nodes
+                // (already visited as part of transforming the metadata), and do that potentially
+                // again one level down. This results in a potentially non-linear cost in the size
+                // of the AST. This was witnessed on Terraform-Nickel, making examples using huge
+                // auto-generated contracts (several of MBs) to not terminate in reasonable time.
                 let rt = gen_pending_contracts::transform_one(rt)?;
                 let rt = share_normal_form::transform_one(rt);
                 Ok(rt)
