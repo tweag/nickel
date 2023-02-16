@@ -13,7 +13,7 @@ use lsp_types::{
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
     OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WorkDoneProgressOptions, Url,
+    TextDocumentSyncOptions, WorkDoneProgressOptions,
 };
 
 use nickel_lang::{
@@ -147,16 +147,11 @@ impl Server {
         let cache = &mut self.cache;
         for module in stdlib::modules() {
             let file_id = cache.get_submodule_file_id(module).unwrap();
-            // HACK: stdlib's source files are embedded in the executable, 
-            // so they don't acutally have a path.
-            let uri = Url::from_file_path("/stdlib").unwrap();
             cache
                 .typecheck_with_analysis(
-                    uri, 
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_env,
-                    &self.connection,
                     &mut self.lin_cache,
                 )
                 .unwrap();
