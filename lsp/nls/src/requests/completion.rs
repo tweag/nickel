@@ -98,7 +98,7 @@ impl IdentWithType {
             let doc = meta.doc.as_ref()?;
             let doc = Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("{}\nMerge Priority {}", doc.clone(), meta.priority),
+                value: doc.clone(),
             });
             Some(doc)
         };

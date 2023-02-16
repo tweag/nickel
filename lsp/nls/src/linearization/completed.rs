@@ -158,10 +158,7 @@ impl Completed {
         };
 
         if let Some(FieldMetadata {
-            doc,
-            annotation,
-            priority,
-            ..
+            doc, annotation, ..
         }) = item.metadata.as_ref()
         {
             if let Some(doc) = doc {
@@ -173,8 +170,6 @@ impl Completed {
             if let Some(contracts) = annotation.contracts_to_string() {
                 extra.push(contracts);
             }
-
-            extra.push(format!("Merge Priority: {:?}", priority));
         }
 
         (item.ty.to_owned(), extra)
