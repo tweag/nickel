@@ -182,7 +182,7 @@
 
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
-      mkCraneArtifacts = { rust ? mkRust { } }:
+      mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false }:
         let
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
@@ -216,6 +216,18 @@
         rec {
           nickel = buildPackage "nickel-lang";
           lsp-nls = buildPackage "nickel-lang-lsp";
+
+          benchmarks = craneLib.mkCargoDerivation {
+            inherit src cargoArtifacts;
+
+            pnameSuffix = "-bench";
+
+            buildPhaseCargoCommand = ''
+              cargo bench ${pkgs.lib.optionalString noRunBench "--no-run"}
+            '';
+
+            doInstallCargoArtifacts = false;
+          };
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
@@ -380,6 +392,7 @@
       packages = {
         inherit (mkCraneArtifacts { })
           nickel
+          benchmarks
           lsp-nls;
         default = pkgs.buildEnv {
           name = "nickel";
@@ -407,10 +420,11 @@
       };
 
       checks = {
-        inherit (mkCraneArtifacts { })
-          nickel
-          lsp-nls
+        inherit (mkCraneArtifacts { noRunBench = true; })
+          benchmarks
           clippy
+          lsp-nls
+          nickel
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile
