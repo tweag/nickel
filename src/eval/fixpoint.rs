@@ -32,6 +32,25 @@ fn patch_term<C: Cache>(
 /// the corresponding thunk from the environment in the general case, or create a closure on the
 /// fly if the field is a constant. The resulting environment is to be passed to the
 /// [`patch_field`] function.
+///
+/// # Pending contracts
+///
+/// Since the implementation of RFC005, contract are lazily applied at the level of record fields.
+/// Consider the following example:
+///
+/// ```nickel
+/// let Schema = {bar | default = "hello"} in
+///
+/// {
+///   foo | Schema = {},
+///   baz = foo.bar
+/// }
+/// ```
+///
+/// This program is valid and should output `{foo.bar = "hello", baz = "hello"}`. To make this
+/// happen, we have to ensure the pending contract `Schema` is applied to the recursive occurrence
+/// `foo` used in the definition `baz = foo.bar`. That is, we must apply pending contracts to their
+/// corresponding field when building the recursive environment.
 pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
@@ -41,13 +60,13 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
-                match value.as_ref() {
+                let idx = match value.as_ref() {
                     Term::Var(ref var_id) => {
                         let idx = env
                             .get(var_id)
                             .cloned()
                             .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?;
-                        Ok((*id, idx))
+                        idx
                     }
                     _ => {
                         // If we are in this branch, `rt` must be a constant after the share normal form
@@ -57,12 +76,33 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                             body: value.clone(),
                             env: Environment::new(),
                         };
-                        Ok((
-                            *id,
-                            cache.add(closure, IdentKind::Record, BindingType::Normal),
-                        ))
+
+                        cache.add(closure, IdentKind::Record, BindingType::Normal)
                     }
-                }
+                };
+
+                // We now need to wrap the binding in a value with contracts applied.
+                // Pending contracts might use identifiers from the current record's environment,
+                // so we start from in the environment of the original record.
+                let mut final_env = env.clone();
+                let id_value = Ident::fresh();
+                final_env.insert(id_value, idx);
+
+                let with_ctr_applied = PendingContract::apply_all(
+                    RichTerm::new(Term::Var(id_value), value.pos),
+                    field.pending_contracts.iter().cloned(),
+                    value.pos,
+                );
+
+                let final_closure = Closure {
+                    body: with_ctr_applied,
+                    env: final_env,
+                };
+
+                Ok((
+                    *id,
+                    cache.add(final_closure, IdentKind::Record, BindingType::Normal),
+                ))
             } else {
                 let error = EvalError::MissingFieldDef {
                     id: *id,
