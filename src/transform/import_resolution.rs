@@ -30,36 +30,11 @@ pub fn resolve_imports<R>(
 where
     R: ImportResolver,
 {
-    let mut stack = Vec::new();
-    let mut unresolved = Vec::new();
-
-    let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
-        let path = resolver.get_path(x.src_id);
-        PathBuf::from(path)
-    });
-
-    let mut state = ImportsResolutionState {
-        resolver,
-        stack: &mut stack,
-        parent: source_file,
-        unresolved: &mut unresolved,
-    };
-
-    // If an import is resolved, then stack it.
-    let transformed = rt.traverse(
-        &|rt: RichTerm, state: &mut ImportsResolutionState<R>| -> Result<RichTerm, ImportError> {
-            let rt = transform_one(rt, state.resolver, &state.parent)?;
-
-            if let Term::ResolvedImport(file_id) = rt.term.as_ref() {
-                state.stack.push(*file_id);
-            }
-            Ok(rt)
-        },
-        &mut state,
-        TraverseOrder::BottomUp,
-    )?;
-
-    Ok((transformed, stack))
+    let (term, resolved, errors) = resolve_imports_resillient(rt, resolver);
+    match errors.first().cloned() {
+        Some(first) => Err(first),
+        None => Ok((term, resolved)),
+    }
 }
 
 /// Resolve the import if the term is an unresolved import, or return the term unchanged. As
@@ -82,6 +57,11 @@ where
     }
 }
 
+/// Performs imports resolution for each import term independent from others.
+/// It returns back a triple, containing:
+/// * A `RichTerm` which may still contain unresolved imports.
+/// * A `Vec<FileId>`, telling the imports which were resolved.
+/// * A `Vec<ImportError>`, telling the imports that couldn't be resolved.
 pub fn resolve_imports_resillient<R>(
     rt: RichTerm,
     resolver: &mut R,
@@ -130,6 +110,9 @@ where
     (transformed, stack, unresolved)
 }
 
+/// Try to resolve an import if the term is an unresolved import, and return
+/// back the a potentially resolved richterm and an import error if it couldn't
+/// be unresolved import could not be resolved.
 pub fn transform_one_resillient<R>(
     rt: RichTerm,
     resolver: &mut R,
