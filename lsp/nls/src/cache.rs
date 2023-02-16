@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::OsString, io};
 use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
-    error::TypecheckError,
+    error::Error,
     typecheck::{self, linearization::Linearization},
 };
 
@@ -17,7 +17,7 @@ pub trait CacheExt {
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
-    ) -> Result<CacheOp<()>, CacheError<TypecheckError>>;
+    ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 }
 
 impl CacheExt for Cache {
@@ -39,12 +39,14 @@ impl CacheExt for Cache {
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
         lin_cache: &mut HashMap<FileId, Completed>,
-    ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
+    ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
         if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
         }
 
-        if let Ok(CacheOp::Done((ids, _errors))) = self.resolve_imports(file_id, true) {
+        let mut import_errors = Vec::new();
+        if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id, true) {
+            import_errors = errors;
             for id in ids {
                 self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
                     .unwrap();
@@ -54,7 +56,7 @@ impl CacheExt for Cache {
         // After self.parse(), the cache must be populated
         let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();
 
-        if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
+        let result = if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
@@ -64,12 +66,20 @@ impl CacheExt for Cache {
                 cache: self,
             });
             let (_, linearized) =
-                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)?;
+                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)
+                    .map_err(|err| vec![Error::TypecheckError(err)])?;
             self.update_state(file_id, EntryState::Typechecked);
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
             panic!()
+        };
+        if import_errors.is_empty() {
+            result
+        } else {
+            Err(CacheError::Error(
+                import_errors.into_iter().map(Error::ImportError).collect(),
+            ))
         }
     }
 }
