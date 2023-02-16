@@ -124,7 +124,7 @@
 
     to_array : forall a. {_: a} -> Array {field: Str, value: a}
     | doc m%"
-      Converts a record into an array of key-value pairs.
+      Converts a record to an array of key-value pairs.
 
       For example:
       ```nickel
