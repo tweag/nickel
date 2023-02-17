@@ -68,8 +68,7 @@ pub struct AnalysisHost<'a> {
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
     record_fields: Option<(ItemId, Vec<(ItemId, Ident)>)>,
-    let_binding: Option<ItemId>,
-    let_pattern_binding: Option<Vec<ItemId>>,
+    bindings: Option<Vec<ItemId>>,
     /// Accesses to nested records are recorded recursively.
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
@@ -88,8 +87,7 @@ impl<'a> AnalysisHost<'a> {
             env,
             meta: Default::default(),
             record_fields: Default::default(),
-            let_binding: Default::default(),
-            let_pattern_binding: Default::default(),
+            bindings: Default::default(),
             access: Default::default(),
         }
     }
@@ -154,19 +152,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
             }
 
-            if let Some(declaration) = self.let_binding.take() {
-                let offset = self.access.as_ref().map(|v| v.len()).unwrap_or(0);
-                lin.inform_declaration(
-                    self.file,
-                    declaration,
-                    ItemId {
-                        file_id: self.file,
-                        index: id_gen.get() + offset,
-                    },
-                );
-            }
-
-            if let Some(decls) = self.let_pattern_binding.take() {
+            if let Some(decls) = self.bindings.take() {
                 let offset = self.access.as_ref().map(|v| v.len()).unwrap_or(0);
                 for decl in decls {
                     lin.inform_declaration(
@@ -191,10 +177,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         };
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
+                let mut binding = None;
                 if let Some(ident) = ident {
                     let value_ptr = match term {
                         Term::LetPattern(..) => {
-                            self.let_binding = Some(id);
+                            binding = Some(id);
                             ValueState::Unknown
                         }
                         Term::FunPattern(..) => {
@@ -250,7 +237,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     });
                 }
 
-                let mut let_pattern_bindings = Vec::new();
+                let mut let_pattern_bindings = if let Some(id) = binding {
+                    vec![id]
+                } else {
+                    Vec::new()
+                };
                 for (path, bind_ident, field) in destruct
                     .to_owned()
                     .inner()
@@ -282,12 +273,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         metadata: Some(field.metadata),
                     });
                 }
-                self.let_pattern_binding = Some(let_pattern_bindings);
+                self.bindings = Some(let_pattern_bindings);
             }
             Term::Let(ident, ..) | Term::Fun(ident, ..) => {
                 let value_ptr = match term {
                     Term::Let(..) => {
-                        self.let_binding = Some(id);
+                        self.bindings = Some(vec![id]);
                         ValueState::Unknown
                     }
                     Term::Fun(..) => {
@@ -610,8 +601,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             record_fields: self.record_fields.as_mut().and_then(|(record, fields)| {
                 Some(*record).zip(fields.pop().map(|field| vec![field]))
             }),
-            let_binding: self.let_binding.take(),
-            let_pattern_binding: self.let_pattern_binding.take(),
+            bindings: self.bindings.take(),
             access: self.access.clone(),
         }
     }
@@ -628,8 +618,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             // this new scope gets a cleared stated.
             meta: None,
             record_fields: None,
-            let_binding: None,
-            let_pattern_binding: None,
+            bindings: None,
             access: None,
         }
     }
