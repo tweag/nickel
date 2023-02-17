@@ -228,16 +228,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Some(Field {
                         metadata: metadata_next,
                         value: mut value_next,
+                        pending_contracts,
                     }) = next_field.take()
                     {
                         // We evaluate the fields' value, either to handle the next ident of the
                         // path, or to show the value if we are treating the last ident of the path
+
                         value_next = value_next
                             .map(|value| -> Result<RichTerm, EvalError> {
+                                let pos_value = value.pos;
+                                let value_with_ctr = PendingContract::apply_all(
+                                    value,
+                                    pending_contracts.into_iter(),
+                                    pos_value,
+                                );
                                 let (new_value, new_env) = self.eval_closure(
                                     Closure {
-                                        body: value,
-                                        env: std::mem::take(&mut env),
+                                        body: value_with_ctr,
+                                        env: env.clone(),
                                     },
                                     initial_env,
                                 )?;
@@ -250,6 +258,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         field = Field {
                             metadata: metadata_next.clone(),
                             value: value_next,
+                            pending_contracts: Default::default(),
                         };
                     } else {
                         return Err(EvalError::FieldMissing(
@@ -535,11 +544,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     //instead of `match` in the main eval loop, if possible
                     let static_part = RichTerm::new(Term::Record(record.clone()), pos);
 
-                    // Transform the static part `{stat1 = val1, ..., statn = valn}` and the dynamic
-                    // part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of extensions
-                    // `%record_insert% exp1 (... (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)) dyn_val1`
-                    // The `dyn_val` are given access to the recursive environment, but the recursive
-                    // environment only contains the static fields, and not the dynamic fields.
+                    // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
+                    // dynamic part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of
+                    // extensions
+                    //
+                    // ```
+                    // %record_insert% exp1
+                    //   (...
+                    //     (%record_insert% expn {stat1 = val1, ..., statn = valn} dyn_valn)
+                    //   ...)
+                    //   dyn_val1
+                    //
+                    // ```
+                    //
+                    // The `dyn_val` are given access to the recursive environment, but the
+                    // recursive environment only contains the static fields, and not the dynamic
+                    // fields.
                     let extended = dyn_fields
                         .iter()
                         .try_fold::<_, _, Result<RichTerm, EvalError>>(
@@ -554,10 +574,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
 
                                 let ext_kind = field.extension_kind();
-                                let Field { metadata, value } = field;
+                                let Field {
+                                    metadata,
+                                    value,
+                                    pending_contracts,
+                                } = field;
 
+                                //TODO[LAZYPROP]: we should probably closurize the pending
+                                //contracts. It seems to work currently, but looks a bit fragile
+                                //with respect to refactoring/changes.
                                 let extend = mk_term::op2(
-                                    BinaryOp::DynExtend(metadata.clone(), ext_kind),
+                                    BinaryOp::DynExtend {
+                                        metadata: metadata.clone(),
+                                        pending_contracts: pending_contracts.clone(),
+                                        ext_kind,
+                                    },
                                     name_as_term.clone(),
                                     acc,
                                 );
@@ -579,7 +610,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                // Unwrapping of enriched terms
                 Term::ResolvedImport(id) => {
                     if let Some(t) = self.import_resolver.get(*id) {
                         Closure::atomic_closure(t)
@@ -645,16 +675,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
-                // long as we generate the corresponding contract application at one point
-                // (currently ahead-of-time during program transformations).
+                // long as we generate the corresponding contract application when consuming it.
                 //
                 // The situation could change if we want to implement optimizations such as
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
-                Term::Annotated(_, inner) => Closure {
-                    body: inner.clone(),
-                    env,
-                },
+                Term::Annotated(annot, inner) => {
+                    let contracts = annot.as_pending_contracts()?;
+                    let pos = inner.pos;
+                    let inner_with_ctr =
+                        PendingContract::apply_all(inner.clone(), contracts.into_iter(), pos);
+
+                    Closure {
+                        body: inner_with_ctr,
+                        env,
+                    }
+                }
                 // Continuation of operations and thunk update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {

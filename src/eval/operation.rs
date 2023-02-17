@@ -29,7 +29,7 @@ use crate::{
         BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
         StrChunk, Term, UnaryOp,
     },
-    transform::{apply_contracts::apply_contracts, Closurizable},
+    transform::Closurizable,
 };
 
 use md5::digest::Digest;
@@ -455,25 +455,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             UnaryOp::StaticAccess(id) => {
                 if let Term::Record(record) = &*t {
-                    match record.fields.get(&id) {
-                        Some(Field {
-                            value: Some(value), ..
-                        }) => {
+                    // We have to apply potentially pending contracts. Right now, this
+                    // means that repeated field access will re-apply the contract again
+                    // and again, which is not optimal. The same thing happens with array
+                    // contracts. There are several way to improve this, but this is left
+                    // as future work.
+                    match record
+                        .get_value_with_ctrs(&id)
+                        .map_err(|err| err.into_eval_err(pos, pos_op))?
+                    {
+                        Some(value) => {
                             self.call_stack.enter_field(id, pos, value.pos, pos_op);
-                            Ok(Closure {
-                                body: value.clone(),
-                                env,
-                            })
+                            Ok(Closure { body: value, env })
                         }
-                        Some(Field {
-                            value: None,
-                            metadata,
-                        }) => Err(EvalError::MissingFieldDef {
-                            id,
-                            metadata: metadata.clone(),
-                            pos_record: pos,
-                            pos_access: pos_op,
-                        }),
                         None => Err(EvalError::FieldMissing(
                             id.into_label(),
                             String::from("(.)"),
@@ -560,7 +554,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let ts = ts
                                 .into_iter()
                                 .map(|t| {
-                                    let t_with_ctrs = apply_contracts(
+                                    let t_with_ctrs = PendingContract::apply_all(
                                         t,
                                         attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
@@ -661,7 +655,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let record = record.map_fields_without_optionals(&mut self.cache, &mut shared_env, &env, |id, t| {
+                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
                                 let pos = t.pos.into_inherited();
 
                                 mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
@@ -718,6 +712,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let pos_record = pos;
                         let pos_access = pos_op;
                         let defined = record
+                            // into_iter_without_opts applies pending contracts as well
                             .into_iter_without_opts()
                             .collect::<Result<Vec<_>, _>>()
                             .map_err(|missing_def_err| {
@@ -746,7 +741,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let terms =
                             seq_terms(
                                 ts.into_iter().map(|t| {
-                                    let t_with_ctr = apply_contracts(
+                                    let t_with_ctr = PendingContract::apply_all(
                                         t,
                                         attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
@@ -774,7 +769,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::ArrayHead() => {
                 if let Term::Array(ts, attrs) = &*t {
                     if let Some(head) = ts.get(0) {
-                        let head_with_ctr = apply_contracts(
+                        let head_with_ctr = PendingContract::apply_all(
                             head.clone(),
                             attrs.pending_contracts.iter().cloned(),
                             pos.into_inherited(),
@@ -1198,7 +1193,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let record = record.map_fields_without_optionals(&mut self.cache, &mut shared_env, &env, |id, t| {
+                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
                                 let stack_elem = Some(callstack::StackElem::Field {
                                     id,
                                     pos_record: pos,
@@ -1226,7 +1221,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map(|t| {
                                     mk_term::op1(
                                         UnaryOp::Force(None),
-                                        apply_contracts(
+                                        PendingContract::apply_all(
                                             t,
                                             attrs.pending_contracts.iter().cloned(),
                                             pos.into_inherited(),
@@ -1919,11 +1914,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::DynAccess() => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
-                            match record.get_value(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
+                            // We have to apply potential pending contracts. Right now, this
+                            // means that repeated field access will re-apply the contract again
+                            // and again, which is not optimal. The same thing happens with array
+                            // contracts. There are several way to improve this, but this is left
+                            // as future work.
+                            match record.get_value_with_ctrs(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
                                 Some(value) => {
                                     self.call_stack.enter_field(Ident::from(id), pos2, value.pos, pos_op);
                                     Ok(Closure {
-                                        body: value.clone(),
+                                        body: value,
                                         env: env2,
                                     })
                                 }
@@ -1961,7 +1961,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             },
-            BinaryOp::DynExtend(metadata, extension_kind) => {
+            BinaryOp::DynExtend {
+                metadata,
+                pending_contracts,
+                ext_kind,
+            } => {
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm! {t2, with {
                             Term::Record(record) => {
@@ -1969,7 +1973,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                 // If a defined value is expected for this field, it must be
                                 // provided as an additional argument, so we pop it from the stack
-                                let value = if let RecordExtKind::WithValue = extension_kind {
+                                let value = if let RecordExtKind::WithValue = ext_kind {
                                     let (value_closure, _) = self
                                         .stack
                                         .pop_arg(&self.cache)
@@ -1982,7 +1986,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     None
                                 };
 
-                                match fields.insert(Ident::from(id), Field {value, metadata }) {
+                                match fields.insert(Ident::from(id), Field {value, metadata, pending_contracts }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
                                     Some(t) => Err(EvalError::Other(format!("insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
@@ -2026,6 +2030,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     | Some(Field {
                                         value: None,
                                         metadata: FieldMetadata { opt: true, ..},
+                                        ..
                                       }) =>
                                     {
                                         Err(EvalError::FieldMissing(
@@ -2147,12 +2152,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     .filter(|ctr| !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr));
 
                                 ts.extend(ts1.into_iter().map(|t|
-                                    apply_contracts(t, ctrs_left.iter().cloned(), pos1)
+                                    PendingContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
                                     .closurize(&mut self.cache, &mut env, env1.clone())
                                 ));
 
                                 ts.extend(ts2.into_iter().map(|t|
-                                    apply_contracts(t, ctrs_right.clone(), pos2)
+                                    PendingContract::apply_all(t, ctrs_right.clone(), pos2)
                                     .closurize(&mut self.cache, &mut env, env2.clone())
                                 ));
 
@@ -2199,7 +2204,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     } else if *n < 0.0 || n_int >= ts.len() {
                         Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
                     } else {
-                        let elem_with_ctr = apply_contracts(
+                        let elem_with_ctr = PendingContract::apply_all(
                             ts.get(n_int).unwrap().clone(),
                             attrs.pending_contracts.iter().cloned(),
                             pos1.into_inherited(),
@@ -3116,18 +3121,36 @@ fn eq<C: Cache>(
                         (
                             Field {
                                 value: Some(value1),
+                                pending_contracts: pending_contracts1,
                                 ..
                             },
                             Field {
                                 value: Some(value2),
+                                pending_contracts: pending_contracts2,
                                 ..
                             },
-                        ) => Some(Ok((value1, value2))),
+                        ) => {
+                            let pos1 = value1.pos;
+                            let pos2 = value2.pos;
+
+                            let value1_with_ctr = PendingContract::apply_all(
+                                value1,
+                                pending_contracts1.into_iter(),
+                                pos1,
+                            );
+                            let value2_with_ctr = PendingContract::apply_all(
+                                value2,
+                                pending_contracts2.into_iter(),
+                                pos2,
+                            );
+                            Some(Ok((value1_with_ctr, value2_with_ctr)))
+                        }
                         (Field { value: None, .. }, Field { value: None, .. }) => None,
                         (
                             Field {
                                 value: value1 @ None,
                                 metadata,
+                                ..
                             },
                             Field { value: Some(_), .. },
                         )
@@ -3139,6 +3162,7 @@ fn eq<C: Cache>(
                             Field {
                                 value: None,
                                 metadata,
+                                ..
                             },
                         ) => {
                             let pos_record = if value1.is_none() { pos1 } else { pos2 };
@@ -3152,6 +3176,7 @@ fn eq<C: Cache>(
                         }
                     })
                     .collect();
+
                 Ok(gen_eqs(cache, eqs?.into_iter(), env, env1, env2))
             }
         }
@@ -3168,21 +3193,15 @@ fn eq<C: Cache>(
                 .into_iter()
                 .map(|t| {
                     let pos = t.pos.into_inherited();
-                    apply_contracts(t, a1.pending_contracts.iter().cloned(), pos).closurize(
-                        cache,
-                        &mut shared_env1,
-                        env1.clone(),
-                    )
+                    PendingContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
+                        .closurize(cache, &mut shared_env1, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
                 .zip(l2.into_iter().map(|t| {
                     let pos = t.pos.into_inherited();
-                    apply_contracts(t, a2.pending_contracts.iter().cloned(), pos).closurize(
-                        cache,
-                        &mut shared_env2,
-                        env2.clone(),
-                    )
+                    PendingContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
+                        .closurize(cache, &mut shared_env2, env2.clone())
                 }))
                 .collect::<Vec<_>>();
 
@@ -3225,8 +3244,17 @@ fn eq<C: Cache>(
     }
 }
 
-trait RecordDataExt {
-    fn map_fields_without_optionals<F, C: Cache>(
+trait RecordDataExt: Sized {
+    /// Returns the record resulting from:
+    ///
+    /// 1. Filtering out any field which is an empty optional
+    /// 2. Appplying the pending contracts to each fields
+    /// 3. Applying the provided function
+    /// 4. Closurizing each result into the shared environment.
+    ///
+    /// Because we applied the pending contracts in 2., they are dropped in the result: all fields
+    /// have an empty set of pending contracts.
+    fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
         shared_env: &mut Environment,
@@ -3234,19 +3262,11 @@ trait RecordDataExt {
         f: F,
     ) -> Result<Self, record::MissingFieldDefError>
     where
-        F: FnMut(Ident, RichTerm) -> RichTerm,
-        Self: Sized;
+        F: FnMut(Ident, RichTerm) -> RichTerm;
 }
 
 impl RecordDataExt for RecordData {
-    /// Returns the record resulting from applying the provided function
-    /// to each field, and removing any field which is an empty optional
-    /// in the provided environment. The resulting values are then closurized
-    /// into the shared environment.
-    ///
-    /// Note that `f` is taken as `mut` in order to allow it to mutate
-    /// external state while iterating.
-    fn map_fields_without_optionals<F, C: Cache>(
+    fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
         shared_env: &mut Environment,
@@ -3261,15 +3281,25 @@ impl RecordDataExt for RecordData {
             .into_iter()
             .filter_map(|(id, field)| {
                 (!field.is_empty_optional()).then(|| {
-                    let value = field.value.map(|value| f(id, value)).ok_or(
-                        record::MissingFieldDefError {
+                    let value = field
+                        .value
+                        .map(|value| {
+                            let pos = value.pos;
+                            let value_with_ctrs = PendingContract::apply_all(
+                                value,
+                                field.pending_contracts.iter().cloned(),
+                                pos,
+                            );
+                            f(id, value_with_ctrs)
+                        })
+                        .ok_or(record::MissingFieldDefError {
                             id,
                             metadata: field.metadata.clone(),
-                        },
-                    )?;
+                        })?;
 
                     let field = Field {
                         value: Some(value),
+                        pending_contracts: Vec::new(),
                         ..field
                     }
                     .closurize(cache, shared_env, env.clone());

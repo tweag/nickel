@@ -144,6 +144,9 @@ pub struct Field {
     /// The value is optional because record field may not have a definition (e.g. optional fields).
     pub value: Option<RichTerm>,
     pub metadata: FieldMetadata,
+    /// List of contracts yet to be applied.
+    /// These are only observed when data enter or leave the record.
+    pub pending_contracts: Vec<PendingContract>,
 }
 
 impl From<RichTerm> for Field {
@@ -159,8 +162,8 @@ impl Field {
     /// Map a function over the value of the field, if any.
     pub fn map_value(self, f: impl FnOnce(RichTerm) -> RichTerm) -> Self {
         Field {
-            metadata: self.metadata,
             value: self.value.map(f),
+            ..self
         }
     }
 
@@ -170,8 +173,8 @@ impl Field {
         f: impl FnOnce(RichTerm) -> Result<RichTerm, E>,
     ) -> Result<Self, E> {
         Ok(Field {
-            metadata: self.metadata,
             value: self.value.map(f).transpose()?,
+            ..self
         })
     }
 
@@ -197,17 +200,28 @@ impl Traverse<RichTerm> for Field {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let Field { metadata, value } = self;
-
-        let annotation = metadata.annotation.traverse(f, state, order)?;
-        let value = value.map(|v| v.traverse(f, state, order)).transpose()?;
+        let annotation = self.metadata.annotation.traverse(f, state, order)?;
+        let value = self
+            .value
+            .map(|v| v.traverse(f, state, order))
+            .transpose()?;
 
         let metadata = FieldMetadata {
             annotation,
-            ..metadata
+            ..self.metadata
         };
 
-        Ok(Field { metadata, value })
+        let pending_contracts = self
+            .pending_contracts
+            .into_iter()
+            .map(|pending_contract| pending_contract.traverse(f, state, order))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Field {
+            metadata,
+            value,
+            pending_contracts,
+        })
     }
 }
 
@@ -299,8 +313,8 @@ impl RecordData {
                 (
                     id,
                     Field {
-                        metadata: field.metadata,
                         value: f(id, field.value),
+                        ..field
                     },
                 )
             })
@@ -318,7 +332,11 @@ impl RecordData {
     }
 
     /// Turn the record into an iterator over the fields' values, ignoring optional fields without
-    /// definition. Fields that aren't optional but yet don't have a definition are mapped to the
+    /// definition.
+    ///
+    /// The returned iterator applies pending contracts to each value.
+    ///
+    /// Fields that aren't optional but yet don't have a definition are mapped to the
     /// error `MissingFieldDefError`.
     pub fn into_iter_without_opts(
         self,
@@ -326,7 +344,13 @@ impl RecordData {
         self.fields
             .into_iter()
             .filter_map(|(id, field)| match field.value {
-                Some(v) => Some(Ok((id, v))),
+                Some(v) => {
+                    let pos = v.pos;
+                    Some(Ok((
+                        id,
+                        PendingContract::apply_all(v, field.pending_contracts.into_iter(), pos),
+                    )))
+                }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {
                     id,
                     metadata: field.metadata,
@@ -356,7 +380,12 @@ impl RecordData {
     /// Get the value of a field. Ignore optional fields without value: trying to get their value
     /// returns `None`, as if they weren't present at all. Trying to extract a field without value
     /// which is non optional return an error.
-    pub fn get_value(&self, id: &Ident) -> Result<Option<&RichTerm>, MissingFieldDefError> {
+    ///
+    /// This method automatically applies the potential pending contracts
+    pub fn get_value_with_ctrs(
+        &self,
+        id: &Ident,
+    ) -> Result<Option<RichTerm>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {
                 value: None,
@@ -366,7 +395,19 @@ impl RecordData {
                 id: *id,
                 metadata: metadata.clone(),
             }),
-            field_opt => Ok(field_opt.and_then(|field| field.value.as_ref())),
+            Some(Field {
+                value: Some(value),
+                pending_contracts,
+                ..
+            }) => {
+                let pos = value.pos;
+                Ok(Some(PendingContract::apply_all(
+                    value.clone(),
+                    pending_contracts.iter().cloned(),
+                    pos,
+                )))
+            }
+            _ => Ok(None),
         }
     }
 }

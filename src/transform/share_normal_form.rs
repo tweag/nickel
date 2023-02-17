@@ -32,10 +32,9 @@ use crate::{
     match_sharedterm,
     position::TermPos,
     term::{
-        record::{Field, FieldDeps, FieldMetadata, RecordData},
-        BindingType, LabeledType, LetAttrs, RichTerm, Term, TypeAnnotation,
+        record::{Field, FieldDeps, RecordData},
+        BindingType, LetAttrs, RichTerm, Term,
     },
-    types::{TypeF, Types},
 };
 
 struct Binding {
@@ -56,21 +55,24 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
     match_sharedterm! {rt.term,
         with {
-            Term::Record(record) => {
-                let mut bindings = Vec::with_capacity(record.fields.len());
+            // CAUTION: currently, if the record literals written by a user are always recursive
+            // records, other phases of program transformation (such as desugaring of field paths
+            // like `{foo.bar.baz = val}` or desugaring of destructuring) do introduce non
+            // recursive records.
+            //
+            // I've scratched my head more that once on a transformation seemingly not happening
+            // only for record elaborated by the destructuring desguaring phase, to find that the
+            // `Term::Record` case below has been forgotten, and only the case `Term::RecRecord`
+            // was updated.
+            Term::Record(record_data) => {
+                let mut bindings = Vec::with_capacity(record_data.fields.len());
+                let empty_deps = FieldDeps::empty();
 
-                let record = record.map_defined_values(|id, t| {
-                    if should_share(&t.term) {
-                        let fresh_var = Ident::fresh();
-                        let pos_t = t.pos;
-                        bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
-                        RichTerm::new(Term::Var(fresh_var), pos_t)
-                    } else {
-                        t
-                    }
-                });
+                let fields = record_data.fields.into_iter().map(|(id, field)| {
+                    (id, transform_rec_field(field, Some(empty_deps.clone()), &mut bindings))
+                }).collect();
 
-                with_bindings(Term::Record(record), bindings, pos)
+                with_bindings(Term::Record(RecordData { fields, ..record_data }), bindings, pos)
             },
             Term::RecRecord(record_data, dyn_fields, deps) => {
                 let mut bindings = Vec::with_capacity(record_data.fields.len());
@@ -110,9 +112,9 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 
                 with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
-            Term::Annotated(annot, t) if should_share(&rt.term) => {
+            Term::Annotated(annot, t) if should_share(&t.term) => {
                 let fresh_var = Ident::fresh();
-                let shared = RichTerm::new(Term::Var(fresh_var), rt.pos);
+                let shared = RichTerm::new(Term::Var(fresh_var), t.pos);
                 let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
                 RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
             },
@@ -120,108 +122,56 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     }
 }
 
-/// Transform a record field. Take care of transforming the contracts contained in the field
-/// metadata as well, as those might be recursively depending on other fields.
+/// Transform the field of a recursive record. Take care of transforming the pending contracts
+/// attached to the field, as those might be recursively depending on other fields.
 ///
-/// When a recursive record is evaluated, all fields need to be turned to closures
-/// anyway (see the corresponding case in `eval::eval()`), which is what the share
-/// normal form transformation does. This is why the test is more lax here than for
-/// other constructors: it is not only about sharing, but also about the future
-/// evaluation of recursive records. Only constants are not required to be
-/// closurized.
+/// When a recursive record is evaluated, all fields need to be turned to closures anyway (see the
+/// corresponding case in `eval::eval()`), which is what the share normal form transformation does.
+/// This is why the test is more lax here than for other constructors: it is not only about
+/// sharing, but also about the future evaluation of recursive records. Only constant are not
+/// required to be closurized.
 ///
-/// In theory, the variable case is one exception: if the field is already a bare
-/// variable, it seems useless to add one more indirection through a generated
-/// variable. However, it is currently fundamental for recursive record merging that
-/// the share normal form transformation ensures the following post-condition: the
-/// fields of recursive records contain either a constant or a *generated* variable,
-/// but never a user-supplied variable directly (the former starts with a special
-/// marker). See comments inside [`crate::RichTerm::closurize`] for more details.
+/// In theory, the variable case is one exception: if the field is already a bare variable, it
+/// seems useless to add one more indirection through a generated variable. However, it is
+/// currently fundamental for recursive record merging that the share normal form transformation
+/// ensure the following post-condition: the fields of recursive records contain either a constant
+/// or a *generated* variable, but never a user-supplied variable directly (the former starts with
+/// a special marker). See comments inside [`crate::RichTerm::closurize`] for more details.
 fn transform_rec_field(
     field: Field,
     field_deps: Option<FieldDeps>,
     bindings: &mut Vec<Binding>,
 ) -> Field {
-    let annotation = field.metadata.annotation;
-
-    let types = annotation.types.map(|labeled_ty| {
-        let as_contract = labeled_ty.types.contract().unwrap();
-
+    let mut share_normal_form = |rt: RichTerm| {
         // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-        // explained above.
-        let contract = if !as_contract.as_ref().is_constant() {
+        // explained in this method's documentation above.
+        if !rt.as_ref().is_constant() {
             let fresh_var = Ident::fresh();
-            let pos_contract = as_contract.pos;
+            let pos_contract = rt.pos;
             let binding_type = mk_binding_type(field_deps.clone());
             bindings.push(Binding {
                 fresh_var,
-                term: as_contract,
+                term: rt,
                 binding_type,
             });
             RichTerm::new(Term::Var(fresh_var), pos_contract)
         } else {
-            as_contract
-        };
-
-        LabeledType {
-            types: Types(TypeF::Flat(contract)),
-            ..labeled_ty
+            rt
         }
-    });
+    };
 
-    let contracts = annotation
-        .contracts
+    let pending_contracts = field
+        .pending_contracts
         .into_iter()
-        .map(|labeled_ty| {
-            let as_contract = labeled_ty.types.contract().unwrap();
-
-            // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-            // explained above.
-            let contract = if !as_contract.as_ref().is_constant() {
-                let fresh_var = Ident::fresh();
-                let pos_contract = as_contract.pos;
-                let binding_type = mk_binding_type(field_deps.clone());
-                bindings.push(Binding {
-                    fresh_var,
-                    term: as_contract,
-                    binding_type,
-                });
-                RichTerm::new(Term::Var(fresh_var), pos_contract)
-            } else {
-                as_contract
-            };
-
-            LabeledType {
-                types: Types(TypeF::Flat(contract)),
-                ..labeled_ty
-            }
-        })
+        .map(|pending_contract| pending_contract.map_contract(&mut share_normal_form))
         .collect();
 
-    let value = field.value.map(|value| {
-        // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
-        // explained above.
-        if !value.as_ref().is_constant() {
-            let fresh_var = Ident::fresh();
-            let pos_v = value.pos;
-            let binding_type = mk_binding_type(field_deps);
-            bindings.push(Binding {
-                fresh_var,
-                term: value,
-                binding_type,
-            });
-            RichTerm::new(Term::Var(fresh_var), pos_v)
-        } else {
-            value
-        }
-    });
+    let value = field.value.map(&mut share_normal_form);
 
     Field {
         value,
-        metadata: FieldMetadata {
-            annotation: TypeAnnotation { types, contracts },
-            ..field.metadata
-        },
+        metadata: field.metadata,
+        pending_contracts,
     }
 }
 

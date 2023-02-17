@@ -287,7 +287,10 @@ pub fn get_bop_type(
             )
         }
         // forall a. Str -> {_ : a} -> a -> {_ : a}
-        BinaryOp::DynExtend(_, RecordExtKind::WithValue) => {
+        BinaryOp::DynExtend {
+            ext_kind: RecordExtKind::WithValue,
+            ..
+        } => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),
@@ -296,7 +299,10 @@ pub fn get_bop_type(
             )
         }
         // forall a. Str -> {_ : a} -> {_ : a}
-        BinaryOp::DynExtend(_, RecordExtKind::WithoutValue) => {
+        BinaryOp::DynExtend {
+            ext_kind: RecordExtKind::WithoutValue,
+            ..
+        } => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),

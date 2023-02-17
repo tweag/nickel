@@ -315,6 +315,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id))
                 .append(allocator.space()),
+            Force(_) => allocator.text("%force%").append(allocator.space()),
             op => allocator
                 .text(format!("%{op:?}%").to_lowercase())
                 .append(allocator.space()),
@@ -385,6 +386,7 @@ where
                                             priority: MergePriority::Bottom,
                                             ..
                                         },
+                                    ..
                                 } => allocator
                                     .text("?")
                                     .append(allocator.space())

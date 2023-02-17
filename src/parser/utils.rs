@@ -245,6 +245,7 @@ impl AttachTerm<Field> for FieldMetadata {
         Field {
             value: Some(rt),
             metadata: self,
+            pending_contracts: Default::default(),
         }
     }
 }
@@ -303,11 +304,13 @@ pub fn combine_match_annots(
             let Field {
                 value: default_value,
                 metadata: default_metadata,
+                pending_contracts,
             } = default.unwrap_or_default();
 
             Field {
                 value: default_value,
                 metadata: Annot::combine(anns.unwrap_or_default(), default_metadata),
+                pending_contracts,
             }
         }
         (None, None) => {
@@ -370,6 +373,7 @@ impl AttachTerm<Field> for FieldExtAnnot {
         Field {
             value,
             metadata: self.metadata,
+            pending_contracts: Default::default(),
         }
     }
 }
@@ -519,7 +523,13 @@ fn merge_fields(field1: Field, field2: Field) -> Field {
 
     let metadata = FieldMetadata::flatten(field1.metadata, field2.metadata);
 
-    Field { value, metadata }
+    // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
+    debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
+    Field {
+        value,
+        metadata,
+        pending_contracts: field1.pending_contracts,
+    }
 }
 
 /// Make a span from parser byte offsets.

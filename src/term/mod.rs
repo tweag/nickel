@@ -237,6 +237,54 @@ impl PendingContract {
     pub fn new(contract: RichTerm, label: Label) -> Self {
         PendingContract { contract, label }
     }
+
+    /// Map a function over the term representing the underlying contract.
+    pub fn map_contract<F>(self, f: F) -> Self
+    where
+        F: FnOnce(RichTerm) -> RichTerm,
+    {
+        PendingContract {
+            contract: f(self.contract),
+            ..self
+        }
+    }
+
+    /// Apply a series of pending contracts to a given term.
+    pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
+    where
+        I: Iterator<Item = Self>,
+    {
+        use crate::mk_app;
+
+        contracts.fold(rt, |acc, ctr| {
+            mk_app!(
+                make::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
+                acc
+            )
+            .with_pos(pos)
+        })
+    }
+}
+
+impl Traverse<RichTerm> for PendingContract {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    where
+        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+    {
+        let contract = self.contract.traverse(f, state, order)?;
+        Ok(PendingContract { contract, ..self })
+    }
+}
+
+impl std::convert::TryFrom<LabeledType> for PendingContract {
+    type Error = UnboundTypeVariableError;
+
+    fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
+        Ok(PendingContract::new(
+            labeled_ty.types.contract()?,
+            labeled_ty.label,
+        ))
+    }
 }
 
 /// The attributes of a let binding.
@@ -455,6 +503,14 @@ impl TypeAnnotation {
                 .collect::<Vec<_>>()
                 .join(",")
         })
+    }
+
+    /// Build a list of pending contracts from this type annotation.
+    pub fn as_pending_contracts(&self) -> Result<Vec<PendingContract>, UnboundTypeVariableError> {
+        self.iter()
+            .cloned()
+            .map(PendingContract::try_from)
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 
@@ -1209,11 +1265,16 @@ pub enum BinaryOp {
     /// field with this name to the given record with the expression on top of the stack as
     /// content.
     ///
-    /// The field may have been defined with attached metadata, and may or may not have a defined
-    /// value. We can't store those information as a term argument (metadata aren't first class
-    /// values, at least at the time of writing), so for now we attach it directly to the extend
-    /// primop. This isn't ideal, and in the future we may want to have a more principled primop.
-    DynExtend(FieldMetadata, RecordExtKind),
+    /// The field may have been defined with attached metadata, pending contracts and may or may
+    /// not have a defined value. We can't store those information as a term argument (metadata
+    /// aren't first class values, at least at the time of writing), so for now we attach it
+    /// directly to the extend primop. This isn't ideal, and in the future we may want to have a
+    /// more principled primop.
+    DynExtend {
+        metadata: FieldMetadata,
+        pending_contracts: Vec<PendingContract>,
+        ext_kind: RecordExtKind,
+    },
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
@@ -1250,9 +1311,23 @@ impl BinaryOp {
     pub fn pos(&self) -> OpPos {
         use BinaryOp::*;
         match self {
-            Plus() | Sub() | Mult() | Div() | Modulo() | Pow() | StrConcat() | Eq()
-            | LessThan() | LessOrEq() | GreaterThan() | GreaterOrEq() | DynExtend(..)
-            | DynRemove() | DynAccess() | ArrayConcat() | Merge() => OpPos::Infix,
+            Plus()
+            | Sub()
+            | Mult()
+            | Div()
+            | Modulo()
+            | Pow()
+            | StrConcat()
+            | Eq()
+            | LessThan()
+            | LessOrEq()
+            | GreaterThan()
+            | GreaterOrEq()
+            | DynExtend { .. }
+            | DynRemove()
+            | DynAccess()
+            | ArrayConcat()
+            | Merge() => OpPos::Infix,
             _ => OpPos::Prefix,
         }
     }
