@@ -659,6 +659,7 @@ impl Cache {
     /// corresponding source has been parsed.
     /// If resolved imports contain imports themselves, resolve them recursively.
     /// It returns a `Vec<FileId>`, which is a vector of all the imports that were transitively resolved.
+    #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
         file_id: FileId,
