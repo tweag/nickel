@@ -326,11 +326,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         value: value_ptr,
                         pattern_bindings: None,
                     },
-                    Term::Fun(..) => TermKind::Declaration{
-                        id:ident.to_owned(),
-                        usages:Vec::new(),
-                        value:ValueState::Unknown,
-                        pattern_bindings:None,
+                    Term::Fun(..) => TermKind::Declaration {
+                        id: ident.to_owned(),
+                        usages: Vec::new(),
+                        value: ValueState::Unknown,
+                        pattern_bindings: None,
                     },
                     _ => unreachable!(),
                 };
