@@ -198,7 +198,7 @@ impl<'b> Building<'b> {
                         _ => break,
                     }
                 }
-                // return the `prev_item` becuase that was the record field we want to 
+                // return the `prev_item` becuase that was the record field we want to
                 // resolve, and `curr_item` points to the record field's value.
                 Some(prev_item)
             }
