@@ -248,7 +248,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     .into_iter()
                     .flat_map(|matched| matched.clone().as_pattern_info())
                 {
-                    // We cannot have an empty vec, so this is safe
+                    // We cannot have an empty vector because a bound variable inside
+                    // a record pattern must have at least one item in it's path,
+                    // namely, the record field. i.e if we have: `let {a = value, ..} = ... in ...`
+                    // the path will be `vec![a]`, and this is the smallest possible case for a
+                    // record pattern which binds variables.
                     let ident = path.first().unwrap();
                     let id = ItemId {
                         file_id: self.file,
