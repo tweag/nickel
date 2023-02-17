@@ -139,7 +139,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 repl_impl
                     .vm
                     .import_resolver_mut()
-                    .resolve_imports(*id, false)
+                    .resolve_imports(*id)
                     .unwrap();
             }
 
@@ -242,10 +242,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let (term, pending) =
             import_resolution::resolve_imports(term, self.vm.import_resolver_mut())?;
         for id in &pending {
-            self.vm
-                .import_resolver_mut()
-                .resolve_imports(*id, false)
-                .unwrap();
+            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
         typecheck::env_add_term(
             &mut self.env.type_ctxt.type_env,
@@ -269,10 +266,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let (term, pending) =
             import_resolution::resolve_imports(term, self.vm.import_resolver_mut())?;
         for id in &pending {
-            self.vm
-                .import_resolver_mut()
-                .resolve_imports(*id, false)
-                .unwrap();
+            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
         let wildcards =
             typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.import_resolver())?;

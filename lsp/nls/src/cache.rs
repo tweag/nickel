@@ -45,7 +45,7 @@ impl CacheExt for Cache {
         }
 
         let mut import_errors = Vec::new();
-        if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id, true) {
+        if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
                 self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
