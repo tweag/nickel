@@ -175,9 +175,9 @@ impl<'b> Building<'b> {
 
                 let mut ids = idents.clone();
                 // (previous value, current value)
-                let mut result = (item, item);
+                let (mut prev_item, mut curr_item) = (item, item);
                 while let Some(id) = ids.pop() {
-                    match result.1 {
+                    match curr_item {
                         TermKind::Record(ref fields) => {
                             let item = fields.get(&id)?;
                             let item = self.get_item_kind(current_file, *item)?;
@@ -186,9 +186,9 @@ impl<'b> Building<'b> {
                                     value: ValueState::Known(next_item),
                                     ..
                                 } => {
-                                    result.0 = item;
+                                    prev_item = item;
                                     let item = self.get_item_kind(current_file, *next_item)?;
-                                    result.1 = item;
+                                    curr_item = item;
                                     continue;
                                 }
                                 // the value from a record is always a record field
@@ -198,9 +198,9 @@ impl<'b> Building<'b> {
                         _ => break,
                     }
                 }
-                // return the previous value becuase that was the record field we were
-                // looking for
-                Some(result.0)
+                // return the `prev_item` becuase that was the record field we want to 
+                // resolve, and `curr_item` points to the record field's value.
+                Some(prev_item)
             }
             // if declaration is a let binding resolve its value
             TermKind::Declaration {
