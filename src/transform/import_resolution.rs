@@ -30,7 +30,7 @@ pub fn resolve_imports<R>(
 where
     R: ImportResolver,
 {
-    let (term, resolved, errors) = resolve_imports_resillient(rt, resolver);
+    let (term, resolved, errors) = resolve_imports_resilient(rt, resolver);
     match errors.first().cloned() {
         Some(first) => Err(first),
         None => Ok((term, resolved)),
@@ -47,13 +47,10 @@ pub fn transform_one<R>(
 where
     R: ImportResolver,
 {
-    let term = rt.as_ref();
-    match term {
-        Term::Import(path) => {
-            let (_, file_id) = resolver.resolve(path, parent.clone(), &rt.pos)?;
-            Ok(RichTerm::new(Term::ResolvedImport(file_id), rt.pos))
-        }
-        _ => Ok(rt),
+    let (rt, error) = transform_one_resilient(rt, resolver, parent);
+    match error {
+        Some(err) => Err(err),
+        None => Ok(rt),
     }
 }
 
@@ -62,7 +59,7 @@ where
 /// * A `RichTerm` which may still contain unresolved imports.
 /// * A `Vec<FileId>`, telling the imports which were resolved.
 /// * A `Vec<ImportError>`, telling the imports that couldn't be resolved.
-pub fn resolve_imports_resillient<R>(
+pub fn resolve_imports_resilient<R>(
     rt: RichTerm,
     resolver: &mut R,
 ) -> (RichTerm, Vec<FileId>, Vec<ImportError>)
@@ -90,7 +87,7 @@ where
             &|rt: RichTerm,
               state: &mut ImportsResolutionState<R>|
              -> Result<RichTerm, ImportError> {
-                let (rt, err) = transform_one_resillient(rt, state.resolver, &state.parent);
+                let (rt, err) = transform_one_resilient(rt, state.resolver, &state.parent);
                 if let Some(err) = err {
                     state.unresolved.push(err);
                 }
@@ -113,7 +110,7 @@ where
 /// Try to resolve an import if the term is an unresolved import, and return
 /// back the a potentially resolved richterm and an import error if it couldn't
 /// be unresolved import could not be resolved.
-pub fn transform_one_resillient<R>(
+pub fn transform_one_resilient<R>(
     rt: RichTerm,
     resolver: &mut R,
     parent: &Option<PathBuf>,
