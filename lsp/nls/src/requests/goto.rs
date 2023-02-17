@@ -123,7 +123,7 @@ pub fn handle_to_usages(
     debug!("found referencing item: {:?}", item);
 
     let locations: Option<Vec<Location>> = match &item.kind {
-        TermKind::Declaration(_, usages, _, _) | TermKind::RecordField { usages, .. } => Some(
+        TermKind::Declaration { usages, .. } | TermKind::RecordField { usages, .. } => Some(
             usages
                 .iter()
                 .filter_map(|reference_id| {

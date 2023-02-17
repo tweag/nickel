@@ -143,7 +143,10 @@ impl Completed {
             TermKind::Usage(UsageState::Resolved(declaration)) => self
                 .get_item(declaration, lin_cache)
                 .and_then(|decl| match decl.kind {
-                    TermKind::Declaration(_, _, ValueState::Known(value), _)
+                    TermKind::Declaration {
+                        value: ValueState::Known(value),
+                        ..
+                    }
                     | TermKind::RecordField {
                         value: ValueState::Known(value),
                         ..
@@ -151,9 +154,10 @@ impl Completed {
                     _ => None,
                 })
                 .unwrap_or(item),
-            TermKind::Declaration(_, _, ValueState::Known(value), _) => {
-                self.get_item(value, lin_cache).unwrap_or(item)
-            }
+            TermKind::Declaration {
+                value: ValueState::Known(value),
+                ..
+            } => self.get_item(value, lin_cache).unwrap_or(item),
             _ => item,
         };
 

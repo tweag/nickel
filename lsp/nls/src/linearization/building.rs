@@ -82,7 +82,7 @@ impl<'b> Building<'b> {
             .expect("Could not find parent")
         {
             TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
-            TermKind::Declaration(_, ref mut usages, _, _)
+            TermKind::Declaration { ref mut usages, .. }
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
     }
@@ -94,7 +94,10 @@ impl<'b> Building<'b> {
         value: ItemId,
     ) {
         let kind = self.get_item_kind_mut(current_file, declaration);
-        if let Some(TermKind::Declaration(_, _, value_state, _)) = kind {
+        if let Some(TermKind::Declaration {
+            value: value_state, ..
+        }) = kind
+        {
             *value_state = ValueState::Known(value)
         }
     }
@@ -162,7 +165,11 @@ impl<'b> Building<'b> {
                     .as_option()
                     .and_then(|value_index| self.get_item_kind(current_file, value_index))
             }
-            TermKind::Declaration(_, _, ValueState::Known(value), Some(idents)) => {
+            TermKind::Declaration {
+                value: ValueState::Known(value),
+                pattern_bindings: Some(idents),
+                ..
+            } => {
                 let item = self.get_item_kind(current_file, *value)?;
                 let item = self.resolve_reference(current_file, item)?;
 
@@ -196,9 +203,10 @@ impl<'b> Building<'b> {
                 Some(result.0)
             }
             // if declaration is a let binding resolve its value
-            TermKind::Declaration(_, _, ValueState::Known(value), _) => {
-                self.get_item_kind(current_file, *value)
-            }
+            TermKind::Declaration {
+                value: ValueState::Known(value),
+                ..
+            } => self.get_item_kind(current_file, *value),
 
             TermKind::Usage(UsageState::Resolved(pointed)) => {
                 let kind = self.get_item_kind(current_file, *pointed)?;
