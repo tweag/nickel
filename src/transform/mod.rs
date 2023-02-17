@@ -60,7 +60,7 @@ pub fn transform_no_free_vars(
                 // record). In a top-down workflow, we would then visit those new duplicated nodes
                 // (already visited as part of transforming the metadata), and do that potentially
                 // again one level down. This results in a potentially non-linear cost in the size
-                // of the AST. This was witnessed on Terraform-Nickel, making examples using huge
+                // of the AST. This was witnessed on Terraform-Nickel, causing examples using huge
                 // auto-generated contracts (several of MBs) to not terminate in reasonable time.
                 let rt = gen_pending_contracts::transform_one(rt)?;
                 let rt = share_normal_form::transform_one(rt);
