@@ -24,12 +24,12 @@ impl ResolutionState for Resolved {}
 /// Can be extended later to represent Contracts, Records, etc.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TermKind {
-    Declaration(
-        Ident,
-        Vec<ItemId>,
-        ValueState,
-        /* pattern binding? */ Option<Vec<Ident>>,
-    ),
+    Declaration {
+        id: Ident,
+        usages: Vec<ItemId>,
+        value: ValueState,
+        pattern_bindings: Option<Vec<Ident>>,
+    },
     Usage(UsageState),
     Record(HashMap<Ident, ItemId>),
     RecordField {

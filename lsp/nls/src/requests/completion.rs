@@ -166,7 +166,11 @@ fn find_fields_from_term_kind(
                 }
             }
         }
-        TermKind::Declaration(_, _, ValueState::Known(body_id), Some(ref idents)) => {
+        TermKind::Declaration {
+            value: ValueState::Known(body_id),
+            pattern_bindings: Some(ref idents),
+            ..
+        } => {
             for ident in idents {
                 path.push(ident.clone())
             }
@@ -176,9 +180,10 @@ fn find_fields_from_term_kind(
             value: ValueState::Known(new_id),
             ..
         }
-        | TermKind::Declaration(_, _, ValueState::Known(new_id), _) => {
-            find_fields_from_term_kind(new_id, path, info)
-        }
+        | TermKind::Declaration {
+            value: ValueState::Known(new_id),
+            ..
+        } => find_fields_from_term_kind(new_id, path, info),
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
@@ -203,7 +208,10 @@ fn find_fields_from_contract(
     match &item.metadata {
         Some(metadata) => find_fields_from_contracts(&metadata.annotation, path, info),
         None => match item.kind {
-            TermKind::Declaration(_, _, ValueState::Known(new_id), _)
+            TermKind::Declaration {
+                value: ValueState::Known(new_id),
+                ..
+            }
             | TermKind::RecordField {
                 value: ValueState::Known(new_id),
                 ..
@@ -445,14 +453,24 @@ fn collect_record_info(
             match (&item.kind, ty) {
                 // Get record fields from static type info
                 (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
-                (TermKind::Declaration(_, _, ValueState::Known(body_id), Some(idents)), _) => {
+                (
+                    TermKind::Declaration {
+                        value: ValueState::Known(body_id),
+                        pattern_bindings: Some(idents),
+                        ..
+                    },
+                    _,
+                ) => {
                     for ident in idents {
                         path.push(ident.clone())
                     }
                     find_fields_from_term_kind(*body_id, path, &info)
                 }
                 (
-                    TermKind::Declaration(_, _, ValueState::Known(body_id), _)
+                    TermKind::Declaration {
+                        value: ValueState::Known(body_id),
+                        ..
+                    }
                     | TermKind::RecordField {
                         value: ValueState::Known(body_id),
                         ..
@@ -611,7 +629,7 @@ fn get_completion_identifiers(
                     .get_in_scope(item, &server.lin_cache)
                     .iter()
                     .filter_map(|i| match i.kind {
-                        TermKind::Declaration(ident, _, _, _)
+                        TermKind::Declaration { id: ident, .. }
                         | TermKind::RecordField { ident, .. } => Some(IdentWithType {
                             ident,
                             meta: item.metadata.clone(),
@@ -915,12 +933,12 @@ mod tests {
 
         let a = make_lin_item(
             ItemId { file_id, index: 0 },
-            TermKind::Declaration(
-                Ident::from("a"),
-                vec![ItemId { file_id, index: 3 }],
-                ValueState::Known(ItemId { file_id, index: 1 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("a"),
+                usages: vec![ItemId { file_id, index: 3 }],
+                value: ValueState::Known(ItemId { file_id, index: 1 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let b = make_lin_item(
@@ -935,12 +953,12 @@ mod tests {
         let c = make_lin_item(ItemId { file_id, index: 2 }, TermKind::Structure, None);
         let d = make_lin_item(
             ItemId { file_id, index: 3 },
-            TermKind::Declaration(
-                Ident::from("d"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 4 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("d"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 4 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let e = make_lin_item(
@@ -962,12 +980,12 @@ mod tests {
 
         let a = make_lin_item(
             ItemId { file_id, index: 0 },
-            TermKind::Declaration(
-                Ident::from("a"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 1 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("a"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 1 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let b = make_lin_item(
@@ -983,32 +1001,32 @@ mod tests {
         let c = make_lin_item(ItemId { file_id, index: 2 }, TermKind::Structure, None);
         let d = make_lin_item(
             ItemId { file_id, index: 3 },
-            TermKind::Declaration(
-                Ident::from("d"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 13 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("d"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 13 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let e = make_lin_item(
             ItemId { file_id, index: 4 },
-            TermKind::Declaration(
-                Ident::from("e"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 14 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("e"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 14 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let f = make_lin_item(
             ItemId { file_id, index: 5 },
-            TermKind::Declaration(
-                Ident::from("f"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 15 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("f"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 15 }),
+                pattern_bindings: None,
+            },
             None,
         );
         let g = make_lin_item(
@@ -1052,12 +1070,12 @@ mod tests {
         let id = ItemId { file_id, index: 0 };
         let a = make_lin_item(
             id,
-            TermKind::Declaration(
-                Ident::from("a"),
-                Vec::new(),
-                ValueState::Known(ItemId { file_id, index: 1 }),
-                None,
-            ),
+            TermKind::Declaration {
+                id: Ident::from("a"),
+                usages: Vec::new(),
+                value: ValueState::Known(ItemId { file_id, index: 1 }),
+                pattern_bindings: None,
+            },
             None,
         );
 

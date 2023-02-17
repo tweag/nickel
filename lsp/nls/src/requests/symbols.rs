@@ -25,7 +25,7 @@ pub fn handle_document_symbols(
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
-                TermKind::Declaration(name, _, _, _) => {
+                TermKind::Declaration { id: name, .. } => {
                     // TODO: can `unwrap` fail here?
                     let (file_id, span) = item.pos.unwrap().to_range();
 

@@ -226,15 +226,18 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
                     self.env.insert(ident.to_owned(), id);
                     let kind = match term {
-                        Term::LetPattern(..) => {
-                            TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, None)
-                        }
-                        Term::FunPattern(..) => TermKind::Declaration(
-                            ident.to_owned(),
-                            Vec::new(),
-                            ValueState::Unknown,
-                            None,
-                        ),
+                        Term::LetPattern(..) => TermKind::Declaration {
+                            id: ident.to_owned(),
+                            usages: Vec::new(),
+                            value: value_ptr,
+                            pattern_bindings: None,
+                        },
+                        Term::FunPattern(..) => TermKind::Declaration {
+                            id: ident.to_owned(),
+                            usages: Vec::new(),
+                            value: ValueState::Unknown,
+                            pattern_bindings: None,
+                        },
                         _ => unreachable!(),
                     };
                     lin.push(LinearizationItem {
@@ -270,12 +273,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         // TODO: get type from pattern
                         ty: UnifType::Concrete(TypeF::Dyn),
                         pos: new_ident.pos,
-                        kind: TermKind::Declaration(
-                            new_ident.to_owned(),
-                            Vec::new(),
-                            ValueState::Unknown,
-                            Some(path),
-                        ),
+                        kind: TermKind::Declaration {
+                            id: new_ident.to_owned(),
+                            usages: Vec::new(),
+                            value: ValueState::Unknown,
+                            pattern_bindings: Some(path),
+                        },
                         metadata: Some(field.metadata),
                     });
                 }
@@ -317,15 +320,18 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     },
                 );
                 let kind = match term {
-                    Term::Let(..) => {
-                        TermKind::Declaration(ident.to_owned(), Vec::new(), value_ptr, None)
-                    }
-                    Term::Fun(..) => TermKind::Declaration(
-                        ident.to_owned(),
-                        Vec::new(),
-                        ValueState::Unknown,
-                        None,
-                    ),
+                    Term::Let(..) => TermKind::Declaration {
+                        id: ident.to_owned(),
+                        usages: Vec::new(),
+                        value: value_ptr,
+                        pattern_bindings: None,
+                    },
+                    Term::Fun(..) => TermKind::Declaration{
+                        id:ident.to_owned(),
+                        usages:Vec::new(),
+                        value:ValueState::Unknown,
+                        pattern_bindings:None,
+                    },
                     _ => unreachable!(),
                 };
                 lin.push(LinearizationItem {
