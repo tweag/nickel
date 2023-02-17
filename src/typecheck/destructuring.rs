@@ -3,16 +3,52 @@ use std::collections::HashMap;
 use crate::{
     destructuring::{Match, RecordPattern},
     identifier::Ident,
+    mk_uty_row,
     types::{RecordRowF, RecordRowsF, TypeF},
 };
 
-use super::{Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows, UnifType};
+use super::{
+    mk_uniftype, Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows, UnifType,
+};
 
-/// Build a `UnifType` from a `Destruct` pattern, creating fresh unification
-/// variables wherever specific types are unknown.
-pub fn build_pattern_type(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
+pub fn build_pattern_type_walk_mode(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
+    build_pattern_type(state, pat, TypecheckMode::Walk)
+}
+
+pub fn build_pattern_type_check_mode(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
+    build_pattern_type(state, pat, TypecheckMode::Check)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypecheckMode {
+    Walk,
+    Check,
+}
+
+/// Build a `UnifType` from a `Destruct` pattern. The type of each "leaf"
+/// identifier will be assigned based on the `leaf_type` argument. The
+/// current possibilities are for each leaf to have type `Dyn` or to be
+/// assigned a fresh unification variable.
+fn build_pattern_type(
+    state: &mut State,
+    pat: &RecordPattern,
+    leaf_type: TypecheckMode,
+) -> UnifRecordRows {
+    fn new_leaf_type(state: &mut State, leaf_type: TypecheckMode) -> UnifType {
+        match leaf_type {
+            TypecheckMode::Walk => mk_uniftype::dynamic(),
+            TypecheckMode::Check => state.table.fresh_type_uvar(),
+        }
+    }
+
     let tail = if pat.open {
-        state.table.fresh_rrows_uvar()
+        match leaf_type {
+            // We use a dynamic tail here since we're in walk mode,
+            // but if/when we remove dynamic record tails this could
+            // likely be made an empty tail with no impact.
+            TypecheckMode::Walk => mk_uty_row!(; RecordRowsF::TailDyn),
+            TypecheckMode::Check => state.table.fresh_rrows_uvar(),
+        }
     } else {
         UnifRecordRows::Concrete(RecordRowsF::Empty)
     };
@@ -20,14 +56,14 @@ pub fn build_pattern_type(state: &mut State, pat: &RecordPattern) -> UnifRecordR
     let rows = pat.matches.iter().map(|m| match m {
         Match::Simple(id, _) => RecordRowF {
             id: *id,
-            types: Box::new(state.table.fresh_type_uvar()),
+            types: Box::new(new_leaf_type(state, leaf_type)),
         },
         Match::Assign(id, _, (_, None)) => RecordRowF {
             id: *id,
-            types: Box::new(state.table.fresh_type_uvar()),
+            types: Box::new(new_leaf_type(state, leaf_type)),
         },
         Match::Assign(id, _, (_, Some(r_pat))) => {
-            let row_tys = build_pattern_type(state, r_pat);
+            let row_tys = build_pattern_type(state, r_pat, leaf_type);
             let ty = UnifType::Concrete(TypeF::Record(row_tys));
             RecordRowF {
                 id: *id,
