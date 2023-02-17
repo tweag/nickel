@@ -134,7 +134,7 @@ impl Match {
     /// Returns info about each variable bound in a particular pattern.
     /// It also tells the "path" to the bound variable; this is just the
     /// record field names traversed to get to a pattern.
-    pub fn as_pattern_info(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
+    pub fn as_flattened_bindings(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
         match self {
             Match::Simple(id, field) => vec![(vec![id], None, field)],
             Match::Assign(id, field, (bind_id, Destruct::Empty)) => {
@@ -156,7 +156,7 @@ impl Match {
 
                 let inner = matches
                     .iter()
-                    .flat_map(|m| m.clone().as_pattern_info())
+                    .flat_map(|m| m.clone().as_flattened_bindings())
                     .map(|(mut path, bind, field)| {
                         path.push(id);
                         (path, bind, field)
