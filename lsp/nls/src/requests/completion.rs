@@ -168,7 +168,7 @@ fn find_fields_from_term_kind(
         }
         TermKind::Declaration {
             value: ValueState::Known(body_id),
-            pattern_bindings: Some(ref idents),
+            path: Some(ref idents),
             ..
         } => {
             for ident in idents {
@@ -456,7 +456,7 @@ fn collect_record_info(
                 (
                     TermKind::Declaration {
                         value: ValueState::Known(body_id),
-                        pattern_bindings: Some(idents),
+                        path: Some(idents),
                         ..
                     },
                     _,
@@ -937,7 +937,7 @@ mod tests {
                 id: Ident::from("a"),
                 usages: vec![ItemId { file_id, index: 3 }],
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -957,7 +957,7 @@ mod tests {
                 id: Ident::from("d"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 4 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -984,7 +984,7 @@ mod tests {
                 id: Ident::from("a"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -1005,7 +1005,7 @@ mod tests {
                 id: Ident::from("d"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 13 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -1015,7 +1015,7 @@ mod tests {
                 id: Ident::from("e"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 14 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -1025,7 +1025,7 @@ mod tests {
                 id: Ident::from("f"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 15 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );
@@ -1074,7 +1074,7 @@ mod tests {
                 id: Ident::from("a"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
-                pattern_bindings: None,
+                path: None,
             },
             None,
         );

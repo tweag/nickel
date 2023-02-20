@@ -167,7 +167,7 @@ impl<'b> Building<'b> {
             }
             TermKind::Declaration {
                 value: ValueState::Known(value),
-                pattern_bindings: Some(idents),
+                path: Some(idents),
                 ..
             } => {
                 let item = self.get_item_kind(current_file, *value)?;

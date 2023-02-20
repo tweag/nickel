@@ -28,7 +28,13 @@ pub enum TermKind {
         id: Ident,
         usages: Vec<ItemId>,
         value: ValueState,
-        pattern_bindings: Option<Vec<Ident>>,
+        // This is the path to a bound variable. If we have
+        // `let { a = {b = {c, ..}, ..}, ..} = ...`,  the `path` will
+        // be `Some([a, b, c])`, and `ident` will be `c`.
+        // If we have `let { a = {b = {c = somevar, ..}, ..}, ..} = ...`
+        // instead, the `path` remains the same, but the ident will be `somevar`
+        // If there is no pattern variable bound, the `path` is `None`
+        path: Option<Vec<Ident>>,
     },
     Usage(UsageState),
     Record(HashMap<Ident, ItemId>),
