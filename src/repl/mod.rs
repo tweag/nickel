@@ -134,7 +134,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             t: RichTerm,
         ) -> Result<RichTerm, Error> {
             let (t, pending) =
-                import_resolution::resolve_imports(t, repl_impl.vm.import_resolver_mut())?;
+                import_resolution::strict::resolve_imports(t, repl_impl.vm.import_resolver_mut())?;
             for id in &pending {
                 repl_impl
                     .vm
@@ -240,7 +240,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         let term = self.vm.import_resolver().get_owned(file_id).unwrap();
         let (term, pending) =
-            import_resolution::resolve_imports(term, self.vm.import_resolver_mut())?;
+            import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
         for id in &pending {
             self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
@@ -264,7 +264,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         // We ignore non fatal errors while type checking.
         let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
         let (term, pending) =
-            import_resolution::resolve_imports(term, self.vm.import_resolver_mut())?;
+            import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
         for id in &pending {
             self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }

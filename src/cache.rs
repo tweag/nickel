@@ -682,10 +682,11 @@ impl Cache {
                     let parse_errs = parse_errs.clone();
                     let (term, pending, errors) = match self.error_tolerance {
                         ErrorTolerance::Tolerant => {
-                            import_resolution::resolve_imports_resilient(term, self)
+                            import_resolution::tolerant::resolve_imports(term, self)
                         }
                         ErrorTolerance::Strict => {
-                            let (term, pending) = import_resolution::resolve_imports(term, self)?;
+                            let (term, pending) =
+                                import_resolution::strict::resolve_imports(term, self)?;
                             (term, pending, Vec::new())
                         }
                     };
@@ -793,7 +794,7 @@ impl Cache {
         if errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
-        let (term, pending) = import_resolution::resolve_imports(term, self)?;
+        let (term, pending) = import_resolution::strict::resolve_imports(term, self)?;
         let wildcards = type_check(&term, initial_ctxt.clone(), self)?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;
