@@ -217,13 +217,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             id: ident.to_owned(),
                             usages: Vec::new(),
                             value: value_ptr,
-                            pattern_bindings: None,
+                            path: None,
                         },
                         Term::FunPattern(..) => TermKind::Declaration {
                             id: ident.to_owned(),
                             usages: Vec::new(),
                             value: ValueState::Unknown,
-                            pattern_bindings: None,
+                            path: None,
                         },
                         _ => unreachable!(),
                     };
@@ -272,7 +272,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             id: new_ident.to_owned(),
                             usages: Vec::new(),
                             value: ValueState::Unknown,
-                            pattern_bindings: Some(path),
+                            path: Some(path),
                         },
                         metadata: Some(field.metadata),
                     });
@@ -319,13 +319,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         id: ident.to_owned(),
                         usages: Vec::new(),
                         value: value_ptr,
-                        pattern_bindings: None,
+                        path: None,
                     },
                     Term::Fun(..) => TermKind::Declaration {
                         id: ident.to_owned(),
                         usages: Vec::new(),
                         value: ValueState::Unknown,
-                        pattern_bindings: None,
+                        path: None,
                     },
                     _ => unreachable!(),
                 };
