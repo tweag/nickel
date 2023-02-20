@@ -149,6 +149,10 @@ SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
         opt: true,
         ..Default::default()
     },
+    "|" "not_exported" => FieldMetadata {
+        not_exported: true,
+        ..Default::default()
+    },
 }
 
 // A single field metadata annotation.
@@ -1009,6 +1013,7 @@ extern {
         "doc" => Token::Normal(NormalToken::Doc),
         "optional" => Token::Normal(NormalToken::Optional),
         "priority" => Token::Normal(NormalToken::Priority),
+        "not_exported" => Token::Normal(NormalToken::NotExported),
 
         "hash" => Token::Normal(NormalToken::OpHash),
         "serialize" => Token::Normal(NormalToken::Serialize),

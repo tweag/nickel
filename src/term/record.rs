@@ -83,6 +83,8 @@ pub struct FieldMetadata {
     pub annotation: TypeAnnotation,
     /// If the field is optional.
     pub opt: bool,
+    /// If the field is serialized.
+    pub not_exported: bool,
     pub priority: MergePriority,
 }
 
@@ -133,6 +135,7 @@ impl FieldMetadata {
                 contracts: outer.annotation.contracts,
             },
             opt: outer.opt || inner.opt,
+            not_exported: outer.not_exported || inner.not_exported,
             priority,
         }
     }

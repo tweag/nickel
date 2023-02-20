@@ -189,6 +189,7 @@ impl UniRecord {
                                     contracts,
                                 },
                             opt: false,
+                            not_exported: false,
                             priority: MergePriority::Neutral,
                         },
                     // At this stage, this field should always be empty. It's a run-time thing, and

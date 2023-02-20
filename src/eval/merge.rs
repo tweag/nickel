@@ -432,6 +432,8 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         // If one of the record requires this field, then it musn't be optional. The
         // resulting field is optional iff both are.
         opt: metadata1.opt && metadata2.opt,
+        // The resulting field will be suppressed from serialization if either of the fields to be merged is.
+        not_exported: metadata1.not_exported || metadata2.not_exported,
         priority,
     };
 
