@@ -103,7 +103,7 @@ where
     S: Serializer,
 {
     let mut entries = record
-        .iter_without_opts()
+        .iter_serializable()
         .collect::<Result<Vec<_>, _>>()
         .map_err(|missing_def_err| {
             Error::custom(format!(
@@ -195,7 +195,7 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
             Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(record) => {
-                record.iter_without_opts().try_for_each(|binding| {
+                record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
                     let (_, rt) = binding.unwrap_or_else(|err| panic!("encountered field without definition `{}` during pre-serialization validation", err.id));
@@ -427,10 +427,10 @@ mod tests {
             json!({"baz": {"subfoo": true, "subbar": 0}})
         );
 
-        // assert_json_eq!(
-        //     "{a = {b | default = {}} & {b.c | not_exported = false} & {b.d = true}}",
-        //     json!({"a": {"b": {"d": true}}})
-        // );
+        assert_json_eq!(
+            "{a = {b | default = {}} & {b.c | not_exported = false} & {b.d = true}}",
+            json!({"a": {"b": {"d": true}}})
+        );
     }
 
     #[test]
