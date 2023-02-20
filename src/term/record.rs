@@ -362,22 +362,24 @@ impl RecordData {
             })
     }
 
-    /// Return an iterator over the fields' values, ignoring optional fields without
-    /// definition. Fields that aren't optional but yet don't have a definition are mapped to the
-    /// error `MissingFieldDefError`.
-    pub fn iter_without_opts(
+    /// Return an iterator over the fields' values, ignoring optional fields
+    /// without definition and fields marked as not_exported. Fields that
+    /// aren't optional but yet don't have a definition are mapped to the error
+    /// `MissingFieldDefError`.
+    pub fn iter_serializable(
         &self,
     ) -> impl Iterator<Item = Result<(&Ident, &RichTerm), MissingFieldDefError>> {
-        self.fields
-            .iter()
-            .filter_map(|(id, field)| match field.value {
-                Some(ref v) => Some(Ok((id, v))),
+        self.fields.iter().filter_map(|(id, field)| {
+            debug_assert!(field.pending_contracts.is_empty());
+            match field.value {
+                Some(ref v) if !field.metadata.not_exported => Some(Ok((id, v))),
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {
                     id: *id,
                     metadata: field.metadata.clone(),
                 })),
-                None => None,
-            })
+                _ => None,
+            }
+        })
     }
 
     /// Get the value of a field. Ignore optional fields without value: trying to get their value
