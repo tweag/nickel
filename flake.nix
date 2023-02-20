@@ -73,7 +73,7 @@
             cargoDeps = oldAttrs.cargoDeps.overrideAttrs (final.lib.const {
               # This `inherit src` is important, otherwise, the old `src` would be used here
               inherit src;
-              outputHash = "sha256-GwLeA6xLt7I+NzRaqjwVpt1pzRex1/snq30DPv4FR+g=";
+              outputHash = "sha256-n3Z/jdw4CZvqixnEQX0mS/Fs2ocskLM/s7nt+pd4hPA=";
             });
           });
       };
