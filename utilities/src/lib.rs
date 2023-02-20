@@ -151,7 +151,7 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                         let mut cache = cache.clone();
                         let id = cache.add_file(bench.path()).unwrap();
                         let (t, _) =
-                            import_resolution::resolve_imports(t.clone(), &mut cache).unwrap();
+                            import_resolution::strict::resolve_imports(t.clone(), &mut cache).unwrap();
                         (cache, id, t)
                     },
                     |(mut c_local, id, t)| {
