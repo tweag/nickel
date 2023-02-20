@@ -1086,6 +1086,7 @@ mod tests {
                 contracts: Vec::new(),
             },
             opt: false,
+            not_exported: false,
             priority: MergePriority::Neutral,
         };
 

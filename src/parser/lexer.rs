@@ -263,6 +263,8 @@ pub enum NormalToken<'input> {
     Priority,
     #[token("force")]
     Force,
+    #[token("not_exported")]
+    NotExported,
 
     #[token("%hash%")]
     OpHash,

@@ -426,6 +426,11 @@ mod tests {
             "{baz | default = {subfoo | default = !false} & {subbar | default = 1 - 1}}",
             json!({"baz": {"subfoo": true, "subbar": 0}})
         );
+
+        // assert_json_eq!(
+        //     "{a = {b | default = {}} & {b.c | not_exported = false} & {b.d = true}}",
+        //     json!({"a": {"b": {"d": true}}})
+        // );
     }
 
     #[test]
