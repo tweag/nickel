@@ -18,7 +18,7 @@ struct ImportsResolutionState<'a, R> {
 
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
-    use super::ImportResolver;
+    use super::{tolerant::ResolveResult, ImportResolver};
     use crate::error::ImportError;
     use crate::term::RichTerm;
     use codespan::FileId;
@@ -37,7 +37,11 @@ pub mod strict {
     where
         R: ImportResolver,
     {
-        let (term, resolved, errors) = super::tolerant::resolve_imports(rt, resolver);
+        let ResolveResult {
+            transformed_term: term,
+            resolved_ids: resolved,
+            import_errors: errors,
+        } = super::tolerant::resolve_imports(rt, resolver);
         match errors.first().cloned() {
             Some(first) => Err(first),
             None => Ok((term, resolved)),
@@ -72,15 +76,18 @@ pub mod tolerant {
     use codespan::FileId;
     use std::path::PathBuf;
 
+    pub struct ResolveResult {
+        pub transformed_term: RichTerm,
+        pub resolved_ids: Vec<FileId>,
+        pub import_errors: Vec<ImportError>,
+    }
+
     /// Performs imports resolution for each import term independent from others.
     /// It returns back a triple, containing:
     /// * A `RichTerm` which may still contain unresolved imports.
     /// * A `Vec<FileId>`, telling the imports which were resolved.
     /// * A `Vec<ImportError>`, telling the imports that couldn't be resolved.
-    pub fn resolve_imports<R>(
-        rt: RichTerm,
-        resolver: &mut R,
-    ) -> (RichTerm, Vec<FileId>, Vec<ImportError>)
+    pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> ResolveResult
     where
         R: ImportResolver,
     {
@@ -122,7 +129,11 @@ pub mod tolerant {
             // we don't use the `?` operator
             .unwrap();
 
-        (transformed, stack, import_errors)
+        ResolveResult {
+            transformed_term: transformed,
+            resolved_ids: stack,
+            import_errors,
+        }
     }
 
     /// Try to resolve an import if the term is an unresolved import, and return
