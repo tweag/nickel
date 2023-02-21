@@ -85,7 +85,7 @@ pub mod tolerant {
         R: ImportResolver,
     {
         let mut stack = Vec::new();
-        let mut unresolved = Vec::new();
+        let mut import_errors = Vec::new();
 
         let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
             let path = resolver.get_path(x.src_id);
@@ -96,7 +96,7 @@ pub mod tolerant {
             resolver,
             stack: &mut stack,
             parent: source_file,
-            unresolved: &mut unresolved,
+            unresolved: &mut import_errors,
         };
 
         // If an import is resolved, then stack it.
@@ -122,7 +122,7 @@ pub mod tolerant {
             // we don't use the `?` operator
             .unwrap();
 
-        (transformed, stack, unresolved)
+        (transformed, stack, import_errors)
     }
 
     /// Try to resolve an import if the term is an unresolved import, and return
