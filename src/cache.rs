@@ -658,7 +658,10 @@ impl Cache {
     /// nothing if the imports of the entry have already been resolved. Require that the
     /// corresponding source has been parsed.
     /// If resolved imports contain imports themselves, resolve them recursively.
-    /// It returns a `Vec<FileId>`, which is a vector of all the imports that were transitively resolved.
+    /// It returns a two vectors which contain all the imports that were transitively resolved, and
+    /// all the errors it encountered while resolving imports in `file_id`, respectively. It only
+    ///  accumulates errors if the `Cache` is in error tolerant mode, otherwise it returns an `Err(..)`
+    /// containing  a `CacheError`
     #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
