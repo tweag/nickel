@@ -133,8 +133,10 @@ impl<EC: EvalCache> ReplImpl<EC> {
             id: Option<Ident>,
             t: RichTerm,
         ) -> Result<RichTerm, Error> {
-            let (t, pending) =
-                import_resolution::strict::resolve_imports(t, repl_impl.vm.import_resolver_mut())?;
+            let import_resolution::strict::ResolveResult {
+                transformed_term: t,
+                resolved_ids: pending,
+            } = import_resolution::strict::resolve_imports(t, repl_impl.vm.import_resolver_mut())?;
             for id in &pending {
                 repl_impl
                     .vm
@@ -239,8 +241,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             })?;
 
         let term = self.vm.import_resolver().get_owned(file_id).unwrap();
-        let (term, pending) =
-            import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
+        let import_resolution::strict::ResolveResult {
+            transformed_term: term,
+            resolved_ids: pending,
+        } = import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
         for id in &pending {
             self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
@@ -263,11 +267,15 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_tmp("<repl-typecheck>", String::from(exp));
         // We ignore non fatal errors while type checking.
         let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
-        let (term, pending) =
-            import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
+        let import_resolution::strict::ResolveResult {
+            transformed_term: term,
+            resolved_ids: pending,
+        } = import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
+
         for id in &pending {
             self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
         }
+
         let wildcards =
             typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
         // Substitute the wildcard types for their inferred types

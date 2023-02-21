@@ -64,7 +64,7 @@ pub struct Cache {
     files: Files<String>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<OsString, NameIdEntry>,
-    /// Map containing for each FileIDs a list of files they import.
+    /// Map containing for each FileIDs a list of files they import (directly).
     imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, CachedTerm>,
@@ -486,15 +486,17 @@ impl Cache {
                     let wildcards = type_check(term, initial_ctxt.clone(), self)?;
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
-                }
 
-                if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.into_iter() {
-                        self.typecheck(f, initial_ctxt)?;
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.typecheck(f, initial_ctxt)?;
+                        }
                     }
-                }
 
-                self.update_state(file_id, EntryState::Typechecked);
+                    self.update_state(file_id, EntryState::Typechecked);
+                }
+                // The else case correponds to `EntryState::Typechecking`. There is nothing to do:
+                // cf (grep for) [transitory_entry_state]
                 Ok(CacheOp::Done(()))
             }
             _ => Err(CacheError::NotParsed),
@@ -657,11 +659,16 @@ impl Cache {
     /// Resolve every imports of an entry of the cache, and update its state accordingly, or do
     /// nothing if the imports of the entry have already been resolved. Require that the
     /// corresponding source has been parsed.
-    /// If resolved imports contain imports themselves, resolve them recursively.
-    /// It returns a two vectors which contain all the imports that were transitively resolved, and
-    /// all the errors it encountered while resolving imports in `file_id`, respectively. It only
-    ///  accumulates errors if the `Cache` is in error tolerant mode, otherwise it returns an `Err(..)`
-    /// containing  a `CacheError`
+    ///
+    /// If resolved imports contain imports themselves, resolve them recursively. Returns a tuple
+    /// of vectors, where the first component is the imports that were transitively resolved, and
+    /// the second component is the errors it encountered while resolving imports in `file_id`,
+    /// respectively. Imports that were already resolved before are not included in the first
+    /// component: this return value is currently used by the LSP to re-run code analysis on new
+    /// files/modified files.
+    ///
+    /// It only accumulates errors if the cache is in error tolerant mode, otherwise it returns an
+    /// `Err(..)` containing  a `CacheError`.
     #[allow(clippy::type_complexity)]
     pub fn resolve_imports(
         &mut self,
@@ -673,65 +680,61 @@ impl Cache {
             }
             Some(state) if state >= EntryState::Parsed => {
                 let (pending, errors) = if state < EntryState::ImportsResolving {
-                    let CachedTerm {
-                        term, parse_errs, ..
-                    } = self.terms.get(&file_id).unwrap();
-                    // okay, for now these clones are here because the function call below
-                    // short circuits, and then we don't put back the item in cache, so the
-                    // linearization of a file fails if we can't resolve any of it's imports
-                    // The current solution is not to remove the item from the cache, and
-                    // put it back when done, but to get a reference and clone it.
+                    let CachedTerm { term, .. } = self.terms.get(&file_id).unwrap();
                     let term = term.clone();
-                    let parse_errs = parse_errs.clone();
-                    let (term, pending, errors) = match self.error_tolerance {
+
+                    let import_resolution::tolerant::ResolveResult {
+                        transformed_term,
+                        resolved_ids: pending,
+                        import_errors,
+                    } = match self.error_tolerance {
                         ErrorTolerance::Tolerant => {
-                            let import_resolution::tolerant::ResolveResult {
-                                transformed_term,
-                                resolved_ids,
-                                import_errors,
-                            } = import_resolution::tolerant::resolve_imports(term, self);
-                            (transformed_term, resolved_ids, import_errors)
+                            import_resolution::tolerant::resolve_imports(term, self)
                         }
                         ErrorTolerance::Strict => {
-                            let (term, pending) =
-                                import_resolution::strict::resolve_imports(term, self)?;
-                            (term, pending, Vec::new())
+                            import_resolution::strict::resolve_imports(term, self)?.into()
                         }
                     };
 
-                    self.terms.insert(
-                        file_id,
-                        CachedTerm {
-                            term,
-                            state: EntryState::ImportsResolving,
-                            parse_errs,
-                        },
-                    );
+                    // unwrap!(): we called `unwrap()` at the beggining of the enclosing if branch
+                    // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
+                    // `resolve_imports` in between, which don't remove anything from `self.terms`.
+                    let cached_term = self.terms.get_mut(&file_id).unwrap();
+                    cached_term.term = transformed_term;
+                    cached_term.state = EntryState::ImportsResolving;
 
-                    (
-                        pending
-                            .iter()
-                            .flat_map(|id| {
-                                if let Ok(CacheOp::Done((mut ps, _))) = self.resolve_imports(*id) {
-                                    ps.push(*id);
-                                    ps
-                                } else {
-                                    Vec::new()
-                                }
-                            })
-                            .collect(),
-                        errors,
-                    )
-                } else {
-                    let pending = self.imports.get(&file_id).cloned().unwrap_or_default();
+                    let mut done = Vec::new();
 
-                    for id in &pending {
-                        self.resolve_imports(*id)?;
+                    // Transitively resolve the imports, and accumulate the ids of the resolved
+                    // files along the way.
+                    for id in pending {
+                        if let CacheOp::Done((mut done_local, _)) = self.resolve_imports(id)? {
+                            done.push(id);
+                            done.append(&mut done_local)
+                        }
                     }
-                    (pending.into_iter().collect(), Vec::new())
+
+                    self.update_state(file_id, EntryState::ImportsResolved);
+                    (done, import_errors)
+                } else {
+                    // [transitory_entry_state]:
+                    //
+                    // In this branch, the state is `EntryState::ImportsResolving`. Which means we
+                    // recursively called `resolve_imports` on the same entry: there is a cyclic
+                    // import. In that case, we don't do anything, as the entry is being treated
+                    // by a on-going call to `resolve_import` higher up in the call chain.
+                    //
+                    // Note that in some cases, this intermediate state can be observed by an
+                    // external caller: if a first call to `resolve_imports` fails in the middle of
+                    // resolving the transitive imports, the end state of the entry is
+                    // `ImportsResolving`. Subsequent calls to `resolve_imports` will succeed, but
+                    // won't change the state to `EntryState::ImportsResolved` (and for a good
+                    // reason: we wouldn't even know what are the pending imports to resolve). The
+                    // Nickel pipeline should however fail if `resolve_imports` failed at some
+                    // point, anyway.
+                    (Vec::new(), Vec::new())
                 };
 
-                self.update_state(file_id, EntryState::ImportsResolved);
                 Ok(CacheOp::Done((pending, errors)))
             }
             _ => Err(CacheError::NotParsed),
@@ -799,10 +802,15 @@ impl Cache {
         initial_ctxt: &typecheck::Context,
     ) -> Result<(RichTerm, Vec<FileId>), Error> {
         let (term, errs) = self.parse_nocache(file_id)?;
-        if errs.no_errors() {
+        if !errs.no_errors() {
             return Err(Error::ParseErrors(errs));
         }
-        let (term, pending) = import_resolution::strict::resolve_imports(term, self)?;
+
+        let import_resolution::strict::ResolveResult {
+            transformed_term: term,
+            resolved_ids: pending,
+        } = import_resolution::strict::resolve_imports(term, self)?;
+
         let wildcards = type_check(&term, initial_ctxt.clone(), self)?;
         let term = transform::transform(term, Some(&wildcards))
             .map_err(|err| Error::ParseErrors(err.into()))?;

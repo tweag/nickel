@@ -6,45 +6,65 @@ use crate::error::ImportError;
 use codespan::FileId;
 use std::path::PathBuf;
 
-/// The state passed around during the imports resolution. It holds a reference to the import
-/// resolver, to a stack of pending imported term to be transformed and the path of the import
-/// currently being processed, if any.
+/// The state passed around during the imports resolution.
 struct ImportsResolutionState<'a, R> {
     resolver: &'a mut R,
+    /// Pending imported terms to be transformed.
     stack: &'a mut Vec<FileId>,
+    /// Path of the import being currently processed, if any.
     parent: Option<PathBuf>,
-    unresolved: &'a mut Vec<ImportError>,
+    /// Errors of imports that couldn't be resolved correctly.
+    import_errors: &'a mut Vec<ImportError>,
 }
 
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
-    use super::{tolerant::ResolveResult, ImportResolver};
+    use super::{tolerant, ImportResolver};
     use crate::error::ImportError;
     use crate::term::RichTerm;
     use codespan::FileId;
     use std::path::PathBuf;
 
+    /// The result of an import resolution transformation.
+    pub struct ResolveResult {
+        /// The transformed term after the import resolution transformation.
+        pub transformed_term: RichTerm,
+        /// Imports that were resolved without errors, but are potentially not yet transformed.
+        pub resolved_ids: Vec<FileId>,
+    }
+
+    impl From<tolerant::ResolveResult> for ResolveResult {
+        fn from(result_tolerant: tolerant::ResolveResult) -> Self {
+            ResolveResult {
+                transformed_term: result_tolerant.transformed_term,
+                resolved_ids: result_tolerant.resolved_ids,
+            }
+        }
+    }
+
+    impl From<ResolveResult> for tolerant::ResolveResult {
+        fn from(result_strict: ResolveResult) -> Self {
+            tolerant::ResolveResult {
+                transformed_term: result_strict.transformed_term,
+                resolved_ids: result_strict.resolved_ids,
+                import_errors: Vec::new(),
+            }
+        }
+    }
+
     /// Perform imports resolution.
     ///
-    /// All resolved imports are stacked during the process. Once the term has been traversed,
-    /// the elements of this stack are returned. The caller is responsible
-    /// to recursively resolve imports of this stack and or to perform
-    /// transformations on it.
-    pub fn resolve_imports<R>(
-        rt: RichTerm,
-        resolver: &mut R,
-    ) -> Result<(RichTerm, Vec<FileId>), ImportError>
+    /// All resolved imports are stacked during the process. Once the term has been traversed, the
+    /// elements of this stack are returned. The caller is responsible for performing
+    /// transformations (including import resolution) on the resolved terms, if needed.
+    pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<ResolveResult, ImportError>
     where
         R: ImportResolver,
     {
-        let ResolveResult {
-            transformed_term: term,
-            resolved_ids: resolved,
-            import_errors: errors,
-        } = super::tolerant::resolve_imports(rt, resolver);
-        match errors.first().cloned() {
-            Some(first) => Err(first),
-            None => Ok((term, resolved)),
+        let tolerant_result = super::tolerant::resolve_imports(rt, resolver);
+        match tolerant_result.import_errors.first() {
+            Some(err) => Err(err.clone()),
+            None => Ok(tolerant_result.into()),
         }
     }
 
@@ -66,8 +86,8 @@ pub mod strict {
     }
 }
 
-/// Performs import resolution that cannot fail: it accumulates all errors and returns in
-/// along side with a (partially) resolved term.
+/// Performs import resolution that cannot fail: it accumulates all errors and returns them
+/// together with a (partially) resolved term.
 pub mod tolerant {
     use super::ImportResolver;
     use super::ImportsResolutionState;
@@ -76,17 +96,18 @@ pub mod tolerant {
     use codespan::FileId;
     use std::path::PathBuf;
 
-    /// The result of an error tolerant import resolution transformation.
-    /// `transformed_term` is the main result of the transformation, which may still contain unresolved import terms.
-    /// `resolved_ids` indicates the imports that were resolved correctly.
-    /// `import_errors` indicates the imports that could not be resolved.
+    /// The result of an error tolerant import resolution.
     pub struct ResolveResult {
+        /// The main result of the transformation. May still contain unresolved import terms in
+        /// case of errors.
         pub transformed_term: RichTerm,
+        /// Imports that were resolved without errors, but are potentially yet to be transformed.
         pub resolved_ids: Vec<FileId>,
+        /// Errors produced when failing to resolve imports.
         pub import_errors: Vec<ImportError>,
     }
 
-    /// Performs imports resolution for import terms independently, in an error tolerant way.
+    /// Performs imports resolution in an error tolerant way.
     pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> ResolveResult
     where
         R: ImportResolver,
@@ -103,7 +124,7 @@ pub mod tolerant {
             resolver,
             stack: &mut stack,
             parent: source_file,
-            unresolved: &mut import_errors,
+            import_errors: &mut import_errors,
         };
 
         // If an import is resolved, then stack it.
@@ -114,7 +135,7 @@ pub mod tolerant {
                  -> Result<RichTerm, ImportError> {
                     let (rt, err) = transform_one(rt, state.resolver, &state.parent);
                     if let Some(err) = err {
-                        state.unresolved.push(err);
+                        state.import_errors.push(err);
                     }
 
                     if let Term::ResolvedImport(file_id) = rt.term.as_ref() {
@@ -125,7 +146,7 @@ pub mod tolerant {
                 &mut state,
                 TraverseOrder::BottomUp,
             )
-            // This will always succeed, becuase we always return `Ok(..)`, and
+            // This will always succeed, because we always return `Ok(..)`, and
             // we don't use the `?` operator
             .unwrap();
 
@@ -136,9 +157,10 @@ pub mod tolerant {
         }
     }
 
-    /// Try to resolve an import if the term is an unresolved import, and return
-    /// back the a potentially resolved richterm and an import error if it couldn't
-    /// be unresolved import could not be resolved.
+    /// Try to resolve an import if the term is an unresolved import. Returns a resolved import
+    /// term if the term was an unresolved import. If the term wasn't an unresolved import, or if
+    /// the resolution fails, the original term is returned unchanged. In the latter case, the
+    /// error is returned as well, as a second component of the tuple.
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
