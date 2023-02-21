@@ -174,7 +174,6 @@ impl<'b> Building<'b> {
                 let item = self.resolve_reference(current_file, item)?;
 
                 let mut ids = idents.clone();
-                // (previous value, current value)
                 let (mut prev_item, mut curr_item) = (item, item);
                 while let Some(id) = ids.pop() {
                     match curr_item {
