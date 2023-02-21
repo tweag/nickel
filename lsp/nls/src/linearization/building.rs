@@ -201,7 +201,7 @@ impl<'b> Building<'b> {
                 // resolve, and `curr_item` points to the record field's value.
                 Some(prev_item)
             }
-            // if declaration is a let binding resolve its value
+            // if declaration is a let binding, resolve its value
             TermKind::Declaration {
                 value: ValueState::Known(value),
                 ..
