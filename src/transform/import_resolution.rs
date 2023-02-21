@@ -76,17 +76,17 @@ pub mod tolerant {
     use codespan::FileId;
     use std::path::PathBuf;
 
+    /// The result of an error tolerant import resolution transformation.
+    /// `transformed_term` is the main result of the transformation, which may still contain unresolved import terms.
+    /// `resolved_ids` indicates the imports that were resolved correctly.
+    /// `import_errors` indicates the imports that could not be resolved.
     pub struct ResolveResult {
         pub transformed_term: RichTerm,
         pub resolved_ids: Vec<FileId>,
         pub import_errors: Vec<ImportError>,
     }
 
-    /// Performs imports resolution for each import term independent from others.
-    /// It returns back a triple, containing:
-    /// * A `RichTerm` which may still contain unresolved imports.
-    /// * A `Vec<FileId>`, telling the imports which were resolved.
-    /// * A `Vec<ImportError>`, telling the imports that couldn't be resolved.
+    /// Performs imports resolution for import terms independently, in an error tolerant way.
     pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> ResolveResult
     where
         R: ImportResolver,
