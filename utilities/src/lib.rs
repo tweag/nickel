@@ -206,7 +206,7 @@ macro_rules! ncl_bench_group {
             use nickel_lang::{
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
                 eval::{VirtualMachine, cache::Cache as EvalCache},
-                transform::import_resolution::resolve_imports,
+                transform::import_resolution::strict::resolve_imports,
             };
 
             let mut c: criterion::Criterion<_> = $config
