@@ -682,7 +682,12 @@ impl Cache {
                     let parse_errs = parse_errs.clone();
                     let (term, pending, errors) = match self.error_tolerance {
                         ErrorTolerance::Tolerant => {
-                            import_resolution::tolerant::resolve_imports(term, self)
+                            let import_resolution::tolerant::ResolveResult {
+                                transformed_term,
+                                resolved_ids,
+                                import_errors,
+                            } = import_resolution::tolerant::resolve_imports(term, self);
+                            (transformed_term, resolved_ids, import_errors)
                         }
                         ErrorTolerance::Strict => {
                             let (term, pending) =
