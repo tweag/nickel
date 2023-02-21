@@ -179,15 +179,15 @@ impl<'b> Building<'b> {
                     match curr_item {
                         TermKind::Record(ref fields) => {
                             let item = fields.get(&id)?;
-                            let item = self.get_item_kind(current_file, *item)?;
-                            match item {
+                            let item_kind = self.get_item_kind(current_file, *item)?;
+                            match item_kind {
                                 TermKind::RecordField {
                                     value: ValueState::Known(next_item),
                                     ..
                                 } => {
-                                    prev_item = item;
-                                    let item = self.get_item_kind(current_file, *next_item)?;
-                                    curr_item = item;
+                                    prev_item = item_kind;
+                                    let item_kind = self.get_item_kind(current_file, *next_item)?;
+                                    curr_item = item_kind;
                                     continue;
                                 }
                                 // the value from a record is always a record field
