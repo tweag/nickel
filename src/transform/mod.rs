@@ -22,7 +22,7 @@ pub mod substitute_wildcards;
 /// earlier, as it needs to be done before typechecking.
 ///
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
-/// pending imports returned by [`resolve_imports`][import_resolution::resolve_imports] or use the
+/// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or use the
 /// [cache][crate::cache::Cache].
 pub fn transform(
     mut rt: RichTerm,
