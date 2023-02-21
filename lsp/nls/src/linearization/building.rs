@@ -190,6 +190,10 @@ impl<'b> Building<'b> {
                                     curr_item = item_kind;
                                     continue;
                                 }
+                                TermKind::RecordField {
+                                    value: ValueState::Unknown,
+                                    ..
+                                } => break,
                                 // the value from a record is always a record field
                                 _ => unreachable!(),
                             }
