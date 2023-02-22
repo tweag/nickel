@@ -108,20 +108,20 @@ impl<'b> Bench<'b> {
     pub fn term(&self) -> RichTerm {
         let path = self.path();
 
-        let field_path = self.subtest.map(|s| format!(".{}", s)).unwrap_or_default();
+        let field_path = self.subtest.map(|s| format!(".{s}")).unwrap_or_default();
         let content = format!(
             "(import \"{}\"){}.run {}",
             path.to_string_lossy(),
             field_path,
             self.args
                 .iter()
-                .map(|s| format!("({})", s))
+                .map(|s| format!("({s})"))
                 .collect::<Vec<String>>()
                 .join(" ")
         );
 
         let content = if self.eval_mode == EvalMode::DeepSeq {
-            format!("%deep_seq% ({}) true", content)
+            format!("%deep_seq% ({content}) true")
         } else {
             content
         };
@@ -150,9 +150,9 @@ pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> 
                     || {
                         let mut cache = cache.clone();
                         let id = cache.add_file(bench.path()).unwrap();
-                        let (t, _) =
-                            import_resolution::strict::resolve_imports(t.clone(), &mut cache)
-                                .unwrap();
+                        let t = import_resolution::strict::resolve_imports(t.clone(), &mut cache)
+                            .unwrap()
+                            .transformed_term;
                         (cache, id, t)
                     },
                     |(mut c_local, id, t)| {
@@ -222,8 +222,9 @@ macro_rules! ncl_bench_group {
                         || {
                             let mut cache = cache.clone();
                             let id = cache.add_file(bench.path()).unwrap();
-                            let (t, _) =
-                                resolve_imports(t.clone(), &mut cache).unwrap();
+                            let t = resolve_imports(t.clone(), &mut cache)
+                                .unwrap()
+                                .transformed_term;
                             if bench.eval_mode == $crate::EvalMode::TypeCheck {
                                 cache.parse(id).unwrap();
                                 cache.resolve_imports(id).unwrap();

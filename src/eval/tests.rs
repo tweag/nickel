@@ -141,7 +141,7 @@ fn imports() {
             mk_term::let_in(var, mk_term::import(import), body),
             vm.import_resolver_mut(),
         )
-        .map(|(t, _)| t)
+        .map(|resolve_result| resolve_result.transformed_term)
     }
 
     // let x = import "does_not_exist" in x

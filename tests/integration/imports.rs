@@ -94,7 +94,7 @@ fn serialize() {
             )
             .as_bytes(),
         ),
-        "should success",
+        "should_succeed",
     )
     .unwrap();
     assert_eq!(prog.eval().map(Term::from), Ok(Term::Bool(true)));
@@ -104,7 +104,7 @@ fn serialize() {
 fn circular_imports_fail() {
     let mut prog = TestProgram::new_from_source(
         BufReader::new(mk_import("cycle.ncl").as_bytes()),
-        "should_fail",
+        "should_succeed",
     )
     .unwrap();
     assert_matches!(
@@ -158,6 +158,21 @@ fn import_unexpected_token_buried_fail() {
         "should_fail",
     )
     .unwrap();
+    assert_matches!(
+        prog.eval(),
+        Err(Error::ImportError(ImportError::ParseErrors(..)))
+    );
+}
+
+// Regression test for #1090 (https://github.com/tweag/nickel/issues/1090)
+#[test]
+fn nested_syntax_error() {
+    let mut prog = TestProgram::new_from_source(
+        BufReader::new(mk_import("nested_syntax_error.ncl").as_bytes()),
+        "should_fail",
+    )
+    .unwrap();
+
     assert_matches!(
         prog.eval(),
         Err(Error::ImportError(ImportError::ParseErrors(..)))
