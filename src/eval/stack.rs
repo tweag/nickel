@@ -342,9 +342,7 @@ mod tests {
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
-    type EC = CacheImpl;
-
-    impl Stack<EC> {
+    impl Stack<CacheImpl> {
         /// Count the number of indices at the top of the stack.
         pub fn count_thunks(&self) -> usize {
             Stack::count(self, Marker::is_idx)
@@ -364,23 +362,23 @@ mod tests {
         OperationCont::Op1(UnaryOp::Typeof(), TermPos::None)
     }
 
-    fn some_arg_marker() -> Marker<EC> {
+    fn some_arg_marker() -> Marker<CacheImpl> {
         Marker::Arg(some_closure(), TermPos::None)
     }
 
-    fn some_thunk_marker(eval_cache: &mut EC) -> Marker<EC> {
+    fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         let uidx = eval_cache.make_update_index(&mut idx).unwrap();
         Marker::UpdateIndex(uidx)
     }
 
-    fn some_cont_marker() -> Marker<EC> {
+    fn some_cont_marker() -> Marker<CacheImpl> {
         Marker::Cont(some_cont(), 42, TermPos::None)
     }
 
     #[test]
     fn marker_differentiates() {
-        let mut eval_cache = EC::new();
+        let mut eval_cache = CacheImpl::new();
         assert!(some_arg_marker().is_arg());
         assert!(some_thunk_marker(&mut eval_cache).is_idx());
         assert!(some_cont_marker().is_cont());
@@ -396,7 +394,7 @@ mod tests {
         assert_eq!(2, s.count_args());
         assert_eq!(
             some_closure(),
-            s.pop_arg(&EC::new()).expect("Already checked").0
+            s.pop_arg(&CacheImpl::new()).expect("Already checked").0
         );
         assert_eq!(1, s.count_args());
     }
@@ -406,7 +404,7 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
-        let mut eval_cache = EC::new();
+        let mut eval_cache = CacheImpl::new();
 
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());

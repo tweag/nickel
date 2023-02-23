@@ -10,11 +10,9 @@ use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun};
 use codespan::Files;
 
-type EC = CacheImpl;
-
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, EC>::new(DummyResolver {})
+    VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
         .eval(t, &Environment::new())
         .map(Term::from)
 }
@@ -132,7 +130,7 @@ fn imports() {
         var: &str,
         import: &str,
         body: RichTerm,
-        vm: &mut VirtualMachine<R, EC>,
+        vm: &mut VirtualMachine<R, CacheImpl>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
@@ -245,7 +243,7 @@ fn interpolation_nested() {
 #[test]
 fn initial_env() {
     let mut initial_env = Environment::new();
-    let mut eval_cache = EC::new();
+    let mut eval_cache = CacheImpl::new();
     initial_env.insert(
         Ident::from("g"),
         eval_cache.add(
@@ -281,7 +279,7 @@ fn initial_env() {
     );
 }
 
-fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut EC) -> Environment {
+fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut CacheImpl) -> Environment {
     bindings
         .into_iter()
         .map(|(id, t)| {
@@ -299,7 +297,7 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut EC) -> Environment {
 
 #[test]
 fn substitution() {
-    let mut eval_cache = EC::new();
+    let mut eval_cache = CacheImpl::new();
     let initial_env = mk_env(
         vec![
             ("glob1", Term::Num(1.0).into()),

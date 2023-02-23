@@ -3322,12 +3322,11 @@ mod tests {
     use crate::eval::cache::CacheImpl;
     use crate::eval::Environment;
 
-    type EC = CacheImpl;
-
     #[test]
     fn ite_operation() {
         let cont: OperationCont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
-        let mut vm: VirtualMachine<DummyResolver, EC> = VirtualMachine::new(DummyResolver {});
+        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
+            VirtualMachine::new(DummyResolver {});
 
         vm.stack.push_arg(
             Closure::atomic_closure(Term::Num(5.0).into()),
@@ -3416,7 +3415,8 @@ mod tests {
             TermPos::None,
         );
 
-        let mut vm: VirtualMachine<DummyResolver, EC> = VirtualMachine::new(DummyResolver {});
+        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
+            VirtualMachine::new(DummyResolver {});
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
             env: Environment::new(),

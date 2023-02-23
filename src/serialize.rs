@@ -279,9 +279,7 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
-    type EC = CacheImpl;
-
-    fn mk_program(s: &str) -> Result<Program<EC>, Error> {
+    fn mk_program(s: &str) -> Result<Program<CacheImpl>, Error> {
         let src = Cursor::new(s);
 
         Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -337,7 +335,7 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
                         &Environment::new(),
@@ -346,7 +344,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
                         &Environment::new(),
@@ -355,7 +353,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
                         &Environment::new(),

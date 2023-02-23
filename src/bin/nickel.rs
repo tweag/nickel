@@ -16,8 +16,6 @@ use std::{
 use directories::BaseDirs;
 use structopt::StructOpt;
 
-type EC = CacheImpl;
-
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]
 /// The interpreter of the Nickel language.
@@ -220,7 +218,7 @@ fn main() {
 }
 
 fn export(
-    program: &mut Program<EC>,
+    program: &mut Program<CacheImpl>,
     format: Option<ExportFormat>,
     output: Option<PathBuf>,
 ) -> Result<(), Error> {
