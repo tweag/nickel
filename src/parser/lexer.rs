@@ -336,9 +336,31 @@ pub enum NormalToken<'input> {
 }
 
 pub const KEYWORDS: &[&str] = &[
-    "Dyn", "Num", "Bool", "Str", "Array", "if", "then", "else", "forall", "in", "let", "rec",
-    "match", "null", "true", "false", "fun", "import", "merge", "default", "doc", "optional",
-    "priority", "force",
+    "Dyn",
+    "Num",
+    "Bool",
+    "Str",
+    "Array",
+    "if",
+    "then",
+    "else",
+    "forall",
+    "in",
+    "let",
+    "rec",
+    "match",
+    "null",
+    "true",
+    "false",
+    "fun",
+    "import",
+    "merge",
+    "default",
+    "doc",
+    "optional",
+    "priority",
+    "force",
+    "not_exported",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
