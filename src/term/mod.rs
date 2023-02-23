@@ -24,7 +24,7 @@ use array::{Array, ArrayAttrs};
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 
 use crate::{
-    destruct::Destruct,
+    destructuring::RecordPattern,
     error::{EvalError, ParseError},
     identifier::Ident,
     label::Label,
@@ -78,7 +78,7 @@ pub enum Term {
     Fun(Ident, RichTerm),
     /// A function able to destruct its arguments.
     #[serde(skip)]
-    FunPattern(Option<Ident>, Destruct, RichTerm),
+    FunPattern(Option<Ident>, RecordPattern, RichTerm),
     /// A blame label.
     #[serde(skip)]
     Lbl(Label),
@@ -88,7 +88,7 @@ pub enum Term {
     Let(Ident, RichTerm, RichTerm, LetAttrs),
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Option<Ident>, Destruct, RichTerm, RichTerm),
+    LetPattern(Option<Ident>, RecordPattern, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
@@ -1868,7 +1868,7 @@ pub mod make {
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        D: Into<Destruct>,
+        D: Into<RecordPattern>,
         I: Into<Ident>,
     {
         Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()

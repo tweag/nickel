@@ -56,7 +56,7 @@ use crate::{
     mk_opn,
     mk_fun,
     identifier::Ident,
-    destruct::{Match, LastMatch, Destruct},
+    destructuring::{Match, LastMatch, RecordPattern},
     term::{
         *,
         record::{RecordAttrs, Field, FieldMetadata},
@@ -233,7 +233,7 @@ UniTerm: UniTerm = {
     <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
         let rt = pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
-            term: SharedTerm::new(Term::FunPattern(id, destruct, t)),
+            term: SharedTerm::new(mk_fun(id, destruct, t)),
             pos,
         });
 
@@ -450,13 +450,13 @@ LastMatch: LastMatch = {
 
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
-Pattern: (Option<Ident>,Destruct) = {
-    <id:(<Ident> "@")?> <pat:Destruct> => (id,pat),
-    Ident => (Some(<>),Destruct::Empty),
+Pattern: (Option<Ident>, Option<RecordPattern>) = {
+    <id:(<Ident> "@")?> <pat: RecordPattern> => (id, Some(pat)),
+    Ident => (Some(<>), None),
 };
 
 // A full pattern at the left-hand side of a destructuring let.
-Destruct: Destruct = {
+RecordPattern: RecordPattern = {
     <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
         let (open, rest) = match last {
             Some(LastMatch::Match(m)) => {
@@ -468,7 +468,7 @@ Destruct: Destruct = {
         };
 
         let span = mk_span(src_id, start, end);
-        Destruct::Record{matches, open, rest, span}
+        RecordPattern{ matches, open, rest, span }
     },
 };
 

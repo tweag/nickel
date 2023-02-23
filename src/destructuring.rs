@@ -19,7 +19,7 @@ pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant and `b` the optional one. The last field can actualy be a
     /// nested destruct pattern.
-    Assign(Ident, Field, (Option<Ident>, Destruct)),
+    Assign(Ident, Field, (Option<Ident>, Option<RecordPattern>)),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
     Simple(Ident, Field),
 }
@@ -35,22 +35,16 @@ pub enum LastMatch {
     Ellipsis(Option<Ident>),
 }
 
-/// A destructuring pattern without the `x @` part.
+/// A destructured record pattern
 #[derive(Debug, PartialEq, Clone)]
-pub enum Destruct {
-    /// A record pattern, the only one implemented for now.
-    Record {
-        matches: Vec<Match>,
-        open: bool,
-        rest: Option<Ident>,
-        span: RawSpan,
-    },
-    /// An empty destructuring. In this case, the pattern is a classical `let var = something in
-    /// body` form.
-    Empty,
+pub struct RecordPattern {
+    pub matches: Vec<Match>,
+    pub open: bool,
+    pub rest: Option<Ident>,
+    pub span: RawSpan,
 }
 
-impl Destruct {
+impl RecordPattern {
     /// Generate the contract elaborated from this pattern.
     pub fn into_contract(self) -> LabeledType {
         let label = self.label();
@@ -75,31 +69,20 @@ impl Destruct {
 
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
-        match self {
-            Destruct::Record { matches, .. } => matches,
-            Destruct::Empty => vec![],
-        }
+        self.matches
     }
 
     // Generate a label for this `Destruct`. if `Empty`, return default label.
     fn label(&self) -> Label {
-        match *self {
-            Destruct::Record { span, .. } => Label {
-                span,
-                ..Default::default()
-            },
-            Destruct::Empty => Label::default(),
+        Label {
+            span: self.span,
+            ..Default::default()
         }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
     pub fn is_open(&self) -> bool {
-        matches!(self, Destruct::Record { open: true, .. })
-    }
-
-    /// check if the pattern is empty.
-    pub fn is_empty(&self) -> bool {
-        matches!(self, Destruct::Empty)
+        self.open
     }
 }
 
@@ -108,16 +91,14 @@ impl Match {
     /// contract representing a record pattern destructuring.
     pub fn as_binding(self) -> (Ident, Field) {
         match self {
-            Match::Assign(id, field, (_, Destruct::Empty)) | Match::Simple(id, field) => {
-                (id, field)
-            }
+            Match::Assign(id, field, (_, None)) | Match::Simple(id, field) => (id, field),
 
             // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
             // because we can have two cases:
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            Match::Assign(id, mut field, (_, destruct @ Destruct::Record { .. })) => {
+            Match::Assign(id, mut field, (_, Some(destruct))) => {
                 let mut label = destruct.label();
                 label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
                 field
@@ -137,13 +118,13 @@ impl Match {
     pub fn as_flattened_bindings(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
         match self {
             Match::Simple(id, field) => vec![(vec![id], None, field)],
-            Match::Assign(id, field, (bind_id, Destruct::Empty)) => {
+            Match::Assign(id, field, (bind_id, None)) => {
                 vec![(vec![id], bind_id, field)]
             }
             Match::Assign(
                 id,
                 mut field,
-                (bind_id, ref destruct @ Destruct::Record { ref matches, .. }),
+                (bind_id, Some(ref destruct @ RecordPattern { ref matches, .. })),
             ) => {
                 let destruct = destruct.clone();
                 let mut label = destruct.label();
