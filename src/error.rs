@@ -306,11 +306,11 @@ impl ToDiagnostic<FileId> for ParseErrors {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         self.errors
             .iter()
-            .flat_map(|e| e.to_diagnostic(files, contract_id))
+            .flat_map(|e| e.to_diagnostic(files, contract_id.clone()))
             .collect()
     }
 }
@@ -624,7 +624,7 @@ pub trait ToDiagnostic<FileId> {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contracts_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>>;
 }
 
@@ -748,13 +748,13 @@ impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseErrors(errs) => errs
                 .errors
                 .iter()
-                .flat_map(|e| e.to_diagnostic(files, contract_id))
+                .flat_map(|e| e.to_diagnostic(files, contract_id.clone()))
                 .collect(),
             Error::TypecheckError(err) => err.to_diagnostic(files, contract_id),
             Error::EvalError(err) => err.to_diagnostic(files, contract_id),
@@ -770,7 +770,7 @@ impl ToDiagnostic<FileId> for EvalError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             EvalError::BlameError {
@@ -793,7 +793,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     label,
                     path_label,
                     files,
-                    contract_id,
+                    contract_id.clone(),
                 );
 
                 let mut diagnostics = vec![Diagnostic::error()
@@ -1041,7 +1041,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     l,
                     path_label,
                     files,
-                    contract_id,
+                    contract_id.clone(),
                 );
 
                 let mut diagnostics = vec![Diagnostic::error()
@@ -1100,7 +1100,7 @@ mod blame_error {
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contracts_id: Option<Vec<FileId>>,
     ) -> Vec<Label<FileId>> {
         let mut labels = vec![path_label];
 
@@ -1109,9 +1109,10 @@ mod blame_error {
             // of an higher order functions for example, the original argument position can
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
-            // information contained at the argument index can still be useful.
-            if contract_id
-                .map(|ctrs_id| arg_pos.src_id != ctrs_id)
+            // information contained in the argument thunk can still be useful.
+            if contracts_id
+                .clone()
+                .map(|ctrs_id| !ctrs_id.contains(&arg_pos.src_id))
                 .unwrap_or(true)
             {
                 labels.push(primary(arg_pos).with_message("applied to this expression"));
@@ -1125,11 +1126,11 @@ mod blame_error {
             match (
                 evaluated_arg.pos,
                 blame_label.arg_pos.as_opt_ref(),
-                contract_id,
+                contracts_id,
             ) {
                 // Avoid showing a position inside builtin contracts, it's rarely
                 // informative.
-                (TermPos::Original(val_pos), _, Some(c_id)) if val_pos.src_id == c_id => {
+                (TermPos::Original(val_pos), _, Some(c_id)) if c_id.contains(&val_pos.src_id) => {
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, files)
@@ -1154,8 +1155,15 @@ mod blame_error {
                 }
                 // Finally, if the parameter reduced to a value which originates from a
                 // different expression, show both the expression and the value.
-                (TermPos::Inherited(ref val_pos), ..) => {
-                    labels.push(secondary(val_pos).with_message("evaluated to this expression"));
+                (TermPos::Inherited(ref val_pos), _, ids) => {
+                    if ids
+                        .map(|cids| !cids.contains(&val_pos.src_id))
+                        .unwrap_or(true)
+                    {
+                        labels
+                            .push(secondary(val_pos).with_message("evaluated to this expression"));
+                    }
+
                     evaluated_arg.pos = TermPos::None;
                     labels.push(
                         secondary_term(&evaluated_arg, files)
@@ -1172,12 +1180,12 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, contract_id: FileId, call_stack: &CallStack);
+        fn extend_with_call_stack(&mut self, contract_id: Vec<FileId>, call_stack: &CallStack);
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, contract_id: FileId, call_stack: &CallStack) {
-            let (calls, curr_call) = call_stack.group_by_calls(contract_id);
+        fn extend_with_call_stack(&mut self, contracts_id: Vec<FileId>, call_stack: &CallStack) {
+            let (calls, curr_call) = call_stack.group_by_calls(contracts_id);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
                     .head
@@ -1337,7 +1345,7 @@ impl ToDiagnostic<FileId> for ParseError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        _contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
@@ -1427,7 +1435,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
             span_opt
@@ -1671,7 +1679,7 @@ impl ToDiagnostic<FileId> for ImportError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        contract_id: Option<FileId>,
+        contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
@@ -1688,7 +1696,7 @@ impl ToDiagnostic<FileId> for ImportError {
                 let mut diagnostic: Vec<Diagnostic<FileId>> = error
                     .errors
                     .iter()
-                    .flat_map(|e| e.to_diagnostic(files, contract_id))
+                    .flat_map(|e| e.to_diagnostic(files, contract_id.clone()))
                     .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
@@ -1707,7 +1715,7 @@ impl ToDiagnostic<FileId> for SerializationError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        _contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             SerializationError::NotAString(rt) => vec![Diagnostic::error()
@@ -1735,7 +1743,7 @@ impl ToDiagnostic<FileId> for IOError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        _contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg.clone())],
@@ -1747,7 +1755,7 @@ impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        _contract_id: Option<Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()

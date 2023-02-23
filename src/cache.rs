@@ -830,6 +830,13 @@ impl Cache {
         self.file_ids.get(name.as_ref()).map(|entry| entry.id)
     }
 
+    pub fn stdlib_contracts_id(&self) -> Option<Vec<FileId>> {
+        crate::stdlib::modules()
+            .iter()
+            .map(|module| self.id_of(module.file_name()))
+            .collect()
+    }
+
     /// Retrieve the id of a file given a path.
     ///
     /// This function normalizes the given path, search it in the name-id table, and check that the
