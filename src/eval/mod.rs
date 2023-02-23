@@ -285,8 +285,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// The main loop of evaluation.
     ///
-    /// Implement the evaluation of the core language, which includes application, updating elements in the [Cache],
-    /// evaluation of the arguments of operations, and a few others. The specific implementations of
+    /// Implement the evaluation loop of the core language. The specific implementations of
     /// primitive operations is delegated to the modules [operation] and [merge].
     ///
     /// # Arguments
