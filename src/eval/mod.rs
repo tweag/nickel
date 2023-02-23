@@ -113,7 +113,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 
 // The current state of the Nickel virtual machine.
 pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // The main stack, storing arguments, Cache indices and pending computations.
+    // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
     call_stack: CallStack,
