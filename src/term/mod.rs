@@ -1305,6 +1305,9 @@ pub enum BinaryOp {
     /// Lazily apply a contract to an Array.
     /// This simply inserts a contract into the array attributes.
     ArrayLazyAssume(),
+
+    /// TODO
+    DictionaryAssume(),
 }
 
 impl BinaryOp {

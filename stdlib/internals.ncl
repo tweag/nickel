@@ -85,7 +85,7 @@
 
   "$dyn_record" = fun contr l t =>
       if %typeof% t == `Record then
-          %record_map% t (fun _field value => %assume% contr l value)
+          %dictionary_assume% l t contr
       else
           %blame% (%tag% "not a record" l),
 

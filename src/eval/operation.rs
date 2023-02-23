@@ -25,7 +25,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         make as mk_term,
-        record::{self, Field, FieldMetadata, RecordData},
+        record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
         BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
         StrChunk, Term, UnaryOp,
     },
@@ -2477,11 +2477,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Lbl(lbl) => lbl
                     } else return Err(EvalError::TypeError(
                         String::from("Lbl"),
-                        String::from("arrayLazyAssume, 2nd argument"),
+                        String::from("arrayLazyAssume, 1st argument"),
                         fst_pos,
                         RichTerm {
-                            term: t2,
-                            pos: pos2,
+                            term: t1,
+                            pos: pos1,
                         },
                     ))
                 };
@@ -2510,6 +2510,69 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             term: t2,
                             pos: pos2,
                         },
+                    ))
+                }
+            }
+            BinaryOp::DictionaryAssume() => {
+                let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                    EvalError::NotEnoughArgs(3, String::from("dictionary_assume"), pos_op)
+                })?;
+                let Closure {
+                    body: rt3,
+                    env: env3,
+                } = ctr;
+
+                let lbl = match_sharedterm! {t1, with {
+                        Term::Lbl(lbl) => lbl
+                    } else return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("dictionary_assume, 2nd argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        }
+                    ))
+                };
+
+                match_sharedterm! {t2,
+                    with {
+                        Term::Record(record_data) => {
+                            let rt3 = rt3.closurize(&mut self.cache, &mut env2, env3);
+                            let record_contract = Term::Record(RecordData{
+                                fields: record_data.fields.iter().map(|(key, value)| (*key, Field {
+                                    value: None,
+                                    pending_contracts: vec![PendingContract::new(rt3.clone(), lbl.clone())],
+                                    metadata: FieldMetadata {
+                                        opt: value.metadata.opt,
+                                        ..Default::default()
+                                    },
+                                })).collect(),
+                                attrs: RecordAttrs{
+                                    open: true
+                                },
+                                ..Default::default()
+                            });
+
+                            let merge_term = Closure {
+                                body: mk_opn!(
+                                    NAryOp::MergeContract(),
+                                    Term::Lbl(lbl),
+                                    Term::Record(record_data),
+                                    record_contract
+                                ),
+                                env: env2,
+                            };
+                            Ok(merge_term)
+                        }
+                    } else Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("dictionary_assume, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2
+                        }
                     ))
                 }
             }
