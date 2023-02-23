@@ -1,6 +1,6 @@
 //! Entry point of the program.
 use nickel_lang::error::{Error, IOError};
-use nickel_lang::eval::cache::CBNCache;
+use nickel_lang::eval::cache::CacheImpl;
 use nickel_lang::program::{ColorOpt, Program};
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
@@ -16,7 +16,7 @@ use std::{
 use directories::BaseDirs;
 use structopt::StructOpt;
 
-type EC = CBNCache;
+type EC = CacheImpl;
 
 /// Command-line options and subcommands.
 #[derive(StructOpt, Debug)]

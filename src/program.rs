@@ -519,13 +519,13 @@ mod doc {
 mod tests {
     use super::*;
     use crate::error::EvalError;
-    use crate::eval::cache::CBNCache;
+    use crate::eval::cache::CacheImpl;
     use crate::position::TermPos;
     use crate::term::array::ArrayAttrs;
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
-    type EC = CBNCache;
+    type EC = CacheImpl;
 
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);

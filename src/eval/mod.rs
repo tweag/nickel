@@ -7,7 +7,7 @@
 //! # The Nickel Abstract Machine
 //! The abstract machine is a stack machine composed of the following elements:
 //! - The term being currently evaluated
-//! - The main stack, storing arguments, thunks and pending computations
+//! - The main stack, storing arguments, cache indices and pending computations
 //! - A pair of [environment][Environment], mapping identifiers to [closures][Closure]:
 //!     * The initial environment contains builtin functions accessible from anywhere, and alive
 //!     during the whole evaluation
@@ -18,7 +18,7 @@
 //! Depending on the shape of the current term, the following actions are performed:
 //!
 //! ## Core calculus
-//! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update thunk is
+//! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update index is
 //!   pushed on the stack to indicate that once this term has been evaluated, the content of the
 //!   variable must be updated
 //! - **App(func, arg)**: a closure containing the argument and the current environment is pushed
@@ -27,8 +27,8 @@
 //! - **Fun(id, body)**: Try to pop an argument from the stack. If there is some, we bound it to
 //!   `id` in the environment, and proceed with the body of the function. Otherwise, we are done: the
 //!   end result is an unapplied function
-//! - **Thunk on stack**: If the evaluation of the current term is done, and there is one (or
-//!   several) thunk on the stack, this means we have to perform an update. Consecutive thunks are
+//! - **Index on stack**: If the evaluation of the current term is done, and there is one (or
+//!   several) index on the stack, this means we have to perform an update. Consecutive indices are
 //!   popped from the stack and are updated to point to the current evaluated term.
 //! - **Import**: Import must have been resolved before the evaluation starts. An unresolved import
 //!   causes an [`crate::error::EvalError::InternalError`]. A resolved import, identified by a
@@ -94,7 +94,6 @@ use crate::{
 pub mod cache;
 pub mod callstack;
 pub mod fixpoint;
-pub mod lazy;
 pub mod merge;
 pub mod operation;
 pub mod stack;
@@ -114,7 +113,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 
 // The current state of the Nickel virtual machine.
 pub struct VirtualMachine<R: ImportResolver, C: Cache> {
-    // The main stack, storing arguments, thunks and pending computations.
+    // The main stack, storing arguments, Cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
     call_stack: CallStack,
@@ -143,11 +142,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         }
     }
 
-    /// Reset the state of the machine (stacks, eval mode and thunk state) to prepare for another evaluation round.
+    /// Reset the state of the machine (stacks, eval mode and state of cached elements) to prepare
+    /// for another evaluation round.
     pub fn reset(&mut self) {
         self.call_stack.0.clear();
         self.stack.reset(&mut self.cache);
-        self.cache = Cache::new();
     }
 
     pub fn import_resolver(&self) -> &R {
@@ -286,7 +285,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// The main loop of evaluation.
     ///
-    /// Implement the evaluation of the core language, which includes application, thunk update,
+    /// Implement the evaluation of the core language, which includes application, updating elements in the [Cache],
     /// evaluation of the arguments of operations, and a few others. The specific implementations of
     /// primitive operations is delegated to the modules [operation] and [merge].
     ///
@@ -326,7 +325,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                         env: env.clone(),
                     };
-                    // Update the original thunk (the thunk which holds the result of the op) in both cases,
+                    // Update at the original index (the index which holds the result of the op) in both cases,
                     // even if we continue with a seq.
                     // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
                     // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
@@ -426,7 +425,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
                         let idx_ = idx.clone();
-                        self.cache.patch(idx_.clone(), |cl| cl.env.insert(*x, idx_));
+                        self.cache
+                            .patch(idx_.clone(), |cl| cl.env.insert(*x, idx_.clone()));
                     }
 
                     env.insert(*x, idx);
@@ -691,7 +691,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
-                // Continuation of operations and thunk update
+                // Continuation of operations and element update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
                         body: RichTerm {
@@ -892,7 +892,7 @@ pub fn env_add<C: Cache>(
     env.insert(id, cache.add(closure, IdentKind::Let, BindingType::Normal));
 }
 
-/// Pop and update all the thunks on the top of the stack with the given closure.
+/// Pop and update all the indices on the top of the stack with the given closure.
 fn update_at_indices<C: Cache>(cache: &mut C, stack: &mut Stack<C>, closure: &Closure) {
     while let Some(idx) = stack.pop_update_index() {
         cache.update(closure.clone(), idx);

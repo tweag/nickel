@@ -100,15 +100,15 @@ impl Closurizable for RichTerm {
         with_env: Environment,
     ) -> RichTerm {
         // If the term is already a variable, we don't have to create a useless intermediate
-        // closure. We just transfer the original thunk to the new environment. This is not only an
+        // closure. We just transfer the original index to the new environment. This is not only an
         // optimization: this is relied upon by recursive record merging when computing the
         // fixpoint.
         //
         // More specifically, the evaluation of a recursive record patches the environment of each
-        // field with the thunks recursively referring to the other fields of the record. `eval`
+        // field with the indices recursively referring to the other fields of the record. `eval`
         // assumes that a recursive record field is either a constant or a generated variable whose
-        // thunks *immediately* contain the original unevaluated expression (both properties are
-        // true after the share normal form transformation and maintained when reverting thunks
+        // cache elements *immediately* contain the original unevaluated expression (both properties are
+        // true after the share normal form transformation and maintained when reverting elements
         // before merging recursive records).
         //
         // To maintain this invariant, `closurize` must NOT introduce an indirection through a

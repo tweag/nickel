@@ -1,4 +1,4 @@
-use super::cache::CBNCache;
+use super::cache::CacheImpl;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
 use crate::error::ImportError;
@@ -10,7 +10,7 @@ use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun};
 use codespan::Files;
 
-type EC = CBNCache;
+type EC = CacheImpl;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {

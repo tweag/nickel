@@ -1,6 +1,6 @@
 //! Share normal form.
 //!
-//! Replace the subexpressions of WHNFs that are not functions by thunks, such that they can be
+//! Replace the subexpressions of WHNFs that are not functions by indices, such that they can be
 //! shared. It is similar to the behavior of other lazy languages with respect to data
 //! constructors.  To do so, subexpressions are replaced by fresh variables, introduced by new let
 //! bindings put at the beginning of the WHNF.
@@ -10,7 +10,7 @@
 //! let x = {a = 1 + 1} in x.a + x.a
 //! ```
 //!
-//! The term `{a = 1 + 1}` is a record, and hence a WHNF. In consequence, the thunk allocated to x
+//! The term `{a = 1 + 1}` is a record, and hence a WHNF. In consequence, the index pointing to x
 //! is never updated. Without additional machinery, `a` will be recomputed each time is it used,
 //! two times here.
 //!
@@ -22,8 +22,8 @@
 //! let x = (let var = 1 + 1 in {a = var}) in x.a + x.a
 //! ```
 //!
-//! Now, the field `a` points to the thunk introduced by `var`: at the evaluation of the first
-//! occurrence of `x.a`, this thunk is updated with `2`, and is not recomputed the second time.
+//! Now, the field `a` points to the element introduced by `var`: at the evaluation of the first
+//! occurrence of `x.a`, this element is updated with `2`, and is not recomputed the second time.
 //!
 //! Newly introduced variables begin with a special character to avoid clashing with user-defined
 //! variables.
@@ -177,7 +177,7 @@ fn transform_rec_field(
 
 fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
     // If the fields has an empty set of dependencies, we can eschew the
-    // useless introduction of a revertible thunk. Note that
+    // useless introduction of a revertible element. Note that
     // `field_deps` being `None` doesn't mean "empty dependencies" but
     // rather that the dependencies haven't been computed. In the latter
     // case, we must be conservative and assume the field is potentially
@@ -193,7 +193,7 @@ fn mk_binding_type(field_deps: Option<FieldDeps>) -> BindingType {
     }
 }
 
-/// Determine if a subterm of a WHNF should be wrapped in a thunk in order to be shared.
+/// Determine if a subterm of a WHNF should be cached in order to be shared.
 ///
 /// Sharing is typically useless if the subterm is already a WHNF which can be copied without
 /// duplicating any work. On the other hand, a WHNF which can contain other shareable

@@ -21,20 +21,20 @@ impl RecordAttrs {
     }
 }
 
-/// Dependencies of a field or a thunk over the other recursive fields of a recursive record.
+/// Dependencies of a field or a cache element over the other recursive fields of a recursive record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldDeps {
-    /// The set of dependencies is fixed and has been computed. When attached to a thunk, an empty
-    /// set of dependency means that the thunk isn't revertible, but standard.
+    /// The set of dependencies is fixed and has been computed. When attached to an element, an empty
+    /// set of dependency means that the element isn't revertible, but standard.
     Known(Rc<HashSet<Ident>>),
-    /// The thunk is revertible, but the set of dependencies hasn't been computed. In that case,
+    /// The element is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
-    /// in the content of the corresponding thunk.
+    /// in the content of the corresponding element.
     Unknown,
 }
 
 impl FieldDeps {
-    /// Compute the union of two thunk dependencies. [`FieldDeps::Unknown`] can be see as the top
+    /// Compute the union of two cache elements dependencies. [`FieldDeps::Unknown`] can be see as the top
     /// element, meaning that if one of the two set of dependencies is [`FieldDeps::Unknown`], so
     /// is the result.
     pub fn union(self, other: Self) -> Self {

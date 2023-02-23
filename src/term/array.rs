@@ -7,7 +7,7 @@ use super::*;
 pub struct ArrayAttrs {
     /// A `closurized` array verifies the following conditions:
     ///   - Each element is a generated variable with a unique name (although the same
-    ///     variable can occur in several places, it should always refer to the same thunk anyway).
+    ///     variable can occur in several places, it should always refer to the same index anyway).
     ///   - The environment of the array's closure only contains those generated variables.
     pub closurized: bool,
     /// List of lazily-applied contracts.
