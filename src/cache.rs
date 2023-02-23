@@ -831,10 +831,8 @@ impl Cache {
     }
 
     pub fn stdlib_contracts_id(&self) -> Option<Vec<FileId>> {
-        crate::stdlib::modules()
-            .iter()
-            .map(|module| self.id_of(module.file_name()))
-            .collect()
+        let ids = self.stdlib_ids.as_ref()?;
+        Some(ids.values().copied().collect())
     }
 
     /// Retrieve the id of a file given a path.
