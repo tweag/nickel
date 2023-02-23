@@ -56,7 +56,7 @@ pub const MAX_GAS: u8 = 8;
 /// Abstract over the term environment, which is represented differently in the typechecker and
 /// during evaluation.
 ///
-/// The evaluation environment holds [crate::eval::cache::CacheIndex]es, 
+/// The evaluation environment holds [crate::eval::cache::CacheIndex]es,
 /// while the term environment used during typechecking is just maps identifiers to
 /// a pair `(RichTerm, Environment)`. To have an interface that works with both,
 /// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
