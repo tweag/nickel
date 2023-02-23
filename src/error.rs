@@ -99,7 +99,7 @@ pub enum EvalError {
     ),
     /// An unbound identifier was referenced.
     UnboundIdentifier(Ident, TermPos),
-    /// A thunk was entered during its own update.
+    /// An element in the evaluation Cache was entered during its own update.
     InfiniteRecursion(CallStack, TermPos),
     /// A serialization error occurred during a call to the builtin `serialize`.
     SerializationError(SerializationError),
@@ -1109,7 +1109,7 @@ mod blame_error {
             // of an higher order functions for example, the original argument position can
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
-            // information contained in the argument thunk can still be useful.
+            // information contained at the argument index can still be useful.
             if contract_id
                 .map(|ctrs_id| arg_pos.src_id != ctrs_id)
                 .unwrap_or(true)
@@ -1118,9 +1118,9 @@ mod blame_error {
             }
         }
 
-        // If we have a reference to the thunk that was being tested, we can try to show
-        // more information about the final, evaluated value that is responsible for the
-        // blame.
+        // If we have a reference to the element in the cache that was being tested,
+        // we can try to show more information about the final, evaluated value that is
+        // responsible for the blame.
         if let Some(mut evaluated_arg) = evaluated_arg {
             match (
                 evaluated_arg.pos,
@@ -1142,7 +1142,7 @@ mod blame_error {
                 (TermPos::Original(ref val_pos), ..) => {
                     labels.push(secondary(val_pos).with_message("evaluated to this expression"))
                 }
-                // If the final thunk is a direct reduct of the original value, rather
+                // If the final element is a direct reduct of the original value, rather
                 // print the actual value than referring to the same position as
                 // before.
                 (TermPos::Inherited(ref val_pos), Some(arg_pos), _) if val_pos == arg_pos => {

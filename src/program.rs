@@ -519,35 +519,35 @@ mod doc {
 mod tests {
     use super::*;
     use crate::error::EvalError;
-    use crate::eval::cache::CBNCache;
+    use crate::eval::cache::CacheImpl;
     use crate::position::TermPos;
     use crate::term::array::ArrayAttrs;
     use assert_matches::assert_matches;
     use std::io::Cursor;
 
-    type EC = CBNCache;
-
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(
-                format!("IO error: {io_err}"),
-                TermPos::None,
-            ))
-        })?;
+        let mut p: Program<CacheImpl> =
+            Program::new_from_source(src, "<test>").map_err(|io_err| {
+                Error::EvalError(EvalError::Other(
+                    format!("IO error: {io_err}"),
+                    TermPos::None,
+                ))
+            })?;
         p.eval_full()
     }
 
     fn typecheck(s: &str) -> Result<(), Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<EC> = Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(
-                format!("IO error: {io_err}"),
-                TermPos::None,
-            ))
-        })?;
+        let mut p: Program<CacheImpl> =
+            Program::new_from_source(src, "<test>").map_err(|io_err| {
+                Error::EvalError(EvalError::Other(
+                    format!("IO error: {io_err}"),
+                    TermPos::None,
+                ))
+            })?;
         p.typecheck()
     }
 

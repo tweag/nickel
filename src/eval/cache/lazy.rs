@@ -1,8 +1,8 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{cache::CacheIndex, Closure, Environment, IdentKind};
+use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
-    term::{record::FieldDeps, RichTerm, Term},
+    term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
@@ -31,8 +31,6 @@ pub struct ThunkData {
     inner: InnerThunkData,
     state: ThunkState,
 }
-
-type CBNClosure = Closure;
 
 /// The part of [ThunkData] responsible for storing the closure itself. It can either be:
 /// - A standard thunk, that is destructively updated once and for all
@@ -106,7 +104,7 @@ type CBNClosure = Closure;
 /// variables of `orig`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum InnerThunkData {
-    Standard(CBNClosure),
+    Standard(Closure),
     Revertible {
         orig: Rc<Closure>,
         cached: Option<Closure>,
@@ -119,7 +117,7 @@ const REVTHUNK_NO_CACHED_VALUE_MSG: &str =
 
 impl ThunkData {
     /// Create new standard thunk data.
-    pub fn new(closure: CBNClosure) -> Self {
+    pub fn new(closure: Closure) -> Self {
         ThunkData {
             inner: InnerThunkData::Standard(closure),
             state: ThunkState::Suspended,
@@ -226,7 +224,7 @@ impl ThunkData {
     }
 
     /// Return a reference to the closure currently cached.
-    pub fn closure(&self) -> &CBNClosure {
+    pub fn closure(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
             // Nothing should peek into a revertible thunk before the cached value has been
@@ -245,7 +243,7 @@ impl ThunkData {
     }
 
     /// Return a mutable reference to the closure currently cached.
-    pub fn closure_mut(&mut self) -> &mut CBNClosure {
+    pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => closure,
             InnerThunkData::Revertible {
@@ -257,7 +255,7 @@ impl ThunkData {
     }
 
     /// Consume the data and return the cached closure.
-    pub fn into_closure(self) -> CBNClosure {
+    pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
             // Nothing should access the cached value of a revertible thunk before the cached
@@ -276,7 +274,7 @@ impl ThunkData {
     }
 
     /// Update the cached closure.
-    pub fn update(&mut self, new: CBNClosure) {
+    pub fn update(&mut self, new: Closure) {
         match self.inner {
             InnerThunkData::Standard(ref mut closure) => *closure = new,
             InnerThunkData::Revertible { ref mut cached, .. } => *cached = Some(new),
@@ -314,7 +312,7 @@ impl ThunkData {
     /// the cached expression.
     pub fn map<F>(&self, mut f: F) -> Self
     where
-        F: FnMut(&CBNClosure) -> CBNClosure,
+        F: FnMut(&Closure) -> Closure,
     {
         match self.inner {
             InnerThunkData::Standard(ref c) => ThunkData {
@@ -363,13 +361,9 @@ pub struct Thunk {
     ident_kind: IdentKind,
 }
 
-/// A black-holed thunk was accessed, which would lead to infinite recursion.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct BlackholedError;
-
 impl Thunk {
     /// Create a new standard thunk.
-    pub fn new(closure: CBNClosure, ident_kind: IdentKind) -> Self {
+    pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
             ident_kind,
@@ -413,17 +407,17 @@ impl Thunk {
     }
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
-    pub fn borrow(&self) -> Ref<'_, CBNClosure> {
+    pub fn borrow(&self) -> Ref<'_, Closure> {
         Ref::map(self.data.borrow(), |data| data.closure())
     }
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
-    pub fn borrow_mut(&mut self) -> RefMut<'_, CBNClosure> {
+    pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
         RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
     }
 
     /// Get an owned clone of the inner closure.
-    pub fn get_owned(&self) -> CBNClosure {
+    pub fn get_owned(&self) -> Closure {
         self.data.borrow().closure().clone()
     }
 
@@ -433,7 +427,7 @@ impl Thunk {
 
     /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
     /// reference to the inner closure.
-    pub fn into_closure(self) -> CBNClosure {
+    pub fn into_closure(self) -> Closure {
         match Rc::try_unwrap(self.data) {
             Ok(inner) => inner.into_inner().into_closure(),
             Err(rc) => rc.borrow().closure().clone(),
@@ -450,7 +444,7 @@ impl Thunk {
         }
     }
 
-    pub fn build_cached(&mut self, rec_env: &[(Ident, CacheIndex)]) {
+    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         self.data.borrow_mut().init_cached(rec_env)
     }
 
@@ -543,7 +537,7 @@ impl Thunk {
     /// cached expression.
     pub fn map<F>(&self, f: F) -> Self
     where
-        F: FnMut(&CBNClosure) -> CBNClosure,
+        F: FnMut(&Closure) -> Closure,
     {
         Thunk {
             data: Rc::new(RefCell::new(self.data.borrow().map(f))),
@@ -585,7 +579,7 @@ impl ThunkUpdateFrame {
     ///
     /// - `true` if the thunk was successfully updated
     /// - `false` if the corresponding closure has been dropped since
-    pub fn update(self, closure: CBNClosure) -> bool {
+    pub fn update(self, closure: Closure) -> bool {
         if let Some(data) = Weak::upgrade(&self.data) {
             data.borrow_mut().update(closure);
             true
@@ -600,5 +594,102 @@ impl ThunkUpdateFrame {
         if let Some(data) = Weak::upgrade(&self.data) {
             data.borrow_mut().state = ThunkState::Suspended;
         }
+    }
+}
+
+/// Placeholder [Cache] for the call-by-need evaluation strategy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CBNCache {}
+
+impl Cache for CBNCache {
+    type UpdateIndex = ThunkUpdateFrame;
+
+    fn get(&self, idx: CacheIndex) -> Closure {
+        idx.get_owned()
+    }
+
+    fn get_update_index(
+        &mut self,
+        idx: &mut CacheIndex,
+    ) -> Result<Option<Self::UpdateIndex>, BlackholedError> {
+        if idx.state() != ThunkState::Evaluated {
+            if idx.should_update() {
+                idx.mk_update_frame().map(Some)
+            }
+            // If the thunk isn't to be updated, directly set the evaluated flag.
+            else {
+                idx.set_evaluated();
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex {
+        match bty {
+            BindingType::Normal => Thunk::new(clos, kind),
+            BindingType::Revertible(deps) => Thunk::new_rev(clos, kind, deps),
+        }
+    }
+
+    fn patch<F: FnOnce(&mut Closure)>(&mut self, mut idx: CacheIndex, f: F) {
+        f(&mut idx.borrow_mut());
+    }
+
+    fn get_then<T, F: FnOnce(&Closure) -> T>(&self, idx: CacheIndex, f: F) -> T {
+        f(&idx.borrow())
+    }
+
+    fn update(&mut self, clos: Closure, uidx: Self::UpdateIndex) {
+        uidx.update(clos);
+    }
+
+    fn new() -> Self {
+        CBNCache {}
+    }
+
+    fn reset_index_state(&mut self, idx: &mut Self::UpdateIndex) {
+        idx.reset_state();
+    }
+
+    fn map_at_index<F: FnMut(&mut Self, &Closure) -> Closure>(
+        &mut self,
+        idx: &CacheIndex,
+        mut f: F,
+    ) -> CacheIndex {
+        idx.map(|v| f(self, v))
+    }
+
+    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
+        idx.build_cached(rec_env)
+    }
+
+    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
+        idx.ident_kind()
+    }
+
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+        &mut self,
+        idx: CacheIndex,
+        env: &mut Environment,
+        fields: I,
+    ) -> RichTerm {
+        idx.saturate(env, fields)
+    }
+
+    fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {
+        Some(idx.deps())
+    }
+
+    fn revert(&mut self, idx: &CacheIndex) -> CacheIndex {
+        idx.revert()
+    }
+
+    fn make_update_index(
+        &mut self,
+        idx: &mut CacheIndex,
+    ) -> Result<Self::UpdateIndex, BlackholedError> {
+        idx.mk_update_frame()
     }
 }

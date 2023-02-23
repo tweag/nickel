@@ -31,7 +31,7 @@ pub enum Marker<C: Cache> {
     Eq(Closure, Closure),
     /// An argument of an application.
     Arg(Closure, TermPos),
-    /// A tracked argument. Behave the same as a standard argument, but is given directly as a thunk, such that
+    /// A tracked argument. Behave the same as a standard argument, but is given directly as a cache index, such that
     /// it can be shared with other part of the program.
     ///
     /// In particular, contract arguments are tracked, in order to report the actual, evaluated offending term in case of blame.
@@ -130,7 +130,7 @@ impl<C: Cache> Stack<C> {
         count
     }
 
-    /// Pops all items in the stack and resets the state of the thunks it encounters.
+    /// Pops all items in the stack and resets the state of the [Cache] elements it encounters.
     pub fn reset(&mut self, cache: &mut C) {
         while let Some(marker) = self.0.pop() {
             if let Marker::UpdateIndex(mut uidx) = marker {
@@ -293,7 +293,7 @@ impl<C: Cache> Stack<C> {
         }
     }
 
-    /// Check if the top element is a thunk.
+    /// Check if the top element is a [CacheIndex].
     pub fn is_top_idx(&self) -> bool {
         self.0.last().map(Marker::is_idx).unwrap_or(false)
     }
@@ -310,7 +310,7 @@ impl<C: Cache> Stack<C> {
     }
 
     /// Turning the top element of the stack into a tracked arg if it was not already. Returns the
-    /// corresponding thunk, or `None` if the top element wasn't an argument.
+    /// corresponding index, or `None` if the top element wasn't an argument.
     pub fn track_arg(&mut self, cache: &mut C) -> Option<CacheIndex> {
         match self.0.last_mut() {
             Some(Marker::TrackedArg(idx, _)) => Some(idx.clone()),
@@ -338,14 +338,12 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{cache::CBNCache, IdentKind};
+    use crate::eval::{cache::CacheImpl, IdentKind};
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
-    type EC = CBNCache;
-
-    impl Stack<EC> {
-        /// Count the number of thunks at the top of the stack.
+    impl Stack<CacheImpl> {
+        /// Count the number of indices at the top of the stack.
         pub fn count_thunks(&self) -> usize {
             Stack::count(self, Marker::is_idx)
         }
@@ -364,23 +362,23 @@ mod tests {
         OperationCont::Op1(UnaryOp::Typeof(), TermPos::None)
     }
 
-    fn some_arg_marker() -> Marker<EC> {
+    fn some_arg_marker() -> Marker<CacheImpl> {
         Marker::Arg(some_closure(), TermPos::None)
     }
 
-    fn some_thunk_marker(eval_cache: &mut EC) -> Marker<EC> {
+    fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         let uidx = eval_cache.make_update_index(&mut idx).unwrap();
         Marker::UpdateIndex(uidx)
     }
 
-    fn some_cont_marker() -> Marker<EC> {
+    fn some_cont_marker() -> Marker<CacheImpl> {
         Marker::Cont(some_cont(), 42, TermPos::None)
     }
 
     #[test]
     fn marker_differentiates() {
-        let mut eval_cache = EC::new();
+        let mut eval_cache = CacheImpl::new();
         assert!(some_arg_marker().is_arg());
         assert!(some_thunk_marker(&mut eval_cache).is_idx());
         assert!(some_cont_marker().is_cont());
@@ -396,7 +394,7 @@ mod tests {
         assert_eq!(2, s.count_args());
         assert_eq!(
             some_closure(),
-            s.pop_arg(&EC::new()).expect("Already checked").0
+            s.pop_arg(&CacheImpl::new()).expect("Already checked").0
         );
         assert_eq!(1, s.count_args());
     }
@@ -406,7 +404,7 @@ mod tests {
         let mut s = Stack::new();
         assert_eq!(0, s.count_thunks());
 
-        let mut eval_cache = EC::new();
+        let mut eval_cache = CacheImpl::new();
 
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
@@ -420,7 +418,7 @@ mod tests {
 
     #[test]
     fn thunk_blackhole() {
-        let mut eval_cache = CBNCache::new();
+        let mut eval_cache = CacheImpl::new();
         let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
         let idx_upd = eval_cache.make_update_index(&mut idx);
         assert_matches!(idx_upd, Ok(..));

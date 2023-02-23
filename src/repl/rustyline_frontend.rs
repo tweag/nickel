@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::command::Command;
 use super::*;
 
+use crate::eval::cache::CacheImpl;
 use crate::program::{self, ColorOpt};
 use ansi_term::{Colour, Style};
 use rustyline::config::OutputStreamType;
@@ -33,7 +34,7 @@ impl From<ColorOpt> for rustyline::config::ColorMode {
 
 /// Main loop of the REPL.
 pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
-    let mut repl = ReplImpl::<crate::eval::cache::CBNCache>::new();
+    let mut repl = ReplImpl::<CacheImpl>::new();
 
     match repl.load_stdlib() {
         Ok(()) => (),

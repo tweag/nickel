@@ -3,7 +3,7 @@ use super::*;
 use crate::position::TermPos;
 
 // Update the environment of a term by extending it with a recursive environment. In the general
-// case, the term is expected to be a variable pointing to the thunk to be patched. Otherwise, it's
+// case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
 // considered to have no dependencies and is left untouched.
 //
 // This function achieve the same as `patch_field`, but is somehow lower-level, as it operates on a
@@ -29,8 +29,8 @@ fn patch_term<C: Cache>(
 }
 
 /// Build a recursive environment from record bindings. For each field, `rec_env` either extracts
-/// the corresponding thunk from the environment in the general case, or create a closure on the
-/// fly if the field is a constant. The resulting environment is to be passed to the
+/// the corresponding cache element from the environment in the general case, or create a closure
+/// on the fly if the field is a constant. The resulting environment is to be passed to the
 /// [`patch_field`] function.
 ///
 /// # Pending contracts
@@ -131,10 +131,10 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
 }
 
 /// Update the environment of the content of a recursive record field by extending it with a
-/// recursive environment. When seeing revertible thunks as a memoizing device for functions, this
+/// recursive environment. When seeing revertible elements as a memoizing device for functions, this
 /// step correspond to function application (see documentation of [crate::eval::lazy::ThunkData]).
 ///
-/// For each field, retrieve the set set of dependencies from the corresponding thunk in the
+/// For each field, retrieve the set set of dependencies from the corresponding element in the
 /// environment, and only add those dependencies to the environment. This avoids retaining
 /// reference-counted pointers to unused data. If no dependencies are available, conservatively add
 /// all the recursive environment. See [`crate::transform::free_vars`].

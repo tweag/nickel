@@ -549,7 +549,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                             // Array elements are closurized to preserve laziness of data structures. It
-                            // maintains the invariant that any data structure only contain thunks (that is,
+                            // maintains the invariant that any data structure only contain indices (that is,
                             // currently, variables).
                             let ts = ts
                                 .into_iter()
@@ -600,7 +600,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                         // Array elements are closurized to preserve laziness of data structures. It
-                        // maintains the invariant that any data structure only contain thunks (that is,
+                        // maintains the invariant that any data structure only contain indices (that is,
                         // currently, variables).
                         let ts = (0..n_int)
                             .map(|n| {
@@ -2935,7 +2935,7 @@ impl RecPriority {
                 // ```
                 //
                 // In the example above, if we just map `$rec_default` on the value of `foo` and
-                // closurize it into a new, normal thunk (non revertible), we lose the ability to
+                // closurize it into a new, normal cache element (non revertible), we lose the ability to
                 // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
                 //
                 // What we want is that:
@@ -2950,12 +2950,12 @@ impl RecPriority {
                 // {foo | default = bar + 1, bar | default = 1}
                 // ```
                 //
-                // For revertible thunks, we don't want to only map the push operator on the
+                // For revertible elements, we don't want to only map the push operator on the
                 // current cached value, but also on the original expression.
                 //
-                // To do so, we create a new independent copy of the original thunk by mapping the
+                // To do so, we create a new independent copy of the original element by mapping the
                 // function over both expressions (in the sense of both the original expression and
-                // the cached expression). This logic is encapsulated by `Thunk::map`.
+                // the cached expression). This logic is encapsulated by [crate::eval::cache::Cache::map_at_index].
 
                 field.value = field.value.take().map(|value| {
                     if let Term::Var(id_inner) = value.as_ref() {
@@ -3319,15 +3319,14 @@ impl RecordDataExt for RecordData {
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
-    use crate::eval::cache::CBNCache;
+    use crate::eval::cache::CacheImpl;
     use crate::eval::Environment;
-
-    type EC = CBNCache;
 
     #[test]
     fn ite_operation() {
         let cont: OperationCont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
-        let mut vm: VirtualMachine<DummyResolver, EC> = VirtualMachine::new(DummyResolver {});
+        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
+            VirtualMachine::new(DummyResolver {});
 
         vm.stack.push_arg(
             Closure::atomic_closure(Term::Num(5.0).into()),
@@ -3416,7 +3415,8 @@ mod tests {
             TermPos::None,
         );
 
-        let mut vm: VirtualMachine<DummyResolver, EC> = VirtualMachine::new(DummyResolver {});
+        let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
+            VirtualMachine::new(DummyResolver {});
         let mut clos = Closure {
             body: Term::Num(6.0).into(),
             env: Environment::new(),

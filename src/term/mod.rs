@@ -208,7 +208,7 @@ pub enum Term {
 pub type SealingKey = i32;
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
-/// revertible thunks at evaluation, which are devices used for the implementation of recursive
+/// revertible cache elements at evaluation, which are devices used for the implementation of recursive
 /// records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more details.
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum BindingType {
@@ -1100,8 +1100,8 @@ pub enum UnaryOp {
     ///
     /// # `Force` vs. `DeepSeq`
     ///
-    /// [`UnaryOp::Force`] updates the thunks containing arrays with a new version where the lazy contracts have all been applied,
-    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates the thunk of an array with lazy contracts
+    /// [`UnaryOp::Force`] updates at the indices containing arrays with a new version where the lazy contracts have all been applied,
+    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates at the index of an array with lazy contracts
     /// with an array where those contracts have been applied. In a way, the result of lazy contract application in arrays is "lost"
     /// in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
     ///

@@ -271,16 +271,15 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::error::{Error, EvalError};
-    use crate::eval::{cache::CBNCache, Environment, VirtualMachine};
+    use crate::eval::cache::CacheImpl;
+    use crate::eval::{Environment, VirtualMachine};
     use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
     use std::io::Cursor;
 
-    type EC = CBNCache;
-
-    fn mk_program(s: &str) -> Result<Program<EC>, Error> {
+    fn mk_program(s: &str) -> Result<Program<CacheImpl>, Error> {
         let src = Cursor::new(s);
 
         Program::new_from_source(src, "<test>").map_err(|io_err| {
@@ -336,7 +335,7 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
                         &Environment::new(),
@@ -345,7 +344,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
                         &Environment::new(),
@@ -354,7 +353,7 @@ mod tests {
                 Ok(Term::Bool(true))
             );
             assert_eq!(
-                VirtualMachine::<_, EC>::new(DummyResolver {})
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
                     .eval(
                         mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
                         &Environment::new(),

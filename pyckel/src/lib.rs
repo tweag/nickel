@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use nickel_lang::{
     error::Error,
-    eval::cache::{CBNCache, Cache},
+    eval::cache::{Cache, CacheImpl},
     program::Program,
     serialize,
 };
@@ -19,7 +19,7 @@ fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program
 /// Evaluate from a Python str of a Nickel expression to a Python str of the resulting JSON.
 #[pyfunction]
 pub fn run(s: String) -> PyResult<String> {
-    let mut program: Program<CBNCache> =
+    let mut program: Program<CacheImpl> =
         Program::new_from_source(Cursor::new(s.to_string()), "python")?;
 
     let term = program

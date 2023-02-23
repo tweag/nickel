@@ -3,7 +3,7 @@ use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{Repl, ReplImpl};
 use crate::cache::Cache;
 use crate::error::ToDiagnostic;
-use crate::eval::cache::CBNCache;
+use crate::eval::cache::CacheImpl;
 use crate::serialize::ExportFormat;
 use codespan::{FileId, Files};
 use codespan_reporting::{
@@ -244,7 +244,7 @@ impl From<InputResult> for WasmInputResult {
 
 /// WASM-compatible wrapper around `ReplImpl`.
 #[wasm_bindgen]
-pub struct ReplState(ReplImpl<CBNCache>);
+pub struct ReplState(ReplImpl<CacheImpl>);
 
 /// WASM-compatible wrapper around `serialize::ExportFormat`.
 #[wasm_bindgen]

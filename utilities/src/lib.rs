@@ -5,7 +5,7 @@ use nickel_lang::{
     cache::{Cache, Envs, ErrorTolerance},
     error::{Error, ParseError},
     eval::{
-        cache::{CBNCache, Cache as EvalCache},
+        cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
     },
     parser::{grammar, lexer},
@@ -16,12 +16,11 @@ use nickel_lang::{
 
 use std::{io::Cursor, path::PathBuf};
 
-pub type EC = CBNCache;
-pub type TestProgram = Program<EC>;
+pub type TestProgram = Program<CacheImpl>;
 
 /// Create a program from a Nickel expression provided as a string.
-pub fn program_from_expr(s: impl std::string::ToString) -> Program<EC> {
-    Program::<EC>::new_from_source(Cursor::new(s.to_string()), "test").unwrap()
+pub fn program_from_expr(s: impl std::string::ToString) -> Program<CacheImpl> {
+    Program::<CacheImpl>::new_from_source(Cursor::new(s.to_string()), "test").unwrap()
 }
 
 pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
@@ -29,7 +28,7 @@ pub fn eval(s: impl std::string::ToString) -> Result<Term, Error> {
 }
 
 pub fn eval_file(f: &str) -> Result<Term, Error> {
-    let mut p: Program<EC> = program_from_test_fixture(f);
+    let mut p: Program<CacheImpl> = program_from_test_fixture(f);
     p.eval().map(Term::from)
 }
 
@@ -42,11 +41,11 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
 }
 
 pub fn typecheck_fixture(f: &str) -> Result<(), Error> {
-    let mut p: Program<EC> = program_from_test_fixture(f);
+    let mut p: Program<CacheImpl> = program_from_test_fixture(f);
     p.typecheck()
 }
 
-fn program_from_test_fixture(f: &str) -> Program<EC> {
+fn program_from_test_fixture(f: &str) -> Program<CacheImpl> {
     let path = format!("{}/../tests/integration/{}", env!("CARGO_MANIFEST_DIR"), f);
     Program::new_from_file(&path)
         .unwrap_or_else(|e| panic!("Could not create program from `{}`\n {}", path, e))
@@ -137,7 +136,7 @@ impl<'b> Bench<'b> {
 
 pub fn bench_terms<'r>(rts: Vec<Bench<'r>>) -> Box<dyn Fn(&mut Criterion) + 'r> {
     let mut cache = Cache::new(ErrorTolerance::Strict);
-    let mut eval_cache = EC::new();
+    let mut eval_cache = CacheImpl::new();
     let Envs {
         eval_env,
         type_ctxt,
@@ -205,14 +204,14 @@ macro_rules! ncl_bench_group {
         pub fn $group_name() {
             use nickel_lang::{
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
-                eval::{VirtualMachine, cache::Cache as EvalCache},
+                eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
             };
 
             let mut c: criterion::Criterion<_> = $config
                 .configure_from_args();
             let mut cache = Cache::new(ErrorTolerance::Strict);
-            let mut eval_cache = nickel_lang_utilities::EC::new();
+            let mut eval_cache = CacheImpl::new();
             let Envs {eval_env, type_ctxt} = cache.prepare_stdlib(&mut eval_cache).unwrap();
             $(
                 let bench = $crate::ncl_bench!$b;

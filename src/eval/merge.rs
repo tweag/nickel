@@ -267,13 +267,13 @@ pub fn merge<C: Cache>(
 
             // Merging recursive records is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the
-            // corresponding thunks to their original expression.
+            // corresponding elements in the cache to their original expression.
             //
             // We do that for the left and the right part.
             //
             // The fields in the intersection (center) need a slightly more general treatment to
             // correctly propagate the recursive values down each field: saturation. See
-            // [crate::eval::lazy::Thunk::saturate].
+            // [crate::eval::cache::Cache::saturate()].
             m.extend(
                 left.into_iter()
                     .map(|(id, field)| (id, field.revert_closurize(cache, &mut env, env1.clone()))),
@@ -311,7 +311,7 @@ pub fn merge<C: Cache>(
                     // We don't have to provide RecordDeps, which are required in a previous stage
                     // of program transformations. At this point, the interpreter doesn't care
                     // about them anymore, and dependencies are stored at the level of revertible
-                    // thunks directly.
+                    // cache elements directly.
                     Term::RecRecord(
                         RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs), None),
                         Vec::new(),
@@ -450,7 +450,7 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
-/// See [crate::eval::lazy::Thunk::saturate]. Saturation is a transformation on recursive thunks
+/// See [crate::eval::cache::Cache::saturate]. Saturation is a transformation on recursive cache elements
 /// that is used when we must combine different values with different recursive dependencies (say,
 /// the two values of fields being merged) into one expression.
 ///
@@ -458,12 +458,12 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
 /// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence
 /// the trait.
 trait Saturate: Sized {
-    /// Take the content of a record field, and saturate the potential revertible thunk with the given
-    /// fields. See [crate::eval::lazy::Thunk::saturate].
+    /// Take the content of a record field, and saturate the potential revertible element with the given
+    /// fields. See [crate::eval::cache::Cache::saturate].
     ///
-    /// If the expression is not a variable referring to a thunk (this can happen e.g. for numeric
-    /// constants), we just return the term as it is, which falls into the zero dependencies special
-    /// case.
+    /// If the expression is not a variable referring to an element in the cache
+    ///  (this can happen e.g. for numeric constants), we just return the term as it is, which
+    /// falls into the zero dependencies special case.
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
         self,
         cache: &mut C,
@@ -513,9 +513,9 @@ fn field_deps<C: Cache>(
 /// Take the current environment, two fields with their local environment, and return a term which
 /// is the merge of the two fields, closurized in the provided final environment.
 ///
-/// The thunk allocated for the result is revertible if and only if at least one of the original
-/// thunks is (if one of the original values is overridable, then so is the merge of the two). In
-/// this case, the field dependencies are the union of the dependencies of each field.
+/// The element in the cache allocated for the result is revertible if and only if at least one of
+/// the original elements is (if one of the original values is overridable, then so is the merge of
+/// the two). In this case, the field dependencies are the union of the dependencies of each field.
 ///
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
@@ -537,14 +537,14 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
         t2.saturate(cache, &mut local_env, env2, fields)?,
     ));
 
-    // We closurize the final result in a thunk with appropriate dependencies
+    // We closurize the final result in an element with appropriate dependencies
     let closure = Closure {
         body,
         env: local_env,
     };
     let fresh_var = Ident::fresh();
 
-    // new_rev takes care of not creating a revertible thunk if the dependencies are empty.
+    // new_rev takes care of not creating a revertible element in the cache if the dependencies are empty.
     env.insert(
         fresh_var,
         cache.add(
@@ -557,9 +557,9 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
     Ok(RichTerm::from(Term::Var(fresh_var)))
 }
 
-/// Same as [Closurizable], but also revert the thunk if the term is a variable.
+/// Same as [Closurizable], but also revert the element if the term is a variable.
 trait RevertClosurize {
-    /// Revert the thunk inside the term (if any), and closurize the result inside `env`.
+    /// Revert the element at the index inside the term (if any), and closurize the result inside `env`.
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
@@ -576,7 +576,7 @@ impl RevertClosurize for RichTerm {
         with_env: Environment,
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
-            // This create a fresh variable which is bound to a reverted copy of the original thunk
+            // This create a fresh variable which is bound to a reverted copy of the original element
             let reverted = cache.revert(with_env.get(id).unwrap());
             let fresh_id = Ident::fresh();
             env.insert(fresh_id, reverted);
