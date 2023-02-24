@@ -410,6 +410,12 @@ pub enum ReplError {
         cmd: repl::command::CommandType,
         msg_opt: Option<String>,
     },
+    InvalidArg {
+        cmd: repl::command::CommandType,
+        argument: String,
+        expected_format: String,
+    },
+    InvalidQueryPath(ParseError),
 }
 
 impl From<EvalError> for Error {
@@ -1746,15 +1752,28 @@ impl ToDiagnostic<FileId> for IOError {
 impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
-        _files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
+        const AVAILABLE_CMDS_NOTE: &str = "type `:?` or `:help` for a list of available commands.";
+        let mk_cmd_help_note =
+            |cmd| format!("type `:? {cmd}` or `:help {cmd}` for more information.");
+
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
                 .with_message(format!("unknown command `{s}`"))
-                .with_notes(vec![String::from(
-                    "type `:?` or `:help` for a list of available commands.",
-                )])],
+                .with_notes(vec![String::from(AVAILABLE_CMDS_NOTE)])],
+            ReplError::InvalidArg {
+                cmd,
+                argument,
+                expected_format,
+            } => vec![Diagnostic::error()
+                .with_message(format!("invalid argument `{argument}` to command `{cmd}`"))
+                .with_notes(vec![
+                    format!("{cmd} expects this argument to be a {expected_format}."),
+                    mk_cmd_help_note(cmd),
+                ])],
+            ReplError::InvalidQueryPath(err) => err.to_diagnostic(files, contract_id),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()
