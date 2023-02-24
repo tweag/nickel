@@ -1743,34 +1743,57 @@ pub fn apparent_type(
     env: Option<&Environment>,
     resolver: Option<&dyn ImportResolver>,
 ) -> ApparentType {
-    match t {
-        Term::Annotated(annot, value) => annot
-            .first()
-            .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
-            .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-        Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
-        Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
-        Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),
-        Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(TypeF::Str)),
-        Term::Array(..) => {
-            ApparentType::Approximated(Types(TypeF::Array(Box::new(Types(TypeF::Dyn)))))
-        }
-        Term::Var(id) => env
-            .and_then(|envs| envs.get(id).cloned())
-            .map(ApparentType::FromEnv)
-            .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn))),
-        Term::ResolvedImport(f) => {
-            if let Some(r) = resolver {
-                let t = r
-                    .get(*f)
-                    .expect("Internal error: resolved import not found during typechecking.");
-                apparent_type(&t.term, env, Some(r))
-            } else {
-                ApparentType::Approximated(Types(TypeF::Dyn))
+    use codespan::FileId;
+
+    // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
+    // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
+    // loop, for example with the trivial program which imports itself:
+    //
+    // ```nickel
+    // # foo.ncl
+    // import "foo.ncl"
+    // ```
+    //
+    // The following function thus remembers what imports have been seen already, and simply
+    // returns `Dyn` if it detects a cycle.
+    fn apparent_type_check_cycle(
+        t: &Term,
+        env: Option<&Environment>,
+        resolver: Option<&dyn ImportResolver>,
+        mut imports_seen: HashSet<FileId>,
+    ) -> ApparentType {
+        match t {
+            Term::Annotated(annot, value) => annot
+                .first()
+                .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
+                .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
+            Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
+            Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
+            Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),
+            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(TypeF::Str)),
+            Term::Array(..) => {
+                ApparentType::Approximated(Types(TypeF::Array(Box::new(Types(TypeF::Dyn)))))
             }
+            Term::Var(id) => env
+                .and_then(|envs| envs.get(id).cloned())
+                .map(ApparentType::FromEnv)
+                .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn))),
+            Term::ResolvedImport(file_id) => match resolver {
+                Some(r) if !imports_seen.contains(file_id) => {
+                    imports_seen.insert(*file_id);
+
+                    let t = r
+                        .get(*file_id)
+                        .expect("Internal error: resolved import not found during typechecking.");
+                    apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
+                }
+                _ => ApparentType::Approximated(Types(TypeF::Dyn)),
+            },
+            _ => ApparentType::Approximated(Types(TypeF::Dyn)),
         }
-        _ => ApparentType::Approximated(Types(TypeF::Dyn)),
     }
+
+    apparent_type_check_cycle(t, env, resolver, HashSet::new())
 }
 
 /// Infer the type of a non annotated record by gathering the apparent type of the fields. It's

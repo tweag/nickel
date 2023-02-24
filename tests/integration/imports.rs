@@ -178,3 +178,15 @@ fn nested_syntax_error() {
         Err(Error::ImportError(ImportError::ParseErrors(..)))
     );
 }
+
+// Regression test for simple import loop making the typechecker overflow
+#[test]
+fn direct_import_loop() {
+    let mut prog = TestProgram::new_from_source(
+        BufReader::new(mk_import("direct_import_loop.ncl").as_bytes()),
+        "should_typecheck",
+    )
+    .unwrap();
+
+    assert_matches!(prog.typecheck(), Ok(()));
+}
