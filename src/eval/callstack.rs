@@ -134,7 +134,7 @@ impl CallStack {
     ///   calls out.
     pub fn group_by_calls(
         self: &CallStack,
-        contracts_id: Vec<FileId>,
+        contracts_id: &Vec<FileId>,
     ) -> (Vec<CallDescr>, Option<CallDescr>) {
         // We filter out calls and accesses made from within the builtin contracts, as well as
         // generated variables introduced by program transformations.

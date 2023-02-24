@@ -195,7 +195,7 @@ impl WasmInputResult {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
                 let contracts_id = cache.get_all_stdlib_modules_file_id();
-                let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
+                let diagnostics = err.to_diagnostic(cache.files_mut(), &contracts_id);
 
                 let msg = diags_to_string(cache, &diagnostics);
                 let errors: Vec<WasmErrorDiagnostic> = diagnostics
@@ -291,7 +291,7 @@ pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
             let contracts_id = cache.get_all_stdlib_modules_file_id();
-            let diags = nickel_err.to_diagnostic(cache.files_mut(), contracts_id);
+            let diags = nickel_err.to_diagnostic(cache.files_mut(), &contracts_id);
             diags_to_string(cache, &diags)
         }
         InputError::Other(msg) => msg.clone(),

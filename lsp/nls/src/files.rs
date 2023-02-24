@@ -82,7 +82,7 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error
                 .into_iter()
-                .flat_map(|err| err.to_diagnostic(server.cache.files_mut(), None))
+                .flat_map(|err| err.to_diagnostic(server.cache.files_mut(), &None))
                 .collect(),
             CacheError::NotParsed => unreachable!(),
         })
@@ -92,12 +92,12 @@ fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result
     let diagnostics = server
         .cache
         .parse(file_id)
-        .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), None))
+        .map_err(|parse_err| parse_err.to_diagnostic(server.cache.files_mut(), &None))
         .map(|parse_errs| {
             // Parse errors are not fatal
             let mut d = parse_errs
                 .inner()
-                .to_diagnostic(server.cache.files_mut(), None);
+                .to_diagnostic(server.cache.files_mut(), &None);
             trace!("Parsed, checking types");
             let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
             d

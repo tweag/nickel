@@ -259,7 +259,7 @@ fn lists_contracts() {
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
     // the error message but just check that it can be built.
     let mut files = Files::new();
-    res.unwrap_err().to_diagnostic(&mut files, None);
+    res.unwrap_err().to_diagnostic(&mut files, &None);
 
     let res = eval(
         "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
@@ -274,7 +274,7 @@ fn lists_contracts() {
         }
         err => panic!("expected blame error, got {err:?}"),
     }
-    res.unwrap_err().to_diagnostic(&mut files, None);
+    res.unwrap_err().to_diagnostic(&mut files, &None);
 }
 
 #[test]
