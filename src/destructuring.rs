@@ -12,6 +12,19 @@ use crate::{
     types::{TypeF, Types},
 };
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum FieldPattern {
+    /// An assignment match like `{ ..., a = b, ... }`
+    Ident(Ident),
+    /// A nested record pattern like `{ ..., a = { b, c }, ... }`
+    RecordPattern(RecordPattern),
+    /// An aliased nested record pattern like `{ ..., a = b @ { c, d }, ... }`
+    AliasedRecordPattern {
+        alias: Ident,
+        pattern: RecordPattern,
+    },
+}
+
 /// A match field in a `Destruct` pattern. Every field can be annotated with a type, with contracts
 /// or with a default value.
 #[derive(Debug, PartialEq, Clone)]
@@ -19,7 +32,7 @@ pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant and `b` the optional one. The last field can actualy be a
     /// nested destruct pattern.
-    Assign(Ident, Field, (Option<Ident>, Option<RecordPattern>)),
+    Assign(Ident, Field, FieldPattern),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
     Simple(Ident, Field),
 }
@@ -91,21 +104,28 @@ impl Match {
     /// contract representing a record pattern destructuring.
     pub fn as_binding(self) -> (Ident, Field) {
         match self {
-            Match::Assign(id, field, (_, None)) | Match::Simple(id, field) => (id, field),
+            Match::Assign(id, field, FieldPattern::Ident(_)) | Match::Simple(id, field) => {
+                (id, field)
+            }
 
             // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
             // because we can have two cases:
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            Match::Assign(id, mut field, (_, Some(destruct))) => {
-                let mut label = destruct.label();
+            Match::Assign(
+                id,
+                mut field,
+                FieldPattern::RecordPattern(pattern)
+                | FieldPattern::AliasedRecordPattern { pattern, .. },
+            ) => {
+                let mut label = pattern.label();
                 label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
                 field
                     .metadata
                     .annotation
                     .contracts
-                    .push(destruct.into_contract_with_lbl(label));
+                    .push(pattern.into_contract_with_lbl(label));
 
                 (id, field)
             }
@@ -116,42 +136,65 @@ impl Match {
     /// It also tells the "path" to the bound variable; this is just the
     /// record field names traversed to get to a pattern.
     pub fn as_flattened_bindings(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
+        fn get_label(id: &Ident, pattern: &RecordPattern) -> Label {
+            let mut label = pattern.label();
+            label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
+            label
+        }
+
+        fn flatten_matches(
+            id: &Ident,
+            matches: &[Match],
+        ) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
+            matches
+                .iter()
+                .flat_map(|m| m.clone().as_flattened_bindings())
+                .map(|(mut path, bind, field)| {
+                    path.push(*id);
+                    (path, bind, field)
+                })
+                .collect()
+        }
+
         match self {
             Match::Simple(id, field) => vec![(vec![id], None, field)],
-            Match::Assign(id, field, (bind_id, None)) => {
-                vec![(vec![id], bind_id, field)]
+            Match::Assign(id, field, FieldPattern::Ident(bind_id)) => {
+                vec![(vec![id], Some(bind_id), field)]
             }
             Match::Assign(
                 id,
                 mut field,
-                (bind_id, Some(ref destruct @ RecordPattern { ref matches, .. })),
+                FieldPattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
             ) => {
-                let destruct = destruct.clone();
-                let mut label = destruct.label();
-                label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
+                let label = get_label(&id, pattern);
+                let pattern = pattern.clone();
                 field
                     .metadata
                     .annotation
                     .contracts
-                    .push(destruct.into_contract_with_lbl(label));
+                    .push(pattern.into_contract_with_lbl(label));
 
-                let inner = matches
-                    .iter()
-                    .flat_map(|m| m.clone().as_flattened_bindings())
-                    .map(|(mut path, bind, field)| {
-                        path.push(id);
-                        (path, bind, field)
-                    });
+                flatten_matches(&id, matches)
+            }
+            Match::Assign(
+                id,
+                mut field,
+                FieldPattern::AliasedRecordPattern {
+                    alias: bind_id,
+                    pattern: ref pattern @ RecordPattern { ref matches, .. },
+                },
+            ) => {
+                let label = get_label(&id, pattern);
+                let pattern = pattern.clone();
+                field
+                    .metadata
+                    .annotation
+                    .contracts
+                    .push(pattern.into_contract_with_lbl(label));
 
-                // We only want to return the outer if we actually have a variable name
-                // bound to it.
-                let outer = if bind_id.is_some() {
-                    vec![(vec![id], bind_id, field)]
-                } else {
-                    Vec::new()
-                };
-
-                inner.chain(outer).collect()
+                let mut flattened = flatten_matches(&id, matches);
+                flattened.push((vec![id], Some(bind_id), field));
+                flattened
             }
         }
     }
