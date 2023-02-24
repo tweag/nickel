@@ -426,9 +426,15 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Query) => {
-                writeln!(out, ":{c} <expression>")?;
+                writeln!(out, ":{c} <identifier> [field path]")?;
                 print_aliases(out, c)?;
-                writeln!(out, "Print the metadata attached to an attribute")?;
+                writeln!(out, "Print the metadata attached to a field")?;
+                writeln!(
+                    out,
+                    "<identifier> is valid Nickel identifier representing the record to look into."
+                )?;
+                writeln!(out, "<field path> is a dot-separated sequence of identifiers pointing to a field.\n")?;
+                writeln!(out, "Example: `:{c} mylib contracts.\"special#chars\".bar`")?;
             }
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;
@@ -459,7 +465,11 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             }
             Err(UnknownCommandError {}) => {
                 writeln!(out, "Unknown command `{arg}`.")?;
-                writeln!(out, "Available commands: ? help query load typecheck")?;
+                writeln!(
+                    out,
+                    "Available commands: ? {}",
+                    CommandType::all().join(" ")
+                )?;
             }
         };
 

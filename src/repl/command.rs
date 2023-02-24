@@ -13,6 +13,12 @@ pub enum CommandType {
     Exit,
 }
 
+impl CommandType {
+    pub fn all() -> Vec<&'static str> {
+        vec!["load", "typecheck", "query", "print", "help", "exit"]
+    }
+}
+
 /// A parsed command with corresponding argument(s). Required argument are checked for
 /// non-emptiness.
 #[derive(Clone, Eq, PartialEq, Debug)]
