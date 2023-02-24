@@ -1746,7 +1746,7 @@ pub fn apparent_type(
     use codespan::FileId;
 
     // Check the apparent type while avoiding cycling through direct imports loops. Indeed,
-    // `apparent_type` tries to pick through imported terms. But doing so can lead to an infinite
+    // `apparent_type` tries to see through imported terms. But doing so can lead to an infinite
     // loop, for example with the trivial program which imports itself:
     //
     // ```nickel
