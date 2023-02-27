@@ -1025,7 +1025,7 @@ impl Display for Types {
             TypeF::Record(row) => write!(f, "{{{row}}}"),
             TypeF::Dict(ty) => write!(f, "{{_: {ty}}}"),
             TypeF::Arrow(dom, codom) => match dom.0 {
-                TypeF::Arrow(_, _) => write!(f, "({dom}) -> {codom}"),
+                TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
                 _ => write!(f, "{dom} -> {codom}"),
             },
             TypeF::Wildcard(_) => write!(f, "_"),
@@ -1079,6 +1079,7 @@ mod test {
         assert_format_eq("Num -> Num");
         assert_format_eq("(Num -> Num) -> (Num -> Num) -> Num -> Num");
         assert_format_eq("((Num -> Num) -> Num) -> Num");
+        assert_format_eq("Num -> (forall a. a -> Str) -> Str");
 
         assert_format_eq("{_: Str}");
         assert_format_eq("{_: (Str -> Str) -> Str}");
