@@ -465,7 +465,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Label"),
-                        String::from("go_array"),
+                        String::from("go_dict"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
@@ -2531,6 +2531,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
+            // This implementation of `%dictionary_assume%` internally creates
+            // essentially a copy of the record that is being checked, albeit
+            // without values for the fields. If the record in question is
+            // particularly huge, this could have performance implications.
+            //
+            // An alternative implementation would be to duplicate some of the
+            // logic from `eval::merge` in here. We decided not to do that for
+            // simplicity and to keep all the magic operations on revertible
+            // thunks contained in their own module.
             BinaryOp::DictionaryAssume() => {
                 let (
                     Closure {
@@ -2559,18 +2568,41 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     with {
                         Term::Record(record_data) => {
                             let contract = contract_term.closurize(&mut self.cache, &mut env2, contract_env);
-                            let record_contract = Term::Record(RecordData{
-                                fields: record_data.fields.iter().map(|(key, value)| (*key, Field {
-                                    value: None,
-                                    pending_contracts: vec![PendingContract::new(contract.clone(), lbl.clone())],
-                                    metadata: FieldMetadata {
-                                        opt: value.metadata.opt,
-                                        ..Default::default()
-                                    },
-                                })).collect(),
-                                attrs: RecordAttrs{
-                                    open: true
-                                },
+                            let record_contract = Term::Record(RecordData {
+                                fields: record_data
+                                    .fields
+                                    .iter()
+                                    .map(|(key, value)| {
+                                        (
+                                            *key,
+                                            Field {
+                                                value: None,
+                                                pending_contracts: vec![PendingContract::new(
+                                                    contract.clone(),
+                                                    lbl.clone(),
+                                                )],
+                                                // This is intentionally not written as
+                                                // `{ opt: value.metadata.opt, ..Default::default() }`
+                                                //
+                                                // When `FieldMetadata` is changed in the future, we will need to consider
+                                                // which values should be inherited from `value.metadata`.
+                                                //
+                                                // The `metadata` field here must be chosen such that, upon merging it
+                                                // with `value.metadata`, the result is identical to the original metadata
+                                                // `value.metadata` of the field.
+                                                metadata: FieldMetadata {
+                                                    opt: value.metadata.opt,
+
+                                                    doc: None,
+                                                    annotation: Default::default(),
+                                                    not_exported: false,
+                                                    priority: Default::default(),
+                                                },
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                                attrs: RecordAttrs { open: true },
                                 ..Default::default()
                             });
 
