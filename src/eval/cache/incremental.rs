@@ -1,5 +1,4 @@
 /// A [Cache] implementation with incremental computation features.
-
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
@@ -26,6 +25,8 @@ pub struct IncNode {
     bty: BindingType,
     // The state of the node.
     state: IncNodeState,
+    // Forward links to dependencies.
+    fwdlinks: Vec<CacheIndex>,
     // Backlinks to nodes depending on this node.
     backlinks: Vec<CacheIndex>,
 }
@@ -38,6 +39,7 @@ impl IncNode {
             kind,
             bty,
             state: IncNodeState::default(),
+            fwdlinks: Vec::new(),
             backlinks: Vec::new(),
         }
     }
@@ -85,6 +87,24 @@ impl IncCache {
                 )
             }
             _ => node.clone(),
+        }
+    }
+
+    fn update_backlinks(&mut self, idx: CacheIndex) {
+        let node = self.store.get(idx).unwrap().clone();
+        for i in node.fwdlinks {
+            let n = self.store.get_mut(i).unwrap();
+            n.backlinks.push(idx);
+        }
+    }
+
+    fn propagate_dirty(&mut self, idx: CacheIndex) {
+        let mut node = self.store.get_mut(idx).unwrap().clone();
+        node.cached = None;
+
+        // This may be bad for the stack
+        for i in node.backlinks {
+            self.propagate_dirty(i)
         }
     }
 }
@@ -204,8 +224,11 @@ impl Cache for IncCache {
             kind: node.kind,
             bty: node.bty.clone(),
             state: node.state,
+            fwdlinks: node.fwdlinks.clone(),
             backlinks: node.backlinks.clone(),
         };
+
+        // TODO: Should this push the dependencies?
 
         self.add_node(new_node)
     }
@@ -224,13 +247,16 @@ impl Cache for IncCache {
             BindingType::Revertible(ref deps) => match deps {
                 FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
                 FieldDeps::Known(deps) if deps.is_empty() => (),
-                FieldDeps::Known(deps) => new_cached
-                    .env
-                    .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+                FieldDeps::Known(deps) => {
+                    let deps = rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned();
+                    node.fwdlinks = deps.clone().map(|(_, idx)| idx).collect();
+                    new_cached.env.extend(deps);
+                }
             },
         }
 
         node.cached = Some(new_cached);
+        self.update_backlinks(*idx);
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
