@@ -48,6 +48,7 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
+        position::TermPos,
         types::{RecordRowF, RecordRowsIteratorItem, TypeF, Types},
     };
 
@@ -138,7 +139,7 @@ pub mod ty_path {
         // peek() returns a reference, and hence keeps a mutable borrow of `path_it` which forbids
         // to call to next() in the same region. This is why we need to split the match in two
         // different blocks.
-        let forall_offset = match (&ty.0, path_it.peek()) {
+        let forall_offset = match (&ty.ty, path_it.peek()) {
             (_, None) => {
                 let repr = format!("{ty}");
                 return PathSpan {
@@ -151,7 +152,7 @@ pub mod ty_path {
             (TypeF::Forall { .. }, Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let TypeF::Forall { var, body, .. } = &ty.0 {
+                while let TypeF::Forall { var, body, .. } = &ty.ty {
                     // The length of the identifier plus the preceding whitespace
                     result += var.to_string().len() + 1;
                     ty = body.as_ref();
@@ -162,7 +163,7 @@ pub mod ty_path {
             _ => 0,
         };
 
-        match (&ty.0, path_it.next()) {
+        match (&ty.ty, path_it.next()) {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 // The potential shift of the start position of the domain introduced by the couple
                 // of parentheses around the domain. Parentheses are added when printing a function
@@ -170,7 +171,7 @@ pub mod ty_path {
                 // For example, `Arrow(Arrow(Num, Num), Num)` is rendered as "(Num -> Num) -> Num".
                 // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
                 // 0.
-                let paren_offset = match dom.0 {
+                let paren_offset = match dom.ty {
                     TypeF::Arrow(_, _) => 1,
                     _ => 0,
                 };
@@ -248,10 +249,13 @@ pub mod ty_path {
                     "span: current type path element indicates to go to field `{}`,\
 but this field doesn't exist in {}",
                     ident,
-                    Types(TypeF::Record(rows.clone()))
+                    Types {
+                        ty: TypeF::Record(rows.clone()),
+                        pos: TermPos::None
+                    }
                 )
             }
-            (TypeF::Array(ty), Some(Elem::Array)) if *ty.as_ref() == Types(TypeF::Dyn) =>
+            (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().ty == TypeF::Dyn =>
             // Dyn shouldn't be the target of any blame
             {
                 panic!("span(): unexpected blame of a dyn contract inside an array")
@@ -411,7 +415,7 @@ impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
-            types: Rc::new(Types(TypeF::Num)),
+            types: Rc::new(Types::from(TypeF::Num)),
             diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
@@ -476,7 +480,15 @@ impl Label {
 impl Default for Label {
     fn default() -> Label {
         Label {
+<<<<<<< HEAD
             types: Rc::new(Types(TypeF::Dyn)),
+=======
+            types: Rc::new(Types {
+                ty: TypeF::Dyn,
+                pos: TermPos::None,
+            }),
+            tag: "".to_string(),
+>>>>>>> bedbab36 (Add `pos` field to all `Type`, and fix for all modules.)
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),
                 start: 0.into(),

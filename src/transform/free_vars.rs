@@ -178,7 +178,7 @@ impl CollectFreeVars for RichTerm {
 
 impl CollectFreeVars for Types {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        match &mut self.0 {
+        match &mut self.ty {
             TypeF::Dyn
             | TypeF::Num
             | TypeF::Bool

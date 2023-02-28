@@ -163,8 +163,12 @@ pub fn to_type(
     let ty = ty.into_root(table);
 
     match ty {
-        UnifType::UnifVar(p) => Types(TypeF::Var(var_name(reported_names, names, p))),
-        UnifType::Constant(c) => Types(TypeF::Var(cst_name(reported_names, names, c))),
+        UnifType::UnifVar(p) => {
+            Types::with_default_pos(TypeF::Var(var_name(reported_names, names, p)))
+        }
+        UnifType::Constant(c) => {
+            Types::with_default_pos(TypeF::Var(cst_name(reported_names, names, c)))
+        }
         UnifType::Concrete(t) => {
             let mapped = t.map_state(
                 |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
@@ -172,8 +176,8 @@ pub fn to_type(
                 |erows, names| erows_to_type(table, reported_names, names, erows),
                 names,
             );
-            Types(mapped)
+            Types::with_default_pos(mapped)
         }
-        UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
+        UnifType::Contract(t, _) => Types::with_default_pos(TypeF::Flat(t)),
     }
 }

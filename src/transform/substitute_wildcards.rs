@@ -9,6 +9,7 @@ use std::{convert::Infallible, rc::Rc};
 use crate::{
     label::Label,
     match_sharedterm,
+    position::TermPos,
     term::{
         record::{Field, FieldMetadata, RecordData},
         LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation,
@@ -53,7 +54,10 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 
 /// Get the inferred type for a wildcard, or `Dyn` if no type was inferred.
 fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
-    wildcards.get(id).cloned().unwrap_or(Types(TypeF::Dyn))
+    wildcards.get(id).cloned().unwrap_or(Types {
+        ty: TypeF::Dyn,
+        pos: TermPos::None,
+    })
 }
 
 trait SubstWildcard {
@@ -64,8 +68,8 @@ trait SubstWildcard {
 impl SubstWildcard for Types {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Types {
         self.traverse::<_, _, Infallible>(
-            &|ty, _| {
-                if let Types(TypeF::Wildcard(id)) = ty {
+            &|ty: Types, _| {
+                if let TypeF::Wildcard(id) = ty.ty {
                     Ok(get_wildcard_type(wildcards, id))
                 } else {
                     Ok(ty)

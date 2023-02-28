@@ -79,10 +79,16 @@ impl TryFrom<UniTerm> for Types {
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         match ut.node {
-            UniTermNode::Var(id) => Ok(Types(TypeF::Var(id))),
+            UniTermNode::Var(id) => Ok(Types {
+                ty: TypeF::Var(id),
+                pos: ut.pos,
+            }),
             UniTermNode::Record(r) => Types::try_from(r),
             UniTermNode::Types(ty) => Ok(ty),
-            UniTermNode::Term(rt) => Ok(Types(TypeF::Flat(rt))),
+            UniTermNode::Term(rt) => Ok(Types {
+                ty: TypeF::Flat(rt),
+                pos: ut.pos,
+            }),
         }
     }
 }
@@ -267,7 +273,10 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types(TypeF::Record(rrows)))
+        Ok(Types {
+            ty: TypeF::Record(rrows),
+            pos: self.pos,
+        })
     }
 
     pub fn with_pos(mut self, pos: TermPos) -> Self {
@@ -338,9 +347,12 @@ impl TryFrom<UniRecord> for Types {
                     )
                 })
         } else {
-            ur.clone()
-                .into_type_strict()
-                .or_else(|_| RichTerm::try_from(ur).map(|rt| Types(TypeF::Flat(rt))))
+            ur.clone().into_type_strict().or_else(|_| {
+                RichTerm::try_from(ur).map(|rt| Types {
+                    ty: TypeF::Flat(rt),
+                    pos: ur.pos,
+                })
+            })
         }
     }
 }
@@ -499,7 +511,7 @@ impl FixTypeVars for Types {
         mut bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        match self.0 {
+        match self.ty {
             TypeF::Dyn
             | TypeF::Num
             | TypeF::Bool
@@ -519,7 +531,7 @@ impl FixTypeVars for Types {
                 } else {
                     let id = *id;
                     let pos = id.pos;
-                    self.0 = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
+                    self.ty = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
                 Ok(())
             }
