@@ -2532,13 +2532,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::DictionaryAssume() => {
-                let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                let (
+                    Closure {
+                        body: contract_term,
+                        env: contract_env,
+                    },
+                    _,
+                ) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
                     EvalError::NotEnoughArgs(3, String::from("dictionary_assume"), pos_op)
                 })?;
-                let Closure {
-                    body: rt3,
-                    env: env3,
-                } = ctr;
 
                 let lbl = match_sharedterm! {t1, with {
                         Term::Lbl(lbl) => lbl
@@ -2556,11 +2558,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match_sharedterm! {t2,
                     with {
                         Term::Record(record_data) => {
-                            let rt3 = rt3.closurize(&mut self.cache, &mut env2, env3);
+                            let contract = contract_term.closurize(&mut self.cache, &mut env2, contract_env);
                             let record_contract = Term::Record(RecordData{
                                 fields: record_data.fields.iter().map(|(key, value)| (*key, Field {
                                     value: None,
-                                    pending_contracts: vec![PendingContract::new(rt3.clone(), lbl.clone())],
+                                    pending_contracts: vec![PendingContract::new(contract.clone(), lbl.clone())],
                                     metadata: FieldMetadata {
                                         opt: value.metadata.opt,
                                         ..Default::default()
