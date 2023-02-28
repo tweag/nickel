@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 /// A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
@@ -101,10 +103,25 @@ impl IncCache {
     fn propagate_dirty(&mut self, idx: CacheIndex) {
         let mut node = self.store.get_mut(idx).unwrap().clone();
         node.cached = None;
+        node.state = IncNodeState::Suspended;
 
-        // This may be bad for the stack
-        for i in node.backlinks {
-            self.propagate_dirty(i)
+        let mut visited = HashSet::new();
+        let mut stack = node.backlinks.clone();
+
+        visited.insert(idx);
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i);
+            let mut current_node = self.store.get_mut(i).unwrap();
+            current_node.cached = None;
+            current_node.state = IncNodeState::Suspended;
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .filter(|x| !visited.contains(x)),
+            )
         }
     }
 }
