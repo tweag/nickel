@@ -259,7 +259,7 @@ Forall: Types =
             // The variable kind will be determined during the `fix_type_vars`
             // phase. For now, we put a random one (which is also the default
             // one, for unused type variables)
-            |acc, var| Types(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
+            |acc, var| Types::with_default_pos(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
         )
     };
 
@@ -298,8 +298,15 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = "Array" <AsType<RecordOperand>> =>
-    Types(TypeF::Array(Box::new(<>)));
+TypeArray: Types = {
+     <l: @L> "Array" <t: AsType<RecordOperand>>  <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        Types {
+            ty: TypeF::Array(Box::new(t)),
+            pos, 
+        }
+    }
+};
 
 RecordOperand: UniTerm = {
     Atom,
@@ -821,8 +828,14 @@ InfixExpr: UniTerm = {
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 
     #[precedence(level="11")] #[assoc(side="right")]
-    <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Types(TypeF::Arrow(Box::new(s), Box::new(t)))),
+    <l: @L> <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> <r: @R> =>
+       {
+            let pos = mk_pos(src_id, l, r);
+            UniTerm::from(Types {
+                ty:TypeF::Arrow(Box::new(s), Box::new(t)), 
+                pos,
+            })
+        }
 }
 
 BOpPre: BinaryOp = {
@@ -863,15 +876,15 @@ NOpPre<ArgRule>: UniTerm = {
 }
 
 TypeBuiltin: Types = {
-    "Dyn" => Types(TypeF::Dyn),
-    "Num" => Types(TypeF::Num),
-    "Bool" => Types(TypeF::Bool),
-    "Str" => Types(TypeF::Str),
+    <l: @L> "Dyn" <r: @R> => Types { ty: TypeF::Dyn, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Num" <r: @R>  => Types { ty: TypeF::Num, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Bool" <r: @R>  => Types { ty: TypeF::Bool, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Str" <r: @R>  => Types { ty: TypeF::Str, pos: mk_pos(src_id, l, r) },
 }
 
 TypeAtom: Types = {
     <TypeBuiltin>,
-    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
+    <l: @L> "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" <r: @R> => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -888,13 +901,24 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-        Types(TypeF::Enum(ty))
+        let pos = mk_pos(src_id, l, r);
+        Types { ty: TypeF::Enum(ty), pos }
     },
-    "{" "_" ":" <Types> "}" => Types(TypeF::Dict(Box::new(<>))),
-    "_" => {
+    <l: @L> "{" "_" ":" <t: Types> "}" <r: @R> => {  
+        let pos = mk_pos(src_id, l, r);
+        Types { 
+            ty:TypeF::Dict(Box::new(t)), 
+            pos, 
+        } 
+    },
+    <l: @L> "_" <r: @R> => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;
-        Types(TypeF::Wildcard(id))
+        let pos = mk_pos(src_id, l, r);
+        Types {
+            ty: TypeF::Wildcard(id), 
+            pos, 
+        }
     },
 }
 

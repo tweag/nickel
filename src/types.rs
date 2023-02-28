@@ -264,9 +264,6 @@ pub type RecordRow = RecordRowF<Box<Types>>;
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
 
-// #[derive(Clone, PartialEq, Debug)]
-// pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
-
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types {
@@ -845,7 +842,7 @@ impl Types {
 
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
-        match self.ty {
+        match &self.ty {
             TypeF::Forall { body, .. } => body.is_function_type(),
             TypeF::Arrow(..) => true,
             _ => false,

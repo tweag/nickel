@@ -135,9 +135,10 @@ impl From<Term> for UniTerm {
 
 impl From<Types> for UniTerm {
     fn from(ty: Types) -> Self {
+        let pos = ty.pos;
         UniTerm {
             node: UniTermNode::Types(ty),
-            pos: TermPos::None,
+            pos,
         }
     }
 }
@@ -347,10 +348,11 @@ impl TryFrom<UniRecord> for Types {
                     )
                 })
         } else {
+            let pos = ur.pos;
             ur.clone().into_type_strict().or_else(|_| {
                 RichTerm::try_from(ur).map(|rt| Types {
                     ty: TypeF::Flat(rt),
-                    pos: ur.pos,
+                    pos,
                 })
             })
         }

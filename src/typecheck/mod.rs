@@ -189,10 +189,13 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
                     pos: TermPos::None,
                 })
             }
-            GenericUnifType::Contract(t, _) => Ok(Types {
-                ty: TypeF::Flat(t),
-                pos: t.pos,
-            }),
+            GenericUnifType::Contract(t, _) => {
+                let pos = t.pos;
+                Ok(Types {
+                    ty: TypeF::Flat(t),
+                    pos,
+                })
+            }
             _ => Err(()),
         }
     }
