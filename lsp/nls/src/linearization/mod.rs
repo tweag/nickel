@@ -246,7 +246,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     .to_owned()
                     .inner()
                     .into_iter()
-                    .flat_map(|matched| matched.clone().as_flattened_bindings())
+                    .flat_map(|matched| matched.as_flattened_bindings())
                 {
                     // We cannot have an empty vector because a bound variable inside
                     // a record pattern must have at least one item in it's path,
