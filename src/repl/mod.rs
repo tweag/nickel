@@ -63,7 +63,7 @@ pub trait Repl {
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
-    fn query(&mut self, exp: &str) -> Result<Field, Error>;
+    fn query(&mut self, target: String, path: Option<String>) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
     fn cache_mut(&mut self) -> &mut Cache;
 }
@@ -300,14 +300,16 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         .into())
     }
 
-    fn query(&mut self, exp: &str) -> Result<Field, Error> {
+    fn query(&mut self, target: String, path: Option<String>) -> Result<Field, Error> {
         use crate::program;
 
         let file_id = self
             .vm
             .import_resolver_mut()
-            .add_tmp("<repl-query>", String::from(exp));
-        program::query(&mut self.vm, file_id, &self.env, QueryPath::default())
+            .add_tmp("<repl-query>", target);
+
+        let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
+        program::query(&mut self.vm, file_id, &self.env, query_path)
     }
 
     fn cache_mut(&mut self) -> &mut Cache {
@@ -426,9 +428,15 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Query) => {
-                writeln!(out, ":{c} <expression>")?;
+                writeln!(out, ":{c} <identifier> [field path]")?;
                 print_aliases(out, c)?;
-                writeln!(out, "Print the metadata attached to an attribute")?;
+                writeln!(out, "Print the metadata attached to a field")?;
+                writeln!(
+                    out,
+                    "<identifier> is valid Nickel identifier representing the record to look into."
+                )?;
+                writeln!(out, "<field path> is a dot-separated sequence of identifiers pointing to a field.\n")?;
+                writeln!(out, "Example: `:{c} mylib contracts.\"special#chars\".bar`")?;
             }
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;
@@ -459,7 +467,11 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             }
             Err(UnknownCommandError {}) => {
                 writeln!(out, "Unknown command `{arg}`.")?;
-                writeln!(out, "Available commands: ? help query load typecheck")?;
+                writeln!(
+                    out,
+                    "Available commands: ? {}",
+                    CommandType::all().join(" ")
+                )?;
             }
         };
 

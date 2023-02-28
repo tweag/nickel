@@ -410,6 +410,7 @@ pub enum ReplError {
         cmd: repl::command::CommandType,
         msg_opt: Option<String>,
     },
+    InvalidQueryPath(ParseError),
 }
 
 impl From<EvalError> for Error {
@@ -1746,8 +1747,8 @@ impl ToDiagnostic<FileId> for IOError {
 impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
-        _files: &mut Files<String>,
-        _contract_id: Option<FileId>,
+        files: &mut Files<String>,
+        contract_id: Option<FileId>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
@@ -1755,6 +1756,7 @@ impl ToDiagnostic<FileId> for ReplError {
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
+            ReplError::InvalidQueryPath(err) => err.to_diagnostic(files, contract_id),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()

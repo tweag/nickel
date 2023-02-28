@@ -58,7 +58,7 @@ impl std::str::FromStr for ColorOpt {
 }
 
 /// Attribute path provided when querying metadata.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
 pub struct QueryPath(pub Vec<Ident>);
 
 impl QueryPath {
@@ -161,6 +161,15 @@ impl QueryPath {
             )),
         }
     }
+
+    /// As [`parse`], but accepts an `Option` to accomodate for the absence of path. If the input
+    /// is `None`, `Ok(QueryPath::default())` is returned (that is, an empty query path).
+    pub fn parse_opt(cache: &mut Cache, input: Option<String>) -> Result<Self, ParseError> {
+        Ok(input
+            .map(|path| Self::parse(cache, path))
+            .transpose()?
+            .unwrap_or_default())
+    }
 }
 
 /// A Nickel program.
@@ -241,10 +250,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
         let initial_env = self.vm.prepare_stdlib()?;
-        let query_path = path
-            .map(|p| QueryPath::parse(self.vm.import_resolver_mut(), p))
-            .transpose()?
-            .unwrap_or_default();
+        let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
         query(&mut self.vm, self.main_id, &initial_env, query_path)
     }
 
