@@ -306,7 +306,7 @@ impl ToDiagnostic<FileId> for ParseErrors {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         self.errors
             .iter()
@@ -624,7 +624,7 @@ pub trait ToDiagnostic<FileId> {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>>;
 }
 
@@ -748,7 +748,7 @@ impl ToDiagnostic<FileId> for Error {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseErrors(errs) => errs
@@ -770,7 +770,7 @@ impl ToDiagnostic<FileId> for EvalError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             EvalError::BlameError {
@@ -1100,7 +1100,7 @@ mod blame_error {
         blame_label: &label::Label,
         path_label: Label<FileId>,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Label<FileId>> {
         let mut labels = vec![path_label];
 
@@ -1346,7 +1346,7 @@ impl ToDiagnostic<FileId> for ParseError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        _stdlib_ids: &Option<Vec<FileId>>,
+        _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
@@ -1436,7 +1436,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         fn mk_expr_label(span_opt: &TermPos) -> Vec<Label<FileId>> {
             span_opt
@@ -1680,7 +1680,7 @@ impl ToDiagnostic<FileId> for ImportError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        stdlib_ids: &Option<Vec<FileId>>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ImportError::IOError(path, error, span_opt) => {
@@ -1716,7 +1716,7 @@ impl ToDiagnostic<FileId> for SerializationError {
     fn to_diagnostic(
         &self,
         files: &mut Files<String>,
-        _stdlib_ids: &Option<Vec<FileId>>,
+        _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             SerializationError::NotAString(rt) => vec![Diagnostic::error()
@@ -1744,7 +1744,7 @@ impl ToDiagnostic<FileId> for IOError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
-        _stdlib_ids: &Option<Vec<FileId>>,
+        _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             IOError(msg) => vec![Diagnostic::error().with_message(msg.clone())],
@@ -1756,7 +1756,7 @@ impl ToDiagnostic<FileId> for ReplError {
     fn to_diagnostic(
         &self,
         _files: &mut Files<String>,
-        _stdlib_ids: &Option<Vec<FileId>>,
+        _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
