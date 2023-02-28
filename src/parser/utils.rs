@@ -560,7 +560,7 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
 
 /// Generate a `Let` or a `LetPattern` (depending on whether `assgn` has a record pattern) from
 /// the parsing of a let definition. This function fails if the definition has both a pattern
-/// pattern and is recursive because recursive let-patterns are currently not supported.
+/// and is recursive because recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
     assgn: FieldPattern,
