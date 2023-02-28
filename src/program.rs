@@ -21,7 +21,7 @@
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::cache::*;
-use crate::error::{Error, ParseError, ToDiagnostic};
+use crate::error::{Error, IntoDiagnostics, ParseError};
 use crate::eval;
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
@@ -277,7 +277,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Wrapper for [`report`].
     pub fn report<E>(&mut self, error: E)
     where
-        E: ToDiagnostic<FileId>,
+        E: IntoDiagnostics<FileId>,
     {
         report(self.vm.import_resolver_mut(), error, self.color_opt)
     }
@@ -285,11 +285,11 @@ impl<EC: EvalCache> Program<EC> {
     /// Build an error report as a string and return it.
     pub fn report_as_str<E>(&mut self, error: E) -> String
     where
-        E: ToDiagnostic<FileId>,
+        E: IntoDiagnostics<FileId>,
     {
         let cache = self.vm.import_resolver_mut();
         let contracts_id = cache.id_of("<stdlib/contract.ncl>");
-        let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
+        let diagnostics = error.into_diagnostics(cache.files_mut(), contracts_id);
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
         // write to `buffer`
@@ -375,12 +375,12 @@ pub fn query<EC: EvalCache>(
 //common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
 pub fn report<E>(cache: &mut Cache, error: E, color_opt: ColorOpt)
 where
-    E: ToDiagnostic<FileId>,
+    E: IntoDiagnostics<FileId>,
 {
     let writer = StandardStream::stderr(color_opt.into());
     let config = codespan_reporting::term::Config::default();
     let contracts_id = cache.id_of("<stdlib/contract.ncl>");
-    let diagnostics = error.to_diagnostic(cache.files_mut(), contracts_id);
+    let diagnostics = error.into_diagnostics(cache.files_mut(), contracts_id);
 
     let result = diagnostics.iter().try_for_each(|d| {
         codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
