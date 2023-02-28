@@ -172,9 +172,9 @@ fn find_fields_from_term_kind(
             ..
         } => {
             for ident in idents {
-                path.push(ident.clone())
+                path.push(*ident)
             }
-            find_fields_from_term_kind(body_id, path, &info)
+            find_fields_from_term_kind(body_id, path, info)
         }
         TermKind::RecordField {
             value: ValueState::Known(new_id),
@@ -228,13 +228,13 @@ fn find_fields_from_contract(
 /// contracts.
 fn find_fields_from_contracts(
     annot: &TypeAnnotation,
-    path: &mut Vec<Ident>,
+    path: &[Ident],
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     annot
         .iter()
         .flat_map(|contract| {
-            let mut path_copy = path.clone();
+            let mut path_copy = Vec::from(path);
             find_fields_from_type(&contract.types, &mut path_copy, info)
         })
         .collect()
@@ -307,8 +307,7 @@ fn find_fields_from_term_with_annot(
     path: &mut Vec<Ident>,
     info: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    let mut path_copy = path.clone();
-    let mut info_from_metadata = find_fields_from_contracts(annot, &mut path_copy, info);
+    let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
 
     if let Some(value) = value {
         info_from_metadata.extend(find_fields_from_term(value, path, info).into_iter());
@@ -354,7 +353,7 @@ fn find_fields_from_term(
             // dependencies must have being linearized and stored in the cache.
             let linearization = lin_cache.get(&span.src_id).unwrap();
             let item = linearization.item_at(&locator).unwrap();
-            find_fields_from_term_kind(item.id, path, &info)
+            find_fields_from_term_kind(item.id, path, info)
         }
         _ => Vec::new(),
     }
@@ -462,7 +461,7 @@ fn collect_record_info(
                     _,
                 ) => {
                     for ident in idents {
-                        path.push(ident.clone())
+                        path.push(*ident)
                     }
                     find_fields_from_term_kind(*body_id, path, &info)
                 }
@@ -563,11 +562,11 @@ fn get_completion_identifiers(
 
             result
                 .into_iter()
-                .flat_map(|(parent, mut path)| {
+                .flat_map(|(parent, path)| {
                     parent
                         .metadata
                         .as_ref()
-                        .map(|meta| find_fields_from_contracts(&meta.annotation, &mut path, &info))
+                        .map(|meta| find_fields_from_contracts(&meta.annotation, &path, info))
                         .unwrap_or_default()
                 })
                 .collect()
