@@ -2,7 +2,7 @@
 use super::simple_frontend::{input, serialize, InputError, InputResult};
 use super::{Repl, ReplImpl};
 use crate::cache::Cache;
-use crate::error::ToDiagnostic;
+use crate::error::IntoDiagnostics;
 use crate::eval::cache::CacheImpl;
 use crate::serialize::ExportFormat;
 use codespan::{FileId, Files};
@@ -163,7 +163,7 @@ impl WasmInitResult {
     /// Make a `WasmInitResult` result from an `InputError`.
     fn error(mut state: ReplState, error: InputError) -> Self {
         WasmInitResult {
-            msg: err_to_string(state.0.cache_mut(), &error),
+            msg: err_to_string(state.0.cache_mut(), error),
             tag: WasmResultTag::Error,
             state,
         }
@@ -195,7 +195,7 @@ impl WasmInputResult {
         let (msg, errors) = match error {
             InputError::NickelError(err) => {
                 let contracts_id = cache.id_of("<stdlib/contract.ncl>");
-                let diagnostics = err.to_diagnostic(cache.files_mut(), contracts_id);
+                let diagnostics = err.into_diagnostics(cache.files_mut(), contracts_id);
 
                 let msg = diags_to_string(cache, &diagnostics);
                 let errors: Vec<WasmErrorDiagnostic> = diagnostics
@@ -287,14 +287,14 @@ pub fn diags_to_string(cache: &mut Cache, diags: &[Diagnostic<FileId>]) -> Strin
 }
 
 /// Render an error as a string (similar to [`diags_to_string`](./meth.diags_to_string.html)).
-pub fn err_to_string(cache: &mut Cache, error: &InputError) -> String {
+pub fn err_to_string(cache: &mut Cache, error: InputError) -> String {
     match error {
         InputError::NickelError(nickel_err) => {
             let contracts_id = cache.id_of("<stdlib/contract.ncl>");
-            let diags = nickel_err.to_diagnostic(cache.files_mut(), contracts_id);
+            let diags = nickel_err.into_diagnostics(cache.files_mut(), contracts_id);
             diags_to_string(cache, &diags)
         }
-        InputError::Other(msg) => msg.clone(),
+        InputError::Other(msg) => msg,
     }
 }
 
