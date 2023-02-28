@@ -453,6 +453,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             },
+            UnaryOp::GoDict() => match_sharedterm! {t, with {
+                    Term::Lbl(l) => {
+                        let mut l = l;
+                        l.path.push(ty_path::Elem::Dict);
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Lbl(l),
+                            pos_op_inh,
+                        )))
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("go_array"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }
+            },
             UnaryOp::StaticAccess(id) => {
                 if let Term::Record(record) = &*t {
                     // We have to apply potentially pending contracts. Right now, this

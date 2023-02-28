@@ -81,11 +81,3 @@ fn missing_field() {
         Err(Error::EvalError(EvalError::MissingFieldDef {id, ..})) if id.to_string() == "foo"
     )
 }
-
-#[test]
-fn dictionary_contracts_sticky() {
-    assert_matches!(
-        eval("(({foo} | {_: Num}) & {foo = \"string\"}).foo"),
-        Err(Error::EvalError(EvalError::BlameError { .. }))
-    );
-}

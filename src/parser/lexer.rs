@@ -200,6 +200,8 @@ pub enum NormalToken<'input> {
     GoField,
     #[token("%go_array%")]
     GoArray,
+    #[token("%go_dict%")]
+    GoDict,
 
     #[token("%seal%")]
     Seal,

@@ -1028,6 +1028,10 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoArray(),
+    /// Go to the type ascribed to every field in a dictionary.
+    ///
+    /// See `GoDom`.
+    GoDict(),
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
