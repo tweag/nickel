@@ -781,8 +781,8 @@ impl IntoDiagnostics<FileId> for EvalError {
             } => {
                 let mut msg = String::new();
 
-                // Writing in a string should not raise an error, hence the fearless `unwrap()`
-                write!(&mut msg, "{}", blame_error::title(&label)).unwrap();
+                write!(&mut msg, "{}", blame_error::title(&label))
+                    .expect("writing formatted data into a string should not raise an error");
 
                 if !label.tag.is_empty() {
                     write!(&mut msg, ": {}", &escape(&label.tag)).unwrap();
