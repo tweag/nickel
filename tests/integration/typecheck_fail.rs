@@ -287,8 +287,8 @@ let g : Num = f 0 in
 g"#
         ),
         Err(TypecheckError::TypeMismatch(
-            Types(TypeF::Arrow(_, _)),
-            Types(TypeF::Dyn),
+            Types { ty: TypeF::Arrow(_, _), .. },
+            Types { ty:TypeF::Dyn, .. },
             _
         ))
     );
@@ -304,8 +304,8 @@ fn locally_different_flat_types() {
              foo : lib.Contract"
         ),
         Err(TypecheckError::TypeMismatch(
-            Types(TypeF::Flat(..)),
-            Types(TypeF::Flat(..)),
+            Types { ty:TypeF::Flat(..), .. },
+            Types { ty:TypeF::Flat(..), .. },
             _
         ))
     );
