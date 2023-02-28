@@ -282,8 +282,8 @@ impl<EC: EvalCache> Program<EC> {
         E: ToDiagnostic<FileId>,
     {
         let cache = self.vm.import_resolver_mut();
-        let contracts_id = cache.get_all_stdlib_modules_file_id();
-        let diagnostics = error.to_diagnostic(cache.files_mut(), &contracts_id);
+        let stdlib_ids = cache.get_all_stdlib_modules_file_id();
+        let diagnostics = error.to_diagnostic(cache.files_mut(), &stdlib_ids);
         let mut buffer = Ansi::new(Cursor::new(Vec::new()));
         let config = codespan_reporting::term::Config::default();
         // write to `buffer`
@@ -373,8 +373,8 @@ where
 {
     let writer = StandardStream::stderr(color_opt.into());
     let config = codespan_reporting::term::Config::default();
-    let contracts_id = cache.get_all_stdlib_modules_file_id();
-    let diagnostics = error.to_diagnostic(cache.files_mut(), &contracts_id);
+    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
+    let diagnostics = error.to_diagnostic(cache.files_mut(), &stdlib_ids);
 
     let result = diagnostics.iter().try_for_each(|d| {
         codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
