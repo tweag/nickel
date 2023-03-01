@@ -1110,7 +1110,7 @@ mod blame_error {
             // of an higher order functions for example, the original argument position can
             // point to the builtin implementation contract like `func` or `record`, so
             // there's no good reason to show it. Note than even in that case, the
-            // information contained in the argument thunk can still be useful.
+            // information contained at the argument index can still be useful.
             if stdlib_ids
                 .as_ref()
                 .map(|ctrs_id| !ctrs_id.contains(&arg_pos.src_id))
