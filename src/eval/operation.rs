@@ -25,7 +25,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         make as mk_term,
-        record::{self, Field, FieldMetadata, RecordData},
+        record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
         BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
         StrChunk, Term, UnaryOp,
     },
@@ -448,6 +448,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(EvalError::TypeError(
                         String::from("Label"),
                         String::from("go_array"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }
+            },
+            UnaryOp::GoDict() => match_sharedterm! {t, with {
+                    Term::Lbl(l) => {
+                        let mut l = l;
+                        l.path.push(ty_path::Elem::Dict);
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Lbl(l),
+                            pos_op_inh,
+                        )))
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("go_dict"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
@@ -2477,11 +2495,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Lbl(lbl) => lbl
                     } else return Err(EvalError::TypeError(
                         String::from("Lbl"),
-                        String::from("arrayLazyAssume, 2nd argument"),
+                        String::from("arrayLazyAssume, 1st argument"),
                         fst_pos,
                         RichTerm {
-                            term: t2,
-                            pos: pos2,
+                            term: t1,
+                            pos: pos1,
                         },
                     ))
                 };
@@ -2510,6 +2528,103 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             term: t2,
                             pos: pos2,
                         },
+                    ))
+                }
+            }
+            // This implementation of `%dictionary_assume%` internally creates
+            // essentially a copy of the record that is being checked, albeit
+            // without values for the fields. If the record in question is
+            // particularly huge, this could have performance implications.
+            //
+            // An alternative implementation would be to duplicate some of the
+            // logic from `eval::merge` in here. We decided not to do that for
+            // simplicity and to keep all the magic operations on revertible
+            // thunks contained in their own module.
+            BinaryOp::DictionaryAssume() => {
+                let (
+                    Closure {
+                        body: contract_term,
+                        env: contract_env,
+                    },
+                    _,
+                ) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                    EvalError::NotEnoughArgs(3, String::from("dictionary_assume"), pos_op)
+                })?;
+
+                let lbl = match_sharedterm! {t1, with {
+                        Term::Lbl(lbl) => lbl
+                    } else return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("dictionary_assume, 2nd argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        }
+                    ))
+                };
+
+                match_sharedterm! {t2,
+                    with {
+                        Term::Record(record_data) => {
+                            let contract = contract_term.closurize(&mut self.cache, &mut env2, contract_env);
+                            let record_contract = Term::Record(RecordData {
+                                fields: record_data
+                                    .fields
+                                    .iter()
+                                    .map(|(key, value)| {
+                                        (
+                                            *key,
+                                            Field {
+                                                value: None,
+                                                pending_contracts: vec![PendingContract::new(
+                                                    contract.clone(),
+                                                    lbl.clone(),
+                                                )],
+                                                // This is intentionally not written as
+                                                // `{ opt: value.metadata.opt, ..Default::default() }`
+                                                //
+                                                // When `FieldMetadata` is changed in the future, we will need to consider
+                                                // which values should be inherited from `value.metadata`.
+                                                //
+                                                // The `metadata` field here must be chosen such that, upon merging it
+                                                // with `value.metadata`, the result is identical to the original metadata
+                                                // `value.metadata` of the field.
+                                                metadata: FieldMetadata {
+                                                    opt: value.metadata.opt,
+
+                                                    doc: None,
+                                                    annotation: Default::default(),
+                                                    not_exported: false,
+                                                    priority: Default::default(),
+                                                },
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                                attrs: RecordAttrs { open: true },
+                                ..Default::default()
+                            });
+
+                            let merge_term = Closure {
+                                body: mk_opn!(
+                                    NAryOp::MergeContract(),
+                                    Term::Lbl(lbl),
+                                    Term::Record(record_data),
+                                    record_contract
+                                ),
+                                env: env2,
+                            };
+                            Ok(merge_term)
+                        }
+                    } else Err(EvalError::TypeError(
+                        String::from("Record"),
+                        String::from("dictionary_assume, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2
+                        }
                     ))
                 }
             }

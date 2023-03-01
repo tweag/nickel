@@ -1028,6 +1028,10 @@ pub enum UnaryOp {
     ///
     /// See `GoDom`.
     GoArray(),
+    /// Go to the type ascribed to every field in a dictionary.
+    ///
+    /// See `GoDom`.
+    GoDict(),
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
@@ -1305,6 +1309,16 @@ pub enum BinaryOp {
     /// Lazily apply a contract to an Array.
     /// This simply inserts a contract into the array attributes.
     ArrayLazyAssume(),
+
+    /// Apply a dictionary contract to a record. The arguments are a label
+    /// and the contract contained in the dictionary type. Results in a function from
+    /// records to records that applies the dictionary contract to its argument.
+    ///
+    /// When used with a dictionary contract `{_: C}` and a record `R`,
+    /// synthesizes a record contract whose fields are the fields of `R` with the
+    /// contract `C` attached to each of them. Then uses `NAryOp::MergeContract` to
+    /// apply this record contract to `R`.
+    DictionaryAssume(),
 }
 
 impl BinaryOp {

@@ -285,6 +285,25 @@ fn records_contracts_closed() {
 }
 
 #[test]
+fn dictionary_contracts() {
+    use nickel_lang::label::ty_path::Elem;
+
+    assert_raise_blame!("%force% (({foo} | {_: Num}) & {foo = \"string\"}) true");
+
+    let res = eval("%force% ({foo = 1} | {_: Str}) false");
+    match &res {
+        Err(Error::EvalError(EvalError::BlameError {
+            evaluated_arg: _,
+            ref label,
+            call_stack: _,
+        })) => {
+            assert_matches!(label.path.as_slice(), [Elem::Dict])
+        }
+        err => panic!("expected blame error, got {err:#?}"),
+    }
+}
+
+#[test]
 fn enum_complex() {
     eval(
         "let f : [| `foo, `bar |] -> Num = match { `foo => 1, `bar => 2, } in

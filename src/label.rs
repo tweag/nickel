@@ -58,6 +58,7 @@ pub mod ty_path {
         Codomain,
         Field(Ident),
         Array,
+        Dict,
     }
 
     pub type Path = Vec<Elem>;
@@ -258,6 +259,24 @@ but this field doesn't exist in {}",
             (TypeF::Array(ty), next @ Some(Elem::Array)) => {
                 // initial "Array "
                 let start_offset = 6;
+                let paren_offset = usize::from(!ty.fmt_is_atom());
+
+                let PathSpan {
+                    start: sub_start,
+                    end: sub_end,
+                    last,
+                    last_arrow_elem,
+                } = span(path_it, ty);
+                PathSpan {
+                    start: start_offset + paren_offset + sub_start,
+                    end: start_offset + paren_offset + sub_end,
+                    last: last.or_else(|| next.copied()),
+                    last_arrow_elem,
+                }
+            }
+            (TypeF::Dict(ty), next @ Some(Elem::Dict)) => {
+                // initial "{_: "
+                let start_offset = 4;
                 let paren_offset = usize::from(!ty.fmt_is_atom());
 
                 let PathSpan {

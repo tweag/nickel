@@ -1224,6 +1224,9 @@ mod blame_error {
             // contract for the elements of an array
             (Some(ty_path::Elem::Array), None) => (String::from("expected array element type"), Vec::new()),
             // The type path doesn't contain any arrow, and the failing subcontract is the contract
+            // for the fields of a dictionary
+            (Some(ty_path::Elem::Dict), None) => (String::from("expected dictionary field type"), Vec::new()),
+            // The type path doesn't contain any arrow, and the failing subcontract is the contract
             // for the field of a record
             (Some(ty_path::Elem::Field(_)), None) => (String::from("expected field type"), Vec::new()),
             // The original contract contains an arrow, and the path is only composed of codomains.
