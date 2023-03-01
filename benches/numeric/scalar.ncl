@@ -4,7 +4,7 @@
       []
     else
       [f (array.first l1) (array.first l2)]
-      @ map2 f (array.tail l1) (array.tail l2),
+      @ map2 f (array.drop_first l1) (array.drop_first l2),
 
   run = fun n =>
     let left = array.generate function.id n in

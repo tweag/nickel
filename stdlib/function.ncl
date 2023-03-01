@@ -40,20 +40,20 @@
     "%%
     = fun f x y => f y x,
 
-    fst : forall a b. a -> b -> a
+    first : forall a b. a -> b -> a
     | doc m%"
     Always returns the first argument:
     ```nickel
-    fst 5 7 => 5
+    first 5 7 => 5
     ```
     "%
     = const,
 
-    snd : forall a b. a -> b -> b
+    second : forall a b. a -> b -> b
     | doc m%"
     Always returns the second argument:
     ```nickel
-    snd 5 7 => 7
+    second 5 7 => 7
     ```
     "%
     = flip const,

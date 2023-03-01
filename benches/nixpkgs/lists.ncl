@@ -426,9 +426,9 @@
         else # grab the first one before us and continue
           (dfs_ (array.first b.right)
                 ([ us ] @ visited_)
-                (array.tail b.right @ b.wrong)
+                (array.drop_first b.right @ b.wrong)
     ) in
-    dfs_ (array.first list) [] (array.tail list),
+    dfs_ (array.first list) [] (array.drop_first list),
 
   toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array Dyn}
   | doc m%"
@@ -521,7 +521,7 @@
          then 1
          else let rel = cmp (array.first a) (array.first b) in
               if rel == 0
-              then compareLists cmp (array.tail a) (array.tail b)
+              then compareLists cmp (array.drop_first a) (array.drop_first b)
               else rel,
 
 # naturalSort: Array Str -> Array Str

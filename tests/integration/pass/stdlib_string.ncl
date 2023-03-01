@@ -12,7 +12,7 @@ let {check, ..} = import "lib/assert.ncl" in
   ("-1.2" | string.NumLiteral) == "-1.2",
   ("9001" | string.NumLiteral) == "9001",
   # string.CharLiteral
-  ("e" | string.CharLiteral) == "e",
+  ("e" | string.Character) == "e",
   # string.EnumTag
   (`Foo | string.EnumTag) == `Foo,
   # string.Stringable
@@ -37,19 +37,19 @@ let {check, ..} = import "lib/assert.ncl" in
   string.trim "​ ​ ​ a ​ ​ ​" == "​ ​ ​ a ​ ​ ​", # zero width spaces aren't whitespace
   string.trim "   \n   new\nline\n" == "new\nline",
   string.trim "　   	  " == "",
-  # string.chars
-  string.chars "漢字" == ["漢", "字"],
-  string.chars "👨‍❤️‍💋‍👨" == ["👨", "‍", "❤", "️", "‍", "💋", "‍", "👨"], # arguably wrong, splits the ZWJ combined emoji
-  string.chars "ab_cd" == ["a", "b", "_", "c", "d"],
-  string.chars "" == [],
+  # string.characters
+  string.characters "漢字" == ["漢", "字"],
+  string.characters "👨‍❤️‍💋‍👨" == ["👨", "‍", "❤", "️", "‍", "💋", "‍", "👨"], # arguably wrong, splits the ZWJ combined emoji
+  string.characters "ab_cd" == ["a", "b", "_", "c", "d"],
+  string.characters "" == [],
   # string.code
-  string.code "A" == 65,
-  string.code "%" == 37,
+  string.codepoint "A" == 65,
+  string.codepoint "%" == 37,
   # string.from_code
-  string.from_code 65 == "A",
-  string.from_code 37 == "%",
+  string.from_codepoint 65 == "A",
+  string.from_codepoint 37 == "%",
   # code/from_code round trip
-  (array.all (fun code => (string.code (string.from_code code)) == code) (array.generate function.id 127)),
+  (array.all (fun code => (string.codepoint (string.from_codepoint code)) == code) (array.generate function.id 127)),
   # string.uppercase
   string.uppercase "abcd" == "ABCD",
   string.uppercase "子供" == "子供",

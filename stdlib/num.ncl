@@ -1,14 +1,14 @@
 {
   num = {
-    Int
+    Integer
     | doc m%"
       Contract to enforce a number is an integer.
 
       For example:
       ```nickel
-        (1.5 | Int) =>
+        (1.5 | Integer) =>
           error
-        (42 | Int) =>
+        (42 | Integer) =>
           42
       ```
       "%
@@ -88,7 +88,7 @@
       else
         %blame% (%tag% "not a number" label),
 
-    is_int : Num -> Bool
+    is_integer : Num -> Bool
     | doc m%"
       Checks if the given number is an integer.
 
@@ -169,15 +169,15 @@
       "%
     = fun x => x % 1,
 
-    trunc : Num -> Num
+    truncate : Num -> Num
     | doc m%"
       Truncates the given number.
 
       For example:
       ```nickel
-        trunc (-13.37) =>
+        truncate (-13.37) =>
           -13
-        trunc 42.5 =>
+        truncate 42.5 =>
           42
       ```
       "%

@@ -51,19 +51,19 @@
         else
           %blame% (%tag% "not a string" l),
 
-    CharLiteral
+    Character
     | doc m%"
-      Contract to enforce the value is a character literal (i.e. a string of length 1).
+      Contract to enforce the value is a character (i.e. a string of length 1).
 
       For example:
       ```nickel
-        ("e" | CharLiteral) =>
+        ("e" | Character) =>
           "e"
-        ("#" | CharLiteral) =>
+        ("#" | Character) =>
           "#"
-        ("" | CharLiteral) =>
+        ("" | Character) =>
           error
-        (1 | CharLiteral) =>
+        (1 | Character) =>
           error
       ```
       "%
@@ -190,7 +190,7 @@
       "%
     = fun s => %str_trim% s,
 
-    chars : Str -> Array Str
+    characters : Str -> Array Str
     | doc m%"
       Separates a string into its individual characters.
 
@@ -202,9 +202,9 @@
       "%
     = fun s => %str_chars% s,
 
-    code | CharLiteral -> Num
+    codepoint | Character -> Num
     | doc m%%"
-      Results in the ascii code of the given character.
+      Results in the unicode codepoint of the given character if it fits into a single codepoint.
 
       For example:
       ```nickel
@@ -218,9 +218,9 @@
       "%%
     = fun s => %char_code% s,
 
-    from_code | Num -> CharLiteral
+    from_codepoint | Num -> Character
     | doc m%%"
-      Results in the character for a given ascii code. Any number outside the ascii range results in an error.
+      Results in the character for a given unicode codepoint.
 
       For example:
       ```nickel

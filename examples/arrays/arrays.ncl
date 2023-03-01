@@ -8,7 +8,7 @@ let my_array_lib = {
       []
     else
       let head = array.first arr in
-      let tail = array.tail arr in
+      let tail = array.drop_first arr in
       [f head] @ map f tail,
 
   fold : forall a b. (a -> b -> b) -> Array a -> b -> b =
@@ -17,7 +17,7 @@ let my_array_lib = {
           first
         else
           let head = array.first arr in
-          let tail = array.tail arr in
+          let tail = array.drop_first arr in
           f head (fold f tail first),
 } in
 # Compute `7!`

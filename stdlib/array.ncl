@@ -37,32 +37,33 @@
       | doc "TODO"
       = fun l => %elem_at% l (%length% l - 1),
 
-    tail : forall a. Array a -> Array a
+    drop_first : forall a. Array a -> Array a
       | doc m%"
-        Results in the tail (everything but the first element) of the given array.
+        Results in the given array without the first element.
 
         For example:
         ```nickel
-          tail [ 1, 2, 3 ] =>
+          drop_first [ 1, 2, 3 ] =>
             [ 2, 3 ]
         ```
         "%
       = fun l => %tail% l,
 
-    tail_but_reverse_bikeshed_me : forall a. Array a -> Array a
-      | doc "TODO"
+    drop_last : forall a. Array a -> Array a
+      | doc m%"
+        Results in the given array without the last element.
+
+        For example:
+        ```nickel
+          drop_last [ 1, 2, 3 ] =>
+            [ 1, 2 ]
+        ```
+        "%
       # TODO: we need a slice primop
       = fun l => l
         |> reverse
-        |> tail
+        |> drop_first
         |> reverse,
-
-    # slice
-    # split_at
-    # replicate
-    # range
-
-    # unfold : forall a b. (b -> { action: [| `Continue, `Stop |], value: a, state: b}) -> b -> Array a,
 
     length : forall a. Array a -> Num
       | doc m%"
@@ -163,7 +164,7 @@
 
     prepend : forall a. a -> Array a -> Array a
       | doc m%"
-        Construct a array given the first element and tail of the array.
+        Construct an array given the first element and the rest of the array.
 
         For example:
         ```nickel
@@ -175,7 +176,7 @@
 
     append : forall a. a -> Array a -> Array a
       | doc m%"
-        TODO
+        Construct an array given the last element and the rest of the array.
 
         For example:
         ```nickel
@@ -250,7 +251,7 @@
         "%
       = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
 
-    elem : Dyn -> Array Dyn -> Bool
+    elem : forall a. a -> Array a -> Bool
       | doc m%"
         Results in true if the given element is a member of the array, false otherwise.
 

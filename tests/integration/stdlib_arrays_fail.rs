@@ -69,7 +69,7 @@ fn head_tail() {
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
-        eval("array.tail 2"),
+        eval("array.drop_first 2"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }

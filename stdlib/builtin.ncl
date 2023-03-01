@@ -57,15 +57,15 @@
 
     = fun x => %typeof% x == `Enum,
 
-    is_fun : Dyn -> Bool
+    is_function : Dyn -> Bool
     | doc m%"
       Checks if the given value is a function.
 
       For example
       ```nickel
-        is_fun (fun x => x) =>
+        is_function (fun x => x) =>
           true
-        is_fun 42 =>
+        is_function 42 =>
           false
       ```
       "%
