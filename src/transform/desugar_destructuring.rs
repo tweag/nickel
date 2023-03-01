@@ -30,7 +30,7 @@
 //!     <do_something>
 //! ) in ...
 //! ```
-use crate::destructuring::{Match, RecordPattern};
+use crate::destructuring::{FieldPattern, Match, RecordPattern};
 use crate::identifier::Ident;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
@@ -178,11 +178,7 @@ fn destruct_term(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             ),
             pos,
         ),
-        Match::Assign(f, _, (id, Some(pat))) => desugar(RichTerm::new(
-            Term::LetPattern(*id, pat.clone(), op1(StaticAccess(*f), Term::Var(x)), t),
-            pos,
-        )),
-        Match::Assign(f, _, (Some(id), None)) => desugar(RichTerm::new(
+        Match::Assign(f, _, FieldPattern::Ident(id)) => desugar(RichTerm::new(
             Term::Let(
                 *id,
                 op1(StaticAccess(*f), Term::Var(x)),
@@ -194,6 +190,25 @@ fn destruct_term(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             ),
             pos,
         )),
-        _ => unreachable!("Match::Assign always has either an ident or a pattern"),
+        Match::Assign(f, _, FieldPattern::RecordPattern(pattern)) => desugar(RichTerm::new(
+            Term::LetPattern(
+                None,
+                pattern.clone(),
+                op1(StaticAccess(*f), Term::Var(x)),
+                t,
+            ),
+            pos,
+        )),
+        Match::Assign(f, _, FieldPattern::AliasedRecordPattern { alias, pattern }) => {
+            desugar(RichTerm::new(
+                Term::LetPattern(
+                    Some(*alias),
+                    pattern.clone(),
+                    op1(StaticAccess(*f), Term::Var(x)),
+                    t,
+                ),
+                pos,
+            ))
+        }
     })
 }

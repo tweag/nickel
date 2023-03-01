@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 use codespan::Files;
-use nickel_lang::error::{Error, EvalError, ToDiagnostic};
+use nickel_lang::error::{Error, EvalError, IntoDiagnostics};
 
 use nickel_lang_utilities::{eval, program_from_expr};
 
@@ -259,7 +259,7 @@ fn lists_contracts() {
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
     // the error message but just check that it can be built.
     let mut files = Files::new();
-    res.unwrap_err().to_diagnostic(&mut files, None);
+    res.unwrap_err().into_diagnostics(&mut files, None);
 
     let res = eval(
         "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
@@ -274,7 +274,7 @@ fn lists_contracts() {
         }
         err => panic!("expected blame error, got {err:?}"),
     }
-    res.unwrap_err().to_diagnostic(&mut files, None);
+    res.unwrap_err().into_diagnostics(&mut files, None);
 }
 
 #[test]
@@ -282,6 +282,25 @@ fn records_contracts_closed() {
     assert_raise_blame!("{a=1} | {}");
     assert_raise_blame!("{a=1, b=2} | {a | Num}");
     assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | Contract)");
+}
+
+#[test]
+fn dictionary_contracts() {
+    use nickel_lang::label::ty_path::Elem;
+
+    assert_raise_blame!("%force% (({foo} | {_: Num}) & {foo = \"string\"}) true");
+
+    let res = eval("%force% ({foo = 1} | {_: Str}) false");
+    match &res {
+        Err(Error::EvalError(EvalError::BlameError {
+            evaluated_arg: _,
+            ref label,
+            call_stack: _,
+        })) => {
+            assert_matches!(label.path.as_slice(), [Elem::Dict])
+        }
+        err => panic!("expected blame error, got {err:#?}"),
+    }
 }
 
 #[test]

@@ -10,7 +10,7 @@ use codespan::FileId;
 use super::error::ParseError;
 
 use crate::{
-    destructuring::RecordPattern,
+    destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::Ident,
     label::Label,
@@ -558,52 +558,39 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
     }
 }
 
-/// Generate a `Let` or a `LetPattern` (depending on `pat` being empty or not) from the parsing of
-/// a let definition. This function fails if the definition has both a non-empty pattern and is
-/// recursive (`pat != Destruct::Empty && rec`), because recursive let-patterns are currently not
-/// supported.
+/// Generate a `Let` or a `LetPattern` (depending on whether `assgn` has a record pattern) from
+/// the parsing of a let definition. This function fails if the definition has both a pattern
+/// and is recursive because recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
-    id: Option<Ident>,
-    pat: Option<RecordPattern>,
+    assgn: FieldPattern,
     t1: RichTerm,
     t2: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    let result = match pat {
-        Some(d) => {
-            if rec {
-                return Err(ParseError::RecursiveLetPattern(span));
-            }
-            mk_term::let_pat(id, d, t1, t2)
+    match assgn {
+        FieldPattern::Ident(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
+        FieldPattern::Ident(id) => Ok(mk_term::let_in(id, t1, t2)),
+        _ if rec => Err(ParseError::RecursiveLetPattern(span)),
+        FieldPattern::RecordPattern(pat) => {
+            let id: Option<Ident> = None;
+            Ok(mk_term::let_pat(id, pat, t1, t2))
         }
-        None => {
-            if let Some(id) = id {
-                if rec {
-                    mk_term::let_rec_in(id, t1, t2)
-                } else {
-                    mk_term::let_in(id, t1, t2)
-                }
-            } else {
-                panic!("unexpected let-binding without pattern or identifier")
-            }
+        FieldPattern::AliasedRecordPattern { alias, pattern } => {
+            Ok(mk_term::let_pat(Some(alias), pattern, t1, t2))
         }
-    };
-
-    Ok(result)
+    }
 }
 
-/// Generate a `Fun` or a `FunPattern` (depending on `pat` being empty or not) from the
-/// parsing of a function definition. This function panics if the definition somehow
-/// has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
-pub fn mk_fun(id: Option<Ident>, pat: Option<RecordPattern>, body: RichTerm) -> Term {
-    match pat {
-        Some(d) => Term::FunPattern(id, d, body),
-        None => {
-            let Some(id) = id else {
-                unreachable!("functions always have either a non-Empty pattern or an ident")
-            };
-            Term::Fun(id, body)
+/// Generate a `Fun` or a `FunPattern` (depending on `assgn` having a pattern or not)
+/// from the parsing of a function definition. This function panics if the definition
+/// somehow has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
+pub fn mk_fun(assgn: FieldPattern, body: RichTerm) -> Term {
+    match assgn {
+        FieldPattern::Ident(id) => Term::Fun(id, body),
+        FieldPattern::RecordPattern(pat) => Term::FunPattern(None, pat, body),
+        FieldPattern::AliasedRecordPattern { alias, pattern } => {
+            Term::FunPattern(Some(alias), pattern, body)
         }
     }
 }

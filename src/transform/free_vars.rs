@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destructuring::{Match, RecordPattern},
+    destructuring::{FieldPattern, Match, RecordPattern},
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
@@ -244,13 +244,22 @@ fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
 /// a set of free variables.
 fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
     match m {
-        Match::Assign(_, _, (id, sub_pat)) => {
-            if let Some(id) = id {
-                free_vars.remove(id);
-            }
-            if let Some(sub_pat) = sub_pat {
-                bind_pattern(sub_pat, free_vars);
-            }
+        Match::Assign(_, _, FieldPattern::Ident(ident)) => {
+            free_vars.remove(ident);
+        }
+        Match::Assign(_, _, FieldPattern::RecordPattern(sub_pattern)) => {
+            bind_pattern(sub_pattern, free_vars);
+        }
+        Match::Assign(
+            _,
+            _,
+            FieldPattern::AliasedRecordPattern {
+                alias,
+                pattern: sub_pattern,
+            },
+        ) => {
+            free_vars.remove(alias);
+            bind_pattern(sub_pattern, free_vars);
         }
         Match::Simple(id, _) => {
             free_vars.remove(id);

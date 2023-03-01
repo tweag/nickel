@@ -115,5 +115,16 @@ let {check, ..} = import "lib/assert.ncl" in
       name = "name",
   } in
   data.name == "hijack",
+
+  # recursive overriding with dictionaries
+  # regression tests for [#892](https://github.com/tweag/nickel/issues/892)
+  (({a = 1, b = a} | {_: Num}) & { a | force = 2}).b == 2,
+
+  ({
+     b = { foo = c.foo },
+     c = {}
+   } | {_: {
+     foo | default = 0
+   } }).b.foo == 0,
 ]
 |> check

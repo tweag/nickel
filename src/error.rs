@@ -302,15 +302,15 @@ impl From<Vec<ParseError>> for ParseErrors {
     }
 }
 
-impl ToDiagnostic<FileId> for ParseErrors {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for ParseErrors {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         self.errors
-            .iter()
-            .flat_map(|e| e.to_diagnostic(files, stdlib_ids))
+            .into_iter()
+            .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
             .collect()
     }
 }
@@ -410,6 +410,7 @@ pub enum ReplError {
         cmd: repl::command::CommandType,
         msg_opt: Option<String>,
     },
+    InvalidQueryPath(ParseError),
 }
 
 impl From<EvalError> for Error {
@@ -604,7 +605,7 @@ pub const INTERNAL_ERROR_MSG: &str =
  reporting it at https://github.com/tweag/nickel/issues with the above error message.";
 
 /// A trait for converting an error to a diagnostic.
-pub trait ToDiagnostic<FileId> {
+pub trait IntoDiagnostics<FileId> {
     /// Convert an error to a list of printable formatted diagnostic.
     ///
     /// # Arguments
@@ -621,8 +622,8 @@ pub trait ToDiagnostic<FileId> {
     /// ordered requires to sidestep a limitation of codespan. The current solution is to generate
     /// one diagnostic per callstack element. See issue
     /// [#285](https://github.com/brendanzab/codespan/issues/285).
-    fn to_diagnostic(
-        &self,
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>>;
@@ -744,31 +745,31 @@ fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
 }
 
-impl ToDiagnostic<FileId> for Error {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for Error {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             Error::ParseErrors(errs) => errs
                 .errors
-                .iter()
-                .flat_map(|e| e.to_diagnostic(files, stdlib_ids))
+                .into_iter()
+                .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
                 .collect(),
-            Error::TypecheckError(err) => err.to_diagnostic(files, stdlib_ids),
-            Error::EvalError(err) => err.to_diagnostic(files, stdlib_ids),
-            Error::ImportError(err) => err.to_diagnostic(files, stdlib_ids),
-            Error::SerializationError(err) => err.to_diagnostic(files, stdlib_ids),
-            Error::IOError(err) => err.to_diagnostic(files, stdlib_ids),
-            Error::ReplError(err) => err.to_diagnostic(files, stdlib_ids),
+            Error::TypecheckError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::EvalError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::ImportError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::SerializationError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::IOError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::ReplError(err) => err.into_diagnostics(files, stdlib_ids),
         }
     }
 }
 
-impl ToDiagnostic<FileId> for EvalError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for EvalError {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
@@ -780,17 +781,17 @@ impl ToDiagnostic<FileId> for EvalError {
             } => {
                 let mut msg = String::new();
 
-                // Writing in a string should not raise an error, hence the fearless `unwrap()`
-                write!(&mut msg, "{}", blame_error::title(label)).unwrap();
+                write!(&mut msg, "{}", blame_error::title(&label))
+                    .expect("writing formatted data into a string should not raise an error");
 
                 if !label.tag.is_empty() {
                     write!(&mut msg, ": {}", &escape(&label.tag)).unwrap();
                 }
 
-                let (path_label, notes) = blame_error::report_ty_path(label, files);
+                let (path_label, notes) = blame_error::report_ty_path(&label, files);
                 let labels = blame_error::build_diagnostic_labels(
-                    evaluated_arg.clone(),
-                    label,
+                    evaluated_arg,
+                    &label,
                     path_label,
                     files,
                     stdlib_ids,
@@ -801,11 +802,11 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(blame_error::note(label));
+                diagnostics.push(blame_error::note(&label));
 
                 if ty_path::has_no_dom(&label.path) {
                 } else if let Some(id) = stdlib_ids {
-                    diagnostics.extend_with_call_stack(id, call_stack);
+                    diagnostics.extend_with_call_stack(id, &call_stack);
                 }
 
                 diagnostics
@@ -858,28 +859,28 @@ impl ToDiagnostic<FileId> for EvalError {
                 );
 
                 let labels = match orig_pos_opt {
-                    TermPos::Original(pos) | TermPos::Inherited(pos) if orig_pos_opt != &t.pos => {
+                    TermPos::Original(pos) | TermPos::Inherited(pos) if orig_pos_opt != t.pos => {
                         vec![
-                            primary(pos).with_message(label),
-                            secondary_term(t, files).with_message("evaluated to this"),
+                            primary(&pos).with_message(label),
+                            secondary_term(&t, files).with_message("evaluated to this"),
                         ]
                     }
-                    _ => vec![primary_term(t, files).with_message(label)],
+                    _ => vec![primary_term(&t, files).with_message(label)],
                 };
 
                 vec![Diagnostic::error()
                     .with_message("type error")
                     .with_labels(labels)
-                    .with_notes(vec![msg.clone()])]
+                    .with_notes(vec![msg])]
             }
-            EvalError::ParseError(parse_error) => parse_error.to_diagnostic(files, stdlib_ids),
+            EvalError::ParseError(parse_error) => parse_error.into_diagnostics(files, stdlib_ids),
             EvalError::NotAFunc(t, arg, pos_opt) => vec![Diagnostic::error()
                 .with_message("not a function")
                 .with_labels(vec![
-                    primary_term(t, files)
+                    primary_term(&t, files)
                         .with_message("this term is applied, but it is not a function"),
                     secondary_alt(
-                        *pos_opt,
+                        pos_opt,
                         format!(
                             "({}) ({})",
                             (*t.term).shallow_repr(),
@@ -892,7 +893,7 @@ impl ToDiagnostic<FileId> for EvalError {
             EvalError::FieldMissing(field, op, t, span_opt) => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
-                let field = escape(field);
+                let field = escape(&field);
 
                 if let Some(span) = span_opt.into_opt() {
                     labels.push(
@@ -934,12 +935,12 @@ impl ToDiagnostic<FileId> for EvalError {
             }
             EvalError::MergeIncompatibleArgs(t1, t2, span_opt) => {
                 let mut labels = vec![
-                    primary_term(t1, files).with_message("cannot merge this expression"),
-                    primary_term(t2, files).with_message("with this expression"),
+                    primary_term(&t1, files).with_message("cannot merge this expression"),
+                    primary_term(&t2, files).with_message("with this expression"),
                 ];
 
                 if let TermPos::Original(span) | TermPos::Inherited(span) = span_opt {
-                    labels.push(secondary(span).with_message("merged here"));
+                    labels.push(secondary(&span).with_message("merged here"));
                 }
 
                 vec![Diagnostic::error()
@@ -986,7 +987,7 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(vec![String::from(INTERNAL_ERROR_MSG)])]
             }
-            EvalError::SerializationError(err) => err.to_diagnostic(files, stdlib_ids),
+            EvalError::SerializationError(err) => err.into_diagnostics(files, stdlib_ids),
             EvalError::DeserializationError(format, msg, span_opt) => {
                 let labels = span_opt
                     .as_opt_ref()
@@ -1007,14 +1008,14 @@ impl ToDiagnostic<FileId> for EvalError {
                 );
 
                 let labels = match eq_pos {
-                    TermPos::Original(pos) | TermPos::Inherited(pos) if eq_pos != &t.pos => {
+                    TermPos::Original(pos) | TermPos::Inherited(pos) if eq_pos != t.pos => {
                         vec![
-                            primary(pos).with_message(label),
-                            secondary_term(t, files)
+                            primary(&pos).with_message(label),
+                            secondary_term(&t, files)
                                 .with_message("problematic argument evaluated to this"),
                         ]
                     }
-                    _ => vec![primary_term(t, files).with_message(label)],
+                    _ => vec![primary_term(&t, files).with_message(label)],
                 };
 
                 vec![Diagnostic::error()
@@ -1029,16 +1030,16 @@ impl ToDiagnostic<FileId> for EvalError {
             } => {
                 let mut msg = String::new();
 
-                write!(&mut msg, "{}", blame_error::title(l)).unwrap();
+                write!(&mut msg, "{}", blame_error::title(&l)).unwrap();
                 write!(&mut msg, " - {}", action.message()).unwrap();
                 if !l.tag.is_empty() {
                     write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
                 }
 
-                let (path_label, notes) = blame_error::report_ty_path(l, files);
+                let (path_label, notes) = blame_error::report_ty_path(&l, files);
                 let labels = blame_error::build_diagnostic_labels(
-                    evaluated_arg.clone(),
-                    l,
+                    evaluated_arg,
+                    &l,
                     path_label,
                     files,
                     stdlib_ids,
@@ -1049,11 +1050,11 @@ impl ToDiagnostic<FileId> for EvalError {
                     .with_labels(labels)
                     .with_notes(notes)];
 
-                diagnostics.push(blame_error::note(l));
+                diagnostics.push(blame_error::note(&l));
 
                 if ty_path::has_no_dom(&l.path) {
                 } else if let Some(id) = stdlib_ids {
-                    diagnostics.extend_with_call_stack(id, call_stack);
+                    diagnostics.extend_with_call_stack(id, &call_stack);
                 }
 
                 diagnostics
@@ -1232,6 +1233,9 @@ mod blame_error {
             // contract for the elements of an array
             (Some(ty_path::Elem::Array), None) => (String::from("expected array element type"), Vec::new()),
             // The type path doesn't contain any arrow, and the failing subcontract is the contract
+            // for the fields of a dictionary
+            (Some(ty_path::Elem::Dict), None) => (String::from("expected dictionary field type"), Vec::new()),
+            // The type path doesn't contain any arrow, and the failing subcontract is the contract
             // for the field of a record
             (Some(ty_path::Elem::Field(_)), None) => (String::from("expected field type"), Vec::new()),
             // The original contract contains an arrow, and the path is only composed of codomains.
@@ -1342,41 +1346,41 @@ is None but last_arrow_elem is Some"),
     }
 }
 
-impl ToDiagnostic<FileId> for ParseError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for ParseError {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
             ParseError::UnexpectedEOF(file_id, _expected) => {
-                let end = files.source_span(*file_id).end();
+                let end = files.source_span(file_id).end();
                 Diagnostic::error()
                     .with_message(format!(
                         "unexpected end of file when parsing {}",
-                        files.name(*file_id).to_string_lossy()
+                        files.name(file_id).to_string_lossy()
                     ))
                     .with_labels(vec![primary(&RawSpan {
                         start: end,
                         end,
-                        src_id: *file_id,
+                        src_id: file_id,
                     })])
             }
             ParseError::UnexpectedToken(span, _expected) => Diagnostic::error()
                 .with_message("unexpected token")
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::ExtraToken(span) => Diagnostic::error()
                 .with_message("superfluous unexpected token")
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::UnmatchedCloseBrace(span) => Diagnostic::error()
                 .with_message("unmatched closing brace \'}\'")
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::InvalidEscapeSequence(span) => Diagnostic::error()
                 .with_message("invalid escape sequence")
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
                 .with_message("invalid ascii escape code")
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::ExternalFormatError(format, msg, span_opt) => {
                 let labels = span_opt
                     .as_ref()
@@ -1396,13 +1400,13 @@ impl ToDiagnostic<FileId> for ParseError {
                         .collect::<Vec<_>>()
                         .join(",")
                 ))
-                .with_labels(vec![primary(span)]),
+                .with_labels(vec![primary(&span)]),
             ParseError::InvalidUniRecord(illegal_span, tail_span, span) => Diagnostic::error()
                 .with_message("invalid record literal")
                 .with_labels(vec![
-                    primary(span),
-                    secondary(illegal_span).with_message("can't use this record construct"),
-                    secondary(tail_span).with_message("in presence of a tail"),
+                    primary(&span),
+                    secondary(&illegal_span).with_message("can't use this record construct"),
+                    secondary(&tail_span).with_message("in presence of a tail"),
                 ])
                 .with_notes(vec![
                     String::from("Using a polymorphic tail in a record `{ ..; a}` requires the rest of the record to be only composed of type annotations, of the form `<field>: <type>`."),
@@ -1411,7 +1415,7 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::RecursiveLetPattern(span) => Diagnostic::error()
                 .with_message("recursive destructuring is not supported")
                 .with_labels(vec![
-                    primary(span),
+                    primary(&span),
                 ])
                 .with_notes(vec![
                     String::from("A destructuring let-binding can't be recursive. Try removing the `rec` from `let rec`."),
@@ -1420,7 +1424,7 @@ impl ToDiagnostic<FileId> for ParseError {
             ParseError::TypeVariableKindMismatch { ty_var, span } => Diagnostic::error()
                 .with_message(format!("the type variable {ty_var} is used in conflicting ways"))
                 .with_labels(vec![
-                    primary(span),
+                    primary(&span),
                 ])
                 .with_notes(vec![
                     String::from("Type variables may be used either as types, polymorphic record tails, or polymorphic enum tails."),
@@ -1432,9 +1436,9 @@ impl ToDiagnostic<FileId> for ParseError {
     }
 }
 
-impl ToDiagnostic<FileId> for TypecheckError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for TypecheckError {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
@@ -1449,13 +1453,13 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::UnboundIdentifier(ident, pos_opt) =>
             // Use the same diagnostic as `EvalError::UnboundIdentifier` for consistency.
                 {
-                    EvalError::UnboundIdentifier(*ident, *pos_opt)
-                        .to_diagnostic(files, stdlib_ids)
+                    EvalError::UnboundIdentifier(ident, pos_opt)
+                        .into_diagnostics(files, stdlib_ids)
                 }
             TypecheckError::MissingRow(ident, expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("type error: missing row `{ident}`"))
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{expd}` which contains the field `{ident}`"),
                         format!("The type of the expression was inferred to be `{actual}`, which does not contain the field `{ident}`"),
@@ -1464,7 +1468,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::MissingDynTail(expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(String::from("type error: missing dynamic tail `| Dyn`"))
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{expd}` which contains the tail `| Dyn`"),
                         format!("The type of the expression was inferred to be `{actual}`, which does not contain the tail `| Dyn`"),
@@ -1474,7 +1478,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::ExtraRow(ident, expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(format!("type error: extra row `{ident}`"))
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{expd}`, which does not contain the field `{ident}`"),
                         format!("The type of the expression was inferred to be `{actual}`, which contains the extra field `{ident}`"),
@@ -1483,7 +1487,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::ExtraDynTail(expd, actual, span_opt) =>
                 vec![Diagnostic::error()
                     .with_message(String::from("type error: extra dynamic tail `| Dyn`"))
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{expd}`, which does not contain the tail `| Dyn`"),
                         format!("The type of the expression was inferred to be `{actual}`, which contains the extra tail `| Dyn`"),
@@ -1515,10 +1519,10 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 vec![
                     Diagnostic::error()
                         .with_message("incompatible types")
-                        .with_labels(mk_expr_label(span_opt))
+                        .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
-                            format!("The type of the expression was expected to be `{}`{}", expd, addendum(expd)),
-                            format!("The type of the expression was inferred to be `{}`{}", actual, addendum(actual)),
+                            format!("The type of the expression was expected to be `{}`{}", expd, addendum(&expd)),
+                            format!("The type of the expression was inferred to be `{}`{}", actual, addendum(&actual)),
                             String::from(last_note),
                         ])]
             }
@@ -1532,20 +1536,19 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 vec![
                     Diagnostic::error()
                         .with_message("incompatible row kinds")
-                        .with_labels(mk_expr_label(span_opt))
+                        .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
                             format!("The row type of `{ident}` was expected to be `{expd_str}`, but was inferred to be `{actual_str}`"),
                             String::from("Enum row types and record row types are not compatible"),
                         ])]
             }
-            TypecheckError::RowMismatch(ident, expd, actual, err_, span_opt) => {
+            TypecheckError::RowMismatch(ident, expd, actual, mut err, span_opt) => {
                 // If the unification error is on a nested field, we will have a succession of
                 // `RowMismatch` errors wrapping the underlying error. In this case, instead of
                 // showing a cascade of similar error messages, we determine the full path of the
                 // nested field (e.g. `pkg.subpkg1.meta.url`) and only show once the row mismatch
                 // error followed by the underlying error.
-                let mut err = (*err_).clone();
-                let mut path = vec![*ident];
+                let mut path = vec![ident];
 
                 while let TypecheckError::RowMismatch(id_next, _, _, next, _) = *err {
                     path.push(id_next);
@@ -1580,7 +1583,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
 
                 let mut diags = vec![Diagnostic::error()
                     .with_message("incompatible rows declaration")
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         note1,
                         note2,
@@ -1591,7 +1594,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
                 // precise description of why the unification of a row failed.
-                diags.extend((*err).to_diagnostic(files, stdlib_ids).into_iter()
+                diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter()
                     .map(|mut diag| {
                         diag.message = format!("While typing field `{}`: {}", field, diag.message);
                         diag
@@ -1602,7 +1605,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 vec![
                     Diagnostic::error()
                         .with_message("multiple rows declaration")
-                        .with_labels(mk_expr_label(span_opt))
+                        .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
                             format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
                             format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
@@ -1610,8 +1613,8 @@ impl ToDiagnostic<FileId> for TypecheckError {
                         ])]
             }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
-                let PathSpan {start: expd_start, end: expd_end, ..} = ty_path::span(path.iter().peekable(), expd);
-                let PathSpan {start: actual_start, end: actual_end, ..} = ty_path::span(path.iter().peekable(), actual);
+                let PathSpan {start: expd_start, end: expd_end, ..} = ty_path::span(path.iter().peekable(), &expd);
+                let PathSpan {start: actual_start, end: actual_end, ..} = ty_path::span(path.iter().peekable(), &actual);
 
                 let mut labels = vec![
                     Label::secondary(
@@ -1625,7 +1628,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
                     )
                         .with_message("does not match this part of the inferred type"),
                 ];
-                labels.extend(mk_expr_label(span_opt));
+                labels.extend(mk_expr_label(&span_opt));
 
                 let mut diags = vec![Diagnostic::error()
                     .with_message("function types mismatch")
@@ -1640,12 +1643,12 @@ impl ToDiagnostic<FileId> for TypecheckError {
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
                 // precise description of why the unification of the row failed.
-                match err.as_ref() {
+                match *err {
                     // If the underlying error is a type mismatch, printing won't add any useful
                     // information, so we just ignore it.
                     TypecheckError::TypeMismatch(_, _, _) => (),
                     err => {
-                        diags.extend(err.to_diagnostic(files, stdlib_ids).into_iter()
+                        diags.extend(err.into_diagnostics(files, stdlib_ids).into_iter()
                             .map(|mut diag| {
                                 diag.message = format!("While matching function types: {}", diag.message);
                                 diag
@@ -1658,7 +1661,7 @@ impl ToDiagnostic<FileId> for TypecheckError {
             TypecheckError::IncomparableFlatTypes(expd, actual, span_opt) => {
                 vec![Diagnostic::error()
                     .with_message("can't compare contract types")
-                    .with_labels(mk_expr_label(span_opt))
+                    .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("The type of the expression was expected to be `{}`", expd.as_ref().shallow_repr()),
                         format!("The type of the expression was inferred to be `{}`", actual.as_ref().shallow_repr()),
@@ -1676,9 +1679,9 @@ impl ToDiagnostic<FileId> for TypecheckError {
     }
 }
 
-impl ToDiagnostic<FileId> for ImportError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for ImportError {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
@@ -1696,8 +1699,8 @@ impl ToDiagnostic<FileId> for ImportError {
             ImportError::ParseErrors(error, span_opt) => {
                 let mut diagnostic: Vec<Diagnostic<FileId>> = error
                     .errors
-                    .iter()
-                    .flat_map(|e| e.to_diagnostic(files, stdlib_ids))
+                    .into_iter()
+                    .flat_map(|e| e.into_diagnostics(files, stdlib_ids))
                     .collect();
 
                 if let Some(span) = span_opt.as_opt_ref() {
@@ -1712,9 +1715,9 @@ impl ToDiagnostic<FileId> for ImportError {
     }
 }
 
-impl ToDiagnostic<FileId> for SerializationError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for SerializationError {
+    fn into_diagnostics(
+        self,
         files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
@@ -1726,37 +1729,37 @@ impl ToDiagnostic<FileId> for SerializationError {
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
-                .with_labels(vec![primary_term(rt, files)])],
+                .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
                 .with_message(format!("{format} doesn't support null values"))
-                .with_labels(vec![primary_term(rt, files)])],
+                .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
-                .with_labels(vec![primary_term(rt, files)])],
+                .with_labels(vec![primary_term(&rt, files)])],
             SerializationError::Other(msg) => vec![Diagnostic::error()
                 .with_message("error during serialization")
-                .with_notes(vec![msg.clone()])],
+                .with_notes(vec![msg])],
         }
     }
 }
 
-impl ToDiagnostic<FileId> for IOError {
-    fn to_diagnostic(
-        &self,
+impl IntoDiagnostics<FileId> for IOError {
+    fn into_diagnostics(
+        self,
         _files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            IOError(msg) => vec![Diagnostic::error().with_message(msg.clone())],
+            IOError(msg) => vec![Diagnostic::error().with_message(msg)],
         }
     }
 }
 
-impl ToDiagnostic<FileId> for ReplError {
-    fn to_diagnostic(
-        &self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
+impl IntoDiagnostics<FileId> for ReplError {
+    fn into_diagnostics(
+        self,
+        files: &mut Files<String>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
             ReplError::UnknownCommand(s) => vec![Diagnostic::error()
@@ -1764,6 +1767,7 @@ impl ToDiagnostic<FileId> for ReplError {
                 .with_notes(vec![String::from(
                     "type `:?` or `:help` for a list of available commands.",
                 )])],
+            ReplError::InvalidQueryPath(err) => err.into_diagnostics(files, stdlib_ids),
             ReplError::MissingArg { cmd, msg_opt } => {
                 let mut notes = msg_opt
                     .as_ref()

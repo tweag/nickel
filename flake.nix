@@ -213,7 +213,7 @@
 
 
         in
-        rec {
+        {
           nickel = buildPackage "nickel-lang";
           lsp-nls = buildPackage "nickel-lang-lsp";
 
@@ -244,8 +244,10 @@
               src
               cargoArtifacts;
 
+            inherit (cargoArtifacts) buildInputs;
+
             cargoExtraArgs = cargoBuildExtraArgs;
-            cargoClippyExtraArgs = "--all-features --all-targets -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
+            cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
           };
         };
 

@@ -56,7 +56,7 @@ use crate::{
     mk_opn,
     mk_fun,
     identifier::Ident,
-    destructuring::{Match, LastMatch, RecordPattern},
+    destructuring::{Match, FieldPattern, LastMatch, RecordPattern},
     term::{
         *,
         record::{RecordAttrs, Field, FieldMetadata},
@@ -228,12 +228,12 @@ UniTerm: UniTerm = {
             t1 = ann.annotation.attach_term(t1);
         }
 
-        Ok(UniTerm::from(mk_let(recursive.is_some(), pat.0, pat.1, t1, t2, mk_span(src_id, l, r))?))
+        Ok(UniTerm::from(mk_let(recursive.is_some(), pat, t1, t2, mk_span(src_id, l, r))?))
     },
     <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
         let pos = mk_pos(src_id, l, r);
-        let rt = pats.into_iter().rev().fold(t, |t, (id, destruct)| RichTerm {
-            term: SharedTerm::new(mk_fun(id, destruct, t)),
+        let rt = pats.into_iter().rev().fold(t, |t, assgn| RichTerm {
+            term: SharedTerm::new(mk_fun(assgn, t)),
             pos,
         });
 
@@ -450,9 +450,15 @@ LastMatch: LastMatch = {
 
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
-Pattern: (Option<Ident>, Option<RecordPattern>) = {
-    <id:(<Ident> "@")?> <pat: RecordPattern> => (id, Some(pat)),
-    Ident => (Some(<>), None),
+Pattern: FieldPattern = {
+    <id:(<Ident> "@")?> <pat: RecordPattern> => {
+        if let Some(id) = id {
+            FieldPattern::AliasedRecordPattern { alias: id, pattern: pat }
+        } else {
+            FieldPattern::RecordPattern(pat)
+        }
+    },
+    Ident => FieldPattern::Ident(<>),
 };
 
 // A full pattern at the left-hand side of a destructuring let.
@@ -626,6 +632,7 @@ UOp: UnaryOp = {
     "go_dom" => UnaryOp::GoDom(),
     "go_codom" => UnaryOp::GoCodom(),
     "go_array" => UnaryOp::GoArray(),
+    "go_dict" => UnaryOp::GoDict(),
     "embed" <Ident> => UnaryOp::Embed(<>),
     "map"  => UnaryOp::ArrayMap(),
     "generate" => UnaryOp::ArrayGen(),
@@ -821,6 +828,7 @@ InfixExpr: UniTerm = {
 BOpPre: BinaryOp = {
     "assume" => BinaryOp::Assume(),
     "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
+    "dictionary_assume" => BinaryOp::DictionaryAssume(),
     "unseal" => BinaryOp::Unseal(),
     "seal" => BinaryOp::Seal(),
     "go_field" => BinaryOp::GoField(),
@@ -973,6 +981,7 @@ extern {
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
+        "dictionary_assume" => Token::Normal(NormalToken::DictionaryAssume),
         "op force" => Token::Normal(NormalToken::OpForce),
         "blame" => Token::Normal(NormalToken::Blame),
         "chng_pol" => Token::Normal(NormalToken::ChangePol),
@@ -980,6 +989,7 @@ extern {
         "go_dom" => Token::Normal(NormalToken::GoDom),
         "go_codom" => Token::Normal(NormalToken::GoCodom),
         "go_array" => Token::Normal(NormalToken::GoArray),
+        "go_dict" => Token::Normal(NormalToken::GoDict),
         "go_field" => Token::Normal(NormalToken::GoField),
         "seal" => Token::Normal(NormalToken::Seal),
         "unseal" => Token::Normal(NormalToken::Unseal),

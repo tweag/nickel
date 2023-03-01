@@ -56,10 +56,13 @@ pub fn get_uop_type(
         }
         // This should not happen, as a match primop is only produced during evaluation.
         UnaryOp::Match { .. } => panic!("cannot typecheck match primop"),
+        // Morally, Label -> Label
         // Dyn -> Dyn
-        UnaryOp::ChangePolarity() | UnaryOp::GoDom() | UnaryOp::GoCodom() | UnaryOp::GoArray() => {
-            (mk_uniftype::dynamic(), mk_uniftype::dynamic())
-        }
+        UnaryOp::ChangePolarity()
+        | UnaryOp::GoDom()
+        | UnaryOp::GoCodom()
+        | UnaryOp::GoArray()
+        | UnaryOp::GoDict() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // forall rows a. { id: a | rows} -> a
         UnaryOp::StaticAccess(id) => {
             let rows = state.table.fresh_rrows_uvar();
@@ -389,6 +392,17 @@ pub fn get_bop_type(
                 mk_uniftype::dynamic(),
                 mk_uniftype::dynamic(),
                 mk_uty_arrow!(ty_array.clone(), ty_array),
+            )
+        }
+        // The first argument is a label, the third is a contract.
+        // forall a. Dyn -> {_: a} -> Dyn -> {_: a}
+        BinaryOp::DictionaryAssume() => {
+            let ty_field = UnifType::UnifVar(state.table.fresh_type_var_id());
+            let ty_dict = mk_uniftype::dyn_record(ty_field);
+            (
+                mk_uniftype::dynamic(),
+                ty_dict.clone(),
+                mk_uty_arrow!(mk_uniftype::dynamic(), ty_dict),
             )
         }
     })
