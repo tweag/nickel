@@ -130,11 +130,11 @@ impl CallStack {
     ///
     /// # Arguments
     ///
-    /// - `contract_id`: the `FileId` of the source containing standard contracts, to filter their
+    /// - `stdlib_ids`: the `FileId`s of the sources containing standard contracts, to filter their
     ///   calls out.
     pub fn group_by_calls(
         self: &CallStack,
-        contract_id: FileId,
+        stdlib_ids: &[FileId],
     ) -> (Vec<CallDescr>, Option<CallDescr>) {
         // We filter out calls and accesses made from within the builtin contracts, as well as
         // generated variables introduced by program transformations.
@@ -149,7 +149,7 @@ impl CallStack {
             // We avoid applications (Fun/App) with inherited positions. Such calls include
             // contracts applications which add confusing call items whose positions don't point to
             // an actual call in the source.
-                if *src_id != contract_id =>
+                if !stdlib_ids.contains(src_id) =>
             {
                 true
             }
