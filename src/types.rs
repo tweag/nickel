@@ -826,6 +826,7 @@ impl RecordRows {
 }
 
 impl Types {
+    /// Create a type with the specified `ty`, and has a `None` position.
     pub fn with_default_pos(ty: TypeF<Box<Types>, RecordRows, EnumRows>) -> Types {
         Types {
             ty,
