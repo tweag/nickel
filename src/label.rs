@@ -318,7 +318,7 @@ but this field doesn't exist in {}",
 /// are types with arrows in it. Consider the simplest example:
 ///
 /// ```text
-/// Assume(Num -> Num, f)
+/// f | Num -> Num
 /// ```
 ///
 /// This does not entail that `f` returns a `Num` in *every* situation. The identity function `id
@@ -329,9 +329,9 @@ but this field doesn't exist in {}",
 /// checked, which is not the responsibility of `f`, but the caller's (or context)
 /// one.
 ///
-/// `Assume(Num -> Num, f)` should thus be evaluated as `Assume(Num, fun arg
-/// => f (Assume(Num, arg)))`, but we want to report the failures of the two introduced
-/// subcontracts in a different way:
+/// `f | Num -> Num` should thus be evaluated as `fun arg => ((f (arg | Num)) | Num)`, but we want
+/// to report the failures of the two introduced subcontracts in a different way:
+///
 ///  - The inner one (on the argument) says that `f` has been misused: it has been applied to
 ///  something that is not a `Num`.
 ///  - The outer one says that `f` failed to satisfy its contract, as it has been provided with a
@@ -347,8 +347,12 @@ but this field doesn't exist in {}",
 pub struct Label {
     /// The type checked by the original contract.
     pub types: Rc<Types>,
-    /// A string tag to be printed together with the error message.
-    pub tag: String,
+    /// Custom diagnostics set by user code. There might be several diagnostics stacked up, as some
+    /// contracts might in turn apply other subcontracts.
+    ///
+    /// The last diagnostic of the stack is usually the current working diagnostic (the one mutated
+    /// by corresponding primops), and the latest/most precise when a blame error is raised.
+    pub diagnostics: Vec<ContractDiagnostic>,
     /// The position of the original contract.
     pub span: RawSpan,
     /// The index corresponding to the value being checked. Set at run-time by the interpreter.
@@ -362,26 +366,110 @@ pub struct Label {
     pub path: ty_path::Path,
 }
 
+/// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
+/// customized contract error messages, and provide more context than "a contract has failed".
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ContractDiagnostic {
+    /// The main error message tag to be printed together with the error message.
+    pub message: Option<String>,
+    /// Additional notes printed at the end of the message.
+    pub notes: Vec<String>,
+}
+
+impl ContractDiagnostic {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Attach a message to this diagnostic, and return the updated value. Erase potential previous
+    /// message.
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+
+    /// Attach notes to this diagnostic, and return the updated value. Erase potential previous
+    /// notes.
+    pub fn with_notes(mut self, notes: Vec<String>) -> Self {
+        self.notes = notes;
+        self
+    }
+
+    /// Append a note to this diagnostic.
+    pub fn append_note(&mut self, note: impl Into<String>) {
+        self.notes.push(note.into());
+    }
+
+    /// Return `true` if this diagnostic is empty, that is if `message` is either not set (`None`)
+    /// or is set but empty, AND notes are empty.
+    pub fn is_empty(&self) -> bool {
+        self.message.as_ref().map(String::is_empty).unwrap_or(true) && self.notes.is_empty()
+    }
+}
+
 impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
             types: Rc::new(Types(TypeF::Num)),
-            tag: "testing".to_string(),
+            diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
                 start: 0.into(),
                 end: 1.into(),
             },
-            arg_idx: None,
-            arg_pos: TermPos::None,
             polarity: true,
-            path: Vec::new(),
+            ..Default::default()
         }
     }
 
     pub fn get_evaluated_arg<EC: EvalCache>(&self, cache: &EC) -> Option<RichTerm> {
         self.arg_idx.clone().map(|idx| cache.get(idx).body)
+    }
+
+    /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
+    /// erase the previous value.
+    ///
+    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
+    pub fn set_diagnostic_message(&mut self, message: impl Into<String>) {
+        if let Some(current) = self.diagnostics.last_mut() {
+            current.message = Some(message.into());
+        } else {
+            self.diagnostics
+                .push(ContractDiagnostic::new().with_message(message));
+        }
+    }
+
+    /// Set the notes of the current diagnostic (the last diagnostic of the stack). Potentially
+    /// erase the previous value.
+    ///
+    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
+    pub fn set_diagnostic_notes(&mut self, notes: Vec<String>) {
+        if let Some(current) = self.diagnostics.last_mut() {
+            current.notes = notes;
+        } else {
+            self.diagnostics
+                .push(ContractDiagnostic::new().with_notes(notes));
+        }
+    }
+
+    /// Append a note to the current diagnostic (the last diagnostic of the stack). Potentially
+    /// erase the previous value.
+    ///
+    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given note.
+    pub fn append_diagnostic_note(&mut self, note: impl Into<String>) {
+        if let Some(current) = self.diagnostics.last_mut() {
+            current.append_note(note);
+        } else {
+            self.diagnostics
+                .push(ContractDiagnostic::new().with_notes(vec![note.into()]));
+        }
+    }
+
+    /// Return a reference to the current contract diagnostic, that is the last one of the stack,
+    /// if any.
+    pub fn current_diagnostic(&self) -> Option<&ContractDiagnostic> {
+        self.diagnostics.last()
     }
 }
 
@@ -389,16 +477,16 @@ impl Default for Label {
     fn default() -> Label {
         Label {
             types: Rc::new(Types(TypeF::Dyn)),
-            tag: "".to_string(),
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),
                 start: 0.into(),
                 end: 1.into(),
             },
-            arg_idx: None,
-            arg_pos: TermPos::None,
             polarity: true,
-            path: Vec::new(),
+            diagnostics: Default::default(),
+            arg_idx: Default::default(),
+            arg_pos: Default::default(),
+            path: Default::default(),
         }
     }
 }

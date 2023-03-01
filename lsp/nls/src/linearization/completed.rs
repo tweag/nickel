@@ -168,8 +168,13 @@ impl Completed {
             if let Some(doc) = doc {
                 extra.push(doc.to_owned());
             }
-            if let Some(types) = &annotation.types {
-                extra.push(types.label.tag.to_string());
+            if let Some(custom_contract_msg) = annotation
+                .types
+                .as_ref()
+                .and_then(|ty| ty.label.current_diagnostic())
+                .and_then(|diag| diag.message.as_ref())
+            {
+                extra.push(custom_contract_msg.clone());
             }
             if let Some(contracts) = annotation.contracts_to_string() {
                 extra.push(contracts);

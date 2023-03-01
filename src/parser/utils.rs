@@ -549,12 +549,8 @@ pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
 pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
     Label {
         types: Rc::new(types),
-        tag: String::new(),
         span: mk_span(src_id, l, r),
-        arg_idx: None,
-        arg_pos: TermPos::None,
-        polarity: true,
-        path: Vec::new(),
+        ..Default::default()
     }
 }
 

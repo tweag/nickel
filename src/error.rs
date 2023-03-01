@@ -2,8 +2,6 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-use std::fmt::Write;
-
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
@@ -27,8 +25,6 @@ use crate::{
     term::{record::FieldMetadata, RichTerm},
     types::{TypeF, Types},
 };
-
-use self::blame_error::ExtendWithCallStack;
 
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
@@ -778,39 +774,14 @@ impl IntoDiagnostics<FileId> for EvalError {
                 evaluated_arg,
                 label,
                 call_stack,
-            } => {
-                let mut msg = String::new();
-
-                write!(&mut msg, "{}", blame_error::title(&label))
-                    .expect("writing formatted data into a string should not raise an error");
-
-                if !label.tag.is_empty() {
-                    write!(&mut msg, ": {}", &escape(&label.tag)).unwrap();
-                }
-
-                let (path_label, notes) = blame_error::report_ty_path(&label, files);
-                let labels = blame_error::build_diagnostic_labels(
-                    evaluated_arg,
-                    &label,
-                    path_label,
-                    files,
-                    stdlib_ids,
-                );
-
-                let mut diagnostics = vec![Diagnostic::error()
-                    .with_message(msg)
-                    .with_labels(labels)
-                    .with_notes(notes)];
-
-                diagnostics.push(blame_error::note(&label));
-
-                if ty_path::has_no_dom(&label.path) {
-                } else if let Some(id) = stdlib_ids {
-                    diagnostics.extend_with_call_stack(id, &call_stack);
-                }
-
-                diagnostics
-            }
+            } => blame_error::blame_diagnostics(
+                files,
+                stdlib_ids,
+                label,
+                evaluated_arg,
+                &call_stack,
+                "",
+            ),
             EvalError::MissingFieldDef {
                 id,
                 metadata,
@@ -844,7 +815,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .first()
                     .map(|labeled_ty| labeled_ty.label.clone())
                 {
-                    diags.push(blame_error::note(&label));
+                    diags.push(blame_error::contract_bind_loc(&label));
                 }
 
                 diags
@@ -1024,41 +995,17 @@ impl IntoDiagnostics<FileId> for EvalError {
             }
             EvalError::IllegalPolymorphicTailAccess {
                 action,
-                label: l,
+                label: contract_label,
                 evaluated_arg,
                 call_stack,
-            } => {
-                let mut msg = String::new();
-
-                write!(&mut msg, "{}", blame_error::title(&l)).unwrap();
-                write!(&mut msg, " - {}", action.message()).unwrap();
-                if !l.tag.is_empty() {
-                    write!(&mut msg, ": {}", &escape(&l.tag)).unwrap();
-                }
-
-                let (path_label, notes) = blame_error::report_ty_path(&l, files);
-                let labels = blame_error::build_diagnostic_labels(
-                    evaluated_arg,
-                    &l,
-                    path_label,
-                    files,
-                    stdlib_ids,
-                );
-
-                let mut diagnostics = vec![Diagnostic::error()
-                    .with_message(msg)
-                    .with_labels(labels)
-                    .with_notes(notes)];
-
-                diagnostics.push(blame_error::note(&l));
-
-                if ty_path::has_no_dom(&l.path) {
-                } else if let Some(id) = stdlib_ids {
-                    diagnostics.extend_with_call_stack(id, &call_stack);
-                }
-
-                diagnostics
-            }
+            } => blame_error::blame_diagnostics(
+                files,
+                stdlib_ids,
+                contract_label,
+                evaluated_arg,
+                &call_stack,
+                &format!("- {}", &action.message()),
+            ),
         }
     }
 }
@@ -1337,12 +1284,121 @@ is None but last_arrow_elem is Some"),
     }
 
     /// Return a note diagnostic showing where a contract was bound.
-    pub fn note(l: &label::Label) -> Diagnostic<FileId> {
+    pub fn contract_bind_loc(l: &label::Label) -> Diagnostic<FileId> {
         Diagnostic::note().with_labels(vec![Label::primary(
             l.span.src_id,
             l.span.start.to_usize()..l.span.end.to_usize(),
         )
         .with_message("bound here")])
+    }
+
+    /// Generate codespan diagnostics from blame data. Mostly used by `into_diagnostics`
+    /// implementations.
+    ///
+    /// # Parameters
+    ///
+    /// The `msg_addendum` is used to customize the main error message. It's inserted between the
+    /// leading "contract broken by .." and the custom contract diagnostic message in tail
+    /// position.
+    pub fn blame_diagnostics(
+        files: &mut Files<String>,
+        stdlib_ids: Option<&Vec<FileId>>,
+        mut label: label::Label,
+        evaluated_arg: Option<RichTerm>,
+        call_stack: &CallStack,
+        msg_addendum: &str,
+    ) -> Vec<Diagnostic<FileId>> {
+        use std::fmt::Write;
+
+        let mut diagnostics = Vec::new();
+
+        // Contract diagnostics are stacked up in order, which means the last one is
+        // usually the latest/most precise/most relevant. We ignore empty diagnostics and
+        // iterate in reverse order, to show the most relevant diagnostics first.
+        let mut contract_diagnostics = std::mem::take(&mut label.diagnostics)
+            .into_iter()
+            .rev()
+            .filter(|diag| !label::ContractDiagnostic::is_empty(diag));
+        let head_contract_diagnostic = contract_diagnostics.next();
+
+        // diagnostics.extend(label.diagnostics.into_iter().map(Diagnostic::from));
+        // // Contract diagnostics are pushed in-order: usually, the last one is the most
+        // // precise/relevant one. Thus, we want to show them in reverse order.
+        // diagnostics.reverse();
+
+        // We are going to work on the first diagnostic, so we ensure there is always one.
+        // if diagnostics.is_empty() {
+        //     diagnostics.push(Diagnostic::error());
+        // }
+
+        let mut msg = format!("{}{msg_addendum}", title(&label));
+
+        if let Some(contract_msg) = head_contract_diagnostic
+            .as_ref()
+            .and_then(|diag| diag.message.as_ref())
+        {
+            write!(&mut msg, ": {}", &super::escape(contract_msg)).unwrap();
+        }
+
+        let contract_notes = head_contract_diagnostic
+            .map(|diag| diag.notes)
+            .unwrap_or_default();
+        let (path_label, notes_higher_order) = report_ty_path(&label, files);
+
+        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
+
+        // If there are notes in the head contract diagnostic, we build the first
+        // diagnostic using them and will put potential generated notes on higher-order
+        // contracts in a following diagnostic.
+        if !contract_notes.is_empty() {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_message(msg)
+                    .with_labels(labels)
+                    .with_notes(contract_notes),
+            );
+
+            if !notes_higher_order.is_empty() {
+                diagnostics.push(
+                    Diagnostic::note()
+                        .with_message("this is a function fonctract violiation")
+                        .with_notes(notes_higher_order),
+                );
+            }
+        } else {
+            diagnostics.push(
+                Diagnostic::error()
+                    .with_message(msg)
+                    .with_labels(labels)
+                    .with_notes(notes_higher_order),
+            );
+        }
+
+        diagnostics.push(contract_bind_loc(&label));
+
+        for ctr_diag in contract_diagnostics {
+            let mut msg = String::from("from a parent contract violiation");
+
+            if let Some(msg_contract) = ctr_diag.message {
+                msg.push_str(": ");
+                msg.push_str(&super::escape(&msg_contract));
+            }
+
+            diagnostics.push(
+                Diagnostic::note()
+                    .with_message(msg)
+                    .with_notes(ctr_diag.notes),
+            );
+        }
+
+        match stdlib_ids {
+            Some(id) if !ty_path::has_no_dom(&label.path) => {
+                diagnostics.extend_with_call_stack(id, call_stack)
+            }
+            _ => (),
+        };
+
+        diagnostics
     }
 }
 

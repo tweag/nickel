@@ -1692,11 +1692,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::Tag() => match_sharedterm! {t1, with {
                     Term::Str(s) => match_sharedterm!{t2, with {
-                                Term::Lbl(l) => {
-                                    let mut l = l;
-                                    l.tag = s;
+                                Term::Lbl(label) => {
+                                    let mut label = label;
+                                    label.set_diagnostic_message(s);
+
                                     Ok(Closure::atomic_closure(RichTerm::new(
-                                        Term::Lbl(l),
+                                        Term::Lbl(label),
                                         pos_op_inh,
                                     )))
                                 }
