@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    destructuring::{Match, RecordPattern},
+    destructuring::{FieldPattern, Match, RecordPattern},
     identifier::Ident,
     mk_uty_row,
     types::{RecordRowF, RecordRowsF, TypeF},
@@ -58,11 +58,16 @@ fn build_pattern_type(
             id: *id,
             types: Box::new(new_leaf_type(state, leaf_type)),
         },
-        Match::Assign(id, _, (_, None)) => RecordRowF {
+        Match::Assign(id, _, FieldPattern::Ident(_)) => RecordRowF {
             id: *id,
             types: Box::new(new_leaf_type(state, leaf_type)),
         },
-        Match::Assign(id, _, (_, Some(r_pat))) => {
+        Match::Assign(
+            id,
+            _,
+            FieldPattern::RecordPattern(r_pat)
+            | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
+        ) => {
             let row_tys = build_pattern_type(state, r_pat, leaf_type);
             let ty = UnifType::Concrete(TypeF::Record(row_tys));
             RecordRowF {
@@ -100,32 +105,42 @@ pub fn inject_pattern_variables(
             let ty = type_map.get_type(id);
             env.insert(*id, ty);
         }
-        Match::Assign(id, _, (bind_id, pat)) => {
+        Match::Assign(id, _, FieldPattern::Ident(bind_id)) => {
+            let ty = type_map.get_type(id);
+            env.insert(*bind_id, ty);
+        }
+        Match::Assign(id, _, FieldPattern::RecordPattern(pat)) => {
             let ty = type_map.get_type(id);
 
-            // If we don't have a `bind_id`, we can infer that `id` is
-            // an intermediate value that isn't accessible from the code.
-            // e.g. the `foo` in a binding like:
+            // Since we don't have a `bind_id` in this branch,
+            // we can infer that `id` is an intermediate value that
+            // isn't accessible from the code. e.g. the `foo` in a
+            // binding like:
             //
             // ```
             //   let { foo = { bar = baz } } = { foo.bar = 1 } in ...
             // ```
             //
             // As such, we don't need to add it to the environment.
-            if let Some(id) = bind_id {
-                env.insert(*id, ty.clone());
-            }
 
-            // A non-None `pat` here means we have a nested destructuring,
-            // so we recursively call this function.
-            if let Some(pat) = pat {
-                let UnifType::Concrete(TypeF::Record(rs)) = ty else {
-                            unreachable!("since this is a destructured record, \
-                                its type was constructed by build_pattern_ty, \
-                                so it must be a concrete record type")
-                        };
-                inject_pattern_variables(state, env, pat, rs)
-            }
+            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+                unreachable!("since this is a destructured record, \
+                              its type was constructed by build_pattern_ty, \
+                              which means it must be a concrete record type")
+            };
+            inject_pattern_variables(state, env, pat, rs)
+        }
+        Match::Assign(id, _, FieldPattern::AliasedRecordPattern { alias, pattern }) => {
+            let ty = type_map.get_type(id);
+
+            env.insert(*alias, ty.clone());
+
+            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+                unreachable!("since this is a destructured record, \
+                              its type was constructed by build_pattern_ty, \
+                              which means it must be a concrete record type")
+            };
+            inject_pattern_variables(state, env, pattern, rs)
         }
     });
 
