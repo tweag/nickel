@@ -1182,11 +1182,11 @@ mod blame_error {
     }
 
     pub trait ExtendWithCallStack {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &Vec<FileId>, call_stack: &CallStack);
+        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack);
     }
 
     impl ExtendWithCallStack for Vec<Diagnostic<FileId>> {
-        fn extend_with_call_stack(&mut self, stdlib_ids: &Vec<FileId>, call_stack: &CallStack) {
+        fn extend_with_call_stack(&mut self, stdlib_ids: &[FileId], call_stack: &CallStack) {
             let (calls, curr_call) = call_stack.group_by_calls(stdlib_ids);
             let diag_curr_call = curr_call.map(|cdescr| {
                 let name = cdescr
