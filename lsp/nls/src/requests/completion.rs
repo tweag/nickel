@@ -57,7 +57,7 @@ impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
             ident: Ident::from(ident),
-            ty: Types::with_default_post(TypeF::Dyn),
+            ty: Types::with_default_pos(TypeF::Dyn),
             meta: None,
         }
     }
