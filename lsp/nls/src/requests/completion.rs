@@ -465,7 +465,7 @@ fn collect_record_info(
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
             match (&item.kind, &ty.ty) {
                 // Get record fields from static type info
-                (_, TypeF::Record(rrows)) => find_fields_from_rrows(&rrows, path, &info),
+                (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, &info),
                 (
                     TermKind::Declaration {
                         value: ValueState::Known(body_id),
