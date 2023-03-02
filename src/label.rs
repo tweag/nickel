@@ -477,8 +477,6 @@ impl Label {
 impl Default for Label {
     fn default() -> Label {
         Label {
-
-
             types: Rc::new(Types::from(TypeF::Dyn)),
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),
