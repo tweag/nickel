@@ -477,15 +477,9 @@ impl Label {
 impl Default for Label {
     fn default() -> Label {
         Label {
-<<<<<<< HEAD
-            types: Rc::new(Types(TypeF::Dyn)),
-=======
-            types: Rc::new(Types {
-                ty: TypeF::Dyn,
-                pos: TermPos::None,
-            }),
-            tag: "".to_string(),
->>>>>>> bedbab36 (Add `pos` field to all `Type`, and fix for all modules.)
+
+
+            types: Rc::new(Types::from(TypeF::Dyn)),
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),
                 start: 0.into(),
