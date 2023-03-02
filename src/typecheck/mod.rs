@@ -1734,10 +1734,7 @@ fn field_apparent_type(
                 .as_ref()
                 .map(|v| apparent_type(v.as_ref(), env, resolver))
         })
-        .unwrap_or(ApparentType::Approximated(Types {
-            ty: TypeF::Dyn,
-            pos: TermPos::None,
-        }))
+        .unwrap_or(ApparentType::Approximated(Types::with_default_pos(TypeF::Dyn)))
 }
 
 /// Determine the apparent type of a let-bound expression.
