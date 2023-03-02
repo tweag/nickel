@@ -459,10 +459,7 @@ impl UnifType {
                     pos: TermPos::None,
                 }
             }
-            UnifType::Contract(t, _) => Types {
-                ty: TypeF::Flat(t),
-                pos: TermPos::None,
-            },
+            UnifType::Contract(t, _) => Types::with_default_pos(TypeF::Flat(t)),
         }
     }
 
