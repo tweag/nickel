@@ -562,9 +562,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 id_mapping.insert(*id, index);
             });
 
-        fn transform_wildcard(wildcars: &[Types], t: Types) -> Types {
+        fn transform_wildcard(wildcards: &[Types], t: Types) -> Types {
             match t.ty {
-                TypeF::Wildcard(i) => wildcars.get(i).unwrap_or(&t).clone(),
+                TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&t).clone(),
                 _ => t,
             }
         }
