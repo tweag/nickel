@@ -249,10 +249,7 @@ pub mod ty_path {
                     "span: current type path element indicates to go to field `{}`,\
 but this field doesn't exist in {}",
                     ident,
-                    Types {
-                        ty: TypeF::Record(rows.clone()),
-                        pos: TermPos::None
-                    }
+                    Types::with_default_pos(TypeF::Record(rows.clone())),
                 )
             }
             (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().ty == TypeF::Dyn =>
