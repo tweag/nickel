@@ -439,10 +439,7 @@ impl UnifType {
         match self {
             UnifType::UnifVar(p) => match table.root_type(p) {
                 t @ UnifType::Concrete(_) => t.into_type(table),
-                _ => Types {
-                    ty: TypeF::Dyn,
-                    pos: TermPos::None,
-                },
+                _ => Types::with_default_pos(TypeF::Dyn),
             },
             UnifType::Constant(_) => Types {
                 ty: TypeF::Dyn,
