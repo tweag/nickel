@@ -54,10 +54,7 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 
 /// Get the inferred type for a wildcard, or `Dyn` if no type was inferred.
 fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
-    wildcards.get(id).cloned().unwrap_or(Types {
-        ty: TypeF::Dyn,
-        pos: TermPos::None,
-    })
+    wildcards.get(id).cloned().unwrap_or(Types::with_default_pos(TypeF::Dyn))
 }
 
 trait SubstWildcard {
