@@ -48,10 +48,7 @@ impl From<Ident> for IdentWithType {
     fn from(ident: Ident) -> Self {
         IdentWithType {
             ident,
-            ty: Types {
-                ty: TypeF::Dyn,
-                pos: TermPos::None,
-            },
+            ty: Types::with_default_pos(TypeF::Dyn),
             meta: None,
         }
     }
