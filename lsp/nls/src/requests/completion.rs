@@ -731,10 +731,7 @@ mod tests {
             env: Environment::new(),
             id,
             pos: TermPos::None,
-            ty: Types {
-                ty: TypeF::Dyn,
-                pos: TermPos::None,
-            },
+            ty: Types::with_default_pos(TypeF::Dyn),
             kind,
             metadata,
         }
