@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 /// A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
@@ -16,6 +16,11 @@ pub enum IncNodeState {
     Evaluated,
 }
 
+pub struct DependencyLink {
+    id: Ident,
+    dependency: CacheIndex,
+}
+
 /// A node in the dependent computation graph stored in [IncCache].
 #[derive(Debug, Clone)]
 pub struct IncNode {
@@ -28,9 +33,9 @@ pub struct IncNode {
     // The state of the node.
     state: IncNodeState,
     // Forward links to dependencies.
-    fwdlinks: Vec<CacheIndex>,
+    fwdlinks: Vec<DependencyLink>,
     // Backlinks to nodes depending on this node.
-    backlinks: Vec<CacheIndex>,
+    backlinks: Vec<DependencyLink>,
 }
 
 impl IncNode {
@@ -101,7 +106,7 @@ impl IncCache {
     }
 
     fn propagate_dirty(&mut self, idx: CacheIndex) {
-        let mut node = self.store.get_mut(idx).unwrap().clone();
+        let mut node = self.store.get_mut(idx).unwrap();
         node.cached = None;
         node.state = IncNodeState::Suspended;
 
@@ -123,6 +128,38 @@ impl IncCache {
                     .filter(|x| !visited.contains(x)),
             )
         }
+    }
+
+    fn propagate_revert2(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
+
+    }
+
+    fn propagate_revert(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
+        let mut nodes_reverted = HashMap::new();
+
+        let mut visited = HashSet::new();
+        let mut stack = vec![idx];
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i);
+
+            let idx_reverted = self.revert(&idx);
+            //FIXME: use the actual node's id
+            let node_id = Ident::from("TODO!"); 
+            nodes_reverted.insert(node_id, idx_reverted);
+
+            let current_node = self.store.get(i).unwrap();
+
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .filter(|x| !visited.contains(x)),
+            )
+        }
+
+        nodes_reverted
     }
 }
 
