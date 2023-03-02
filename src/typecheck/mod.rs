@@ -1709,10 +1709,7 @@ impl From<ApparentType> for Types {
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types {
-                ty: TypeF::Dyn,
-                pos: TermPos::None,
-            }),
+            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types::with_default_pos(TypeF::Dyn)),
         }
     }
 }
