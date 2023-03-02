@@ -184,10 +184,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
                     GenericUnifRecordRows::try_into,
                     UnifEnumRows::try_into,
                 )?;
-                Ok(Types {
-                    ty: converted,
-                    pos: TermPos::None,
-                })
+                Ok(Types::with_default_pos(converted))
             }
             GenericUnifType::Contract(t, _) => {
                 let pos = t.pos;
