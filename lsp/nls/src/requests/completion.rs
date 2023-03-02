@@ -10,7 +10,6 @@ use lsp_types::{
 };
 use nickel_lang::{
     identifier::Ident,
-    position::TermPos,
     term::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
