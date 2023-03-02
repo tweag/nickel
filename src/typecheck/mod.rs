@@ -448,10 +448,7 @@ impl UnifType {
                     |urrows| urrows.into_rrows(table),
                     |uerows| uerows.into_erows(table),
                 );
-                Types {
-                    ty: mapped,
-                    pos: TermPos::None,
-                }
+                Types::with_default_pos(mapped)
             }
             UnifType::Contract(t, _) => Types::with_default_pos(TypeF::Flat(t)),
         }
