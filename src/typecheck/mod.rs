@@ -1705,11 +1705,16 @@ pub enum ApparentType {
 impl From<ApparentType> for Types {
     fn from(at: ApparentType) -> Self {
         match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types::with_default_pos(TypeF::Dyn),
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
+                Types::with_default_pos(TypeF::Dyn)
+            }
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types::with_default_pos(TypeF::Dyn)),
+            ApparentType::FromEnv(uty) => uty
+                .try_into()
+                .ok()
+                .unwrap_or(Types::with_default_pos(TypeF::Dyn)),
         }
     }
 }
@@ -1734,7 +1739,9 @@ fn field_apparent_type(
                 .as_ref()
                 .map(|v| apparent_type(v.as_ref(), env, resolver))
         })
-        .unwrap_or(ApparentType::Approximated(Types::with_default_pos(TypeF::Dyn)))
+        .unwrap_or(ApparentType::Approximated(Types::with_default_pos(
+            TypeF::Dyn,
+        )))
 }
 
 /// Determine the apparent type of a let-bound expression.

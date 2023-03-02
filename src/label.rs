@@ -48,7 +48,6 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
-        position::TermPos,
         types::{RecordRowF, RecordRowsIteratorItem, TypeF, Types},
     };
 
