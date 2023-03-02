@@ -336,10 +336,7 @@ fn find_fields_from_term(
                     ident: *ident,
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
-                    ty: Types {
-                        ty: TypeF::Dyn,
-                        pos: TermPos::None,
-                    },
+                    ty: Types::with_default_pos(TypeF::Dyn),
                     meta: Some(field.metadata.clone()),
                 })
                 .collect(),
