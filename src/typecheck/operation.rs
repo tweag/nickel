@@ -220,6 +220,9 @@ pub fn get_uop_type(
             let ty = UnifType::UnifVar(state.table.fresh_type_var_id());
             (mk_uniftype::str(), mk_uty_arrow!(ty.clone(), ty))
         }
+        // Morally: Lbl -> Lbl
+        // Actual: Dyn -> Dyn
+        UnaryOp::LabelPushDiag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
     })
 }
 
@@ -405,6 +408,27 @@ pub fn get_bop_type(
                 mk_uty_arrow!(mk_uniftype::dynamic(), ty_dict),
             )
         }
+        // Morally: Str -> Lbl -> Lbl
+        // Actual: Str -> Dyn -> Dyn
+        BinaryOp::LabelWithMsg() => (
+            mk_uniftype::str(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+        ),
+        // Morally: Array Str -> Lbl -> Lbl
+        // Actual: Array Str -> Dyn -> Dyn
+        BinaryOp::LabelWithNotes() => (
+            mk_uniftype::array(TypeF::Str),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+        ),
+        // Morally: Str -> Lbl -> Lbl
+        // Actual: Str -> Dyn -> Dyn
+        BinaryOp::LabelAppendNote() => (
+            mk_uniftype::str(),
+            mk_uniftype::dynamic(),
+            mk_uniftype::dynamic(),
+        ),
     })
 }
 

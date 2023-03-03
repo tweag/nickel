@@ -937,6 +937,12 @@ impl From<SharedTerm> for Term {
     }
 }
 
+impl From<Term> for SharedTerm {
+    fn from(t: Term) -> Self {
+        SharedTerm::new(t)
+    }
+}
+
 impl Deref for SharedTerm {
     type Target = Term;
 
@@ -1162,6 +1168,13 @@ pub enum UnaryOp {
     /// on the top of the stack. Operationally the same as the identity
     /// function
     Trace(),
+
+    /// Push a new, fresh diagnostic on the diagnostic stack of a contract label. This has the
+    /// effect of saving the current diagnostic, as following calls to primop that modifies the
+    /// label's current diagnostic will modify the fresh one, istead of the one being stacked.
+    /// This primop shouldn't be used directly by user a priori, but is used internally during e.g.
+    /// contract application.
+    LabelPushDiag(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
@@ -1319,6 +1332,13 @@ pub enum BinaryOp {
     /// contract `C` attached to each of them. Then uses `NAryOp::MergeContract` to
     /// apply this record contract to `R`.
     DictionaryAssume(),
+
+    /// Set the message of the current diagnostic of a label.
+    LabelWithMsg(),
+    /// Set the notes of the current diagnostic of a label.
+    LabelWithNotes(),
+    /// Append a note to the current diagnostic of a label.
+    LabelAppendNote(),
 }
 
 impl BinaryOp {

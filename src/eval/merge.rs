@@ -242,22 +242,23 @@ pub fn merge<C: Cache>(
             } = hashmap::split(r1.fields, r2.fields);
 
             match mode {
-                MergeMode::Contract(mut lbl) if !r2.attrs.open && !left.is_empty() => {
+                MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
                     let fields: Vec<String> =
                         left.keys().map(|field| format!("`{field}`")).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     let fields_list = fields.join(",");
 
-                    lbl.set_diagnostic_message(format!("extra field{plural} {fields_list}"));
-                    lbl.set_diagnostic_notes(vec![
-                        format!("Have you misspelled a field?"),
-                        String::from("The record contract might also be too strict. By default, record contracts exclude any field which is not listed.
+                    let label = label
+                        .with_diagnostic_message(format!("extra field{plural} {fields_list}"))
+                        .with_diagnostic_notes(vec![
+                            format!("Have you misspelled a field?"),
+                            String::from("The record contract might also be too strict. By default, record contracts exclude any field which is not listed.
 Append `, ..` at the end of the record contract, as in `{some_field | SomeContract, ..}`, to make it accept extra fields."),
-                    ]);
+                        ]);
 
                     return Err(EvalError::BlameError {
-                        evaluated_arg: lbl.get_evaluated_arg(cache),
-                        label: lbl,
+                        evaluated_arg: label.get_evaluated_arg(cache),
+                        label,
                         call_stack: CallStack::new(),
                     });
                 }

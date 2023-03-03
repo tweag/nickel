@@ -661,6 +661,7 @@ UOp: UnaryOp = {
     "rec_default_op" => UnaryOp::RecDefault(),
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
     "trace" => UnaryOp::Trace(),
+    "label_push_diag" => UnaryOp::LabelPushDiag(),
 };
 
 MatchCase: MatchCase = {
@@ -847,6 +848,9 @@ BOpPre: BinaryOp = {
         pending_contracts: Default::default(),
     },
     "record_remove" => BinaryOp::DynRemove(),
+    "label_with_msg" => BinaryOp::LabelWithMsg(),
+    "label_with_notes" => BinaryOp::LabelWithNotes(),
+    "label_append_note" => BinaryOp::LabelAppendNote(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -1045,6 +1049,10 @@ extern {
         "str_from" => Token::Normal(NormalToken::ToStr),
         "num_from" => Token::Normal(NormalToken::NumFromStr),
         "enum_from" => Token::Normal(NormalToken::EnumFromStr),
+        "label_with_msg" => Token::Normal(NormalToken::LabelWithMsg),
+        "label_with_notes" => Token::Normal(NormalToken::LabelWithNotes),
+        "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
+        "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),
