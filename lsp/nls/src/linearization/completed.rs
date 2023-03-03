@@ -168,9 +168,7 @@ impl Completed {
             if let Some(doc) = doc {
                 extra.push(doc.to_owned());
             }
-            if let Some(types) = &annotation.types {
-                extra.push(types.label.tag.to_string());
-            }
+
             if let Some(contracts) = annotation.contracts_to_string() {
                 extra.push(contracts);
             }
