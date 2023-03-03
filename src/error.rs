@@ -1351,7 +1351,7 @@ is None but last_arrow_elem is Some"),
             if !notes_higher_order.is_empty() {
                 diagnostics.push(
                     Diagnostic::note()
-                        .with_message("due to a function contract violiation")
+                        .with_message("due to a function contract violation")
                         .with_notes(notes_higher_order),
                 );
             }
@@ -1367,7 +1367,7 @@ is None but last_arrow_elem is Some"),
         diagnostics.push(contract_bind_loc(&label));
 
         for ctr_diag in contract_diagnostics {
-            let mut msg = String::from("from a parent contract violiation");
+            let mut msg = String::from("from a parent contract violation");
 
             if let Some(msg_contract) = ctr_diag.message {
                 msg.push_str(": ");
