@@ -825,15 +825,16 @@ impl RecordRows {
     }
 }
 
-impl Types {
-    /// Create a type with the specified `ty`, and has a `None` position.
-    pub fn with_default_pos(ty: TypeF<Box<Types>, RecordRows, EnumRows>) -> Types {
+impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
+    fn from(ty: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
         Types {
             ty,
             pos: TermPos::None,
         }
     }
+}
 
+impl Types {
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `Assume` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -941,7 +942,7 @@ impl Traverse<Types> for Types {
                     state,
                 )?;
 
-                Ok(Types::with_default_pos(inner))
+                Ok(Types::from(inner))
             }
             TraverseOrder::BottomUp => {
                 let traversed_depth_first = self.ty.try_map_state(
@@ -951,7 +952,7 @@ impl Traverse<Types> for Types {
                     state,
                 )?;
 
-                f(Types::with_default_pos(traversed_depth_first), state)
+                f(Types::from(traversed_depth_first), state)
             }
         }
     }
@@ -963,9 +964,7 @@ impl Traverse<RichTerm> for Types {
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let f_on_type = |ty: Types, s: &mut S| match ty.ty {
-            TypeF::Flat(t) => t
-                .traverse(f, s, order)
-                .map(|t| Types::with_default_pos(TypeF::Flat(t))),
+            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types::from(TypeF::Flat(t))),
             _ => Ok(ty),
         };
 

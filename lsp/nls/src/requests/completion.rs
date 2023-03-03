@@ -47,7 +47,7 @@ impl From<Ident> for IdentWithType {
     fn from(ident: Ident) -> Self {
         IdentWithType {
             ident,
-            ty: Types::with_default_pos(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -57,7 +57,7 @@ impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
             ident: Ident::from(ident),
-            ty: Types::with_default_pos(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -335,7 +335,7 @@ fn find_fields_from_term(
                     ident: *ident,
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
-                    ty: Types::with_default_pos(TypeF::Dyn),
+                    ty: Types::from(TypeF::Dyn),
                     meta: Some(field.metadata.clone()),
                 })
                 .collect(),
@@ -730,7 +730,7 @@ mod tests {
             env: Environment::new(),
             id,
             pos: TermPos::None,
-            ty: Types::with_default_pos(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             kind,
             metadata,
         }

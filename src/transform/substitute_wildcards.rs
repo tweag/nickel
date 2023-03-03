@@ -56,7 +56,7 @@ fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
     wildcards
         .get(id)
         .cloned()
-        .unwrap_or(Types::with_default_pos(TypeF::Dyn))
+        .unwrap_or(Types::from(TypeF::Dyn))
 }
 
 trait SubstWildcard {

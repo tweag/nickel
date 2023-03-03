@@ -184,7 +184,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
                     GenericUnifRecordRows::try_into,
                     UnifEnumRows::try_into,
                 )?;
-                Ok(Types::with_default_pos(converted))
+                Ok(Types::from(converted))
             }
             GenericUnifType::Contract(t, _) => {
                 let pos = t.pos;
@@ -450,7 +450,7 @@ impl UnifType {
                 );
                 Types::with_default_pos(mapped)
             }
-            UnifType::Contract(t, _) => Types::with_default_pos(TypeF::Flat(t)),
+            UnifType::Contract(t, _) => Types::from(TypeF::Flat(t)),
         }
     }
 
@@ -1696,16 +1696,11 @@ pub enum ApparentType {
 impl From<ApparentType> for Types {
     fn from(at: ApparentType) -> Self {
         match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => {
-                Types::with_default_pos(TypeF::Dyn)
-            }
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types::from(TypeF::Dyn),
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(uty) => uty
-                .try_into()
-                .ok()
-                .unwrap_or(Types::with_default_pos(TypeF::Dyn)),
+            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types::from(TypeF::Dyn)),
         }
     }
 }
@@ -1730,9 +1725,7 @@ fn field_apparent_type(
                 .as_ref()
                 .map(|v| apparent_type(v.as_ref(), env, resolver))
         })
-        .unwrap_or(ApparentType::Approximated(Types::with_default_pos(
-            TypeF::Dyn,
-        )))
+        .unwrap_or(ApparentType::Approximated(Types::from(TypeF::Dyn)))
 }
 
 /// Determine the apparent type of a let-bound expression.
@@ -1780,21 +1773,17 @@ pub fn apparent_type(
                 .first()
                 .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
                 .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-            Term::Num(_) => ApparentType::Inferred(Types::with_default_pos(TypeF::Num)),
-            Term::Bool(_) => ApparentType::Inferred(Types::with_default_pos(TypeF::Bool)),
-            Term::SealingKey(_) => ApparentType::Inferred(Types::with_default_pos(TypeF::Sym)),
-            Term::Str(_) | Term::StrChunks(_) => {
-                ApparentType::Inferred(Types::with_default_pos(TypeF::Str))
-            }
-            Term::Array(..) => ApparentType::Approximated(Types::with_default_pos(TypeF::Array(
-                Box::new(Types::with_default_pos(TypeF::Dyn)),
-            ))),
+            Term::Num(_) => ApparentType::Inferred(Types::from(TypeF::Num)),
+            Term::Bool(_) => ApparentType::Inferred(Types::from(TypeF::Bool)),
+            Term::SealingKey(_) => ApparentType::Inferred(Types::from(TypeF::Sym)),
+            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types::from(TypeF::Str)),
+            Term::Array(..) => ApparentType::Approximated(Types::from(TypeF::Array(Box::new(
+                Types::from(TypeF::Dyn),
+            )))),
             Term::Var(id) => env
                 .and_then(|envs| envs.get(id).cloned())
                 .map(ApparentType::FromEnv)
-                .unwrap_or(ApparentType::Approximated(Types::with_default_pos(
-                    TypeF::Dyn,
-                ))),
+                .unwrap_or(ApparentType::Approximated(Types::from(TypeF::Dyn))),
             Term::ResolvedImport(file_id) => match resolver {
                 Some(r) if !imports_seen.contains(file_id) => {
                     imports_seen.insert(*file_id);
@@ -1804,9 +1793,9 @@ pub fn apparent_type(
                         .expect("Internal error: resolved import not found during typechecking.");
                     apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
                 }
-                _ => ApparentType::Approximated(Types::with_default_pos(TypeF::Dyn)),
+                _ => ApparentType::Approximated(Types::from(TypeF::Dyn)),
             },
-            _ => ApparentType::Approximated(Types::with_default_pos(TypeF::Dyn)),
+            _ => ApparentType::Approximated(Types::from(TypeF::Dyn)),
         }
     }
 
