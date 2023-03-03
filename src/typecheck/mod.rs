@@ -441,7 +441,7 @@ impl UnifType {
                 t @ UnifType::Concrete(_) => t.into_type(table),
                 _ => Types::from(TypeF::Dyn),
             },
-            UnifType::Constant(_) => Types::with_default_pos(TypeF::Dyn),
+            UnifType::Constant(_) => Types::from(TypeF::Dyn),
             UnifType::Concrete(t) => {
                 let mapped = t.map(
                     |btyp| Box::new(btyp.into_type(table)),
