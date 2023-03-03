@@ -298,7 +298,7 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = "Array" <t: WithPos<<AsType<RecordOperand>>>> =>
+TypeArray: Types = "Array" <t: AsType<RecordOperand>> =>
     Types::from(TypeF::Array(Box::new(t)));
 
 RecordOperand: UniTerm = {
