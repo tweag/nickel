@@ -298,15 +298,8 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = {
-     <l: @L> "Array" <t: AsType<RecordOperand>>  <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        Types {
-            ty: TypeF::Array(Box::new(t)),
-            pos, 
-        }
-    }
-};
+TypeArray: Types = "Array" <t: WithPos<<AsType<RecordOperand>>>> =>
+    Types::from(TypeF::Array(Box::new(t)));
 
 RecordOperand: UniTerm = {
     Atom,
@@ -828,14 +821,8 @@ InfixExpr: UniTerm = {
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 
     #[precedence(level="11")] #[assoc(side="right")]
-    <l: @L> <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> <r: @R> =>
-       {
-            let pos = mk_pos(src_id, l, r);
-            UniTerm::from(Types {
-                ty:TypeF::Arrow(Box::new(s), Box::new(t)), 
-                pos,
-            })
-        }
+    <s: WithPos<AsType<InfixExpr>>> "->" <t: WithPos<AsType<InfixExpr>>> =>
+        UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
@@ -904,7 +891,7 @@ TypeAtom: Types = {
         let pos = mk_pos(src_id, l, r);
         Types { ty: TypeF::Enum(ty), pos }
     },
-    <l: @L> "{" "_" ":" <t: Types> "}" <r: @R> => {  
+    <l: @L> "{" "_" ":" <t: WithPos<Types>> "}" <r: @R> => {  
         let pos = mk_pos(src_id, l, r);
         Types { 
             ty:TypeF::Dict(Box::new(t)), 

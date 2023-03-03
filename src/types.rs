@@ -835,6 +835,11 @@ impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
 }
 
 impl Types {
+    /// Creates a `Type` with the specified position
+    pub fn with_pos(self, pos: TermPos) -> Types {
+        Types { pos, ..self }
+    }
+
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `Assume` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
