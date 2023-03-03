@@ -16,9 +16,10 @@ pub enum IncNodeState {
     Evaluated,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DependencyLink {
     id: Ident,
-    dependency: CacheIndex,
+    idx: CacheIndex,
 }
 
 /// A node in the dependent computation graph stored in [IncCache].
@@ -100,8 +101,8 @@ impl IncCache {
     fn update_backlinks(&mut self, idx: CacheIndex) {
         let node = self.store.get(idx).unwrap().clone();
         for i in node.fwdlinks {
-            let n = self.store.get_mut(i).unwrap();
-            n.backlinks.push(idx);
+            let n = self.store.get_mut(i.idx).unwrap();
+            n.backlinks.push(DependencyLink { id:i.id, idx: idx });
         }
     }
 
@@ -117,22 +118,20 @@ impl IncCache {
 
         while !stack.is_empty() {
             let i = stack.pop().unwrap();
-            visited.insert(i);
-            let mut current_node = self.store.get_mut(i).unwrap();
+            visited.insert(i.idx);
+            let mut current_node = self.store.get_mut(i.idx).unwrap();
             current_node.cached = None;
             current_node.state = IncNodeState::Suspended;
             stack.extend(
                 current_node
                     .backlinks
                     .iter()
-                    .filter(|x| !visited.contains(x)),
+                    .filter(|x| !visited.contains(&x.idx)),
             )
         }
     }
 
-    fn propagate_revert2(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
-
-    }
+    // fn propagate_revert2(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {}
 
     fn propagate_revert(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
         let mut nodes_reverted = HashMap::new();
@@ -155,6 +154,7 @@ impl IncCache {
                 current_node
                     .backlinks
                     .iter()
+                    .map(|x| x.idx)
                     .filter(|x| !visited.contains(x)),
             )
         }
@@ -303,7 +303,7 @@ impl Cache for IncCache {
                 FieldDeps::Known(deps) if deps.is_empty() => (),
                 FieldDeps::Known(deps) => {
                     let deps = rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned();
-                    node.fwdlinks = deps.clone().map(|(_, idx)| idx).collect();
+                    node.fwdlinks = deps.clone().map(|(id, idx)| DependencyLink { id, idx }).collect();
                     new_cached.env.extend(deps);
                 }
             },
