@@ -367,7 +367,7 @@ pub struct Label {
 }
 
 /// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
-/// customized contract error messages, and provide more context than "a contract has failed".
+/// customize contract error messages, and provide more context than "a contract has failed".
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ContractDiagnostic {
     /// The main error message tag to be printed together with the error message.
