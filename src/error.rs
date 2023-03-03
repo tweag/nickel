@@ -1321,16 +1321,6 @@ is None but last_arrow_elem is Some"),
             .filter(|diag| !label::ContractDiagnostic::is_empty(diag));
         let head_contract_diagnostic = contract_diagnostics.next();
 
-        // diagnostics.extend(label.diagnostics.into_iter().map(Diagnostic::from));
-        // // Contract diagnostics are pushed in-order: usually, the last one is the most
-        // // precise/relevant one. Thus, we want to show them in reverse order.
-        // diagnostics.reverse();
-
-        // We are going to work on the first diagnostic, so we ensure there is always one.
-        // if diagnostics.is_empty() {
-        //     diagnostics.push(Diagnostic::error());
-        // }
-
         let mut msg = format!("{}{msg_addendum}", title(&label));
 
         if let Some(contract_msg) = head_contract_diagnostic
@@ -1361,7 +1351,7 @@ is None but last_arrow_elem is Some"),
             if !notes_higher_order.is_empty() {
                 diagnostics.push(
                     Diagnostic::note()
-                        .with_message("this is a function fonctract violiation")
+                        .with_message("due to a function contract violiation")
                         .with_notes(notes_higher_order),
                 );
             }
