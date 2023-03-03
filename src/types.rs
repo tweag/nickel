@@ -267,7 +267,7 @@ pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Types {
-    pub ty: TypeF<Box<Types>, RecordRows, EnumRows>,
+    pub types: TypeF<Box<Types>, RecordRows, EnumRows>,
     pub pos: TermPos,
 }
 
@@ -810,7 +810,7 @@ impl RecordRows {
         if path.len() == 1 {
             next
         } else {
-            match next.map(|ty| ty.ty) {
+            match next.map(|ty| ty.types) {
                 Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
                 _ => None,
             }
@@ -828,7 +828,7 @@ impl RecordRows {
 impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
     fn from(ty: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
         Types {
-            ty,
+            types: ty,
             pos: TermPos::None,
         }
     }
@@ -849,7 +849,7 @@ impl Types {
 
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
-        match &self.ty {
+        match &self.types {
             TypeF::Forall { body, .. } => body.is_function_type(),
             TypeF::Arrow(..) => true,
             _ => false,
@@ -873,7 +873,7 @@ impl Types {
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
 
-        let ctr = match self.ty {
+        let ctr = match self.types {
             TypeF::Dyn => contract::dynamic(),
             TypeF::Num => contract::num(),
             TypeF::Bool => contract::bool(),
@@ -925,7 +925,7 @@ impl Types {
     pub fn fmt_is_atom(&self) -> bool {
         use TypeF::*;
 
-        match &self.ty {
+        match &self.types {
             Dyn | Num | Bool | Str | Var(_) | Record(_) | Enum(_) => true,
             Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
@@ -940,7 +940,7 @@ impl Traverse<Types> for Types {
     {
         match order {
             TraverseOrder::TopDown => {
-                let inner = f(self, state)?.ty.try_map_state(
+                let inner = f(self, state)?.types.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
@@ -950,7 +950,7 @@ impl Traverse<Types> for Types {
                 Ok(Types::from(inner))
             }
             TraverseOrder::BottomUp => {
-                let traversed_depth_first = self.ty.try_map_state(
+                let traversed_depth_first = self.types.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
@@ -968,7 +968,7 @@ impl Traverse<RichTerm> for Types {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let f_on_type = |ty: Types, s: &mut S| match ty.ty {
+        let f_on_type = |ty: Types, s: &mut S| match ty.types {
             TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types::from(TypeF::Flat(t))),
             _ => Ok(ty),
         };
@@ -1014,7 +1014,7 @@ impl Display for EnumRows {
 
 impl Display for Types {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.ty {
+        match &self.types {
             TypeF::Dyn => write!(f, "Dyn"),
             TypeF::Num => write!(f, "Num"),
             TypeF::Bool => write!(f, "Bool"),
@@ -1035,7 +1035,7 @@ impl Display for Types {
                 let mut curr: &Types = body.as_ref();
                 write!(f, "forall {var}")?;
                 while let Types {
-                    ty: TypeF::Forall { var, ref body, .. },
+                    types: TypeF::Forall { var, ref body, .. },
                     ..
                 } = curr
                 {
@@ -1047,7 +1047,7 @@ impl Display for Types {
             TypeF::Enum(row) => write!(f, "[|{row}|]"),
             TypeF::Record(row) => write!(f, "{{{row}}}"),
             TypeF::Dict(ty) => write!(f, "{{_: {ty}}}"),
-            TypeF::Arrow(dom, codom) => match dom.ty {
+            TypeF::Arrow(dom, codom) => match dom.types {
                 TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
                 _ => write!(f, "{dom} -> {codom}"),
             },

@@ -288,10 +288,13 @@ g"#
         ),
         Err(TypecheckError::TypeMismatch(
             Types {
-                ty: TypeF::Arrow(_, _),
+                types: TypeF::Arrow(_, _),
                 ..
             },
-            Types { ty: TypeF::Dyn, .. },
+            Types {
+                types: TypeF::Dyn,
+                ..
+            },
             _
         ))
     );
@@ -308,11 +311,11 @@ fn locally_different_flat_types() {
         ),
         Err(TypecheckError::TypeMismatch(
             Types {
-                ty: TypeF::Flat(..),
+                types: TypeF::Flat(..),
                 ..
             },
             Types {
-                ty: TypeF::Flat(..),
+                types: TypeF::Flat(..),
                 ..
             },
             _

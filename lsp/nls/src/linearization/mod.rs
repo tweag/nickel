@@ -563,7 +563,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             });
 
         fn transform_wildcard(wildcards: &[Types], t: Types) -> Types {
-            match t.ty {
+            match t.types {
                 TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&t).clone(),
                 _ => t,
             }

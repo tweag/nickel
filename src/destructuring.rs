@@ -69,7 +69,7 @@ impl RecordPattern {
         let pos = TermPos::Original(self.span);
         LabeledType {
             types: Types {
-                ty: TypeF::Flat(
+                types: TypeF::Flat(
                     Term::Record(RecordData::new(
                         self.inner().into_iter().map(Match::as_binding).collect(),
                         RecordAttrs { open: is_open },

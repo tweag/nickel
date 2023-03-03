@@ -138,7 +138,7 @@ pub mod ty_path {
         // peek() returns a reference, and hence keeps a mutable borrow of `path_it` which forbids
         // to call to next() in the same region. This is why we need to split the match in two
         // different blocks.
-        let forall_offset = match (&ty.ty, path_it.peek()) {
+        let forall_offset = match (&ty.types, path_it.peek()) {
             (_, None) => {
                 let repr = format!("{ty}");
                 return PathSpan {
@@ -151,7 +151,7 @@ pub mod ty_path {
             (TypeF::Forall { .. }, Some(_)) => {
                 // The length of "forall" plus the final separating dot and whitespace ". "
                 let mut result = 8;
-                while let TypeF::Forall { var, body, .. } = &ty.ty {
+                while let TypeF::Forall { var, body, .. } = &ty.types {
                     // The length of the identifier plus the preceding whitespace
                     result += var.to_string().len() + 1;
                     ty = body.as_ref();
@@ -162,7 +162,7 @@ pub mod ty_path {
             _ => 0,
         };
 
-        match (&ty.ty, path_it.next()) {
+        match (&ty.types, path_it.next()) {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 // The potential shift of the start position of the domain introduced by the couple
                 // of parentheses around the domain. Parentheses are added when printing a function
@@ -170,7 +170,7 @@ pub mod ty_path {
                 // For example, `Arrow(Arrow(Num, Num), Num)` is rendered as "(Num -> Num) -> Num".
                 // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
                 // 0.
-                let paren_offset = match dom.ty {
+                let paren_offset = match dom.types {
                     TypeF::Arrow(_, _) => 1,
                     _ => 0,
                 };
@@ -251,7 +251,7 @@ but this field doesn't exist in {}",
                     Types::from(TypeF::Record(rows.clone())),
                 )
             }
-            (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().ty == TypeF::Dyn =>
+            (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().types == TypeF::Dyn =>
             // Dyn shouldn't be the target of any blame
             {
                 panic!("span(): unexpected blame of a dyn contract inside an array")

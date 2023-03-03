@@ -317,7 +317,7 @@ pub fn combine_match_annots(
             let dummy_annot = TypeAnnotation {
                 contracts: vec![LabeledType {
                     types: Types {
-                        ty: TypeF::Dyn,
+                        types: TypeF::Dyn,
                         pos: TermPos::Original(span),
                     },
                     label: Label {

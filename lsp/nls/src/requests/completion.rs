@@ -246,7 +246,7 @@ fn find_fields_from_type(
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    match &ty.ty {
+    match &ty.types {
         TypeF::Record(row) => find_fields_from_rrows(row, path, info),
         TypeF::Dict(ty) => match path.pop() {
             Some(..) => find_fields_from_type(ty, path, info),
@@ -271,11 +271,11 @@ fn find_fields_from_rrows(
 
         match type_of_current {
             Some(Types {
-                ty: TypeF::Record(rrows_current),
+                types: TypeF::Record(rrows_current),
                 ..
             }) => find_fields_from_rrows(&rrows_current, path, info),
             Some(Types {
-                ty: TypeF::Flat(term),
+                types: TypeF::Flat(term),
                 ..
             }) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
@@ -453,7 +453,7 @@ fn collect_record_info(
         .get_item(id, lin_cache)
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
-            match (&item.kind, &ty.ty) {
+            match (&item.kind, &ty.types) {
                 // Get record fields from static type info
                 (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, &info),
                 (

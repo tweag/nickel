@@ -189,7 +189,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
             GenericUnifType::Contract(t, _) => {
                 let pos = t.pos;
                 Ok(Types {
-                    ty: TypeF::Flat(t),
+                    types: TypeF::Flat(t),
                     pos,
                 })
             }
@@ -346,7 +346,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     /// [`GenericUnifType::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
     pub fn from_type(ty: Types, env: &E) -> Self {
-        match ty.ty {
+        match ty.types {
             TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
             ty => GenericUnifType::Concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
@@ -439,7 +439,7 @@ impl UnifType {
         match self {
             UnifType::UnifVar(p) => match table.root_type(p) {
                 t @ UnifType::Concrete(_) => t.into_type(table),
-                _ => Types::with_default_pos(TypeF::Dyn),
+                _ => Types::from(TypeF::Dyn),
             },
             UnifType::Constant(_) => Types::with_default_pos(TypeF::Dyn),
             UnifType::Concrete(t) => {
@@ -448,7 +448,7 @@ impl UnifType {
                     |urrows| urrows.into_rrows(table),
                     |uerows| uerows.into_erows(table),
                 );
-                Types::with_default_pos(mapped)
+                Types::from(mapped)
             }
             UnifType::Contract(t, _) => Types::from(TypeF::Flat(t)),
         }
@@ -968,7 +968,7 @@ fn walk_type<L: Linearizer>(
     mut linearizer: L,
     ty: &Types,
 ) -> Result<(), TypecheckError> {
-    match &ty.ty {
+    match &ty.types {
        TypeF::Dyn
        | TypeF::Num
        | TypeF::Bool
@@ -1658,10 +1658,10 @@ fn replace_wildcards_with_var(
         ))
     }
 
-    match ty.ty {
+    match ty.types {
         TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
-        _ => UnifType::Concrete(ty.ty.map_state(
+        _ => UnifType::Concrete(ty.types.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
             },
@@ -1837,7 +1837,7 @@ fn has_wildcards(ty: &Types) -> bool {
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
             &|ty: Types, has_wildcard| {
-                if ty.ty.is_wildcard() {
+                if ty.types.is_wildcard() {
                     *has_wildcard = true;
                 }
                 Ok(ty)

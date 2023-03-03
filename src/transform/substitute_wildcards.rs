@@ -68,7 +68,7 @@ impl SubstWildcard for Types {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Types {
         self.traverse::<_, _, Infallible>(
             &|ty: Types, _| {
-                if let TypeF::Wildcard(id) = ty.ty {
+                if let TypeF::Wildcard(id) = ty.types {
                     Ok(get_wildcard_type(wildcards, id))
                 } else {
                     Ok(ty)

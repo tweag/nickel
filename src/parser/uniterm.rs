@@ -80,13 +80,13 @@ impl TryFrom<UniTerm> for Types {
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         match ut.node {
             UniTermNode::Var(id) => Ok(Types {
-                ty: TypeF::Var(id),
+                types: TypeF::Var(id),
                 pos: ut.pos,
             }),
             UniTermNode::Record(r) => Types::try_from(r),
             UniTermNode::Types(ty) => Ok(ty),
             UniTermNode::Term(rt) => Ok(Types {
-                ty: TypeF::Flat(rt),
+                types: TypeF::Flat(rt),
                 pos: ut.pos,
             }),
         }
@@ -275,7 +275,7 @@ impl UniRecord {
                 },
             )?;
         Ok(Types {
-            ty: TypeF::Record(rrows),
+            types: TypeF::Record(rrows),
             pos: self.pos,
         })
     }
@@ -351,7 +351,7 @@ impl TryFrom<UniRecord> for Types {
             let pos = ur.pos;
             ur.clone().into_type_strict().or_else(|_| {
                 RichTerm::try_from(ur).map(|rt| Types {
-                    ty: TypeF::Flat(rt),
+                    types: TypeF::Flat(rt),
                     pos,
                 })
             })
@@ -513,7 +513,7 @@ impl FixTypeVars for Types {
         mut bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        match self.ty {
+        match self.types {
             TypeF::Dyn
             | TypeF::Num
             | TypeF::Bool
@@ -533,7 +533,7 @@ impl FixTypeVars for Types {
                 } else {
                     let id = *id;
                     let pos = id.pos;
-                    self.ty = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
+                    self.types = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
                 Ok(())
             }

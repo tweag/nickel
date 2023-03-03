@@ -863,10 +863,10 @@ NOpPre<ArgRule>: UniTerm = {
 }
 
 TypeBuiltin: Types = {
-    <l: @L> "Dyn" <r: @R> => Types { ty: TypeF::Dyn, pos: mk_pos(src_id, l, r) },
-    <l: @L> "Num" <r: @R>  => Types { ty: TypeF::Num, pos: mk_pos(src_id, l, r) },
-    <l: @L> "Bool" <r: @R>  => Types { ty: TypeF::Bool, pos: mk_pos(src_id, l, r) },
-    <l: @L> "Str" <r: @R>  => Types { ty: TypeF::Str, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Dyn" <r: @R> => Types { types: TypeF::Dyn, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Num" <r: @R>  => Types { types: TypeF::Num, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Bool" <r: @R>  => Types { types: TypeF::Bool, pos: mk_pos(src_id, l, r) },
+    <l: @L> "Str" <r: @R>  => Types { types: TypeF::Str, pos: mk_pos(src_id, l, r) },
 }
 
 TypeAtom: Types = {
@@ -889,12 +889,12 @@ TypeAtom: Types = {
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
         let pos = mk_pos(src_id, l, r);
-        Types { ty: TypeF::Enum(ty), pos }
+        Types { types: TypeF::Enum(ty), pos }
     },
     <l: @L> "{" "_" ":" <t: WithPos<Types>> "}" <r: @R> => {  
         let pos = mk_pos(src_id, l, r);
         Types { 
-            ty:TypeF::Dict(Box::new(t)), 
+            types:TypeF::Dict(Box::new(t)), 
             pos, 
         } 
     },
@@ -903,7 +903,7 @@ TypeAtom: Types = {
         *next_wildcard_id += 1;
         let pos = mk_pos(src_id, l, r);
         Types {
-            ty: TypeF::Wildcard(id), 
+            types: TypeF::Wildcard(id), 
             pos, 
         }
     },

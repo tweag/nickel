@@ -615,7 +615,7 @@ impl Term {
             }
             Annotated(ref mut annot, ref mut t) => {
                 annot.iter_mut().for_each(|LabeledType { types, .. }| {
-                    if let TypeF::Flat(ref mut rt) = types.ty {
+                    if let TypeF::Flat(ref mut rt) = types.types {
                         func(rt)
                     }
                 });

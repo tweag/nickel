@@ -796,7 +796,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use TypeF::*;
-        match self.ty {
+        match self.types {
             Dyn => allocator.text("Dyn"),
             Num => allocator.text("Num"),
             Bool => allocator.text("Bool"),
@@ -817,7 +817,7 @@ where
                 let mut curr = body.as_ref();
                 let mut foralls = vec![&var];
                 while let Types {
-                    ty: Forall { var, ref body, .. },
+                    types: Forall { var, ref body, .. },
                     ..
                 } = curr
                 {
@@ -847,7 +847,7 @@ where
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
                 .braces(),
-            Arrow(dom, codom) => match dom.ty {
+            Arrow(dom, codom) => match dom.types {
                 Arrow(..) | Forall { .. } => dom
                     .pretty(allocator)
                     .parens()
