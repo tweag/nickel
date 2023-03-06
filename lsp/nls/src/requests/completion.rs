@@ -47,7 +47,7 @@ impl From<Ident> for IdentWithType {
     fn from(ident: Ident) -> Self {
         IdentWithType {
             ident,
-            ty: Types(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -57,7 +57,7 @@ impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
             ident: Ident::from(ident),
-            ty: Types(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -246,13 +246,13 @@ fn find_fields_from_type(
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    match ty {
-        Types(TypeF::Record(row)) => find_fields_from_rrows(row, path, info),
-        Types(TypeF::Dict(ty)) => match path.pop() {
+    match &ty.types {
+        TypeF::Record(row) => find_fields_from_rrows(row, path, info),
+        TypeF::Dict(ty) => match path.pop() {
             Some(..) => find_fields_from_type(ty, path, info),
             _ => Vec::new(),
         },
-        Types(TypeF::Flat(term)) => find_fields_from_term(term, path, info),
+        TypeF::Flat(term) => find_fields_from_term(term, path, info),
         _ => Vec::new(),
     }
 }
@@ -270,10 +270,14 @@ fn find_fields_from_rrows(
         });
 
         match type_of_current {
-            Some(Types(TypeF::Record(rrows_current))) => {
-                find_fields_from_rrows(&rrows_current, path, info)
-            }
-            Some(Types(TypeF::Flat(term))) => find_fields_from_term(&term, path, info),
+            Some(Types {
+                types: TypeF::Record(rrows_current),
+                ..
+            }) => find_fields_from_rrows(&rrows_current, path, info),
+            Some(Types {
+                types: TypeF::Flat(term),
+                ..
+            }) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
         }
     } else {
@@ -331,7 +335,7 @@ fn find_fields_from_term(
                     ident: *ident,
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
-                    ty: Types(TypeF::Dyn),
+                    ty: Types::from(TypeF::Dyn),
                     meta: Some(field.metadata.clone()),
                 })
                 .collect(),
@@ -449,9 +453,9 @@ fn collect_record_info(
         .get_item(id, lin_cache)
         .map(|item| {
             let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
-            match (&item.kind, ty) {
+            match (&item.kind, &ty.types) {
                 // Get record fields from static type info
-                (_, Types(TypeF::Record(rrows))) => find_fields_from_rrows(&rrows, path, &info),
+                (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, &info),
                 (
                     TermKind::Declaration {
                         value: ValueState::Known(body_id),
@@ -726,7 +730,7 @@ mod tests {
             env: Environment::new(),
             id,
             pos: TermPos::None,
-            ty: Types(TypeF::Dyn),
+            ty: Types::from(TypeF::Dyn),
             kind,
             metadata,
         }

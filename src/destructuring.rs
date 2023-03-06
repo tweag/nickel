@@ -4,7 +4,7 @@
 use crate::{
     identifier::Ident,
     label::Label,
-    position::RawSpan,
+    position::{RawSpan, TermPos},
     term::{
         record::{Field, RecordAttrs, RecordData},
         LabeledType, Term,
@@ -66,16 +66,19 @@ impl RecordPattern {
 
     fn into_contract_with_lbl(self, label: Label) -> LabeledType {
         let is_open = self.is_open();
-
+        let pos = TermPos::Original(self.span);
         LabeledType {
-            types: Types(TypeF::Flat(
-                Term::Record(RecordData::new(
-                    self.inner().into_iter().map(Match::as_binding).collect(),
-                    RecordAttrs { open: is_open },
-                    None,
-                ))
-                .into(),
-            )),
+            types: Types {
+                types: TypeF::Flat(
+                    Term::Record(RecordData::new(
+                        self.inner().into_iter().map(Match::as_binding).collect(),
+                        RecordAttrs { open: is_open },
+                        None,
+                    ))
+                    .into(),
+                ),
+                pos,
+            },
             label,
         }
     }

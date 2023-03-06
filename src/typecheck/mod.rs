@@ -184,9 +184,15 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
                     GenericUnifRecordRows::try_into,
                     UnifEnumRows::try_into,
                 )?;
-                Ok(Types(converted))
+                Ok(Types::from(converted))
             }
-            GenericUnifType::Contract(t, _) => Ok(Types(TypeF::Flat(t))),
+            GenericUnifType::Contract(t, _) => {
+                let pos = t.pos;
+                Ok(Types {
+                    types: TypeF::Flat(t),
+                    pos,
+                })
+            }
             _ => Err(()),
         }
     }
@@ -340,7 +346,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     /// [`GenericUnifType::Contract`] which also stores a term environment, required for checking type
     /// equality involving contracts.
     pub fn from_type(ty: Types, env: &E) -> Self {
-        match ty.0 {
+        match ty.types {
             TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
             ty => GenericUnifType::Concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
@@ -433,18 +439,18 @@ impl UnifType {
         match self {
             UnifType::UnifVar(p) => match table.root_type(p) {
                 t @ UnifType::Concrete(_) => t.into_type(table),
-                _ => Types(TypeF::Dyn),
+                _ => Types::from(TypeF::Dyn),
             },
-            UnifType::Constant(_) => Types(TypeF::Dyn),
+            UnifType::Constant(_) => Types::from(TypeF::Dyn),
             UnifType::Concrete(t) => {
                 let mapped = t.map(
                     |btyp| Box::new(btyp.into_type(table)),
                     |urrows| urrows.into_rrows(table),
                     |uerows| uerows.into_erows(table),
                 );
-                Types(mapped)
+                Types::from(mapped)
             }
-            UnifType::Contract(t, _) => Types(TypeF::Flat(t)),
+            UnifType::Contract(t, _) => Types::from(TypeF::Flat(t)),
         }
     }
 
@@ -962,7 +968,7 @@ fn walk_type<L: Linearizer>(
     mut linearizer: L,
     ty: &Types,
 ) -> Result<(), TypecheckError> {
-    match &ty.0 {
+    match &ty.types {
        TypeF::Dyn
        | TypeF::Num
        | TypeF::Bool
@@ -1652,10 +1658,10 @@ fn replace_wildcards_with_var(
         ))
     }
 
-    match ty.0 {
+    match ty.types {
         TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
-        _ => UnifType::Concrete(ty.0.map_state(
+        _ => UnifType::Concrete(ty.types.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
             },
@@ -1690,11 +1696,11 @@ pub enum ApparentType {
 impl From<ApparentType> for Types {
     fn from(at: ApparentType) -> Self {
         match at {
-            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types(TypeF::Dyn),
+            ApparentType::Annotated(ty) if has_wildcards(&ty) => Types::from(TypeF::Dyn),
             ApparentType::Annotated(ty)
             | ApparentType::Inferred(ty)
             | ApparentType::Approximated(ty) => ty,
-            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types(TypeF::Dyn)),
+            ApparentType::FromEnv(uty) => uty.try_into().ok().unwrap_or(Types::from(TypeF::Dyn)),
         }
     }
 }
@@ -1719,7 +1725,7 @@ fn field_apparent_type(
                 .as_ref()
                 .map(|v| apparent_type(v.as_ref(), env, resolver))
         })
-        .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn)))
+        .unwrap_or(ApparentType::Approximated(Types::from(TypeF::Dyn)))
 }
 
 /// Determine the apparent type of a let-bound expression.
@@ -1767,17 +1773,17 @@ pub fn apparent_type(
                 .first()
                 .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
                 .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-            Term::Num(_) => ApparentType::Inferred(Types(TypeF::Num)),
-            Term::Bool(_) => ApparentType::Inferred(Types(TypeF::Bool)),
-            Term::SealingKey(_) => ApparentType::Inferred(Types(TypeF::Sym)),
-            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types(TypeF::Str)),
-            Term::Array(..) => {
-                ApparentType::Approximated(Types(TypeF::Array(Box::new(Types(TypeF::Dyn)))))
-            }
+            Term::Num(_) => ApparentType::Inferred(Types::from(TypeF::Num)),
+            Term::Bool(_) => ApparentType::Inferred(Types::from(TypeF::Bool)),
+            Term::SealingKey(_) => ApparentType::Inferred(Types::from(TypeF::Sym)),
+            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types::from(TypeF::Str)),
+            Term::Array(..) => ApparentType::Approximated(Types::from(TypeF::Array(Box::new(
+                Types::from(TypeF::Dyn),
+            )))),
             Term::Var(id) => env
                 .and_then(|envs| envs.get(id).cloned())
                 .map(ApparentType::FromEnv)
-                .unwrap_or(ApparentType::Approximated(Types(TypeF::Dyn))),
+                .unwrap_or(ApparentType::Approximated(Types::from(TypeF::Dyn))),
             Term::ResolvedImport(file_id) => match resolver {
                 Some(r) if !imports_seen.contains(file_id) => {
                     imports_seen.insert(*file_id);
@@ -1787,9 +1793,9 @@ pub fn apparent_type(
                         .expect("Internal error: resolved import not found during typechecking.");
                     apparent_type_check_cycle(&t.term, env, Some(r), imports_seen)
                 }
-                _ => ApparentType::Approximated(Types(TypeF::Dyn)),
+                _ => ApparentType::Approximated(Types::from(TypeF::Dyn)),
             },
-            _ => ApparentType::Approximated(Types(TypeF::Dyn)),
+            _ => ApparentType::Approximated(Types::from(TypeF::Dyn)),
         }
     }
 
@@ -1831,7 +1837,7 @@ fn has_wildcards(ty: &Types) -> bool {
     ty.clone()
         .traverse::<_, _, std::convert::Infallible>(
             &|ty: Types, has_wildcard| {
-                if ty.0.is_wildcard() {
+                if ty.types.is_wildcard() {
                     *has_wildcard = true;
                 }
                 Ok(ty)

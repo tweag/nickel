@@ -1550,13 +1550,13 @@ impl IntoDiagnostics<FileId> for TypecheckError {
             ,
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
                 fn addendum(ty: &Types) -> &str {
-                    if ty.0.is_flat() {
+                    if ty.types.is_flat() {
                         " (a contract)"
                     } else {
                         ""
                     }
                 }
-                let last_note = if expd.0.is_flat() ^ actual.0.is_flat() {
+                let last_note = if expd.types.is_flat() ^ actual.types.is_flat() {
                     "Static types and contracts are not compatible"
                 } else {
                     "These types are not compatible"
@@ -1609,7 +1609,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 let row_msg = |word, field, ty| format!("The type of the expression was {word} to have the row `{field}: {ty}`");
                 let default_msg = |word, ty| format!("The type of the expression was {word} to be `{ty}`");
 
-                let note1 = if let TypeF::Record(rrows) = &expd.0 {
+                let note1 = if let TypeF::Record(rrows) = &expd.types {
                     match rrows.row_find_path(path.as_slice()) {
                         Some(ty) => row_msg("expected", &field, ty),
                         None => default_msg("expected", &expd),
@@ -1618,7 +1618,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     default_msg("expected", &expd)
                 };
 
-                let note2 = if let TypeF::Record(rrows) = &actual.0 {
+                let note2 = if let TypeF::Record(rrows) = &actual.types {
                     match rrows.row_find_path(path.as_slice()) {
                         Some(ty) => row_msg("inferred", &field, ty),
                         None => default_msg("inferred", &expd),

@@ -53,6 +53,7 @@ use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
     mk_app, mk_fun,
+    position::TermPos,
     term::make as mk_term,
     term::{record::RecordData, RichTerm, Term, Traverse, TraverseOrder},
 };
@@ -262,9 +263,13 @@ pub type RecordRow = RecordRowF<Box<Types>>;
 #[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
 pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
+
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
-pub struct Types(pub TypeF<Box<Types>, RecordRows, EnumRows>);
+pub struct Types {
+    pub types: TypeF<Box<Types>, RecordRows, EnumRows>,
+    pub pos: TermPos,
+}
 
 impl<Ty, RRows> RecordRowsF<Ty, RRows> {
     /// Map functions over the children nodes of record rows, when seen as a tree. The mutable
@@ -805,7 +810,7 @@ impl RecordRows {
         if path.len() == 1 {
             next
         } else {
-            match next.map(|ty| ty.0) {
+            match next.map(|ty| ty.types) {
                 Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
                 _ => None,
             }
@@ -820,7 +825,21 @@ impl RecordRows {
     }
 }
 
+impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
+    fn from(types: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
+        Types {
+            types,
+            pos: TermPos::None,
+        }
+    }
+}
+
 impl Types {
+    /// Creates a `Type` with the specified position
+    pub fn with_pos(self, pos: TermPos) -> Types {
+        Types { pos, ..self }
+    }
+
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `Assume` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -830,10 +849,10 @@ impl Types {
 
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
-        match self {
-            Types(TypeF::Forall { body, .. }) => body.is_function_type(),
-            Types(TypeF::Arrow(..)) => true,
-            Types(_) => false,
+        match &self.types {
+            TypeF::Forall { body, .. } => body.is_function_type(),
+            TypeF::Arrow(..) => true,
+            _ => false,
         }
     }
 
@@ -854,7 +873,7 @@ impl Types {
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
 
-        let ctr = match self.0 {
+        let ctr = match self.types {
             TypeF::Dyn => contract::dynamic(),
             TypeF::Num => contract::num(),
             TypeF::Bool => contract::bool(),
@@ -906,7 +925,7 @@ impl Types {
     pub fn fmt_is_atom(&self) -> bool {
         use TypeF::*;
 
-        match &self.0 {
+        match &self.types {
             Dyn | Num | Bool | Str | Var(_) | Record(_) | Enum(_) => true,
             Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
@@ -921,24 +940,24 @@ impl Traverse<Types> for Types {
     {
         match order {
             TraverseOrder::TopDown => {
-                let inner = f(self, state)?.0.try_map_state(
+                let inner = f(self, state)?.types.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
                     state,
                 )?;
 
-                Ok(Types(inner))
+                Ok(Types::from(inner))
             }
             TraverseOrder::BottomUp => {
-                let traversed_depth_first = self.0.try_map_state(
+                let traversed_depth_first = self.types.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
                     state,
                 )?;
 
-                f(Types(traversed_depth_first), state)
+                f(Types::from(traversed_depth_first), state)
             }
         }
     }
@@ -949,8 +968,8 @@ impl Traverse<RichTerm> for Types {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let f_on_type = |ty: Types, s: &mut S| match ty.0 {
-            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types(TypeF::Flat(t))),
+        let f_on_type = |ty: Types, s: &mut S| match ty.types {
+            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types::from(TypeF::Flat(t))),
             _ => Ok(ty),
         };
 
@@ -995,7 +1014,7 @@ impl Display for EnumRows {
 
 impl Display for Types {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.0 {
+        match &self.types {
             TypeF::Dyn => write!(f, "Dyn"),
             TypeF::Num => write!(f, "Num"),
             TypeF::Bool => write!(f, "Bool"),
@@ -1015,7 +1034,11 @@ impl Display for Types {
             TypeF::Forall { var, ref body, .. } => {
                 let mut curr: &Types = body.as_ref();
                 write!(f, "forall {var}")?;
-                while let Types(TypeF::Forall { var, ref body, .. }) = curr {
+                while let Types {
+                    types: TypeF::Forall { var, ref body, .. },
+                    ..
+                } = curr
+                {
                     write!(f, " {var}")?;
                     curr = body;
                 }
@@ -1024,7 +1047,7 @@ impl Display for Types {
             TypeF::Enum(row) => write!(f, "[|{row}|]"),
             TypeF::Record(row) => write!(f, "{{{row}}}"),
             TypeF::Dict(ty) => write!(f, "{{_: {ty}}}"),
-            TypeF::Arrow(dom, codom) => match dom.0 {
+            TypeF::Arrow(dom, codom) => match dom.types {
                 TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
                 _ => write!(f, "{dom} -> {codom}"),
             },
