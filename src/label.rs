@@ -482,7 +482,7 @@ impl Label {
     /// the effect of saving the current diagnostic, that can't then be mutated anymore by the
     /// label's API.
     pub fn push_diagnostic(&mut self) {
-        if !matches!(self.current_diagnostic(), Some(diag) if !diag.is_empty()) {
+        if matches!(self.current_diagnostic(), Some(diag) if !diag.is_empty()) {
             self.diagnostics.push(ContractDiagnostic::new());
         }
     }

@@ -173,28 +173,63 @@
 
     apply
       | doc m%"
-        Apply a contract to a label and a value.
+          Apply a contract to a label and a value.
 
-        Type: `Contract -> Lbl -> Dyn -> Dyn`
-        (for technical reasons, this function isn't actually statically typed)
+          Type: `Contract -> Lbl -> Dyn -> Dyn`
+          (for technical reasons, this function isn't actually statically typed)
 
-        Nickel supports user-defined contracts defined as functions, but also as
-        records. Moreover, the interpreter performs additional book-keeping for
-        error reporting when applying a contract in an expression `value |
-        Contract`. You should not use standard function application to apply a
-        contract, but this function instead.
+          Nickel supports user-defined contracts defined as functions, but also
+          as records. Moreover, the interpreter performs additional book-keeping
+          for error reporting when applying a contract in an expression
+          `value | Contract`. You should not use standard function application
+          to apply a contract, but this function instead.
 
-        For example:
+          # Example
 
-        ```nickel
-        let Nullable = fun param_contract label value =>
-          if value == null then null
-          else contract.apply param_contract label value
-        in
-        let Contract = Nullable {foo | Num} in
-        ({foo = 1} | Contract)
-        ```
+          ```nickel
+          let Nullable = fun param_contract label value =>
+            if value == null then null
+            else contract.apply param_contract label value
+          in
+          let Contract = Nullable {foo | Num} in
+          ({foo = 1} | Contract)
+          ```
+
+          # Diagnostic stack
+
+          Using `apply` will stack the current custom reporting data, and create a
+          fresh current working diagnostic. `apply` thus acts automatically as a
+          split point between a contract and its subcontracts, providing the
+          subcontracts a fresh label to add their diagnostic to, while remembering
+          the previous reporting data set by the parent contract.
+
+          ## Illustration
+
+          ```nickel
+          let ChildContract = fun label value =>
+            label
+            |> contract.label.with_message "child's message"
+            |> contract.label.append_note "child's note"
+            |> contract.blame
+          in
+
+          let ParentContract = fun label value =>
+            let label =
+              label
+              |> contract.label.with_message "parent's message"
+              |> contract.label.append_note "parent's note"
+            in
+            contract.apply ChildContract label value
+          in
+
+          null | ParentContract
+          ```
+
+          This example will print two diagnostics: the main one using, the
+          message and note of the child contract, and a secondary diagnostic,
+          with parent's contract message and note.
         "%
-      = fun contract label value => %assume% contract label value,
+      = fun contract label value =>
+        %assume% contract (%label_push_diag% label) value,
   },
 }
