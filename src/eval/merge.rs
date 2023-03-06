@@ -251,7 +251,7 @@ pub fn merge<C: Cache>(
                     let label = label
                         .with_diagnostic_message(format!("extra field{plural} {fields_list}"))
                         .with_diagnostic_notes(vec![
-                            format!("Have you misspelled a field?"),
+                            String::from("Have you misspelled a field?"),
                             String::from("The record contract might also be too strict. By default, record contracts exclude any field which is not listed.
 Append `, ..` at the end of the record contract, as in `{some_field | SomeContract, ..}`, to make it accept extra fields."),
                         ]);
