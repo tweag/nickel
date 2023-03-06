@@ -67,18 +67,35 @@
 
     label
       | doc m%"
-          The label submodule, which gathers functions that manipulate contract
-          labels.
+          The label submodule, which gathers functions that manipulate the label
+          of a contract.
 
           A label is a special opaque value automatically passed by the Nickel
-          interpreter to contracts at contract application. A label offers a way
-          for custom contracts to customize the error message that will be shown
-          if the contract is broken.
+          interpreter to contracts when performing a contract check.
+
+          A label stores a stack of custom error diagnostics, than can be
+          manipulated by the function of this module. Labels thus offer a way to
+          customize the error message that will be shown if the contract is broken.
+
+          The setters (`with_XXX` functions) always operate on the current error
+          diagnostic, which is the last diagnotic on the stack (if the stack is
+          empty, a fresh diagnostic is silently created when using a setter).
+          The previous diagnostics are thus archived, and can't be modified
+          anymore. All diagnostics will be shown during error reporting, with
+          the most recent being used as the main one.
+
+          `contract.apply` is the operation that pushes a new fresh diagnostic on
+          the stack, saving the previously current error diagnostic. Indeed,
+          `contract.apply` is mostly used to apply subcontracts inside a parent
+          contract. Stacking the current diagnostic potentially customized by
+          the parent contract saves the information inside, a provide a fresh
+          diagnostic for the child contract to use.
         "%
       = {
         with_message
           | doc m%"
-            Attach a custom error message to a label.
+            Attach a custom error message to the current error diagnostic of a
+            label.
 
             Type: `Str -> Lbl -> Lbl`
             (for technical reasons, this function isn't actually statically typed)
@@ -86,9 +103,9 @@
             If a custom error message was previously set, there are two
             possibilities:
               - the label has gone through a `contract.apply` call in-between.
-                In this case, the previous custom reporting data are stacked,
-                and using `with_message` won't erase anything, but just add
-                a new diagnostic on the stack.
+                In this case, the previous diagnostic has been stacked,
+                and using `with_message` won't erase anything but rather modify
+                the fresh current diagnostic.
               - no `contract.apply` has taken place since the last message was
                 set. In this case, the current diagnostic is still the same, and
                 the previous error message will be erased.
@@ -118,7 +135,8 @@
 
         with_notes
           | doc m%"
-            Attach custom error notes to a label.
+            Attach custom error notes to the current error diagnostic of a
+            label.
 
             Type: `Array Str -> Lbl -> Lbl`
             (for technical reasons, this function isn't actually statically typed)
@@ -126,10 +144,10 @@
             If custom error notes were previously set, there are two
             possibilities:
               - the label has gone through a `contract.apply` call in-between.
-                In this case, the previous reporting data are stacked,
-                and using `with_notes` won't erase anything, but just add
-                a new diagnostic on the stack.
-              - no `contract.apply` has taken place since the last notes were
+                In this case, the previous diagnostic has been stacked,
+                and using `with_notes` won't erase anything but rather modify
+                the fresh current diagnostic.
+              - no `contract.apply` has taken place since the last message was
                 set. In this case, the current diagnostic is still the same, and
                 the previous error notes will be erased.
 
@@ -157,13 +175,13 @@
             5 | Contract
             ```
             "%
-          # the %label_with_notes% operator expect an array of string that is
+          # the %label_with_notes% operator expect an array of strings which is
           # fully evaluated, thus we force the notes first
           = fun notes label => %label_with_notes% (%force% notes) label,
 
         append_note
           | doc m%"
-              Append a note to the label's error notes.
+              Append a note to the notes of the current diagnostic of a label.
 
               Type: `Str -> Lbl -> Lbl`
               (for technical reasons, this function isn't actually statically typed)
@@ -200,8 +218,8 @@
           Using `apply` will stack the current custom reporting data, and create a
           fresh current working diagnostic. `apply` thus acts automatically as a
           split point between a contract and its subcontracts, providing the
-          subcontracts a fresh label to add their diagnostic to, while remembering
-          the previous reporting data set by the parent contract.
+          subcontracts with a fresh diagnostic to use, while remembering the
+          previous the previous diagnostics set by parent contracts.
 
           ## Illustration
 
@@ -227,7 +245,7 @@
 
           This example will print two diagnostics: the main one using, the
           message and note of the child contract, and a secondary diagnostic,
-          with parent's contract message and note.
+          using the parent contract message and note.
         "%
       = fun contract label value =>
         %assume% contract (%label_push_diag% label) value,
