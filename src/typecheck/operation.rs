@@ -404,7 +404,7 @@ pub fn get_bop_type(
         }
         // Morally: Str -> Lbl -> Lbl
         // Actual: Str -> Dyn -> Dyn
-        BinaryOp::LabelWithMsg() => (
+        BinaryOp::LabelWithMessage() => (
             mk_uniftype::str(),
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),

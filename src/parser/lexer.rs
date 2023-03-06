@@ -309,7 +309,7 @@ pub enum NormalToken<'input> {
     #[token("%enum_from_str%")]
     EnumFromStr,
     #[token("%label_with_message%")]
-    LabelWithMsg,
+    LabelWithMessage,
     #[token("%label_with_notes%")]
     LabelWithNotes,
     #[token("%label_append_note%")]

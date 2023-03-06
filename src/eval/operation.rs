@@ -2613,14 +2613,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            BinaryOp::LabelWithMsg() => {
+            BinaryOp::LabelWithMessage() => {
                 let t1 = t1.into_owned();
                 let t2 = t2.into_owned();
 
                 let Term::Str(message) = t1 else {
                     return Err(EvalError::TypeError(
                         String::from("Str"),
-                        String::from("label_with_msg, 1st argument"),
+                        String::from("label_with_message, 1st argument"),
                         fst_pos,
                         RichTerm {
                             term: t1.into(),
@@ -2632,7 +2632,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let Term::Lbl(label) = t2 else {
                     return Err(EvalError::TypeError(
                         String::from("Lbl"),
-                        String::from("label_with_msg, 2nd argument"),
+                        String::from("label_with_message, 2nd argument"),
                         snd_pos,
                         RichTerm {
                             term: t2.into(),

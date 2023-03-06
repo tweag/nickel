@@ -1332,7 +1332,7 @@ pub enum BinaryOp {
     DictionaryAssume(),
 
     /// Set the message of the current diagnostic of a label.
-    LabelWithMsg(),
+    LabelWithMessage(),
     /// Set the notes of the current diagnostic of a label.
     LabelWithNotes(),
     /// Append a note to the current diagnostic of a label.
