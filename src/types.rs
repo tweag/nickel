@@ -826,9 +826,9 @@ impl RecordRows {
 }
 
 impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
-    fn from(ty: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
+    fn from(types: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
         Types {
-            types: ty,
+            types,
             pos: TermPos::None,
         }
     }
