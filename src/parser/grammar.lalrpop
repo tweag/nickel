@@ -871,7 +871,7 @@ TypeBuiltin: Types = {
 
 TypeAtom: Types = {
     <TypeBuiltin>,
-    <l: @L> "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" <r: @R> => {
+    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -888,24 +888,15 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-        let pos = mk_pos(src_id, l, r);
-        Types { types: TypeF::Enum(ty), pos }
+ 	    Types::from(TypeF::Enum(ty))
     },
-    <l: @L> "{" "_" ":" <t: WithPos<Types>> "}" <r: @R> => {  
-        let pos = mk_pos(src_id, l, r);
-        Types { 
-            types:TypeF::Dict(Box::new(t)), 
-            pos, 
-        } 
+    "{" "_" ":" <t: WithPos<Types>> "}" => {
+        Types::from(TypeF::Dict(Box::new(t)))
     },
-    <l: @L> "_" <r: @R> => {
+    "_" => {
         let id = *next_wildcard_id;
-        *next_wildcard_id += 1;
-        let pos = mk_pos(src_id, l, r);
-        Types {
-            types: TypeF::Wildcard(id), 
-            pos, 
-        }
+        *next_wildcard_id += 1;        
+        Types::from(TypeF::Wildcard(id))
     },
 }
 
