@@ -430,7 +430,7 @@ impl Label {
     /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
     pub fn with_diagnostic_message(mut self, message: impl Into<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.message = Some(message.into());
@@ -445,7 +445,7 @@ impl Label {
     /// Set the notes of the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
     pub fn with_diagnostic_notes(mut self, notes: Vec<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.notes = notes;
@@ -460,7 +460,7 @@ impl Label {
     /// Append a note to the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given note.
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given note.
     pub fn append_diagnostic_note(mut self, note: impl Into<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.append_note(note);
