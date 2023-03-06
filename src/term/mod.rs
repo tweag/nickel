@@ -1273,8 +1273,6 @@ pub enum BinaryOp {
     ///
     /// See `GoDom`.
     GoField(),
-    /// Set the tag text of a blame label.
-    Tag(),
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known

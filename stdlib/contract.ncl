@@ -5,86 +5,178 @@
         Raise blame for a given label.
 
         Type: `forall a. Lbl -> a`
-        (for technical reasons, this element isn't actually statically typed)
+        (for technical reasons, this function isn't actually statically typed)
 
         Blame is the mechanism to signal contract violiation in Nickel. It ends
         the program execution and print a detailed report thanks to the
         information tracked inside the label.
 
         For example:
+
         ```nickel
         IsZero = fun label value =>
-          if value == 0 then value
-          else contract.blame label
+          if value == 0 then
+            value
+          else
+            contract.blame label
         ```
         "%
-      = fun l => %blame% l,
+      = fun label => %blame% label,
 
-    blame_with
+    blame_with_message
       | doc m%"
         Raise blame with respect to a given label and a custom error message.
 
         Type: `forall a. Str -> Lbl -> a`
-        (for technical reasons, this element isn't actually statically typed)
+        (for technical reasons, this function isn't actually statically typed)
 
         Same as `blame`, but take an additional custom error message that will be
-        displayed as part of the blame error. `blame_with msg l` is equivalent to
-        `blame (tag msg l)
+        displayed as part of the blame error. `blame_with_message message label`
+        is equivalent to `blame (label.with_message message label)`
 
         For example:
+
         ```nickel
         let IsZero = fun label value =>
-          if value == 0 then value
-          else contract.blame_with "Not zero" label in
+          if value == 0 then
+            value
+          else
+            contract.blame_with_message_message "Not zero" label
+        in
+
         0 | IsZero
         ```
         "%
-      = fun msg l => %blame% (%tag% msg l),
+      = fun message label => %blame% (%label_with_message% message label),
 
     from_predicate
       | doc m%"
         Generate a contract from a boolean predicate.
 
         Type: `(Dyn -> Bool) -> (Lbl -> Dyn -> Dyn)`
-        (for technical reasons, this element isn't actually statically typed)
+        (for technical reasons, this function isn't actually statically typed)
 
         For example:
-        ```
+
+        ```nickel
         let IsZero = contract.from_predicate (fun x => x == 0) in
         0 | IsZero
         ```
         "%
-      = fun pred l v => if pred v then v else %blame% l,
+      = fun pred label value => if pred value then value else %blame% label,
 
-    tag
+    label
       | doc m%"
-        Attach a tag, or a custom error message, to a label. If a tag was
-        previously set, it is erased.
+          The label submodule, which gathers functions that manipulate contract
+          labels.
 
-        Type: `Str -> Lbl -> Lbl`
-        (for technical reasons, this element isn't actually statically typed)
-
-        For example:
-        ```
-        let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
-        Contract = fun label value =>
-          if builtin.is_num value then
-            ContractNum
-              (contract.tag "num subcontract failed! (out of bound)" label)
-              value
-          else
-            value in
-        5 | Contract
-        ```
+          A label is a special opaque value automatically passed by the Nickel
+          interpreter to contracts at contract application. A label offers a way
+          for custom contracts to customize the error message that will be shown
+          if the contract is broken.
         "%
-      = fun msg l => %tag% msg l,
+      = {
+        with_message
+          | doc m%"
+            Attach a custom error message to a label.
+
+            Type: `Str -> Lbl -> Lbl`
+            (for technical reasons, this function isn't actually statically typed)
+
+            If a custom error message was previously set, there are two
+            possibilities:
+              - the label has gone through a `contract.apply` call in-between.
+                In this case, the previous custom reporting data are stacked,
+                and using `with_message` won't erase anything, but just add
+                a new diagnostic on the stack.
+              - no `contract.apply` has taken place since the last message was
+                set. In this case, the current diagnostic is still the same, and
+                the previous error message will be erased.
+
+            For example:
+
+            ```nickel
+            let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
+
+            let Contract = fun label value =>
+              if builtin.is_num value then
+                contract.apply
+                  ContractNum
+                  (contract.label.with_message
+                    "num subcontract failed! (out of bound)"
+                    label
+                  )
+                  value
+              else
+                value
+            in
+
+            5 | Contract
+            ```
+            "%
+          = fun message label => %label_with_message% message label,
+
+        with_notes
+          | doc m%"
+            Attach custom error notes to a label.
+
+            Type: `Array Str -> Lbl -> Lbl`
+            (for technical reasons, this function isn't actually statically typed)
+
+            If custom error notes were previously set, there are two
+            possibilities:
+              - the label has gone through a `contract.apply` call in-between.
+                In this case, the previous reporting data are stacked,
+                and using `with_notes` won't erase anything, but just add
+                a new diagnostic on the stack.
+              - no `contract.apply` has taken place since the last notes were
+                set. In this case, the current diagnostic is still the same, and
+                the previous error notes will be erased.
+
+            For example:
+
+            ```nickel
+            let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
+
+            let Contract = fun label value =>
+              if builtin.is_num value then
+                contract.apply
+                  ContractNum
+                  (label
+                   |> contract.label.with_message "num subcontract failed! (out of bound)"
+                   |> contract.label.with_notes [
+                        "The value was a number, but this number is out of the expected bound",
+                        "The value must be a number between 0 and 50, both excluded",
+                      ]
+                  )
+                  value
+              else
+                value
+            in
+
+            5 | Contract
+            ```
+            "%
+          # the %label_with_notes% operator expect an array of string that is
+          # fully evaluated, thus we force the notes first
+          = fun notes label => %label_with_notes% (%force% notes) label,
+
+        append_note
+          | doc m%"
+              Append a note to the label's error notes.
+
+              Type: `Str -> Lbl -> Lbl`
+              (for technical reasons, this function isn't actually statically typed)
+            "%
+          = fun note label => %label_append_note% note label,
+    },
 
     apply
       | doc m%"
         Apply a contract to a label and a value.
 
         Type: `Contract -> Lbl -> Dyn -> Dyn`
-        (for technical reasons, this element isn't actually statically typed)
+        (for technical reasons, this function isn't actually statically typed)
 
         Nickel supports user-defined contracts defined as functions, but also as
         records. Moreover, the interpreter performs additional book-keeping for
@@ -93,7 +185,8 @@
         contract, but this function instead.
 
         For example:
-        ```
+
+        ```nickel
         let Nullable = fun param_contract label value =>
           if value == null then null
           else contract.apply param_contract label value

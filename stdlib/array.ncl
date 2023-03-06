@@ -17,9 +17,9 @@
          if %length% value != 0 then
            value
          else
-           %blame% (%tag% "empty array" label)
+           %blame% (%label_with_message% "empty array" label)
        else
-         %blame% (%tag% "not a array" label),
+         %blame% (%label_with_message% "not a array" label),
 
     head : forall a. Array a -> a
       | doc m%"
@@ -112,9 +112,9 @@
         let length = %length% l in
         if length == 0 then acc
         else
-          let rec go = fun acc n => 
+          let rec go = fun acc n =>
             if n == length then acc
-            else 
+            else
               let next_acc = %elem_at% l n |> f acc in
               %seq% next_acc (go next_acc (n+1))
           in
@@ -136,7 +136,7 @@
         let length = %length% l in
         let rec go = fun n =>
           if n == length then
-            fst 
+            fst
           else
             go (n+1)
             |> f (%elem_at% l n)

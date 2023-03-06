@@ -19,15 +19,15 @@
         if str_match value then
           value
         else
-          contract.blame_with "no match" label
-      else contract.blame_with "not a string" label,
+          contract.blame_with_message "no match" label
+      else contract.blame_with_message "not a string" label,
     PseudoOr = fun alts label value =>
       array.fold (fun ctr rest =>
         if ctr.pred value then
           ctr.contract value
         else
           rest)
-        (contract.blame_with "no alternative matched" label),
+        (contract.blame_with_message "no alternative matched" label),
     OrableFromPred : (Dyn -> Bool)
                      -> {pred : Dyn -> Bool, contract: Dyn -> Dyn -> Dyn },
     OrableFromPred = fun pred_ => {

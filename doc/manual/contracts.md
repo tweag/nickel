@@ -61,21 +61,21 @@ let IsFoo = fun label value =>
     if value == "foo" then
       value
     else
-      contract.blame_with "not equal to \"foo\"" label
+      contract.blame_with_message "not equal to \"foo\"" label
   else
-    contract.blame_with "not a string" label
+    contract.blame_with_message "not a string" label
 ```
 
 A custom contract is a function of two arguments:
 
 - A `label`. Provided by the interpreter, the label contains tracking information
   for error reporting. Its main usage is to be passed to `contract.blame` or
-  `contract.blame_with` when the contract isn't satisfied.
+  `contract.blame_with_message` when the contract isn't satisfied.
 - The value being checked.
 
 Upon success, the contract must return the original value. We will see the
 reason why in the [laziness](#laziness) section. To signal failure, we use
-`contract.blame` or its variant `contract.blame_with` that takes an additional
+`contract.blame` or its variant `contract.blame_with_message` that takes an additional
 error message as a parameter. `blame` immediately aborts the execution and
 reports a contract violation error.
 
@@ -586,17 +586,17 @@ let NumBoolDict = fun label value =>
         if string.is_match "^\\d+$" field_name then
           acc # unused and always null through iteration
         else
-          contract.blame_with "field name `#{field_name}` is not a number" label
+          contract.blame_with_message "field name `#{field_name}` is not a number" label
         ) null in
 
     value
       |> record.map (fun name value =>
         let label_with_msg =
-            contract.tag "field `#{name}` is not a boolean" label in
+            contract.label.with_message "field `#{name}` is not a boolean" label in
         contract.apply Bool label_with_msg value)
       |> builtin.seq check_fields
   else
-    contract.blame_with "not a record" label
+    contract.blame_with_message "not a record" label
 ```
 
 There is a lot to unwrap here. Please refer to the [syntax](./syntax.md) section

@@ -835,7 +835,6 @@ BOpPre: BinaryOp = {
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
     "elem_at" => BinaryOp::ArrayElemAt(),
-    "tag" => BinaryOp::Tag(),
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
@@ -981,7 +980,6 @@ extern {
         "Bool" => Token::Normal(NormalToken::Bool),
         "Array" => Token::Normal(NormalToken::Array),
 
-        "tag" => Token::Normal(NormalToken::Tag),
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),

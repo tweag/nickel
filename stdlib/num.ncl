@@ -17,9 +17,9 @@
         if value % 1 == 0 then
           value
         else
-          %blame% (%tag% "not an integer" label)
+          %blame% (%label_with_message% "not an integer" label)
       else
-        %blame% (%tag% "not a number" label),
+        %blame% (%label_with_message% "not a number" label),
 
     Nat
     | doc m%"
@@ -40,9 +40,9 @@
         if value % 1 == 0 && value >= 0 then
           value
         else
-          %blame% (%tag% "not a natural" label)
+          %blame% (%label_with_message% "not a natural" label)
       else
-        %blame% (%tag% "not a number" label),
+        %blame% (%label_with_message% "not a number" label),
 
     PosNat
     | doc m%"
@@ -63,9 +63,9 @@
         if value % 1 == 0 && value > 0 then
           value
         else
-          %blame% (%tag% "not positive integer" label)
+          %blame% (%label_with_message% "not positive integer" label)
       else
-        %blame% (%tag% "not a number" label),
+        %blame% (%label_with_message% "not a number" label),
 
     NonZero
     | doc m%"
@@ -84,9 +84,9 @@
         if value != 0 then
           value
         else
-          %blame% (%tag% "non-zero" label)
+          %blame% (%label_with_message% "non-zero" label)
       else
-        %blame% (%tag% "not a number" label),
+        %blame% (%label_with_message% "not a number" label),
 
     is_int : Num -> Bool
     | doc m%"

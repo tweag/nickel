@@ -244,7 +244,7 @@
           │ ^ applied to this expression
       ```
     "%
-    = fun msg label value => contract.blame_with msg label,
+    = fun msg label value => contract.blame_with_message msg label,
 
     fail_with | Str -> Dyn
     | doc m%"

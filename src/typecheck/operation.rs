@@ -259,12 +259,6 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uty_arrow!(TypeF::Dyn, TypeF::Dyn),
         ),
-        // Str -> Dyn -> Dyn
-        BinaryOp::Tag() => (
-            mk_uniftype::str(),
-            mk_uniftype::dynamic(),
-            mk_uniftype::dynamic(),
-        ),
         // forall a b. a -> b -> Bool
         BinaryOp::Eq() => (
             UnifType::UnifVar(state.table.fresh_type_var_id()),

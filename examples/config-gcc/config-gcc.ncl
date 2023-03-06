@@ -11,20 +11,20 @@ let GccFlag =
       array.any (fun x => x == string.substring 0 1 value) available then
       value
     else
-      contract.blame_with "unknown flag %{value}" label
+      contract.blame_with_message "unknown flag %{value}" label
   else if builtin.is_record value then
     if record.has_field "flag" value && record.has_field "arg" value then
       if array.any (fun x => x == value.flag) available then
         #Normalize the tag to a string
         value.flag ++ value.arg
       else
-        contract.blame_with "unknown flag %{value.flag}" label
+        contract.blame_with_message "unknown flag %{value.flag}" label
     else
-      contract.blame_with
+      contract.blame_with_message
         "bad record structure: missing field `flag` or `arg`"
         label
   else
-    contract.blame_with "expected record or string" label in
+    contract.blame_with_message "expected record or string" label in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
@@ -33,18 +33,18 @@ let Path =
       if string.is_match pattern value then
         value
       else
-        contract.blame_with "invalid path" label
+        contract.blame_with_message "invalid path" label
     else
-      contract.blame_with "not a string" label in
+      contract.blame_with_message "not a string" label in
 
 let SharedObjectFile = fun label value =>
   if builtin.is_str value then
     if string.is_match m%"\.so$"% value then
       value
     else
-      contract.blame_with "not an .so file" label
+      contract.blame_with_message "not an .so file" label
   else
-    contract.blame_with "not a string" label in
+    contract.blame_with_message "not a string" label in
 
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then

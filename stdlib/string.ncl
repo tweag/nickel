@@ -22,9 +22,9 @@
         else if s == "false" || s == "False" then
           "false"
         else
-          %blame% (%tag% "expected \"true\" or \"false\", got %{s}" l)
+          %blame% (%label_with_message% "expected \"true\" or \"false\", got %{s}" l)
       else
-        %blame% (%tag% "not a string" l),
+        %blame% (%label_with_message% "not a string" l),
 
     NumLiteral
     | doc m%"
@@ -47,9 +47,9 @@
           if is_num_literal s then
             s
           else
-            %blame% (%tag% "invalid num literal" l)
+            %blame% (%label_with_message% "invalid num literal" l)
         else
-          %blame% (%tag% "not a string" l),
+          %blame% (%label_with_message% "not a string" l),
 
     CharLiteral
     | doc m%"
@@ -72,9 +72,9 @@
         if length s == 1 then
           s
         else
-          %blame% (%tag% "length different than one" l)
+          %blame% (%label_with_message% "length different than one" l)
       else
-        %blame% (%tag% "not a string" l),
+        %blame% (%label_with_message% "not a string" l),
 
     EnumTag
     | doc m%"
@@ -142,9 +142,9 @@
         if %str_length% s > 0 then
           s
         else
-          %blame% (%tag% "empty string" l)
+          %blame% (%label_with_message% "empty string" l)
       else
-        %blame% (%tag% "not a string" l),
+        %blame% (%label_with_message% "not a string" l),
 
     join : Str -> Array Str -> Str
     | doc m%"
