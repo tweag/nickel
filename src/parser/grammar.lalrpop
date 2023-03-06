@@ -821,7 +821,7 @@ InfixExpr: UniTerm = {
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 
     #[precedence(level="11")] #[assoc(side="right")]
-    <s: WithPos<AsType<InfixExpr>>> "->" <t: WithPos<AsType<InfixExpr>>> =>
+    <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
         UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
