@@ -175,7 +175,7 @@
             5 | Contract
             ```
             "%
-          # the %label_with_notes% operator expect an array of strings which is
+          # the %label_with_notes% operator expects an array of strings which is
           # fully evaluated, thus we force the notes first
           = fun notes label => %label_with_notes% (%force% notes) label,
 
