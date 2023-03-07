@@ -21,29 +21,49 @@
        else
          %blame% (%tag% "not a array" label),
 
-    head : forall a. Array a -> a
+    first : forall a. Array a -> a
       | doc m%"
-        Results in the head (first element) of the given array.
+        Results in the first element of the given array.
 
         For example:
         ```nickel
-          head [ "this is the head", "this is not" ] =>
+          first [ "this is the head", "this is not" ] =>
             "this is the head"
         ```
         "%
       = fun l => %head% l,
 
-    tail : forall a. Array a -> Array a
+    last : forall a. Array a -> a
+      | doc "TODO"
+      = fun l => %elem_at% l (%length% l - 1),
+
+    drop_first : forall a. Array a -> Array a
       | doc m%"
-        Results in the tail (everything but the first element) of the given array.
+        Results in the given array without the first element.
 
         For example:
         ```nickel
-          tail [ 1, 2, 3 ] =>
+          drop_first [ 1, 2, 3 ] =>
             [ 2, 3 ]
         ```
         "%
       = fun l => %tail% l,
+
+    drop_last : forall a. Array a -> Array a
+      | doc m%"
+        Results in the given array without the last element.
+
+        For example:
+        ```nickel
+          drop_last [ 1, 2, 3 ] =>
+            [ 1, 2 ]
+        ```
+        "%
+      # TODO: we need a slice primop
+      = fun l => l
+        |> reverse
+        |> drop_first
+        |> reverse,
 
     length : forall a. Array a -> Num
       | doc m%"
@@ -70,13 +90,13 @@
         "%
       = fun f l => %map% l f,
 
-    elem_at : forall a. Num -> Array a -> a
+    at : forall a. Num -> Array a -> a
       | doc m%"
         Retrieves the n'th element from a array (0-indexed).
 
         For example:
         ```nickel
-          elem_at 3 [ "zero" "one" "two" "three" "four" ] =>
+          at 3 [ "zero" "one" "two" "three" "four" ] =>
             "three"
         ```
         "%
@@ -94,16 +114,16 @@
         "%
       = fun l1 l2 => l1 @ l2,
 
-    foldl : forall a b. (a -> b -> a) -> a -> Array b -> a
+    fold_left : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
-        Fold a function over a array.
-        `foldl f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
+        Fold a function over an array.
+        `fold_left f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
         This function is strict in the intermediate accumulator.
 
         For example:
         ```nickel
-          foldl (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
+          fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
             (((0 + 1) + 2) 3) =>
             6
         ```
@@ -120,14 +140,14 @@
           in
           go acc 0,
 
-    fold : forall a b. (a -> b -> b) -> b -> Array a -> b
+    fold_right : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
         Fold a function over a array.
-        `fold f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
+        `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
         For example:
         ```nickel
-          fold (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
+          fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
             ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
         ```
@@ -142,17 +162,30 @@
             |> f (%elem_at% l n)
         in go 0,
 
-    cons : forall a. a -> Array a -> Array a
+    prepend : forall a. a -> Array a -> Array a
       | doc m%"
-        Construct a array given the head and tail of the array.
+        Construct an array given the first element and the rest of the array.
 
         For example:
         ```nickel
-          cons 1 [ 2, 3 ] =>
+          prepend 1 [ 2, 3 ] =>
             [ 1, 2, 3 ]
         ```
         "%
       = fun x l => [x] @ l,
+
+    append : forall a. a -> Array a -> Array a
+      | doc m%"
+        Construct an array given the last element and the rest of the array.
+
+        For example:
+        ```nickel
+          append 3 [ 1, 2 ] =>
+            [ 1, 2, 3 ]
+        ```
+        "%
+      = fun x l => l @ [x],
+
 
     reverse : forall a. Array a -> Array a
       | doc m%"
@@ -164,7 +197,7 @@
             [ 3, 2, 1 ]
         ```
         "%
-      = fun l => foldl (fun acc e => [e] @ acc) [] l,
+      = fun l => fold_left (fun acc e => [e] @ acc) [] l,
 
     filter : forall a. (a -> Bool) -> Array a -> Array a
       | doc m%"
@@ -176,7 +209,7 @@
             [ 3, 2, 1 ]
         ```
         "%
-      = fun pred l => foldl (fun acc x => if pred x then acc @ [x] else acc) [] l,
+      = fun pred l => fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l,
 
     flatten : forall a. Array (Array a) -> Array a
       | doc m%"
@@ -188,7 +221,7 @@
             [1, 2, 3, 4]
         ```
         "%
-      = fun l => fold (fun l acc => l @ acc) [] l,
+      = fun l => fold_right (fun l acc => l @ acc) [] l,
 
     all : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
@@ -202,7 +235,7 @@
             false
         ```
         "%
-      = fun pred l => fold (fun x acc => if pred x then acc else false) true l,
+      = fun pred l => fold_right (fun x acc => if pred x then acc else false) true l,
 
     any : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
@@ -216,9 +249,9 @@
             false
         ```
         "%
-      = fun pred l => fold (fun x acc => if pred x then true else acc) false l,
+      = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
 
-    elem : Dyn -> Array Dyn -> Bool
+    elem : forall a. a -> Array a -> Bool
       | doc m%"
         Results in true if the given element is a member of the array, false otherwise.
 
@@ -248,7 +281,7 @@
           else
             {right = acc.right, wrong = acc.wrong @ [x]}
         in
-        foldl aux {right = [], wrong = []} l,
+        fold_left aux {right = [], wrong = []} l,
 
     generate : forall a. (Num -> a) -> Num -> Array a
       | doc m%"
@@ -273,6 +306,7 @@
             [ 1, 2, 4, 5 ]
         ```
         "%
+      #TODO: maybe inline partition to avoid contract checks?
       = fun cmp l =>
         let first = %head% l in
         let parts = partition (fun x => (cmp x first == `Lesser)) (%tail% l) in
@@ -309,8 +343,8 @@
         ```
       "%
       = fun v arr =>
-        if length arr <= 1
+        if %length% arr <= 1
         then arr
-        else [ head arr ] @ (tail arr |> flat_map (fun a => [v, a])),
+        else [ %head% arr ] @ (%tail% arr |> flat_map (fun a => [v, a])),
   }
 }

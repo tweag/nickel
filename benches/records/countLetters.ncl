@@ -5,5 +5,5 @@
         record.update char (dict."%{char}" + 1) dict
       else
         record.insert "%{char}" 1 dict in
-    array.foldl update_dict {} (string.chars s)
+    array.fold_left update_dict {} (string.chars s)
 }

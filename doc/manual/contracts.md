@@ -582,7 +582,7 @@ let NumBoolDict = fun label value =>
   if builtin.is_record value then
     let check_fields = value
       |> record.fields
-      |> array.foldl (fun acc field_name =>
+      |> array.fold_left (fun acc field_name =>
         if string.is_match "^\\d+$" field_name then
           acc # unused and always null through iteration
         else

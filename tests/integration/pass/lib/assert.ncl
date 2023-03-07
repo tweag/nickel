@@ -26,5 +26,5 @@
 
     But will give more precise error reporting when one test fails.
     "%
-    = array.foldl (fun acc test => (test | Assert) && acc) true,
+    = array.fold_left (fun acc test => (test | Assert) && acc) true,
 }

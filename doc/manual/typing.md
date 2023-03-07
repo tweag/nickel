@@ -63,7 +63,7 @@ are using functions. Say we want to filter over an array of elements:
 
 ```nickel
 let filter = fun pred l =>
-  array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+  array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
@@ -73,7 +73,7 @@ Result:
 error: Type error
   ┌─ repl-input-11:2:32
   │
-2 │   array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+2 │   array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
   │                                ^^^^^^ This expression has type Num, but Bool was expected
 3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
   │                                                             - evaluated to this
@@ -123,7 +123,7 @@ a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
-     array.foldl (fun acc x => if pred x then acc @ [x] else acc) [] l in
+     array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Num
 ```
 

@@ -79,7 +79,7 @@
       "%
       = fun field r => %record_remove% field r,
 
-    update | forall a. Str -> a -> {_: a} -> {_: a}
+    update : forall a. Str -> a -> {_: a} -> {_: a}
       | doc m%"
         Update a field of a record with a new value. `update` doesn't mutate the
         original record but returns a new one instead. If the field to update is absent
@@ -177,7 +177,7 @@
         => { foo = 1, bar = 2 }
       ```
     "%
-    = array.foldl (&) {},
+    = array.fold_left (&) {},
 
     filter : forall a. (Str -> a -> Bool) -> {_: a} -> {_: a}
     | doc m%"

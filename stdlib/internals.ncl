@@ -50,7 +50,7 @@
       # Returns the sub-record of `l` containing only those fields which are not
       # present in `r`. If `l` has a sealed polymorphic tail then it will be
       # preserved.
-      let field_diff = fun l r => array.foldl
+      let field_diff = fun l r => array.fold_left
         (fun acc f =>
           if %has_field% f r then
             acc
@@ -65,7 +65,7 @@
 
       if %length% missing_fields == 0 then
         let tail_fields = field_diff t field_contracts in
-        let fields_with_contracts = array.foldl
+        let fields_with_contracts = array.fold_left
           (fun acc f =>
             if %has_field% f field_contracts then
               let contract = field_contracts."%{f}" in

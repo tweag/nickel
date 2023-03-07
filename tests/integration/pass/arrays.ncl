@@ -2,8 +2,8 @@ let {check, ..} = import "lib/assert.ncl" in
 
 [
   # accesses
-  array.elem_at 1 [1,2,3] == 2,
-  array.elem_at 1 (array.map (fun x => x + 1) [1,2,3]) == 3,
+  array.at 1 [1,2,3] == 2,
+  array.at 1 (array.map (fun x => x + 1) [1,2,3]) == 3,
 
   # length
   array.length [] == 0,

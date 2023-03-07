@@ -46,7 +46,7 @@
     let rec fold_ = fun n =>
         if n == len
         then nul
-        else op (array.elem_at n list) (fold_ (n + 1))
+        else op (array.at n list) (fold_ (n + 1))
     in fold_ 0,
 
   fold: forall a b. (a -> b -> b) -> b -> (Array a) -> b
@@ -74,7 +74,7 @@
     let rec foldl_ = fun n =>
         if n == -1
         then nul
-        else op (foldl_ (n - 1)) (array.elem_at n list)
+        else op (foldl_ (n - 1)) (array.at n list)
     in foldl_ (array.length list - 1),
 
   foldl_: forall a b. (b -> a -> b) -> b -> (Array a) -> b
@@ -85,7 +85,7 @@
      with small whole results (in contrast with lazily-generated list or large
      lists where only a part is consumed.)
   "%
-  = fun op nul list => array.foldl op nul list,
+  = fun op nul list => array.fold_left op nul list,
 
   imap0: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
@@ -95,7 +95,7 @@
        imap0 (fun i v => "%{v}-%{%to_string% i}") ["a", "b"]
        >> [ "a-0", "b-1" ]
   "%%
-  = fun f list => array.generate (fun n => f n (array.elem_at n list)) (array.length list),
+  = fun f list => array.generate (fun n => f n (array.at n list)) (array.length list),
 
   imap1: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
@@ -105,7 +105,7 @@
        imap1 (fun i v => "%{v}-%{toString i}") ["a", "b"]
        >> [ "a-1", "b-2" ]
   "%%
-  = fun f list => array.generate (fun n => f (n + 1) (array.elem_at n list)) (array.length list),
+  = fun f list => array.generate (fun n => f (n + 1) (array.at n list)) (array.length list),
 
   concatMap: forall a b. (a -> (Array b)) -> (Array a) -> (Array b)
   | doc m%"
@@ -171,7 +171,7 @@
        let len = array.length found in
        if len == 0 then def
        else if len != 1 then multiple
-       else array.head found,
+       else array.first found,
 
   findFirst: forall a. (a -> Bool) -> a -> Array a -> a
   | doc m%"
@@ -192,7 +192,7 @@
     # Input list
     list
     => let found = array.filter pred list in
-       if found == [] then def else array.head found,
+       if found == [] then def else array.first found,
 
   any: forall a. (a -> Bool) -> Array a -> Bool
   | doc m%"
@@ -367,7 +367,7 @@
     fst
     # Second list
     snd
-    => array.generate (fun n => f (array.elem_at n fst) (array.elem_at n snd)) (num.min (array.length fst) (array.length snd)),
+    => array.generate (fun n => f (array.at n fst) (array.at n snd)) (num.min (array.length fst) (array.length snd)),
 
   zipLists: forall a b. Array a -> Array b -> Array { fst: a, snd: b}
   | doc m%"
@@ -390,7 +390,7 @@
   "%
   = fun xs =>
     let l = array.length xs in
-    array.generate (fun n => array.elem_at (l - n - 1) xs) l,
+    array.generate (fun n => array.at (l - n - 1) xs) l,
 
   #TODO: is there a way to type statically?
   listDfs |  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
@@ -424,11 +424,11 @@
         then # nothing is before us
           { minimal = us, visited = visited_, rest = rest_ }
         else # grab the first one before us and continue
-          (dfs_ (array.head b.right)
+          (dfs_ (array.first b.right)
                 ([ us ] @ visited_)
-                (array.tail b.right @ b.wrong)
+                (array.drop_first b.right @ b.wrong)
     ) in
-    dfs_ (array.head list) [] (array.tail list),
+    dfs_ (array.first list) [] (array.drop_first list),
 
   toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array Dyn}
   | doc m%"
@@ -484,9 +484,9 @@
   "%
   = fun strictLess list =>
     let len = array.length list in
-    let first = array.head list in
+    let first = array.first list in
     let rec pivot_ = (fun n acc@{ left=left_, right=right_ } =>
-      let el = array.elem_at n list in
+      let el = array.at n list in
       let next = pivot_ (n + 1) in
       if n == len
       then acc
@@ -519,9 +519,9 @@
          else -1
     else if b == []
          then 1
-         else let rel = cmp (array.head a) (array.head b) in
+         else let rel = cmp (array.first a) (array.first b) in
               if rel == 0
-              then compareLists cmp (array.tail a) (array.tail b)
+              then compareLists cmp (array.drop_first a) (array.drop_first b)
               else rel,
 
 # naturalSort: Array Str -> Array Str
@@ -539,11 +539,11 @@
 # "%
 # # TODO: broken. how to implement it in nickel?
 # = fun lst =>
-#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.head x) | Num else x | Num) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
+#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.first x) | Num else x | Num) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
 #   in
 #     let prepared = array.map (fun x => [ (vectorise x), x ]) lst in # remember vectorised version for O(n) regex splits
-#     let less = fun a b => (compareLists compare (array.head a) (array.head b)) < 0 in
-#     array.map (fun x => array.elem_at 1 x) (sort less prepared),
+#     let less = fun a b => (compareLists compare (array.first a) (array.first b)) < 0 in
+#     array.map (fun x => array.at 1 x) (sort less prepared),
 
   take: forall a. Num -> Array a -> Array a
   | doc m%"
@@ -598,7 +598,7 @@
     lst =>
     let len = array.length lst in
     array.generate
-      (fun n => array.elem_at (n + start) lst)
+      (fun n => array.at (n + start) lst)
       (if start >= len then 0
        else if start + count > len then len - start
        else count),
@@ -616,7 +616,7 @@
   "%
   = fun lst =>
     #assert lib.assertMsg (lst != []) "lists.last: list must not be empty!",
-    array.elem_at (array.length lst - 1) lst,
+    array.at (array.length lst - 1) lst,
 
   init: forall a. Array a -> Array a
   | doc m%"
