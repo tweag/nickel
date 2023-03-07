@@ -5,11 +5,11 @@
   # Contract implementations
   "$dyn" = fun l t => t,
 
-  "$num" = fun l t => if %typeof% t == `Num then t else %blame% l,
+  "$num" = fun l t => if %typeof% t == `Number then t else %blame% l,
 
   "$bool" = fun l t => if %typeof% t == `Bool then t else %blame% l,
 
-  "$string" = fun l t => if %typeof% t == `Str then t else %blame% l,
+  "$string" = fun l t => if %typeof% t == `String then t else %blame% l,
 
   "$fail" = fun l t => %blame% l,
 
@@ -20,7 +20,7 @@
         %blame% l,
 
   "$func" = fun s t l e =>
-      if %typeof% e == `Fun then
+      if %typeof% e == `Function then
           (fun x => %assume% t (%go_codom% l) (e (%assume% s (%chng_pol% (%go_dom% l)) x)))
       else
           %blame% l,

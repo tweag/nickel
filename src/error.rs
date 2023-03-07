@@ -1195,7 +1195,7 @@ mod blame_error {
                         String::from(
                             "This error may happen in the following situation:
     1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
-    2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Num` is expected.",
+    2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Number` is expected.",
                         ),
                         String::from(
                             "Either change the contract accordingly, or change the return value of `f`",
@@ -1231,8 +1231,8 @@ mod blame_error {
     1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
     2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
     3. `g` itself takes a function as an argument.
-    4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Num -> Num`)."),
-                        String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Num`."),
+    4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Number -> Number`)."),
+                        String::from("Either change the contract accordingly, or call `g` with a function that returns a value of type `Number`."),
                         end_note,
                     ],
                 )
@@ -1245,7 +1245,7 @@ mod blame_error {
                     String::from("expected type of the argument provided by the caller"),
                     vec![
                         String::from("This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `Num -> Num`.
+    1. A function `f` is bound by a contract: e.g. `Number -> Number`.
     2. `f` is called with an argument of the wrong type: e.g. `f false`."),
                         String::from("Either change the contract accordingly, or call `f` with an argument of the right type."),
                         end_note,

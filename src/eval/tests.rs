@@ -92,7 +92,7 @@ fn simple_plus() {
 #[test]
 fn asking_for_various_types() {
     let num = mk_term::op1(UnaryOp::Typeof(), Term::Num(45.3));
-    assert_eq!(Ok(Term::Enum("Num".into())), eval_no_import(num));
+    assert_eq!(Ok(Term::Enum("Number".into())), eval_no_import(num));
 
     let boolean = mk_term::op1(UnaryOp::Typeof(), Term::Bool(true));
     assert_eq!(Ok(Term::Enum("Bool".into())), eval_no_import(boolean));
@@ -101,7 +101,7 @@ fn asking_for_various_types() {
         UnaryOp::Typeof(),
         mk_fun!("x", mk_app!(mk_term::var("x"), mk_term::var("x"))),
     );
-    assert_eq!(Ok(Term::Enum("Fun".into())), eval_no_import(lambda));
+    assert_eq!(Ok(Term::Enum("Function".into())), eval_no_import(lambda));
 }
 
 #[test]

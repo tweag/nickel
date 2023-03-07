@@ -65,7 +65,7 @@
         |> drop_first
         |> reverse,
 
-    length : forall a. Array a -> Num
+    length : forall a. Array a -> Number
       | doc m%"
         Results in a number representing the length of the given array.
 
@@ -90,7 +90,7 @@
         "%
       = fun f l => %map% l f,
 
-    at : forall a. Num -> Array a -> a
+    at : forall a. Number -> Array a -> a
       | doc m%"
         Retrieves the n'th element from a array (0-indexed).
 
@@ -283,7 +283,7 @@
         in
         fold_left aux {right = [], wrong = []} l,
 
-    generate : forall a. (Num -> a) -> Num -> Array a
+    generate : forall a. (Number -> a) -> Number -> Array a
       | doc m%"
         `generate f n` produces a array of length `n` by applying `f` on increasing numbers:
          `[ f 0, f 1, ..., f (n - 1) ]`.

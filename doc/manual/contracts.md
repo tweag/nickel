@@ -13,20 +13,20 @@ normally. Otherwise, an error is raised. In Nickel, you can apply a contract
 using the `|` operator:
 
 ```nickel
-let x = (1 + 1 | Num) in x
+let x = (1 + 1 | Number) in x
 ```
 
 Contract can also be attached to identifiers in a definition:
 
 ```nickel
 # let-binding: equivalent to the previous example
-let x | Num = 1 + 1 in x
+let x | Number = 1 + 1 in x
 
 # on a record field
-{x | Num = 1 + 1}
+{x | Number = 1 + 1}
 ```
 
-Here, `x` is bound to a `Num` contract. When evaluating `x`, the following steps
+Here, `x` is bound to a `Number` contract. When evaluating `x`, the following steps
 are performed:
 
 1. Evaluate `1 + 1`.
@@ -35,15 +35,14 @@ are performed:
 
 ```text
 $ nickel repl
-nickel>1 + 1 | Num
+nickel>1 + 1 | Number
 2
 
-nickel>"a" | Num
+nickel>"a" | Number
 error: contract broken by a value.
 [..]
 ```
-
-Contracts corresponding to the basic types `Num`, `Str`, `Bool` and `Dyn` are
+Contracts corresponding to the basic types `Number`, `String`, `Bool` and `Dyn` are
 available. `Dyn` is a contract that never fails.
 
 ## User-defined contracts
@@ -57,7 +56,7 @@ properties. Let us see how to define our very own contract. We start the REPL
 
 ```nickel
 let IsFoo = fun label value =>
-  if builtin.is_str value then
+  if builtin.is_string value then
     if value == "foo" then
       value
     else
@@ -122,8 +121,8 @@ Here is an example of a port number contract:
 
 ```nickel
 let Port = contract.from_predicate (fun value =>
-  builtin.is_num value &&
-  num.is_int value &&
+  builtin.is_number value &&
+  number.is_int value &&
   value >= 0 &&
   value <= 65535)
 ```
@@ -134,7 +133,7 @@ Let us consider a contract for bound checking:
 
 ```nickel
 let Between5And10 = contract.from_predicate (fun value =>
-  builtin.is_num value &&
+  builtin.is_number value &&
   value >= 5 &&
   value <= 10) in
 let MyConfig = {
@@ -146,11 +145,11 @@ Now, we add a new field to our schema, that must be between `0` and `1`:
 
 ```nickel
 let Between5And10 = contract.from_predicate (fun value =>
-  builtin.is_num value &&
+  builtin.is_number value &&
   value >= 5 &&
   value <= 10) in
 let Between0And1 = contract.from_predicate (fun value =>
-  builtin.is_num value &&
+  builtin.is_number value &&
   value >= 0 &&
   value <= 1) in
 let MyConfig = {
@@ -171,7 +170,7 @@ let Between = fun min max =>
     value <= max) in
 # alternative without from_predicate
 let BetweenAlt = fun min max label value =>
-  if builtin.is_num value &&
+  if builtin.is_number value &&
      value >= min &&
      value <= max then
     value
@@ -202,9 +201,9 @@ let Nullable = fun contract label value =>
   else
     contract.apply contract label value in
 # succeeds
-null | Nullable Num
+null | Nullable Number
 # succeeds too
-1 | Nullable Num
+1 | Nullable Number
 ```
 
 ## Compound contracts
@@ -221,11 +220,11 @@ missing:
 
 ```nickel
 let MyConfig = {
-  path | Str,
+  path | String,
 
   connection | {
     server_port | Port,
-    host | Str,
+    host | String,
   }
 } in
 
@@ -306,9 +305,9 @@ or default value:
 ```text
 nickel>let MyConfig = {
     foo | doc "This documentation will propagate to the final value!"
-        | Str
+        | String
         | default = "foo",
-    bar | Num,
+    bar | Number,
 }
 nickel>let config | MyConfig = {bar = 2}
 nickel> builtin.serialize `Json config
@@ -318,7 +317,7 @@ nickel> builtin.serialize `Json config
 }"
 nickel>
 nickel>:query config.foo
-* contract: Str
+* contract: String
 * default: "foo"
 * documentation: This documentation will propagate to the final value!
 ```
@@ -328,7 +327,7 @@ nickel>:query config.foo
 By default, record contracts are closed, meaning that additional fields are forbidden:
 
 ```text
-nickel>let Contract = {foo | Str}
+nickel>let Contract = {foo | String}
 nickel>{foo = "a", bar = 1} | Contract
 error: contract broken by a value [extra field `bar`].
 [..]
@@ -338,7 +337,7 @@ If you want to allow additional fields, append `, ..` after the last field
 definition to define an open contract:
 
 ```text
-nickel>let Contract = {foo | Str, ..}
+nickel>let Contract = {foo | String, ..}
 nickel>{foo = "a", bar = 1} | Contract
 { foo = <contract,value="a">, bar = 1}
 ```
@@ -354,7 +353,7 @@ example:
 ```text
 nickel>let Secure = {
   must_be_very_secure | Bool = true,
-  data | Str,
+  data | String,
 }
 nickel>builtin.serialize `Json ({data = ""} | Secure)
 "{
@@ -378,23 +377,23 @@ error: Non mergeable terms
 **Warning: `=` vs `|`**
 
 It may be tempting to use `=` instead of  `|` to attach a record contract to a
-field. That is, writing `Contract = {foo = {bar | Str}}` instead of
-`Contract = {foo | {bar | Str}}`. When applying this contract, the merging
-operator will apply the `Str` contract to the field `foo` of the checked value.
+field. That is, writing `Contract = {foo = {bar | String}}` instead of
+`Contract = {foo | {bar | String}}`. When applying this contract, the merging
+operator will apply the `String` contract to the field `foo` of the checked value.
 At first sight, `=` also fits the bill. However, there are a number of subtle
 but potentially surprising differences.
 
 One concerns open contracts. Merging never requires the presence of specific
-fields: thus, the contract `{bar | Str}` attached to `foo` will actually behave
+fields: thus, the contract `{bar | String}` attached to `foo` will actually behave
 as an open contract, even if you didn't use `..`. This is usually not what you
 want:
 
 ```text
 nickel>let ContractPipe = {
-  sub_field | {foo | Str}
+  sub_field | {foo | String}
 }
 nickel>let ContractEq = {
-  sub_field = {foo | Str}
+  sub_field = {foo | String}
 }
 nickel>{sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
 error: contract broken by a value [extra field `bar`].
@@ -410,7 +409,7 @@ in mind, **you should use `|` instead of `=` when attaching record contracts**.
 
 ### Types constructors for contracts
 
-We've already seen that the primitive types `Num`, `Str` and `Bool` can be used
+We've already seen that the primitive types `Number`, `String` and `Bool` can be used
 as contracts. In fact, any type constructor of the
 [static type system](./typing.md) can be used to combine contracts.
 
@@ -421,7 +420,7 @@ contract to each element:
 
 ```text
 nickel>let VeryBig = contract.from_predicate (fun value =>
-  builtin.is_num value
+  builtin.is_number value
   && value >= 1000)
 nickel>[1000, 10001, 2] | Array VeryBig
 error: contract broken by a value.
@@ -447,14 +446,14 @@ that must hold about the return value of the function.
 
 ##### Caller vs callee
 
-Function contracts, as opposed to a contract like `Num`, have the peculiarity of
+Function contracts, as opposed to a contract like `Number`, have the peculiarity of
 involving two parties in the contract checking. For example:
 
 ```nickel
-let add_semi | Str -> Str = fun x => x ++ ";" in
+let add_semi | String -> String = fun x => x ++ ";" in
 add_semi 1
 
-let wrong | Str -> Str = fun x => 0 in
+let wrong | String -> String = fun x => 0 in
 wrong "a"
 ```
 
@@ -476,12 +475,12 @@ The interpreter automatically performs book-keeping for functions contracts in
 order to make this caller/callee distinction:
 
 ```text
-nickel>let add_semi | Str -> Str = fun x => x ++ ";" in
+nickel>let add_semi | String -> String = fun x => x ++ ";" in
 add_semi 1
 error: contract broken by the caller.
 [..]
 
-nickel>let wrong | Str -> Str = fun x => 0 in
+nickel>let wrong | String -> String = fun x => 0 in
 wrong "a"
 error: contract broken by a function.
 [..]
@@ -494,12 +493,12 @@ functions as well. Higher-order functions are functions that take other
 functions as parameters. Here is an example:
 
 ```text
-nickel>let apply_fun | (Num -> Num) -> Num = fun f => f 0 in
+nickel>let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
 apply_fun (fun x => "a")
 error: contract broken by the caller.
   ┌─ :1:9
   │
-1 │ (Num -> Num) -> Num
+1 │ (Number -> Number) -> Number
   │         --- expected return type of a function provided by the caller
   │
   ┌─ repl-input-17:2:21
@@ -518,7 +517,7 @@ records as an extensible dictionary, that is a key/value store, where keys are
 strings and values respect `Contract`. Example:
 
 ```nickel
-let occurrences | {_: Num} = {a = 2, b = 3, "!" = 5, "^" = 1} in
+let occurrences | {_: Number} = {a = 2, b = 3, "!" = 5, "^" = 1} in
 occurrences."!"
 ```
 
@@ -578,7 +577,7 @@ value, which is wrapping the original value with delayed checks inside**. This
 is the rationale behind contracts returning a value. Let us see:
 
 ```nickel
-let NumBoolDict = fun label value =>
+let NumberBoolDict = fun label value =>
   if builtin.is_record value then
     let check_fields = value
       |> record.fields
@@ -631,7 +630,7 @@ value and continues with the second argument (here, our wrapped `value`).
 Let us see if we indeed preserved laziness:
 
 ```text
-nickel>let config | NumBoolDict = {
+nickel>let config | NumberBoolDict = {
     "1" = 1 + "a", # Same as our previous "fail"
     "0" | doc "Some information" = true,
 }
@@ -644,7 +643,7 @@ Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
 ```text
-nickel>let config | NumBoolDict = {
+nickel>let config | NumberBoolDict = {
   not_a_number = false,
   "0" | doc "Some information" = false,
 }
@@ -652,7 +651,7 @@ nickel>:q config."0"
 error: contract broken by a value [field name `not_a_number` is not a number].
 [..]
 
-nickel>let config | NumBoolDict = {
+nickel>let config | NumberBoolDict = {
   "0" | doc "Some information" = "not a boolean",
 }
 nickel>:q config."0"
@@ -675,7 +674,7 @@ prefer to report this error as soon as possible.
 
 #### Conclusion
 
-Our `NumToBool` contract doesn't perform all the checks needed right away.
+Our `NumberBoolDict` contract doesn't perform all the checks needed right away.
 Instead, **it returns a new value, which is wrapping the original value with
 delayed checks inside**. Doing so preserves laziness of the language and only
 triggers the checks when the values are used or exported in a configuration.

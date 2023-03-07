@@ -1,5 +1,5 @@
 {
-  num = {
+  number = {
     Integer
     | doc m%"
       Contract to enforce a number is an integer.
@@ -13,7 +13,7 @@
       ```
       "%
     = fun label value =>
-      if %typeof% value == `Num then
+      if %typeof% value == `Number then
         if value % 1 == 0 then
           value
         else
@@ -36,7 +36,7 @@
       ```
       "%
     = fun label value =>
-      if %typeof% value == `Num then
+      if %typeof% value == `Number then
         if value % 1 == 0 && value >= 0 then
           value
         else
@@ -59,7 +59,7 @@
       ```
       "%
     = fun label value =>
-      if %typeof% value == `Num then
+      if %typeof% value == `Number then
         if value % 1 == 0 && value > 0 then
           value
         else
@@ -80,7 +80,7 @@
       ```
       "%
     = fun label value =>
-      if %typeof% value == `Num then
+      if %typeof% value == `Number then
         if value != 0 then
           value
         else
@@ -88,7 +88,7 @@
       else
         %blame% (%label_with_message% "not a number" label),
 
-    is_integer : Num -> Bool
+    is_integer : Number -> Bool
     | doc m%"
       Checks if the given number is an integer.
 
@@ -102,7 +102,7 @@
       "%
     = fun x => x % 1 == 0,
 
-    min : Num -> Num -> Num
+    min : Number -> Number -> Number
     | doc m%"
       Results in the lowest of the given two numbers.
 
@@ -114,7 +114,7 @@
       "%
     = fun x y => if x <= y then x else y,
 
-    max : Num -> Num -> Num
+    max : Number -> Number -> Number
     | doc m%"
       Results in the highest of the given two numbers.
 
@@ -126,7 +126,7 @@
       "%
     = fun x y => if x >= y then x else y,
 
-    floor : Num -> Num
+    floor : Number -> Number
     | doc m%"
       Rounds the number down to the next integer.
 
@@ -141,7 +141,7 @@
       then x - (x % 1)
       else x - 1 - (x % 1),
 
-    abs : Num -> Num
+    abs : Number -> Number
     | doc m%"
       Results in the absolute value of the given number.
 
@@ -155,7 +155,7 @@
       "%
     = fun x => if x < 0 then -x else x,
 
-    fract : Num -> Num
+    fract : Number -> Number
     | doc m%"
       Results in the fractional part of the given number.
 
@@ -169,7 +169,7 @@
       "%
     = fun x => x % 1,
 
-    truncate : Num -> Num
+    truncate : Number -> Number
     | doc m%"
       Truncates the given number.
 
@@ -183,7 +183,7 @@
       "%
     = fun x => x - (x % 1),
 
-    pow : Num -> Num -> Num
+    pow : Number -> Number -> Number
     | doc m%"
       `pow x y` results in `x` to the power of `y`.
 

@@ -120,7 +120,7 @@ Yes it is, indeed it is"
 > let n = 5 in "The number %{n}."
 error: Type error
 
-> let n = 5 in "The number %{string.from_num n}."
+> let n = 5 in "The number %{string.from_number n}."
 "The number 5."
 ```
 
@@ -473,17 +473,17 @@ information on typing in the [relevant document](./typing.md).
 Examples:
 
 ```nickel
-5 : Num
-"Hello" : Str
+5 : Number
+"Hello" : String
 
-(fun a b => a + b) : Num -> Num -> Num
-let add : Num -> Num -> Num = fun a b => a + b
+(fun a b => a + b) : Number -> Number -> Number
+let add : Number -> Number -> Number = fun a b => a + b
 
-{a: Num = 1, b: Bool = true, c : Array Num = [ 1 ]}
-let r : {a : Num, b : Bool, c : Array Num} = { a = 1, b = true, c = [ 1 ] }
+{a: Number = 1, b: Bool = true, c : Array Number = [ 1 ]}
+let r : {a : Number, b : Bool, c : Array Number} = { a = 1, b = true, c = [ 1 ] }
 
-{ a = 1, b = 2 } : { _ : Num }
-let r : { _ : Num } = { a = 1, b = 2 }
+{ a = 1, b = 2 } : { _ : Number }
+let r : { _ : Number } = { a = 1, b = 2 }
 ```
 
 ## Metadata
@@ -495,23 +495,23 @@ with the syntax `<value> | <metadata>`. Multiple metadata can be chained.
 Examples:
 
 ```text
-> 5 | Num
+> 5 | Number
 5
 
 > 5 | Bool
 error: Blame error: contract broken by a value.
 
-> let SmallNum = contract.from_predicate (fun x => x < 5) in
+> let SmallNumber = contract.from_predicate (fun x => x < 5) in
 1 | SmallNum
 1
 
-> let SmallNum = contract.from_predicate (fun x => x < 5) in
+> let SmallNumber = contract.from_predicate (fun x => x < 5) in
 10 | SmallNum
 error: Blame error: contract broken by a value.
 
-> let SmallNum = contract.from_predicate (fun x => x < 5) in
-  let NotTooSmallNum = contract.from_predicate (fun x => x >= 2) in
-  3 | Num
+> let SmallNumber = contract.from_predicate (fun x => x < 5) in
+  let NotTooSmallNumber = contract.from_predicate (fun x => x >= 2) in
+  3 | Number
     | SmallNum
     | NotTooSmallNum
 3

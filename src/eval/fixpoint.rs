@@ -153,8 +153,8 @@ pub fn patch_field<C: Cache>(
     //
     // ```
     // let Variant = match {
-    //   `num => Num,
-    //   `str => Str,
+    //   `num => Number,
+    //   `str => String,
     //   `any => Dyn,
     // } in
     //

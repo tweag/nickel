@@ -22,10 +22,12 @@ pub fn get_uop_type(
                 mk_uty_arrow!(branches.clone(), branches.clone(), branches),
             )
         }
-        // Dyn -> [| `Num, `Bool, `Str, `Enum, `Fun, `Array, `Record, `Lbl, `Other |]
+        // Dyn -> [| `Number, `Bool, `String, `Enum, `Function, `Array, `Record, `Label, `Other |]
         UnaryOp::Typeof() => (
             mk_uniftype::dynamic(),
-            mk_uty_enum!("Num", "Bool", "Str", "Enum", "Fun", "Array", "Record", "Lbl", "Other"),
+            mk_uty_enum!(
+                "Number", "Bool", "String", "Enum", "Function", "Array", "Record", "Label", "Other"
+            ),
         ),
         // Bool -> Bool -> Bool
         UnaryOp::BoolAnd() | UnaryOp::BoolOr() => {
@@ -85,7 +87,7 @@ pub fn get_uop_type(
         UnaryOp::ArrayGen() => {
             let a = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            let f_type = mk_uty_arrow!(TypeF::Num, a.clone());
+            let f_type = mk_uty_arrow!(TypeF::Number, a.clone());
             (
                 mk_uniftype::num(),
                 mk_uty_arrow!(f_type, mk_uniftype::array(a)),
@@ -99,7 +101,7 @@ pub fn get_uop_type(
             let a = UnifType::UnifVar(state.table.fresh_type_var_id());
             let b = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            let f_type = mk_uty_arrow!(TypeF::Str, a.clone(), b.clone());
+            let f_type = mk_uty_arrow!(TypeF::String, a.clone(), b.clone());
             (
                 mk_uniftype::dyn_record(a),
                 mk_uty_arrow!(f_type, mk_uniftype::dyn_record(b)),
@@ -184,9 +186,9 @@ pub fn get_uop_type(
             mk_uty_arrow!(
                 mk_uniftype::str(),
                 mk_uty_record!(
-                    ("matched", TypeF::Str),
-                    ("index", TypeF::Num),
-                    ("groups", mk_uniftype::array(TypeF::Str))
+                    ("matched", TypeF::String),
+                    ("index", TypeF::Number),
+                    ("groups", mk_uniftype::array(TypeF::String))
                 )
             ),
         ),
@@ -196,9 +198,9 @@ pub fn get_uop_type(
         UnaryOp::StrFindCompiled(_) => (
             mk_uniftype::str(),
             mk_uty_record!(
-                ("matched", TypeF::Str),
-                ("index", TypeF::Num),
-                ("groups", mk_uniftype::array(TypeF::Str))
+                ("matched", TypeF::String),
+                ("index", TypeF::Number),
+                ("groups", mk_uniftype::array(TypeF::String))
             ),
         ),
         // Dyn -> Dyn
@@ -378,7 +380,7 @@ pub fn get_bop_type(
         BinaryOp::StrSplit() => (
             mk_uniftype::str(),
             mk_uniftype::str(),
-            mk_uniftype::array(TypeF::Str),
+            mk_uniftype::array(TypeF::String),
         ),
         // The first argument is a contract, the second is a label.
         // forall a. Dyn -> Dyn -> Array a -> Array a
@@ -412,7 +414,7 @@ pub fn get_bop_type(
         // Morally: Array Str -> Lbl -> Lbl
         // Actual: Array Str -> Dyn -> Dyn
         BinaryOp::LabelWithNotes() => (
-            mk_uniftype::array(TypeF::Str),
+            mk_uniftype::array(TypeF::String),
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
         ),

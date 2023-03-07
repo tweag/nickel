@@ -24,8 +24,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   twice (fun x => x + 1) 3 == 5,
 
   # strings
-  ("hello" | Str) == "hello",
-  ("hello" ++ " world" | Str) == "hello world",
+  ("hello" | String) == "hello",
+  ("hello" ++ " world" | String) == "hello world",
 
   # enums_simple
   (`foo | [| `foo, `bar |]) == `foo,
@@ -36,19 +36,19 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   (`"bar:baz" | forall r. [| `"foo:baz", `"bar:baz" ; r |]) == `"bar:baz",
 
   # enums_complex
-  let f : forall r. [| `foo, `bar ; r |] -> Num =
+  let f : forall r. [| `foo, `bar ; r |] -> Number =
     match { `foo => 1, `bar => 2, _ => 3, } in
   f `bar == 2,
 
-  let f : forall r. [| `foo, `bar ; r |] -> Num =
+  let f : forall r. [| `foo, `bar ; r |] -> Number =
     match { `foo => 1, `bar => 2, _ => 3, } in
   f `boo == 3,
 
-  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Num =
+  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Number =
     fun x => match { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"bar:baz" == 2,
 
-  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Num =
+  let f : forall r. [| `foo, `"bar:baz" ; r |] -> Number =
     fun x => match { `foo => 1, `"bar:baz" => 2, _ => 3, } x in
   f `"boo,grr" == 3,
 
@@ -60,10 +60,10 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
 
   # records_simple
   ({} | {}) == {},
-  let x | {a: Num, s: Str} = {a = 1, s = "a"} in
+  let x | {a: Number, s: String} = {a = 1, s = "a"} in
     %deep_seq% x x == {a = 1, s = "a"},
 
-  let x | {a: Num, s: {foo: Bool}} = {a = 1, s = { foo = true}} in
+  let x | {a: Number, s: {foo: Bool}} = {a = 1, s = { foo = true}} in
     %deep_seq% x x == {a = 1, s = { foo = true}},
 
   # polymorphism
@@ -72,8 +72,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
     # `record.insert` and `record.remove` enforce the `$dyn_record` contract on
     # their record arguments. `$dyn_record` uses `%record_map%` internally, and
     # mapping over a sealed record is currently forbidden.
-    let extend | forall a. { ; a} -> {foo: Num ; a} = fun x => %record_insert% "foo" x 1 in
-    let remove | forall a. {foo: Num ; a} -> { ; a} = fun x => %record_remove% "foo" x in
+    let extend | forall a. { ; a} -> {foo: Number ; a} = fun x => %record_insert% "foo" x 1 in
+    let remove | forall a. {foo: Number ; a} -> { ; a} = fun x => %record_remove% "foo" x in
 
     (id {} == {} | Assert) &&
     (id {a = 1, b = false} == {a = 1, b = false} | Assert) &&
@@ -91,24 +91,24 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   ),
 
   # records_dynamic_tail
-  ({a = 1, b = "b"} | {a: Num, b: Str ; Dyn}) == {a = 1, b = "b"},
-  ({a = 1, b = "b", c = false} | {a: Num, b: Str ; Dyn})
+  ({a = 1, b = "b"} | {a: Number, b: String ; Dyn}) == {a = 1, b = "b"},
+  ({a = 1, b = "b", c = false} | {a: Number, b: String ; Dyn})
   == {a = 1, b = "b", c = false},
-  ((fun r => r.b) | {a: Num ; Dyn} -> Dyn) {a = 1, b = 2} == 2,
+  ((fun r => r.b) | {a: Number ; Dyn} -> Dyn) {a = 1, b = 2} == 2,
 
   # records_open_contracts
-  ({a = 0, b = 0} | {a | Num, ..}) == {a = 0, b = 0},
-  let Contract = {a | Num} & {..} in
+  ({a = 0, b = 0} | {a | Number, ..}) == {a = 0, b = 0},
+  let Contract = {a | Number} & {..} in
   ({a = 0, b = 0} | Contract) == {a = 0, b = 0},
-  let Contract = {..} & {b | Num} in
+  let Contract = {..} & {b | Number} in
   ({a = 0, b = 0} | Contract) == {a = 0, b = 0},
-  let Contract = {a | Num, ..} & {b | Num, ..} in
+  let Contract = {a | Number, ..} & {b | Number, ..} in
   ({a = 0, b = 0, c = 0} | Contract) == {a = 0, b = 0, c = 0},
 
   # arrays
   ([1, "2", false] | Array Dyn) == [1, "2", false],
-  ([1, 2, 3] | Array Num) == [1, 2, 3],
-  (["1", "2", "false"] | Array Str) == ["1", "2", "false"],
+  ([1, 2, 3] | Array Number) == [1, 2, 3],
+  (["1", "2", "false"] | Array String) == ["1", "2", "false"],
 
   # full_annotations
   # Check that the contract introduced by the type annotation doesn't interact
@@ -117,24 +117,24 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
 
   # nested_metavalues
   # Regression test for #402
-  let MyContract = { x | Str } in
+  let MyContract = { x | String } in
   {
     foo | MyContract | default = { x = "From foo" },
     bar | {..} | default = foo
   } == { foo.x = "From foo", bar.x = "From foo"},
 
   # mixing type and record contracts
-  let f | {foo | Num} -> {bar | Num} = fun r =>
+  let f | {foo | Number} -> {bar | Number} = fun r =>
     {bar = r.foo} in
   (f {foo = 1}).bar == 1,
   # user-written contract application
   let Extend = fun base label value =>
     let derived = if builtin.is_record base then
-      (base & {foo | Num})
+      (base & {foo | Number})
     else
       base in
     contract.apply derived label value in
-  let Contract = Extend {bar | Num, ..} in
+  let Contract = Extend {bar | Number, ..} in
   let Id = Extend (fun label value => value) in
   ({bar = 1, foo = 1} | Contract)
     & ({baz = 1} | Id)

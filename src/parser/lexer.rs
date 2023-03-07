@@ -77,12 +77,12 @@ pub enum NormalToken<'input> {
 
     #[token("Dyn")]
     Dyn,
-    #[token("Num")]
-    Num,
+    #[token("Number")]
+    Number,
     #[token("Bool")]
     Bool,
-    #[token("Str")]
-    Str,
+    #[token("String")]
+    String,
     #[token("Array")]
     Array,
 

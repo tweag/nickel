@@ -1978,7 +1978,7 @@ mod tests {
 
         let inner = TypeAnnotation {
             types: Some(LabeledType {
-                types: Types::from(TypeF::Num),
+                types: Types::from(TypeF::Number),
                 label: Label::dummy(),
             }),
             ..Default::default()

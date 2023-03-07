@@ -27,7 +27,7 @@
       | doc m%"
         Raise blame with respect to a given label and a custom error message.
 
-        Type: `forall a. Str -> Lbl -> a`
+        Type: `forall a. String -> Lbl -> a`
         (for technical reasons, this function isn't actually statically typed)
 
         Same as `blame`, but take an additional custom error message that will be
@@ -97,7 +97,7 @@
             Attach a custom error message to the current error diagnostic of a
             label.
 
-            Type: `Str -> Lbl -> Lbl`
+            Type: `String -> Lbl -> Lbl`
             (for technical reasons, this function isn't actually statically typed)
 
             If a custom error message was previously set, there are two
@@ -116,7 +116,7 @@
             let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
 
             let Contract = fun label value =>
-              if builtin.is_num value then
+              if builtin.is_number value then
                 contract.apply
                   ContractNum
                   (contract.label.with_message
@@ -138,7 +138,7 @@
             Attach custom error notes to the current error diagnostic of a
             label.
 
-            Type: `Array Str -> Lbl -> Lbl`
+            Type: `Array String -> Lbl -> Lbl`
             (for technical reasons, this function isn't actually statically typed)
 
             If custom error notes were previously set, there are two
@@ -157,7 +157,7 @@
             let ContractNum = contract.from_predicate (fun x => x > 0 && x < 50) in
 
             let Contract = fun label value =>
-              if builtin.is_num value then
+              if builtin.is_number value then
                 contract.apply
                   ContractNum
                   (label
@@ -183,7 +183,7 @@
           | doc m%"
               Append a note to the notes of the current diagnostic of a label.
 
-              Type: `Str -> Lbl -> Lbl`
+              Type: `String -> Lbl -> Lbl`
               (for technical reasons, this function isn't actually statically typed)
             "%
           = fun note label => %label_append_note% note label,
@@ -209,7 +209,7 @@
             if value == null then null
             else contract.apply param_contract label value
           in
-          let Contract = Nullable {foo | Num} in
+          let Contract = Nullable {foo | Number} in
           ({foo = 1} | Contract)
           ```
 

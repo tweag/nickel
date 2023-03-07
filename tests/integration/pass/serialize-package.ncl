@@ -7,7 +7,7 @@ let ctr = {
     name | doc m%"
               The package name.
            "%
-         | Str,
+         | String,
 
     buildInputs | doc m%"
                   The list of inputs for this package, specified as a
@@ -39,12 +39,12 @@ let ctr = {
                }
                ```"%
              = {
-    package | Str
+    package | String
             | doc m%"
               The package name, given as a string. Dot-separated paths are not yet
               supported"%,
 
-    input | Str
+    input | String
           | doc m%"
             The inputs where to fetch the package from. Must be a variable name
             that is in scope on the Nix side."%

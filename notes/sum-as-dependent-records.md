@@ -15,7 +15,7 @@ For this, we'd need to implement two new kind of contracts:
 
 
 Ideas/problems around this:
- * We may be good enough with a Pi indexed only by simple types (Bool, Num, enums), I think this would simplify some of the concerns regarding strictness. Dually, some similar restriction might be helpful for Sigma. If we also drop Num, type checking might become much easier.
+ * We may be good enough with a Pi indexed only by simple types (Bool, Number, enums), I think this would simplify some of the concerns regarding strictness. Dually, some similar restriction might be helpful for Sigma. If we also drop Number, type checking might become much easier.
  * Maybe we can get rid of Sigma, and construct them with `Pi b: Bool, (if b then A else B) -> (Pi c: Bool, if c then Bool else if b then A else B)`, where `c` is the accessor for the pair (`true == fst`, `false == snd`).
  * A big question is what to do with type checking  for these types.
  * [4] talks about some problems with dependent function contracts, I'll try to understand in more detail what they're saying and check whether it makes any difference for us.

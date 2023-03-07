@@ -34,11 +34,11 @@ We can spot fields such as `name`, `ssh-keys`, `is-admin` or
 the shape of this data, we need to think about the type needed for
 each attribute.
 
-For example, the field `name` is a string, which translates to `Str`
+For example, the field `name` is a string, which translates to `String`
 in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is a
-list of strings, written as `Array Str` in Nickel. The field `is-admin`
+list of strings, written as `Array String` in Nickel. The field `is-admin`
 is a boolean, written as `Bool`. Finally, `extra-groups` is a list of
-group names, so we need `Array Str`, the same type used for `ssh-keys`.
+group names, so we need `Array String`, the same type used for `ssh-keys`.
 
 We can also mark fields as `optional` so you won't have to explicitly
 write them if they don't have any value. In the example,`extra-groups`
@@ -65,15 +65,15 @@ but it will allow you to validate your input data
 {
   UserSchema =
   {
-    name | Str,
+    name | String,
     ssh-keys
-        | Array Str
+        | Array String
         | optional,
     is-admin
       | Bool
       | default = false,
     extra-groups
-      | Array Str
+      | Array String
       | optional,
   },
 }
@@ -175,7 +175,7 @@ error: missing definition for `name`
 note:
   ┌─ /tmp/example/users-contract.ncl:5:12
   │
-5 │     name | Str,
+5 │     name | String,
   │            ^^^ bound here
 ```
 
@@ -184,5 +184,5 @@ the attribute `name` has no value while it should have one. This is to
 be expected as we removed it earlier.
 
 The second part shows the contract attribute that produced the error.
-In this case it's showing that `name` should be a `Str`, and as there
+In this case it's showing that `name` should be a `String`, and as there
 is no `optional` keyword, this attribute must be set.

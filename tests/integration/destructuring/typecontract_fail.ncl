@@ -1,2 +1,2 @@
-let {a | Str} = {a=1} in
+let {a | String} = {a=1} in
 a

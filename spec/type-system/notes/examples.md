@@ -13,7 +13,7 @@ case, we compute the max of the lower bounds or fail.
 
 ```nickel
 f : forall a. a -> a -> a
-x : {foo : {bar: Num}, bar: {baz2: Dyn}}
+x : {foo : {bar: Number}, bar: {baz2: Dyn}}
 y : {_: {_: Dyn}}
 
 f x y
@@ -21,7 +21,7 @@ f x y
 # constraints
 e: ?a
 a: ?a
-?a >: {foo : {baz: Num}, bar: {baz2: Dyn}}
+?a >: {foo : {baz: Number}, bar: {baz2: Dyn}}
 ?a >: {_ : {_ : Dyn}}
 
 # expected
@@ -39,18 +39,18 @@ Q: what is the rule for `if-then-else` ?
 
 ```nickel
 fun x =>
-  if builtin.is_num x then x + 1 else x
+  if builtin.is_number x then x + 1 else x
 
 e: ?a -> ?b
 x: ?a
 ?a <: Dyn
-?a <: Num
+?a <: Number
 ?b >: ?a
-?b >: Num
+?b >: Number
 
 # expected
 works
-x: Num
+x: Number
 ```
 
 ### incompatible if
@@ -61,13 +61,13 @@ fun x =>
 
 e: ?a -> ?b
 x: ?a
-?a <: Num
+?a <: Number
 ?a <: Bool
-?b >: Num
+?b >: Number
 
 # expected
 fails
-Num <> Bool
+Number <> Bool
 ```
 
 ### record.insert with subtyping
@@ -84,7 +84,7 @@ x: ?x
 ?a2 snd instantiation of record.insert
 
 # fst call gives
-Num <: ?a1
+Number <: ?a1
 ?x <: {_: ?a1}
 
 # snd call gives
@@ -100,30 +100,30 @@ Dyn <: ?a2 => a2 := Dyn
 ?x1 <: Dyn
 
 # state
-Num <: ?a1
+Number <: ?a1
 ?x1 <: ?a1
 ?x1 <: Dyn
 
 # what do we do? unify? what if ?x1 <: ?a3 ?
-# Or we do ?a1 >: max (Num, ?x1), setting ?x1 to Num
+# Or we do ?a1 >: max (Number, ?x1), setting ?x1 to Number
 # ... ?
-# Would it be possible to have ?x1 <: ?a1, ?x2 <: ?a2, ?a1 <: Num, ?a2 <: Dyn
+# Would it be possible to have ?x1 <: ?a1, ?x2 <: ?a2, ?a1 <: Number, ?a2 <: Dyn
 # plus other bounds preventing from doing substitution?
 
 # expected
 works
-{_: Num} -> {_: Dyn}
+{_: Number} -> {_: Dyn}
 ```
 
 Questions on this: what constraint do we pick? Do max of lower bound should
-always provoke unification, like `max ?a Num`?
+always provoke unification, like `max ?a Number`?
 
 ### record.insert with subtyping and multiple variables
 
 ```nickel
 fun x =>
   let var = "foo" ++ "bar" in
-  let f = fun u => builtin.is_num u."%{var}" in
+  let f = fun u => builtin.is_number u."%{var}" in
   let y : Dyn = null in
   let _ign = record.insert 1 "foo" x in
   let _ign2 = f x in
@@ -138,7 +138,7 @@ x: ?x
 ?a2 snd instantiation of record.insert
 
 # fst call gives
-Num <: ?a1
+Number <: ?a1
 ?x <: {_: ?a1}
 
 # snd call gives
@@ -162,7 +162,7 @@ Dyn <: ?a2 => a2 := Dyn
 ?x1 <: Dyn
 
 # state
-Num <: ?a1
+Number <: ?a1
 ?x1 <: ?a1
 ?x1 <: Dyn
 ?x1 <: ?u1
@@ -171,7 +171,7 @@ Num <: ?a1
 
 # expected
 works
-{_: Num} -> {_: Dyn}
+{_: Number} -> {_: Dyn}
 ```
 
 ## Both lower and upper bounds

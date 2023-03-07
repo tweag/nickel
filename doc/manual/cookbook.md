@@ -22,8 +22,8 @@ DON'T
 
 ```nickel
 {
-  foo :  Num -> Num = fun x => x + 1,
-  bar : Num -> Num = foo,
+  foo :  Number -> Number = fun x => x + 1,
+  bar : Number -> Number = foo,
 }
 ```
 
@@ -34,8 +34,8 @@ BUT DO
   foo = fun x => x + 1,
   bar = foo,
 } : {
-  foo : Num -> Num,
-  bar : Num -> Num,
+  foo : Number -> Number,
+  bar : Number -> Number,
 }
 ```
 

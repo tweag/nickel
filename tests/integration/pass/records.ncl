@@ -29,7 +29,7 @@ let {check, ..} = import "lib/assert.ncl" in
     == 2,
 
   let r = record.map
-      (fun y x => if %typeof% x == `Num then x + 1 else 0)
+      (fun y x => if %typeof% x == `Number then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
 
@@ -90,16 +90,16 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # piecewise signatures
   {
-      foo : Num,
+      foo : Number,
       bar = 3,
       foo = 5
   }.foo == 5,
   {
-      foo : Num,
+      foo : Number,
       foo = 1,
-      bar : Num = foo,
+      bar : Number = foo,
   }.bar == 1,
-  let {foo : Num} = {foo = 1} in foo == 1,
+  let {foo : Number} = {foo = 1} in foo == 1,
 
   # recursive overriding with common fields
   # regression tests for [#579](https://github.com/tweag/nickel/issues/579)
@@ -118,7 +118,7 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # recursive overriding with dictionaries
   # regression tests for [#892](https://github.com/tweag/nickel/issues/892)
-  (({a = 1, b = a} | {_: Num}) & { a | force = 2}).b == 2,
+  (({a = 1, b = a} | {_: Number}) & { a | force = 2}).b == 2,
 
   ({
      b = { foo = c.foo },

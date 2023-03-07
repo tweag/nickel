@@ -110,7 +110,7 @@ where
 
 // dyn is a reserved keyword
 generate_builder!(dynamic, Dyn);
-generate_builder!(str, Str);
-generate_builder!(num, Num);
+generate_builder!(str, String);
+generate_builder!(num, Number);
 generate_builder!(bool, Bool);
-generate_builder!(sym, Sym);
+generate_builder!(sym, Symbol);

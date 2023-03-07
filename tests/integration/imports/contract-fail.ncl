@@ -1,1 +1,1 @@
-1 | Str
+1 | String

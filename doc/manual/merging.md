@@ -159,7 +159,7 @@ Evaluates to the record:
 When one or both of the common fields are not records, the merge will fail
 unless one of the following condition hold:
 
-- They are both of a primitive data type `Num`, `Bool`, `Enum`, `String` and
+- They are both of a primitive data type `Number`, `Bool`, `Enum`, `String` and
   they are equal
 - They are both null
 
@@ -209,7 +209,7 @@ Then the merge `left & right` evaluates to the record:
 For two values `v1` and `v2`, if at least one value is not a record, then
 
 ```text
-v1 & v2 = v1    if (type_of(v1) is Num, Bool, Str, Enum or v1 == null)
+v1 & v2 = v1    if (type_of(v1) is Number, Bool, String, Enum or v1 == null)
                    AND v1 == v2
           _|_   otherwise (indicates failure)
 ```
@@ -458,15 +458,15 @@ This evaluates to:
 [contracts section](./contracts.md) for a thorough introduction to contracts in
 Nickel.
 
-Fields may have contracts attached, either directly, as in `{foo | Num = 1}`, or
-propagated from an annotation higher up, as in `{foo = 1} | {foo | Num}`. In
-both cases, `foo` must satisfy the contract `Num`. What happens if the value of
+Fields may have contracts attached, either directly, as in `{foo | Number = 1}`, or
+propagated from an annotation higher up, as in `{foo = 1} | {foo | Number}`. In
+both cases, `foo` must satisfy the contract `Number`. What happens if the value of
 `foo` is altered in a subsequent merge? For example:
 
-- Should `{foo | default | Num = 1} & {foo = "bar"}` succeed, although `foo`
+- Should `{foo | default | Number = 1} & {foo = "bar"}` succeed, although `foo`
   would be a string in the final result?
-- Should `{foo | {subfield | Str} = {subfield = "a"}} & {foo.other_subfield = 1}`
-  succeed, although a closed contract `{subfield | Str}` is attached to `foo`,
+- Should `{foo | {subfield | String} = {subfield = "a"}} & {foo.other_subfield = 1}`
+  succeed, although a closed contract `{subfield | String}` is attached to `foo`,
   and the final result would have an additional field `other_subfield` ?
 
 Nickel chooses to answer **no** to both. In general, when a contract is attached
@@ -508,7 +508,7 @@ Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 let Port
   | doc "A valid port number"
   = contract.from_predicate (fun value =>
-    builtin.is_num value &&
+    builtin.is_number value &&
     value % 1 == 0 &&
     value >= 0 &&
     value <= 65535) in

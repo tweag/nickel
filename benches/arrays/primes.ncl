@@ -1,6 +1,6 @@
 let range
   | doc "Generate an array of integers in the range [`start`, `end`)."
-  | Num -> Num -> Array Num
+  | Number -> Number -> Array Number
   = fun start end =>
     if end <= start then 
       []
@@ -17,9 +17,9 @@ let Prime = contract.from_predicate is_prime in
 
 let primes 
   | doc "Generate `max` primes using Sieve of Eratosthenes."
-  | Num -> Array Prime
+  | Number -> Array Prime
   = fun max =>
-    let limit = num.pow max (1 / 2) in # sqrt(max)
+    let limit = number.pow max (1 / 2) in # sqrt(max)
     let drop_multiples = fun x xs => 
       let to_drop = max
         |> array.generate (fun y => (y + 2) * x)

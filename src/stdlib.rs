@@ -12,7 +12,7 @@ pub fn modules() -> [StdlibModule; 8] {
         StdlibModule::Array,
         StdlibModule::Record,
         StdlibModule::String,
-        StdlibModule::Num,
+        StdlibModule::Number,
         StdlibModule::Function,
         StdlibModule::Internals,
     ]
@@ -26,7 +26,7 @@ pub enum StdlibModule {
     Array,
     Record,
     String,
-    Num,
+    Number,
     Function,
     Internals,
 }
@@ -39,7 +39,7 @@ impl StdlibModule {
             StdlibModule::Array => "<stdlib/array.ncl>",
             StdlibModule::Record => "<stdlib/record.ncl>",
             StdlibModule::String => "<stdlib/string.ncl>",
-            StdlibModule::Num => "<stdlib/num.ncl>",
+            StdlibModule::Number => "<stdlib/number.ncl>",
             StdlibModule::Function => "<stdlib/function.ncl>",
             StdlibModule::Internals => "<stdlib/internals.ncl>",
         }
@@ -52,7 +52,7 @@ impl StdlibModule {
             StdlibModule::Array => include_str!("../stdlib/array.ncl"),
             StdlibModule::Record => include_str!("../stdlib/record.ncl"),
             StdlibModule::String => include_str!("../stdlib/string.ncl"),
-            StdlibModule::Num => include_str!("../stdlib/num.ncl"),
+            StdlibModule::Number => include_str!("../stdlib/number.ncl"),
             StdlibModule::Function => include_str!("../stdlib/function.ncl"),
             StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
         }
@@ -71,7 +71,7 @@ impl TryFrom<Ident> for StdlibModule {
             "array" => StdlibModule::Array,
             "record" => StdlibModule::Record,
             "string" => StdlibModule::String,
-            "num" => StdlibModule::Num,
+            "num" => StdlibModule::Number,
             "function" => StdlibModule::Function,
             "internals" => StdlibModule::Internals,
             _ => return Err(UnknownStdlibModule),
@@ -88,7 +88,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::Array => "array",
             StdlibModule::Record => "record",
             StdlibModule::String => "string",
-            StdlibModule::Num => "num",
+            StdlibModule::Number => "num",
             StdlibModule::Function => "function",
             StdlibModule::Internals => "internals",
         };

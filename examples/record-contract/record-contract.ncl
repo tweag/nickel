@@ -7,7 +7,7 @@
 let Port
   | doc "A contract for a port number"
   = contract.from_predicate (fun value =>
-    builtin.is_num value &&
+    builtin.is_number value &&
     value % 1 == 0 &&
     value >= 0 &&
     value <= 65535) in
@@ -15,13 +15,13 @@ let Port
 let PortElt
   | doc "A contract for a port element of a Kubernetes configuration"
   = {
-    name | Str,
+    name | String,
     containerPort | Port,
   } in
 
 let Container = {
-  name | Str,
-  image | Str,
+  name | String,
+  image | String,
   ports | Array PortElt,
 } in
 
@@ -30,22 +30,22 @@ let KubernetesConfig = {
        | doc "The kind of the element being configured."
        | default = `Pod,
 
-  apiVersion | Str,
+  apiVersion | String,
 
   metadata = {
-    name | Str,
-    labels.app | Str,
+    name | String,
+    labels.app | String,
   },
 
   spec = {
-    replicas | num.PosNat
+    replicas | number.PosNat
              | doc "The number of replicas"
              | default = 1,
 
-    selector.matchLabels.app | Str,
+    selector.matchLabels.app | String,
 
     template = {
-      metadata.labels.app | Str,
+      metadata.labels.app | String,
       spec.containers | Array Container,
     },
   },

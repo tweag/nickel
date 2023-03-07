@@ -6,7 +6,7 @@ let GccFlag =
   # We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-  if builtin.is_str value then
+  if builtin.is_string value then
     if string.length value > 0 &&
       array.any (fun x => x == string.substring 0 1 value) available then
       value
@@ -29,7 +29,7 @@ let GccFlag =
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
   fun label value =>
-    if builtin.is_str value then
+    if builtin.is_string value then
       if string.is_match pattern value then
         value
       else
@@ -38,7 +38,7 @@ let Path =
       contract.blame_with_message "not a string" label in
 
 let SharedObjectFile = fun label value =>
-  if builtin.is_str value then
+  if builtin.is_string value then
     if string.is_match m%"\.so$"% value then
       value
     else
@@ -60,7 +60,7 @@ let Contract = {
 
   flags | doc "
             Additional flags to pass to GCC. Either provide a string without the
-            leading `-`, or a structured value `{flag : Str, arg: Str}`.
+            leading `-`, or a structured value `{flag : String, arg: String}`.
           "
         | Array GccFlag
         | default = [],

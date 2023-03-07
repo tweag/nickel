@@ -6,12 +6,12 @@ let {check, ..} = import "lib/assert.ncl" in
   let schema = {
     config | {
       output | {
-          value | Str,
+          value | String,
       }
     },
   } in
   let data = {
-    foo | Str
+    foo | String
       | default = "original",
 
     config.output.value = foo,
@@ -29,12 +29,12 @@ let {check, ..} = import "lib/assert.ncl" in
   let schema = {
     config | {
       output | {
-          value | Str,
+          value | String,
       }
     },
   } in
   let data = {
-    foo | Str
+    foo | String
         | default = "original",
 
     config.output.value = foo,
@@ -51,13 +51,13 @@ let {check, ..} = import "lib/assert.ncl" in
   let schema = {
     config | {
       output | {
-          value | Str,
+          value | String,
           ..
       }
     },
   } in
   let fst_data = {
-    foo | Str
+    foo | String
         | default = "original",
 
     config.output.value = foo,
@@ -79,13 +79,13 @@ let {check, ..} = import "lib/assert.ncl" in
   let parent = {
     fst_data = {
       common.fst = snd_data ++ "_data",
-      snd_data | Str
+      snd_data | String
                | default = "",
       fst_data = "fst",
     },
     snd_data = {
       common.snd = fst_data ++ "_data",
-      fst_data | Str
+      fst_data | String
                | default = "",
       snd_data = "snd",
     },

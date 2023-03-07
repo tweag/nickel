@@ -69,11 +69,11 @@ fn dynamic_not_recursive() {
 #[test]
 fn missing_field() {
     assert_matches!(
-        eval("{foo | Num, bar = foo + 1}.foo"),
+        eval("{foo | Number, bar = foo + 1}.foo"),
         Err(Error::EvalError(EvalError::MissingFieldDef { id, ..})) if id.to_string() == "foo"
     );
     assert_matches!(
-        eval("{foo : Num, bar = foo + 1}.foo"),
+        eval("{foo : Number, bar = foo + 1}.foo"),
         Err(Error::EvalError(EvalError::MissingFieldDef {id, ..})) if id.to_string() == "foo"
     );
     assert_matches!(

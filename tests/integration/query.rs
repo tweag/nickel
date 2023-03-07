@@ -87,20 +87,20 @@ pub fn test_query_with_wildcard() {
         }
     ));
 
-    // With a wildcard, there is a type annotation, inferred to be Num
-    assert_types_eq("{value : _ = 10}", "{value : Num = 10}", path.clone());
+    // With a wildcard, there is a type annotation, inferred to be Number
+    assert_types_eq("{value : _ = 10}", "{value : Number = 10}", path.clone());
 
     // Wildcard infers record type
     assert_types_eq(
         r#"{value : _ = {foo = "quux"}}"#,
-        r#"{value : {foo: Str} = {foo = "quux"}}"#,
+        r#"{value : {foo: String} = {foo = "quux"}}"#,
         path.clone(),
     );
 
     // Wildcard infers function type, infers inside `let`
     assert_types_eq(
         r#"{value : _ = let f = fun x => x + 1 in f}"#,
-        r#"{value : Num -> Num = (fun x => x + 1)}"#,
+        r#"{value : Number -> Number = (fun x => x + 1)}"#,
         path,
     );
 }

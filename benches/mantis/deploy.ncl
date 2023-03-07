@@ -46,7 +46,7 @@ fun vars =>
         "eu-west-2"])
                 | default = ["eu-central-1", "us-east-2"],
     fqdn = "mantis.ws",
-    networkConfig | Str
+    networkConfig | String
                   | default = m%"
                     mantis.blockchains.testnet-internal-nomad.bootstrap-nodes = [
                       %{string.join ",\n" bootstrapNodes."%{vars.namespace}"})
