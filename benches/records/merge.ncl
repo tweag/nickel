@@ -4,7 +4,7 @@
       array.generate (fun _n => "a") n
       |> array.fold_left (fun x y => x ++ y) "" in
     let make_rec_step = fun state k =>
-      let name = state.prev_name ++ (string.from_num k) in
+      let name = state.prev_name ++ (string.from_number k) in
       {
         value = state.value & {"%{name}" = {}},
         prev_name = name,

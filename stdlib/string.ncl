@@ -421,13 +421,13 @@
       "%
     = fun x => %to_str% x,
 
-    from_num | Number -> String
+    from_number | Number -> String
     | doc m%"
       Converts a number to its string representation.
 
       For example:
       ```nickel
-      from_num 42 =>
+      from_number 42 =>
         "42"
       ```
       "%
@@ -458,13 +458,13 @@
       "%
     = from,
 
-    to_num | NumLiteral -> Number
+    to_number | NumLiteral -> Number
     | doc m%"
       Converts a string that represents an integer to that integer.
 
       For example:
       ```nickel
-        to_num "123" =>
+        to_number "123" =>
           123
       ```
       "%
