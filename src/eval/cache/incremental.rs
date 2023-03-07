@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::{collections::{HashSet, HashMap}, hash::Hash};
 
 /// A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
@@ -131,7 +131,7 @@ impl IncCache {
         }
     }
 
-    // fn propagate_revert2(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {}
+    /* Do we need this when we can revert in place?
 
     fn propagate_revert(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
         let mut nodes_reverted = HashMap::new();
@@ -160,6 +160,29 @@ impl IncCache {
         }
 
         nodes_reverted
+    } */
+
+    fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex> {
+        let mut new_indices = HashMap::new();
+
+        for i in v.iter() {
+            let current_node = self.store.get(*i).unwrap().clone();
+            new_indices.insert(*i, self.add_node(current_node));
+        }
+
+        for i in new_indices.values() {
+            let current_node = self.store.get_mut(*i).unwrap();
+
+            for dep in current_node.backlinks.iter_mut() {
+                dep.idx = *new_indices.get(i).unwrap();
+            }
+
+            for dep in current_node.fwdlinks.iter_mut() {
+                dep.idx = *new_indices.get(i).unwrap();
+            }
+        }
+
+        new_indices
     }
 }
 
