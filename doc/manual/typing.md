@@ -311,9 +311,9 @@ error: Incompatible types
 
 The reason is that **without an explicit polymorphic annotation, the typechecker
 will always infer non-polymorphic types**. If you need polymorphism, you have to
-write a type annotation. Here, `filter` is inferred to be of type `(Number -> Bool)
--> Array Number -> Array Number`, guessed from the application in the right hand side of
-`result`.
+write a type annotation. Here, `filter` is inferred to be of type `(Number ->
+Bool) -> Array Number -> Array Number`, guessed from the application in the
+right hand side of `result`.
 
 **Note**:
 if you are a more type-inclined reader, you may wonder why the typechecker is
@@ -385,15 +385,15 @@ Result:
 {partial1 = 570, partial2 = 1770}
 ```
 
-In the type of `addTotal`, the part `{total: Number ; a}` expresses exactly what we
-wanted: the argument must have a field `total: Number`, but the *tail* (the rest of
-the record type) is polymorphic, and `a` may be substituted for arbitrary fields
-(such as `jan: Number, feb: Number`). We used two different generic parameters `a` and
-`b`, to express that the tails of the arguments may differ.  If we used `a` in
-both places, as in `forall a. {total: Number ; a} -> {total: Number ; a} -> Number`, we
-could still write `addTotal {total = 1, foo = 1} {total = 2, foo = 2}` but not
-`addTotal {total = 1, foo = 1} {total = 2, bar = 2}`. Using distinct parameters
-`a` and `b` gives us maximum flexibility.
+In the type of `addTotal`, the part `{total: Number ; a}` expresses exactly what
+we wanted: the argument must have a field `total: Number`, but the *tail* (the
+rest of the record type) is polymorphic, and `a` may be substituted for
+arbitrary fields (such as `jan: Number, feb: Number`). We used two different
+generic parameters `a` and `b`, to express that the tails of the arguments may
+differ.  If we used `a` in both places, as in `forall a. {total: Number ; a} ->
+{total: Number ; a} -> Number`, we could still write `addTotal {total = 1, foo =
+1} {total = 2, foo = 2}` but not `addTotal {total = 1, foo = 1} {total = 2, bar
+= 2}`. Using distinct parameters `a` and `b` gives us maximum flexibility.
 
 What comes before the tail may include several fields, is in e.g. `forall a.
 {total: Number, subtotal: Number ; a} -> Number`.

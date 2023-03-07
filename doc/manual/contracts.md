@@ -42,8 +42,9 @@ nickel>"a" | Number
 error: contract broken by a value.
 [..]
 ```
-Contracts corresponding to the basic types `Number`, `String`, `Bool` and `Dyn` are
-available. `Dyn` is a contract that never fails.
+
+Contracts corresponding to the basic types `Number`, `String`, `Bool` and `Dyn`
+are available. `Dyn` is a contract that never fails.
 
 ## User-defined contracts
 
@@ -409,9 +410,9 @@ in mind, **you should use `|` instead of `=` when attaching record contracts**.
 
 ### Types constructors for contracts
 
-We've already seen that the primitive types `Number`, `String` and `Bool` can be used
-as contracts. In fact, any type constructor of the
-[static type system](./typing.md) can be used to combine contracts.
+We've already seen that the primitive types `Number`, `String` and `Bool` can be
+used as contracts. In fact, any type constructor of the [static type
+system](./typing.md) can be used to combine contracts.
 
 #### Array
 
@@ -446,8 +447,8 @@ that must hold about the return value of the function.
 
 ##### Caller vs callee
 
-Function contracts, as opposed to a contract like `Number`, have the peculiarity of
-involving two parties in the contract checking. For example:
+Function contracts, as opposed to a contract like `Number`, have the peculiarity
+of involving two parties in the contract checking. For example:
 
 ```nickel
 let add_semi | String -> String = fun x => x ++ ";" in

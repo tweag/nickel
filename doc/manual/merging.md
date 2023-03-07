@@ -458,16 +458,17 @@ This evaluates to:
 [contracts section](./contracts.md) for a thorough introduction to contracts in
 Nickel.
 
-Fields may have contracts attached, either directly, as in `{foo | Number = 1}`, or
-propagated from an annotation higher up, as in `{foo = 1} | {foo | Number}`. In
-both cases, `foo` must satisfy the contract `Number`. What happens if the value of
-`foo` is altered in a subsequent merge? For example:
+Fields may have contracts attached, either directly, as in `{foo | Number = 1}`,
+or propagated from an annotation higher up, as in `{foo = 1} | {foo | Number}`.
+In both cases, `foo` must satisfy the contract `Number`. What happens if the
+value of `foo` is altered in a subsequent merge? For example:
 
 - Should `{foo | default | Number = 1} & {foo = "bar"}` succeed, although `foo`
   would be a string in the final result?
-- Should `{foo | {subfield | String} = {subfield = "a"}} & {foo.other_subfield = 1}`
-  succeed, although a closed contract `{subfield | String}` is attached to `foo`,
-  and the final result would have an additional field `other_subfield` ?
+- Should
+  `{foo | {subfield | String} = {subfield = "a"}} & {foo.other_subfield = 1}`
+  succeed, although a closed contract `{subfield | String}` is attached to
+  `foo`, and the final result would have an additional field `other_subfield` ?
 
 Nickel chooses to answer **no** to both. In general, when a contract is attached
 to a field `foo`, merging ensures that whatever is this field merged with,
