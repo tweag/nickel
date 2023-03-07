@@ -1,4 +1,7 @@
-use std::{collections::{HashSet, HashMap}, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 /// A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
@@ -102,7 +105,7 @@ impl IncCache {
         let node = self.store.get(idx).unwrap().clone();
         for i in node.fwdlinks {
             let n = self.store.get_mut(i.idx).unwrap();
-            n.backlinks.push(DependencyLink { id:i.id, idx: idx });
+            n.backlinks.push(DependencyLink { id: i.id, idx: idx });
         }
     }
 
@@ -145,7 +148,7 @@ impl IncCache {
 
             let idx_reverted = self.revert(&idx);
             //FIXME: use the actual node's id
-            let node_id = Ident::from("TODO!"); 
+            let node_id = Ident::from("TODO!");
             nodes_reverted.insert(node_id, idx_reverted);
 
             let current_node = self.store.get(i).unwrap();
@@ -326,7 +329,10 @@ impl Cache for IncCache {
                 FieldDeps::Known(deps) if deps.is_empty() => (),
                 FieldDeps::Known(deps) => {
                     let deps = rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned();
-                    node.fwdlinks = deps.clone().map(|(id, idx)| DependencyLink { id, idx }).collect();
+                    node.fwdlinks = deps
+                        .clone()
+                        .map(|(id, idx)| DependencyLink { id, idx })
+                        .collect();
                     new_cached.env.extend(deps);
                 }
             },
