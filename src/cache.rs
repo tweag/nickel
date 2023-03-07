@@ -1117,8 +1117,8 @@ impl ImportResolver for Cache {
                 *pos,
             )
         })?;
-        let file_id = match id_op {
-            CacheOp::Cached(id) => return Ok((ResolvedTerm::FromCache(), id)),
+        let (result, file_id) = match id_op {
+            CacheOp::Cached(id) => (ResolvedTerm::FromCache(), id),
             CacheOp::Done(id) => {
                 if let Some(parent) = parent {
                     let parent_id = self.id_of(parent).unwrap();
@@ -1130,14 +1130,14 @@ impl ImportResolver for Cache {
                         self.imports.insert(parent_id, imports);
                     }
                 }
-                id
+                (ResolvedTerm::FromFile { path: path_buf }, id)
             }
         };
 
         self.parse_multi(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;
 
-        Ok((ResolvedTerm::FromFile { path: path_buf }, file_id))
+        Ok((result, file_id))
     }
 
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
