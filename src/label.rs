@@ -478,7 +478,7 @@ impl Label {
         self.diagnostics.last()
     }
 
-    /// Push a new fresh diagnostic on the stack if the current diagnostic isn't empty. This has
+    /// Push a new, fresh diagnostic on the stack if the current diagnostic isn't empty. This has
     /// the effect of saving the current diagnostic, that can't then be mutated anymore by the
     /// label's API.
     pub fn push_diagnostic(&mut self) {
