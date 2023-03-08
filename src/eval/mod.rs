@@ -821,10 +821,18 @@ pub enum IdentKind {
 }
 
 /// A closure, a term together with an environment.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Closure {
     pub body: RichTerm,
     pub env: Environment,
+}
+
+impl std::fmt::Debug for Closure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Closure")
+            .field("body", &self.body)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Clone for Closure {
