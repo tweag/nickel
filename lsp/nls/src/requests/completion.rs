@@ -90,7 +90,7 @@ impl IdentWithType {
             if name.is_ascii() {
                 String::from(name)
             } else {
-                format!("\"{}\"", name)
+                format!("\"{name}\"")
             }
         }
         let doc = || {
@@ -814,7 +814,7 @@ mod tests {
             let actual = get_identifier_path(input);
             let expected: Option<Vec<_>> =
                 expected.map(|path| path.iter().map(|s| String::from(*s)).collect());
-            assert_eq!(actual, expected, "test failed: {}", case_name)
+            assert_eq!(actual, expected, "test failed: {case_name}")
         }
     }
 
