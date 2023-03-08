@@ -73,7 +73,7 @@
           A label is a special opaque value automatically passed by the Nickel
           interpreter to contracts when performing a contract check.
 
-          A label stores a stack of custom error diagnostics, than can be
+          A label stores a stack of custom error diagnostics, that can be
           manipulated by the function of this module. Labels thus offer a way to
           customize the error message that will be shown if the contract is broken.
 
