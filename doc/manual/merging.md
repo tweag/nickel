@@ -33,9 +33,11 @@ following situations:
 - [Merging records without common fields](#simple-merge-no-common-fields)
 - [Merging records with common fields](#recursive-merge-with-common-fields)
 - [Merging records with metadata](#merging-records-with-metadata)
+  - [Optional fields](#optional-fields)
   - [Default values](#default-values)
   - [Contracts](#contracts)
   - [Documentation](#documentation)
+  - [Not exported](#not-exported)
 - [Recursive overriding](#recursive-overriding)
 
 <!-- markdownlint-enable MD051 -->
@@ -256,6 +258,90 @@ final record:
 Metadata can be attached to values thanks to the `|` operator. Metadata
 currently includes contract annotations, default value, merge priority, and
 documentation. We describe in this section how metadata interacts with merging.
+
+### Optional fields
+
+A field can be marked as optional using the `optional` annotation:
+
+```nickel
+# schema.ncl
+{
+  Command = {
+    commad
+      | String,
+    arg_type
+      | [| `String, `Number |],
+    alias
+      | String
+      | optional,
+  },
+}
+```
+
+Optional fields are intended to be used in record contracts to mean that a field
+might be defined, but is not mandatory. An optional field initially doesn't have
+a definition [^optional-with-value]. A value is provided by applying the
+contract to - or merging it with - a record which defines a value for this
+field:
+
+```nickel
+let command | Command = {
+  command = "exit",
+  arg_type = `String,
+  alias = "e",
+}
+in
+
+command
+```
+
+Once an optional field becomes defined, it just acts like a regular field. Any
+attached contract will be applied as well (here, `String` on `alias`).
+
+As long as an optional field doesn't have a value, it will be invisible to
+record operations. Optional fields without a value don't show up in
+`record.fields`, it won't make `record.values` throw a missing field definition
+error, etc.
+
+```nickel
+nickel> let Contract = {foo = 1, bar | optional}
+nickel> record.values Contract
+[ 1 ]
+
+nickel> record.has_field "bar" Contract
+false
+```
+
+Optional field can still be discovered through metadata queries (run `nickel
+help query` or type `:help query` in the REPL for more information) or generated
+documentation.
+
+An optional field becomes a regular field as soon as it is merged with the same
+field that doesn't have the `optional` annotation. This holds **even if the
+other field doesn't have a definition**:
+
+```nickel
+nickel>  {foo = 1, bar | optional} & {bar | optional}
+{ foo = 1 }
+
+nickel> {foo = 1, bar | optional} & {bar}
+error: missing definition for `bar`
+  ┌─ repl-input-4:1:1
+  │
+1 │ {foo = 1, bar | optional} & {bar, baz = bar + 1}
+  │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │ │         │
+  │ │         defined here
+  │ in this record
+```
+
+In the second example, `bar` isn't optional on the right-hand side of the merge.
+Although the right-hand side `bar` doesn't have a definition, the resulting
+`bar` field isn't optional anymore.
+
+[^optional-with-value]: You can actually provide a value (default or not) for an optional
+  field, but this nullifies the effect of `optional`: what you get is just a
+  regular field
 
 ### Merge priorities
 
@@ -541,6 +627,51 @@ note:
    │            ^^^^^^^^^^^^^^^^ bound here
 ```
 
+### Not exported
+
+A field can be marked as not exported, using the `not_exported` annotation. Such
+fields behave like regular fields during evaluation, but they are ignored during
+serialization: they won't appear in the output of `nickel export`, nor in the
+output of `builtin.serialize`.
+
+For example, say we want to add some high-level configuration field to a modular
+configuration, from which other fields are derived:
+
+```nickel
+# hello-service.ncl
+{
+  greeter
+    | String
+    | not_exported
+    | default = "world",
+
+  systemd.services.hello = {
+    wantedBy = ["multi-user.target"],
+    serviceConfig.ExecStart = "/usr/bin/hello -g'Hello, %{greeter}!'",
+  },
+}
+```
+
+`greeter` can then be customized without interfering with the final output:
+
+```console
+$ nickel export <<< 'import "hello-service.ncl" & {greeter = "country"}'
+{
+  "systemd": {
+    "services": {
+      "hello": {
+        "serviceConfig": {
+          "ExecStart": "/usr/bin/hello -g'Hello, country!'"
+        },
+        "wantedBy": [
+          "multi-user.target"
+        ]
+      }
+    }
+  }
+}
+```
+
 ### Documentation
 
 Documentation is attached via the `doc` keyword. Documentation is propagated
@@ -565,8 +696,8 @@ practice.
 ## Recursive overriding
 
 We've seen in the section on default values that they are useful to override
-(update) a single field with a different value. The combo of merging and default
-values can do more. In Nickel, records are recursive by default, in order to
+(update) a single field with a different value. The combo of merging and
+priorities can do more. In Nickel, records are recursive by default, in order to
 express easily dependencies between the different fields of the configuration.
 Concretely, you can refer to other fields of a record from within this record:
 
@@ -599,10 +730,6 @@ here, `input` -- will also be updated automatically*. For example, `base_config
   input = {url = "nixpkgs/nixos-unstable"},
 }
 ```
-
-Currently, one can only override a field that has been marked as default
-beforehand. A more ergonomic way of overriding is planned, and described in
-[RFC001][rfc001].
 
 ### Example
 

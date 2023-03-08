@@ -499,7 +499,8 @@ Examples:
 5
 
 > 5 | Bool
-error: Blame error: contract broken by a value.
+error: contract broken by a value.
+[..]
 
 > let SmallNum = contract.from_predicate (fun x => x < 5) in
 1 | SmallNum
@@ -507,7 +508,8 @@ error: Blame error: contract broken by a value.
 
 > let SmallNum = contract.from_predicate (fun x => x < 5) in
 10 | SmallNum
-error: Blame error: contract broken by a value.
+error: contract broken by a value.
+[..]
 
 > let SmallNum = contract.from_predicate (fun x => x < 5) in
   let NotTooSmallNum = contract.from_predicate (fun x => x >= 2) in
@@ -566,4 +568,36 @@ Examples:
 
 > {foo | priority -1 = 1} & {foo = 2}
 { foo = 2 }
+```
+
+The `optional` metadata indicates that a field is not mandatory, and is mostly
+used inside record contracts:
+
+```text
+> let Contract = {
+    foo | Num,
+    bar | Num
+        | optional,
+  }
+> let value | Contract = {foo = 1}
+> value
+{ foo = 1 }
+
+> {bar = 1} | Contract
+error: missing definition for `foo`
+[..]
+```
+
+The `not_exported` metadata indicates that a field shouldn't appear in the
+serialization (including the output of the `nickel export` command):
+
+```text
+> let value = { foo = 1, bar | not_exported = 2}
+> value
+{ foo = 1, bar = 2 }
+
+> builtin.serialize `Json value
+"{
+  "foo": 1
+}"
 ```
