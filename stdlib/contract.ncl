@@ -88,7 +88,7 @@
           the stack, saving the previously current error diagnostic. Indeed,
           `contract.apply` is mostly used to apply subcontracts inside a parent
           contract. Stacking the current diagnostic potentially customized by
-          the parent contract saves the information inside, a provide a fresh
+          the parent contract saves the information inside, and provides a fresh
           diagnostic for the child contract to use.
         "%
       = {
