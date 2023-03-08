@@ -22,7 +22,7 @@ please read [this section](#without-cargo-insta).
 
 1. Run `cargo insta review`.
 2. Check the output to see what changed
-  
+
 ## How to add a new snapshot test
 
 1. Add the Nickel file whose output you want to test into one of the

@@ -430,46 +430,61 @@ impl Label {
     /// Set the message of the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
-    pub fn set_diagnostic_message(&mut self, message: impl Into<String>) {
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
+    pub fn with_diagnostic_message(mut self, message: impl Into<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.message = Some(message.into());
         } else {
             self.diagnostics
                 .push(ContractDiagnostic::new().with_message(message));
-        }
+        };
+
+        self
     }
 
     /// Set the notes of the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given notes.
-    pub fn set_diagnostic_notes(&mut self, notes: Vec<String>) {
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given notes.
+    pub fn with_diagnostic_notes(mut self, notes: Vec<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.notes = notes;
         } else {
             self.diagnostics
                 .push(ContractDiagnostic::new().with_notes(notes));
-        }
+        };
+
+        self
     }
 
     /// Append a note to the current diagnostic (the last diagnostic of the stack). Potentially
     /// erase the previous value.
     ///
-    /// If the diagnostic stack is empty, this methods pushes a new diagnostic with the given note.
-    pub fn append_diagnostic_note(&mut self, note: impl Into<String>) {
+    /// If the diagnostic stack is empty, this method pushes a new diagnostic with the given note.
+    pub fn append_diagnostic_note(mut self, note: impl Into<String>) -> Self {
         if let Some(current) = self.diagnostics.last_mut() {
             current.append_note(note);
         } else {
             self.diagnostics
                 .push(ContractDiagnostic::new().with_notes(vec![note.into()]));
-        }
+        };
+
+        self
     }
 
-    /// Return a reference to the current contract diagnostic, that is the last one of the stack,
-    /// if any.
+    /// Return a reference to the current contract diagnostic, which is the last element of the
+    /// stack, if any.
     pub fn current_diagnostic(&self) -> Option<&ContractDiagnostic> {
         self.diagnostics.last()
+    }
+
+    /// Push a new, fresh diagnostic on the stack if the current diagnostic isn't empty. This has
+    /// the effect of saving the current diagnostic, that can't then be mutated anymore by the
+    /// label's API.
+    pub fn push_diagnostic(&mut self) {
+        if matches!(self.current_diagnostic(), Some(diag) if !diag.is_empty()) {
+            self.diagnostics.push(ContractDiagnostic::new());
+        }
     }
 }
 

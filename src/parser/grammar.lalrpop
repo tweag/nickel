@@ -664,6 +664,7 @@ UOp: UnaryOp = {
     "rec_default_op" => UnaryOp::RecDefault(),
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
     "trace" => UnaryOp::Trace(),
+    "label_push_diag" => UnaryOp::LabelPushDiag(),
 };
 
 MatchCase: MatchCase = {
@@ -837,7 +838,6 @@ BOpPre: BinaryOp = {
     "go_field" => BinaryOp::GoField(),
     "has_field" => BinaryOp::HasField(),
     "elem_at" => BinaryOp::ArrayElemAt(),
-    "tag" => BinaryOp::Tag(),
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
     "deserialize" => BinaryOp::Deserialize(),
@@ -850,6 +850,9 @@ BOpPre: BinaryOp = {
         pending_contracts: Default::default(),
     },
     "record_remove" => BinaryOp::DynRemove(),
+    "label_with_message" => BinaryOp::LabelWithMessage(),
+    "label_with_notes" => BinaryOp::LabelWithNotes(),
+    "label_append_note" => BinaryOp::LabelAppendNote(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -982,7 +985,6 @@ extern {
         "Bool" => Token::Normal(NormalToken::Bool),
         "Array" => Token::Normal(NormalToken::Array),
 
-        "tag" => Token::Normal(NormalToken::Tag),
         "typeof" => Token::Normal(NormalToken::Typeof),
         "assume" => Token::Normal(NormalToken::Assume),
         "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
@@ -1050,6 +1052,10 @@ extern {
         "str_from" => Token::Normal(NormalToken::ToStr),
         "num_from" => Token::Normal(NormalToken::NumFromStr),
         "enum_from" => Token::Normal(NormalToken::EnumFromStr),
+        "label_with_message" => Token::Normal(NormalToken::LabelWithMessage),
+        "label_with_notes" => Token::Normal(NormalToken::LabelWithNotes),
+        "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
+        "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

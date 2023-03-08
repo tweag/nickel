@@ -175,8 +175,6 @@ pub enum NormalToken<'input> {
     #[regex("[a-zA-Z][_a-zA-Z0-9-']*-s(%+)\"", symbolic_string_prefix_and_length)]
     SymbolicStringStart(SymbolicStringStart<'input>),
 
-    #[token("%tag%")]
-    Tag,
     #[token("%typeof%")]
     Typeof,
 
@@ -310,6 +308,14 @@ pub enum NormalToken<'input> {
     NumFromStr,
     #[token("%enum_from_str%")]
     EnumFromStr,
+    #[token("%label_with_message%")]
+    LabelWithMessage,
+    #[token("%label_with_notes%")]
+    LabelWithNotes,
+    #[token("%label_append_note%")]
+    LabelAppendNote,
+    #[token("%label_push_diag%")]
+    LabelPushDiag,
 
     #[token("{")]
     LBrace,

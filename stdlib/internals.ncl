@@ -40,10 +40,10 @@
       if %typeof% t == `Enum then
           %assume% case l t
       else
-          %blame% (%tag% "not an enum tag" l),
+          %blame% (%label_with_message% "not an enum tag" l),
 
   "$enum_fail" = fun l =>
-      %blame% (%tag% "tag not included in the enum type" l),
+      %blame% (%label_with_message% "tag not included in the enum type" l),
 
   "$record" = fun field_contracts tail_contract l t =>
     if %typeof% t == `Record then
@@ -79,24 +79,24 @@
         in
         tail_contract fields_with_contracts l tail_fields
       else
-        %blame% (%tag% "missing field %{%head% missing_fields}" l)
+        %blame% (%label_with_message% "missing field %{%head% missing_fields}" l)
     else
-      %blame% (%tag% "not a record" l),
+      %blame% (%label_with_message% "not a record" l),
 
   "$dyn_record" = fun contr l t =>
       if %typeof% t == `Record then
           %dictionary_assume% (%go_dict% l) t contr
       else
-          %blame% (%tag% "not a record" l),
+          %blame% (%label_with_message% "not a record" l),
 
   "$forall_tail" = fun sy pol acc l t =>
       if pol == (%polarity% l) then
           if t == {} then
-            let tagged_l = %tag% "polymorphic tail mismatch" l in
+            let tagged_l = %label_with_message% "polymorphic tail mismatch" l in
             let tail = %record_unseal_tail% sy tagged_l t in
             acc & tail
           else
-            %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l)
+            %blame% (%label_with_message% "extra field `%{%head% (%fields% t)}`" l)
       else
           # Note: in order to correctly attribute blame, the polarity of `l`
           # must match the polarity of the `forall` which introduced the
@@ -109,7 +109,7 @@
 
   "$empty_tail" = fun acc l t =>
       if t == {} then acc
-      else %blame% (%tag% "extra field `%{%head% (%fields% t)}`" l),
+      else %blame% (%label_with_message% "extra field `%{%head% (%fields% t)}`" l),
 
   # Recursive priorities operators
 

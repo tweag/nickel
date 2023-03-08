@@ -1309,6 +1309,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .map(|(next, ..)| next)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
+            UnaryOp::LabelPushDiag() => {
+                match_sharedterm! {t, with {
+                    Term::Lbl(label) => {
+                        let mut label = label;
+                        label.push_diagnostic();
+                        Ok(Closure {
+                            body: RichTerm::new(Term::Lbl(label), pos),
+                            env
+                        })
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("trace"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    )) }
+                }
+            }
         }
     }
 
@@ -1690,41 +1709,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            BinaryOp::Tag() => match_sharedterm! {t1, with {
-                    Term::Str(s) => match_sharedterm!{t2, with {
-                                Term::Lbl(label) => {
-                                    let mut label = label;
-                                    label.set_diagnostic_message(s);
-
-                                    Ok(Closure::atomic_closure(RichTerm::new(
-                                        Term::Lbl(label),
-                                        pos_op_inh,
-                                    )))
-                                }
-                            } else {
-                                Err(EvalError::TypeError(
-                                    String::from("Label"),
-                                    String::from("tag, 2nd argument"),
-                                    snd_pos,
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                ))
-                            }
-                        }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("tag, 1st argument"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
-            },
             BinaryOp::Eq() => {
                 let mut env = Environment::new();
 
@@ -2628,6 +2612,139 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     ))
                 }
+            }
+            BinaryOp::LabelWithMessage() => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::Str(message) = t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("label_with_message, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1.into(),
+                            pos: pos1,
+                        },
+                    ))
+                };
+
+                let Term::Lbl(label) = t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("label_with_message, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2.into(),
+                            pos: pos2,
+                        },
+                    ))
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(label.with_diagnostic_message(message)),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::LabelWithNotes() => {
+                let t2 = t2.into_owned();
+
+                // We need to extract plain strings from a Nickel array, which most likely
+                // contains at least generated variables.
+                // As for serialization, we thus fully substitute all variables first.
+                let t1_subst = subst(
+                    &self.cache,
+                    RichTerm {
+                        term: t1,
+                        pos: pos1,
+                    },
+                    &Environment::new(),
+                    &env1,
+                );
+                let t1 = t1_subst.term.into_owned();
+
+                let Term::Array(array, _) = t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Array Str"),
+                        String::from("label_with_notes, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1.into(),
+                            pos: pos1,
+                        },
+                    ));
+                };
+
+                let notes = array
+                    .into_iter()
+                    .map(|element| {
+                        let term = element.term.into_owned();
+
+                        if let Term::Str(s) = term {
+                            Ok(s)
+                        } else {
+                            Err(EvalError::TypeError(
+                                String::from("Str"),
+                                String::from("label_with_notes, element of 1st argument"),
+                                TermPos::None,
+                                RichTerm {
+                                    term: term.into(),
+                                    pos: element.pos,
+                                },
+                            ))
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let Term::Lbl(label) = t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("label_with_notes, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2.into(),
+                            pos: pos2,
+                        },
+                    ))
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(label.with_diagnostic_notes(notes)),
+                    pos_op_inh,
+                )))
+            }
+            BinaryOp::LabelAppendNote() => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::Str(note) = t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("label_append_note, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1.into(),
+                            pos: pos1,
+                        },
+                    ));
+                };
+
+                let Term::Lbl(label) = t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("label_append_note, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2.into(),
+                            pos: pos2,
+                        },
+                    ))
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(label.append_diagnostic_note(note)),
+                    pos2.into_inherited(),
+                )))
             }
         }
     }
