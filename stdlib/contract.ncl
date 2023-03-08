@@ -219,7 +219,7 @@
           fresh current working diagnostic. `apply` thus acts automatically as a
           split point between a contract and its subcontracts, providing the
           subcontracts with a fresh diagnostic to use, while remembering the
-          previous the previous diagnostics set by parent contracts.
+          previous diagnostics set by parent contracts.
 
           ## Illustration
 
