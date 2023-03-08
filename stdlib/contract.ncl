@@ -243,7 +243,7 @@
           null | ParentContract
           ```
 
-          This example will print two diagnostics: the main one using, the
+          This example will print two diagnostics: the main one, using the
           message and note of the child contract, and a secondary diagnostic,
           using the parent contract message and note.
         "%
