@@ -267,7 +267,7 @@ A field can be marked as optional using the `optional` annotation:
 # schema.ncl
 {
   Command = {
-    commad
+    command
       | String,
     arg_type
       | [| `String, `Number |],
