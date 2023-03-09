@@ -71,7 +71,7 @@ impl TryFrom<Ident> for StdlibModule {
             "array" => StdlibModule::Array,
             "record" => StdlibModule::Record,
             "string" => StdlibModule::String,
-            "num" => StdlibModule::Number,
+            "number" => StdlibModule::Number,
             "function" => StdlibModule::Function,
             "internals" => StdlibModule::Internals,
             _ => return Err(UnknownStdlibModule),
@@ -88,7 +88,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::Array => "array",
             StdlibModule::Record => "record",
             StdlibModule::String => "string",
-            StdlibModule::Number => "num",
+            StdlibModule::Number => "number",
             StdlibModule::Function => "function",
             StdlibModule::Internals => "internals",
         };
