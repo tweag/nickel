@@ -265,7 +265,7 @@ The following examples show how symbolic strings are desugared:
   }
 > tf-s%"id: %{terraform_computed_field}, port: %{5}"%
 {
-  tag = `Symbo licString
+  tag = `SymbolicString
   prefix = `tf,
   fragments = [ "id: ", { resource = "foo", field = "id", tag = `TfComputed }, ", port: ", 5 ],
 }
