@@ -200,6 +200,77 @@ def concat(str_array, log=false):
   return res"
 ```
 
+#### Symbolic strings
+
+Symbolic strings are another type of special strings in Nickel. For example, you
+could encounter the following code in a library for using Nickel with Nix:
+
+```nickel
+{
+  args = [
+      "-c",
+      nix-s%"
+        %{inputs.gcc}/bin/gcc %{inputs.hello} -o hello
+        %{inputs.coreutils}/bin/mkdir -p $out/bin
+        %{inputs.coreutils}/bin/cp hello $out/bin/hello
+      "%,
+  ],
+  ..
+}
+```
+
+Lines 4 to 8 define a symbolic string. Values `inputs.gcc`, `inputs.hello`, etc.
+aren't actually strings, but arbitrary records. For concrete use-cases, some
+tools require manipulating values are not yet known at the time of evaluation
+(e.g. Terraform's computed values) or to perform additional dependency tracking
+([Nix string context][nix-string-context]).
+
+The idea behind symbolic strings is to offer a string-like syntax, but without
+evaluating the expression as a string. Instead, the expression is returned in a
+symoblic form - in practice, an array of fragments, where each fragment is
+either a string or an arbitrary value that has been interpolated - and let the
+specific library (Terraform-Nickel, Nix-Nickel, etc.) process it.
+
+The prefix of a symbolic string is a sequence of lower-case alphabetic
+characters followed by `-s`. Prefixes don't have any meaning for Nickel: they're
+a tag used by librairies consuming symbolc strings to distinguish between
+several types of symbolic strings. Tags are a visual marker for the programmer
+as well.
+
+The technical details don't matter too much in practice. As a user of a library
+which uses symbolic strings, remember that:
+
+- a special string with a prefix ending in  `-s` is a symbolic string. The
+  prefix (or prefixes) is defined by the library.
+- it's a special syntax without pre-existing meaning for Nickel. The
+  specific meaning of each kind of symbolic string, and what it's used for
+  exactly, is defined by the library. All in all, symbolic strings simply
+  provide libraries with a way to overload string syntax and interpolation for
+  extended usages.
+
+The following examples show how symbolic strings are desugared:
+
+```text
+> mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
+{
+  tag = `SymbolicString,
+  prefix = `mytag
+  fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+}
+
+> let terraform_computed_field = {
+    tag = `TfComputed,
+    resource = "foo",
+    field = "id",
+  }
+> tf-s%"id: %{terraform_computed_field}, port: %{5}"%
+{
+  tag = `Symbo licString
+  prefix = `tf,
+  fragments = [ "id: ", { resource = "foo", field = "id", tag = `TfComputed }, ", port: ", 5 ],
+}
+```
+
 #### Enum tags
 
 Enumeration tags are used to express finite alternatives. They are formed by
@@ -601,3 +672,5 @@ serialization (including the output of the `nickel export` command):
   "foo": 1
 }"
 ```
+
+[nix-string-context]: https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/
