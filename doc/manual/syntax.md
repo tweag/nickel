@@ -204,7 +204,7 @@ def concat(str_array, log=false):
 
 Some tools targeted by Nickel require manipulating string-like values that are
 not yet known at the time of evaluation, such as Terraform's computed values.
-Others, like Nix, performs additional dependency tracking (see [Nix string
+Others, like Nix, perform additional dependency tracking (see [Nix string
 context][nix-string-context]). In both cases, we have to build and combine
 string-like values which are more complex than bare strings, but for which using
 a string syntax would still be natural.
