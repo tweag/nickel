@@ -200,18 +200,16 @@ def concat(str_array, log=false):
   return res"
 ```
 
-#### Symbolic strings
+#### Symbolic Strings
 
-Symbolic strings are another type of special strings in Nickel. For example, you
-could encounter the following code in a library for using Nickel with Nix:
+Some tools targeted by Nickel require manipulating string-like values that are
+not yet known at the time of evaluation, such as Terraform's computed values.
+Others, like Nix, performs additional dependency tracking (see [Nix string
+context][nix-string-context]). In both cases, we have to build and combine
+string-like values which are more complex than bare strings, but for which using
+a string syntax would still be natural.
 
-For concrete use-cases, some tools require manipulating string-like values that
-are not yet known at the time of evaluation (e.g. Terraform's computed values),
-or which performs additional dependency tracking ([Nix string
-context][nix-string-context]), etc. Usually, those values are more complex than
-bare strings, and can't be interpolated directly.
-
-For those cases, Nickel uses symbolic strings:
+That is precisely the use-case for symbolic strings:
 
 ```nickel
 {
@@ -227,7 +225,7 @@ For those cases, Nickel uses symbolic strings:
 }
 ```
 
-This example is an excerpt of a Nix configuration written in Nickel emulating
+This example is an excerpt of a Nix configuration written in Nickel, emulating
 Nix string context. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
 `inputs.hello`, etc. aren't actually strings, but arbitrary records, because
 they carry additional context. Yet, they can be interpolated as if they were
@@ -244,6 +242,11 @@ The prefix of a symbolic string is any valid identifier that doesn't start with
 they're a tag used by libraries consuming symbolic strings to distinguish
 between several types of symbolic strings. Prefixes are also a visual marker for
 the programmer.
+
+Beside the custom prefix, symbolic strings otherwise follow the same syntactic
+rules as multiline strings: the prefix is followed by an arbitrary number of `%`
+followed by `"`, and must be closed by `"` followed by the same number of times
+`%`.
 
 The technical details don't matter too much in practice. As a user of a library
 which uses symbolic strings, remember that:
