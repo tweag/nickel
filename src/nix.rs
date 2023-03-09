@@ -4,9 +4,13 @@ pub use crate::conversion::ToNickel;
 use crate::identifier::Ident;
 use crate::mk_app;
 use crate::parser::utils::{mk_span, FieldPathElem};
+use crate::position::TermPos;
 use crate::term::make::{self, if_then_else};
 use crate::term::{record::RecordData, BinaryOp, UnaryOp};
-use crate::term::{MergePriority, MetaValue, RichTerm, Term};
+use crate::term::{
+    record::{Field, FieldMetadata},
+    MergePriority, RichTerm, Term,
+};
 use codespan::FileId;
 use rnix::ast::{
     Attr as NixAttr, BinOp as NixBinOp, Ident as NixIdent, Str as NixStr, UnaryOp as NixUniOp,
@@ -114,7 +118,7 @@ impl ToNickel for rnix::ast::Expr {
         let pos = self.syntax().text_range();
         let file_id = state.file_id;
         let span = mk_span(file_id, pos.start().into(), pos.end().into());
-        println!("{:?}: {}", self, self);
+        println!("{self:?}: {self}");
         match self {
             // This is a parse error of the nix code.
             // it's translated to a Nickel internal error specific for nix code (`NixParseError`)
@@ -159,7 +163,7 @@ impl ToNickel for rnix::ast::Expr {
             )
             .into(),
             Expr::AttrSet(n) => {
-                use crate::parser::utils::{build_record, elaborate_field_path};
+                use crate::parser::utils::{build_record, FieldDef};
                 use rnix::ast::HasEntry;
                 // TODO: Before that, we have to fill `state.env` when the attrset is recursive.
                 // As it is now, a with brought value take precedence over the fields of the
@@ -168,13 +172,18 @@ impl ToNickel for rnix::ast::Expr {
                     .attrpath_values()
                     .map(|kv| {
                         let val = kv.value().unwrap().translate(state);
-                        let p: Vec<_> = kv
+                        let path: Vec<_> = kv
                             .attrpath()
                             .unwrap()
                             .attrs()
                             .map(|e| path_elem_from_nix(e, state))
                             .collect();
-                        elaborate_field_path(p, val)
+                        let field_def = FieldDef {
+                            path,
+                            field: Field::from(val),
+                            pos: TermPos::None,
+                        };
+                        field_def.elaborate()
                     })
                     .collect();
                 build_record(fields, Default::default()).into()
@@ -202,12 +211,12 @@ impl ToNickel for rnix::ast::Expr {
                 }
             }
             .into(),
-            Expr::LegacyLet(_) => panic!("Legacy let form is not supported"), // Probably useless to suport it in a short term.
+            Expr::LegacyLet(_) => panic!("Legacy let form is not supported"), // Probably useless to support it in a short term.
             // `let ... in` blocks are recursive in Nix and not in Nickel. To emulate this, we use
             // a `let <pattern> = <recrecord> in`. The record provide recursivity then the values
             // are destructured by the pattern.
             Expr::LetIn(n) => {
-                use crate::destruct;
+                use crate::destructuring;
                 use rnix::ast::HasEntry;
                 let mut destruct_vec = Vec::new();
                 let mut fields = HashMap::new();
@@ -217,16 +226,15 @@ impl ToNickel for rnix::ast::Expr {
                                                                                // it possible in Nix?
                 }));
                 for kv in n.attrpath_values() {
-                    // In `let` blocks, the key is suposed to be a single ident so `Path` exactly one
-                    // element. TODO: check nix realy don't support attrpath on the lhs in a let
+                    // In `let` blocks, the key is supposed to be a single ident so `Path` exactly one
+                    // element. TODO: check nix really don't support attrpath on the lhs in a let
                     // block.
                     let id = kv.attrpath().unwrap().attrs().next().unwrap();
                     // Check we don't try to redefine builtin values. Even if it's possible in Nix,
                     // we don't suport it.
                     let id: Ident = match id.to_string().as_str() {
                         "true" | "false" | "null" => panic!(
-                            "`let {}` is forbiden. Can not redifine `true`, `false` or `nul`",
-                            id
+                            "`let {id}` is forbidden. Can not redefine `true`, `false` or `null`"
                         ),
                         s => {
                             let pos = id.syntax().text_range();
@@ -236,18 +244,18 @@ impl ToNickel for rnix::ast::Expr {
                         }
                     };
                     let rt = kv.value().unwrap().translate(&state);
-                    destruct_vec.push(destruct::Match::Simple(id, Default::default()));
+                    destruct_vec.push(destructuring::Match::Simple(id, Default::default()));
                     fields.insert(id, rt);
                 }
                 make::let_pat::<Ident, _, _, _>(
                     None,
-                    destruct::Destruct::Record {
+                    destructuring::RecordPattern {
                         matches: destruct_vec,
                         open: false,
                         rest: None,
                         span,
                     },
-                    Term::RecRecord(RecordData::with_fields(fields), vec![], None),
+                    Term::RecRecord(RecordData::with_field_values(fields), Vec::new(), None),
                     n.body().unwrap().translate(&state),
                 )
             }
@@ -277,7 +285,7 @@ impl ToNickel for rnix::ast::Expr {
                     // ...}:`
                     rnix::ast::Param::Pattern(pat) => {
                         // TODO: add the matched identifiers to `state.env`
-                        use crate::destruct::*;
+                        use crate::destructuring::*;
                         let at = pat
                             .pat_bind()
                             .map(|id| id_from_nix(id.ident().unwrap(), state));
@@ -285,21 +293,24 @@ impl ToNickel for rnix::ast::Expr {
                             .pat_entries()
                             .map(|e| {
                                 // manage default values:
-                                let mv = if let Some(def) = e.default() {
-                                    MetaValue {
+                                let field = if let Some(def) = e.default() {
+                                    Field {
                                         value: Some(def.translate(state)),
-                                        priority: MergePriority::Bottom,
-                                        ..Default::default()
+                                        metadata: FieldMetadata {
+                                            priority: MergePriority::Bottom,
+                                            ..Default::default()
+                                        },
+                                        pending_contracts: Vec::new(),
                                     }
                                 } else {
                                     // the value does not has default. So we construct an empty
                                     // metavalue without any priority annotation.
                                     Default::default()
                                 };
-                                Match::Simple(id_from_nix(e.ident().unwrap(), state), mv)
+                                Match::Simple(id_from_nix(e.ident().unwrap(), state), field)
                             })
                             .collect();
-                        let dest = Destruct::Record {
+                        let dest = RecordPattern {
                             matches,
                             open: pat.ellipsis_token().is_some(),
                             rest: None,

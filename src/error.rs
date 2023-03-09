@@ -1407,17 +1407,17 @@ impl IntoDiagnostics<FileId> for ParseError {
             // TODO: improve error management for nix parser.
             #[cfg(feature = "nix")]
             ParseError::NixParseError(file_id) => {
-                let end = files.source_span(*file_id).end();
-                let start = files.source_span(*file_id).start();
+                let end = files.source_span(file_id).end();
+                let start = files.source_span(file_id).start();
                 Diagnostic::error()
                     .with_message(format!(
                         "error parsing nix file {}",
-                        files.name(*file_id).to_string_lossy()
+                        files.name(file_id).to_string_lossy()
                     ))
                     .with_labels(vec![primary(&RawSpan {
                         start,
                         end,
-                        src_id: *file_id,
+                        src_id: file_id,
                     })])
             }
             ParseError::UnexpectedEOF(file_id, _expected) => {

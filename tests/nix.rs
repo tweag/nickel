@@ -5,12 +5,11 @@ use nickel_lang_utilities::eval;
 
 fn run(path: &str) {
     eval(format!(
-        "let t = import \"{}/tests/nix/{}\" in array.fold (fun x acc => acc && x) true t",
+        "let t = import \"{}/tests/nix/{path}\" in array.fold (fun x acc => acc && x) true t",
         env!("CARGO_MANIFEST_DIR"),
-        path
     ))
     .map(|term| {
-        assert_eq!(term, Term::Bool(true), "error in test {}", path,);
+        assert_eq!(term, Term::Bool(true), "error in test {path}");
     })
     .unwrap();
 }

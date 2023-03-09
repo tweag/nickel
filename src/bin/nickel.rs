@@ -130,7 +130,7 @@ fn main() {
                 .map(|f| f.and_then(|mut f| f.read_to_string(&mut buf)))
                 .unwrap_or_else(|| std::io::stdin().read_to_string(&mut buf))
                 .unwrap_or_else(|err| {
-                    eprintln!("Error when reading input: {}", err);
+                    eprintln!("Error when reading input: {err}");
                     process::exit(1)
                 });
             let allocator = BoxAllocator;
