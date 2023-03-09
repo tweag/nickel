@@ -5,7 +5,7 @@ use nickel_lang_utilities::eval;
 
 fn run(path: &str) {
     eval(format!(
-        "let t = import \"{}/tests/nix/{path}\" in array.fold (fun x acc => acc && x) true t",
+        "import \"{}/tests/nix/{path}\" |> array.all function.id",
         env!("CARGO_MANIFEST_DIR"),
     ))
     .map(|term| {
