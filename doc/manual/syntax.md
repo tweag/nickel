@@ -226,7 +226,7 @@ That is precisely the use-case for symbolic strings:
 ```
 
 This example is an excerpt of a Nix configuration written in Nickel, emulating
-Nix string context. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
+Nix string contexts. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
 `inputs.hello`, etc. aren't actually strings, but arbitrary records, because
 they carry additional context. Yet, they can be interpolated as if they were
 strings.
