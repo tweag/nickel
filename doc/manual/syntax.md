@@ -233,7 +233,7 @@ specific library (Terraform-Nickel, Nix-Nickel, etc.) process it.
 
 The prefix of a symbolic string is a sequence of lower-case alphabetic
 characters followed by `-s`. Prefixes don't have any meaning for Nickel: they're
-a tag used by librairies consuming symbolc strings to distinguish between
+a tag used by libraries consuming symbolic strings to distinguish between
 several types of symbolic strings. Tags are a visual marker for the programmer
 as well.
 
