@@ -200,6 +200,94 @@ def concat(str_array, log=false):
   return res"
 ```
 
+#### Symbolic Strings
+
+Some tools targeted by Nickel require manipulating string-like values that are
+not yet known at the time of evaluation, such as Terraform's computed values.
+Others, like Nix, perform additional dependency tracking (see [Nix string
+context][nix-string-context]). In both cases, we have to build and combine
+string-like values which are more complex than bare strings, but for which using
+a string syntax would still be natural.
+
+That is precisely the use-case for symbolic strings:
+
+```nickel
+{
+  args = [
+      "-c",
+      nix-s%"
+        %{inputs.gcc}/bin/gcc %{inputs.hello} -o hello
+        %{inputs.coreutils}/bin/mkdir -p $out/bin
+        %{inputs.coreutils}/bin/cp hello $out/bin/hello
+      "%,
+  ],
+  ..
+}
+```
+
+This example is an excerpt of a Nix configuration written in Nickel, emulating
+Nix string contexts. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
+`inputs.hello`, etc. aren't actually strings, but arbitrary records, because
+they carry additional context. Yet, they can be interpolated as if they were
+strings.
+
+The idea behind symbolic strings is to offer a string-like syntax, but without
+evaluating the expression as a string. Instead, the expression is returned in a
+symbolic form - in practice, an array of fragments, where each fragment is
+either a string or an arbitrary value that has been interpolated - and Nickel
+lets the specific library (Terraform-Nickel, Nix-Nickel, etc.) handle it.
+
+The prefix of a symbolic string is any valid identifier that doesn't start with
+`_`, and ends with the suffix `-s`. Prefixes don't have any meaning for Nickel:
+they're a tag used by libraries consuming symbolic strings to distinguish
+between several types of symbolic strings. Prefixes are also a visual marker for
+the programmer.
+
+Beside the custom prefix, symbolic strings otherwise follow the same syntactic
+rules as multiline strings: the prefix is followed by an arbitrary number of `%`
+followed by `"`, and must be closed by `"` followed by the same number of `%`.
+
+The technical details don't matter too much in practice. As a user of a library
+which uses symbolic strings, remember that:
+
+- a special string with a prefix ending in  `-s` is a symbolic string. The
+  prefix (or prefixes) is defined by the library.
+- it's a special syntax without pre-existing meaning for Nickel. The
+  specific meaning of each kind of symbolic string, and what it's used for
+  exactly, is defined by the library. All in all, symbolic strings simply
+  provide libraries with a way to overload string syntax and interpolation for
+  extended usages.
+- the main operation supported by symbolic strings is interpolation: `%{value}`.
+  What interpolation means, and which values can be interpolated in a given
+  symbolic string is again defined by each library. Other string functions don't
+  work on symbolic strings (e.g. `string.length`, `string.characters`, and so
+  on), because they might not have any valid meaning. Instead, libraries should
+  export their own string API, if they support additional operations on their
+  symbolic strings.
+
+The following examples show how symbolic strings are desugared:
+
+```text
+> mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
+{
+  tag = `SymbolicString,
+  prefix = `mytag
+  fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+}
+
+> let terraform_computed_field = {
+    tag = `TfComputed,
+    resource = "foo",
+    field = "id",
+  }
+> tf-s%"id: %{terraform_computed_field}, port: %{5}"%
+{
+  tag = `SymbolicString
+  prefix = `tf,
+  fragments = [ "id: ", { resource = "foo", field = "id", tag = `TfComputed }, ", port: ", 5 ],
+}
+```
+
 #### Enum tags
 
 Enumeration tags are used to express finite alternatives. They are formed by
@@ -601,3 +689,5 @@ serialization (including the output of the `nickel export` command):
   "foo": 1
 }"
 ```
+
+[nix-string-context]: https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/
