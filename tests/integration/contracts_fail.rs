@@ -62,7 +62,7 @@ fn enum_simple() {
 
 #[test]
 fn metavalue_contract_default_fail() {
-    assert_raise_blame!("{val | default | Num = true}.val");
+    assert_raise_blame!("{val | default | Number = true}.val");
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn merge_contract() {
 
 #[test]
 fn merge_default_contract() {
-    assert_raise_blame!("({a=2} & {b | Num} & {b | default = true}).b");
+    assert_raise_blame!("({a=2} & {b | Number} & {b | default = true}).b");
 }
 
 #[test]
@@ -97,21 +97,23 @@ fn merge_compose_contract() {
 fn records_contracts_simple() {
     assert_raise_blame!("{a=1} | {}");
 
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1, s = 2} in %deep_seq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = \"a\", s = \"b\"} in %deep_seq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {a = 1} in %deep_seq% x x");
-    assert_raise_blame!("let x | {a: Num, s: Str} = {s = \"a\"} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Number, s: String} = {a = 1, s = 2} in %deep_seq% x x");
     assert_raise_blame!(
-        "let x | {a: Num, s: Str} = {a = 1, s = \"a\", extra = 1} in %deep_seq% x x"
+        "let x | {a: Number, s: String} = {a = \"a\", s = \"b\"} in %deep_seq% x x"
+    );
+    assert_raise_blame!("let x | {a: Number, s: String} = {a = 1} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Number, s: String} = {s = \"a\"} in %deep_seq% x x");
+    assert_raise_blame!(
+        "let x | {a: Number, s: String} = {a = 1, s = \"a\", extra = 1} in %deep_seq% x x"
     );
 
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = 2}} in %deep_seq% x x"
+        "let x | {a: Number, s: {foo: Bool}} = {a = 1, s = {foo = 2}} in %deep_seq% x x"
     );
     assert_raise_blame!(
-        "let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {foo = true, extra = 1}} in %deep_seq% x x"
+        "let x | {a: Number, s: {foo: Bool}} = {a = 1, s = {foo = true, extra = 1}} in %deep_seq% x x"
     );
-    assert_raise_blame!("let x | {a: Num, s: {foo: Bool}} = {a = 1, s = {}} in %deep_seq% x x");
+    assert_raise_blame!("let x | {a: Number, s: {foo: Bool}} = {a = 1, s = {}} in %deep_seq% x x");
 }
 
 #[test]
@@ -120,14 +122,14 @@ fn records_contracts_poly() {
         (
             "record argument missing all required fields",
             r#"
-            let f | forall a. { foo: Num; a } -> Num = fun r => r.foo in
+            let f | forall a. { foo: Number; a } -> Number = fun r => r.foo in
             f { }
             "#,
         ),
         (
             "record argument missing one required field",
             r#"
-            let f | forall r. { x: Num, y: Num; r } -> { x: Num, y: Num; r } =
+            let f | forall r. { x: Number, y: Number; r } -> { x: Number, y: Number; r } =
                 fun r => r
             in
             f { x = 1 }
@@ -136,7 +138,8 @@ fn records_contracts_poly() {
         (
             "function arg which does not satisfy higher-order contract",
             r#"
-            let f | (forall r. { x: Num; r } -> { ; r }) -> { x: Num, y: Num } -> { y : Num } =
+            let f | (forall r. { x: Number; r } -> { ; r })
+                    -> { x: Number, y: Number } -> { y : Number } =
                 fun g r => g r
             in
             f (fun r => r) { x = 1, y = 2 }
@@ -145,7 +148,8 @@ fn records_contracts_poly() {
         (
             "invalid record argument to function arg",
             r#"
-            let f | (forall r. { x: Num; r } -> { x: Num ; r }) -> { x: Str, y: Num } -> { x: Num, y: Num } =
+            let f | (forall r. { x: Number; r } -> { x: Number ; r })
+                    -> { x: String, y: Number } -> { x: Number, y: Number } =
                 fun g r => g r
             in
             # We need to evaluate x here to cause the error.
@@ -155,7 +159,7 @@ fn records_contracts_poly() {
         (
             "return value without tail",
             r#"
-            let f | forall r. { foo: Num; r } -> { foo: Num; r } =
+            let f | forall r. { foo: Number; r } -> { foo: Number; r } =
                 fun r => { foo = 1 }
             in
             f { foo = 1, other = 2 }
@@ -164,7 +168,9 @@ fn records_contracts_poly() {
         (
             "return value with wrong tail",
             r#"
-            let f | forall r r'. { a: Num; r } -> { a: Num; r' } -> { a: Num; r } =
+            let f | forall r r'. { a: Number; r }
+                    -> { a: Number; r' }
+                    -> { a: Number; r } =
                 fun r r' => r'
             in
             f { a = 1, b = "yes" } { a = 1, b = "no" }
@@ -180,7 +186,7 @@ fn records_contracts_poly() {
         (
             "mapping over a record violates parametricity",
             r#"
-            let f | forall r. { a: Num; r } -> { a: Str; r } =
+            let f | forall r. { a: Number; r } -> { a: String; r } =
                 fun r => %record_map% r (fun x => %to_str% x)
             in
             f { a = 1, b = 2 }
@@ -189,7 +195,7 @@ fn records_contracts_poly() {
         (
             "merging a record violates parametricity, lhs arg",
             r#"
-            let f | forall r. { a : Num; r } -> { a: Num; r } =
+            let f | forall r. { a : Number; r } -> { a: Number; r } =
                 fun r => { a | force = 0 } & r
             in
             f { a | default = 100, b = 1 }
@@ -198,7 +204,7 @@ fn records_contracts_poly() {
         (
             "merging a record violates parametricity, rhs arg",
             r#"
-            let f | forall r. { a : Num; r } -> { a: Num; r } =
+            let f | forall r. { a : Number; r } -> { a: Number; r } =
                 fun r => r & { a | force = 0 }
             in
             f { a | default = 100, b = 1 }
@@ -233,7 +239,7 @@ fn lists_contracts() {
     use nickel_lang::label::ty_path::Elem;
 
     assert_matches!(
-        eval("%force% ([1, \"a\"] | Array Num) 0"),
+        eval("%force% ([1, \"a\"] | Array Number) 0"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
@@ -245,7 +251,7 @@ fn lists_contracts() {
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 
-    let res = eval("%force% ([{a = [1]}] | Array {a: Array Str}) false");
+    let res = eval("%force% ([{a = [1]}] | Array {a: Array String}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
             evaluated_arg: _,
@@ -262,7 +268,7 @@ fn lists_contracts() {
     res.unwrap_err().into_diagnostics(&mut files, None);
 
     let res = eval(
-        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Num)}).foo) 0) false",
+        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Number)}).foo) 0) false",
     );
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
@@ -280,17 +286,19 @@ fn lists_contracts() {
 #[test]
 fn records_contracts_closed() {
     assert_raise_blame!("{a=1} | {}");
-    assert_raise_blame!("{a=1, b=2} | {a | Num}");
-    assert_raise_blame!("let Contract = {a | Num} & {b | Num} in ({a=1, b=2, c=3} | Contract)");
+    assert_raise_blame!("{a=1, b=2} | {a | Number}");
+    assert_raise_blame!(
+        "let Contract = {a | Number} & {b | Number} in ({a=1, b=2, c=3} | Contract)"
+    );
 }
 
 #[test]
 fn dictionary_contracts() {
     use nickel_lang::label::ty_path::Elem;
 
-    assert_raise_blame!("%force% (({foo} | {_: Num}) & {foo = \"string\"}) true");
+    assert_raise_blame!("%force% (({foo} | {_: Number}) & {foo = \"string\"}) true");
 
-    let res = eval("%force% ({foo = 1} | {_: Str}) false");
+    let res = eval("%force% ({foo = 1} | {_: String}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
             evaluated_arg: _,
@@ -306,7 +314,7 @@ fn dictionary_contracts() {
 #[test]
 fn enum_complex() {
     eval(
-        "let f : [| `foo, `bar |] -> Num = match { `foo => 1, `bar => 2, } in
+        "let f : [| `foo, `bar |] -> Number = match { `foo => 1, `bar => 2, } in
          f `boo",
     )
     .unwrap_err();
@@ -324,10 +332,10 @@ fn type_path_with_aliases() {
         p.report(result.unwrap_err());
     }
 
-    assert_blame_dont_panic("let Foo = Array Num in %force% ([\"a\"] | Foo)");
-    assert_blame_dont_panic("let Foo = Num -> Num in ((fun x => \"a\") | Foo) 0");
-    assert_blame_dont_panic("let Foo = Num -> Num in ((fun x => x) | Foo) \"a\"");
+    assert_blame_dont_panic("let Foo = Array Number in %force% ([\"a\"] | Foo)");
+    assert_blame_dont_panic("let Foo = Number -> Number in ((fun x => \"a\") | Foo) 0");
+    assert_blame_dont_panic("let Foo = Number -> Number in ((fun x => x) | Foo) \"a\"");
     assert_blame_dont_panic(
-        "let Foo = {foo: Num} in %force% (((fun x => {foo = \"a\"}) | Dyn -> Foo) null)",
+        "let Foo = {foo: Number} in %force% (((fun x => {foo = \"a\"}) | Dyn -> Foo) null)",
     );
 }

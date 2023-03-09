@@ -1,8 +1,8 @@
 let types = import "../schemas/nomad/types.ncl" in
 
 {
-  prometheusPort | Str,
-  clientId | Str
+  prometheusPort | String,
+  clientId | String
            | default = "{{ env \"NOMAD_JOB_NAME\" }}-{{ env \"NOMAD_ALLOC_INDEX\" }}",
 
   driver = `exec,

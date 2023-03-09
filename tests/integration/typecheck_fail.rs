@@ -38,20 +38,20 @@ fn unbound_variable_always_throws() {
 
 #[test]
 fn promise_simple_checks() {
-    assert_typecheck_fails!("true : Num");
+    assert_typecheck_fails!("true : Number");
     assert_typecheck_fails!("34.5 : Bool");
-    assert_typecheck_fails!("(34 | Bool) : Num");
-    assert_typecheck_fails!("\"hello\" : Num");
+    assert_typecheck_fails!("(34 | Bool) : Number");
+    assert_typecheck_fails!("\"hello\" : Number");
 }
 
 #[test]
 fn promise_complicated() {
     // Inside Promises we typecheck strictly
-    assert_typecheck_fails!("let f : Bool -> Num = fun x => if x then x + 1 else 34 in f false");
+    assert_typecheck_fails!("let f : Bool -> Number = fun x => if x then x + 1 else 34 in f false");
     // not annotated, non trivial let bindings type to Dyn
-    assert_typecheck_fails!("let id = fun x => x in (id 4 : Num)");
+    assert_typecheck_fails!("let id = fun x => x in (id 4 : Number)");
     // no implicit polymorphism
-    assert_typecheck_fails!("(fun id => (id 4 : Num) + (id true : Bool)) (fun x => x)");
+    assert_typecheck_fails!("(fun id => (id 4 : Number) + (id true : Bool)) (fun x => x)");
     // contract equality (to be fair, the current implementation is full of issues: to be reworked)
     assert_typecheck_fails!("(fun x => x) : (fun l t => t) -> (fun l t => t)");
 }
@@ -66,11 +66,11 @@ fn simple_forall() {
         "((fun f =>
             let g : forall b. b -> b = fun y => y in
             f g)
-            : ((forall a. a -> a) -> Num) -> Num)
+            : ((forall a. a -> a) -> Number) -> Number)
             (fun x => 3)"
     );
     assert_typecheck_fails!(
-        "let g : Num -> Num = fun x => x in
+        "let g : Number -> Number = fun x => x in
          let f : forall a. a -> a = fun x => g x in
          f"
     );
@@ -79,22 +79,24 @@ fn simple_forall() {
 #[test]
 fn enum_simple() {
     assert_typecheck_fails!("`foo : [| `bar |]");
-    assert_typecheck_fails!("match { `foo => 3} `bar : Num");
-    assert_typecheck_fails!("match { `foo => 3, `bar => true} `bar : Num");
+    assert_typecheck_fails!("match { `foo => 3} `bar : Number");
+    assert_typecheck_fails!("match { `foo => 3, `bar => true} `bar : Number");
 }
 
 #[test]
 fn enum_complex() {
-    assert_typecheck_fails!("(match {`bla => 1, `ble => 2, `bli => 4}) : [| `bla, `ble |] -> Num");
+    assert_typecheck_fails!(
+        "(match {`bla => 1, `ble => 2, `bli => 4}) : [| `bla, `ble |] -> Number"
+    );
     // TODO typecheck this, I'm not sure how to do it with row variables
     // LATER NOTE: this requires row subtyping, not easy
     assert_typecheck_fails!(
         "(fun x =>
             (x |> match {`bla => 3, `bli => 2}) +
-            (x |> match {`bla => 6, `blo => 20})) `bla : Num"
+            (x |> match {`bla => 6, `blo => 20})) `bla : Number"
     );
     assert_typecheck_fails!(
-        "let f : forall r. [| `blo, `ble ; r |] -> Num =
+        "let f : forall r. [| `blo, `ble ; r |] -> Number =
             match {`blo => 1, `ble => 2, `bli => 3} in
         f"
     );
@@ -107,35 +109,35 @@ fn enum_complex() {
 
 #[test]
 fn static_record_simple() {
-    assert_typecheck_fails!("{bla = true} : {bla : Num}");
-    assert_typecheck_fails!("{blo = 1} : {bla : Num}");
+    assert_typecheck_fails!("{bla = true} : {bla : Number}");
+    assert_typecheck_fails!("{blo = 1} : {bla : Number}");
 
     assert_typecheck_fails!("{blo = 1}.blo : Bool");
 
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a ; r} -> a) =
             fun r => if r.bla then r.blo else r.ble in
-         (f {bla = true, blo = 1, ble = true, blip = `blip} : Num)"
+         (f {bla = true, blo = 1, ble = true, blip = `blip} : Number)"
     );
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a ; r} -> a) =
             fun r => if r.bla then (r.blo + 1) else r.ble in
-         (f {bla = true, blo = 1, ble = 2, blip = `blip} : Num)"
+         (f {bla = true, blo = 1, ble = 2, blip = `blip} : Number)"
     );
 }
 
 #[test]
 fn dynamic_record_simple() {
     assert_typecheck_fails!(
-        "({ \"%{if true then \"foo\" else \"bar\"}\" = 2, \"foo\" = true, }.\"bla\") : Num"
+        "({ \"%{if true then \"foo\" else \"bar\"}\" = 2, \"foo\" = true, }.\"bla\") : Number"
     );
 }
 
 #[test]
 fn simple_array() {
-    assert_typecheck_fails!("[1, 2, false] : Array Num");
-    assert_typecheck_fails!("[(1 : Str), true, \"b\"] : Array Dyn");
-    assert_typecheck_fails!("[1, 2, \"3\"] : Array Str");
+    assert_typecheck_fails!("[1, 2, false] : Array Number");
+    assert_typecheck_fails!("[(1 : String), true, \"b\"] : Array Dyn");
+    assert_typecheck_fails!("[1, 2, \"3\"] : Array String");
 }
 
 #[test]
@@ -148,17 +150,17 @@ fn arrays_operations() {
 
 #[test]
 fn recursive_records() {
-    assert_typecheck_fails!("{a : Num = true, b = a + 1} : {a : Num, b : Num}");
-    assert_typecheck_fails!("{a = 1, b : Bool = a} : {a : Num, b : Bool}");
+    assert_typecheck_fails!("{a : Number = true, b = a + 1} : {a : Number, b : Number}");
+    assert_typecheck_fails!("{a = 1, b : Bool = a} : {a : Number, b : Bool}");
 }
 
 #[test]
 fn let_inference() {
-    assert_typecheck_fails!("(let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x) : Num");
+    assert_typecheck_fails!("(let x = 1 + 2 in let f = fun x => x ++ \"a\" in f x) : Number");
 
     // Fields in recursive records are treated in the type environment in the same way as let-bound expressions
     assert_typecheck_fails!(
-        "{ f = fun x => if x == 0 then false else 1 + (f (x + (-1)))} : {f : Num -> Num}"
+        "{ f = fun x => if x == 0 then false else 1 + (f (x + (-1)))} : {f : Number -> Number}"
     );
 }
 
@@ -183,14 +185,14 @@ fn polymorphic_row_constraints() {
     }
 
     let mut res = type_check_expr(
-        "let extend | forall c. { ; c} -> {a: Str ; c} = null in
-           (let bad = extend {a = 1} in 0) : Num",
+        "let extend | forall c. { ; c} -> {a: String ; c} = null in
+           (let bad = extend {a = 1} in 0) : Number",
     );
     assert_row_conflict(res);
 
     res = type_check_expr(
-        "let remove | forall c. {a: Str ; c} -> { ; c} = nul in
-           (let bad = remove (remove {a = \"a\"}) in 0) : Num",
+        "let remove | forall c. {a: String ; c} -> { ; c} = nul in
+           (let bad = remove (remove {a = \"a\"}) in 0) : Number",
     );
     assert_row_conflict(res);
 }
@@ -217,16 +219,16 @@ fn row_type_unification_variable_mismatch() {
 fn dynamic_row_tail() {
     // Currently, typechecking is conservative wrt the dynamic row type, meaning it can't
     // convert to a less precise type with a dynamic tail.
-    assert_typecheck_fails!("{a = 1, b = 2} : {a: Num ; Dyn}");
-    assert_typecheck_fails!("{a = 1} : {a: Num ; Dyn}");
-    assert_typecheck_fails!("({a = 1} | {a: Num ; Dyn}) : {a: Num}");
-    assert_typecheck_fails!("{a = 1} : {a: Num ; Dyn}");
+    assert_typecheck_fails!("{a = 1, b = 2} : {a: Number ; Dyn}");
+    assert_typecheck_fails!("{a = 1} : {a: Number ; Dyn}");
+    assert_typecheck_fails!("({a = 1} | {a: Number ; Dyn}) : {a: Number}");
+    assert_typecheck_fails!("{a = 1} : {a: Number ; Dyn}");
 }
 
 #[test]
 fn shallow_type_inference() {
     assert_matches!(
-        type_check_expr("let x = (1 + 1) in (x + 1 : Num)"),
+        type_check_expr("let x = (1 + 1) in (x + 1 : Number)"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }
@@ -234,7 +236,7 @@ fn shallow_type_inference() {
 #[test]
 fn dynamic_record_field() {
     assert_matches!(
-        type_check_expr("let x = \"foo\" in {\"%{x}\" = 1} : {foo: Num}"),
+        type_check_expr("let x = \"foo\" in {\"%{x}\" = 1} : {foo: Number}"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }
@@ -242,7 +244,7 @@ fn dynamic_record_field() {
 #[test]
 fn piecewise_signature() {
     assert_matches!(
-        type_check_expr("{foo : Num, foo = \"bar\"}"),
+        type_check_expr("{foo : Number, foo = \"bar\"}"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }
@@ -250,7 +252,7 @@ fn piecewise_signature() {
 #[test]
 fn recursive_let() {
     assert_matches!(
-        type_check_expr("let rec f : Num -> Num = fun x => f \"hoi\" in null"),
+        type_check_expr("let rec f : Number -> Number = fun x => f \"hoi\" in null"),
         Err(TypecheckError::TypeMismatch(..))
     );
 }
@@ -283,7 +285,7 @@ fn wildcards_apparent_type_is_dyn() {
     assert_matches!(
         type_check_expr(
             r#"let f : _ -> _ = fun x => x + 1 in
-let g : Num = f 0 in
+let g : Number = f 0 in
 g"#
         ),
         Err(TypecheckError::TypeMismatch(

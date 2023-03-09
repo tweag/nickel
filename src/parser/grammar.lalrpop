@@ -870,9 +870,9 @@ NOpPre<ArgRule>: UniTerm = {
 
 TypeBuiltin: Types = {
      "Dyn" => Types::from(TypeF::Dyn),
-     "Num" => Types::from(TypeF::Num),
+     "Number" => Types::from(TypeF::Number),
      "Bool" => Types::from(TypeF::Bool),
-     "Str" => Types::from(TypeF::Str),
+     "String" => Types::from(TypeF::String),
 }
 
 TypeAtom: Types = {
@@ -979,9 +979,9 @@ extern {
         "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart(
           SymbolicStringStart{prefix: <&'input str>, length: <usize>})),
 
-        "Num" => Token::Normal(NormalToken::Num),
+        "Number" => Token::Normal(NormalToken::Number),
         "Dyn" => Token::Normal(NormalToken::Dyn),
-        "Str" => Token::Normal(NormalToken::Str),
+        "String" => Token::Normal(NormalToken::String),
         "Bool" => Token::Normal(NormalToken::Bool),
         "Array" => Token::Normal(NormalToken::Array),
 

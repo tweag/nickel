@@ -19,19 +19,19 @@ pub mod ty_path {
     //! Checking higher-order contracts can involve a good share of intermediate contract checking.
     //! Take the following example:
     //! ```text
-    //! Assume((Num -> Num) -> Num) -> Num -> Num, fun ev => fun cst => ev (fun x => cst))
+    //! Assume((Number -> Number) -> Number) -> Number -> Number, fun ev => fun cst => ev (fun x => cst))
     //! ```
     //! Once called, various checks will be performed on the arguments of functions and their return
     //! values:
-    //! 1. Check that `ev` provides a `Num` to `(fun x => cst)`
-    //! 2. Check that `(fun x => cst)` returns a `Num`
-    //! 3. Check that `ev (fun x => cst)` return a `Num`
+    //! 1. Check that `ev` provides a `Number` to `(fun x => cst)`
+    //! 2. Check that `(fun x => cst)` returns a `Number`
+    //! 3. Check that `ev (fun x => cst)` return a `Number`
     //! 4. etc.
     //!
-    //! Each check can be linked to a base type occurrence (here, a `Num`) in the original type:
+    //! Each check can be linked to a base type occurrence (here, a `Number`) in the original type:
     //! ```text
-    //! (Num -> Num) -> Num) -> Num -> Num
-    //!  ^^^1   ^^^2    ^^^3    etc.
+    //! (Number -> Number) -> Number) -> Number -> Number
+    //!  ^^^^^1    ^^^^^^2    ^^^^^^3    etc.
     //! ```
     //!
     //! This is the information encoded by a type path: what part of the original type is currently
@@ -318,31 +318,32 @@ but this field doesn't exist in {}",
 /// are types with arrows in it. Consider the simplest example:
 ///
 /// ```text
-/// f | Num -> Num
+/// f | Number -> Number
 /// ```
 ///
-/// This does not entail that `f` returns a `Num` in *every* situation. The identity function `id
-/// = fun x => x` can certainly be given the type `Num -> Num`, but `id "a" = "a"` is not a `Num`.
+/// This does not entail that `f` returns a `Number` in *every* situation. The identity function
+/// `id = fun x => x` can certainly be given the type `Number -> Number`, but `id "a" = "a"` is not
+/// a `Number`.
 ///
-/// To satisfy the contract `Num -> Num` for `f` is to satisfy the predicate "if you give me a
-/// `Num` as an argument, I give you a `Num` as a result". There is an additional contract to be
-/// checked, which is not the responsibility of `f`, but the caller's (or context)
-/// one.
+/// To satisfy the contract `Number -> Number` for `f` is to satisfy the predicate "if you give me
+/// a `Number` as an argument, I give you a `Number` as a result". There is an additional contract
+/// to be checked, which is not the responsibility of `f`, but the caller's (or context) one.
 ///
-/// `f | Num -> Num` should thus be evaluated as `fun arg => ((f (arg | Num)) | Num)`, but we want
-/// to report the failures of the two introduced subcontracts in a different way:
+/// `f | Number -> Number` should thus be evaluated as `fun arg => ((f (arg | Number)) | Number)`,
+/// but we want to report the failures of the two introduced subcontracts in a different way:
 ///
 ///  - The inner one (on the argument) says that `f` has been misused: it has been applied to
-///  something that is not a `Num`.
+///  something that is not a `Number`.
 ///  - The outer one says that `f` failed to satisfy its contract, as it has been provided with a
-///  `Num` (otherwise the inner contracts would have failed before) but failed to deliver a `Num`.
+///  `Number` (otherwise the inner contracts would have failed before) but failed to deliver a
+///  `Number`.
 ///
 /// This duality caller/callee or function/context is indicated by the polarity: the outer
 /// corresponds to a *positive* polarity (the contract is on the term), while the inner corresponds
 /// to a *negative* one (the contact is on the context). The polarity always starts as `true` in
 /// user-written contracts, but is toggled in the argument contract when the interpreter decomposes
-/// an higher order-contract. This also generalizes to higher types such as `((Num -> Num) -> Num)
-/// -> Num` where the polarity alternates each time.
+/// an higher order-contract. This also generalizes to higher types such as `((Number -> Number) ->
+/// Number) -> Number` where the polarity alternates each time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     /// The type checked by the original contract.
@@ -411,7 +412,7 @@ impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
-            types: Rc::new(Types::from(TypeF::Num)),
+            types: Rc::new(Types::from(TypeF::Number)),
             diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),

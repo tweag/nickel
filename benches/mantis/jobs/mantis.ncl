@@ -7,26 +7,26 @@ let lib = import "../lib.ncl" in
 let baseTags = [""] in
 
 let Params = {
-  count | num.Nat
+  count | number.Nat
         | default = 5,
   role | [| `passive, `miner, `backup |],
   datacenters | Dyn,
   job | Dyn,
-  namespace | Str,
-  logLevel | Str,
-  mantisRev | Str,
-  fqdn | Str,
-  loggers | {_: Str},
+  namespace | String,
+  logLevel | String,
+  mantisRev | String,
+  fqdn | String,
+  loggers | {_: String},
   network | lib.contracts.OneOf ["testnet-internal-nomad", "etc"]
           | default = "testnet-internal-nomad",
-  networkConfig | Str,
+  networkConfig | String,
 
   fastSync | Bool
            | default = false,
   reschedule | {..}
                #{_ : lib.contracts.PseudoOr [
-               #         lib.contracts.OrableFromPred builtin.is_str,
-               #         lib.contracts.OrableFromPred builtin.is_num,
+               #         lib.contracts.OrableFromPred builtin.is_string,
+               #         lib.contracts.OrableFromPred builtin.is_number,
                #         lib.contracts.OrableFromPred builtin.is_bool,
                #         {
                #           pred = builtin.is_record,

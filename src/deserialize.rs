@@ -22,7 +22,7 @@ macro_rules! deserialize_number {
             match unwrap_term(self)? {
                 Term::Num(n) => visitor.$visit(n as $type),
                 other => Err(RustDeserializationError::InvalidType {
-                    expected: "Num".to_string(),
+                    expected: "Number".to_string(),
                     occurred: RichTerm::from(other).to_string(),
                 }),
             }
@@ -39,7 +39,7 @@ macro_rules! deserialize_number_round {
             match unwrap_term(self)? {
                 Term::Num(n) => visitor.$visit(n.round() as $type),
                 other => Err(RustDeserializationError::InvalidType {
-                    expected: "Num".to_string(),
+                    expected: "Number".to_string(),
                     occurred: RichTerm::from(other).to_string(),
                 }),
             }
@@ -708,7 +708,7 @@ mod tests {
         assert_eq!(
             A::deserialize(
                 TestProgram::new_from_source(
-                    Cursor::new(br#"{ a = (10 | Num) }"#.to_vec()),
+                    Cursor::new(br#"{ a = (10 | Number) }"#.to_vec()),
                     "source"
                 )
                 .expect("program shouldn't fail")

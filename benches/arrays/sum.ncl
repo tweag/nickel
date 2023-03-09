@@ -1,5 +1,5 @@
 let rec sum
-  | Array Num -> Num 
+  | Array Number -> Number 
   = fun xs =>
     if array.length xs == 0 then 0
     else array.first xs + sum (array.drop_first xs)

@@ -441,10 +441,10 @@ fn type_eq_bounded<E: TermEnvironment>(
         (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
             (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
             (TypeF::Dyn, TypeF::Dyn)
-            | (TypeF::Num, TypeF::Num)
+            | (TypeF::Number, TypeF::Number)
             | (TypeF::Bool, TypeF::Bool)
-            | (TypeF::Sym, TypeF::Sym)
-            | (TypeF::Str, TypeF::Str) => true,
+            | (TypeF::Symbol, TypeF::Symbol)
+            | (TypeF::String, TypeF::String) => true,
             (TypeF::Dict(uty1), TypeF::Dict(uty2)) | (TypeF::Array(uty1), TypeF::Array(uty2)) => {
                 type_eq_bounded(state, uty1, env1, uty2, env2)
             }

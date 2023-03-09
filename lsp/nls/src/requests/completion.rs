@@ -824,7 +824,7 @@ mod tests {
         use std::convert::TryInto;
 
         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
-        let c_record_type = mk_uty_record!(("c1", TypeF::Num), ("c2", TypeF::Num));
+        let c_record_type = mk_uty_record!(("c1", TypeF::Number), ("c2", TypeF::Number));
         let b_record_type = mk_uty_record!(("b", c_record_type));
         let a_record_type = mk_uty_row!(("a", b_record_type));
 

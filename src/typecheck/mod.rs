@@ -123,7 +123,7 @@ pub enum UnifEnumRows {
 /// representation, hence the parametrization.
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifType<E: TermEnvironment> {
-    /// A concrete type (like `Num` or `Str -> Str`).
+    /// A concrete type (like `Number` or `String -> String`).
     Concrete(TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>),
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
     /// between a contract and a type, we need to carry an additional environment. This is why we
@@ -970,10 +970,10 @@ fn walk_type<L: Linearizer>(
 ) -> Result<(), TypecheckError> {
     match &ty.types {
        TypeF::Dyn
-       | TypeF::Num
+       | TypeF::Number
        | TypeF::Bool
-       | TypeF::Str
-       | TypeF::Sym
+       | TypeF::String
+       | TypeF::Symbol
        // Currently, the parser can't generate unbound type variables by construction. Thus we
        // don't check here for unbound type variables again.
        | TypeF::Var(_)
@@ -1773,10 +1773,10 @@ pub fn apparent_type(
                 .first()
                 .map(|labeled_ty| ApparentType::Annotated(labeled_ty.types.clone()))
                 .unwrap_or_else(|| apparent_type(value.as_ref(), env, resolver)),
-            Term::Num(_) => ApparentType::Inferred(Types::from(TypeF::Num)),
+            Term::Num(_) => ApparentType::Inferred(Types::from(TypeF::Number)),
             Term::Bool(_) => ApparentType::Inferred(Types::from(TypeF::Bool)),
-            Term::SealingKey(_) => ApparentType::Inferred(Types::from(TypeF::Sym)),
-            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types::from(TypeF::Str)),
+            Term::SealingKey(_) => ApparentType::Inferred(Types::from(TypeF::Symbol)),
+            Term::Str(_) | Term::StrChunks(_) => ApparentType::Inferred(Types::from(TypeF::String)),
             Term::Array(..) => ApparentType::Approximated(Types::from(TypeF::Array(Box::new(
                 Types::from(TypeF::Dyn),
             )))),
@@ -1995,10 +1995,10 @@ pub fn unify(
         }
         (UnifType::Concrete(s1), UnifType::Concrete(s2)) => match (s1, s2) {
             (TypeF::Dyn, TypeF::Dyn)
-            | (TypeF::Num, TypeF::Num)
+            | (TypeF::Number, TypeF::Number)
             | (TypeF::Bool, TypeF::Bool)
-            | (TypeF::Str, TypeF::Str)
-            | (TypeF::Sym, TypeF::Sym) => Ok(()),
+            | (TypeF::String, TypeF::String)
+            | (TypeF::Symbol, TypeF::Symbol) => Ok(()),
             (TypeF::Array(uty1), TypeF::Array(uty2)) => unify(state, ctxt, *uty1, *uty2),
             (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
                 unify(state, ctxt, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
@@ -2530,10 +2530,10 @@ impl ConstrainFreshRRowsVar for UnifType {
                     }
                     TypeF::Forall {body, ..} => body.constrain_fresh_rrows_var(state, var_id),
                     TypeF::Dyn
-                    | TypeF::Num
+                    | TypeF::Number
                     | TypeF::Bool
-                    | TypeF::Str
-                    | TypeF::Sym
+                    | TypeF::String
+                    | TypeF::Symbol
                     | TypeF::Flat(_)
                     | TypeF::Var(_)
                     // There can be no record rows unification variable inside an enum type
@@ -2594,10 +2594,10 @@ impl ConstrainFreshERowsVar for UnifType {
                 }
                 TypeF::Forall { body, .. } => body.constrain_fresh_erows_var(state, var_id),
                 TypeF::Dyn
-                | TypeF::Num
+                | TypeF::Number
                 | TypeF::Bool
-                | TypeF::Str
-                | TypeF::Sym
+                | TypeF::String
+                | TypeF::Symbol
                 | TypeF::Flat(_)
                 | TypeF::Var(_)
                 | TypeF::Wildcard(_) => (),

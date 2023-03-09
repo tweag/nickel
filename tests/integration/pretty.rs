@@ -77,7 +77,7 @@ fn functions() {
 fn arrays() {
     check_file("arrays.ncl");
 }
-// TODO: Maybe fix the issue with transformation of `let A = Num` form
+// TODO: Maybe fix the issue with transformation of `let A = Number` form
 // in `let A = $num` which is not parsable.
 //#[test]
 //fn metavalues() {

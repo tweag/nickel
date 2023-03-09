@@ -1,23 +1,23 @@
 let {check, Assert, ..} = import "lib/assert.ncl" in
 
 [
-  {val | default | Num = 10}.val == 10,
+  {val | default | Number = 10}.val == 10,
 
   # merge_default
   ({a = 2} & {a | default = 0, b | default = true}) == {a = 2, b = true},
   {a | default = {x = 1}} & {a | default = {y = "y"}} == {a = {x = 1, y = "y"}},
 
   # merge_contract
-  {a = 2, b | Bool} & {a | Num, b | default = true}
+  {a = 2, b | Bool} & {a | Number, b | default = true}
     == {a = 2, b = true},
 
   # merge_default_contract
-  {a = 2} & {a | default | Num = 0, b | default = true}
+  {a = 2} & {a | default | Number = 0, b | default = true}
     == {a = 2, b = true},
 
-  {a=2} & {a | Num} & {a | default = 3} == {a = 2},
-  {a=2} & {b | Num} & {b | default = 3} == {a = 2, b = 3},
-  ({a | default = 1} & {b | Num} & {a | default = 1}).a
+  {a=2} & {a | Number} & {a | default = 3} == {a = 2},
+  {a=2} & {b | Number} & {b | default = 3} == {a = 2, b = 3},
+  ({a | default = 1} & {b | Number} & {a | default = 1}).a
     == 1,
 
   # composed
@@ -29,7 +29,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
 
   # Check that the environments of contracts are correctly saved and restored when merging. See
   # issue [#117](https://github.com/tweag/nickel/issues/117)
-  (let ctr_num = let x = Num in {a | x} in
+  (let ctr_num = let x = Number in {a | x} in
     let ctr_id = let x = fun l x => x in {a | x} in
     let val = let x = 1 in {a = x} in
     let def = let x = 2 in {a | default = x} in
@@ -48,7 +48,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   ((val & (ctr_num & def)).a == 1 | Assert)),
 
   # optionals
-  let Contract = {foo | Num, opt | Str | optional} in
+  let Contract = {foo | Number, opt | String | optional} in
   let value | Contract = {foo = 1} in
   (
     (value == {foo = 1} | Assert) &&
@@ -66,7 +66,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # 2. Repeat foo in `{foo = 1, baz = false}` with the same value
   # All of this because of #710 (https://github.com/tweag/nickel/issues/710). We
   # may get rid of both once the merge semantics is clarified.
-  let Contract = {foo | Num, opt | Str | optional, ..} in
+  let Contract = {foo | Number, opt | String | optional, ..} in
   let with_ctr | Contract = {foo = 1} in
   let value | Contract = with_ctr & {foo = 1, baz = false} in
   (
@@ -81,7 +81,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
     (record.fields value == ["baz", "foo"] | Assert)
   ),
 
-  let Contract = {foo | Num, opt | Str | optional} in
+  let Contract = {foo | Number, opt | String | optional} in
   let value | Contract = {foo = 1 + 0, opt = "a" ++ "b"} in
   (
     (value == {foo = 1, opt = "ab"} | Assert) &&
@@ -94,7 +94,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
     (record.fields value == ["foo", "opt"] | Assert)
   ),
 
-  let Contract = {foo | Num, opt | Str | optional} in
+  let Contract = {foo | Number, opt | String | optional} in
   let with_ctr | Contract = {foo = 0.5 + 0.5} in
   # Same as above: we have to repeat `foo` with the same value because of #710
   let value = with_ctr & {foo = 1, opt = "a" ++ "b"} in
@@ -109,7 +109,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
     (record.fields value == ["foo", "opt"] | Assert)
   ),
 
-  let Contract = {foo | Num, opt | Str | optional} in
+  let Contract = {foo | Number, opt | String | optional} in
   let with_ctr | Contract = {foo = 0.5 + 0.5} in
   # Same as above: we have to repeat `foo` with the same value because of #710
   # repeating `opt` without an `optional` attribute makes it required, but as

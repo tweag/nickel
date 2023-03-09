@@ -16,7 +16,7 @@
       ```
       "%
     = fun l s =>
-      if %typeof% s == `Str then
+      if %typeof% s == `String then
         if s == "true" || s == "True" then
           "true"
         else if s == "false" || s == "False" then
@@ -43,7 +43,7 @@
     = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
       let is_num_literal = %str_is_match% pattern in
       fun l s =>
-        if %typeof% s == `Str then
+        if %typeof% s == `String then
           if is_num_literal s then
             s
           else
@@ -68,7 +68,7 @@
       ```
       "%
     = fun l s =>
-      if %typeof% s == `Str then
+      if %typeof% s == `String then
         if length s == 1 then
           s
         else
@@ -118,9 +118,9 @@
     = contract.from_predicate (fun value =>
       let type = builtin.typeof value in
       value == null
-      || type == `Num
+      || type == `Number
       || type == `Bool
-      || type == `Str
+      || type == `String
       || type == `Enum),
 
     NonEmpty
@@ -138,7 +138,7 @@
       ```
       "%
     = fun l s =>
-      if %typeof% s == `Str then
+      if %typeof% s == `String then
         if %str_length% s > 0 then
           s
         else
@@ -146,7 +146,7 @@
       else
         %blame% (%label_with_message% "not a string" l),
 
-    join : Str -> Array Str -> Str
+    join : String -> Array String -> String
     | doc m%"
       Joins a array of strings given a separator.
 
@@ -162,7 +162,7 @@
       else
         %head% l ++ array.fold_left (fun acc s => acc ++ sep ++ s) "" (%tail% l),
 
-    split : Str -> Str -> Array Str
+    split : String -> String -> Array String
     | doc m%"
       Splits a string based on a separator string. The separator string is not included in any string.
 
@@ -176,7 +176,7 @@
       "%
     = fun sep s => %str_split% s sep,
 
-    trim : Str -> Str
+    trim : String -> String
     | doc m%"
       Trims whitespace from the start and end of the string.
 
@@ -190,7 +190,7 @@
       "%
     = fun s => %str_trim% s,
 
-    characters : Str -> Array Str
+    characters : String -> Array String
     | doc m%"
       Separates a string into its individual characters.
 
@@ -202,7 +202,7 @@
       "%
     = fun s => %str_chars% s,
 
-    codepoint | Character -> Num
+    codepoint | Character -> Number
     | doc m%%"
       Results in the unicode codepoint of the given character if it fits into a single codepoint.
 
@@ -218,7 +218,7 @@
       "%%
     = fun s => %char_code% s,
 
-    from_codepoint | Num -> Character
+    from_codepoint | Number -> Character
     | doc m%%"
       Results in the character for a given unicode codepoint.
 
@@ -234,7 +234,7 @@
       "%%
     = fun s => %char_from_code% s,
 
-    uppercase : Str -> Str
+    uppercase : String -> String
     | doc m%"
       Results in the uppercase version of the given character (including non-ascii characters) if it exists, the same
       character if not.
@@ -251,7 +251,7 @@
       "%
     = fun s => %str_uppercase% s,
 
-    lowercase : Str -> Str
+    lowercase : String -> String
     | doc m%"
       Results in the lowercase version of the given character (including non-ascii characters) if it exists, the same
       character if not.
@@ -268,7 +268,7 @@
       "%
     = fun s => %str_lowercase% s,
 
-    contains: Str -> Str -> Bool
+    contains: String -> String -> Bool
     | doc m%"
       Checks if the first string is part of the second string.
 
@@ -284,9 +284,9 @@
       "%
     = fun subs s => %str_contains% s subs,
 
-    replace: Str -> Str -> Str -> Str
+    replace: String -> String -> String -> String
     | doc m%"
-      `replace sub repl str` replaces every occurrence of `sub` in `str` with `repl`.
+      `replace sub repl String` replaces every occurrence of `sub` in `String` with `repl`.
 
       For example:
       ```nickel
@@ -299,9 +299,9 @@
     = fun pattern replace s =>
        %str_replace% s pattern replace,
 
-    replace_regex: Str -> Str -> Str -> Str
+    replace_regex: String -> String -> String -> String
     | doc m%"
-      `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
+      `replace_regex regex repl String` replaces every match of `regex` in `String` with `repl`.
 
       For example:
       ```nickel
@@ -314,9 +314,9 @@
     = fun pattern replace s =>
        %str_replace_regex% s pattern replace,
 
-    is_match : Str -> Str -> Bool
+    is_match : String -> String -> Bool
     | doc m%"
-      `is_match regex str` checks if `str` matches `regex`.
+      `is_match regex String` checks if `String` matches `regex`.
 
       For example:
       ```nickel
@@ -349,10 +349,10 @@
       "%
     = fun regex => %str_is_match% regex,
 
-    find : Str -> Str -> {matched: Str, index: Num, groups: Array Str}
+    find : String -> String -> {matched: String, index: Number, groups: Array String}
     | doc m%"
-      `find regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
-      first character that was part of the match in `str`, and a arrays of all capture groups if any.
+      `find regex String` matches `String` given `regex`. Results in the part of `String` that matched, the index of the
+      first character that was part of the match in `String`, and a arrays of all capture groups if any.
 
       For example:
       ```nickel
@@ -368,7 +368,7 @@
       "%
     = fun regex => %str_find% regex,
 
-    length : Str -> Num
+    length : String -> Number
     | doc m%"
       Returns the length of the string, as measured by the number of UTF-8
       [extended grapheme clusters](https://unicode.org/glossary/#extended_grapheme_cluster).
@@ -389,7 +389,7 @@
       "%
     = fun s => %str_length% s,
 
-    substring: Num -> Num -> Str -> Str
+    substring: Number -> Number -> String -> String
     | doc m%"
       Takes a slice from the string. Errors if either index is out of range.
 
@@ -405,10 +405,10 @@
       "%
     = fun start end s => %str_substr% s start end,
 
-    from | Stringable -> Str
+    from | Stringable -> String
     | doc m%"
       Converts a correct value to a string representation. Same as
-      `builtin.to_str`.
+      `builtin.to_string`.
 
       For example:
       ```nickel
@@ -421,20 +421,20 @@
       "%
     = fun x => %to_str% x,
 
-    from_num | Num -> Str
+    from_number | Number -> String
     | doc m%"
       Converts a number to its string representation.
 
       For example:
       ```nickel
-      from_num 42 =>
+      from_number 42 =>
         "42"
       ```
       "%
     = from,
 
-    # from_enum | < | Dyn> -> Str = fun tag => %to_str% tag,
-    from_enum | EnumTag -> Str
+    # from_enum | < | Dyn> -> String = fun tag => %to_str% tag,
+    from_enum | EnumTag -> String
     | doc m%"
       Converts an enum variant to its string representation.
 
@@ -446,7 +446,7 @@
       "%
     = from,
 
-    from_bool | Bool -> Str
+    from_bool | Bool -> String
     | doc m%"
       Converts a boolean value to its string representation.
 
@@ -458,13 +458,13 @@
       "%
     = from,
 
-    to_num | NumLiteral -> Num
+    to_number | NumLiteral -> Number
     | doc m%"
       Converts a string that represents an integer to that integer.
 
       For example:
       ```nickel
-        to_num "123" =>
+        to_number "123" =>
           123
       ```
       "%
@@ -486,8 +486,8 @@
       "%
     = fun s => s == "true",
 
-    # to_enum | Str -> < | Dyn> = fun s => %enum_from_str% s,
-    to_enum | Str -> EnumTag
+    # to_enum | String -> < | Dyn> = fun s => %enum_from_str% s,
+    to_enum | String -> EnumTag
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.
 

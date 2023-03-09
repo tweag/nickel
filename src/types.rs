@@ -2,9 +2,9 @@
 //!
 //! # Base types
 //!
-//! - Num: a floating-point number
+//! - Number: a floating-point number
 //! - Bool: a boolean
-//! - Str: a string literal
+//! - String: a string literal
 //! - Sym: a symbol, used by contracts when checking polymorphic types
 //! - Array: an (heterogeneous) array
 //!
@@ -26,11 +26,11 @@
 //! example is field access:
 //!
 //! ```text
-//! let f = Promise(forall a. { myField : Num, a} -> Num, fun rec => rec.myField)
+//! let f = Promise(forall a. { myField : Number, a} -> Number, fun rec => rec.myField)
 //! ```
 //!
-//! The type `{ myField : Num, a }` indicates that any argument must have at least the field
-//! `myField` of type `Num`, but may contain any other fields (or no additional field at all).
+//! The type `{ myField : Number, a }` indicates that any argument must have at least the field
+//! `myField` of type `Number`, but may contain any other fields (or no additional field at all).
 //!
 //! ## Dictionaries
 //!
@@ -124,7 +124,7 @@ pub enum EnumRowsF<ERows> {
 /// The kind of a quantified type variable.
 ///
 /// Nickel uses several forms of polymorphism. A type variable can be substituted for a type, as in
-/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Num; a} -> Num}`,
+/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Number; a} -> Number}`,
 /// or for enum rows. This information is implicit in the source syntax: we don't require users to
 /// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
 /// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
@@ -213,15 +213,15 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// or checked.
     Dyn,
     /// A floating point number.
-    Num,
+    Number,
     /// A boolean.
     Bool,
     /// A string literal.
-    Str,
+    String,
     /// A symbol.
     ///
     /// See [`crate::term::Term::Sealed`].
-    Sym,
+    Symbol,
     /// A type created from a user-defined contract.
     Flat(RichTerm),
     /// A function.
@@ -438,11 +438,11 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     /// `TypeF` a functor (of arity 3). As hinted by the type signature, this function just
     /// maps on "one-level" of recursion, so to speak.
     ///
-    /// Take the instantiated version `Types`, and a type of the form `(Dyn -> Dyn) -> (Num ->
+    /// Take the instantiated version `Types`, and a type of the form `(Dyn -> Dyn) -> (Number ->
     /// Dyn)`. Then, calling `try_map_state(f_ty, ..)` on this type rows will map `f_ty` onto `(Dyn
-    /// -> Dyn)` and `Num -> Dyn` because they are direct children of the root `Arrow` node.
+    /// -> Dyn)` and `Number -> Dyn` because they are direct children of the root `Arrow` node.
     ///
-    /// Note that `f_ty` isn't mapped onto `Dyn` and `Num` recursively: map isn't a recursive
+    /// Note that `f_ty` isn't mapped onto `Dyn` and `Number` recursively: map isn't a recursive
     /// operation. It's however a building block to express recursive operations: as an example,
     /// see [RecordRows::traverse].
     ///
@@ -462,10 +462,10 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     {
         match self {
             TypeF::Dyn => Ok(TypeF::Dyn),
-            TypeF::Num => Ok(TypeF::Num),
+            TypeF::Number => Ok(TypeF::Number),
             TypeF::Bool => Ok(TypeF::Bool),
-            TypeF::Str => Ok(TypeF::Str),
-            TypeF::Sym => Ok(TypeF::Sym),
+            TypeF::String => Ok(TypeF::String),
+            TypeF::Symbol => Ok(TypeF::Symbol),
             TypeF::Flat(t) => Ok(TypeF::Flat(t)),
             TypeF::Arrow(dom, codom) => Ok(TypeF::Arrow(f(dom, state)?, f(codom, state)?)),
             TypeF::Var(i) => Ok(TypeF::Var(i)),
@@ -794,9 +794,9 @@ impl RecordRows {
     ///
     /// # Example
     ///
-    /// - self: ` {a : {b : Num }}`
+    /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
-    /// - result: `Some(Num)`
+    /// - result: `Some(Number)`
     pub fn row_find_path(&self, path: &[Ident]) -> Option<Types> {
         if path.is_empty() {
             return None;
@@ -875,13 +875,13 @@ impl Types {
 
         let ctr = match self.types {
             TypeF::Dyn => contract::dynamic(),
-            TypeF::Num => contract::num(),
+            TypeF::Number => contract::num(),
             TypeF::Bool => contract::bool(),
-            TypeF::Str => contract::string(),
+            TypeF::String => contract::string(),
             //TODO: optimization: have a specialized contract for `Array Dyn`, to avoid mapping an
             //always successful contract on each element.
             TypeF::Array(ref ty) => mk_app!(contract::array(), ty.subcontract(h, pol, sy)?),
-            TypeF::Sym => panic!("Are you trying to check a Sym at runtime?"),
+            TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
             TypeF::Arrow(ref s, ref t) => mk_app!(
                 contract::func(),
                 s.subcontract(h.clone(), !pol, sy)?,
@@ -919,15 +919,19 @@ impl Types {
         Ok(ctr)
     }
 
-    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Num`, etc.) or a
+    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or a
     /// type delimited by specific markers (such as a row type). Used in formatting to decide if
     /// parentheses need to be inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
-        use TypeF::*;
-
         match &self.types {
-            Dyn | Num | Bool | Str | Var(_) | Record(_) | Enum(_) => true,
-            Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
+            TypeF::Dyn
+            | TypeF::Number
+            | TypeF::Bool
+            | TypeF::String
+            | TypeF::Var(_)
+            | TypeF::Record(_)
+            | TypeF::Enum(_) => true,
+            TypeF::Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
             _ => false,
         }
     }
@@ -1016,9 +1020,9 @@ impl Display for Types {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.types {
             TypeF::Dyn => write!(f, "Dyn"),
-            TypeF::Num => write!(f, "Num"),
+            TypeF::Number => write!(f, "Number"),
             TypeF::Bool => write!(f, "Bool"),
-            TypeF::Str => write!(f, "Str"),
+            TypeF::String => write!(f, "String"),
             TypeF::Array(ty) => {
                 write!(f, "Array ")?;
 
@@ -1028,7 +1032,7 @@ impl Display for Types {
                     write!(f, "({ty})")
                 }
             }
-            TypeF::Sym => write!(f, "Sym"),
+            TypeF::Symbol => write!(f, "Sym"),
             TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
             TypeF::Var(var) => write!(f, "{var}"),
             TypeF::Forall { var, ref body, .. } => {
@@ -1098,14 +1102,14 @@ mod test {
 
     #[test]
     fn types_pretty_printing() {
-        assert_format_eq("Num");
-        assert_format_eq("Num -> Num");
-        assert_format_eq("(Num -> Num) -> (Num -> Num) -> Num -> Num");
-        assert_format_eq("((Num -> Num) -> Num) -> Num");
-        assert_format_eq("Num -> (forall a. a -> Str) -> Str");
+        assert_format_eq("Number");
+        assert_format_eq("Number -> Number");
+        assert_format_eq("(Number -> Number) -> (Number -> Number) -> Number -> Number");
+        assert_format_eq("((Number -> Number) -> Number) -> Number");
+        assert_format_eq("Number -> (forall a. a -> String) -> String");
 
-        assert_format_eq("{_: Str}");
-        assert_format_eq("{_: (Str -> Str) -> Str}");
+        assert_format_eq("{_: String}");
+        assert_format_eq("{_: (String -> String) -> String}");
 
         assert_format_eq("{x: (Bool -> Bool) -> Bool, y: Bool}");
         assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool ; r}");
@@ -1114,11 +1118,11 @@ mod test {
         assert_format_eq("[|`a, `b, `c, `d|]");
         assert_format_eq("forall r. [|`tag1, `tag2, `tag3 ; r|]");
 
-        assert_format_eq("Array Num");
-        assert_format_eq("Array (Array Num)");
-        assert_format_eq("Num -> Array (Array Str) -> Num");
-        assert_format_eq("Array (Num -> Num)");
-        assert_format_eq("Array (Array (Array Dyn) -> Num)");
+        assert_format_eq("Array Number");
+        assert_format_eq("Array (Array Number)");
+        assert_format_eq("Number -> Array (Array String) -> Number");
+        assert_format_eq("Array (Number -> Number)");
+        assert_format_eq("Array (Array (Array Dyn) -> Number)");
 
         assert_format_eq("_");
         assert_format_eq("_ -> _");

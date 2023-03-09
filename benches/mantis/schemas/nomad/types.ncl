@@ -2,7 +2,7 @@ let lib = import "../../lib.ncl" in
 
 # DUMMY
 let time = {
-  parseDurationSecond = fun arg => 0 | Str,
+  parseDurationSecond = fun arg => 0 | String,
 } in
 
 # DUMMY
@@ -11,11 +11,11 @@ let time = {
 {
   json = {
     Job = {
-       Namespace | Str,
+       Namespace | String,
        Id | Name,
-       Name | Str,
+       Name | String,
        Type | [| `service, `system, `batch |],
-       Priority | num.Nat,
+       Priority | number.Nat,
        Datacenters | array.NonEmpty,
        TaskGroups | Array TaskGroup
                   | default = [],
@@ -25,8 +25,8 @@ let time = {
                    | default = [],
        Spreads | Array Spread
                | default = [],
-       ConsulToken | lib.contracts.Nullable Str,
-       VaultToken | lib.contracts.Nullable Str,
+       ConsulToken | lib.contracts.Nullable String,
+       VaultToken | lib.contracts.Nullable String,
        Vault     | lib.contracts.Nullable json.Vault
                  | default = null,
        Update    | lib.contracts.Nullable json.Update
@@ -38,30 +38,30 @@ let time = {
     },
 
     Affinity = {
-      LTarget | Str,
-      RTargety | Str,
+      LTarget | String,
+      RTargety | String,
       Operand | (lib.contracts.OneOf [
         "regexp", "set_contains_all", "set_contains", "set_contains_any", "=",
         "==", "is", "!=", "not", ">", ">=", "<", "<=", "version"]),
-      Weight | num.Nat
+      Weight | number.Nat
              | lib.contracts.NotEq 0
              | lib.contracts.GreaterEq -100
              | lib.contracts.SmallerEq 100,
     },
 
     Constraint = {
-      LTarget | lib.contracts.Nullable Str
+      LTarget | lib.contracts.Nullable String
               | default = null,
-      RTarget | Str,
+      RTarget | String,
       Operand | (lib.contracts.OneOf [
         "regexp", "set_contains", "distinct_hosts", "distinct_property", "=",
         "==", "is", "!=", "not", ">", ">=", "<", "<="]),
     },
 
     Spread = {
-      Attribute | Str,
+      Attribute | String,
       Weight | lib.contracts.Nullable (lib.contracts.AllOf [
-                 num.Nat,
+                 number.Nat,
                  lib.contracts.GreaterEq -100,
                  lib.contracts.LesserEq 100])
              | default = null,
@@ -70,49 +70,49 @@ let time = {
     },
 
     SpreadTargetElem = {
-      Value | Str,
+      Value | String,
       Percent | lib.contracts.Nullable (lib.contracts.AllOf [
-                 num.PosNat,
+                 number.PosNat,
                  lib.contracts.LesserEq 100])
               | default = null,
     },
 
     RestartPolicy = {
-      Attempts | num.Nat,
-      Interval | num.Nat,
-      Delay | num.Nat,
+      Attempts | number.Nat,
+      Interval | number.Nat,
+      Delay | number.Nat,
       Mode | (lib.contracts.OneOf ["delay", "fail"]),
     },
 
     Volume = {
-      Name | Str,
+      Name | String,
       Type | (lib.contracts.OneOf [null, "host", "csi"]),
-      Source | Str,
+      Source | String,
       ReadOnly | Bool
                | default = false,
       MountOptions
         | lib.contracts.Nullable {
-            FsType | lib.contracts.Nullable Str
+            FsType | lib.contracts.Nullable String
                    | default = null,
-            mountFlags | lib.contracts.Nullable Str
+            mountFlags | lib.contracts.Nullable String
                        | default = null
           }
         | default = null,
     },
 
     ReschedulePolicy = {
-      Attempts       | lib.contracts.Nullable num.Nat
+      Attempts       | lib.contracts.Nullable number.Nat
                      | default = null,
       DelayFunction  | lib.contracts.Nullable (lib.contracts.OneOf [
         "constant", "exponential", "fibonacci"])
                      | default = null,
       Delay          | lib.contracts.Nullable (lib.contracts.AllOf [
-                        num.Nat,
+                        number.Nat,
                         lib.contracts.GreaterEq 5*1000]) # >=time.ParseDuration("5s")
                      | default = null,
-      Interval       | lib.contracts.Nullable num.Nat
+      Interval       | lib.contracts.Nullable number.Nat
                      | default = null,
-      MaxDelay       | lib.contracts.Nullable num.Nat
+      MaxDelay       | lib.contracts.Nullable number.Nat
                      | default = null,
       Unlimited      | lib.contracts.Nullable Bool
                      | default = null,
@@ -121,21 +121,21 @@ let time = {
     Migrate = {
       HealthCheck      | [| `checks, `task_states |]
                        | default = `checks,
-      HealthyDeadline  | num.Nat
+      HealthyDeadline  | number.Nat
                        | default = 500000000000,
-      MaxParallel      | num.Nat
+      MaxParallel      | number.Nat
                        | default = 1,
-      MinHealthyTime   | num.Nat
+      MinHealthyTime   | number.Nat
                        | default = 10000000000,
     },
 
     Periodic = {
       Enabled          | Bool
                        | default = false,
-      TimeZone         | Str
+      TimeZone         | String
                        | default = "UTC",
       SpecType         = "cron",
-      Spec             | Str,
+      Spec             | String,
       ProhibitOverlap  | Bool
                        | default = false,
     },
@@ -143,14 +143,14 @@ let time = {
     Update = {
       AutoPromote       | Bool | default = false,
       AutoRevert        | Bool | default = false,
-      Canary            | num.Nat | default = 0,
+      Canary            | number.Nat | default = 0,
       HealthCheck       | [| `checks, `task_states, `manual |]
                         | default = `checks,
-      HealthyDeadline   | lib.contracts.Nullable num.Nat | default = null,
-      MaxParallel       | num.Nat | default = 1,
-      MinHealthyTime    | lib.contracts.Nullable num.Nat | default = null,
-      ProgressDeadline  | lib.contracts.Nullable num.Nat | default = null,
-      Stagger           | lib.contracts.Nullable num.Nat | default = null,
+      HealthyDeadline   | lib.contracts.Nullable number.Nat | default = null,
+      MaxParallel       | number.Nat | default = 1,
+      MinHealthyTime    | lib.contracts.Nullable number.Nat | default = null,
+      ProgressDeadline  | lib.contracts.Nullable number.Nat | default = null,
+      Stagger           | lib.contracts.Nullable number.Nat | default = null,
     },
 
     TaskGroup = {
@@ -160,15 +160,15 @@ let time = {
                   | default = [],
       Spreads | Array Spread
               | default = [],
-      Count | num.Nat
+      Count | number.Nat
             | lib.contracts.Greater 0,
       # TODO: Meta  [string]  string
-      Name  | Str,
+      Name  | String,
       RestartPolicy  | lib.contracts.Nullable json.RestartPolicy
                      | default = null,
       Services  | Array Service
                 | default = [],
-      ShutdownDelay  | num.Nat | default = 0,
+      ShutdownDelay  | number.Nat | default = 0,
       Tasks | Array Task
             | default = [],
       # TODO Volumes: [string]:  #json.Volume
@@ -176,7 +176,7 @@ let time = {
       EphemeralDisk
         | lib.contracts.Nullable {
             Migrate | Bool,
-            SizeMB  | num.Nat,
+            SizeMB  | number.Nat,
             Sticky  | Bool,
           }
         | default = null,
@@ -186,7 +186,7 @@ let time = {
              | default = null,
       Networks | Array json.Network
                | default = [],
-      StopAfterClientDisconnect | lib.contracts.Nullable num.Nat
+      StopAfterClientDisconnect | lib.contracts.Nullable number.Nat
                                 | default = null,
       Scaling = null,
       Vault | lib.contracts.Nullable json.Vault
@@ -194,17 +194,17 @@ let time = {
     },
 
     Port = {
-      Label | Str,
-      Value | lib.contracts.Nullable num.Nat | default = null, # used for static ports
-      To | lib.contracts.Nullable num.Nat | default = null,
-      HostNetwork | Str | default = "",
+      Label | String,
+      Value | lib.contracts.Nullable number.Nat | default = null, # used for static ports
+      To | lib.contracts.Nullable number.Nat | default = null,
+      HostNetwork | String | default = "",
     },
 
     Network = {
       Mode | [| `host, `bridge |] | default = `host,
-      Device | Str | default = "",
-      CIDR | Str | default = "",
-      IP | Str | default = "",
+      Device | String | default = "",
+      CIDR | String | default = "",
+      IP | String | default = "",
       DNS = null,
       ReservedPorts | lib.contracts.Nullable (Array json.Port) | default = null,
       DynamicPorts  | lib.contracts.Nullable (Array json.Port) | default = null,
@@ -213,31 +213,31 @@ let time = {
 
     ServiceCheck = {
       AddressMode | [| `alloc, `driver, `host |],
-      Args | lib.contracts.Nullable (Array Str) | default = null,
+      Args | lib.contracts.Nullable (Array String) | default = null,
       CheckRestart | json.CheckRestart,
-      Command | Str | default = "",
+      Command | String | default = "",
       Expose = false,
-      FailuresBeforeCritical | num.Nat | default = 0,
-      Id | Str | default = "",
-      InitialStatus | Str | default = "",
-      Interval | num.Nat | default = 10000000000,
-      Method | Str | default = "",
-      Name | Str | default = "",
-      Path | Str | default = "",
-      PortLabel | Str,
-      Protocol  | Str | default = "",
-      SuccessBeforePassing | num.Nat | default = 0,
-      TaskName | Str | default = "",
-      Timeout | num.Nat,
+      FailuresBeforeCritical | number.Nat | default = 0,
+      Id | String | default = "",
+      InitialStatus | String | default = "",
+      Interval | number.Nat | default = 10000000000,
+      Method | String | default = "",
+      Name | String | default = "",
+      Path | String | default = "",
+      PortLabel | String,
+      Protocol  | String | default = "",
+      SuccessBeforePassing | number.Nat | default = 0,
+      TaskName | String | default = "",
+      Timeout | number.Nat,
       TLSSkipVerify | Bool | default = false,
       Type | [| `http, `tcp, `script, `grpc |],
-      Body | lib.contracts.Nullable Str | default = null,
+      Body | lib.contracts.Nullable String | default = null,
       # TODO  Header  [string]  [...string]
     },
 
     CheckRestart | lib.contracts.Nullable {
-      Limit | num.Nat | default = 0,
-      Grace | num.Nat | default = 10000000000,
+      Limit | number.Nat | default = 0,
+      Grace | number.Nat | default = 10000000000,
       IgnoreWarnings | Bool | default = false,
     },
 
@@ -247,31 +247,31 @@ let time = {
     },
 
     LogConfig | lib.contracts.Nullable {
-      MaxFiles | num.PosNat,
-      MaxFileSizeMB | num.PosNat,
+      MaxFiles | number.PosNat,
+      MaxFileSizeMB | number.PosNat,
     },
 
     Service = {
-      Id | Str | default = "",
-      Name | Str,
-      Tags | Array Str
+      Id | String | default = "",
+      Name | String,
+      Tags | Array String
            | default = [],
-      CanaryTags | Array Str
+      CanaryTags | Array String
                  | default = [],
       EnableTagOverride | Bool
                         | default = false,
-      PortLabel | Str,
+      PortLabel | String,
       AddressMode | [| `alloc, `auto, `driver, `host |],
       Checks | Array ServiceCheck
              | default = [],
       CheckRestart | json.CheckRestart,
       Connect = null,
       # TODO Meta: [string]: string
-      TaskName | Str | default = "",
+      TaskName | String | default = "",
     },
 
     Task = {
-      Name | Str,
+      Name | String,
       Driver | [| `exec, `docker, `nspawn |],
       Config | stanza.taskConfig
              | {driver | Driver},
@@ -283,21 +283,21 @@ let time = {
       Services | Array Service
                | default = [],
       Resources = {
-        CPU | num.Nat
+        CPU | number.Nat
             | lib.contracts.GreaterEq 100
             | default = 100,
-        MemoryMB | num.Nat
+        MemoryMB | number.Nat
                  | lib.contracts.GreaterEq 32
                  | default = 300,
-        DiskMB | lib.contracts.Nullable num.Nat
+        DiskMB | lib.contracts.Nullable number.Nat
                | default = null,
       },
       Meta = {},
       RestartPolicy | lib.contracts.Nullable json.RestartPolicy | default = null,
-      ShutdownDelay | num.Nat | default = 0,
-      User | Str | default = "",
+      ShutdownDelay | number.Nat | default = 0,
+      User | String | default = "",
       Lifecycle | lib.contracts.Nullable json.Lifecycle | default = null,
-      KillTimeout | lib.contracts.Nullable num.Nat | default = null,
+      KillTimeout | lib.contracts.Nullable number.Nat | default = null,
       LogConfig | json.LogConfig,
       Artifacts | Array json.Artifact
                 | default = [],
@@ -307,44 +307,44 @@ let time = {
       VolumeMounts | Array json.VolumeMount
                    | default = [],
       Leader | Bool | default = false,
-      KillSignal | Str,
+      KillSignal | String,
       ScalingPolicies = null,
       Vault | lib.contracts.Nullable json.Vault | default = null,
     },
 
     VolumeMount = {
-      Destination | Str,
-      PropagationMode | Str,
+      Destination | String,
+      PropagationMode | String,
       ReadOnly | Bool,
-      Volume | Str,
+      Volume | String,
     },
 
     Artifact = {
-      GetterSource | Str,
+      GetterSource | String,
       # TODO GetterOptions: [string]: string
       # TODO GetterHeaders: [string]: string
       GetterMode | [| `any, `file, `dir |] | default = `any,
-      RelativeDest | Str,
+      RelativeDest | String,
     },
 
     Template = {
-      SourcePath | Str | default = "",
-      DestPath | Str,
-      EmbeddedTmpl | Str,
+      SourcePath | String | default = "",
+      DestPath | String,
+      EmbeddedTmpl | String,
       ChangeMode | [| `restart, `noop, `signal |] | default = `restart,
-      ChangeSignal | Str | default = "",
-      Splay | num.Nat | default = 5000000000,
+      ChangeSignal | String | default = "",
+      Splay | number.Nat | default = 5000000000,
       Perms | lib.contracts.MatchRegexp "^[0-7]{4}$" | default = "0644",
-      LeftDelim | Str,
-      RightDelim | Str,
+      LeftDelim | String,
+      RightDelim | String,
       Envvars | Bool,
     },
 
     Vault = {
       ChangeMode | [| `noop, `restart, `signal |] | default = `restart,
-      ChangeSignal | Str | default = "",
+      ChangeSignal | String | default = "",
       Env | Bool | default = true,
-      Namespace | Str | default = "",
+      Namespace | String | default = "",
       Policies | array.NonEmpty,
     }
   },
@@ -356,7 +356,7 @@ let time = {
 
   toJson = json.Job & {
     job = stanza.job,
-    jobName | Str,
+    jobName | String,
     Name = jobName,
     Datacenters = job.datacenters,
     Namespace = job.namespace,
@@ -683,7 +683,7 @@ let time = {
   stanza = {
     job = let type_schema = [| `batch, `service, `system |] in {
       datacenters | array.NonEmpty,
-      namespace | Str,
+      namespace | String,
       type | type_schema
            | default = `service,
       affinities | Array stanza.affinity
@@ -698,7 +698,7 @@ let time = {
              | default = null,
       vaultc | lib.contracts.Nullable stanza.vault
              | default = null,
-      priority_ | num.Nat
+      priority_ | number.Nat
                 | default = 50,
       periodic | lib.contracts.Nullable stanza.periodic
                | default = null,
@@ -709,40 +709,40 @@ let time = {
     migrate = {
       health_check | [| `checks, `task_states |]
                    | default = `checks,
-      healthy_deadline | num.Nat
+      healthy_deadline | number.Nat
                        | default = 500000000000,
-      max_parallel | num.Nat
+      max_parallel | number.Nat
                    | default = 1,
-      min_healthy_time  | num.Nat
+      min_healthy_time  | number.Nat
                         | default = 10000000000,
     },
 
     periodic = {
-      time_zone | Str
+      time_zone | String
                 | default = "UTC",
       prohibit_overlap | Bool
                        | default = false,
-      cron | Str,
+      cron | String,
     },
 
     affinity = {
-      LTarget | Str
+      LTarget | String
               | default = null,
-      RTarget | Str,
+      RTarget | String,
       Operand | lib.contracts.OneOf
         ["regexp", "set_contains_all", "set_contains", "set_contains_any", "=",
         "==", "is", "!=", "not", ">", ">=", "<", "<=", "version"]
               | default = "=",
-      Weight | num.Nat
+      Weight | number.Nat
              | lib.contracts.NotEq 0
              | lib.contracts.GreaterEq -100
              | lib.contracts.SmallerEq 100,
     },
 
     constraint = {
-      attribute | Str
+      attribute | String
                 | default = null,
-      value | Str,
+      value | String,
       operator | lib.contracts.OneOf
                  ["=", "!=", ">", ">=", "<", "<=", "distinct_hosts", "distinct_property",
                  "regexp", "set_contains", "version", "semver", "is_set",
@@ -751,10 +751,10 @@ let time = {
     },
 
     spread = {
-      attribute | lib.contracts.Nullable Str
+      attribute | lib.contracts.Nullable String
                 | default = null,
       weight | lib.contracts.Nullable (lib.contracts.AllOf
-                 [num.Nat,
+                 [number.Nat,
                   lib.contracts.GreaterEq -100,
                   lib.contracts.SmallerEq 100])
              | default = null,
@@ -763,10 +763,10 @@ let time = {
     },
 
     targetElem = {
-      value | lib.contracts.Nullable Str
+      value | lib.contracts.Nullable String
             | default = null,
       percent | lib.contracts.Nullable (lib.contracts.AllOf [
-                num.Nat,
+                number.Nat,
                 lib.contracts.GreaterEq -100,
                 lib.contracts.SmallerEq 100])
               | default = null,
@@ -774,7 +774,7 @@ let time = {
 
     ephemeral_disk =
         lib.contracts.Nullable {
-        size | num.PosNat,
+        size | number.PosNat,
         migrate | Bool | default = false,
         sticky | Bool | default = false,
       },
@@ -792,7 +792,7 @@ let time = {
               | default = null,
       service | {_: stanza.service},
       task | {_: stanza.task},
-      count | num.Nat,
+      count | number.Nat,
       volume | {_: stanza.volume} | default = {},
       vault | lib.contracts.Nullable stanza.vault
             | default = null,
@@ -831,23 +831,23 @@ let time = {
     network = {
       mode | [| `host, `bridge |],
       dns | lib.contracts.Nullable {
-              servers | Array Str
+              servers | Array String
                       | default = []
             }
           | default = null,
       port | {_: {
-                 static | lib.contracts.Nullable num.Nat
+                 static | lib.contracts.Nullable number.Nat
                         | default = null,
-                 to | lib.contracts.Nullable num.Nat
+                 to | lib.contracts.Nullable number.Nat
                     | default = null,
-                 host_network | Str
+                 host_network | String
                               | default = "",
                }
              },
     },
 
     check_restart = {
-         limit | num.PosNat,
+         limit | number.PosNat,
          grace | Duration,
          ignore_warnings | Bool
                          | default = false,
@@ -856,34 +856,34 @@ let time = {
     service = {
       check_restart | lib.contracts.Nullable stanza.check_restart
                     | default = null,
-      port | Str,
+      port | String,
       address_mode | [| `alloc, `driver, `auto, `host |]
                    | default = `auto,
-      tags | Array Str
+      tags | Array String
            | default = [],
-      task | Str
+      task | String
            | default = "",
       check | {_: stanza.check} | default = {},
-      meta | {_: Str} | default = {},
+      meta | {_: String} | default = {},
     },
 
     check = {
       address_mode | [| `alloc, `driver, `host |]
                    | default = `driver,
       type | [| `http, `tcp, `script, `grpc |],
-      port | Str,
+      port | String,
       interval | Duration,
       timeout | Duration,
       check_restart | lib.contracts.Nullable stanza.check_restart
                     | default = null,
-      header | {_: Array Str} | default = {},
-      body | lib.contracts.Nullable Str
+      header | {_: Array String} | default = {},
+      body | lib.contracts.Nullable String
            | default = null,
       initial_status | (lib.contracts.OneOf ["passing", "warning", "critical", ""])
                      | default = "",
-      success_before_passing | num.Nat
+      success_before_passing | number.Nat
                              | default = 0,
-      failures_before_critical | num.Nat
+      failures_before_critical | number.Nat
                                | default = 0,
       tls_skip_verify | Bool
                       | default = false,
@@ -903,30 +903,30 @@ let time = {
       #  path:     ""
       #  protocol: ""
       #}
-      path | Str | default = "",
-      method | Str | default = "",
-      protocol | Str | default = "",
+      path | String | default = "",
+      method | String | default = "",
+      protocol | String | default = "",
     },
 
     #Hmm... actual union :( hard to do
     #taskConfig: dockerConfig | execConfig
 
     execConfig = {
-      flake | Str,
-      command | Str,
-      args | Array Str
+      flake | String,
+      command | String,
+      args | Array String
            | default = [],
     },
 
-    label = {_: Str},
+    label = {_: String},
 
     dockerConfig = {
-      image | Str,
-      command | lib.contracts.Nullable Str
+      image | String,
+      command | lib.contracts.Nullable String
               | default = null,
-      args | Array Str
+      args | Array String
            | default = [],
-      ports | Array Str
+      ports | Array String
             | default = [],
       labels | Array label
              | default = [],
@@ -940,8 +940,8 @@ let time = {
     },
 
     dockerConfigLoggingConfig = {
-      tag | Str,
-      labels | Str,
+      tag | String,
+      labels | String,
     },
 
     lifecycle = {
@@ -951,8 +951,8 @@ let time = {
     },
 
     logs = {
-      max_files | num.PosNat,
-      max_file_size | num.PosNat,
+      max_files | number.PosNat,
+      max_file_size | number.PosNat,
     },
 
     task = {
@@ -966,11 +966,11 @@ let time = {
       artifact | {_: {
                    # actually, the key must be the destination
                    # destination | Destination,
-                   headers | {_: Str},
+                   headers | {_: String},
                    mode | [| `any, `file, `dir |]
                         | default = `any,
-                   options | {_: Str},
-                   source | Str,
+                   options | {_: String},
+                   source | String,
                  }
                } | default = {},
 
@@ -988,10 +988,10 @@ let time = {
 
       driver | [| `exec, `docker, `nspawn |],
 
-      env | {_: Str}
+      env | {_: String}
           | default = {},
 
-      kill_signal | Str
+      kill_signal | String
                   | default = "SIGINT",
 
       #TODO
@@ -1009,10 +1009,10 @@ let time = {
            | default = null,
 
       resources = {
-        cpu | num.Nat
+        cpu | number.Nat
             | lib.contracts.GreaterEq 100,
         memory
-            | num.Nat
+            | number.Nat
             | lib.contracts.GreaterEq 32,
       },
 
@@ -1022,21 +1022,21 @@ let time = {
                    # Actually, the key must be a destination, there is no
                    # destination field
                    # destination | Destination,
-                   data | Str
+                   data | String
                         | default = "",
-                   source | Str
+                   source | String
                           | default = "",
                    env | Bool
                        | default = false,
                    change_mode | [| `restart, `noop, `signal |]
                                | default = `restart,
-                   change_signal | Str
+                   change_signal | String
                                  | default = "",
                    perms | (lib.contracts.MatchRegexp "^[0-7]{4}$")
                          | default = "0644",
-                   left_delimiter | Str
+                   left_delimiter | String
                                   | default = "{{",
-                   right_delimiter | Str
+                   right_delimiter | String
                                    | default = "}}",
                    splay | Duration
                          | default = "3s",
@@ -1058,7 +1058,7 @@ let time = {
 
     restart = {
       interval | Duration,
-      attempts | num.PosNat,
+      attempts | number.PosNat,
       delay | Duration,
       mode | [| `delay, `fail |],
     },
@@ -1068,13 +1068,13 @@ let time = {
                    | default = false,
       auto_revert | Bool
                   | default = false,
-      canary | num.Nat
+      canary | number.Nat
              | default = 0,
       health_check | [| `checks, `task_states, `manual |]
                    | default = `checks,
       healthy_deadline | Duration
                        | default = "5m",
-      max_parallel | num.Nat
+      max_parallel | number.Nat
                    | default = 1,
       min_healthy_time | Duration
                        | default = "10s",
@@ -1087,19 +1087,19 @@ let time = {
     vault = {
       change_mode | [| `noop, `restart, `signal |]
                   | default = `restart,
-      change_signal | Str
+      change_signal | String
                     | default = "",
       env | Bool
           | default = true,
-      namespace | Str
+      namespace | String
                 | default = "",
-      policies | Array Str
+      policies | Array String
                | default = [],
     },
 
     volume = {
       type | [| `host, `csi |],
-      source | Str,
+      source | String,
       read_only | Bool
                 | default = false,
       #TODO: dependent if
@@ -1113,14 +1113,14 @@ let time = {
 
     volume_mount = {
       # Specifies the group volume that the mount is going to access.
-      volume | Str
+      volume | String
              | default = "",
 
       # Specifies where the volume should be mounted inside the task's
       # allocation.
-      destination | Str
+      destination | String
                   | default = "",
-      foo : Str = destination ++ volume,
+      foo : String = destination ++ volume,
 
       # When a group volume is writeable, you may specify that it is read_only
       # on a per mount level using the read_only option here.

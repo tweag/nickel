@@ -6,8 +6,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # first example from RFC005
   ({
     foo | {
-      bar : Num,
-      baz : Str
+      bar : Number,
+      baz : String
     }
   }
   & {foo = {}}
@@ -16,8 +16,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   == { foo.bar = 1, foo.baz = "a" },
 
   # Nixel-inspired example from RFC005
-  let Drv = { out_path | Str, ..} in
-  let Package = { name | Str, drv | Drv, .. } in
+  let Drv = { out_path | String, ..} in
+  let Package = { name | String, drv | Drv, .. } in
   ({
     build_inputs | {_: Package} = {
       foo,
@@ -39,7 +39,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   },
 
   # "Outer-cross application doesn't make sense" example
-  (({foo = 5} | {foo | Num})
+  (({foo = 5} | {foo | Number})
   & {bar = "bar"})
   == {foo = 5, bar = "bar"},
 ]

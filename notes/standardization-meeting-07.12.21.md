@@ -80,7 +80,7 @@ Current syntax: `nickel let f = fun x y z => body in`
 **In-meeting notes**
 `fun` is fine. In favor of second Ocaml-style function definition `let f x y z =
 ...`. What about partial annotations (what is the semantics of `f (x :
-Num) y z =` outside of a typed block) ? The problem is already there with or
+Number) y z =` outside of a typed block) ? The problem is already there with or
 without the OCaml-style function definitions. We should also have an Haskell-style annotation "by pieces" consistent with the let-block syntax:
 
 ```nickel
@@ -106,7 +106,7 @@ are substituted for `Dyn`.
  - typing libraries:
  ```nickel
  {
-   bar : Num -> Num = fun x => x + 1,
+   bar : Number -> Number = fun x => x + 1,
    foo : forall a. a -> -a = fun x => x,
  } : _
  ```
@@ -169,9 +169,9 @@ But it introduces dynamic scoping, which is bad.
 - add it nevertheless
 - force the definition of an interface:
   ```nickel
-  {foo = bar + 1, bar | Num} & {bar}
+  {foo = bar + 1, bar | Number} & {bar}
   // For more complex/dynamic interfaces
-  let Interface = {bar | Num} in
+  let Interface = {bar | Number} in
   {foo = bar + 1, ..Interface}
   ```
 
@@ -181,7 +181,7 @@ interfaces in one way or another. We can also already currently put the merged
 content in a subfield as in:
 
 ```nickel
-let Interface = {bar | Num} in
+let Interface = {bar | Number} in
 {foo = params.bar + 1, params | #Interface}
 ```
 
@@ -189,7 +189,7 @@ Later, if mandated by e.g. NixOS modules, we could add the `..Interface` syntax
 to "inline" one record inside the other:
 
 ```nickel
-let Interface = {bar | Num} in
+let Interface = {bar | Number} in
 {foo = bar + 1, ..Interface}
 ```
 
@@ -224,7 +224,7 @@ open_contract(#(open_contract(T))) =  open_contract(T)
   else contract label value in
 
   //cannot do
-  foo | #Nullable (Num -> Num)
+  foo | #Nullable (Number -> Number)
   ```
 - `#` is verbose: should we remove it? But in current situation, it is nice to
   embed value syntax in the type syntax as in

@@ -104,18 +104,18 @@ let {check, ..} = import "lib/assert.ncl" in
   string.from 1 == "1",
   string.from "asdf" == "asdf",
   string.from `Foo == "Foo",
-  # string.from_num
-  string.from_num (-1) == "-1",
-  string.from_num 1 == "1",
-  string.from_num 0 == "0",
-  string.from_num 9009 == "9009",
-  string.from_num 1.2 == "1.2",
+  # string.from_number
+  string.from_number (-1) == "-1",
+  string.from_number 1 == "1",
+  string.from_number 0 == "0",
+  string.from_number 9009 == "9009",
+  string.from_number 1.2 == "1.2",
   # string.from_enum
   string.from_enum `Enum == "Enum",
-  # string.to_num
-  string.to_num "1" == 1,
-  string.to_num "-1" == (-1),
-  string.to_num "-1.1" == (-1.1),
+  # string.to_number
+  string.to_number "1" == 1,
+  string.to_number "-1" == (-1),
+  string.to_number "-1.1" == (-1.1),
   # string.to_bool
   string.to_bool "True",
   string.to_bool "true",

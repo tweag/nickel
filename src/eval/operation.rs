@@ -43,7 +43,7 @@ generate_counter!(FreshVariableCounter, usize);
 
 /// Result of the equality of two terms.
 ///
-/// The equality of two terms can either be computed directly for base types (`Num`, `Str`, etc.),
+/// The equality of two terms can either be computed directly for base types (`Number`, `String`, etc.),
 /// in which case `Bool` is returned. Otherwise, composite values such as arrays or records generate
 /// new subequalities, as represented by the last variant as a vector of pairs of terms.  This list
 /// should be non-empty (it if was empty, `eq` should have returned `Bool(true)` directly).  The
@@ -193,14 +193,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::Typeof() => {
                 let result = match *t {
-                    Term::Num(_) => "Num",
+                    Term::Num(_) => "Number",
                     Term::Bool(_) => "Bool",
-                    Term::Str(_) => "Str",
+                    Term::Str(_) => "String",
                     Term::Enum(_) => "Enum",
-                    Term::Fun(..) | Term::Match { .. } => "Fun",
+                    Term::Fun(..) | Term::Match { .. } => "Function",
                     Term::Array(..) => "Array",
                     Term::Record(..) | Term::RecRecord(..) => "Record",
-                    Term::Lbl(..) => "Lbl",
+                    Term::Lbl(..) => "Label",
                     _ => "Other",
                 };
                 Ok(Closure::atomic_closure(RichTerm::new(

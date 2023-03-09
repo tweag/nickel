@@ -1,3 +1,21 @@
+Version 1.0 (?)
+===============
+
+This is WIP, registering breaking changes for the next major version.
+
+Breaking changes
+----------------
+
+- The `Num` builtin type has been renamed to `Number`
+- The `Str` builtin type has been renamed to `String`
+- The `num` stdlib module has been remaned to `number`
+- The `builtin.typeof` function now returns `` `Number ``, `` `String ``,
+  `` `Function `` instead of respectively `` `Num ``, `` `Str ``, and `` `Fun ``
+- The `builtin.is_num`, `builtin.is_str` and `builtin.to_str` functions hav been
+  renamed to `is_number`, `is_string` and `to_string`
+- The `string.to_num` and `string.from_num` functions have been renamed to
+  `to_number` and `from_number`
+
 Version 0.3.1 (2022-12-15)
 ==========================
 

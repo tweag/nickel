@@ -1,6 +1,6 @@
 {
   record = {
-    map : forall a b. (Str -> a -> b) -> {_: a} -> {_: b}
+    map : forall a b. (String -> a -> b) -> {_: a} -> {_: b}
     | doc m%"
       Maps a function on every field of a record. The string argument of the function argument is the name of the
       field.
@@ -15,7 +15,7 @@
       "%
     = fun f r => %record_map% r f,
 
-    fields : forall a. { _: a } -> Array Str
+    fields : forall a. { _: a } -> Array String
     | doc m%"
       Given a record, results in a array of the string representation of all fields in the record.
 
@@ -37,7 +37,7 @@
       "%
     = fun r => %values% r,
 
-    has_field : forall a. Str -> {_ : a} -> Bool
+    has_field : forall a. String -> {_ : a} -> Bool
     | doc m%"
       Given the name of a field and a record, checks if the record contains the given field.
 
@@ -50,7 +50,7 @@
       "%
     = fun field r => %has_field% field r,
 
-    insert : forall a. Str -> a -> {_: a} -> {_: a}
+    insert : forall a. String -> a -> {_: a} -> {_: a}
       | doc m%%"
         Insert a new field in a record. `insert` doesn't mutate the original
         record but returns a new one instead.
@@ -67,7 +67,7 @@
       "%%
       = fun field content r => %record_insert% field r content,
 
-    remove : forall a. Str -> {_: a} -> {_: a}
+    remove : forall a. String -> {_: a} -> {_: a}
       | doc m%"
         Remove a field from a record. `remove` doesn't mutate the original
         record but returns a new one instead.
@@ -79,7 +79,7 @@
       "%
       = fun field r => %record_remove% field r,
 
-    update : forall a. Str -> a -> {_: a} -> {_: a}
+    update : forall a. String -> a -> {_: a} -> {_: a}
       | doc m%"
         Update a field of a record with a new value. `update` doesn't mutate the
         original record but returns a new one instead. If the field to update is absent
@@ -122,7 +122,7 @@
     "%
     = fun f => map (fun _field value => f value),
 
-    to_array : forall a. {_: a} -> Array {field: Str, value: a}
+    to_array : forall a. {_: a} -> Array {field: String, value: a}
     | doc m%"
       Converts a record to an array of key-value pairs.
 
@@ -139,7 +139,7 @@
       |> fields
       |> array.map (fun field' => {field = field', value = record."%{field'}"}),
 
-    from_array : forall a. Array { field: Str, value: a} -> {_: a}
+    from_array : forall a. Array { field: String, value: a} -> {_: a}
     | doc m%"
       Convert an array of key-value pairs into a record.
 
@@ -179,7 +179,7 @@
     "%
     = array.fold_left (&) {},
 
-    filter : forall a. (Str -> a -> Bool) -> {_: a} -> {_: a}
+    filter : forall a. (String -> a -> Bool) -> {_: a} -> {_: a}
     | doc m%"
       Filter a record using the given function, which is passed the name and
       value for each key to make a decision.

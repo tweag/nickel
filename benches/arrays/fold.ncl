@@ -1,4 +1,4 @@
-let letter | Num -> string.CharLiteral = fun n =>
+let letter | Number -> string.CharLiteral = fun n =>
   string.code "a" + (n % 26)
   |> string.from_code in
 

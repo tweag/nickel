@@ -798,9 +798,9 @@ where
         use TypeF::*;
         match self.types {
             Dyn => allocator.text("Dyn"),
-            Num => allocator.text("Num"),
+            Number => allocator.text("Number"),
             Bool => allocator.text("Bool"),
-            Str => allocator.text("Str"),
+            String => allocator.text("String"),
             Array(ty) => allocator
                 .text("Array")
                 .group()
@@ -810,7 +810,7 @@ where
                 } else {
                     ty.pretty(allocator).nest(2).parens()
                 }),
-            Sym => allocator.text("Sym"),
+            Symbol => allocator.text("Symbol"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
             Forall { var, ref body, .. } => {

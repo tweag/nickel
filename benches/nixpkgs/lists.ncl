@@ -87,7 +87,7 @@
   "%
   = fun op nul list => array.fold_left op nul list,
 
-  imap0: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
+  imap0: forall a b. (Number -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
       Map with index starting from 0
 
@@ -97,7 +97,7 @@
   "%%
   = fun f list => array.generate (fun n => f n (array.at n list)) (array.length list),
 
-  imap1: forall a b. (Num -> a -> b) -> (Array a) -> (Array b)
+  imap1: forall a b. (Number -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
       Map with index starting from 1
 
@@ -200,9 +200,9 @@
      element of `list`.
 
      Example:
-       any builtin.is_str [ 1, "a", { } ]
+       any builtin.is_string [ 1, "a", { } ]
        >> true
-       any builtin.is_str [ 1, { } ]
+       any builtin.is_string [ 1, { } ]
        >> false
   "%
   = fun pred => foldr (fun x y => if pred x then true else y) false,
@@ -220,7 +220,7 @@
   "%
   = fun pred => foldr (fun x y => if pred x then y else false) true,
 
-  count: forall a. (a -> Bool) -> Array a -> Num
+  count: forall a. (a -> Bool) -> Array a -> Number
   | doc m%"
       Count how many elements of `list` match the supplied predicate
      function.
@@ -279,7 +279,7 @@
   "%
   = fun x => if builtin.is_array x then (x | Array Dyn) else [x],
 
-  range: Num -> Num -> Array Num
+  range: Number -> Number -> Array Number
   | doc m%"
       Return a list of integers from `first' up to and including `last'.
 
@@ -316,7 +316,7 @@
     ) { right = [], wrong = [] },
 
   # can not be staticaly checked (see issue #423)
-  groupBy | forall a. (a -> Str) -> Array a -> { _: Array a}
+  groupBy | forall a. (a -> String) -> Array a -> { _: Array a}
   | doc m%"
      Splits the elements of a list into many lists, using the return value of a predicate.
      Predicate should return a string which becomes keys of attrset `groupBy' returns.
@@ -340,7 +340,7 @@
          { "%{key}" = (r."%{key}" @ [e]) } & (record.remove key r)
     ) {},
 
-  groupBy_ : forall a b. (b -> a -> b) ->  b -> (a -> Str) -> Array a -> { _: b}
+  groupBy_ : forall a b. (b -> a -> b) ->  b -> (a -> String) -> Array a -> { _: b}
   | doc m%"
      as `groupBy` and allows to customise the combining function and initial value
 
@@ -367,7 +367,7 @@
     fst
     # Second list
     snd
-    => array.generate (fun n => f (array.at n fst) (array.at n snd)) (num.min (array.length fst) (array.length snd)),
+    => array.generate (fun n => f (array.at n fst) (array.at n snd)) (number.min (array.length fst) (array.length snd)),
 
   zipLists: forall a b. Array a -> Array b -> Array { fst: a, snd: b}
   | doc m%"
@@ -498,7 +498,7 @@
     if len < 2 then list
     else (sort strictLess pivot.left) @ [ first ] @ (sort strictLess pivot.right),
 
-  compareLists: forall a. (a -> a -> Num) -> Array a -> Array a -> Num
+  compareLists: forall a. (a -> a -> Number) -> Array a -> Array a -> Number
   | doc m%"
       Compare two lists element-by-element.
 
@@ -524,7 +524,7 @@
               then compareLists cmp (array.drop_first a) (array.drop_first b)
               else rel,
 
-# naturalSort: Array Str -> Array Str
+# naturalSort: Array String -> Array String
 # | doc m%"
 #     Sort list using "Natural sorting".
 #    Numeric portions of strings are sorted in numeric order.
@@ -539,13 +539,13 @@
 # "%
 # # TODO: broken. how to implement it in nickel?
 # = fun lst =>
-#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.first x) | Num else x | Num) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
+#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.first x) | Number else x | Number) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
 #   in
 #     let prepared = array.map (fun x => [ (vectorise x), x ]) lst in # remember vectorised version for O(n) regex splits
 #     let less = fun a b => (compareLists compare (array.first a) (array.first b)) < 0 in
 #     array.map (fun x => array.at 1 x) (sort less prepared),
 
-  take: forall a. Num -> Array a -> Array a
+  take: forall a. Number -> Array a -> Array a
   | doc m%"
       Return the first (at most) N elements of a list.
 
@@ -560,7 +560,7 @@
     # Number of elements to take
     count => sublist 0 count,
 
-  drop: forall a. Num -> Array a -> Array a
+  drop: forall a. Number -> Array a -> Array a
   | doc m%"
       Remove the first (at most) N elements of a list.
 
@@ -577,7 +577,7 @@
     # Input list
     lst => sublist count (array.length lst) lst,
 
-  sublist: forall a. Num -> Num -> Array a -> Array a
+  sublist: forall a. Number -> Number -> Array a -> Array a
   | doc m%"
       Return a list consisting of at most `count` elements of `list`,
      starting at index `start`.

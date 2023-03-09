@@ -1,18 +1,18 @@
 {
   builtin = {
-    is_num : Dyn -> Bool
+    is_number : Dyn -> Bool
     | doc m%"
       Checks if the given value is a number.
 
       For example:
       ```nickel
-        is_num 1 =>
+        is_number 1 =>
           true
-        is_num "Hello, World!" =>
+        is_number "Hello, World!" =>
           false
       ```
       "%
-    = fun x => %typeof% x == `Num,
+    = fun x => %typeof% x == `Number,
 
     is_bool : Dyn -> Bool
     | doc m%"
@@ -28,19 +28,19 @@
       "%
     = fun x => %typeof% x == `Bool,
 
-    is_str : Dyn -> Bool
+    is_string : Dyn -> Bool
     | doc m%"
       Checks if the given value is a string.
 
       For example:
       ```nickel
-        is_str true =>
+        is_string true =>
           false
-        is_str "Hello, World!" =>
+        is_string "Hello, World!" =>
           true
       ```
       "%
-    = fun x => %typeof% x == `Str,
+    = fun x => %typeof% x == `String,
 
     is_enum : Dyn -> Bool
     | doc m%"
@@ -69,7 +69,7 @@
           false
       ```
       "%
-    = fun x => %typeof% x == `Fun,
+    = fun x => %typeof% x == `Function,
 
     is_array : Dyn -> Bool
     | doc m%"
@@ -100,12 +100,12 @@
     = fun x => %typeof% x == `Record,
 
     typeof : Dyn -> [|
-        `Num,
+        `Number,
         `Bool,
-        `Str,
+        `String,
         `Enum,
-        `Lbl,
-        `Fun,
+        `Label,
+        `Function,
         `Array,
         `Record,
         `Other
@@ -118,7 +118,7 @@
         typeof [ 1, 2 ] =>
           `Array
         typeof (fun x => x) =>
-          `Fun
+          `Function
       ```
       "%
     = fun x => %typeof% x,
@@ -155,7 +155,7 @@
       "%
     = fun x y => %deep_seq% x y,
 
-    hash : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> Str -> Str
+    hash : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> String -> String
     | doc m%"
       Hashes the given string provided the desired hash algorithm.
 
@@ -167,7 +167,7 @@
       "%
     = fun type s => %hash% type s,
 
-    serialize : [| `Json, `Toml, `Yaml |] -> Dyn -> Str
+    serialize : [| `Json, `Toml, `Yaml |] -> Dyn -> String
     | doc m%"
       Serializes the given value to the desired representation.
 
@@ -182,7 +182,7 @@
       "%
     = fun format x => %serialize% format (%force% x),
 
-    deserialize : [| `Json, `Toml, `Yaml |] -> Str -> Dyn
+    deserialize : [| `Json, `Toml, `Yaml |] -> String -> Dyn
     | doc m%"
       Deserializes the given string to a nickel value given the encoding of the string.
 
@@ -194,7 +194,7 @@
       "%
     = fun format x => %deserialize% format x,
 
-    to_str | string.Stringable -> Str
+    to_string | string.Stringingable -> String
     | doc m%"
       Converts a stringable value to a string representation. Same as
       `string.from`.
@@ -211,7 +211,7 @@
       "%
     = fun x => %to_str% x,
 
-    trace : forall a. Str -> a -> a
+    trace : forall a. String -> a -> a
     | doc m%"
       `builtin.trace msg x` prints `msg` to standard output when encountered by the evaluator,
       and proceed with the evaluation of `x`.
@@ -246,7 +246,7 @@
     "%
     = fun msg label value => contract.blame_with_message msg label,
 
-    fail_with | Str -> Dyn
+    fail_with | String -> Dyn
     | doc m%"
       Unconditionally abort evaluation with the given message.
 

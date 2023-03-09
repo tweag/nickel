@@ -31,7 +31,7 @@ What to do depends on the context:
     local to a file, if your function is bound to a variable, it can be
     potentially reused in different places.
 
-    Example: `let append_tm: Str -> Str = fun s => s ++ "(TM)" in ...`
+    Example: `let append_tm: String -> String = fun s => s ++ "(TM)" in ...`
 - *Let-bound function inside a typed block: nothing or type annotation*. Inside a
     typed block, types are inferred, so it is OK for simple functions to not be
     annotated. However, you are required to annotate it if it is polymorphic,
@@ -42,13 +42,13 @@ What to do depends on the context:
     Example:
 
     ```nickel
-    let foo : Num =
+    let foo : Number =
       let addTwo = fun x => x + 2 in
       addTwo 4
     in ...
 
-    let foo : Num =
-      let ev : ((Num -> Num) -> Num) -> Num -> Num
+    let foo : Number =
+      let ev : ((Number -> Number) -> Number) -> Number -> Number
         = fun f x => f (function.const x) in
       ev (fun f => f 0) 1
     in ...
@@ -64,7 +64,7 @@ Example:
 
 ```nickel
 let Schema = {
-  name | Str
+  name | String
        | doc "Name of the package",
   version | PkgVersion
           | doc "The semantic version of the package",

@@ -515,10 +515,10 @@ impl FixTypeVars for Types {
     ) -> Result<(), ParseError> {
         match self.types {
             TypeF::Dyn
-            | TypeF::Num
+            | TypeF::Number
             | TypeF::Bool
-            | TypeF::Str
-            | TypeF::Sym
+            | TypeF::String
+            | TypeF::Symbol
             | TypeF::Flat(_)
             | TypeF::Wildcard(_) => Ok(()),
             TypeF::Arrow(ref mut s, ref mut t) => {

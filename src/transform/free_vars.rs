@@ -180,10 +180,10 @@ impl CollectFreeVars for Types {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         match &mut self.types {
             TypeF::Dyn
-            | TypeF::Num
+            | TypeF::Number
             | TypeF::Bool
-            | TypeF::Str
-            | TypeF::Sym
+            | TypeF::String
+            | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Wildcard(_) => (),
             TypeF::Forall { body: ty, .. } | TypeF::Dict(ty) | TypeF::Array(ty) => {

@@ -1,1 +1,1 @@
-{ foo = 1, bar = "bar" } | {_: Str}
+{ foo = 1, bar = "bar" } | {_: String}

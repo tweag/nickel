@@ -31,7 +31,7 @@ Whenever we want to tell the compiler, trust me here, we use `Assume(Type, Term)
 
 
 
-Our types A, B can be variables (s, t, ...) (_unused_), base types (Num, Bool, Dyn) function types (A -> B) or flat types (#e), a contract used as a type.
+Our types A, B can be variables (s, t, ...) (_unused_), base types (Number, Bool, Dyn) function types (A -> B) or flat types (#e), a contract used as a type.
 
 Our expressions (e, f, ...) can be variables (x, y, ...), non recursive lets (let x = e in f), lambdas (fun x => e), application (e f), constants (true, false, 1, 2, ...), primitive operations (ite, isZero, isNum, isBool, isFun, blame, +, ...), promises (Promise(A, e)) and assumes (Assume(A, e)).
 
@@ -65,7 +65,7 @@ G, x: A |s- f: B  G |s- e: C  unify(s, A, C) unify(s, B, D)
             G |s- e f: C
 
 -----------------           ----------------
- G |s- t/f: Bool             G |s- n: Num
+ G |s- t/f: Bool             G |s- n: Number
 
 Operations as expected....
 
