@@ -233,7 +233,7 @@ strings.
 
 The idea behind symbolic strings is to offer a string-like syntax, but without
 evaluating the expression as a string. Instead, the expression is returned in a
-symoblic form - in practice, an array of fragments, where each fragment is
+symbolic form - in practice, an array of fragments, where each fragment is
 either a string or an arbitrary value that has been interpolated - and Nickel
 lets the specific library (Terraform-Nickel, Nix-Nickel, etc.) handle it.
 
