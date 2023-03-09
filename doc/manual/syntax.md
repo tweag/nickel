@@ -245,8 +245,7 @@ the programmer.
 
 Beside the custom prefix, symbolic strings otherwise follow the same syntactic
 rules as multiline strings: the prefix is followed by an arbitrary number of `%`
-followed by `"`, and must be closed by `"` followed by the same number of times
-`%`.
+followed by `"`, and must be closed by `"` followed by the same number of `%`.
 
 The technical details don't matter too much in practice. As a user of a library
 which uses symbolic strings, remember that:
