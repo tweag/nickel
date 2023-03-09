@@ -205,6 +205,14 @@ def concat(str_array, log=false):
 Symbolic strings are another type of special strings in Nickel. For example, you
 could encounter the following code in a library for using Nickel with Nix:
 
+For concrete use-cases, some tools require manipulating string-like values that
+are not yet known at the time of evaluation (e.g. Terraform's computed values),
+or which performs additional dependency tracking ([Nix string
+context][nix-string-context]), etc. Usually, those values are more complex than
+bare strings, and can't be interpolated directly.
+
+For those cases, Nickel uses symbolic strings:
+
 ```nickel
 {
   args = [
@@ -219,23 +227,23 @@ could encounter the following code in a library for using Nickel with Nix:
 }
 ```
 
-Lines 4 to 8 define a symbolic string. Values `inputs.gcc`, `inputs.hello`, etc.
-aren't actually strings, but arbitrary records. For concrete use-cases, some
-tools require manipulating values that are not yet known at the time of evaluation
-(e.g. Terraform's computed values) or to perform additional dependency tracking
-([Nix string context][nix-string-context]).
+This example is an excerpt of a Nix configuration written in Nickel emulating
+Nix string context. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
+`inputs.hello`, etc. aren't actually strings, but arbitrary records, because
+they carry additional context. Yet, they can be interpolated as if they were
+strings.
 
 The idea behind symbolic strings is to offer a string-like syntax, but without
 evaluating the expression as a string. Instead, the expression is returned in a
 symoblic form - in practice, an array of fragments, where each fragment is
-either a string or an arbitrary value that has been interpolated - and let the
-specific library (Terraform-Nickel, Nix-Nickel, etc.) process it.
+either a string or an arbitrary value that has been interpolated - and Nickel
+lets the specific library (Terraform-Nickel, Nix-Nickel, etc.) handle it.
 
-The prefix of a symbolic string is a sequence of lower-case alphabetic
-characters followed by `-s`. Prefixes don't have any meaning for Nickel: they're
-a tag used by libraries consuming symbolic strings to distinguish between
-several types of symbolic strings. Tags are a visual marker for the programmer
-as well.
+The prefix of a symbolic string is any valid identifier that doesn't start with
+`_`, and ends with the suffix `-s`. Prefixes don't have any meaning for Nickel:
+they're a tag used by libraries consuming symbolic strings to distinguish
+between several types of symbolic strings. Prefixes are also a visual marker for
+the programmer.
 
 The technical details don't matter too much in practice. As a user of a library
 which uses symbolic strings, remember that:
@@ -247,6 +255,13 @@ which uses symbolic strings, remember that:
   exactly, is defined by the library. All in all, symbolic strings simply
   provide libraries with a way to overload string syntax and interpolation for
   extended usages.
+- the main operation supported by symbolic strings is interpolation: `%{value}`.
+  What interpolation means, and which values can be interpolated in a given
+  symbolic string is again defined by each library. Other string functions don't
+  work on symbolic strings (e.g. `string.length`, `string.characters`, and so
+  on), because they might not have any valid meaning. Instead, libraries should
+  export their own string API, if they support additional operation on their
+  symbolic strings.
 
 The following examples show how symbolic strings are desugared:
 
