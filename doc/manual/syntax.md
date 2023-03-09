@@ -221,7 +221,7 @@ could encounter the following code in a library for using Nickel with Nix:
 
 Lines 4 to 8 define a symbolic string. Values `inputs.gcc`, `inputs.hello`, etc.
 aren't actually strings, but arbitrary records. For concrete use-cases, some
-tools require manipulating values are not yet known at the time of evaluation
+tools require manipulating values that are not yet known at the time of evaluation
 (e.g. Terraform's computed values) or to perform additional dependency tracking
 ([Nix string context][nix-string-context]).
 
