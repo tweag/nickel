@@ -262,7 +262,7 @@ which uses symbolic strings, remember that:
   symbolic string is again defined by each library. Other string functions don't
   work on symbolic strings (e.g. `string.length`, `string.characters`, and so
   on), because they might not have any valid meaning. Instead, libraries should
-  export their own string API, if they support additional operation on their
+  export their own string API, if they support additional operations on their
   symbolic strings.
 
 The following examples show how symbolic strings are desugared:
