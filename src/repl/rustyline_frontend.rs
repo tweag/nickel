@@ -7,7 +7,6 @@ use super::*;
 use crate::eval::cache::CacheImpl;
 use crate::program::{self, ColorOpt};
 use ansi_term::{Colour, Style};
-use rustyline::config::OutputStreamType;
 use rustyline::error::ReadlineError;
 use rustyline::{Config, EditMode, Editor};
 
@@ -17,7 +16,7 @@ pub fn config(color_opt: ColorOpt) -> Config {
         .history_ignore_space(true)
         .edit_mode(EditMode::Emacs)
         .color_mode(color_opt.into())
-        .output_stream(OutputStreamType::Stdout)
+        .auto_add_history(true)
         .build()
 }
 
@@ -46,9 +45,11 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
 
     let validator = InputParser::new(repl.cache_mut().add_tmp("<repl-input>", String::new()));
 
-    let mut editor = Editor::with_config(config(color_opt));
+    let mut editor = Editor::with_config(config(color_opt))
+        .map_err(|readline_err| InitError::ReadlineError(format!("{readline_err}")))?;
     let _ = editor.load_history(&histfile);
     editor.set_helper(Some(validator));
+
     let prompt = {
         let style = Style::new();
         let style = if color_opt != ColorOpt::Never {
@@ -61,11 +62,6 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
 
     let result = loop {
         let line = editor.readline(&prompt);
-
-        if let Ok(line) = line.as_ref() {
-            editor.add_history_entry(line.clone());
-        }
-
         let mut stdout = std::io::stdout();
 
         match line {

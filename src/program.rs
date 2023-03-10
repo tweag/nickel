@@ -440,7 +440,7 @@ mod doc {
     /// This documentation is then added to the provided document.
     fn to_markdown<'a>(
         rt: &'a RichTerm,
-        header_level: u32,
+        header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
         document: &'a AstNode<'a>,
         options: &ComrakOptions,
@@ -472,7 +472,7 @@ mod doc {
     /// Parses a string into markdown and increases any headers in the markdown by the specified level.
     /// This allows having headers in documentation without clashing with the structure of the document.
     fn parse_documentation<'a>(
-        header_level: u32,
+        header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
         md: &str,
         options: &ComrakOptions,
@@ -489,7 +489,7 @@ mod doc {
         node
     }
 
-    fn increase_header_level(header_level: u32, ast: &mut Ast) -> &Ast {
+    fn increase_header_level(header_level: u8, ast: &mut Ast) -> &Ast {
         if let NodeValue::Heading(NodeHeading { level, setext }) = ast.value {
             ast.value = NodeValue::Heading(NodeHeading {
                 level: header_level + level,
@@ -502,7 +502,7 @@ mod doc {
     /// Creates a codespan header of the provided string with the provided header level.
     fn mk_header<'a>(
         ident: &str,
-        header_level: u32,
+        header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
     ) -> &'a AstNode<'a> {
         let res = arena.alloc(AstNode::from(NodeValue::Heading(NodeHeading {
