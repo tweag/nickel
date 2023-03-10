@@ -465,7 +465,7 @@ impl Cache {
                 .map_err(|err| (ParseError::from_serde_yaml(err, file_id))),
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
                 .map(|t| (t, ParseErrors::default()))
-                .map_err(|err| (ParseError::from_toml(err, file_id, &self.files))),
+                .map_err(|err| (ParseError::from_toml(err, file_id))),
         }
     }
 

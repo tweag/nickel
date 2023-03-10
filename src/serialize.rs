@@ -225,17 +225,19 @@ where
             .map_err(|err| SerializationError::Other(err.to_string())),
         ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
             .map_err(|err| SerializationError::Other(err.to_string())),
-        ExportFormat::Toml => toml::Value::try_from(rt)
+        ExportFormat::Toml => toml::to_string_pretty(rt)
             .map_err(|err| SerializationError::Other(err.to_string()))
-            .and_then(|v| {
-                write!(writer, "{v}").map_err(|err| SerializationError::Other(err.to_string()))
+            .and_then(|s| {
+                writer
+                    .write_all(s.as_bytes())
+                    .map_err(|err| SerializationError::Other(err.to_string()))
             }),
         ExportFormat::Raw => match rt.as_ref() {
             Term::Str(s) => writer
                 .write_all(s.as_bytes())
                 .map_err(|err| SerializationError::Other(err.to_string())),
             t => Err(SerializationError::Other(format!(
-                "raw export requires a `Str`, got {}",
+                "raw export requires a `String`, got {}",
                 // unwrap(): terms must be fully evaluated before serialization,
                 // and fully evaluated terms have a definite type.
                 t.type_of().unwrap()
@@ -245,25 +247,10 @@ where
 }
 
 pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, SerializationError> {
-    match format {
-        ExportFormat::Json => serde_json::to_string_pretty(&rt)
-            .map_err(|err| SerializationError::Other(err.to_string())),
-        ExportFormat::Yaml => {
-            serde_yaml::to_string(&rt).map_err(|err| SerializationError::Other(err.to_string()))
-        }
-        ExportFormat::Toml => toml::Value::try_from(rt)
-            .map(|v| format!("{v}"))
-            .map_err(|err| SerializationError::Other(err.to_string())),
-        ExportFormat::Raw => match rt.as_ref() {
-            Term::Str(s) => Ok(s.clone()),
-            t => Err(SerializationError::Other(format!(
-                "raw export requires a `Str`, got {}",
-                // unwrap(): terms must be fully evaluated before serialization,
-                // and fully evaluated terms have a definite type.
-                t.type_of().unwrap()
-            ))),
-        },
-    }
+    let mut buffer: Vec<u8> = Vec::new();
+    to_writer(&mut buffer, format, rt)?;
+
+    Ok(String::from_utf8_lossy(&buffer).into_owned())
 }
 
 #[cfg(test)]
@@ -331,8 +318,7 @@ mod tests {
             let from_yaml: RichTerm =
                 serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
             let from_toml: RichTerm =
-                toml::from_str(&format!("{}", &toml::Value::try_from(&evaluated).unwrap()))
-                    .unwrap();
+                toml::from_str(&format!("{}", &toml::to_string(&evaluated).unwrap())).unwrap();
 
             assert_eq!(
                 VirtualMachine::<_, CacheImpl>::new(DummyResolver {})

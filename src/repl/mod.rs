@@ -321,6 +321,8 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 pub enum InitError {
     /// Unable to load, parse or typecheck the stdlib
     Stdlib,
+    /// An I/O or Linux Syscall (Errno) error happened while initializing the interactive terminal.
+    ReadlineError(String),
 }
 
 pub enum InputStatus {

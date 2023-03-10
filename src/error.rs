@@ -578,19 +578,17 @@ impl ParseError {
         )
     }
 
-    pub fn from_toml(error: toml::de::Error, file_id: FileId, files: &Files<String>) -> Self {
-        use codespan::ByteOffset;
+    pub fn from_toml(error: toml::de::Error, file_id: FileId) -> Self {
+        use codespan::{ByteIndex, ByteOffset};
 
-        let start = error.line_col().and_then(|(line, col)| {
-            Some(files.line_span(file_id, line as u32).ok()?.start() + ByteOffset::from(col as i64))
-        });
+        let span = error.span();
         ParseError::ExternalFormatError(
             String::from("toml"),
             error.to_string(),
-            start.map(|start| RawSpan {
+            span.map(|span| RawSpan {
                 src_id: file_id,
-                start,
-                end: start + ByteOffset::from(1),
+                start: ByteIndex::from(span.start as u32),
+                end: ByteIndex(span.end as u32) + ByteOffset::from(1),
             }),
         )
     }
