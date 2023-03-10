@@ -106,7 +106,7 @@ fn build_pattern_type(
 
             // If there are type annotations within nested record patterns
             // then we need to unify them with the pattern type we've built
-            // to ensure (1) that they're mututally compatible and (2) that
+            // to ensure (1) that they're mutually compatible and (2) that
             // we assign the annotated types to the right unification variables.
             if let Some(annot_ty) = &field.metadata.annotation.types {
                 let annot_ty = UnifType::from_type(annot_ty.types.clone(), &ctxt.term_env);
