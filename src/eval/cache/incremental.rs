@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
 /// A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
