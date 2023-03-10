@@ -133,7 +133,7 @@ where:
 - contracts are assumed to be idempotent
 - `flip_compose(a, forall_pol, sym, current_pol)`:
   - if `forall_pol` and `current_pol` are equal, then gives
-    `%seal% sym (%unseal% sym <.>) sym`
+    `%seal% sym (%unseal% sym <.>)`
   - if `forall_pol` and `current_pol` aren't equal, then gives
     `%unseal% sym (%seal% sym <.>) ~ id`
 
@@ -143,32 +143,42 @@ We proceed by structural induction of types.
 
 - If `T` is a base type or a flat type, there is nothing to do, because
   `T.dualize() = T` and contracts are idempotent.
+
 - If `T = a`, and if `forall_pol` is positive, then `<.> | T` is
   `%unseal% sym <.>`, where `(forall_pol, sym) = Tenv(a)`. Then `T.dualize()` is
-  `%seal% sym <.>`, and `U := T.dualize() . T = %seal%  (%unseal% sym <.>) sym`.
+  `%seal% sym <.>`, and `T.dualize() . T = %seal% sym (%unseal% sym <.>)`.
   QED.
 
   If `forall_pol` is `negative`, then `T.dualize()` is `%unseal% sym <.>`, and
-  `U := T.dualize() . T = %unseal%  (%seal% sym <.>) sym ~ id`. QED.
+  `U := T.dualize() . T = %unseal% sym (%seal% sym <.>) ~ id`. QED.
+
 - If `T = Dom -> Codom`, then `T.dualize()` is the domain contract of
   `(Dom -> Codom) -> Dyn`. The domain contract of `(Dom -> Codom) -> Dyn` is the
-  same as the contract of `Dom -> Codom` with polarity flipped; let's call it
-  `DomDual -> CodomDual`.
+  same as the contract of `Dom -> Codom` with polarity flipped. It's given by
+  ```text
+    fun x => Codom.dualize() (<.> (Dom.dualize().dualize() x))
+  ~ fun x => Codom.dualize() (<.> (Dom x))
+  ```
+  because `dualize()` is an involution.
+
+  Then
 
   ```text
-  T.dualize() . T ~ fun x => CodomDual ((<.> | T) (DomDual x))
-  T.dualize() . T ~ fun x => CodomDual ((fun y => Codom (<.> (Dom y))) (DomDual x))
+  T.dualize() . T ~ fun x => Codom.dualize() ((<.> | T) (Dom x))
+  T.dualize() . T ~ fun x => Codom.dualize() ((fun y => Codom (<.> (Dom.dualize() y))) (Dom x))
   ```
 
   Applying beta reduction:
-  `fun x => CodomDual (Codom (<.> (Dom (DomDual x))))`
+  `fun x => Codom.dualize() (Codom (<.> (Dom.dualize() (Dom x))))`
 
-  If we suppose that `DomDual = Dom.dualize()` and dualize is an involution,
-  then by structural induction `Dom . DomDual ~ DomDual'` and
-  `CodomDual. Codom ~ Codom'`, giving:
+  If we suppose that `DomDual.dualize() = Dom` and dualize is an involution,
+  then by structural induction `Dom.dualize() . Dom ~ Dom'` and
+  `Codom.dualize() . Codom ~ Codom'`, giving:
 
-  `fun x => Codom' (<.> (DomDual' x))`, which is the contract `DomDual' -> Codom'`.
+  ```text
+  T.dualize() . T ~ fun x => Codom' (<.> (Dom' x))
+  ```
 
   TODO:
-  We need to prove that `T' ~ DomDual' -> Codom'`. Left for a later goals, add
+  We need to prove that `T' ~ Dom'.dualize() -> Codom'`. Left for a later goals, add
   to subgoals.
