@@ -229,13 +229,19 @@ impl Default for BindingType {
 pub struct PendingContract {
     /// The pending contract, can be a function or a record.
     pub contract: RichTerm,
+    ///
+    pub dual_contract: Option<RichTerm>,
     /// The blame label.
     pub label: Label,
 }
 
 impl PendingContract {
     pub fn new(contract: RichTerm, label: Label) -> Self {
-        PendingContract { contract, label }
+        PendingContract {
+            contract,
+            dual_contract: None,
+            label,
+        }
     }
 
     /// Map a function over the term representing the underlying contract.
@@ -245,6 +251,7 @@ impl PendingContract {
     {
         PendingContract {
             contract: f(self.contract),
+            dual_contract: None,
             ..self
         }
     }
@@ -257,11 +264,35 @@ impl PendingContract {
         use crate::mk_app;
 
         contracts.fold(rt, |acc, ctr| {
-            mk_app!(
-                make::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
+            let first_assume = mk_app!(
+                make::op2(
+                    BinaryOp::Assume(),
+                    ctr.contract,
+                    Term::Lbl(ctr.label.clone())
+                )
+                .with_pos(pos),
                 acc
             )
-            .with_pos(pos)
+            .with_pos(pos);
+            eprintln!(
+                "{} {:?} polarity {}",
+                ctr.label.types,
+                ctr.label.path,
+                if ctr.label.polarity {
+                    "positive"
+                } else {
+                    "negative"
+                }
+            );
+            if let Some(dual) = ctr.dual_contract {
+                mk_app!(
+                    make::op2(BinaryOp::Assume(), dual, Term::Lbl(ctr.label)).with_pos(pos),
+                    first_assume
+                )
+                .with_pos(pos)
+            } else {
+                first_assume
+            }
         })
     }
 }
@@ -272,7 +303,11 @@ impl Traverse<RichTerm> for PendingContract {
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let contract = self.contract.traverse(f, state, order)?;
-        Ok(PendingContract { contract, ..self })
+        Ok(PendingContract {
+            contract,
+            dual_contract: None,
+            ..self
+        })
     }
 }
 
@@ -280,10 +315,11 @@ impl std::convert::TryFrom<LabeledType> for PendingContract {
     type Error = UnboundTypeVariableError;
 
     fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
-        Ok(PendingContract::new(
-            labeled_ty.types.contract()?,
-            labeled_ty.label,
-        ))
+        Ok(PendingContract {
+            contract: labeled_ty.types.contract()?,
+            dual_contract: None, //Some(labeled_ty.types.dual_contract()?),
+            label: labeled_ty.label,
+        })
     }
 }
 

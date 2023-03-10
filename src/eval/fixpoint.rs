@@ -1,6 +1,12 @@
 //! Compute the fixpoint of a recursive record.
+use std::rc::Rc;
+
 use super::*;
-use crate::position::TermPos;
+use crate::{
+    label::ty_path::{Elem, Path},
+    position::TermPos,
+    types::{RecordRowF, TypeF, Types},
+};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
@@ -88,9 +94,72 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 let id_value = Ident::fresh();
                 final_env.insert(id_value, idx);
 
+                fn descend_path(t: &Types, path: &[Elem]) -> Types {
+                    match (&t.types, path.first()) {
+                        (
+                            TypeF::Forall {
+                                body,
+                                var,
+                                var_kind,
+                            },
+                            Some(_),
+                        ) => Types {
+                            types: TypeF::Forall {
+                                body: Box::new(descend_path(body.as_ref(), path)),
+                                var: *var,
+                                var_kind: *var_kind,
+                            },
+                            ..*t
+                        },
+                        (TypeF::Arrow(dom, _), Some(Elem::Domain)) => {
+                            descend_path(dom.as_ref(), &path[1..])
+                        }
+                        (TypeF::Arrow(_, codom), Some(Elem::Codomain)) => {
+                            descend_path(codom.as_ref(), &path[1..])
+                        }
+                        (TypeF::Record(rows), Some(Elem::Field(ident))) => {
+                            use crate::types::RecordRowsIteratorItem::*;
+                            for row_item in rows.iter() {
+                                match row_item {
+                                    Row(RecordRowF { id, types: ty }) if id == *ident => {
+                                        return descend_path(ty, &path[1..])
+                                    }
+                                    TailDyn | TailVar(_) => unreachable!(),
+                                    _ => (),
+                                }
+                            }
+                            unreachable!()
+                        }
+                        (TypeF::Dict(ty), Some(Elem::Dict))
+                        | (TypeF::Array(ty), Some(Elem::Array)) => {
+                            descend_path(ty.as_ref(), &path[1..])
+                        }
+                        (_, None) => t.clone(),
+                        (_, Some(_)) => unreachable!(),
+                    }
+                }
+
                 let with_ctr_applied = PendingContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
-                    field.pending_contracts.iter().cloned(),
+                    field
+                        .pending_contracts
+                        .iter()
+                        .cloned()
+                        .map(|ctr| PendingContract {
+                            contract: ctr.contract,
+                            dual_contract: ctr.dual_contract.or_else(|| {
+                                eprintln!("starting {} {:?}", ctr.label.types, ctr.label.path);
+                                let types = descend_path(ctr.label.types.as_ref(), &ctr.label.path);
+                                eprintln!("operating {}", types);
+
+                                if ctr.label.polarity {
+                                    Some(types.dual_contract().unwrap())
+                                } else {
+                                    Some(types.contract().unwrap())
+                                }
+                            }),
+                            label: ctr.label,
+                        }),
                     value.pos,
                 );
 

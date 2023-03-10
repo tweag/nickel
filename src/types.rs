@@ -841,6 +841,12 @@ impl Types {
         self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
     }
 
+    /// HACK
+    pub fn dual_contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
+        let mut sy = 0;
+        self.subcontract(HashMap::new(), false, &mut sy)
+    }
+
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
         match &self.types {
