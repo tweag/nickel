@@ -1,2 +1,2 @@
-let { a : Number } = { a = "hi" } in
-a : _
+(let { a : Number } = { a = "hi" } in
+a) : _

@@ -4,19 +4,30 @@ use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
     identifier::Ident,
     mk_uty_row,
+    term::LabeledType,
+    typecheck::unify,
     types::{RecordRowF, RecordRowsF, TypeF},
 };
 
 use super::{
-    mk_uniftype, Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows, UnifType,
+    error::UnifError, mk_uniftype, Context, Environment, GenericUnifRecordRowsIteratorItem, State,
+    UnifRecordRows, UnifType,
 };
 
-pub fn build_pattern_type_walk_mode(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
-    build_pattern_type(state, pat, TypecheckMode::Walk)
+pub fn build_pattern_type_walk_mode(
+    state: &mut State,
+    ctxt: &Context,
+    pat: &RecordPattern,
+) -> Result<UnifRecordRows, UnifError> {
+    build_pattern_type(state, ctxt, pat, TypecheckMode::Walk)
 }
 
-pub fn build_pattern_type_check_mode(state: &mut State, pat: &RecordPattern) -> UnifRecordRows {
-    build_pattern_type(state, pat, TypecheckMode::Check)
+pub fn build_pattern_type_check_mode(
+    state: &mut State,
+    ctxt: &Context,
+    pat: &RecordPattern,
+) -> Result<UnifRecordRows, UnifError> {
+    build_pattern_type(state, ctxt, pat, TypecheckMode::Check)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,23 +37,35 @@ enum TypecheckMode {
 }
 
 /// Build a `UnifType` from a `Destruct` pattern. The type of each "leaf"
-/// identifier will be assigned based on the `leaf_type` argument. The
-/// current possibilities are for each leaf to have type `Dyn` or to be
-/// assigned a fresh unification variable.
+/// identifier will be assigned based on the `mode` argument. The
+/// current possibilities are for each leaf to have type `Dyn`, to use an
+/// explicit type annotation, or to be assigned a fresh unification variable.
 fn build_pattern_type(
     state: &mut State,
+    ctxt: &Context,
     pat: &RecordPattern,
-    leaf_type: TypecheckMode,
-) -> UnifRecordRows {
-    fn new_leaf_type(state: &mut State, leaf_type: TypecheckMode) -> UnifType {
-        match leaf_type {
+    mode: TypecheckMode,
+) -> Result<UnifRecordRows, UnifError> {
+    fn new_leaf_type(
+        state: &mut State,
+        ctxt: &Context,
+        mode: TypecheckMode,
+        ty_annot: Option<LabeledType>,
+    ) -> UnifType {
+        match mode {
             TypecheckMode::Walk => mk_uniftype::dynamic(),
-            TypecheckMode::Check => state.table.fresh_type_uvar(),
+            TypecheckMode::Check => {
+                if let Some(l_ty) = ty_annot {
+                    UnifType::from_type(l_ty.types, &ctxt.term_env)
+                } else {
+                    state.table.fresh_type_uvar()
+                }
+            }
         }
     }
 
     let tail = if pat.open {
-        match leaf_type {
+        match mode {
             // We use a dynamic tail here since we're in walk mode,
             // but if/when we remove dynamic record tails this could
             // likely be made an empty tail with no impact.
@@ -53,35 +76,55 @@ fn build_pattern_type(
         UnifRecordRows::Concrete(RecordRowsF::Empty)
     };
 
-    let rows = pat.matches.iter().map(|m| match m {
-        Match::Simple(id, _) => RecordRowF {
+    let mut rows = pat.matches.iter().map(|m| match m {
+        Match::Simple(id, field) => Ok(RecordRowF {
             id: *id,
-            types: Box::new(new_leaf_type(state, leaf_type)),
-        },
-        Match::Assign(id, _, FieldPattern::Ident(_)) => RecordRowF {
+            types: Box::new(new_leaf_type(
+                state,
+                ctxt,
+                mode,
+                field.metadata.annotation.types.clone(),
+            )),
+        }),
+        Match::Assign(id, field, FieldPattern::Ident(_)) => Ok(RecordRowF {
             id: *id,
-            types: Box::new(new_leaf_type(state, leaf_type)),
-        },
+            types: Box::new(new_leaf_type(
+                state,
+                ctxt,
+                mode,
+                field.metadata.annotation.types.clone(),
+            )),
+        }),
         Match::Assign(
             id,
-            _,
+            field,
             FieldPattern::RecordPattern(r_pat)
             | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
         ) => {
-            let row_tys = build_pattern_type(state, r_pat, leaf_type);
+            let row_tys = build_pattern_type(state, ctxt, r_pat, mode)?;
             let ty = UnifType::Concrete(TypeF::Record(row_tys));
-            RecordRowF {
+
+            // If there are type annotations within nested record patterns
+            // then we need to unify them with the pattern type we've built
+            // to ensure (1) that they're mututally compatible and (2) that
+            // we assign the annotated types to the right unification variables.
+            if let Some(annot_ty) = &field.metadata.annotation.types {
+                let annot_ty = UnifType::from_type(annot_ty.types.clone(), &ctxt.term_env);
+                unify(state, ctxt, ty.clone(), annot_ty)?;
+            }
+
+            Ok(RecordRowF {
                 id: *id,
                 types: Box::new(ty),
-            }
+            })
         }
     });
 
-    rows.fold(tail, |tail, row| {
-        UnifRecordRows::Concrete(RecordRowsF::Extend {
-            row,
+    rows.try_fold(tail, |tail, row| {
+        Ok(UnifRecordRows::Concrete(RecordRowsF::Extend {
+            row: row?,
             tail: Box::new(tail),
-        })
+        }))
     })
 }
 
