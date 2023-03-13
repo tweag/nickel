@@ -1,0 +1,20 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+error: incompatible rows declaration
+  ┌─ [INPUTS_PATH]/errors/nested_annotated_record_pattern_typecheck_fail.ncl:2:31
+  │
+2 │   let { x = { a : Number }} = { x = { a = "" }} in
+  │                               ^^^^^^^^^^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to have the row `x.a: Number`
+  = The type of the expression was inferred to have the row `x.a: String`
+  = Could not match the two declaration of `x.a`
+
+error: While typing field `x.a`: incompatible types
+ = The type of the expression was expected to be `Number`
+ = The type of the expression was inferred to be `String`
+ = These types are not compatible
+
+

@@ -2,23 +2,24 @@ use std::collections::HashMap;
 
 use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
+    error::TypecheckError,
     identifier::Ident,
     mk_uty_row,
     term::LabeledType,
-    typecheck::unify,
+    typecheck::{unify, UnifRecordRow},
     types::{RecordRowF, RecordRowsF, TypeF},
 };
 
 use super::{
-    error::UnifError, mk_uniftype, Context, Environment, GenericUnifRecordRowsIteratorItem, State,
-    UnifRecordRows, UnifType,
+    mk_uniftype, Context, Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows,
+    UnifType,
 };
 
 pub fn build_pattern_type_walk_mode(
     state: &mut State,
     ctxt: &Context,
     pat: &RecordPattern,
-) -> Result<UnifRecordRows, UnifError> {
+) -> Result<UnifRecordRows, TypecheckError> {
     build_pattern_type(state, ctxt, pat, TypecheckMode::Walk)
 }
 
@@ -26,7 +27,7 @@ pub fn build_pattern_type_check_mode(
     state: &mut State,
     ctxt: &Context,
     pat: &RecordPattern,
-) -> Result<UnifRecordRows, UnifError> {
+) -> Result<UnifRecordRows, TypecheckError> {
     build_pattern_type(state, ctxt, pat, TypecheckMode::Check)
 }
 
@@ -45,7 +46,7 @@ fn build_pattern_type(
     ctxt: &Context,
     pat: &RecordPattern,
     mode: TypecheckMode,
-) -> Result<UnifRecordRows, UnifError> {
+) -> Result<UnifRecordRows, TypecheckError> {
     fn new_leaf_type(
         state: &mut State,
         ctxt: &Context,
@@ -109,8 +110,11 @@ fn build_pattern_type(
             // to ensure (1) that they're mutually compatible and (2) that
             // we assign the annotated types to the right unification variables.
             if let Some(annot_ty) = &field.metadata.annotation.types {
-                let annot_ty = UnifType::from_type(annot_ty.types.clone(), &ctxt.term_env);
-                unify(state, ctxt, ty.clone(), annot_ty)?;
+                let types = annot_ty.types.clone();
+                let pos = types.pos;
+                let annot_ty = UnifType::from_type(types, &ctxt.term_env);
+                unify(state, ctxt, ty.clone(), annot_ty)
+                    .map_err(|e| e.into_typecheck_err(state, pos))?;
             }
 
             Ok(RecordRowF {
@@ -120,7 +124,7 @@ fn build_pattern_type(
         }
     });
 
-    rows.try_fold(tail, |tail, row| {
+    rows.try_fold(tail, |tail, row: Result<UnifRecordRow, TypecheckError>| {
         Ok(UnifRecordRows::Concrete(RecordRowsF::Extend {
             row: row?,
             tail: Box::new(tail),
