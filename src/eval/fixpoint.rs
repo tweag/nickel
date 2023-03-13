@@ -147,15 +147,25 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                         .cloned()
                         .map(|ctr| PendingContract {
                             contract: ctr.contract,
-                            dual_contract: ctr.dual_contract.or_else(|| {
-                                eprintln!("starting {} {:?}", ctr.label.types, ctr.label.path);
+                            dual_contract: //None,
+
+                            ctr.dual_contract.or_else(|| {
+                                eprintln!(
+                                    "{}: starting {} {:?}",
+                                    id, ctr.label.types, ctr.label.path
+                                );
                                 let types = descend_path(ctr.label.types.as_ref(), &ctr.label.path);
-                                eprintln!("operating {}", types);
+                                eprintln!("{}: operating with {}", id, types);
+
+                                let dual_contract = types.dual_contract().unwrap();
+                                let contract = types.contract().unwrap();
+
+                                eprintln!("polarity: {}\ndual_contract: {dual_contract}\ncontract: {contract}\n", ctr.label.polarity);
 
                                 if ctr.label.polarity {
-                                    Some(types.dual_contract().unwrap())
+                                    Some(contract)
                                 } else {
-                                    Some(types.contract().unwrap())
+                                    Some(dual_contract)
                                 }
                             }),
                             label: ctr.label,

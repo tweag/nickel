@@ -275,14 +275,15 @@ impl PendingContract {
             )
             .with_pos(pos);
             eprintln!(
-                "{} {:?} polarity {}",
+                "pending_contract {} {:?} polarity {} dual_found {}",
                 ctr.label.types,
                 ctr.label.path,
                 if ctr.label.polarity {
                     "positive"
                 } else {
                     "negative"
-                }
+                },
+                matches!(ctr.dual_contract, Some(_))
             );
             if let Some(dual) = ctr.dual_contract {
                 mk_app!(

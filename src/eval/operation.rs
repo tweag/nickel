@@ -1364,7 +1364,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Seal() => {
                 if let Term::SealingKey(s) = &*t1 {
                     if let Term::Lbl(lbl) = &*t2 {
-                        eprintln!("seal: {s} {:?}", lbl.span);
+                        eprintln!("seal: {s} {} {:?}", lbl.types, lbl.path);
                         Ok(Closure::atomic_closure(
                             mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
                                 .with_pos(pos_op_inh),
@@ -1685,9 +1685,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::SealingKey(s1) = &*t1 {
                     // Return a function that either behaves like the identity or
                     // const unwrapped_term
-                    eprintln!("unseal: {s1}");
 
-                    Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
+                    Ok(if let Term::Sealed(s2, t, label) = t2.into_owned() {
+                        eprintln!("unseal: {s1} {} {:?}", label.types, label.path);
                         if *s1 == s2 {
                             Closure {
                                 body: mk_fun!("-invld", t),
@@ -2564,7 +2564,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     .fields
                                     .iter()
                                     .map(|(key, value)| {
-                                        eprintln!("{key}: {value:#?}");
                                         (
                                             *key,
                                             Field {
@@ -3524,11 +3523,11 @@ impl RecordDataExt for RecordData {
                     let value = field
                         .value
                         .map(|value| {
-                            eprintln!("map_values_closurize before contracts {id:?} {value:#?}");
-                            let RichTerm { term: shared, .. } = &value;
-                            if let Term::Var(ident) = shared.as_ref() {
-                                eprintln!("lookup {:#?}", env.get(ident));
-                            }
+                            // eprintln!("map_values_closurize before contracts {id:?} {value:#?}");
+                            // let RichTerm { term: shared, .. } = &value;
+                            // if let Term::Var(ident) = shared.as_ref() {
+                            //     eprintln!("lookup {:#?}", env.get(ident));
+                            // }
                             let pos = value.pos;
                             let value_with_ctrs = PendingContract::apply_all(
                                 value,
