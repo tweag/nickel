@@ -842,7 +842,7 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(*id, mk_uniftype::dynamic());
             }
 
-            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, pat);
+            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
             walk(state, ctxt, lin, linearizer, t)
         }
@@ -885,7 +885,7 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(*x, ty_let);
             }
 
-            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, pat);
+            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
 
             walk(state, ctxt, lin, linearizer, rt)
@@ -1147,7 +1147,7 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src_rows_ty = destructuring::build_pattern_type_check_mode(state, pat);
+            let src_rows_ty = destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
             let src = UnifType::Concrete(TypeF::Record(src_rows_ty.clone()));
 
             // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
@@ -1217,7 +1217,8 @@ fn type_check_<L: Linearizer>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             // The inferred type of the pattern w/ unification vars
-            let pattern_rows_type = destructuring::build_pattern_type_check_mode(state, pat);
+            let pattern_rows_type =
+                destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
             let pattern_type = UnifType::Concrete(TypeF::Record(pattern_rows_type.clone()));
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);

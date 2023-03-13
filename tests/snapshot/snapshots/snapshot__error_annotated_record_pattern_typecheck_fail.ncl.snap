@@ -1,0 +1,20 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+error: incompatible rows declaration
+  ┌─ [INPUTS_PATH]/errors/annotated_record_pattern_typecheck_fail.ncl:2:22
+  │
+2 │   let { x : Bool } = { x = 5 } in
+  │                      ^^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to have the row `x: Bool`
+  = The type of the expression was inferred to have the row `x: Number`
+  = Could not match the two declaration of `x`
+
+error: While typing field `x`: incompatible types
+ = The type of the expression was expected to be `Bool`
+ = The type of the expression was inferred to be `Number`
+ = These types are not compatible
+
+

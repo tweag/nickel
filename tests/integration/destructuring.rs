@@ -60,11 +60,23 @@ fn typecontract_fail() {
 fn type_mismatch_fail() {
     assert_matches!(
         eval_file("destructuring/type_mismatch_fail.ncl"),
-        // Note: ideally this would be a typechecker error, but currently
-        //       annotated types in destructuring patterns are just converted
-        //       into contracts. This should be revisted once the metadata
-        //       rework from RFC005 is implemented
-        Err(Error::EvalError(EvalError::BlameError { .. }))
+        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+    )
+}
+
+#[test]
+fn type_mismatch_field_pattern_fail() {
+    assert_matches!(
+        eval_file("destructuring/type_mismatch_field_pattern_fail.ncl"),
+        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+    )
+}
+
+#[test]
+fn type_mismatch_nested_destructuring_fail() {
+    assert_matches!(
+        eval_file("destructuring/type_mismatch_nested_destructuring_fail.ncl"),
+        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
     )
 }
 

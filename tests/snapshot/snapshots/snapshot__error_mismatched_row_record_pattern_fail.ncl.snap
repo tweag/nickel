@@ -1,0 +1,20 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+error: incompatible rows declaration
+  ┌─ [INPUTS_PATH]/errors/mismatched_row_record_pattern_fail.ncl:2:13
+  │
+2 │   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
+  │             ^^^^^^^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to have the row `a: String`
+  = The type of the expression was inferred to have the row `a: Number`
+  = Could not match the two declaration of `a`
+
+error: While typing field `a`: incompatible types
+ = The type of the expression was expected to be `String`
+ = The type of the expression was inferred to be `Number`
+ = These types are not compatible
+
+
