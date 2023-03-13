@@ -6,6 +6,7 @@ use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
 use crate::term::{BinaryOp, StrChunk, UnaryOp};
+use crate::term::Rational;
 use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun};
 use codespan::Files;
@@ -29,7 +30,7 @@ fn parse(s: &str) -> Option<RichTerm> {
 
 #[test]
 fn identity_over_values() {
-    let num = Term::Num(45.3);
+    let num = Term::Num(Rational::try_from(45.3).unwrap());
     assert_eq!(Ok(num.clone()), eval_no_import(num.into()));
 
     let boolean = Term::Bool(true);
@@ -62,36 +63,36 @@ fn lone_var_panics() {
 
 #[test]
 fn only_fun_are_applicable() {
-    eval_no_import(mk_app!(Term::Bool(true), Term::Num(45.))).unwrap_err();
+    eval_no_import(mk_app!(Term::Bool(true), mk_term::integer(45))).unwrap_err();
 }
 
 #[test]
 fn simple_app() {
-    let t = mk_app!(mk_term::id(), Term::Num(5.0));
-    assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
+    let t = mk_app!(mk_term::id(), mk_term::integer(5));
+    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
 }
 
 #[test]
 fn simple_let() {
-    let t = mk_term::let_in("x", Term::Num(5.0), mk_term::var("x"));
-    assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
+    let t = mk_term::let_in("x", mk_term::integer(5), mk_term::var("x"));
+    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
 }
 
 #[test]
 fn simple_ite() {
-    let t = mk_term::if_then_else(Term::Bool(true), Term::Num(5.0), Term::Bool(false));
-    assert_eq!(Ok(Term::Num(5.0)), eval_no_import(t));
+    let t = mk_term::if_then_else(Term::Bool(true), mk_term::integer(5), Term::Bool(false));
+    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
 }
 
 #[test]
 fn simple_plus() {
-    let t = mk_term::op2(BinaryOp::Plus(), Term::Num(5.0), Term::Num(7.5));
-    assert_eq!(Ok(Term::Num(12.5)), eval_no_import(t));
+    let t = mk_term::op2(BinaryOp::Plus(), mk_term::integer(5), Term::Num(Rational::try_from(7.5).unwrap()));
+    assert_eq!(Ok(Term::Num(Rational::try_from(12.5).unwrap())), eval_no_import(t));
 }
 
 #[test]
 fn asking_for_various_types() {
-    let num = mk_term::op1(UnaryOp::Typeof(), Term::Num(45.3));
+    let num = mk_term::op1(UnaryOp::Typeof(), Term::Num(Rational::try_from(45.3).unwrap()));
     assert_eq!(Ok(Term::Enum("Number".into())), eval_no_import(num));
 
     let boolean = mk_term::op1(UnaryOp::Typeof(), Term::Bool(true));
@@ -159,9 +160,9 @@ fn imports() {
     vm.reset();
     assert_eq!(
         vm.eval(mk_import_two, &Environment::new(),)
-            .map(Term::from)
+            .map(RichTerm::without_pos)
             .unwrap(),
-        Term::Num(2.0)
+        mk_term::integer(2)
     );
 
     // let x = import "lib" in x.f
@@ -247,35 +248,35 @@ fn initial_env() {
     initial_env.insert(
         Ident::from("g"),
         eval_cache.add(
-            Closure::atomic_closure(Term::Num(1.0).into()),
+            Closure::atomic_closure(mk_term::integer(1)),
             IdentKind::Let,
             BindingType::Normal,
         ),
     );
 
-    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("x"));
+    let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
-            .map(Term::from),
-        Ok(Term::Num(2.0))
+            .map(RichTerm::without_pos),
+        Ok(mk_term::integer(2))
     );
 
-    let t = mk_term::let_in("x", Term::Num(2.0), mk_term::var("g"));
+    let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
-            .map(Term::from),
-        Ok(Term::Num(1.0))
+            .map(RichTerm::without_pos),
+        Ok(mk_term::integer(1))
     );
 
     // Shadowing of the initial environment
-    let t = mk_term::let_in("g", Term::Num(2.0), mk_term::var("g"));
+    let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
             .eval(t, &initial_env)
-            .map(Term::from),
-        Ok(Term::Num(2.0))
+            .map(RichTerm::without_pos),
+        Ok(mk_term::integer(2))
     );
 }
 
@@ -300,7 +301,7 @@ fn substitution() {
     let mut eval_cache = CacheImpl::new();
     let initial_env = mk_env(
         vec![
-            ("glob1", Term::Num(1.0).into()),
+            ("glob1", mk_term::integer(1)),
             ("glob2", parse("\"Glob2\"").unwrap()),
             ("glob3", Term::Bool(false).into()),
         ],

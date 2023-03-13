@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError, ImportError, TypecheckError};
-use nickel_lang::term::Term;
+use nickel_lang::term::{RichTerm, make as mk_term, Term};
 use nickel_lang_utilities::TestProgram;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -21,7 +21,10 @@ fn nested() {
         "should_be = 3",
     )
     .unwrap();
-    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(3.)));
+    assert_eq!(
+        prog.eval().map(RichTerm::without_pos),
+        Ok(mk_term::integer(3))
+    );
 }
 
 #[test]
@@ -31,7 +34,10 @@ fn root_path() {
         "should_be = 44",
     )
     .unwrap();
-    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(44.)));
+    assert_eq!(
+        prog.eval().map(RichTerm::without_pos),
+        Ok(mk_term::integer(44))
+    );
 }
 
 #[test]
@@ -41,7 +47,10 @@ fn multi_imports() {
         "should_be = 5",
     )
     .unwrap();
-    assert_eq!(prog.eval().map(Term::from), Ok(Term::Num(5.)));
+    assert_eq!(
+        prog.eval().map(RichTerm::without_pos),
+        Ok(mk_term::integer(5))
+    );
 }
 
 #[test]

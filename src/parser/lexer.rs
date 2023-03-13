@@ -32,6 +32,7 @@
 use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
 use std::ops::Range;
+use malachite::Rational;
 
 fn symbolic_string_prefix_and_length<'input>(
     lex: &mut logos::Lexer<'input, NormalToken<'input>>,
@@ -66,7 +67,7 @@ pub enum NormalToken<'input> {
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
     #[regex("[0-9]*\\.?[0-9]+", |lex| lex.slice().parse())]
-    NumLiteral(f64),
+    NumLiteral(Rational),
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.

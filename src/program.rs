@@ -559,17 +559,17 @@ mod tests {
 
     #[test]
     fn evaluation_full() {
-        use crate::{mk_array, mk_record, term::Term};
+        use crate::{mk_array, mk_record, term::{Term, make as mk_term}};
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
 
         // [2, "ab", [1, [3]]]
         let expd = mk_array!(
-            Term::Num(2_f64),
+            mk_term::integer(2),
             Term::Str(String::from("ab")),
             mk_array!(
-                Term::Num(1_f64),
-                mk_array!(Term::Num(3_f64); ArrayAttrs::new().closurized());
+                mk_term::integer(1),
+                mk_array!(mk_term::integer(3); ArrayAttrs::new().closurized());
                 ArrayAttrs::new().closurized()
             );
             ArrayAttrs::new().closurized()
@@ -581,7 +581,7 @@ mod tests {
         // Records are parsed as RecRecords, so we need to build one by hand
         let expd = mk_record!((
             "foo",
-            mk_record!(("bar", mk_record!(("baz", Term::Num(2.0)))))
+            mk_record!(("bar", mk_record!(("baz", mk_term::integer(2)))))
         ));
         assert_eq!(t.without_pos(), expd);
 

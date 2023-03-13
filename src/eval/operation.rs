@@ -32,12 +32,17 @@ use crate::{
     transform::Closurizable,
 };
 
-use md5::digest::Digest;
+use malachite::{
+    num::arithmetic::traits::Pow, num::basic::traits::One, num::basic::traits::Zero,
+    num::conversion::traits::IsInteger, num::conversion::traits::RoundingFrom,
+    rounding_modes::RoundingMode, Integer, Rational,
+};
 
+use md5::digest::Digest;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::{collections::HashMap, iter::Extend, rc::Rc};
+use std::{collections::HashMap, convert::TryFrom, iter::Extend, rc::Rc};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -604,48 +609,56 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .pop_arg(&self.cache)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op))?;
 
-                if let Term::Num(n) = *t {
-                    let n_int = n as usize;
-                    if n < 0.0 || n.fract() != 0.0 {
-                        Err(EvalError::Other(
-                            format!(
-                            "generate: expected the 1st argument to be a positive integer, got {n}"
-                        ),
-                            pos_op,
-                        ))
-                    } else {
-                        let mut shared_env = Environment::new();
-                        let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
-
-                        // Array elements are closurized to preserve laziness of data structures. It
-                        // maintains the invariant that any data structure only contain indices (that is,
-                        // currently, variables).
-                        let ts = (0..n_int)
-                            .map(|n| {
-                                mk_app!(f_as_var.clone(), Term::Num(n as f64)).closurize(
-                                    &mut self.cache,
-                                    &mut shared_env,
-                                    env.clone(),
-                                )
-                            })
-                            .collect();
-
-                        Ok(Closure {
-                            body: RichTerm::new(
-                                Term::Array(ts, ArrayAttrs::new().closurized()),
-                                pos_op_inh,
-                            ),
-                            env: shared_env,
-                        })
-                    }
-                } else {
-                    Err(EvalError::TypeError(
+                let Term::Num(ref n) = *t else {
+                    return Err(EvalError::TypeError(
                         String::from("Num"),
                         String::from("generate, 1st argument"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
+                };
+
+                if n < &Rational::ZERO {
+                    return Err(EvalError::Other(
+                        format!(
+                            "generate: expected the 1st argument to be a positive number, got {n}"
+                        ),
+                        pos_op,
+                    ));
                 }
+
+                let Ok(n_int) = u32::try_from(n) else {
+                  return Err(EvalError::Other(
+                    format!(
+                      "generate: expected the 1st argument to be an integer smaller that {}, got {n}", u32::MAX,
+                    ),
+                    pos_op,
+                  ))
+                };
+
+                let mut shared_env = Environment::new();
+                let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+
+                // Array elements are closurized to preserve laziness of data structures. It
+                // maintains the invariant that any data structure only contain indices (that is,
+                // currently, variables).
+                let ts = (0..n_int)
+                    .map(|n| {
+                        mk_app!(f_as_var.clone(), Term::Num(n.into())).closurize(
+                            &mut self.cache,
+                            &mut shared_env,
+                            env.clone(),
+                        )
+                    })
+                    .collect();
+
+                Ok(Closure {
+                    body: RichTerm::new(
+                        Term::Array(ts, ArrayAttrs::new().closurized()),
+                        pos_op_inh,
+                    ),
+                    env: shared_env,
+                })
             }
             UnaryOp::RecordMap() => {
                 let (f, ..) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
@@ -833,7 +846,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Array(ts, _) = &*t {
                     // A num does not have any free variable so we can drop the environment
                     Ok(Closure {
-                        body: RichTerm::new(Term::Num(ts.len() as f64), pos_op_inh),
+                        body: RichTerm::new(Term::Num(ts.len().into()), pos_op_inh),
                         env: Environment::new(),
                     })
                 } else {
@@ -940,9 +953,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::CharCode() => {
                 if let Term::Str(s) = &*t {
                     if s.len() == 1 {
-                        let code = (s.chars().next().unwrap() as u32) as f64;
+                        let code = s.chars().next().unwrap() as u32;
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(code),
+                            Term::Num(code.into()),
                             pos_op_inh,
                         )))
                     } else {
@@ -961,28 +974,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::CharFromCode() => {
-                if let Term::Num(code) = *t {
-                    if code.fract() != 0.0 {
-                        Err(EvalError::Other(format!("charFromCode: expected the argument to be an integer, got the floating-point value {code}"), pos_op))
-                    } else if code < 0.0 || code > (u32::MAX as f64) {
-                        Err(EvalError::Other(format!("charFromCode: code out of bounds. Expected a value between 0 and {}, got {}", u32::MAX, code), pos_op))
-                    } else if let Some(car) = std::char::from_u32(code as u32) {
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(String::from(car)),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        Err(EvalError::Other(
-                            format!("charFromCode: invalid character code {code}"),
-                            pos_op,
-                        ))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
+                let Term::Num(ref code) = *t else {
+                    return Err(EvalError::TypeError(
                         String::from("Num"),
                         String::from("charFromCode"),
                         arg_pos,
                         RichTerm { term: t, pos },
+                    ))
+                };
+
+                let Ok(code_as_u32) = u32::try_from(code) else {
+                   return Err(EvalError::Other(format!("charFromCode: expected the argument to be a positive integer smaller than {}, got {code}", u32::MAX), pos_op));
+                };
+
+                if let Some(car) = std::char::from_u32(code_as_u32) {
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Str(String::from(car)),
+                        pos_op_inh,
+                    )))
+                } else {
+                    Err(EvalError::Other(
+                        format!("charFromCode: invalid character code {code}"),
+                        pos_op,
                     ))
                 }
             }
@@ -1020,7 +1033,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     let length = s.graphemes(true).count();
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Num(length as f64),
+                        Term::Num(length.into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -1052,7 +1065,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
-                    let n = s.parse::<f64>().map_err(|_| {
+                    let n = s.parse::<Rational>().map_err(|_| {
                         EvalError::Other(format!("numFrom: invalid num literal `{s}`"), pos)
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -1167,7 +1180,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         mk_record!(
                             ("matched", Term::Str(String::from(first_match.as_str()))),
-                            ("index", Term::Num(first_match.start() as f64)),
+                            ("index", Term::Num(first_match.start().into())),
                             (
                                 "groups",
                                 Term::Array(groups, ArrayAttrs::new().closurized())
@@ -1177,7 +1190,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
                             ("matched", Term::Str(String::new())),
-                            ("index", Term::Num(-1.)),
+                            ("index", Term::Num(Rational::from(-1))),
                             (
                                 "groups",
                                 Term::Array(Array::default(), ArrayAttrs::default())
@@ -1392,8 +1405,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Plus() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Num(n1 + n2),
                             pos_op_inh,
@@ -1422,8 +1435,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Sub() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Num(n1 - n2),
                             pos_op_inh,
@@ -1452,8 +1465,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Mult() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Num(n1 * n2),
                             pos_op_inh,
@@ -1482,9 +1495,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Div() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
-                        if n2 == 0.0 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
+                        if n2 == &Rational::ZERO {
                             Err(EvalError::Other(String::from("division by zero"), pos_op))
                         } else {
                             Ok(Closure::atomic_closure(RichTerm::new(
@@ -1516,25 +1529,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Modulo() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1 % n2),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        Err(EvalError::TypeError(
-                            String::from("Num"),
-                            String::from("%, 2nd argument"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
+                let Term::Num(ref n1) = *t1 else {
+                    return Err(EvalError::TypeError(
                         String::from("Num"),
                         String::from("%, 1st argument"),
                         fst_pos,
@@ -1543,13 +1539,65 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos: pos1,
                         },
                     ))
+                };
+
+                let Term::Num(ref n2) = *t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Number"),
+                        String::from("%, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ))
+                };
+
+                if n2 == &Rational::ZERO {
+                    return Err(EvalError::Other(String::from("division by zero (%)"), pos2));
                 }
+
+                // This is the equivalent of `truncate()` for `Rational`
+                let quotient = Rational::from(Integer::rounding_from(n1 / n2, RoundingMode::Down));
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Num(n1 - quotient * n2),
+                    pos_op_inh,
+                )))
             }
             BinaryOp::Pow() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
+                        // If the exponent is smaller than zero, we first try to convert it to a
+                        // `i64`, to get an exact power.
+                        // If it is greater that zero, we try to convert it to `u64`.
+                        //
+                        // If the conversion fails, we fallback to convert both the exponent and
+                        // the value to `f64`, perform the exponentiation, and convert them back to
+                        // rationals.
+                        let pow_as_f64s = || {
+                            Rational::try_from_float_simplest(
+                                f64::try_from(n1).unwrap().powf(f64::try_from(n2).unwrap()),
+                            )
+                            .unwrap()
+                        };
+
+                        let result = if !n2.is_integer() {
+                            pow_as_f64s()
+                        } else if n2 < &Rational::ZERO {
+                            if let Ok(n2_as_i64) = i64::try_from(n2) {
+                                n1.pow(n2_as_i64)
+                            } else {
+                                pow_as_f64s()
+                            }
+                        } else if let Ok(n2_as_u64) = u64::try_from(n2) {
+                            n1.pow(n2_as_u64)
+                        } else {
+                            pow_as_f64s()
+                        };
+
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(n1.powf(n2)),
+                            Term::Num(result),
                             pos_op_inh,
                         )))
                     } else {
@@ -1761,8 +1809,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::LessThan() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(n1 < n2),
                             pos_op_inh,
@@ -1791,8 +1839,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::LessOrEq() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(n1 <= n2),
                             pos_op_inh,
@@ -1821,8 +1869,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::GreaterThan() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(n1 > n2),
                             pos_op_inh,
@@ -1851,8 +1899,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::GreaterOrEq() => {
-                if let Term::Num(n1) = *t1 {
-                    if let Term::Num(n2) = *t2 {
+                if let Term::Num(ref n1) = *t1 {
+                    if let Term::Num(ref n2) = *t2 {
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Bool(n1 >= n2),
                             pos_op_inh,
@@ -2201,22 +2249,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
-                    let n_int = *n as usize;
-                    if n.fract() != 0.0 {
-                        Err(EvalError::Other(format!("elemAt: expected the 2nd argument to be an integer, got the floating-point value {n}"), pos_op))
-                    } else if *n < 0.0 || n_int >= ts.len() {
-                        Err(EvalError::Other(format!("elemAt: index out of bounds. Expected a value between 0 and {}, got {}", ts.len(), n), pos_op))
-                    } else {
-                        let elem_with_ctr = PendingContract::apply_all(
-                            ts.get(n_int).unwrap().clone(),
-                            attrs.pending_contracts.iter().cloned(),
-                            pos1.into_inherited(),
-                        );
-                        Ok(Closure {
-                            body: elem_with_ctr,
-                            env: env1,
-                        })
+                    let Ok(n_as_usize) = usize::try_from(n) else {
+                        return Err(EvalError::Other(format!("elemAt: expected the 2nd argument to be a positive integer smaller than {}, got {n}", usize::MAX), pos_op))
+                    };
+
+                    if n_as_usize >= ts.len() {
+                        return Err(EvalError::Other(format!("elemAt: index out of bounds. Expected an index between 0 and {}, got {}", ts.len(), n), pos_op));
                     }
+
+                    let elem_with_ctr = PendingContract::apply_all(
+                        ts.get(n_as_usize).unwrap().clone(),
+                        attrs.pending_contracts.iter().cloned(),
+                        pos1.into_inherited(),
+                    );
+
+                    Ok(Closure {
+                        body: elem_with_ctr,
+                        env: env1,
+                    })
                 }
                 (Term::Array(..), _) => Err(EvalError::TypeError(
                     String::from("Num"),
@@ -2829,23 +2879,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 match (&*fst, &*snd, &*thd) {
                     (Term::Str(s), Term::Num(start), Term::Num(end)) => {
-                        let start_int = *start as usize;
-                        let end_int = *end as usize;
+                        let Ok(start_as_usize) = usize::try_from(start) else {
+                            return Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be a positive integer smaller than {}, got {start}", usize::MAX), pos_op));
+                        };
 
-                        if start.fract() != 0.0 {
-                            Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be an integer, got the floating-point value {start}"), pos_op))
-                        } else if !s.is_char_boundary(start_int) {
-                            Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op))
-                        } else if end.fract() != 0.0 {
-                            Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be an integer, got the floating-point value {end}"), pos_op))
-                        } else if end <= start || !s.is_char_boundary(end_int) {
-                            Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start+1., s.len(), end), pos_op))
-                        } else {
-                            Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Str(s[start_int..end_int].to_owned()),
-                                pos_op_inh,
-                            )))
+                        let Ok(end_as_usize) = usize::try_from(end) else {
+                            return Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be a positive integer smaller than {}, got the floating-point value {end}", usize::MAX), pos_op));
+                        };
+
+                        if !s.is_char_boundary(start_as_usize) {
+                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op));
                         }
+
+                        if end <= start || !s.is_char_boundary(end_as_usize) {
+                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start + Rational::ONE, s.len(), end), pos_op));
+                        };
+
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Str(s[start_as_usize..end_as_usize].to_owned()),
+                            pos_op_inh,
+                        )))
                     }
                     (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
                         String::from("Str"),
@@ -3562,11 +3615,11 @@ mod tests {
             VirtualMachine::new(DummyResolver {});
 
         vm.stack.push_arg(
-            Closure::atomic_closure(Term::Num(5.0).into()),
+            Closure::atomic_closure(mk_term::integer(5)),
             TermPos::None,
         );
         vm.stack.push_arg(
-            Closure::atomic_closure(Term::Num(46.0).into()),
+            Closure::atomic_closure(mk_term::integer(46)),
             TermPos::None,
         );
 
@@ -3582,7 +3635,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(46.0).into(),
+                body: mk_term::integer(46),
                 env: Environment::new()
             }
         );
@@ -3594,14 +3647,14 @@ mod tests {
         let cont = OperationCont::Op2First(
             BinaryOp::Plus(),
             Closure {
-                body: Term::Num(6.0).into(),
+                body: mk_term::integer(6),
                 env: Environment::new(),
             },
             TermPos::None,
         );
 
         let mut clos = Closure {
-            body: Term::Num(7.0).into(),
+            body: mk_term::integer(7),
             env: Environment::new(),
         };
         let mut vm = VirtualMachine::new(DummyResolver {});
@@ -3612,7 +3665,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(6.0).into(),
+                body: mk_term::integer(6),
                 env: Environment::new()
             }
         );
@@ -3623,7 +3676,7 @@ mod tests {
                 OperationCont::Op2Second(
                     BinaryOp::Plus(),
                     Closure {
-                        body: Term::Num(7.0).into(),
+                        body: mk_term::integer(7),
                         env: Environment::new(),
                     },
                     TermPos::None,
@@ -3641,7 +3694,7 @@ mod tests {
         let cont: OperationCont = OperationCont::Op2Second(
             BinaryOp::Plus(),
             Closure {
-                body: Term::Num(7.0).into(),
+                body: mk_term::integer(7),
                 env: Environment::new(),
             },
             TermPos::None,
@@ -3651,7 +3704,7 @@ mod tests {
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
             VirtualMachine::new(DummyResolver {});
         let mut clos = Closure {
-            body: Term::Num(6.0).into(),
+            body: mk_term::integer(6),
             env: Environment::new(),
         };
         vm.stack.push_op_cont(cont, 0, TermPos::None);
@@ -3661,7 +3714,7 @@ mod tests {
         assert_eq!(
             clos,
             Closure {
-                body: Term::Num(13.0).into(),
+                body: mk_term::integer(13),
                 env: Environment::new()
             }
         );

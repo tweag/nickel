@@ -17,6 +17,7 @@
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
 
+use malachite::num::basic::traits::Zero;
 pub mod array;
 pub mod record;
 
@@ -34,6 +35,7 @@ use crate::{
 };
 
 use codespan::FileId;
+pub use malachite::Rational;
 
 use serde::{Deserialize, Serialize};
 
@@ -59,8 +61,8 @@ pub enum Term {
     /// A boolean value.
     Bool(bool),
     /// A floating-point value.
-    #[serde(serialize_with = "crate::serialize::serialize_num")]
-    Num(f64),
+    // #[serde(serialize_with = "crate::serialize::serialize_num")]
+    Num(Rational),
     /// A literal string.
     Str(String),
     /// A string containing interpolated expressions, represented as a list of either literals or
@@ -189,7 +191,7 @@ pub enum Term {
     /// ```nickel
     /// let r = {
     ///   foo = bar + 1,
-    ///   bar | Num,
+    ///   bar | Number,
     ///   baz = 2,
     /// } in
     /// r.baz + (r & {bar = 1}).foo
@@ -313,71 +315,18 @@ impl From<LetMetadata> for record::FieldMetadata {
     }
 }
 
-/// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
-/// `Ord`.
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
-pub struct NumeralPriority(f64);
-
-/// Error raised when trying to convert a float with `NaN` value to a `NumeralPriority`.
-#[derive(Debug, Copy, Clone)]
-pub struct PriorityIsNaN;
-
-// The following impl are ok because `NumeralPriority(NaN)` can't be constructed.
-impl Eq for NumeralPriority {}
-
-// We can't derive `Ord` because there is an `f64` inside
-// but it is actually an `Ord` because `NaN` is forbidden.
-// See `TryFrom` smart constructor.
-#[allow(clippy::derive_ord_xor_partial_ord)]
-impl Ord for NumeralPriority {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // Ok: NaN is forbidden
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl NumeralPriority {
-    pub fn zero() -> Self {
-        NumeralPriority(0.0)
-    }
-}
-
-impl TryFrom<f64> for NumeralPriority {
-    type Error = PriorityIsNaN;
-
-    fn try_from(f: f64) -> Result<Self, Self::Error> {
-        if f.is_nan() {
-            Err(PriorityIsNaN)
-        } else {
-            Ok(NumeralPriority(f))
-        }
-    }
-}
-
-impl From<NumeralPriority> for f64 {
-    fn from(n: NumeralPriority) -> Self {
-        n.0
-    }
-}
-
-impl fmt::Display for NumeralPriority {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
     /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
     /// provided.
     ///
-    /// Act as the value `MergePriority::Numeral(0.0)` with respect to ordering and equality
+    /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
     /// A numeral priority.
-    Numeral(NumeralPriority),
+    Numeral(Rational),
     /// The priority of values that override everything else and can't be overridden.
     Top,
 }
@@ -397,7 +346,7 @@ impl PartialEq for MergePriority {
             (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1 == p2,
             (MergePriority::Neutral, MergePriority::Numeral(p))
             | (MergePriority::Numeral(p), MergePriority::Neutral)
-                if p == &NumeralPriority::zero() =>
+                if p == &Rational::ZERO =>
             {
                 true
             }
@@ -422,8 +371,8 @@ impl Ord for MergePriority {
             (MergePriority::Top, _) | (_, MergePriority::Bottom) => Ordering::Greater,
 
             // Neutral and numeral.
-            (MergePriority::Neutral, MergePriority::Numeral(n)) => NumeralPriority::zero().cmp(n),
-            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&NumeralPriority::zero()),
+            (MergePriority::Neutral, MergePriority::Numeral(n)) => Rational::ZERO.cmp(n),
+            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Rational::ZERO),
         }
     }
 }
@@ -438,7 +387,7 @@ impl fmt::Display for MergePriority {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MergePriority::Bottom => write!(f, "default"),
-            MergePriority::Neutral => write!(f, "{}", NumeralPriority::zero()),
+            MergePriority::Neutral => write!(f, "{}", Rational::ZERO),
             MergePriority::Numeral(p) => write!(f, "{p}"),
             MergePriority::Top => write!(f, "force"),
         }
@@ -1964,6 +1913,10 @@ pub mod make {
         S: Into<OsString>,
     {
         Term::Import(path.into()).into()
+    }
+
+    pub fn integer(n: impl Into<i64>) -> RichTerm {
+        Term::Num(Rational::from(n.into())).into()
     }
 }
 

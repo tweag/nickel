@@ -7,9 +7,16 @@ use crate::term::{
     BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
+
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
+use malachite::{
+    Rational,
+    num::basic::traits::Zero,
+};
+
 use std::collections::HashMap;
+
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum StringRenderStyle {
@@ -178,7 +185,7 @@ where
             } else {
                 self.nil()
             })
-            .append(match metadata.priority {
+            .append(match &metadata.priority {
                 MergePriority::Bottom => self.line().append(self.text("| default")),
                 MergePriority::Neutral => self.nil(),
                 MergePriority::Numeral(p) => self
@@ -668,7 +675,7 @@ where
                     .append(op.pretty(allocator))
                     .append(rtl.to_owned().pretty(allocator))
             } else {
-                if (&BinaryOp::Sub(), &Num(0.0)) == (op, rtl.as_ref()) {
+                if (&BinaryOp::Sub(), &Num(Rational::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
                 } else if let crate::term::OpPos::Prefix = op.pos() {
                     op.pretty(allocator)

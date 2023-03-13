@@ -131,7 +131,7 @@ pub fn merge<C: Cache>(
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
-            if (n1 - n2).abs() < f64::EPSILON {
+            if n1 == n2 {
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Num(n1),
                     pos_op.into_inherited(),

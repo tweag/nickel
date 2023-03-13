@@ -9,6 +9,8 @@ use crate::term::array::Array;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
+use crate::term::Rational;
+
 use crate::{mk_app, mk_match};
 use assert_matches::assert_matches;
 use codespan::Files;
@@ -66,11 +68,11 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
 
 #[test]
 fn numbers() {
-    assert_eq!(parse_without_pos("22"), Num(22.0).into());
-    assert_eq!(parse_without_pos("22.0"), Num(22.0).into());
-    assert_eq!(parse_without_pos("22.22"), Num(22.22).into());
-    assert_eq!(parse_without_pos("(22)"), Num(22.0).into());
-    assert_eq!(parse_without_pos("((22))"), Num(22.0).into());
+    assert_eq!(parse_without_pos("22"), mk_term::integer(22));
+    assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
+    assert_eq!(parse_without_pos("22.22"), Num(Rational::try_from(22.22).unwrap()).into());
+    assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
+    assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));
 }
 
 #[test]
@@ -116,14 +118,14 @@ fn symbolic_strings() {
 fn plus() {
     assert_eq!(
         parse_without_pos("3 + 4"),
-        Op2(BinaryOp::Plus(), Num(3.0).into(), Num(4.).into()).into()
+        Op2(BinaryOp::Plus(), mk_term::integer(3), mk_term::integer(4)).into()
     );
     assert_eq!(
         parse_without_pos("(true + false) + 4"),
         Op2(
             BinaryOp::Plus(),
             Op2(BinaryOp::Plus(), Bool(true).into(), Bool(false).into()).into(),
-            Num(4.).into(),
+            mk_term::integer(4),
         )
         .into()
     );
@@ -139,7 +141,11 @@ fn booleans() {
 fn ite() {
     assert_eq!(
         parse_without_pos("if true then 3 else 4"),
-        mk_app!(mk_term::op1(UnaryOp::Ite(), Bool(true)), Num(3.0), Num(4.0))
+        mk_app!(
+            mk_term::op1(UnaryOp::Ite(), Bool(true)),
+            mk_term::integer(3),
+            mk_term::integer(4)
+        )
     );
 }
 
@@ -147,12 +153,16 @@ fn ite() {
 fn applications() {
     assert_eq!(
         parse_without_pos("1 true 2"),
-        mk_app!(Num(1.0), Bool(true), Num(2.0))
+        mk_app!(mk_term::integer(1), Bool(true), mk_term::integer(2))
     );
 
     assert_eq!(
         parse_without_pos("1 (2 3) 4"),
-        mk_app!(Num(1.0), mk_app!(Num(2.0), Num(3.0)), Num(4.0))
+        mk_app!(
+            mk_term::integer(1),
+            mk_app!(mk_term::integer(2), mk_term::integer(3)),
+            mk_term::integer(4)
+        )
     );
 }
 
@@ -218,16 +228,16 @@ fn enum_terms() {
             "match with raw tags",
             "match { `foo => true, `bar => false, _ => 456, } 123",
             mk_app!(
-                mk_match!(("foo", Bool(true)), ("bar", Bool(false)) ; Num(456.)),
-                Num(123.)
+                mk_match!(("foo", Bool(true)), ("bar", Bool(false)) ; mk_term::integer(456)),
+                mk_term::integer(123)
             ),
         ),
         (
             "match with string tags",
             "match { `\"one:two\" => true, `\"three four\" => false, _ => 13 } 1",
             mk_app!(
-                mk_match!(("one:two", Bool(true)), ("three four", Bool(false)) ; Num(13.)),
-                Num(1.)
+                mk_match!(("one:two", Bool(true)), ("three four", Bool(false)) ; mk_term::integer(13)),
+                mk_term::integer(1)
             ),
         ),
     ];
@@ -260,9 +270,9 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), Num(1.).into()),
-                    (Ident::from("b"), Num(2.).into()),
-                    (Ident::from("c"), Num(3.).into()),
+                    (Ident::from("a"), mk_term::integer(1)),
+                    (Ident::from("b"), mk_term::integer(2)),
+                    (Ident::from("c"), mk_term::integer(3)),
                 ]
                 .into_iter()
                 .collect()
@@ -278,18 +288,18 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), Num(1.).into()),
-                    (Ident::from("d"), Num(42.).into()),
+                    (Ident::from("a"), mk_term::integer(1)),
+                    (Ident::from("d"), mk_term::integer(42)),
                 ]
                 .into_iter()
                 .collect()
             ),
             vec![(
-                StrChunks(vec![StrChunk::expr(RichTerm::from(Num(123.)))]).into(),
+                StrChunks(vec![StrChunk::expr(RichTerm::from(mk_term::integer(123)))]).into(),
                 Field::from(mk_app!(
-                    mk_term::op1(UnaryOp::Ite(), Num(4.)),
-                    Num(5.),
-                    Num(6.)
+                    mk_term::op1(UnaryOp::Ite(), mk_term::integer(4)),
+                    mk_term::integer(5),
+                    mk_term::integer(6)
                 ))
             )],
             None,
@@ -302,8 +312,8 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), Num(1.).into()),
-                    (Ident::from("\"%}%"), Num(2.).into()),
+                    (Ident::from("a"), mk_term::integer(1)),
+                    (Ident::from("\"%}%"), mk_term::integer(2)),
                 ]
                 .into_iter()
                 .collect()
@@ -364,7 +374,7 @@ fn string_lexing() {
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Str(StringToken::Literal("1 + ")),
                 Token::Str(StringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::Str(StringToken::Literal(" + 2")),
                 Token::Normal(NormalToken::DoubleQuote),
@@ -379,7 +389,7 @@ fn string_lexing() {
                 Token::Str(StringToken::Interpolation),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Str(StringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Normal(NormalToken::RBrace),
@@ -417,7 +427,7 @@ fn string_lexing() {
                 })),
                 Token::MultiStr(MultiStringToken::Literal("text ")),
                 Token::MultiStr(MultiStringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(1.0)),
+                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::MultiStr(MultiStringToken::Literal(" etc.")),
                 Token::MultiStr(MultiStringToken::End),

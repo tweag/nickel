@@ -71,6 +71,11 @@ use crate::{
     label::Label,
 };
 
+use malachite::{
+    Rational,
+    num::basic::traits::Zero,
+};
+
 grammar<'input, 'err, 'wcard>(
     src_id: FileId,
     errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
@@ -141,8 +146,7 @@ SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
         ..Default::default()
     },
     "|" "priority" <SignedNumLiteral> => FieldMetadata {
-        // unwrap(): a literal can't be NaN
-        priority: MergePriority::Numeral(NumeralPriority::try_from(<>).unwrap()),
+        priority: MergePriority::Numeral(<>),
         ..Default::default()
     },
     "|" "optional" => FieldMetadata {
@@ -789,7 +793,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="1")]
     "-" <AsTerm<InfixExpr>> =>
-        UniTerm::from(mk_term::op2(BinaryOp::Sub(), Term::Num(0.0), <>)),
+        UniTerm::from(mk_term::op2(BinaryOp::Sub(), Term::Num(Rational::ZERO), <>)),
 
     #[precedence(level="2")] #[assoc(side="left")]
     InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
@@ -894,19 +898,20 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
- 	    Types::from(TypeF::Enum(ty))
+
+        Types::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Types>> "}" => {
         Types::from(TypeF::Dict(Box::new(t)))
     },
     "_" => {
         let id = *next_wildcard_id;
-        *next_wildcard_id += 1;        
+        *next_wildcard_id += 1;
         Types::from(TypeF::Wildcard(id))
     },
 }
 
-SignedNumLiteral: f64 = <sign: "-"?> <value: "num literal"> => {
+SignedNumLiteral: Rational = <sign: "-"?> <value: "num literal"> => {
     if sign.is_some() {
         -value
     } else {
@@ -923,7 +928,7 @@ extern {
         "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
-        "num literal" => Token::Normal(NormalToken::NumLiteral(<f64>)),
+        "num literal" => Token::Normal(NormalToken::NumLiteral(<Rational>)),
 
         "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),
         "`\"" => Token::Normal(NormalToken::StrEnumTagBegin),
