@@ -194,7 +194,7 @@
       "%
     = fun format x => %deserialize% format x,
 
-    to_string | string.Stringingable -> String
+    to_string | string.Stringable -> String
     | doc m%"
       Converts a stringable value to a string representation. Same as
       `string.from`.
