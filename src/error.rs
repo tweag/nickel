@@ -1018,6 +1018,7 @@ mod blame_error {
         label::{
             self,
             ty_path::{self, PathSpan},
+            Polarity,
         },
         position::TermPos,
         term::RichTerm,
@@ -1031,9 +1032,9 @@ mod blame_error {
         if ty_path::has_no_arrow(&l.path) {
             // An empty path or a path that contains only fields necessarily corresponds to
             // a positive blame
-            assert!(l.polarity);
+            assert_eq!(l.polarity, Polarity::Positive);
             "contract broken by a value"
-        } else if l.polarity {
+        } else if l.polarity == Polarity::Positive {
             "contract broken by a function"
         } else {
             "contract broken by the caller"
@@ -1204,7 +1205,7 @@ mod blame_error {
             // The original contract contains an arrow, the subcontract is the domain of an
             // arrow, and the polarity is positive. The function is to be blamed for calling an
             // argument on a value of the wrong type.
-            (Some(_), Some(ty_path::Elem::Domain)) if l.polarity => {
+            (Some(_), Some(ty_path::Elem::Domain)) if l.polarity == Polarity::Positive => {
                 (
                     String::from("expected type of an argument of an inner call"),
                     vec![
@@ -1221,7 +1222,7 @@ mod blame_error {
             // arrow, and the polarity is positive. The function is to be blamed for calling a
             // higher-order function argument on a function which returns a value of the wrong
             // type.
-            (Some(_), Some(ty_path::Elem::Codomain)) if l.polarity => {
+            (Some(_), Some(ty_path::Elem::Codomain)) if l.polarity == Polarity::Positive => {
                 (
                     String::from("expected return type of a sub-function passed as an argument of an inner call"),
                     vec![

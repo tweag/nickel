@@ -52,6 +52,7 @@
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
+    label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
     term::make as mk_term,
@@ -755,7 +756,7 @@ impl RecordRows {
     fn subcontract(
         &self,
         h: HashMap<Ident, (RichTerm, RichTerm)>,
-        pol: bool,
+        pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
@@ -844,7 +845,7 @@ impl Types {
     /// contract must then be applied using the `Assume` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
-        self.subcontract(HashMap::new(), true, &mut sy)
+        self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
     }
 
     /// Returns true if this type is a function type, false otherwise.
@@ -868,7 +869,7 @@ impl Types {
     fn subcontract(
         &self,
         mut h: HashMap<Ident, (RichTerm, RichTerm)>,
-        pol: bool,
+        pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::contract;
@@ -884,7 +885,7 @@ impl Types {
             TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
             TypeF::Arrow(ref s, ref t) => mk_app!(
                 contract::func(),
-                s.subcontract(h.clone(), !pol, sy)?,
+                s.subcontract(h.clone(), pol.flip(), sy)?,
                 t.subcontract(h, pol, sy)?
             ),
             TypeF::Flat(ref t) => t.clone(),
@@ -895,13 +896,13 @@ impl Types {
                 let inst_var = mk_app!(
                     contract::forall_var(),
                     Term::SealingKey(*sy),
-                    Term::Bool(pol)
+                    Term::from(pol)
                 );
 
                 let inst_tail = mk_app!(
                     contract::forall_tail(),
                     Term::SealingKey(*sy),
-                    Term::Bool(pol)
+                    Term::from(pol)
                 );
 
                 h.insert(*var, (inst_var, inst_tail));

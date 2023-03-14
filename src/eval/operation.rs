@@ -369,7 +369,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::ChangePolarity() => match_sharedterm! {t, with {
                     Term::Lbl(l) => {
                         let mut l = l;
-                        l.polarity = !l.polarity;
+                        l.polarity = l.polarity.flip();
                         Ok(Closure::atomic_closure(RichTerm::new(
                             Term::Lbl(l),
                             pos_op_inh,
@@ -387,7 +387,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::Pol() => {
                 if let Term::Lbl(l) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(l.polarity),
+                        l.polarity.into(),
                         pos_op_inh,
                     )))
                 } else {
