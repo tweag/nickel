@@ -34,8 +34,7 @@ use crate::{
 
 use malachite::{
     num::arithmetic::traits::Pow, num::basic::traits::One, num::basic::traits::Zero,
-    num::conversion::traits::IsInteger, num::conversion::traits::RoundingFrom,
-    rounding_modes::RoundingMode, Integer, Rational,
+    num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode, Integer, Rational,
 };
 
 use md5::digest::Digest;
@@ -1568,32 +1567,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Pow() => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        // If the exponent is smaller than zero, we first try to convert it to a
-                        // `i64`, to get an exact power.
-                        // If it is greater that zero, we try to convert it to `u64`.
+                        // Malachite's Rationals don't support exponents larger than `u64`. Anyway,
+                        // the result of such an operation would be huge and impractical to
+                        // store.
                         //
-                        // If the conversion fails, we fallback to convert both the exponent and
-                        // the value to `f64`, perform the exponentiation, and convert them back to
-                        // rationals.
-                        let pow_as_f64s = || {
+                        // We first try to convert the rational to an `i64`, in which case the
+                        // power is computed in an exact way.
+                        //
+                        // If the conversion fails, we fallback to converting both the exponent and
+                        // the value to an `f64`, perform the exponentiation, and convert the
+                        // result back to rationals, with a possible loss of precision.
+                        //
+                        // If one of the conversion fails, we error out.
+                        let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
+                            n1.pow(n2_as_i64)
+                        } else {
                             Rational::try_from_float_simplest(
                                 f64::try_from(n1).unwrap().powf(f64::try_from(n2).unwrap()),
                             )
                             .unwrap()
-                        };
-
-                        let result = if !n2.is_integer() {
-                            pow_as_f64s()
-                        } else if n2 < &Rational::ZERO {
-                            if let Ok(n2_as_i64) = i64::try_from(n2) {
-                                n1.pow(n2_as_i64)
-                            } else {
-                                pow_as_f64s()
-                            }
-                        } else if let Ok(n2_as_u64) = u64::try_from(n2) {
-                            n1.pow(n2_as_u64)
-                        } else {
-                            pow_as_f64s()
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
@@ -3614,14 +3606,10 @@ mod tests {
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
             VirtualMachine::new(DummyResolver {});
 
-        vm.stack.push_arg(
-            Closure::atomic_closure(mk_term::integer(5)),
-            TermPos::None,
-        );
-        vm.stack.push_arg(
-            Closure::atomic_closure(mk_term::integer(46)),
-            TermPos::None,
-        );
+        vm.stack
+            .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
+        vm.stack
+            .push_arg(Closure::atomic_closure(mk_term::integer(46)), TermPos::None);
 
         let mut clos = Closure {
             body: Term::Bool(true).into(),
