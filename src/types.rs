@@ -61,6 +61,7 @@ use crate::{
 use std::{
     collections::HashMap,
     fmt::{self, Display},
+    ops::Range,
 };
 
 /// A record row, mapping an identifier to a type. A record type is a dictionary mapping
@@ -838,6 +839,12 @@ impl Types {
     /// Creates a `Type` with the specified position
     pub fn with_pos(self, pos: TermPos) -> Types {
         Types { pos, ..self }
+    }
+
+    pub fn range(&self) -> Option<Range<usize>> {
+        self.pos
+            .into_opt()
+            .map(|span| span.start.to_usize()..span.end.to_usize())
     }
 
     /// Return the contract corresponding to a type, either as a function or a record. Said
