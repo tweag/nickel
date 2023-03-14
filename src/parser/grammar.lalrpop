@@ -267,7 +267,7 @@ Forall: Types =
 // also includes previous levels).
 Applicative: UniTerm = {
     "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
-    AsUniTerm<TypeArray>,
+    AsUniTerm<WithPos<TypeArray>>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
         UniTerm::from(mk_app!(t1, t2)),
     <op: UOp> <t: AsTerm<RecordOperand>> => UniTerm::from(mk_term::op1(op, t)),
