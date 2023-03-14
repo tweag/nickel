@@ -135,75 +135,39 @@ pub mod ty_path {
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
     {
-        // peek() returns a reference, and hence keeps a mutable borrow of `path_it` which forbids
-        // to call to next() in the same region. This is why we need to split the match in two
-        // different blocks.
-        let forall_offset = match (&ty.types, path_it.peek()) {
-            (_, None) => {
-                let repr = format!("{ty}");
-                return PathSpan {
-                    start: 0,
-                    end: repr.len(),
-                    last: None,
-                    last_arrow_elem: None,
-                };
-            }
-            (TypeF::Forall { .. }, Some(_)) => {
-                // The length of "forall" plus the final separating dot and whitespace ". "
-                let mut result = 8;
-                while let TypeF::Forall { var, body, .. } = &ty.types {
-                    // The length of the identifier plus the preceding whitespace
-                    result += var.to_string().len() + 1;
-                    ty = body.as_ref();
-                }
-
-                result
-            }
-            _ => 0,
-        };
-
         match (&ty.types, path_it.next()) {
             (TypeF::Arrow(dom, codom), Some(next)) => {
-                // The potential shift of the start position of the domain introduced by the couple
-                // of parentheses around the domain. Parentheses are added when printing a function
-                // type whose domain is itself a function.
-                // For example, `Arrow(Arrow(Num, Num), Num)` is rendered as "(Num -> Num) -> Num".
-                // In this case, the position of the sub-type "Num -> Num" starts at 1 instead of
-                // 0.
-                let paren_offset = match dom.types {
-                    TypeF::Arrow(_, _) => 1,
-                    _ => 0,
-                };
-
                 match next {
                     Elem::Domain => {
                         let range = dom.range().unwrap();
                         let start = range.start;
                         let end = range.end;
-                        let PathSpan { last, last_arrow_elem, ..} = span(path_it, dom.as_ref());
+                        let PathSpan {
+                            start, 
+                            end,
+                            last,
+                            last_arrow_elem,
+                        } = span(path_it, dom.as_ref());
                         PathSpan {
-                            start,//: dom_start + paren_offset + forall_offset,
-                            end,//: dom_end + paren_offset + forall_offset,
+                            start,
+                            end,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
                     }
                     Elem::Codomain => {
-                        let PathSpan {end: dom_end, ..} = span(std::iter::empty().peekable(), dom.as_ref());
-                        let PathSpan {last, last_arrow_elem, ..} = span(path_it, codom.as_ref());
                         let range = codom.range().unwrap();
                         let start = range.start;
                         let end = range.end;
-                        // At this point, paren_offset is:
-                        // (a) `1` if there is a couple of parentheses around the domain
-                        // (b) `0` otherwise
-                        // In case (a), we need to shift the beginning of the codomain by two,
-                        // to also take into account the closing ')' character, whence the `offset*2`.
-                        // The `4` corresponds to the arrow " -> ".
-                        //let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
+                        let PathSpan {
+                            start, 
+                            end,
+                            last,
+                            last_arrow_elem,
+                        } = span(path_it, codom.as_ref());
                         PathSpan {
-                            start,//: codom_start + offset,
-                            end,//: codom_end + offset,
+                            start,
+                            end,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
@@ -254,8 +218,6 @@ but this field doesn't exist in {}",
                 let range = ty.range().unwrap();
                 let start = range.start;
                 let end = range.end;
-                println!("here");
-                println!("{:?}", range);
                 let PathSpan {
                     last,
                     last_arrow_elem,
@@ -287,10 +249,12 @@ but this field doesn't exist in {}",
             }
             // The type and the path don't match, we stop here.
             _ => {
-                let repr = format!("{ty}");
+                let range = ty.range().unwrap();
+                let start = range.start;
+                let end = range.end;
                 PathSpan {
-                    start: 0,
-                    end: repr.len(),
+                    start,
+                    end,
                     last: None,
                     last_arrow_elem: None,
                 }
