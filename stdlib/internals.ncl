@@ -36,6 +36,8 @@
           # blaming polymorphic contracts.
           %seal% sealing_key (%chng_pol% label) value,
 
+  "$forall" = fun variable polarity contract label value => %assume% contract (%insert_type_variable% variable polarity label) value,
+
   "$enums" = fun case label value =>
       if %typeof% value == `Enum then
           %assume% case label value

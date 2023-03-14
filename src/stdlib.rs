@@ -118,6 +118,7 @@ pub mod contract {
     generate_accessor!(string);
     generate_accessor!(array);
     generate_accessor!(func);
+    generate_accessor!(forall);
     generate_accessor!(forall_var);
     generate_accessor!(fail);
     generate_accessor!(enums);

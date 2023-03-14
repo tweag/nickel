@@ -464,5 +464,16 @@ pub fn get_nop_type(
         ),
         // This should not happen, as MergeContract() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
+
+        // Morally: Ident -> Polarity -> Lbl -> Lbl
+        // Actual: Str -> Polarity -> Dyn -> Dyn
+        NAryOp::InsertTypeVar() => (
+            vec![
+                mk_uniftype::str(),
+                mk_uty_enum!("Positive", "Negative"),
+                mk_uniftype::dynamic(),
+            ],
+            mk_uniftype::dynamic(),
+        ),
     })
 }

@@ -16,7 +16,7 @@ use super::{
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::Ident,
-    label::ty_path,
+    label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     position::TermPos,
     serialize,
@@ -1364,7 +1364,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Seal() => {
                 if let Term::SealingKey(s) = &*t1 {
                     if let Term::Lbl(lbl) = &*t2 {
-                        eprintln!("seal: {s} {} {:?}", lbl.types, lbl.path);
+                        // eprintln!("seal: {s} {} {:?}", lbl.types, lbl.path);
                         Ok(Closure::atomic_closure(
                             mk_fun!("x", Term::Sealed(*s, mk_term::var("x"), lbl.clone()))
                                 .with_pos(pos_op_inh),
@@ -1687,7 +1687,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // const unwrapped_term
 
                     Ok(if let Term::Sealed(s2, t, label) = t2.into_owned() {
-                        eprintln!("unseal: {s1} {} {:?}", label.types, label.path);
+                        // eprintln!("unseal: {s1} {} {:?}", label.types, label.path);
                         if *s1 == s2 {
                             Closure {
                                 body: mk_fun!("-invld", t),
@@ -2556,7 +2556,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(record_data) => {
                             if let Some(contr_thunk) = contract_env.get(&Ident::new("contr")) {
                                 let Closure { body: contr, .. } = self.cache.get(contr_thunk.clone());
-                                eprintln!("dictionary_assume with {contr:?}");
+                                // eprintln!("dictionary_assume with {contr:?}");
                             }
                             let contract = contract_term.closurize(&mut self.cache, &mut env2, contract_env);
                             let record_contract = Term::Record(RecordData {
@@ -3111,6 +3111,96 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                     )),
                 }
+            }
+            NAryOp::InsertTypeVar() => {
+                let mut args = args.into_iter();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: ident,
+                                pos: ident_pos,
+                            },
+                        ..
+                    },
+                    pos1,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: polarity,
+                                pos: polarity_pos,
+                            },
+                        ..
+                    },
+                    pos2,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: label,
+                                pos: label_pos,
+                            },
+                        ..
+                    },
+                    pos3,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                let Term::Str(ident) = &*ident else {
+                    return Err(EvalError::TypeError(
+                        String::from("Str"),
+                        String::from("insert_type_variable, 1st argument"),
+                        ident_pos,
+                        RichTerm {
+                            term: ident,
+                            pos: pos1,
+                        }
+                    ));
+                };
+
+                let polarity = match &*polarity {
+                    Term::Enum(positive) if positive.label() == "Positive" => Polarity::Positive,
+                    Term::Enum(negative) if negative.label() == "Negative" => Polarity::Negative,
+                    _ => {
+                        return Err(EvalError::TypeError(
+                            String::from("Polarity"),
+                            String::from("insert_type_variable, 2nd argument"),
+                            polarity_pos,
+                            RichTerm {
+                                term: polarity,
+                                pos: pos2,
+                            },
+                        ))
+                    }
+                };
+
+                let Term::Lbl(label) = &*label else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("insert_type_variable, 3rd argument"),
+                        label_pos,
+                        RichTerm {
+                            term: label,
+                            pos: pos3,
+                        }
+                    ));
+                };
+
+                let new_label = label
+                    .clone()
+                    .insert_type_var(Ident::from(ident), TypeVarData { polarity });
+                eprintln!("Inserting {ident} giving {:?}", new_label.type_environment);
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(new_label),
+                    pos2.into_inherited(),
+                )))
             }
         }
     }

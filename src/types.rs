@@ -844,7 +844,7 @@ impl Types {
     /// HACK
     pub fn dual_contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
-        self.subcontract(HashMap::new(), false, &mut sy)
+        self.subcontract(HashMap::new(), Polarity::Negative, &mut sy)
     }
 
     /// Returns true if this type is a function type, false otherwise.
@@ -910,7 +910,12 @@ impl Types {
 
                 vars.insert(*var, contract);
                 *sy += 1;
-                body.subcontract(vars, pol, sy)?
+                mk_app!(
+                    contract::forall(),
+                    mk_term::string(var.label()),
+                    Term::from(pol),
+                    body.subcontract(h, pol, sy)?
+                )
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,

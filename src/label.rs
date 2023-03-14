@@ -2,7 +2,7 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
@@ -366,6 +366,13 @@ pub struct Label {
     pub polarity: Polarity,
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
+    /// TODO
+    pub type_environment: HashMap<Ident, TypeVarData>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeVarData {
+    pub polarity: Polarity,
 }
 
 /// A polarity. See [`Label`]
@@ -513,6 +520,11 @@ impl Label {
             self.diagnostics.push(ContractDiagnostic::new());
         }
     }
+
+    pub fn insert_type_var(mut self, var: Ident, data: TypeVarData) -> Self {
+        self.type_environment.insert(var, data);
+        self
+    }
 }
 
 impl Default for Label {
@@ -529,6 +541,7 @@ impl Default for Label {
             arg_idx: Default::default(),
             arg_pos: Default::default(),
             path: Default::default(),
+            type_environment: Default::default(),
         }
     }
 }
