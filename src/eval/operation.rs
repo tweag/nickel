@@ -1575,17 +1575,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // power is computed in an exact way.
                         //
                         // If the conversion fails, we fallback to converting both the exponent and
-                        // the value to an `f64`, perform the exponentiation, and convert the
-                        // result back to rationals, with a possible loss of precision.
-                        //
-                        // If one of the conversion fails, we error out.
+                        // the value to the nearest `f64`, perform the exponentiation, and convert
+                        // the result back to rationals, with a possible loss of precision.
                         let result = if let Ok(n2_as_i64) = i64::try_from(n2) {
                             n1.pow(n2_as_i64)
                         } else {
-                            Rational::try_from_float_simplest(
-                                f64::try_from(n1).unwrap().powf(f64::try_from(n2).unwrap()),
-                            )
-                            .unwrap()
+                            let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
+                                .powf(f64::rounding_from(n2, RoundingMode::Nearest));
+                            // The following conversion fails if the result is NaN or +/-infinity
+                            Rational::try_from_float_simplest(result_as_f64).map_err(|_|
+                              EvalError::Other(
+                                  format!("invalid arithmetic operation: {n1}^{n2} returned {result_as_f64}, but {result_as_f64} isn't representable in Nickel"),
+                                  pos_op
+                              )
+                            )?
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
