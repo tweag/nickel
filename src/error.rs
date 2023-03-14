@@ -1044,11 +1044,10 @@ mod blame_error {
     pub fn build_diagnostic_labels(
         evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
-        path_label: Label<FileId>,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Label<FileId>> {
-        let mut labels = vec![path_label];
+        let mut labels = vec![];
 
         if let Some(ref arg_pos) = blame_label.arg_pos.into_opt() {
             // In some cases, if the blame error is located in an argument or return value
@@ -1343,13 +1342,14 @@ is None but last_arrow_elem is Some"),
             .unwrap_or_default();
         let (path_label, notes_higher_order) = report_ty_path(&label, files);
 
-        let range = path_label.range.clone();
+        // Report contract error with the surrounding source program
+        // for more context.
         diagnostics.push(contract_error_with_context(
             &label,
             &path_label.message,
-            range,
+            path_label.range,
         ));
-        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
+        let labels = build_diagnostic_labels(evaluated_arg, &label, files, stdlib_ids);
 
         // If there are notes in the head contract diagnostic, we build the first
         // diagnostic using them and will put potential generated notes on higher-order
