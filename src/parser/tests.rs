@@ -6,10 +6,10 @@ use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::parser::error::ParseError as InternalParseError;
 use crate::term::array::Array;
+use crate::term::Rational;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
-use crate::term::Rational;
 
 use crate::{mk_app, mk_match};
 use assert_matches::assert_matches;
@@ -70,7 +70,10 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
 fn numbers() {
     assert_eq!(parse_without_pos("22"), mk_term::integer(22));
     assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
-    assert_eq!(parse_without_pos("22.22"), Num(Rational::try_from(22.22).unwrap()).into());
+    assert_eq!(
+        parse_without_pos("22.22"),
+        Num(Rational::try_from(22.22).unwrap()).into()
+    );
     assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
     assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));
 }

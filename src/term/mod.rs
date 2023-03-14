@@ -35,7 +35,7 @@ use crate::{
 };
 
 use codespan::FileId;
-pub use malachite::{Rational, Integer};
+pub use malachite::{Integer, Rational};
 
 use serde::{Deserialize, Serialize};
 

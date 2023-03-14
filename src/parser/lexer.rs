@@ -31,8 +31,8 @@
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use crate::parser::error::{LexicalError, ParseError};
 use logos::Logos;
-use std::ops::Range;
 use malachite::Rational;
+use std::ops::Range;
 
 fn symbolic_string_prefix_and_length<'input>(
     lex: &mut logos::Lexer<'input, NormalToken<'input>>,

@@ -8,15 +8,11 @@ use crate::term::{
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 
+use malachite::{num::basic::traits::Zero, Rational};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
-use malachite::{
-    Rational,
-    num::basic::traits::Zero,
-};
 
 use std::collections::HashMap;
-
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum StringRenderStyle {

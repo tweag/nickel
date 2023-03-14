@@ -5,8 +5,8 @@ use crate::error::ImportError;
 use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
-use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::term::Rational;
+use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun};
 use codespan::Files;
@@ -86,13 +86,23 @@ fn simple_ite() {
 
 #[test]
 fn simple_plus() {
-    let t = mk_term::op2(BinaryOp::Plus(), mk_term::integer(5), Term::Num(Rational::try_from(7.5).unwrap()));
-    assert_eq!(Ok(Term::Num(Rational::try_from(12.5).unwrap())), eval_no_import(t));
+    let t = mk_term::op2(
+        BinaryOp::Plus(),
+        mk_term::integer(5),
+        Term::Num(Rational::try_from(7.5).unwrap()),
+    );
+    assert_eq!(
+        Ok(Term::Num(Rational::try_from(12.5).unwrap())),
+        eval_no_import(t)
+    );
 }
 
 #[test]
 fn asking_for_various_types() {
-    let num = mk_term::op1(UnaryOp::Typeof(), Term::Num(Rational::try_from(45.3).unwrap()));
+    let num = mk_term::op1(
+        UnaryOp::Typeof(),
+        Term::Num(Rational::try_from(45.3).unwrap()),
+    );
     assert_eq!(Ok(Term::Enum("Number".into())), eval_no_import(num));
 
     let boolean = mk_term::op1(UnaryOp::Typeof(), Term::Bool(true));

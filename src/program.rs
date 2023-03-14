@@ -559,7 +559,10 @@ mod tests {
 
     #[test]
     fn evaluation_full() {
-        use crate::{mk_array, mk_record, term::{Term, make as mk_term}};
+        use crate::{
+            mk_array, mk_record,
+            term::{make as mk_term, Term},
+        };
 
         let t = eval_full("[(1 + 1), (\"a\" ++ \"b\"), ([ 1, [1 + 2] ])]").unwrap();
 

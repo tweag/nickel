@@ -1,12 +1,12 @@
 //! Serialization of an evaluated program to various data format.
-use malachite::{rounding_modes::RoundingMode, num::conversion::traits::RoundingFrom};
+use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use crate::{
     error::SerializationError,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        Rational, Integer, RichTerm, Term, TypeAnnotation,
+        Integer, Rational, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -80,8 +80,7 @@ where
 {
     if let Ok(n_as_integer) = Integer::try_from(n) {
         n_as_integer.serialize(serializer)
-    }
-    else {
+    } else {
         let n_as_f64 = f64::rounding_from(n, RoundingMode::Nearest);
         n_as_f64.serialize(serializer)
     }
