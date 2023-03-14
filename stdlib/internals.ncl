@@ -50,14 +50,14 @@
       # Returns the sub-record of `l` containing only those fields which are not
       # present in `r`. If `l` has a sealed polymorphic tail then it will be
       # preserved.
-      let field_diff = fun l r => array.fold_left
-        (fun acc f =>
-          if %has_field% f r then
+      let field_diff = fun left right => array.fold_left
+        (fun acc field =>
+          if %has_field% field right then
             acc
           else
-            %record_insert% f acc (l."%{f}"))
-        (%record_empty_with_tail% l)
-        (%fields% l)
+            %record_insert% field acc (left."%{field}"))
+        (%record_empty_with_tail% left)
+        (%fields% left)
       in
 
       let contracts_not_in_value = field_diff field_contracts value in
@@ -66,12 +66,12 @@
       if %length% missing_fields == 0 then
         let tail_fields = field_diff value field_contracts in
         let fields_with_contracts = array.fold_left
-          (fun acc f =>
-            if %has_field% f field_contracts then
-              let contract = field_contracts."%{f}" in
-              let label = %go_field% f label in
-              let val = value."%{f}" in
-              %record_insert% f acc (%assume% contract label val)
+          (fun acc field =>
+            if %has_field% field field_contracts then
+              let contract = field_contracts."%{field}" in
+              let label = %go_field% field label in
+              let val = value."%{field}" in
+              %record_insert% field acc (%assume% contract label val)
             else
               acc)
           {}
@@ -83,9 +83,9 @@
     else
       %blame% (%label_with_message% "not a record" label),
 
-  "$dyn_record" = fun contr label value =>
+  "$dyn_record" = fun contract label value =>
       if %typeof% value == `Record then
-          %dictionary_assume% (%go_dict% label) value contr
+          %dictionary_assume% (%go_dict% label) value contract
       else
           %blame% (%label_with_message% "not a record" label),
 
