@@ -13,9 +13,9 @@
 
   "$fail" = fun label _value => %blame% label,
 
-  "$array" = fun element-contract label value =>
+  "$array" = fun element_contract label value =>
     if %typeof% value == `Array then
-        %array_lazy_assume% (%go_array% label) value element-contract
+        %array_lazy_assume% (%go_array% label) value element_contract
     else
         %blame% label,
 
@@ -25,16 +25,16 @@
       else
           %blame% label,
 
-  "$forall_var" = fun sealing-key polarity label value =>
+  "$forall_var" = fun sealing_key polarity label value =>
       let current-polarity = %polarity% label in
       if polarity == current-polarity then
-          %unseal% sealing-key value (%blame% label)
+          %unseal% sealing_key value (%blame% label)
       else
           # Here, we know that this term should be sealed, but to give the right
           # blame for the contract, we have to change the polarity to match the
           # polarity of the `Forall`, because this is what's important for
           # blaming polymorphic contracts.
-          %seal% sealing-key (%chng_pol% label) value,
+          %seal% sealing_key (%chng_pol% label) value,
 
   "$enums" = fun case label value =>
       if %typeof% value == `Enum then
@@ -89,11 +89,11 @@
       else
           %blame% (%label_with_message% "not a record" label),
 
-  "$forall_tail" = fun sealing-key polarity acc label value =>
+  "$forall_tail" = fun sealing_key polarity acc label value =>
       if polarity == (%polarity% label) then
           if value == {} then
             let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
-            let tail = %record_unseal_tail% sealing-key tagged_label value in
+            let tail = %record_unseal_tail% sealing_key tagged_label value in
             acc & tail
           else
             %blame% (%label_with_message% "extra field `%{%head% (%fields% value)}`" label)
@@ -103,7 +103,7 @@
           # polymorphic contract (i.e. `pol`). Since we know in this branch
           # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
           # we continue.
-          %record_seal_tail% sealing-key (%chng_pol% label) acc value,
+          %record_seal_tail% sealing_key (%chng_pol% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
 
