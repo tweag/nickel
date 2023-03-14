@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
+    identifier::Ident,
     position::{RawSpan, TermPos},
     term::{RichTerm, Term},
     types::{TypeF, Types},
@@ -386,8 +387,8 @@ impl Polarity {
 impl From<Polarity> for Term {
     fn from(value: Polarity) -> Self {
         match value {
-            Polarity::Positive => Term::Bool(true),
-            Polarity::Negative => Term::Bool(false),
+            Polarity::Positive => Term::Enum(Ident::new("Positive")),
+            Polarity::Negative => Term::Enum(Ident::new("Negative")),
         }
     }
 }

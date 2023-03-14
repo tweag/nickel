@@ -41,8 +41,8 @@ pub fn get_uop_type(
 
             (mk_uniftype::dynamic(), res)
         }
-        // Dyn -> Bool
-        UnaryOp::Pol() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
+        // Dyn -> Polarity
+        UnaryOp::Pol() => (mk_uniftype::dynamic(), mk_uty_enum!("Positive", "Negative")),
         // forall rows. < | rows> -> <id | rows>
         UnaryOp::Embed(id) => {
             let row_var_id = state.table.fresh_erows_var_id();
