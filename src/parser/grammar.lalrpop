@@ -825,8 +825,10 @@ InfixExpr: UniTerm = {
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 
     #[precedence(level="11")] #[assoc(side="right")]
-    <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
+    <l: @L> <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        UniTerm::from(Types { types:TypeF::Arrow(Box::new(s), Box::new(t)), pos })
+    },
 }
 
 BOpPre: BinaryOp = {
