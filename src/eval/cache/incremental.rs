@@ -1,5 +1,6 @@
-/// A [Cache] implementation with incremental computation features.
+use std::collections::{HashMap, HashSet};
 
+//! A [Cache] implementation with incremental computation features.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,
@@ -15,6 +16,12 @@ pub enum IncNodeState {
     Evaluated,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct DependencyLink {
+    id: Ident,
+    idx: CacheIndex,
+}
+
 /// A node in the dependent computation graph stored in [IncCache].
 #[derive(Debug, Clone)]
 pub struct IncNode {
@@ -26,8 +33,10 @@ pub struct IncNode {
     bty: BindingType,
     // The state of the node.
     state: IncNodeState,
+    // Forward links to dependencies.
+    fwdlinks: Vec<DependencyLink>,
     // Backlinks to nodes depending on this node.
-    backlinks: Vec<CacheIndex>,
+    backlinks: Vec<DependencyLink>,
 }
 
 impl IncNode {
@@ -38,6 +47,7 @@ impl IncNode {
             kind,
             bty,
             state: IncNodeState::default(),
+            fwdlinks: Vec::new(),
             backlinks: Vec::new(),
         }
     }
@@ -86,6 +96,93 @@ impl IncCache {
             }
             _ => node.clone(),
         }
+    }
+
+    fn update_backlinks(&mut self, idx: CacheIndex) {
+        let node = self.store.get(idx).unwrap().clone();
+        for i in node.fwdlinks {
+            let n = self.store.get_mut(i.idx).unwrap();
+            n.backlinks.push(DependencyLink { id: i.id, idx: idx });
+        }
+    }
+
+    fn propagate_dirty(&mut self, idx: CacheIndex) {
+        let mut node = self.store.get_mut(idx).unwrap();
+        node.cached = None;
+        node.state = IncNodeState::Suspended;
+
+        let mut visited = HashSet::new();
+        let mut stack = node.backlinks.clone();
+
+        visited.insert(idx);
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i.idx);
+            let mut current_node = self.store.get_mut(i.idx).unwrap();
+            current_node.cached = None;
+            current_node.state = IncNodeState::Suspended;
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .filter(|x| !visited.contains(&x.idx)),
+            )
+        }
+    }
+
+    /* Do we need this when we can revert in place?
+
+    fn propagate_revert(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
+        let mut nodes_reverted = HashMap::new();
+
+        let mut visited = HashSet::new();
+        let mut stack = vec![idx];
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i);
+
+            let idx_reverted = self.revert(&idx);
+            //FIXME: use the actual node's id
+            let node_id = Ident::from("TODO!");
+            nodes_reverted.insert(node_id, idx_reverted);
+
+            let current_node = self.store.get(i).unwrap();
+
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .map(|x| x.idx)
+                    .filter(|x| !visited.contains(x)),
+            )
+        }
+
+        nodes_reverted
+    } */
+
+    fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex> {
+        let mut new_indices = HashMap::new();
+
+        for i in v.iter() {
+            let current_node = self.store.get(*i).unwrap().clone();
+            new_indices.insert(*i, self.add_node(current_node));
+        }
+
+        for i in new_indices.values() {
+            let current_node = self.store.get_mut(*i).unwrap();
+
+            for dep in current_node.backlinks.iter_mut() {
+                dep.idx = *new_indices.get(i).unwrap();
+            }
+
+            for dep in current_node.fwdlinks.iter_mut() {
+                dep.idx = *new_indices.get(i).unwrap();
+            }
+        }
+
+        new_indices
     }
 }
 
@@ -204,8 +301,11 @@ impl Cache for IncCache {
             kind: node.kind,
             bty: node.bty.clone(),
             state: node.state,
+            fwdlinks: node.fwdlinks.clone(),
             backlinks: node.backlinks.clone(),
         };
+
+        // TODO: Should this push the dependencies?
 
         self.add_node(new_node)
     }
@@ -224,13 +324,19 @@ impl Cache for IncCache {
             BindingType::Revertible(ref deps) => match deps {
                 FieldDeps::Unknown => new_cached.env.extend(rec_env.iter().cloned()),
                 FieldDeps::Known(deps) if deps.is_empty() => (),
-                FieldDeps::Known(deps) => new_cached
-                    .env
-                    .extend(rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned()),
+                FieldDeps::Known(deps) => {
+                    let deps = rec_env.iter().filter(|(id, _)| deps.contains(id)).cloned();
+                    node.fwdlinks = deps
+                        .clone()
+                        .map(|(id, idx)| DependencyLink { id, idx })
+                        .collect();
+                    new_cached.env.extend(deps);
+                }
             },
         }
 
         node.cached = Some(new_cached);
+        self.update_backlinks(*idx);
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(

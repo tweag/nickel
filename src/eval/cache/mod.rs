@@ -11,15 +11,15 @@ use crate::{
 };
 
 pub mod lazy;
-//pub mod incremental;
+// pub mod incremental;
 
 /// An index to a specific item stored in the cache
 pub type CacheIndex = lazy::Thunk;
-//pub type CacheIndex = usize;
+// pub type CacheIndex = usize;
 
 /// The current Cache implementation
 pub type CacheImpl = lazy::CBNCache;
-//pub type CacheImpl = incremental::IncCache;
+// pub type CacheImpl = incremental::IncCache;
 
 /// A black-holed node was accessed, which would lead to infinite recursion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
