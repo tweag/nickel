@@ -7,7 +7,7 @@ use std::rc::Rc;
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
     position::{RawSpan, TermPos},
-    term::RichTerm,
+    term::{RichTerm, Term},
     types::{TypeF, Types},
 };
 
@@ -362,9 +362,34 @@ pub struct Label {
     pub arg_pos: TermPos,
     /// The polarity, used for higher-order contracts, that specifies if the current contract is
     /// on the environment (ex, the argument of a function) or on the term.
-    pub polarity: bool,
+    pub polarity: Polarity,
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
+}
+
+/// A polarity. See [`Label`]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Polarity {
+    Positive,
+    Negative,
+}
+
+impl Polarity {
+    pub fn flip(self) -> Self {
+        match self {
+            Polarity::Positive => Polarity::Negative,
+            Polarity::Negative => Polarity::Positive,
+        }
+    }
+}
+
+impl From<Polarity> for Term {
+    fn from(value: Polarity) -> Self {
+        match value {
+            Polarity::Positive => Term::Bool(true),
+            Polarity::Negative => Term::Bool(false),
+        }
+    }
 }
 
 /// Custom reporting diagnostic that can be set by user-code through the `label` API. Used to
@@ -419,7 +444,7 @@ impl Label {
                 start: 0.into(),
                 end: 1.into(),
             },
-            polarity: true,
+            polarity: Polarity::Positive,
             ..Default::default()
         }
     }
@@ -498,7 +523,7 @@ impl Default for Label {
                 start: 0.into(),
                 end: 1.into(),
             },
-            polarity: true,
+            polarity: Polarity::Positive,
             diagnostics: Default::default(),
             arg_idx: Default::default(),
             arg_pos: Default::default(),
