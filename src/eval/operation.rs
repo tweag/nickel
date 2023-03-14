@@ -27,15 +27,15 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term, number_approx_to_string,
         record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
-        StrChunk, Term, UnaryOp,
+        BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
+        SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
 
 use malachite::{
     num::arithmetic::traits::Pow, num::basic::traits::One, num::basic::traits::Zero,
-    num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode, Integer, Rational,
+    num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode, Integer,
 };
 
 use md5::digest::Digest;
@@ -618,7 +618,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 };
 
-                if n < &Rational::ZERO {
+                if n < &Number::ZERO {
                     return Err(EvalError::Other(
                         format!(
                             "generate: expected the 1st argument to be a positive number, got {n}"
@@ -1191,7 +1191,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
                             ("matched", Term::Str(String::new())),
-                            ("index", Term::Num(Rational::from(-1))),
+                            ("index", Term::Num(Number::from(-1))),
                             (
                                 "groups",
                                 Term::Array(Array::default(), ArrayAttrs::default())
@@ -1498,7 +1498,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::Div() => {
                 if let Term::Num(ref n1) = *t1 {
                     if let Term::Num(ref n2) = *t2 {
-                        if n2 == &Rational::ZERO {
+                        if n2 == &Number::ZERO {
                             Err(EvalError::Other(String::from("division by zero"), pos_op))
                         } else {
                             Ok(Closure::atomic_closure(RichTerm::new(
@@ -1554,12 +1554,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 };
 
-                if n2 == &Rational::ZERO {
+                if n2 == &Number::ZERO {
                     return Err(EvalError::Other(String::from("division by zero (%)"), pos2));
                 }
 
-                // This is the equivalent of `truncate()` for `Rational`
-                let quotient = Rational::from(Integer::rounding_from(n1 / n2, RoundingMode::Down));
+                // This is the equivalent of `truncate()` for `Number`
+                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down));
 
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Num(n1 - quotient * n2),
@@ -1585,7 +1585,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
                                 .powf(f64::rounding_from(n2, RoundingMode::Nearest));
                             // The following conversion fails if the result is NaN or +/-infinity
-                            Rational::try_from_float_simplest(result_as_f64).map_err(|_|
+                            Number::try_from_float_simplest(result_as_f64).map_err(|_|
                               EvalError::Other(
                                   format!("invalid arithmetic operation: {n1}^{n2} returned {result_as_f64}, but {result_as_f64} isn't representable in Nickel"),
                                   pos_op
@@ -2889,7 +2889,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
 
                         if end <= start || !s.is_char_boundary(end_as_usize) {
-                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start + Rational::ONE, s.len(), end), pos_op));
+                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start + Number::ONE, s.len(), end), pos_op));
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(

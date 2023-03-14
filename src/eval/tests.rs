@@ -5,7 +5,7 @@ use crate::error::ImportError;
 use crate::label::Label;
 use crate::parser::{grammar, lexer};
 use crate::term::make as mk_term;
-use crate::term::Rational;
+use crate::term::Number;
 use crate::term::{BinaryOp, StrChunk, UnaryOp};
 use crate::transform::import_resolution::strict::resolve_imports;
 use crate::{mk_app, mk_fun};
@@ -30,7 +30,7 @@ fn parse(s: &str) -> Option<RichTerm> {
 
 #[test]
 fn identity_over_values() {
-    let num = Term::Num(Rational::try_from(45.3).unwrap());
+    let num = Term::Num(Number::try_from(45.3).unwrap());
     assert_eq!(Ok(num.clone()), eval_no_import(num.into()));
 
     let boolean = Term::Bool(true);
@@ -69,19 +69,19 @@ fn only_fun_are_applicable() {
 #[test]
 fn simple_app() {
     let t = mk_app!(mk_term::id(), mk_term::integer(5));
-    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
+    assert_eq!(Ok(Term::Num(Number::from(5))), eval_no_import(t));
 }
 
 #[test]
 fn simple_let() {
     let t = mk_term::let_in("x", mk_term::integer(5), mk_term::var("x"));
-    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
+    assert_eq!(Ok(Term::Num(Number::from(5))), eval_no_import(t));
 }
 
 #[test]
 fn simple_ite() {
     let t = mk_term::if_then_else(Term::Bool(true), mk_term::integer(5), Term::Bool(false));
-    assert_eq!(Ok(Term::Num(Rational::from(5))), eval_no_import(t));
+    assert_eq!(Ok(Term::Num(Number::from(5))), eval_no_import(t));
 }
 
 #[test]
@@ -89,10 +89,10 @@ fn simple_plus() {
     let t = mk_term::op2(
         BinaryOp::Plus(),
         mk_term::integer(5),
-        Term::Num(Rational::try_from(7.5).unwrap()),
+        Term::Num(Number::try_from(7.5).unwrap()),
     );
     assert_eq!(
-        Ok(Term::Num(Rational::try_from(12.5).unwrap())),
+        Ok(Term::Num(Number::try_from(12.5).unwrap())),
         eval_no_import(t)
     );
 }
@@ -101,7 +101,7 @@ fn simple_plus() {
 fn asking_for_various_types() {
     let num = mk_term::op1(
         UnaryOp::Typeof(),
-        Term::Num(Rational::try_from(45.3).unwrap()),
+        Term::Num(Number::try_from(45.3).unwrap()),
     );
     assert_eq!(Ok(Term::Enum("Number".into())), eval_no_import(num));
 

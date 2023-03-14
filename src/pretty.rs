@@ -5,11 +5,11 @@ use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     number_approx_to_string,
     record::{Field, FieldMetadata},
-    BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+    BinaryOp, MergePriority, Number, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 
-use malachite::{num::basic::traits::Zero, Rational};
+use malachite::num::basic::traits::Zero;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 
@@ -672,7 +672,7 @@ where
                     .append(op.pretty(allocator))
                     .append(rtl.to_owned().pretty(allocator))
             } else {
-                if (&BinaryOp::Sub(), &Num(Rational::ZERO)) == (op, rtl.as_ref()) {
+                if (&BinaryOp::Sub(), &Num(Number::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
                 } else if let crate::term::OpPos::Prefix = op.pos() {
                     op.pretty(allocator)

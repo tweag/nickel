@@ -33,8 +33,8 @@ use super::{
     error::{LexicalError, ParseError},
     utils::parse_rational,
 };
+use crate::term::Number;
 use logos::Logos;
-use malachite::Rational;
 use std::ops::Range;
 
 fn symbolic_string_prefix_and_length<'input>(
@@ -72,7 +72,7 @@ pub enum NormalToken<'input> {
     // unwrap(): try_from_float_simplest only fails on NaN or infinity, but those values aren't
     // representable as a number literal.
     #[regex("[0-9]*\\.?[0-9]+", |lex| parse_rational(lex.slice()))]
-    NumLiteral(Rational),
+    NumLiteral(Number),
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.

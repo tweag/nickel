@@ -6,7 +6,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        Rational, RichTerm, Term, TypeAnnotation,
+        Number, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -79,7 +79,7 @@ impl FromStr for ExportFormat {
 /// If the number doesn't fit into an `i64` or `u64`, we approximate it by the nearest `f64` and
 /// serialize this value. This may incur a loss of precision, but this is expected: we can't
 /// represent something like e.g. `1/3` exactly in JSON anyway.
-pub fn serialize_num<S>(n: &Rational, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize_num<S>(n: &Number, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -97,12 +97,12 @@ where
 }
 
 /// Deserialize for an Array. Required to set the default attributes.
-pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Rational, D::Error>
+pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Number, D::Error>
 where
     D: Deserializer<'de>,
 {
     let as_f64 = f64::deserialize(deserializer)?;
-    Rational::try_from_float_simplest(as_f64).map_err(|_| {
+    Number::try_from_float_simplest(as_f64).map_err(|_| {
         serde::de::Error::custom(format!(
             "couldn't conver {as_f64} to a Nickel number: Nickel doesn't support NaN nor infinity"
         ))

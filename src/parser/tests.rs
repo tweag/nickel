@@ -6,7 +6,7 @@ use crate::error::ParseError;
 use crate::identifier::Ident;
 use crate::parser::error::ParseError as InternalParseError;
 use crate::term::array::Array;
-use crate::term::Rational;
+use crate::term::Number;
 use crate::term::Term::*;
 use crate::term::{make as mk_term, Term};
 use crate::term::{record, BinaryOp, RichTerm, StrChunk, UnaryOp};
@@ -72,7 +72,7 @@ fn numbers() {
     assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
     assert_eq!(
         parse_without_pos("22.22"),
-        Num(Rational::try_from_float_simplest(22.22).unwrap()).into()
+        Num(Number::try_from_float_simplest(22.22).unwrap()).into()
     );
     assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
     assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));
@@ -377,7 +377,7 @@ fn string_lexing() {
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Str(StringToken::Literal("1 + ")),
                 Token::Str(StringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
+                Token::Normal(NormalToken::NumLiteral(Number::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::Str(StringToken::Literal(" + 2")),
                 Token::Normal(NormalToken::DoubleQuote),
@@ -392,7 +392,7 @@ fn string_lexing() {
                 Token::Str(StringToken::Interpolation),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Str(StringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
+                Token::Normal(NormalToken::NumLiteral(Number::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Normal(NormalToken::RBrace),
@@ -430,7 +430,7 @@ fn string_lexing() {
                 })),
                 Token::MultiStr(MultiStringToken::Literal("text ")),
                 Token::MultiStr(MultiStringToken::Interpolation),
-                Token::Normal(NormalToken::NumLiteral(Rational::from(1))),
+                Token::Normal(NormalToken::NumLiteral(Number::from(1))),
                 Token::Normal(NormalToken::RBrace),
                 Token::MultiStr(MultiStringToken::Literal(" etc.")),
                 Token::MultiStr(MultiStringToken::End),
