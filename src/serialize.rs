@@ -96,7 +96,7 @@ where
     f64::rounding_from(n, RoundingMode::Nearest).serialize(serializer)
 }
 
-/// Deserialize for an Array. Required to set the default attributes.
+/// Deserialize a Nickel number. As for parsing, we convert the number from a 64bits float
 pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Number, D::Error>
 where
     D: Deserializer<'de>,
@@ -104,7 +104,7 @@ where
     let as_f64 = f64::deserialize(deserializer)?;
     Number::try_from_float_simplest(as_f64).map_err(|_| {
         serde::de::Error::custom(format!(
-            "couldn't conver {as_f64} to a Nickel number: Nickel doesn't support NaN nor infinity"
+            "couldn't convert {as_f64} to a Nickel number: Nickel doesn't support NaN nor infinity"
         ))
     })
 }

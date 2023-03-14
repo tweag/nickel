@@ -18,7 +18,7 @@ use crate::{
     identifier::Ident,
     label::ty_path,
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
-    parser::utils::parse_rational,
+    parser::utils::parse_number,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
@@ -1066,7 +1066,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
-                    let n = parse_rational(s).map_err(|_| {
+                    let n = parse_number(s).map_err(|_| {
                         EvalError::Other(format!("num_from_string: invalid num literal `{s}`"), pos)
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(

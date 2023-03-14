@@ -25,18 +25,12 @@ use crate::{
     types::{TypeF, Types},
 };
 
-pub enum ParseRationalError {
-    ParseFloatError(String),
-    RationalConversionError,
-}
+use malachite::num::conversion::traits::FromSciString;
 
-pub fn parse_rational(slice: &str) -> Result<Rational, ParseRationalError> {
-    let as_f64 = slice
-        .parse::<f64>()
-        .map_err(|err| ParseRationalError::ParseFloatError(err.to_string()))?;
+pub struct ParseNumberError;
 
-    Rational::try_from_float_simplest(as_f64)
-        .map_err(|_| ParseRationalError::RationalConversionError)
+pub fn parse_number(slice: &str) -> Result<Rational, ParseNumberError> {
+    Rational::from_sci_string(slice).ok_or(ParseNumberError)
 }
 
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string

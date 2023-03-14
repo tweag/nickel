@@ -31,7 +31,7 @@
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use super::{
     error::{LexicalError, ParseError},
-    utils::parse_rational,
+    utils::parse_number,
 };
 use crate::term::Number;
 use logos::Logos;
@@ -69,9 +69,7 @@ pub enum NormalToken<'input> {
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
-    // unwrap(): try_from_float_simplest only fails on NaN or infinity, but those values aren't
-    // representable as a number literal.
-    #[regex("[0-9]*\\.?[0-9]+", |lex| parse_rational(lex.slice()))]
+    #[regex("[0-9]*\\.?[0-9]+", |lex| parse_number(lex.slice()))]
     NumLiteral(Number),
 
     // **IMPORTANT**
