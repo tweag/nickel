@@ -177,27 +177,33 @@ pub mod ty_path {
 
                 match next {
                     Elem::Domain => {
-                        let PathSpan { start: dom_start, end: dom_end, last, last_arrow_elem} = span(path_it, dom.as_ref());
+                        let range = dom.range().unwrap();
+                        let start = range.start;
+                        let end = range.end;
+                        let PathSpan { last, last_arrow_elem, ..} = span(path_it, dom.as_ref());
                         PathSpan {
-                            start: dom_start + paren_offset + forall_offset,
-                            end: dom_end + paren_offset + forall_offset,
+                            start,//: dom_start + paren_offset + forall_offset,
+                            end,//: dom_end + paren_offset + forall_offset,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
                     }
                     Elem::Codomain => {
                         let PathSpan {end: dom_end, ..} = span(std::iter::empty().peekable(), dom.as_ref());
-                        let PathSpan {start: codom_start, end: codom_end, last, last_arrow_elem} = span(path_it, codom.as_ref());
+                        let PathSpan {last, last_arrow_elem, ..} = span(path_it, codom.as_ref());
+                        let range = codom.range().unwrap();
+                        let start = range.start;
+                        let end = range.end;
                         // At this point, paren_offset is:
                         // (a) `1` if there is a couple of parentheses around the domain
                         // (b) `0` otherwise
                         // In case (a), we need to shift the beginning of the codomain by two,
                         // to also take into account the closing ')' character, whence the `offset*2`.
                         // The `4` corresponds to the arrow " -> ".
-                        let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
+                        //let offset = (paren_offset * 2) + 4 + dom_end + forall_offset;
                         PathSpan {
-                            start: codom_start + offset,
-                            end: codom_end + offset,
+                            start,//: codom_start + offset,
+                            end,//: codom_end + offset,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
@@ -206,40 +212,28 @@ pub mod ty_path {
                 }
             }
             (TypeF::Record(rows), next @ Some(Elem::Field(ident))) => {
-                // initial "{"
-                let mut start_offset = 1;
-                // middle ": " between the field name and the type
-                let id_offset = 2;
-                // The ", " between two fields
-                let end_offset = 2;
-
                 for row_item in rows.iter() {
                     match row_item {
                         RecordRowsIteratorItem::Row(RecordRowF { id, types: ty })
                             if id == *ident =>
                         {
+                            let range = ty.range().unwrap();
+                            let start = range.start;
+                            let end = range.end;
                             let PathSpan {
-                                start: sub_start,
-                                end: sub_end,
                                 last,
                                 last_arrow_elem,
+                                ..
                             } = span(path_it, ty);
-                            let full_offset = start_offset + format!("{id}").len() + id_offset;
 
                             return PathSpan {
-                                start: full_offset + sub_start,
-                                end: full_offset + sub_end,
+                                start,
+                                end,
                                 last: last.or_else(|| next.copied()),
                                 last_arrow_elem,
                             };
                         }
-                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty }) => {
-                            // The last +1 is for the
-                            start_offset += format!("{id}").len()
-                                + id_offset
-                                + format!("{ty}").len()
-                                + end_offset;
-                        }
+                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty }) => (),
                         RecordRowsIteratorItem::TailDyn | RecordRowsIteratorItem::TailVar(_) => (),
                     }
                 }
@@ -257,37 +251,36 @@ but this field doesn't exist in {}",
                 panic!("span(): unexpected blame of a dyn contract inside an array")
             }
             (TypeF::Array(ty), next @ Some(Elem::Array)) => {
-                // initial "Array "
-                let start_offset = 6;
-                let paren_offset = usize::from(!ty.fmt_is_atom());
-
+                let range = ty.range().unwrap();
+                let start = range.start;
+                let end = range.end;
+                println!("here");
+                println!("{:?}", range);
                 let PathSpan {
-                    start: sub_start,
-                    end: sub_end,
                     last,
                     last_arrow_elem,
+                    ..
                 } = span(path_it, ty);
                 PathSpan {
-                    start: start_offset + paren_offset + sub_start,
-                    end: start_offset + paren_offset + sub_end,
+                    start,
+                    end,
                     last: last.or_else(|| next.copied()),
                     last_arrow_elem,
                 }
             }
             (TypeF::Dict(ty), next @ Some(Elem::Dict)) => {
-                // initial "{_: "
-                let start_offset = 4;
-                let paren_offset = usize::from(!ty.fmt_is_atom());
+                let range = ty.range().unwrap();
+                let start = range.start;
+                let end = range.end;
 
                 let PathSpan {
-                    start: sub_start,
-                    end: sub_end,
                     last,
                     last_arrow_elem,
+                    ..
                 } = span(path_it, ty);
                 PathSpan {
-                    start: start_offset + paren_offset + sub_start,
-                    end: start_offset + paren_offset + sub_end,
+                    start, //: start_offset + paren_offset + sub_start,
+                    end,   //: start_offset + paren_offset + sub_end,
                     last: last.or_else(|| next.copied()),
                     last_arrow_elem,
                 }
