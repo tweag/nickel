@@ -130,7 +130,7 @@ pub mod ty_path {
     /// Here, the type path will contain an `Array` (added by the builtin implementation of the
     /// `Array` contract), but the original type will be `Foo`, which isn't of the form `Array _`.
     /// Thus we can't underline the subtype `_`, and stops at the whole `Array T`.
-    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> PathSpan
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, ty: &Types) -> PathSpan
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
@@ -140,8 +140,6 @@ pub mod ty_path {
                 match next {
                     Elem::Domain => {
                         let range = dom.range().unwrap();
-                        let start = range.start;
-                        let end = range.end;
                         let PathSpan {
                             start, 
                             end,
@@ -157,8 +155,6 @@ pub mod ty_path {
                     }
                     Elem::Codomain => {
                         let range = codom.range().unwrap();
-                        let start = range.start;
-                        let end = range.end;
                         let PathSpan {
                             start, 
                             end,
@@ -197,7 +193,7 @@ pub mod ty_path {
                                 last_arrow_elem,
                             };
                         }
-                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty }) => (),
+                        RecordRowsIteratorItem::Row(RecordRowF { .. }) => (),
                         RecordRowsIteratorItem::TailDyn | RecordRowsIteratorItem::TailVar(_) => (),
                     }
                 }
@@ -241,8 +237,8 @@ but this field doesn't exist in {}",
                     ..
                 } = span(path_it, ty);
                 PathSpan {
-                    start, //: start_offset + paren_offset + sub_start,
-                    end,   //: start_offset + paren_offset + sub_end,
+                    start,
+                    end,
                     last: last.or_else(|| next.copied()),
                     last_arrow_elem,
                 }
