@@ -6,14 +6,16 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        Integer, Rational, RichTerm, Term, TypeAnnotation,
+        Rational, RichTerm, Term, TypeAnnotation,
     },
 };
 
 use serde::{
     de::{Deserialize, Deserializer},
-    ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer},
+    ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
 };
+
+use malachite::num::conversion::traits::IsInteger;
 
 use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
 
@@ -67,23 +69,46 @@ impl FromStr for ExportFormat {
     }
 }
 
-/// Implicitly convert numbers to integers when possible, and serialize an exact representation.
+/// Implicitly convert numbers to primitive integers when possible, and serialize an exact
+/// representation. Note that `u128` and `i128` aren't supported for common configuration formats
+/// in serde, so we rather pick `i64` and `u64`, even if the former couple theoretically allows for
+/// a wider range of rationals to be exactly represented. We don't expect values to be that large
+/// in practice anyway: using arbitrary precision rationals is directed toward not introducing rounding errors
+/// when performing simple arithmetic operations over decimals numbers, mostly.
 ///
-/// If the number isn't an integer, we approximate it by the nearest `f64` and serialize this
-/// value. This may incur a loss of precision, but this is expected: we can't represent e.g. `1/3`
-/// exactly in JSON anyway. What arbitrary precision rationals are supposed to fix over floats are
-/// behaviors like `0.1 +
-/// 0.2 != 0.3` happening within the evaluation of a Nickel program.
+/// If the number doesn't fit into an `i64` or `u64`, we approximate it by the nearest `f64` and
+/// serialize this value. This may incur a loss of precision, but this is expected: we can't
+/// represent something like e.g. `1/3` exactly in JSON anyway.
 pub fn serialize_num<S>(n: &Rational, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    if let Ok(n_as_integer) = Integer::try_from(n) {
-        n_as_integer.serialize(serializer)
-    } else {
-        let n_as_f64 = f64::rounding_from(n, RoundingMode::Nearest);
-        n_as_f64.serialize(serializer)
+    if n.is_integer() {
+        if *n < 0 {
+            if let Ok(n_as_integer) = i64::try_from(n) {
+                return n_as_integer.serialize(serializer);
+            }
+        } else {
+            if let Ok(n_as_uinteger) = u64::try_from(n) {
+                return n_as_uinteger.serialize(serializer);
+            }
+        }
     }
+
+    f64::rounding_from(n, RoundingMode::Nearest).serialize(serializer)
+}
+
+/// Deserialize for an Array. Required to set the default attributes.
+pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Rational, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let as_f64 = f64::deserialize(deserializer)?;
+    Rational::try_from_float_simplest(as_f64).map_err(|_| {
+        serde::de::Error::custom(format!(
+            "couldn't conver {as_f64} to a Nickel number: Nickel doesn't support NaN nor infinity"
+        ))
+    })
 }
 
 /// Serializer for annotated values.
@@ -108,7 +133,7 @@ where
         .iter_serializable()
         .collect::<Result<Vec<_>, _>>()
         .map_err(|missing_def_err| {
-            Error::custom(format!(
+            serde::ser::Error::custom(format!(
                 "missing field definition for `{}`",
                 missing_def_err.id
             ))

@@ -1,5 +1,6 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
+use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 use std::collections::HashMap;
 use std::iter::ExactSizeIterator;
 
@@ -13,8 +14,6 @@ use crate::term::array::{self, Array};
 use crate::term::record::Field;
 use crate::term::{RichTerm, Term};
 
-use malachite::Rational;
-
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
         fn $method<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -22,12 +21,7 @@ macro_rules! deserialize_number {
             V: Visitor<'de>,
         {
             match unwrap_term(self)? {
-                Term::Num(n) => visitor.$visit($type::try_from(&n).map_err(|_| {
-                    RustDeserializationError::IllegalNumberConversion {
-                        source: n,
-                        target_repr: String::from(stringify!($type)),
-                    }
-                })?),
+                Term::Num(n) => visitor.$visit($type::rounding_from(&n, RoundingMode::Nearest)),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
                     occurred: RichTerm::from(other).to_string(),
@@ -49,10 +43,6 @@ pub enum RustDeserializationError {
     UnimplementedType {
         occurred: String,
     },
-    IllegalNumberConversion {
-        source: Rational,
-        target_repr: String,
-    },
     InvalidRecordLength(usize),
     InvalidArrayLength(usize),
     Other(String),
@@ -69,12 +59,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         match unwrap_term(self)? {
             Term::Null => visitor.visit_unit(),
             Term::Bool(v) => visitor.visit_bool(v),
-            Term::Num(v) => visitor.visit_f64(f64::try_from(&v).map_err(|_| {
-                RustDeserializationError::IllegalNumberConversion {
-                    source: v,
-                    target_repr: String::from("f64"),
-                }
-            })?),
+            Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest)),
             Term::Str(v) => visitor.visit_string(v),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
                 variant: v.into_label(),
@@ -584,12 +569,6 @@ impl std::fmt::Display for RustDeserializationError {
             }
             RustDeserializationError::UnimplementedType { ref occurred } => {
                 write!(f, "unimplemented conversion from type: {occurred}")
-            }
-            RustDeserializationError::IllegalNumberConversion {
-                source,
-                target_repr,
-            } => {
-                write!(f, "couldn't represent Nickel's arbitrary precision number {source} as an {target_repr}")
             }
             RustDeserializationError::Other(ref err) => write!(f, "{err}"),
         }

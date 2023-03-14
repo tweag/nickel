@@ -18,11 +18,26 @@ use crate::{
     position::{RawSpan, TermPos},
     term::{
         make as mk_term,
+        Rational,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
         BinaryOp, LabeledType, LetMetadata, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
     },
     types::{TypeF, Types},
 };
+
+pub enum ParseRationalError {
+    ParseFloatError(String),
+    RationalConversionError,
+}
+
+pub fn parse_rational(slice: &str) -> Result<Rational, ParseRationalError> {
+    let as_f64 = slice
+        .parse::<f64>()
+        .map_err(|err| ParseRationalError::ParseFloatError(err.to_string()))?;
+
+    Rational::try_from_float_simplest(as_f64)
+        .map_err(|_| ParseRationalError::RationalConversionError)
+}
 
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string
 /// opening delimter `m%"`, and the symbolic string opening delimiter `s%"`.

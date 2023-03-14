@@ -72,7 +72,7 @@ fn numbers() {
     assert_eq!(parse_without_pos("22.0"), mk_term::integer(22));
     assert_eq!(
         parse_without_pos("22.22"),
-        Num(Rational::try_from(22.22).unwrap()).into()
+        Num(Rational::try_from_float_simplest(22.22).unwrap()).into()
     );
     assert_eq!(parse_without_pos("(22)"), mk_term::integer(22));
     assert_eq!(parse_without_pos("((22))"), mk_term::integer(22));

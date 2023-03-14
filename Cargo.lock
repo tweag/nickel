@@ -1430,6 +1430,7 @@ dependencies = [
  "lalrpop-util",
  "logos",
  "malachite",
+ "malachite-q",
  "md-5",
  "nickel-lang-utilities",
  "once_cell",

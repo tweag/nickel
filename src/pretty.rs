@@ -3,6 +3,7 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 
 use crate::term::{
+    number_approx_to_string,
     record::{Field, FieldMetadata},
     BinaryOp, MergePriority, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
 };
@@ -436,7 +437,7 @@ where
         match self.as_ref() {
             Null => allocator.text("null"),
             Bool(v) => allocator.as_string(v),
-            Num(v) => allocator.as_string(v),
+            Num(n) => allocator.as_string(number_approx_to_string(n)),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(
                 chunks,

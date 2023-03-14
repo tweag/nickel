@@ -17,7 +17,6 @@
 //! the term level, and together with [crate::eval::merge], they allow for flexible and modular
 //! definitions of contracts, record and metadata all together.
 
-use malachite::num::basic::traits::Zero;
 pub mod array;
 pub mod record;
 
@@ -35,7 +34,14 @@ use crate::{
 };
 
 use codespan::FileId;
-pub use malachite::{Integer, Rational};
+pub use malachite::{
+    num::{
+        basic::traits::Zero,
+        conversion::traits::{IsInteger, RoundingFrom},
+    },
+    rounding_modes::RoundingMode,
+    Integer, Rational,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +68,8 @@ pub enum Term {
     Bool(bool),
     /// A floating-point value.
     #[serde(serialize_with = "crate::serialize::serialize_num")]
-    Num(Rational),
+    #[serde(deserialize_with = "crate::serialize::deserialize_num")]
+    Num(Number),
     /// A literal string.
     Str(String),
     /// A string containing interpolated expressions, represented as a list of either literals or
@@ -207,7 +214,41 @@ pub enum Term {
     RuntimeError(EvalError),
 }
 
+/// A unique sealing key, introduced by polymorphic contracts.
 pub type SealingKey = i32;
+/// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
+/// rationals.
+///
+/// Basic arithmetic operations are exact, without loss of precision (within the limits of
+/// available memory).
+///
+/// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
+/// operands to 64-bits floats, performing the floating-point power operation, and converting back
+/// to rationals, which can incur a loss of precision.
+///
+/// [^number-serialization]: Conversion to string and serialization try to first convert the
+///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations don't
+///     lose precision. Otherwise, the number is converted to the nearest 64bit float and then
+///     serialized/printed, which can incur a loss of information.
+pub type Number = Rational;
+
+/// Convert a Nickel number to a string. Same behavior as [crate::serialize::serialize_num].See
+/// [^number-serialization].
+pub fn number_approx_to_string(n: &Number) -> String {
+    if n.is_integer() {
+        if *n < 0 {
+            if let Ok(n_as_integer) = i64::try_from(n) {
+                return n_as_integer.to_string();
+            }
+        } else {
+            if let Ok(n_as_uinteger) = u64::try_from(n) {
+                return n_as_uinteger.to_string();
+            }
+        }
+    }
+
+    f64::rounding_from(n, RoundingMode::Nearest).to_string()
+}
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible cache elements at evaluation, which are devices used for the implementation of recursive
@@ -326,7 +367,7 @@ pub enum MergePriority {
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
     /// A numeral priority.
-    Numeral(Rational),
+    Numeral(Number),
     /// The priority of values that override everything else and can't be overridden.
     Top,
 }
@@ -346,7 +387,7 @@ impl PartialEq for MergePriority {
             (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1 == p2,
             (MergePriority::Neutral, MergePriority::Numeral(p))
             | (MergePriority::Numeral(p), MergePriority::Neutral)
-                if p == &Rational::ZERO =>
+                if p == &Number::ZERO =>
             {
                 true
             }
@@ -371,8 +412,8 @@ impl Ord for MergePriority {
             (MergePriority::Top, _) | (_, MergePriority::Bottom) => Ordering::Greater,
 
             // Neutral and numeral.
-            (MergePriority::Neutral, MergePriority::Numeral(n)) => Rational::ZERO.cmp(n),
-            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Rational::ZERO),
+            (MergePriority::Neutral, MergePriority::Numeral(n)) => Number::ZERO.cmp(n),
+            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Number::ZERO),
         }
     }
 }
@@ -387,7 +428,7 @@ impl fmt::Display for MergePriority {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MergePriority::Bottom => write!(f, "default"),
-            MergePriority::Neutral => write!(f, "{}", Rational::ZERO),
+            MergePriority::Neutral => write!(f, "{}", Number::ZERO),
             MergePriority::Numeral(p) => write!(f, "{p}"),
             MergePriority::Top => write!(f, "force"),
         }
@@ -1665,10 +1706,10 @@ impl std::fmt::Display for RichTerm {
 /// It is used somehow as a match statement, going from
 /// ```
 /// # use nickel_lang::term::{RichTerm, Term};
-/// let rt = RichTerm::from(Term::Num(5.0));
+/// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match rt.term.into_owned() {
-///     Term::Num(x) => x as usize,
+///     Term::Bool(x) => usize::from(x),
 ///     Term::Str(s) => s.len(),
 ///     _ => 42,
 /// };
@@ -1677,10 +1718,10 @@ impl std::fmt::Display for RichTerm {
 /// ```
 /// # use nickel_lang::term::{RichTerm, Term};
 /// # use nickel_lang::match_sharedterm;
-/// let rt = RichTerm::from(Term::Num(5.0));
+/// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match_sharedterm!{rt.term, with {
-///         Term::Num(x) => x as usize,
+///         Term::Bool(x) => usize::from(x),
 ///         Term::Str(s) => s.len(),
 ///     } else 42
 /// };
@@ -1916,7 +1957,7 @@ pub mod make {
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {
-        Term::Num(Rational::from(n.into())).into()
+        Term::Num(Number::from(n.into())).into()
     }
 }
 

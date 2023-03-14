@@ -18,13 +18,14 @@ use crate::{
     identifier::Ident,
     label::ty_path,
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    parser::utils::parse_rational,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs},
-        make as mk_term,
+        make as mk_term, number_approx_to_string,
         record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
         BinaryOp, MergePriority, NAryOp, PendingContract, RecordExtKind, RichTerm, SharedTerm,
         StrChunk, Term, UnaryOp,
@@ -1046,7 +1047,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::ToStr() => {
                 let result = match_sharedterm! {t, with {
-                    Term::Num(n) => Ok(Term::Str(n.to_string())),
+                    Term::Num(n) => Ok(Term::Str(number_approx_to_string(&n))),
                     Term::Str(s) => Ok(Term::Str(s)),
                     Term::Bool(b) => Ok(Term::Str(b.to_string())),
                     Term::Enum(id) => Ok(Term::Str(id.to_string())),
@@ -1054,18 +1055,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(EvalError::Other(
                         format!(
-                            "strFrom: can't convert the argument of type {} to string",
+                            "to_string: can't convert the argument of type {} to string",
                             t.type_of().unwrap()
                         ),
                         pos,
                     ))
                 }}?;
+
                 Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
             }
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
-                    let n = s.parse::<Rational>().map_err(|_| {
-                        EvalError::Other(format!("numFrom: invalid num literal `{s}`"), pos)
+                    let n = parse_rational(&s).map_err(|_| {
+                        EvalError::Other(format!("num_from_string: invalid num literal `{s}`"), pos)
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n),
@@ -1074,7 +1076,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(EvalError::TypeError(
                         String::from("Str"),
-                        String::from("strLength"),
+                        String::from("num_from_string"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
