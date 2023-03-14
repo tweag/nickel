@@ -298,7 +298,7 @@ fn record_terms() {
                 .collect()
             ),
             vec![(
-                StrChunks(vec![StrChunk::expr(RichTerm::from(mk_term::integer(123)))]).into(),
+                StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
                 Field::from(mk_app!(
                     mk_term::op1(UnaryOp::Ite(), mk_term::integer(4)),
                     mk_term::integer(5),

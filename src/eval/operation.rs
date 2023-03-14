@@ -1066,7 +1066,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
-                    let n = parse_rational(&s).map_err(|_| {
+                    let n = parse_rational(s).map_err(|_| {
                         EvalError::Other(format!("num_from_string: invalid num literal `{s}`"), pos)
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(

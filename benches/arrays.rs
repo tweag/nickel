@@ -3,7 +3,7 @@ use std::rc::Rc;
 use criterion::{criterion_main, Criterion};
 use nickel_lang::term::{
     array::{Array, ArrayAttrs},
-    RichTerm, Term,
+    RichTerm, Term, Number
 };
 use nickel_lang_utilities::{ncl_bench_group, EvalMode};
 use pprof::criterion::{Output, PProfProfiler};
@@ -20,7 +20,7 @@ fn ncl_random_array(len: usize) -> String {
 
     for _ in 0..len {
         acc = (a * acc + c) % m;
-        numbers.push(RichTerm::from(Term::Num(acc as f64)));
+        numbers.push(RichTerm::from(Term::Num(Number::from(acc))));
     }
 
     let xs = RichTerm::from(Term::Array(

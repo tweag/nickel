@@ -240,10 +240,8 @@ pub fn number_approx_to_string(n: &Number) -> String {
             if let Ok(n_as_integer) = i64::try_from(n) {
                 return n_as_integer.to_string();
             }
-        } else {
-            if let Ok(n_as_uinteger) = u64::try_from(n) {
-                return n_as_uinteger.to_string();
-            }
+        } else if let Ok(n_as_uinteger) = u64::try_from(n) {
+            return n_as_uinteger.to_string();
         }
     }
 

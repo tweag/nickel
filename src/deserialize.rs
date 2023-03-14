@@ -34,15 +34,10 @@ macro_rules! deserialize_number {
 /// An error occurred during deserialization to Rust.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RustDeserializationError {
-    InvalidType {
-        expected: String,
-        occurred: String,
-    },
+    InvalidType { expected: String, occurred: String },
     MissingValue,
     EmptyRecordField,
-    UnimplementedType {
-        occurred: String,
-    },
+    UnimplementedType { occurred: String },
     InvalidRecordLength(usize),
     InvalidArrayLength(usize),
     Other(String),

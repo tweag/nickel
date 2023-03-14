@@ -18,9 +18,9 @@ use crate::{
     position::{RawSpan, TermPos},
     term::{
         make as mk_term,
-        Rational,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, LetMetadata, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+        BinaryOp, LabeledType, LetMetadata, Rational, RichTerm, StrChunk, Term, TypeAnnotation,
+        UnaryOp,
     },
     types::{TypeF, Types},
 };

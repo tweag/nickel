@@ -88,10 +88,8 @@ where
             if let Ok(n_as_integer) = i64::try_from(n) {
                 return n_as_integer.serialize(serializer);
             }
-        } else {
-            if let Ok(n_as_uinteger) = u64::try_from(n) {
-                return n_as_uinteger.serialize(serializer);
-            }
+        } else if let Ok(n_as_uinteger) = u64::try_from(n) {
+            return n_as_uinteger.serialize(serializer);
         }
     }
 
