@@ -1290,6 +1290,16 @@ is None but last_arrow_elem is Some"),
         .with_message("bound here")])
     }
 
+    fn contract_error_with_context(
+        l: &label::Label,
+        message: &str,
+        range: impl Into<std::ops::Range<usize>>,
+    ) -> Diagnostic<FileId> {
+        Diagnostic::note().with_labels(vec![
+            Label::primary(l.span.src_id, range).with_message(message)
+        ])
+    }
+
     /// Generate codespan diagnostics from blame data. Mostly used by `into_diagnostics`
     /// implementations.
     ///
@@ -1333,6 +1343,12 @@ is None but last_arrow_elem is Some"),
             .unwrap_or_default();
         let (path_label, notes_higher_order) = report_ty_path(&label, files);
 
+        let range = path_label.range.clone();
+        diagnostics.push(contract_error_with_context(
+            &label,
+            &path_label.message,
+            range,
+        ));
         let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
 
         // If there are notes in the head contract diagnostic, we build the first
@@ -1361,8 +1377,6 @@ is None but last_arrow_elem is Some"),
                     .with_notes(notes_higher_order),
             );
         }
-
-        diagnostics.push(contract_bind_loc(&label));
 
         for ctr_diag in contract_diagnostics {
             let mut msg = String::from("from a parent contract violation");
