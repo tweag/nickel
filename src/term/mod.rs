@@ -35,7 +35,7 @@ use crate::{
 };
 
 use codespan::FileId;
-pub use malachite::Rational;
+pub use malachite::{Rational, Integer};
 
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ pub enum Term {
     /// A boolean value.
     Bool(bool),
     /// A floating-point value.
-    // #[serde(serialize_with = "crate::serialize::serialize_num")]
+    #[serde(serialize_with = "crate::serialize::serialize_num")]
     Num(Rational),
     /// A literal string.
     Str(String),

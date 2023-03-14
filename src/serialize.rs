@@ -1,10 +1,12 @@
 //! Serialization of an evaluated program to various data format.
+use malachite::{rounding_modes::RoundingMode, num::conversion::traits::RoundingFrom};
+
 use crate::{
     error::SerializationError,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        RichTerm, Term, TypeAnnotation,
+        Rational, Integer, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -65,23 +67,24 @@ impl FromStr for ExportFormat {
     }
 }
 
-/// Implicitly convert float to integers when possible to avoid trailing zeros. Note this this
-/// only work if the float is in range of either `i64` or `f64`. It seems there's no easy general
-/// solution (working for both YAML, TOML, and JSON) to choose the way floating point values are
-/// formatted.
-pub fn serialize_num<S>(n: &f64, serializer: S) -> Result<S::Ok, S::Error>
+/// Implicitly convert numbers to integers when possible, and serialize an exact representation.
+///
+/// If the number isn't an integer, we approximate it by the nearest `f64` and serialize this
+/// value. This may incur a loss of precision, but this is expected: we can't represent e.g. `1/3`
+/// exactly in JSON anyway. What arbitrary precision rationals are supposed to fix over floats are
+/// behaviors like `0.1 +
+/// 0.2 != 0.3` happening within the evaluation of a Nickel program.
+pub fn serialize_num<S>(n: &Rational, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    if n.fract() == 0.0 {
-        if *n < 0.0 && *n >= (i64::MIN as f64) && *n <= (i64::MAX as f64) {
-            return (*n as i64).serialize(serializer);
-        } else if *n >= 0.0 && *n <= (u64::MAX as f64) {
-            return (*n as u64).serialize(serializer);
-        }
+    if let Ok(n_as_integer) = Integer::try_from(n) {
+        n_as_integer.serialize(serializer)
     }
-
-    n.serialize(serializer)
+    else {
+        let n_as_f64 = f64::rounding_from(n, RoundingMode::Nearest);
+        n_as_f64.serialize(serializer)
+    }
 }
 
 /// Serializer for annotated values.
