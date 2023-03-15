@@ -63,18 +63,13 @@ use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub enum MergeMode {
     /// Standard merging, for combining data.
+    #[default]
     Standard,
     /// Merging to apply a record contract to a value, with the associated label.
     Contract(Label),
-}
-
-impl Default for MergeMode {
-    fn default() -> Self {
-        MergeMode::Standard
-    }
 }
 
 /// Compute the merge of two evaluated operands. Support both standard merging and record contract

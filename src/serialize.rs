@@ -17,18 +17,13 @@ use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum ExportFormat {
     Raw,
+    #[default]
     Json,
     Yaml,
     Toml,
-}
-
-impl std::default::Default for ExportFormat {
-    fn default() -> Self {
-        ExportFormat::Json
-    }
 }
 
 impl fmt::Display for ExportFormat {

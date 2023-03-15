@@ -61,13 +61,10 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
                 let idx = match value.as_ref() {
-                    Term::Var(ref var_id) => {
-                        let idx = env
-                            .get(var_id)
-                            .cloned()
-                            .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?;
-                        idx
-                    }
+                    Term::Var(ref var_id) => env
+                        .get(var_id)
+                        .cloned()
+                        .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?,
                     _ => {
                         // If we are in this branch, `rt` must be a constant after the share normal form
                         // transformation, hence it should not need an environment, which is why it is

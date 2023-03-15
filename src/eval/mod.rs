@@ -873,7 +873,11 @@ pub fn env_add_term<C: Cache>(
                     field.value.map(|value|
                     (
                         id,
-                        cache.add(Closure::atomic_closure(value), IdentKind::Record, BindingType::Normal),
+                        cache.add(
+                            Closure::atomic_closure(value),
+                            IdentKind::Record,
+                            BindingType::Normal
+                        ),
                     ))
                 });
 

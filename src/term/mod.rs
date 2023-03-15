@@ -210,18 +210,13 @@ pub type SealingKey = i32;
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible cache elements at evaluation, which are devices used for the implementation of recursive
 /// records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more details.
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Default)]
 pub enum BindingType {
+    #[default]
     Normal,
     /// In the revertible case, we also store an optional set of dependencies. See
     /// [`crate::transform::free_vars`] for more details.
     Revertible(FieldDeps),
-}
-
-impl Default for BindingType {
-    fn default() -> Self {
-        BindingType::Normal
-    }
 }
 
 /// A contract with its associated data.
