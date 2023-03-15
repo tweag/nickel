@@ -139,7 +139,6 @@ pub mod ty_path {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 match next {
                     Elem::Domain => {
-                        let range = dom.range().unwrap();
                         let PathSpan {
                             start, 
                             end,
@@ -154,7 +153,6 @@ pub mod ty_path {
                         }
                     }
                     Elem::Codomain => {
-                        let range = codom.range().unwrap();
                         let PathSpan {
                             start, 
                             end,
