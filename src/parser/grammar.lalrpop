@@ -192,7 +192,7 @@ pub Term: RichTerm = AsTerm<UniTerm>;
 // (see `AnnotAtom`)
 Types: Types = {
     AsType<InfixExpr>,
-    Forall,
+    WithPos<Forall>,
 };
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
@@ -253,14 +253,16 @@ AnnotatedInfixExpr: UniTerm = {
 };
 
 Forall: Types =
-    "forall" <ids: Ident+> "." <ty: Types> => {
-        ids.into_iter().rev().fold(
+    <l: @L> "forall" <ids: Ident+> "." <ty: Types> <r: @R> => {
+        let ty = ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
             // phase. For now, we put a random one (which is also the default
-            // one, for unused type variables)
+            // one, for unused type)
             |acc, var| Types::from(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
-        )
+        );
+        let pos = mk_pos(src_id, l, r);
+        Types { pos, ..ty }
     };
 
 // A n-ary application-like expression (n may be 0, in the sense that this rule
