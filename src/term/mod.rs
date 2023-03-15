@@ -37,7 +37,7 @@ use codespan::FileId;
 pub use malachite::{
     num::{
         basic::traits::Zero,
-        conversion::traits::{IsInteger, RoundingFrom},
+        conversion::traits::{IsInteger, RoundingFrom, ToSci},
     },
     rounding_modes::RoundingMode,
     Integer, Rational,
@@ -216,6 +216,7 @@ pub enum Term {
 
 /// A unique sealing key, introduced by polymorphic contracts.
 pub type SealingKey = i32;
+
 /// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
 /// rationals.
 ///
@@ -231,22 +232,6 @@ pub type SealingKey = i32;
 ///     lose precision. Otherwise, the number is converted to the nearest 64bit float and then
 ///     serialized/printed, which can incur a loss of information.
 pub type Number = Rational;
-
-/// Convert a Nickel number to a string. Same behavior as [crate::serialize::serialize_num].See
-/// [^number-serialization].
-pub fn number_approx_to_string(n: &Number) -> String {
-    if n.is_integer() {
-        if *n < 0 {
-            if let Ok(n_as_integer) = i64::try_from(n) {
-                return n_as_integer.to_string();
-            }
-        } else if let Ok(n_as_uinteger) = u64::try_from(n) {
-            return n_as_uinteger.to_string();
-        }
-    }
-
-    f64::rounding_from(n, RoundingMode::Nearest).to_string()
-}
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible cache elements at evaluation, which are devices used for the implementation of recursive
@@ -671,7 +656,7 @@ impl Term {
             Term::Null => String::from("null"),
             Term::Bool(true) => String::from("true"),
             Term::Bool(false) => String::from("false"),
-            Term::Num(n) => format!("{n}"),
+            Term::Num(n) => format!("{}", n.to_sci()),
             Term::Str(s) => format!("\"{s}\""),
             Term::StrChunks(chunks) => {
                 let chunks_str: Vec<String> = chunks

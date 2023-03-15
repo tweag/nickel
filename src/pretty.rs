@@ -3,13 +3,12 @@ use crate::identifier::Ident;
 use crate::parser::lexer::KEYWORDS;
 
 use crate::term::{
-    number_approx_to_string,
     record::{Field, FieldMetadata},
     BinaryOp, MergePriority, Number, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
 };
 use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
 
-use malachite::num::basic::traits::Zero;
+use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 
@@ -437,7 +436,7 @@ where
         match self.as_ref() {
             Null => allocator.text("null"),
             Bool(v) => allocator.as_string(v),
-            Num(n) => allocator.as_string(number_approx_to_string(n)),
+            Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
             StrChunks(chunks) => allocator.chunks(
                 chunks,

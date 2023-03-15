@@ -25,7 +25,7 @@ use crate::{
     stdlib::internals,
     term::{
         array::{Array, ArrayAttrs},
-        make as mk_term, number_approx_to_string,
+        make as mk_term,
         record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
         BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
         SharedTerm, StrChunk, Term, UnaryOp,
@@ -34,8 +34,13 @@ use crate::{
 };
 
 use malachite::{
-    num::arithmetic::traits::Pow, num::basic::traits::One, num::basic::traits::Zero,
-    num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode, Integer,
+    num::{
+        arithmetic::traits::Pow,
+        basic::traits::{One, Zero},
+        conversion::traits::{RoundingFrom, ToSci},
+    },
+    rounding_modes::RoundingMode,
+    Integer,
 };
 
 use md5::digest::Digest;
@@ -1047,7 +1052,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::ToStr() => {
                 let result = match_sharedterm! {t, with {
-                    Term::Num(n) => Ok(Term::Str(number_approx_to_string(&n))),
+                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()))),
                     Term::Str(s) => Ok(Term::Str(s)),
                     Term::Bool(b) => Ok(Term::Str(b.to_string())),
                     Term::Enum(id) => Ok(Term::Str(id.to_string())),
