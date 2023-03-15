@@ -162,7 +162,10 @@ Let us now have a quick tour of the type system. The basic types are:
 
 - `Dyn`: the dynamic type. This is the type given to most expressions outside of
   a typed block. A value of type `Dyn` can be pretty much anything.
-- `Number`: the only number type. Currently implemented as a 64bits float.
+- `Number`: the only number type. Currently implemented as arbitrary precision
+    rationals. Common arithmetic operations are exact. The power function using
+    a non-integer exponent might is computed on floating point values, which
+    might incur rounding errors.
 - `String`: a string, which must always be valid UTF8.
 - `Bool`: a boolean, that is either `true` or `false`.
 <!-- - `Lbl`: a contract label. You usually don't need to use it or worry about it,-->
