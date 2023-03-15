@@ -258,7 +258,7 @@ Forall: Types =
             ty,
             // The variable kind will be determined during the `fix_type_vars`
             // phase. For now, we put a random one (which is also the default
-            // one, for unused type)
+            // one, for unused type variables)
             |acc, var| Types::from(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
         );
         let pos = mk_pos(src_id, l, r);
