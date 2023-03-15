@@ -64,8 +64,8 @@ pub fn test_query_with_wildcard() {
             // stored inside the label, which is the one used for reporting anyway.
             // assert_eq!(contract1.types, contract2.types);
             assert_eq!(
-                contract1.label.types.as_ref(),
-                contract2.label.types.as_ref()
+                contract1.label.types.as_ref().clone().without_pos(),
+                contract2.label.types.as_ref().clone().without_pos()
             );
         } else {
             panic!();

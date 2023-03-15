@@ -841,6 +841,21 @@ impl Types {
         Types { pos, ..self }
     }
 
+    /// Creates a `Type` without a position
+    pub fn without_pos(self) -> Types {
+        self.traverse::<_, _, ()>(
+            &|t, _| {
+                Ok(Types {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+    }
+
     pub fn range(&self) -> Option<Range<usize>> {
         self.pos
             .into_opt()
@@ -951,14 +966,15 @@ impl Traverse<Types> for Types {
     {
         match order {
             TraverseOrder::TopDown => {
-                let inner = f(self, state)?.types.try_map_state(
+                let ty = f(self, state)?;
+                let inner = ty.types.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
                     state,
                 )?;
 
-                Ok(Types::from(inner))
+                Ok(Types { types: inner, ..ty })
             }
             TraverseOrder::BottomUp => {
                 let traversed_depth_first = self.types.try_map_state(
@@ -968,7 +984,13 @@ impl Traverse<Types> for Types {
                     state,
                 )?;
 
-                f(Types::from(traversed_depth_first), state)
+                f(
+                    Types {
+                        types: traversed_depth_first,
+                        ..self
+                    },
+                    state,
+                )
             }
         }
     }
