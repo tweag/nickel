@@ -141,7 +141,7 @@ pub mod ty_path {
                 match next {
                     Elem::Domain => {
                         let PathSpan {
-                            start, 
+                            start,
                             end,
                             last,
                             last_arrow_elem,
@@ -155,7 +155,7 @@ pub mod ty_path {
                     }
                     Elem::Codomain => {
                         let PathSpan {
-                            start, 
+                            start,
                             end,
                             last,
                             last_arrow_elem,
