@@ -841,7 +841,7 @@ impl Types {
         Types { pos, ..self }
     }
 
-    /// Creates a `Type` without a position
+    /// Returns the same type with the position cleared (set to `None`).
     pub fn without_pos(self) -> Types {
         self.traverse::<_, _, ()>(
             &|t, _| {
