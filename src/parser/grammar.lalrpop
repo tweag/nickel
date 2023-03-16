@@ -220,7 +220,7 @@ pub ExtendedTerm: ExtendedTerm = {
 UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
-    AsUniTerm<WithPos<Forall>>
+    AsUniTerm<WithPos<Forall>>,
     "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: LetAnnot<FixedType>?>
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
