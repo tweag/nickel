@@ -1,18 +1,13 @@
 ---
 source: tests/snapshot/main.rs
-assertion_line: 57
 expression: snapshot
 ---
-note: 
-  ┌─ [INPUTS_PATH]/errors/dictionary_contract_fail.ncl:1:32
-  │
-1 │ { foo = 1, bar = "bar" } | {_: String}
-  │                                ^^^^^^ expected dictionary field type
-
 error: contract broken by a value
   ┌─ [INPUTS_PATH]/errors/dictionary_contract_fail.ncl:1:9
   │
 1 │ { foo = 1, bar = "bar" } | {_: String}
-  │         ^ applied to this expression
+  │         ^                      ^^^^^^ expected dictionary field type
+  │         │                       
+  │         applied to this expression
 
 
