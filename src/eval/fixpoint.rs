@@ -101,6 +101,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                                 contract: ctr.contract,
                                 label: Label {
                                     polarity: ctr.label.polarity.flip(),
+                                    dualize: true,
                                     ..ctr.label
                                 },
                             },

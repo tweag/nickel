@@ -1328,6 +1328,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     )) }
                 }
             }
+            UnaryOp::Dualize() => {
+                let Term::Lbl(label) = &*t else {
+                    return Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("dualize"),
+                        arg_pos,
+                        RichTerm { term: t, pos }
+                    ))
+                };
+
+                Ok(Closure {
+                    body: RichTerm::new(Term::Bool(label.dualize), pos),
+                    env: Environment::new(),
+                })
+            }
         }
     }
 
@@ -2752,6 +2767,40 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos2.into_inherited(),
                 )))
             }
+            BinaryOp::LookupTypeVar() => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::SealingKey(key) = t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Sym"),
+                        String::from("lookup_type_variable, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1.into(),
+                            pos: pos1,
+                        }
+                    ));
+                };
+
+                let Term::Lbl(label) = t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("lookup_type_variable, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2.into(),
+                            pos: pos2,
+                        }
+                    ));
+                };
+
+                // eprintln!("Looking up {key} in {:?}", label.type_environment);
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    label.type_environment.get(&key).unwrap().polarity.into(),
+                    pos_op_inh,
+                )))
+            }
         }
     }
 
@@ -3119,8 +3168,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Closure {
                         body:
                             RichTerm {
-                                term: ident,
-                                pos: ident_pos,
+                                term: key,
+                                pos: key_pos,
                             },
                         ..
                     },
@@ -3152,13 +3201,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 ) = args.next().unwrap();
                 debug_assert!(args.next().is_none());
 
-                let Term::Str(ident) = &*ident else {
+                let Term::SealingKey(key) = *key else {
                     return Err(EvalError::TypeError(
-                        String::from("Str"),
+                        String::from("Sym"),
                         String::from("insert_type_variable, 1st argument"),
-                        ident_pos,
+                        key_pos,
                         RichTerm {
-                            term: ident,
+                            term: key,
                             pos: pos1,
                         }
                     ));
@@ -3192,10 +3241,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let new_label = label
-                    .clone()
-                    .insert_type_var(Ident::from(ident), TypeVarData { polarity });
-                eprintln!("Inserting {ident} giving {:?}", new_label.type_environment);
+                let new_label = label.clone().insert_type_var(key, TypeVarData { polarity });
+                // eprintln!("Inserting {key} giving {:?}", new_label.type_environment);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Lbl(new_label),

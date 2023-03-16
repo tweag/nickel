@@ -225,6 +225,9 @@ pub fn get_uop_type(
         // Morally: Lbl -> Lbl
         // Actual: Dyn -> Dyn
         UnaryOp::LabelPushDiag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Morally: Lbl -> Bool
+        // Actual: Dyn -> Bool
+        UnaryOp::Dualize() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
     })
 }
 
@@ -425,6 +428,13 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
         ),
+        // Morally: Sym -> Lbl -> Polarity
+        // Actual: Sym -> Dyn -> Polarity
+        BinaryOp::LookupTypeVar() => (
+            mk_uniftype::sym(),
+            mk_uniftype::dynamic(),
+            mk_uty_enum!("Positive", "Negative"),
+        ),
     })
 }
 
@@ -465,11 +475,11 @@ pub fn get_nop_type(
         // This should not happen, as MergeContract() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
 
-        // Morally: Ident -> Polarity -> Lbl -> Lbl
-        // Actual: Str -> Polarity -> Dyn -> Dyn
+        // Morally: Sym -> Polarity -> Lbl -> Lbl
+        // Actual: Sym -> Polarity -> Dyn -> Dyn
         NAryOp::InsertTypeVar() => (
             vec![
-                mk_uniftype::str(),
+                mk_uniftype::sym(),
                 mk_uty_enum!("Positive", "Negative"),
                 mk_uniftype::dynamic(),
             ],

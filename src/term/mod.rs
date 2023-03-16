@@ -1184,6 +1184,9 @@ pub enum UnaryOp {
     /// This primop shouldn't be used directly by user a priori, but is used internally during e.g.
     /// contract application.
     LabelPushDiag(),
+
+    /// TODO,
+    Dualize(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
@@ -1346,6 +1349,8 @@ pub enum BinaryOp {
     LabelWithNotes(),
     /// Append a note to the current diagnostic of a label.
     LabelAppendNote(),
+    /// TODO
+    LookupTypeVar(),
 }
 
 impl BinaryOp {

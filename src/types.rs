@@ -841,12 +841,6 @@ impl Types {
         self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
     }
 
-    /// HACK
-    pub fn dual_contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
-        let mut sy = 0;
-        self.subcontract(HashMap::new(), Polarity::Negative, &mut sy)
-    }
-
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
         match &self.types {
@@ -895,26 +889,20 @@ impl Types {
                 var_kind,
             } => {
                 use VarKind::*;
-                let contract = match var_kind {
-                    Type => mk_app!(
-                        contract::forall_var(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                    EnumRows | RecordRows => mk_app!(
-                        contract::forall_tail(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                };
 
+                let sealing_key = Term::SealingKey(*sy);
+                let contract = match var_kind {
+                    Type => mk_app!(contract::forall_var(), sealing_key.clone()),
+                    EnumRows | RecordRows => mk_app!(contract::forall_tail(), sealing_key.clone()),
+                };
                 vars.insert(*var, contract);
+
                 *sy += 1;
                 mk_app!(
                     contract::forall(),
-                    mk_term::string(var.label()),
+                    sealing_key,
                     Term::from(pol),
-                    body.subcontract(h, pol, sy)?
+                    body.subcontract(vars, pol, sy)?
                 )
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,

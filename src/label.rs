@@ -8,7 +8,7 @@ use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
     identifier::Ident,
     position::{RawSpan, TermPos},
-    term::{RichTerm, Term},
+    term::{RichTerm, SealingKey, Term},
     types::{TypeF, Types},
 };
 
@@ -367,7 +367,8 @@ pub struct Label {
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
     /// TODO
-    pub type_environment: HashMap<Ident, TypeVarData>,
+    pub type_environment: HashMap<SealingKey, TypeVarData>,
+    pub dualize: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -521,8 +522,8 @@ impl Label {
         }
     }
 
-    pub fn insert_type_var(mut self, var: Ident, data: TypeVarData) -> Self {
-        self.type_environment.insert(var, data);
+    pub fn insert_type_var(mut self, key: SealingKey, data: TypeVarData) -> Self {
+        self.type_environment.insert(key, data);
         self
     }
 }
@@ -542,6 +543,7 @@ impl Default for Label {
             arg_pos: Default::default(),
             path: Default::default(),
             type_environment: Default::default(),
+            dualize: false,
         }
     }
 }
