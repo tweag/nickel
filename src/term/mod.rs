@@ -258,12 +258,7 @@ impl PendingContract {
 
         contracts.fold(rt, |acc, ctr| {
             mk_app!(
-                make::op2(
-                    BinaryOp::Assume(),
-                    ctr.contract,
-                    Term::Lbl(ctr.label.clone())
-                )
-                .with_pos(pos),
+                make::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
                 acc
             )
             .with_pos(pos)

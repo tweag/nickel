@@ -1701,7 +1701,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // Return a function that either behaves like the identity or
                     // const unwrapped_term
 
-                    Ok(if let Term::Sealed(s2, t, label) = t2.into_owned() {
+                    Ok(if let Term::Sealed(s2, t, _) = t2.into_owned() {
                         // eprintln!("unseal: {s1} {} {:?}", label.types, label.path);
                         if *s1 == s2 {
                             Closure {
