@@ -76,22 +76,6 @@
       else
         %blame% (%label_with_message% "not a string" l),
 
-    EnumTag
-    | doc m%"
-      Contract to enforce the value is an enum tag.
-
-      For example:
-      ```nickel
-        (`foo | EnumTag) =>
-          `foo
-        (`FooBar | EnumTag) =>
-          `FooBar
-        ("tag" | EnumTag) =>
-          error
-      ```
-      "%
-    = contract.from_predicate builtin.is_enum,
-
     Stringable
     | doc m%"
       Contract to enforce the value is convertible to a string via
@@ -434,7 +418,7 @@
     = from,
 
     # from_enum | < | Dyn> -> String = fun tag => %to_str% tag,
-    from_enum | EnumTag -> String
+    from_enum | enum.Tag -> String
     | doc m%"
       Converts an enum variant to its string representation.
 
@@ -487,7 +471,7 @@
     = fun s => s == "true",
 
     # to_enum | String -> < | Dyn> = fun s => %enum_from_str% s,
-    to_enum | String -> EnumTag
+    to_enum | String -> enum.Tag
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.
 

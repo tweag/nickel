@@ -346,5 +346,77 @@
         if %length% arr <= 1
         then arr
         else [ %head% arr ] @ (%tail% arr |> flat_map (fun a => [v, a])),
+
+    slice
+      : forall a. Number -> Number -> Array a -> Array a
+      | doc m%"
+          `slice start end array` the sub-array of `array`, starting at `start`
+(include  d) and ending at `end` (excluded).
+
+          TODO: errors (start < 0 , etc.)
+        "%
+      # TODO: actually implement the operation using a slice primop
+      = fun start end value => %slice% start end value,
+
+    split_at
+      : forall a. Number -> Array a -> {left: Array a, right: Array a}
+      | doc m%"
+          Split an array in two at a given index, and return all the elements
+          to the left of the element at the given index (excluded) in the
+          `left` field, and the rest of the array in the `right` field.
+
+          TODO: errors (start < 0 , etc.)
+        "%
+      = fun index value => {
+        left = %slice% 0 index value,
+        right = %slice% index (%length% value) value
+      },
+
+    replicate
+      : forall a. Number -> a -> Array a
+      | doc m%"
+          `replicate n x` creates an array containing `x` exactly `n` times.
+
+          TODO: example
+        "%
+      = fun n x => %generate% n (fun _i => x),
+
+    range_step
+      : Number -> Number -> Number -> Array Number
+      | doc m%"
+         `range_step start end step` generates the array of numbers
+           [start, start + step, start + 2*step, ...]
+         until the first element (excluded) larger than or equal to `end`
+        "%
+      = fun start end step => %generate%
+          ((end - start) / step |> number.floor)
+          (fun i => start + i*step), 
+
+    range
+      : Number -> Number -> Array Number
+      | doc m%"
+          `range start end` generates the array of numbers
+            [start, start + 1, start + 2, ...]
+          until the first element (excluded) larger than or equal to `end`
+        "%
+      = fun start end => range_step start end 1,
+
+    reduce_right
+      : forall a. (a -> a -> a) -> Array a -> a 
+      | doc m%"
+           Fold a function over a array.
+        `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
+
+        For example:
+        ```nickel
+          fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
+            ((([] @ [3]) @ [2]) @ [1]) =>
+            [ 3, 2, 1 ]
+        ```
+        "%
+      = fun f array => 
+          let last = last array in 
+          let rest = drop_last array in 
+          fold_right f last rest,
   }
 }
