@@ -1,19 +1,14 @@
 ---
 source: tests/snapshot/main.rs
-assertion_line: 57
 expression: snapshot
 ---
-note: 
-   ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:11:8
-   │
-11 │ null | Contract
-   │        ^^^^^^^^ expected type
-
 error: contract broken by a value: main error message
    ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:11:1
    │
 11 │ null | Contract
-   │ ^^^^ applied to this expression
+   │ ^^^^   ^^^^^^^^ expected type
+   │ │       
+   │ applied to this expression
    │
    = This is the first note
    = This is the second note
