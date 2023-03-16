@@ -192,7 +192,7 @@ pub Term: RichTerm = AsTerm<UniTerm>;
 // (see `AnnotAtom`)
 Types: Types = {
     AsType<InfixExpr>,
-    WithPos<Forall>,
+    Forall,
 };
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
@@ -220,7 +220,7 @@ pub ExtendedTerm: ExtendedTerm = {
 UniTerm: UniTerm = {
     InfixExpr,
     AnnotatedInfixExpr,
-    AsUniTerm<Forall>,
+    AsUniTerm<WithPos<Forall>>
     "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: LetAnnot<FixedType>?>
         "=" <mut t1: Term>
         "in" <t2: Term> =>? {
@@ -253,16 +253,14 @@ AnnotatedInfixExpr: UniTerm = {
 };
 
 Forall: Types =
-    <l: @L> "forall" <ids: Ident+> "." <ty: Types> <r: @R> => {
-        let ty = ids.into_iter().rev().fold(
+    "forall" <ids: Ident+> "." <ty: Types> => {
+        ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
             // phase. For now, we put a random one (which is also the default
             // one, for unused type variables)
             |acc, var| Types::from(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
-        );
-        let pos = mk_pos(src_id, l, r);
-        Types { pos, ..ty }
+        )
     };
 
 // A n-ary application-like expression (n may be 0, in the sense that this rule
@@ -827,10 +825,8 @@ InfixExpr: UniTerm = {
     InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
 
     #[precedence(level="11")] #[assoc(side="right")]
-    <l: @L> <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> <r: @R> => {
-        let pos = mk_pos(src_id, l, r);
-        UniTerm::from(Types { types:TypeF::Arrow(Box::new(s), Box::new(t)), pos })
-    },
+    <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
+      UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
