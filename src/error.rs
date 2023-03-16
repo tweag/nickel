@@ -1044,10 +1044,11 @@ mod blame_error {
     pub fn build_diagnostic_labels(
         evaluated_arg: Option<RichTerm>,
         blame_label: &label::Label,
+        path_label: Label<FileId>,
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Label<FileId>> {
-        let mut labels = vec![];
+        let mut labels = vec![path_label];
 
         if let Some(ref arg_pos) = blame_label.arg_pos.into_opt() {
             // In some cases, if the blame error is located in an argument or return value
@@ -1293,10 +1294,8 @@ is None but last_arrow_elem is Some"),
         l: &label::Label,
         message: &str,
         range: impl Into<std::ops::Range<usize>>,
-    ) -> Diagnostic<FileId> {
-        Diagnostic::note().with_labels(vec![
-            Label::primary(l.span.src_id, range).with_message(message)
-        ])
+    ) -> Label<FileId> {
+        Label::primary(l.span.src_id, range).with_message(message)
     }
 
     /// Generate codespan diagnostics from blame data. Mostly used by `into_diagnostics`
@@ -1344,12 +1343,12 @@ is None but last_arrow_elem is Some"),
 
         // Report contract error with the surrounding source program
         // for more context.
-        diagnostics.push(contract_error_with_context(
+        let path_label = contract_error_with_context(
             &label,
             &path_label.message,
             path_label.range,
-        ));
-        let labels = build_diagnostic_labels(evaluated_arg, &label, files, stdlib_ids);
+        );
+        let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
 
         // If there are notes in the head contract diagnostic, we build the first
         // diagnostic using them and will put potential generated notes on higher-order
