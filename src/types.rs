@@ -676,8 +676,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
 }
 
 /// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
-/// Helper used by the `subcontract` functions. `pol` is the polarity of the variable occurrence
-/// inside the original type.
+/// Helper used by the `subcontract` functions.
 fn get_var_contract(
     vars: &HashMap<Ident, RichTerm>,
     id: &Ident,
@@ -746,7 +745,7 @@ impl EnumRows {
 }
 
 impl RecordRows {
-    // TODO: doc
+    /// Construct the subcontract corresponding to a record type
     fn subcontract(
         &self,
         vars: HashMap<Ident, RichTerm>,
