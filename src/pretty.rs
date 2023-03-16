@@ -19,10 +19,9 @@ enum StringRenderStyle {
 
 /// Helper to find the min number of `%` sign needed to interpolate a string containing this chunk.
 fn min_interpolate_sign(text: &str) -> usize {
-    let reg = Regex::new(r#"([%]+\{)|("[%]+m)"#).unwrap();
+    let reg = Regex::new(r#"([%]+\{)|("[%]+)"#).unwrap();
     reg.find_iter(text)
         .map(|m| {
-            let d = m.end() - m.start();
             // We iterate over all sequences `%+{` and `"%+`, which could clash with the interpolation
             // syntax, and return the maximum number of `%` insead each sequence.
             //
@@ -31,11 +30,7 @@ fn min_interpolate_sign(text: &str) -> usize {
             // string contains only one `"%%`, then single `%` delimiters like `m%"` and `"%` would
             // be fine. But picking the maximum results in a simpler algorithm for now, which we can
             // update later if necessary.
-            if m.as_str().ends_with('{') {
-                d
-            } else {
-                d - 1
-            }
+            m.end() - m.start()
         })
         .max()
         .unwrap_or(1)
