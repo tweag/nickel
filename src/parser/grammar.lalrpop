@@ -837,7 +837,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="11")] #[assoc(side="right")]
     <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-      UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
+        UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
