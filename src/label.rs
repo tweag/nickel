@@ -131,11 +131,15 @@ pub mod ty_path {
     /// Here, the type path will contain an `Array` (added by the builtin implementation of the
     /// `Array` contract), but the original type will be `Foo`, which isn't of the form `Array _`.
     /// Thus we can't underline the subtype `_`, and stops at the whole `Array T`.
-    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, ty: &Types) -> PathSpan
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> PathSpan
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
     {
+        while let TypeF::Forall { body, .. } = &ty.types {
+            ty = body.as_ref();
+        }
+
         match (&ty.types, path_it.next()) {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 match next {
