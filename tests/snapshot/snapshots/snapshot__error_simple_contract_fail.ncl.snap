@@ -3,20 +3,11 @@ source: tests/snapshot/main.rs
 expression: snapshot
 ---
 error: contract broken by a value
-  ┌─ :1:1
-  │
-1 │ String
-  │ ------ expected type
-  │
   ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:1:1
   │
 1 │ 1 | String
-  │ ^ applied to this expression
-
-note: 
-  ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:1:5
-  │
-1 │ 1 | String
-  │     ^^^^^^ bound here
+  │ ^   ^^^^^^ expected type
+  │ │    
+  │ applied to this expression
 
 
