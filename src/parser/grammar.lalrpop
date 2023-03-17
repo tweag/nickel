@@ -905,7 +905,7 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-        Types::from(TypeF::Enum(ty))
+            Types::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Types>> "}" => {
         Types::from(TypeF::Dict(Box::new(t)))
