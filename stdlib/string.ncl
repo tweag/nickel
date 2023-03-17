@@ -425,7 +425,6 @@
       "%
     = from,
 
-    # from_enum | < | Dyn> -> String = fun tag => %to_str% tag,
     from_enum | enum.Tag -> String
     | doc m%"
       Converts an enum variant to its string representation.
@@ -478,7 +477,6 @@
       "%
     = fun s => s == "true",
 
-    # to_enum | String -> < | Dyn> = fun s => %enum_from_str% s,
     to_enum | String -> enum.Tag
     | doc m%"
       Converts any string that represents an enum variant to that enum variant.
