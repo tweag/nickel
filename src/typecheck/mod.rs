@@ -1250,11 +1250,21 @@ fn type_check_<L: Linearizer>(
             type_check_(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::App(e, t) => {
-            let src = state.table.fresh_type_uvar();
-            let arr = mk_uty_arrow!(src.clone(), ty);
+            // This part corresponds to the infer rule for application.
+            let function_type = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
 
-            type_check_(state, ctxt.clone(), lin, linearizer.scope(), e, arr)?;
-            type_check_(state, ctxt, lin, linearizer, t, src)
+            let src = state.table.fresh_type_uvar();
+            let tgt = state.table.fresh_type_uvar();
+            let arr = mk_uty_arrow!(src.clone(), tgt.clone());
+
+            unify(state, &ctxt, arr, function_type)
+                .map_err(|err| err.into_typecheck_err(state, e.pos))?;
+
+            type_check_(state, ctxt.clone(), lin, linearizer, t, src)?;
+
+            // This part corresponds to the "subtype" rule, switching from infer mode to check
+            // mode.
+            unify(state, &ctxt, ty, tgt).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Match { cases, default } => {
             // Currently, if it has a default value, we typecheck the whole thing as
@@ -1263,7 +1273,17 @@ fn type_check_<L: Linearizer>(
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
             // `a` is a enum type determined by the matched tags and `b` is the type of each match
             // arm.
+            let arg_type = state.table.fresh_type_uvar();
             let return_type = state.table.fresh_type_uvar();
+
+            // we unify the expected type of the match expression with `arg_type -> return_type`
+            unify(
+                state,
+                &ctxt,
+                ty,
+                mk_uty_arrow!(arg_type.clone(), return_type.clone()),
+            )
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             for case in cases.values() {
                 type_check_(
@@ -1296,12 +1316,8 @@ fn type_check_<L: Linearizer>(
                 )?,
             };
 
-            // `arg_type` represents the type of arguments that the match expression can be applied
-            // to.
-            let arg_type = mk_uty_enum!(; erows);
-
             // we unify the expected type of the match expression with `arg_type -> return_type`
-            unify(state, &ctxt, ty, mk_uty_arrow!(arg_type, return_type))
+            unify(state, &ctxt, arg_type, mk_uty_enum!(; erows))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Var(x) => {
@@ -1324,7 +1340,10 @@ fn type_check_<L: Linearizer>(
         // for some `a`
         Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
             let ty_dict = state.table.fresh_type_uvar();
+            unify(state, &ctxt, ty, mk_uniftype::dyn_record(ty_dict.clone()))
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
+            //TODO: should we insert in the environment the checked type, or the actual type?
             for id in record.fields.keys() {
                 ctxt.type_env.insert(*id, ty_dict.clone());
                 linearizer.retype_ident(lin, id, ty_dict.clone())
@@ -1345,10 +1364,7 @@ fn type_check_<L: Linearizer>(
                         field,
                         ty_dict.clone(),
                     )
-                })?;
-
-            unify(state, &ctxt, ty, mk_uniftype::dyn_record(ty_dict))
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
+                })
         }
         Term::Record(record) | Term::RecRecord(record, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
@@ -1381,34 +1397,52 @@ fn type_check_<L: Linearizer>(
                         )
                     })
             } else {
-                let rows = record.fields.iter().try_fold(
-                    mk_uty_row!(),
-                    |acc, (id, field)| -> Result<UnifRecordRows, TypecheckError> {
-                        // In the case of a recursive record, new types (either type variables or
-                        // annotations) have already be determined and put in the typing context,
-                        // and we need to use the same.
-                        let ty = if let Term::RecRecord(..) = t.as_ref() {
-                            ctxt.type_env.get(id).cloned().unwrap()
-                        } else {
-                            state.table.fresh_type_uvar()
-                        };
+                // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
+                let mut rows_expected_type: HashMap<Ident, UnifType> = record
+                    .fields
+                    .keys()
+                    .map(|id| (*id, state.table.fresh_type_uvar()))
+                    .collect();
 
-                        type_check_field(
+                let rows_skeleton =
+                    rows_expected_type
+                        .iter()
+                        .fold(mk_uty_row!(), |acc, (id, row_ty)| {
+                            // if let Term::RecRecord(..) = t.as_ref() {
+                            //     ctxt.type_env.get(id).cloned().unwrap()
+                            // }
+                            mk_uty_row!((*id, row_ty.clone()); acc)
+                        });
+
+                unify(state, &ctxt, ty, mk_uty_record!(; rows_skeleton))
+                    .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+                for (id, field) in record.fields.iter() {
+                    if let Term::RecRecord(..) = t.as_ref() {
+                        let affected_type = ctxt.type_env.get(id).cloned().unwrap();
+                        unify(
                             state,
-                            ctxt.clone(),
-                            lin,
-                            linearizer.scope(),
-                            *id,
-                            field,
-                            ty.clone(),
-                        )?;
+                            &ctxt,
+                            rows_expected_type.get(id).cloned().unwrap(),
+                            affected_type,
+                        )
+                        .map_err(|err| err.into_typecheck_err(&state, field.value.as_ref().map(|v| v.pos).unwrap_or_default()))?;
+                    }
 
-                        Ok(mk_uty_row!((*id, ty); acc))
-                    },
-                )?;
+                    type_check_field(
+                        state,
+                        ctxt.clone(),
+                        lin,
+                        linearizer.scope(),
+                        *id,
+                        field,
+                        // unwrap(): we've built `rows_expected_type` in this very function
+                        // from record.fields.keys(), so it must contain `id`
+                        rows_expected_type.remove(id).unwrap(),
+                    )?;
+                }
 
-                unify(state, &ctxt, ty, mk_uty_record!(; rows))
-                    .map_err(|err| err.into_typecheck_err(state, rt.pos))
+                Ok(())
             }
         }
         Term::Op1(op, t) => {
@@ -1584,6 +1618,18 @@ fn type_check_with_annot<L: Linearizer>(
             unify(state, &ctxt, ty, inferred).map_err(|err| err.into_typecheck_err(state, pos))
         }
     }
+}
+
+fn infer<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    linearizer: L,
+    rt: &RichTerm,
+) -> Result<UnifType, TypecheckError> {
+    let inferred = state.table.fresh_type_uvar();
+    type_check_(state, ctxt, lin, linearizer, rt, inferred.clone())?;
+    Ok(inferred.into_root(&state.table))
 }
 
 /// Determine the type of a let-bound expression.
