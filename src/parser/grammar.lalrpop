@@ -89,8 +89,7 @@ AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
     Types::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-AsUniTerm<Rule>: UniTerm = <l: @L> <ut: Rule> <r: @R> =>
-    UniTerm::from(ut).with_pos(mk_pos(src_id, l, r));
+AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
 
 AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
     <>.into_iter().fold(Default::default(), Annot::combine);
@@ -173,18 +172,19 @@ FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
 }
 
 // An annotation, with possibly many annotations chained.
-Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<TypeRule>>;
+Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<WithPos<TypeRule>>>;
 
 // A let annotation, with possibly many annotations chained. Include type
 // annotations, contract annotations and doc annotations.
-LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<TypeRule>>;
+LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<WithPos<TypeRule>>>;
 
 // A simple field annotation, with possibly many annotations chained. A simple
 // field annotation excludes pseudo metadata like recursive priorities operator.
 SimpleFieldAnnot<TypeRule>: FieldMetadata = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
 
 // A field annotation, with possibly many annotations chained.
-FieldAnnot<TypeRule>: FieldExtAnnot = AnnotSeries<FieldAnnotAtom<TypeRule>>;
+FieldAnnot<TypeRule>: FieldExtAnnot =
+    AnnotSeries<FieldAnnotAtom<WithPos<TypeRule>>>;
 
 // A general term. Wrap the root of the grammar as a `RichTerm`.
 pub Term: RichTerm = AsTerm<UniTerm>;
@@ -254,16 +254,24 @@ AnnotatedInfixExpr: UniTerm = {
 };
 
 Forall: Types =
-    <l: @L> "forall" <ids: Ident+> "." <ty: WithPos<Types>> <r: @R> => {
-        let ty = ids.into_iter().rev().fold(
+    "forall" <ids: Ident+> "." <ty: WithPos<Types>> => {
+        ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
             // phase. For now, we put a random one (which is also the default
             // one, for unused type variables)
-            |acc, var| Types::from(TypeF::Forall { var, var_kind: VarKind::Type, body: Box::new(acc) })
-        );
-	let pos = mk_pos(src_id, l, r);
-	Types { pos, ..ty }
+            |acc, var| {
+                let pos = acc.pos;
+                Types {
+                    types: TypeF::Forall {
+                        var,
+                        var_kind: VarKind::Type,
+                        body: Box::new(acc)
+                    },
+                    pos
+                }
+            }
+        )
     };
 
 // A n-ary application-like expression (n may be 0, in the sense that this rule
@@ -897,7 +905,6 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-
         Types::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Types>> "}" => {
