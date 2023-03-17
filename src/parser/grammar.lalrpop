@@ -254,7 +254,7 @@ AnnotatedInfixExpr: UniTerm = {
 };
 
 Forall: Types =
-    <l: @L> "forall" <ids: Ident+> "." <ty: Types> <r: @R> => {
+    <l: @L> "forall" <ids: Ident+> "." <ty: WithPos<Types>> <r: @R> => {
         let ty = ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
