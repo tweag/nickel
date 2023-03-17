@@ -324,6 +324,8 @@ pub enum NormalToken<'input> {
     LabelAppendNote,
     #[token("%label_push_diag%")]
     LabelPushDiag,
+    #[token("%array_slice%")]
+    ArraySlice,
 
     #[token("{")]
     LBrace,

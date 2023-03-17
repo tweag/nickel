@@ -356,7 +356,7 @@
           TODO: errors (start < 0 , etc.)
         "%
       # TODO: actually implement the operation using a slice primop
-      = fun start end value => %slice% start end value,
+      = fun start end value => %array_slice% start end value,
 
     split_at
       : forall a. Number -> Array a -> {left: Array a, right: Array a}
@@ -368,8 +368,8 @@
           TODO: errors (start < 0 , etc.)
         "%
       = fun index value => {
-        left = %slice% 0 index value,
-        right = %slice% index (%length% value) value
+        left = %array_slice% 0 index value,
+        right = %array_slice% index (%length% value) value
       },
 
     replicate

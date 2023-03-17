@@ -2305,7 +2305,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 MergeMode::Standard,
                 &mut self.call_stack,
             ),
-
             BinaryOp::Hash() => {
                 let mk_err_fst = |t1| {
                     Err(EvalError::TypeError(
@@ -3279,6 +3278,118 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Lbl(new_label),
                     pos2.into_inherited(),
                 )))
+            }
+            NAryOp::ArraySlice() => {
+                let mut args = args.into_iter();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: t1,
+                                pos: pos1,
+                            },
+                        ..
+                    },
+                    fst_pos,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                        ..
+                    },
+                    snd_pos,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: t3,
+                                pos: pos3,
+                            },
+                        env: env3,
+                    },
+                    third_pos,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                let Term::Num(ref start) = &*t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Number"),
+                        String::from("%array_slice%, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1,
+                            pos: pos1,
+                        },
+                    ));
+                };
+
+                let Term::Num(ref end) = &*t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Number"),
+                        String::from("%array_slice%, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2,
+                            pos: pos2,
+                        },
+                    ));
+                };
+
+                let t3_owned = t3.into_owned();
+
+                let Term::Array(mut array, attrs) = t3_owned else {
+                    return Err(EvalError::TypeError(
+                        String::from("Array"),
+                        String::from("%array_slice%, 3rd argument"),
+                        third_pos,
+                        RichTerm::new(t3_owned, pos3),
+                    ));
+                };
+
+                let Ok(start_as_usize) = usize::try_from(start) else {
+                    return Err(EvalError::Other(
+                        format!(
+                            "%array_slice%: expected the 1st argument (start) to be a positive integer smaller than {}, got {start}",
+                            usize::MAX
+                        ),
+                        pos_op
+                    ));
+                };
+
+                let Ok(end_as_usize) = usize::try_from(end) else {
+                    return Err(EvalError::Other(
+                        format!(
+                            "%array_slice%: expected the 2nd argument (end) to be a positive integer smaller than {}, got {end}",
+                            usize::MAX
+                        ),
+                        pos_op
+                    ));
+                };
+
+                let result = array.slice(start_as_usize, end_as_usize);
+
+                if let Err(crate::term::array::OutOfBoundError) = result {
+                    return Err(EvalError::Other(
+                        format!(
+                            "%array_slice%: index out of bounds. Expected `start <= end <= {}`, but got `start={start}` and `end={end}`.",
+                            array.len()
+                        ),
+                        pos_op
+                    ));
+                };
+
+                Ok(Closure {
+                    body: RichTerm::new(Term::Array(array, attrs), pos_op_inh),
+                    env: env3,
+                })
             }
         }
     }

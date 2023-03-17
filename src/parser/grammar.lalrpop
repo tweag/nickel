@@ -880,6 +880,8 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail(), t1, t2, t3)),
     "insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
         UniTerm::from(mk_opn!(NAryOp::InsertTypeVar(), key, pol, label)),
+    "array_slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::ArraySlice(), t1, t2, t3)),
 }
 
 TypeBuiltin: Types = {
@@ -1072,6 +1074,7 @@ extern {
         "label_with_notes" => Token::Normal(NormalToken::LabelWithNotes),
         "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
         "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
+        "array_slice" => Token::Normal(NormalToken::ArraySlice),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),
