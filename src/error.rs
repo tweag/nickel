@@ -1011,7 +1011,7 @@ impl IntoDiagnostics<FileId> for EvalError {
 /// Common functionality for formatting blame errors.
 mod blame_error {
     use codespan::{FileId, Files};
-    use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+    use codespan_reporting::diagnostic::{Diagnostic, Label};
 
     use crate::{
         eval::callstack::CallStack,
@@ -1161,15 +1161,11 @@ mod blame_error {
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
     /// (Nickel) label, and notes to hint at the situation that may have caused the corresponding
     /// error.
-    pub fn report_ty_path(
-        l: &label::Label,
-        files: &mut Files<String>,
-    ) -> (Label<FileId>, Vec<String>) {
+    pub fn report_ty_path(l: &label::Label) -> (Label<FileId>, Vec<String>) {
         let end_note = String::from("Note: this is an illustrative example. The actual error may involve deeper nested functions calls.");
 
         let PathSpan {
-            start,
-            end,
+            span,
             last,
             last_arrow_elem,
         } = ty_path::span(l.path.iter().peekable(), &l.types);
@@ -1273,12 +1269,7 @@ is None but last_arrow_elem is Some"),
             _ => (String::from("expected type"), Vec::new()),
         };
 
-        let label = Label::new(
-            LabelStyle::Secondary,
-            files.add("", format!("{}", l.types)),
-            start..end,
-        )
-        .with_message(msg);
+        let label = secondary(&span).with_message(msg);
         (label, notes)
     }
 
@@ -1340,7 +1331,7 @@ is None but last_arrow_elem is Some"),
         let contract_notes = head_contract_diagnostic
             .map(|diag| diag.notes)
             .unwrap_or_default();
-        let (path_label, notes_higher_order) = report_ty_path(&label, files);
+        let (path_label, notes_higher_order) = report_ty_path(&label);
 
         // Report contract error with the surrounding source program
         // for more context.
@@ -1667,19 +1658,13 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         ])]
             }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
-                let PathSpan {start: expd_start, end: expd_end, ..} = ty_path::span(path.iter().peekable(), &expd);
-                let PathSpan {start: actual_start, end: actual_end, ..} = ty_path::span(path.iter().peekable(), &actual);
+                let PathSpan {span: expd_span, ..} = ty_path::span(path.iter().peekable(), &expd);
+                let PathSpan {span: actual_span, ..} = ty_path::span(path.iter().peekable(), &actual);
 
                 let mut labels = vec![
-                    Label::secondary(
-                        files.add("", format!("{expd}")),
-                        expd_start..expd_end,
-                    )
+                    secondary(&expd_span)
                         .with_message("this part of the expected type"),
-                    Label::secondary(
-                        files.add("", format!("{actual}")),
-                        actual_start..actual_end,
-                    )
+                    secondary(&actual_span)
                         .with_message("does not match this part of the inferred type"),
                 ];
                 labels.extend(mk_expr_label(&span_opt));

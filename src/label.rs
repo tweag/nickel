@@ -49,6 +49,7 @@ pub mod ty_path {
 
     use crate::{
         identifier::Ident,
+        position::RawSpan,
         types::{RecordRowF, RecordRowsIteratorItem, TypeF, Types},
     };
 
@@ -99,8 +100,7 @@ pub mod ty_path {
     /// `Codomain`, instead of `Array` and `Codomain`. This helps specializing the error message
     /// accordingly.
     pub struct PathSpan {
-        pub start: usize,
-        pub end: usize,
+        pub span: RawSpan,
         pub last: Option<Elem>,
         pub last_arrow_elem: Option<Elem>,
     }
@@ -145,28 +145,24 @@ pub mod ty_path {
                 match next {
                     Elem::Domain => {
                         let PathSpan {
-                            start,
-                            end,
+                            span,
                             last,
                             last_arrow_elem,
                         } = span(path_it, dom.as_ref());
                         PathSpan {
-                            start,
-                            end,
+                            span,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
                     }
                     Elem::Codomain => {
                         let PathSpan {
-                            start,
-                            end,
+                            span,
                             last,
                             last_arrow_elem,
                         } = span(path_it, codom.as_ref());
                         PathSpan {
-                            start,
-                            end,
+                            span,
                             last: last.or(Some(*next)),
                             last_arrow_elem: last_arrow_elem.or(Some(*next)),
                         }
@@ -180,18 +176,15 @@ pub mod ty_path {
                         RecordRowsIteratorItem::Row(RecordRowF { id, types: ty })
                             if id == *ident =>
                         {
-                            let range = ty.range().unwrap();
-                            let start = range.start;
-                            let end = range.end;
                             let PathSpan {
                                 last,
                                 last_arrow_elem,
                                 ..
                             } = span(path_it, ty);
 
+                            let span = ty.pos.unwrap();
                             return PathSpan {
-                                start,
-                                end,
+                                span,
                                 last: last.or_else(|| next.copied()),
                                 last_arrow_elem,
                             };
@@ -214,46 +207,39 @@ but this field doesn't exist in {}",
                 panic!("span(): unexpected blame of a dyn contract inside an array")
             }
             (TypeF::Array(ty), next @ Some(Elem::Array)) => {
-                let range = ty.range().unwrap();
-                let start = range.start;
-                let end = range.end;
                 let PathSpan {
                     last,
                     last_arrow_elem,
                     ..
                 } = span(path_it, ty);
+
+                let span = ty.pos.unwrap();
                 PathSpan {
-                    start,
-                    end,
+                    span,
                     last: last.or_else(|| next.copied()),
                     last_arrow_elem,
                 }
             }
             (TypeF::Dict(ty), next @ Some(Elem::Dict)) => {
-                let range = ty.range().unwrap();
-                let start = range.start;
-                let end = range.end;
 
                 let PathSpan {
                     last,
                     last_arrow_elem,
                     ..
                 } = span(path_it, ty);
+
+                let span = ty.pos.unwrap();
                 PathSpan {
-                    start,
-                    end,
+                    span,
                     last: last.or_else(|| next.copied()),
                     last_arrow_elem,
                 }
             }
             // The type and the path don't match, we stop here.
             _ => {
-                let range = ty.range().unwrap();
-                let start = range.start;
-                let end = range.end;
+                let span = ty.pos.unwrap();
                 PathSpan {
-                    start,
-                    end,
+                    span,
                     last: None,
                     last_arrow_elem: None,
                 }
