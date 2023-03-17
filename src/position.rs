@@ -40,7 +40,7 @@ impl RawSpan {
 }
 
 /// The position span of a term.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 pub enum TermPos {
     /// The term exactly corresponds to an original expression in the source, or is a construct
     /// introduced by program transformation that corresponds to an original span in the source.
@@ -49,13 +49,8 @@ pub enum TermPos {
     Inherited(RawSpan),
     /// The term couldn't be assigned a position (usually generated during execution or program
     /// transformations).
+    #[default]
     None,
-}
-
-impl Default for TermPos {
-    fn default() -> Self {
-        TermPos::None
-    }
 }
 
 impl TermPos {
