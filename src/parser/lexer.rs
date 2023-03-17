@@ -29,7 +29,11 @@
 //! `0`, this is the end of the current interpolated expressions, and we leave the normal mode and
 //! go back to string mode. In our example, this is the second `}`: at this point, the lexer knows
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
-use crate::parser::error::{LexicalError, ParseError};
+use super::{
+    error::{LexicalError, ParseError},
+    utils::parse_number,
+};
+use crate::term::Number;
 use logos::Logos;
 use std::ops::Range;
 
@@ -65,8 +69,8 @@ pub enum NormalToken<'input> {
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
-    #[regex("[0-9]*\\.?[0-9]+", |lex| lex.slice().parse())]
-    NumLiteral(f64),
+    #[regex("[0-9]*\\.?[0-9]+", |lex| parse_number(lex.slice()))]
+    NumLiteral(Number),
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.

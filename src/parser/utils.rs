@@ -19,10 +19,19 @@ use crate::{
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, LetMetadata, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+        BinaryOp, LabeledType, LetMetadata, Rational, RichTerm, StrChunk, Term, TypeAnnotation,
+        UnaryOp,
     },
     types::{TypeF, Types},
 };
+
+use malachite::num::conversion::traits::FromSciString;
+
+pub struct ParseNumberError;
+
+pub fn parse_number(slice: &str) -> Result<Rational, ParseNumberError> {
+    Rational::from_sci_string(slice).ok_or(ParseNumberError)
+}
 
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string
 /// opening delimter `m%"`, and the symbolic string opening delimiter `s%"`.

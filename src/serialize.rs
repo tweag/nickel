@@ -1,17 +1,21 @@
 //! Serialization of an evaluated program to various data format.
+use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
+
 use crate::{
     error::SerializationError,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        RichTerm, Term, TypeAnnotation,
+        Number, RichTerm, Term, TypeAnnotation,
     },
 };
 
 use serde::{
     de::{Deserialize, Deserializer},
-    ser::{Error, Serialize, SerializeMap, SerializeSeq, Serializer},
+    ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
 };
+
+use malachite::num::conversion::traits::IsInteger;
 
 use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
 
@@ -60,23 +64,44 @@ impl FromStr for ExportFormat {
     }
 }
 
-/// Implicitly convert float to integers when possible to avoid trailing zeros. Note this this
-/// only work if the float is in range of either `i64` or `f64`. It seems there's no easy general
-/// solution (working for both YAML, TOML, and JSON) to choose the way floating point values are
-/// formatted.
-pub fn serialize_num<S>(n: &f64, serializer: S) -> Result<S::Ok, S::Error>
+/// Implicitly convert numbers to primitive integers when possible, and serialize an exact
+/// representation. Note that `u128` and `i128` aren't supported for common configuration formats
+/// in serde, so we rather pick `i64` and `u64`, even if the former couple theoretically allows for
+/// a wider range of rationals to be exactly represented. We don't expect values to be that large
+/// in practice anyway: using arbitrary precision rationals is directed toward not introducing rounding errors
+/// when performing simple arithmetic operations over decimals numbers, mostly.
+///
+/// If the number doesn't fit into an `i64` or `u64`, we approximate it by the nearest `f64` and
+/// serialize this value. This may incur a loss of precision, but this is expected: we can't
+/// represent something like e.g. `1/3` exactly in JSON anyway.
+pub fn serialize_num<S>(n: &Number, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    if n.fract() == 0.0 {
-        if *n < 0.0 && *n >= (i64::MIN as f64) && *n <= (i64::MAX as f64) {
-            return (*n as i64).serialize(serializer);
-        } else if *n >= 0.0 && *n <= (u64::MAX as f64) {
-            return (*n as u64).serialize(serializer);
+    if n.is_integer() {
+        if *n < 0 {
+            if let Ok(n_as_integer) = i64::try_from(n) {
+                return n_as_integer.serialize(serializer);
+            }
+        } else if let Ok(n_as_uinteger) = u64::try_from(n) {
+            return n_as_uinteger.serialize(serializer);
         }
     }
 
-    n.serialize(serializer)
+    f64::rounding_from(n, RoundingMode::Nearest).serialize(serializer)
+}
+
+/// Deserialize a Nickel number. As for parsing, we convert the number from a 64bits float
+pub fn deserialize_num<'de, D>(deserializer: D) -> Result<Number, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let as_f64 = f64::deserialize(deserializer)?;
+    Number::try_from_float_simplest(as_f64).map_err(|_| {
+        serde::de::Error::custom(format!(
+            "couldn't convert {as_f64} to a Nickel number: Nickel doesn't support NaN nor infinity"
+        ))
+    })
 }
 
 /// Serializer for annotated values.
@@ -101,7 +126,7 @@ where
         .iter_serializable()
         .collect::<Result<Vec<_>, _>>()
         .map_err(|missing_def_err| {
-            Error::custom(format!(
+            serde::ser::Error::custom(format!(
                 "missing field definition for `{}`",
                 missing_def_err.id
             ))

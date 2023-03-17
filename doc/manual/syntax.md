@@ -22,8 +22,20 @@ There are four basic kinds of values in Nickel :
 ### Numeric values
 
 Nickel has a support for numbers, positive and negative, with or without
-decimals. Internally, those numbers are stored as 64-bits floating point
-numbers, following the IEEE 754 standard.
+decimals. Internally, those numbers are stored as arbitrary precision rational
+numbers, meaning that basic arithmetic operations (addition, subtraction,
+division and multiplication) don't incur rounding errors. Numbers are
+deserialized as 64-bits floating point numbers.
+
+Raising to a non-integer power is one operation which can incur rounding errors:
+both operands need to be converted to the nearest 64-bits floating point
+numbers, the power is computed as a 64-bits floating point number as well,
+and converted back to an arbitrary precision rational number.
+
+Numbers are serialized as integers whenever possible (when they fit exactly into
+a 64-bits signed integer or a 64-bits unsigned integer), and as a 64 bits float
+otherwise. The latter conversion might lose precision as well, for example when
+serializing `1/3`.
 
 Examples:
 

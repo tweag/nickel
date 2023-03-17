@@ -1,6 +1,7 @@
 use nickel_lang::term::{
+    make as mk_term,
     record::{Field, FieldMetadata},
-    SharedTerm, Term, TypeAnnotation,
+    TypeAnnotation,
 };
 use nickel_lang_utilities::TestProgram;
 
@@ -14,7 +15,7 @@ pub fn test_query_metadata_basic() {
     let result = program.query(Some(String::from("val"))).unwrap();
 
     assert_eq!(result.metadata.doc, Some(String::from("Test basic")));
-    assert_eq!(result.value.unwrap().term, SharedTerm::new(Term::Num(2.0)));
+    assert_eq!(result.value.unwrap().without_pos(), mk_term::integer(2));
 }
 
 #[test]

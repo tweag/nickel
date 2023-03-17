@@ -192,6 +192,19 @@
         pow 2 8 =>
           256
       ```
+
+      # Precision
+
+      Nickel numbers are arbitrary precision rationals. If the exponent `y` is
+      an integer which fits in a 64-bits signed or unsigned integer (that is, if
+      `y` is an integer between `−2^63` and `2^64-1`), the result is computed
+      exactly.
+
+      Otherwise, both operands `x` and `y` are converted to the nearest 64 bits
+      float (excluding `NaN` and infinity), and we compute the result as a 64
+      bits float. This result is then converted back to a rational. In this
+      case, **be aware that both the conversion from rationals to floats, and
+      the power operation, might incur rounding errors**.
       "%
     = fun x n => %pow% x n,
   }

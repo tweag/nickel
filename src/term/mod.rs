@@ -34,6 +34,14 @@ use crate::{
 };
 
 use codespan::FileId;
+pub use malachite::{
+    num::{
+        basic::traits::Zero,
+        conversion::traits::{IsInteger, RoundingFrom, ToSci},
+    },
+    rounding_modes::RoundingMode,
+    Integer, Rational,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +68,8 @@ pub enum Term {
     Bool(bool),
     /// A floating-point value.
     #[serde(serialize_with = "crate::serialize::serialize_num")]
-    Num(f64),
+    #[serde(deserialize_with = "crate::serialize::deserialize_num")]
+    Num(Number),
     /// A literal string.
     Str(String),
     /// A string containing interpolated expressions, represented as a list of either literals or
@@ -189,7 +198,7 @@ pub enum Term {
     /// ```nickel
     /// let r = {
     ///   foo = bar + 1,
-    ///   bar | Num,
+    ///   bar | Number,
     ///   baz = 2,
     /// } in
     /// r.baz + (r & {bar = 1}).foo
@@ -205,7 +214,24 @@ pub enum Term {
     RuntimeError(EvalError),
 }
 
+/// A unique sealing key, introduced by polymorphic contracts.
 pub type SealingKey = i32;
+
+/// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
+/// rationals.
+///
+/// Basic arithmetic operations are exact, without loss of precision (within the limits of
+/// available memory).
+///
+/// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
+/// operands to 64-bits floats, performing the floating-point power operation, and converting back
+/// to rationals, which can incur a loss of precision.
+///
+/// [^number-serialization]: Conversion to string and serialization try to first convert the
+///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations don't
+///     lose precision. Otherwise, the number is converted to the nearest 64bit float and then
+///     serialized/printed, which can incur a loss of information.
+pub type Number = Rational;
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
 /// revertible cache elements at evaluation, which are devices used for the implementation of recursive
@@ -308,71 +334,18 @@ impl From<LetMetadata> for record::FieldMetadata {
     }
 }
 
-/// A wrapper around f64 which makes `NaN` not representable. As opposed to floats, it is `Eq` and
-/// `Ord`.
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
-pub struct NumeralPriority(f64);
-
-/// Error raised when trying to convert a float with `NaN` value to a `NumeralPriority`.
-#[derive(Debug, Copy, Clone)]
-pub struct PriorityIsNaN;
-
-// The following impl are ok because `NumeralPriority(NaN)` can't be constructed.
-impl Eq for NumeralPriority {}
-
-// We can't derive `Ord` because there is an `f64` inside
-// but it is actually an `Ord` because `NaN` is forbidden.
-// See `TryFrom` smart constructor.
-#[allow(clippy::derive_ord_xor_partial_ord)]
-impl Ord for NumeralPriority {
-    fn cmp(&self, other: &Self) -> Ordering {
-        // Ok: NaN is forbidden
-        self.partial_cmp(other).unwrap()
-    }
-}
-
-impl NumeralPriority {
-    pub fn zero() -> Self {
-        NumeralPriority(0.0)
-    }
-}
-
-impl TryFrom<f64> for NumeralPriority {
-    type Error = PriorityIsNaN;
-
-    fn try_from(f: f64) -> Result<Self, Self::Error> {
-        if f.is_nan() {
-            Err(PriorityIsNaN)
-        } else {
-            Ok(NumeralPriority(f))
-        }
-    }
-}
-
-impl From<NumeralPriority> for f64 {
-    fn from(n: NumeralPriority) -> Self {
-        n.0
-    }
-}
-
-impl fmt::Display for NumeralPriority {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
     /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
     /// provided.
     ///
-    /// Act as the value `MergePriority::Numeral(0.0)` with respect to ordering and equality
+    /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
     /// A numeral priority.
-    Numeral(NumeralPriority),
+    Numeral(Number),
     /// The priority of values that override everything else and can't be overridden.
     Top,
 }
@@ -392,7 +365,7 @@ impl PartialEq for MergePriority {
             (MergePriority::Numeral(p1), MergePriority::Numeral(p2)) => p1 == p2,
             (MergePriority::Neutral, MergePriority::Numeral(p))
             | (MergePriority::Numeral(p), MergePriority::Neutral)
-                if p == &NumeralPriority::zero() =>
+                if p == &Number::ZERO =>
             {
                 true
             }
@@ -417,8 +390,8 @@ impl Ord for MergePriority {
             (MergePriority::Top, _) | (_, MergePriority::Bottom) => Ordering::Greater,
 
             // Neutral and numeral.
-            (MergePriority::Neutral, MergePriority::Numeral(n)) => NumeralPriority::zero().cmp(n),
-            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&NumeralPriority::zero()),
+            (MergePriority::Neutral, MergePriority::Numeral(n)) => Number::ZERO.cmp(n),
+            (MergePriority::Numeral(n), MergePriority::Neutral) => n.cmp(&Number::ZERO),
         }
     }
 }
@@ -433,7 +406,7 @@ impl fmt::Display for MergePriority {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MergePriority::Bottom => write!(f, "default"),
-            MergePriority::Neutral => write!(f, "{}", NumeralPriority::zero()),
+            MergePriority::Neutral => write!(f, "{}", Number::ZERO),
             MergePriority::Numeral(p) => write!(f, "{p}"),
             MergePriority::Top => write!(f, "force"),
         }
@@ -678,7 +651,7 @@ impl Term {
             Term::Null => String::from("null"),
             Term::Bool(true) => String::from("true"),
             Term::Bool(false) => String::from("false"),
-            Term::Num(n) => format!("{n}"),
+            Term::Num(n) => format!("{}", n.to_sci()),
             Term::Str(s) => format!("\"{s}\""),
             Term::StrChunks(chunks) => {
                 let chunks_str: Vec<String> = chunks
@@ -1711,10 +1684,10 @@ impl std::fmt::Display for RichTerm {
 /// It is used somehow as a match statement, going from
 /// ```
 /// # use nickel_lang::term::{RichTerm, Term};
-/// let rt = RichTerm::from(Term::Num(5.0));
+/// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match rt.term.into_owned() {
-///     Term::Num(x) => x as usize,
+///     Term::Bool(x) => usize::from(x),
 ///     Term::Str(s) => s.len(),
 ///     _ => 42,
 /// };
@@ -1723,10 +1696,10 @@ impl std::fmt::Display for RichTerm {
 /// ```
 /// # use nickel_lang::term::{RichTerm, Term};
 /// # use nickel_lang::match_sharedterm;
-/// let rt = RichTerm::from(Term::Num(5.0));
+/// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match_sharedterm!{rt.term, with {
-///         Term::Num(x) => x as usize,
+///         Term::Bool(x) => usize::from(x),
 ///         Term::Str(s) => s.len(),
 ///     } else 42
 /// };
@@ -1959,6 +1932,10 @@ pub mod make {
         S: Into<OsString>,
     {
         Term::Import(path.into()).into()
+    }
+
+    pub fn integer(n: impl Into<i64>) -> RichTerm {
+        Term::Num(Number::from(n.into())).into()
     }
 }
 

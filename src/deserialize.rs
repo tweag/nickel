@@ -1,5 +1,6 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
+use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 use std::collections::HashMap;
 use std::iter::ExactSizeIterator;
 
@@ -20,24 +21,7 @@ macro_rules! deserialize_number {
             V: Visitor<'de>,
         {
             match unwrap_term(self)? {
-                Term::Num(n) => visitor.$visit(n as $type),
-                other => Err(RustDeserializationError::InvalidType {
-                    expected: "Number".to_string(),
-                    occurred: RichTerm::from(other).to_string(),
-                }),
-            }
-        }
-    };
-}
-
-macro_rules! deserialize_number_round {
-    ($method:ident, $type:tt, $visit:ident) => {
-        fn $method<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: Visitor<'de>,
-        {
-            match unwrap_term(self)? {
-                Term::Num(n) => visitor.$visit(n.round() as $type),
+                Term::Num(n) => visitor.$visit($type::rounding_from(&n, RoundingMode::Nearest)),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
                     occurred: RichTerm::from(other).to_string(),
@@ -70,7 +54,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         match unwrap_term(self)? {
             Term::Null => visitor.visit_unit(),
             Term::Bool(v) => visitor.visit_bool(v),
-            Term::Num(v) => visitor.visit_f64(v),
+            Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest)),
             Term::Str(v) => visitor.visit_string(v),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
                 variant: v.into_label(),
@@ -88,16 +72,16 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         }
     }
 
-    deserialize_number_round!(deserialize_i8, i8, visit_i8);
-    deserialize_number_round!(deserialize_i16, i16, visit_i16);
-    deserialize_number_round!(deserialize_i32, i32, visit_i32);
-    deserialize_number_round!(deserialize_i64, i64, visit_i64);
-    deserialize_number_round!(deserialize_i128, i128, visit_i128);
-    deserialize_number_round!(deserialize_u8, u8, visit_u8);
-    deserialize_number_round!(deserialize_u16, u16, visit_u16);
-    deserialize_number_round!(deserialize_u32, u32, visit_u32);
-    deserialize_number_round!(deserialize_u64, u64, visit_u64);
-    deserialize_number_round!(deserialize_u128, u128, visit_u128);
+    deserialize_number!(deserialize_i8, i8, visit_i8);
+    deserialize_number!(deserialize_i16, i16, visit_i16);
+    deserialize_number!(deserialize_i32, i32, visit_i32);
+    deserialize_number!(deserialize_i64, i64, visit_i64);
+    deserialize_number!(deserialize_i128, i128, visit_i128);
+    deserialize_number!(deserialize_u8, u8, visit_u8);
+    deserialize_number!(deserialize_u16, u16, visit_u16);
+    deserialize_number!(deserialize_u32, u32, visit_u32);
+    deserialize_number!(deserialize_u64, u64, visit_u64);
+    deserialize_number!(deserialize_u128, u128, visit_u128);
     deserialize_number!(deserialize_f32, f32, visit_f32);
     deserialize_number!(deserialize_f64, f64, visit_f64);
 
