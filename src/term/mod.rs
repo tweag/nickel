@@ -1332,6 +1332,10 @@ pub enum BinaryOp {
     LabelWithNotes(),
     /// Append a note to the current diagnostic of a label.
     LabelAppendNote(),
+
+    /// Look up the [`TypeVarData`] associated with a [`SealingKey`] in the
+    /// type environment of a [label](Term::Lbl)
+    LookupTypeVar(),
 }
 
 impl BinaryOp {
@@ -1390,6 +1394,14 @@ pub enum NAryOp {
     ///     something goes wrong while unsealing,
     ///   - the [record](Term::Record) whose tail we wish to unseal.
     RecordUnsealTail(),
+    /// Insert type variable data into the [`type_environment`] of a [`Label`]
+    ///
+    /// Takes four arguments:
+    ///   - the [sealing key](Term::SealingKey) assigned to the type variable
+    ///   - the [introduction polarity](label::Polarity) of the type variable
+    ///   - the [kind](types::VarKind) of the type variable
+    ///   - a [label](Term::Label) on which to operate
+    InsertTypeVar(),
 }
 
 impl NAryOp {
@@ -1399,7 +1411,8 @@ impl NAryOp {
             | NAryOp::StrReplaceRegex()
             | NAryOp::StrSubstr()
             | NAryOp::MergeContract()
-            | NAryOp::RecordUnsealTail() => 3,
+            | NAryOp::RecordUnsealTail()
+            | NAryOp::InsertTypeVar() => 3,
             NAryOp::RecordSealTail() => 4,
         }
     }
@@ -1414,6 +1427,7 @@ impl fmt::Display for NAryOp {
             NAryOp::MergeContract() => write!(f, "mergeContract"),
             NAryOp::RecordSealTail() => write!(f, "%record_seal_tail%"),
             NAryOp::RecordUnsealTail() => write!(f, "%record_unseal_tail%"),
+            NAryOp::InsertTypeVar() => write!(f, "%insert_type_variable%"),
         }
     }
 }

@@ -200,6 +200,10 @@ pub enum NormalToken<'input> {
     GoArray,
     #[token("%go_dict%")]
     GoDict,
+    #[token("%insert_type_variable%")]
+    InsertTypeVar,
+    #[token("%lookup_type_variable%")]
+    LookupTypeVar,
 
     #[token("%seal%")]
     Seal,

@@ -2,13 +2,18 @@
 //!
 //! A label is a value holding metadata relative to contract checking. It gives the user useful
 //! information about the context of a contract failure.
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
     identifier::Ident,
+    mk_uty_enum, mk_uty_record,
     position::{RawSpan, TermPos},
-    term::{RichTerm, Term},
+    term::{
+        record::{Field, RecordData},
+        RichTerm, SealingKey, Term,
+    },
+    typecheck::{HasUnifType, UnifType},
     types::{TypeF, Types},
 };
 
@@ -366,8 +371,42 @@ pub struct Label {
     pub polarity: Polarity,
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
+    /// An environment mapping type variables to [`TypeVarData`]. Used by
+    /// polymorphic contracts to decide which actions to take when encountering a `forall`.
+    pub type_environment: HashMap<SealingKey, TypeVarData>,
 }
 
+/// Data about type variables that is needed for polymorphic contracts to decide which actions to take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeVarData {
+    pub polarity: Polarity,
+}
+
+impl From<&TypeVarData> for Term {
+    fn from(value: &TypeVarData) -> Self {
+        Term::Record(RecordData {
+            fields: [(
+                Ident::new("polarity"),
+                Field::from(RichTerm::from(Term::from(value.polarity))),
+            )]
+            .into(),
+            attrs: Default::default(),
+            sealed_tail: None,
+        })
+    }
+}
+
+impl HasUnifType for TypeVarData {
+    fn unif_type() -> UnifType {
+        mk_uty_record!(("polarity", Polarity::unif_type()))
+    }
+}
+
+impl HasUnifType for Polarity {
+    fn unif_type() -> UnifType {
+        mk_uty_enum!("Positive", "Negative")
+    }
+}
 /// A polarity. See [`Label`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Polarity {
@@ -389,6 +428,18 @@ impl From<Polarity> for Term {
         match value {
             Polarity::Positive => Term::Enum(Ident::new("Positive")),
             Polarity::Negative => Term::Enum(Ident::new("Negative")),
+        }
+    }
+}
+
+impl TryFrom<&Term> for Polarity {
+    type Error = ();
+
+    fn try_from(value: &Term) -> Result<Self, Self::Error> {
+        match value {
+            Term::Enum(positive) if positive.label() == "Positive" => Ok(Self::Positive),
+            Term::Enum(negative) if negative.label() == "Negative" => Ok(Self::Negative),
+            _ => Err(()),
         }
     }
 }
@@ -529,6 +580,7 @@ impl Default for Label {
             arg_idx: Default::default(),
             arg_pos: Default::default(),
             path: Default::default(),
+            type_environment: Default::default(),
         }
     }
 }

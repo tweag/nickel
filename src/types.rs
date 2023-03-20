@@ -137,6 +137,29 @@ pub enum VarKind {
     RecordRows,
 }
 
+impl From<VarKind> for Term {
+    fn from(value: VarKind) -> Self {
+        match value {
+            VarKind::Type => Term::Enum(Ident::new("Type")),
+            VarKind::EnumRows => Term::Enum(Ident::new("EnumRows")),
+            VarKind::RecordRows => Term::Enum(Ident::new("RecordRows")),
+        }
+    }
+}
+
+impl TryFrom<&Term> for VarKind {
+    type Error = ();
+
+    fn try_from(value: &Term) -> Result<Self, Self::Error> {
+        match value {
+            Term::Enum(type_) if type_.label() == "Type" => Ok(Self::Type),
+            Term::Enum(enum_rows) if enum_rows.label() == "EnumRows" => Ok(Self::EnumRows),
+            Term::Enum(record_rows) if record_rows.label() == "RecordRows" => Ok(Self::RecordRows),
+            _ => Err(()),
+        }
+    }
+}
+
 /// A Nickel type.
 ///
 /// # Generic representation (functor)

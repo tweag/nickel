@@ -16,7 +16,7 @@ use super::{
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::Ident,
-    label::ty_path,
+    label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     position::TermPos,
     serialize,
@@ -2746,6 +2746,39 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     pos2.into_inherited(),
                 )))
             }
+            BinaryOp::LookupTypeVar() => {
+                let t1 = t1.into_owned();
+                let t2 = t2.into_owned();
+
+                let Term::SealingKey(key) = t1 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Sym"),
+                        String::from("lookup_type_variable, 1st argument"),
+                        fst_pos,
+                        RichTerm {
+                            term: t1.into(),
+                            pos: pos1,
+                        }
+                    ));
+                };
+
+                let Term::Lbl(label) = t2 else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("lookup_type_variable, 2nd argument"),
+                        snd_pos,
+                        RichTerm {
+                            term: t2.into(),
+                            pos: pos2,
+                        }
+                    ));
+                };
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    label.type_environment.get(&key).unwrap().into(),
+                    pos_op_inh,
+                )))
+            }
         }
     }
 
@@ -3105,6 +3138,92 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                     )),
                 }
+            }
+            NAryOp::InsertTypeVar() => {
+                let mut args = args.into_iter();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: key,
+                                pos: key_pos,
+                            },
+                        ..
+                    },
+                    pos1,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: polarity,
+                                pos: polarity_pos,
+                            },
+                        ..
+                    },
+                    pos2,
+                ) = args.next().unwrap();
+
+                let (
+                    Closure {
+                        body:
+                            RichTerm {
+                                term: label,
+                                pos: label_pos,
+                            },
+                        ..
+                    },
+                    pos3,
+                ) = args.next().unwrap();
+                debug_assert!(args.next().is_none());
+
+                let Term::SealingKey(key) = *key else {
+                    return Err(EvalError::TypeError(
+                        String::from("Sym"),
+                        String::from("insert_type_variable, 1st argument"),
+                        key_pos,
+                        RichTerm {
+                            term: key,
+                            pos: pos1,
+                        }
+                    ));
+                };
+
+                let Ok(polarity) = Polarity::try_from(polarity.as_ref()) else {
+                    return Err(EvalError::TypeError(
+                        String::from("Polarity"),
+                        String::from("insert_type_variable, 2nd argument"),
+                        polarity_pos,
+                        RichTerm {
+                            term: polarity,
+                            pos: pos2,
+                        },
+                    ))
+                };
+
+                let Term::Lbl(label) = &*label else {
+                    return Err(EvalError::TypeError(
+                        String::from("Lbl"),
+                        String::from("insert_type_variable, 3rd argument"),
+                        label_pos,
+                        RichTerm {
+                            term: label,
+                            pos: pos3,
+                        }
+                    ));
+                };
+
+                let mut new_label = label.clone();
+                new_label
+                    .type_environment
+                    .insert(key, TypeVarData { polarity });
+
+                Ok(Closure::atomic_closure(RichTerm::new(
+                    Term::Lbl(new_label),
+                    pos2.into_inherited(),
+                )))
             }
         }
     }
