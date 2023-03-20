@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::OsString, io};
 use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
-    error::Error,
+    error::{Error, ImportError},
     typecheck::{self, linearization::Linearization},
 };
 
@@ -48,8 +48,17 @@ impl CacheExt for Cache {
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
-                self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache)
-                    .unwrap();
+                match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
+                    Ok(_) => (),
+                    Err(error) => {
+                        // for now just unwrap
+                        let pos = self.get_ref(id).unwrap().pos;
+                        let f = String::from("<somefile>");
+                        let msg = String::from("Couldn't type check this imports content");
+                        let err = ImportError::IOError(f, msg, pos);
+                        import_errors.push(err);
+                    }
+                }
             }
         }
 
