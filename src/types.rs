@@ -912,22 +912,21 @@ impl Types {
                 var_kind,
             } => {
                 use VarKind::*;
-                let contract = match var_kind {
-                    Type => mk_app!(
-                        contract::forall_var(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                    EnumRows | RecordRows => mk_app!(
-                        contract::forall_tail(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                };
 
+                let sealing_key = Term::SealingKey(*sy);
+                let contract = match var_kind {
+                    Type => mk_app!(contract::forall_var(), sealing_key.clone()),
+                    EnumRows | RecordRows => mk_app!(contract::forall_tail(), sealing_key.clone()),
+                };
                 vars.insert(*var, contract);
+
                 *sy += 1;
-                body.subcontract(vars, pol, sy)?
+                mk_app!(
+                    contract::forall(),
+                    sealing_key,
+                    Term::from(pol),
+                    body.subcontract(vars, pol, sy)?
+                )
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,

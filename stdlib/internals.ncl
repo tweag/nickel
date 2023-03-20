@@ -25,9 +25,10 @@
       else
           %blame% label,
 
-  "$forall_var" = fun sealing_key polarity label value =>
-      let current-polarity = %polarity% label in
-      if polarity == current-polarity then
+  "$forall_var" = fun sealing_key label value =>
+      let current_polarity = %polarity% label in
+      let {polarity, ..} = %lookup_type_variable% sealing_key label in
+      if polarity == current_polarity then
           %unseal% sealing_key value (%blame% label)
       else
           # Here, we know that this term should be sealed, but to give the right
@@ -35,6 +36,9 @@
           # polarity of the `Forall`, because this is what's important for
           # blaming polymorphic contracts.
           %seal% sealing_key (%chng_pol% label) value,
+
+  "$forall" = fun sealing_key polarity contract label value =>
+    contract (%insert_type_variable% sealing_key polarity label) value,
 
   "$enums" = fun case label value =>
       if %typeof% value == `Enum then
@@ -89,8 +93,10 @@
       else
           %blame% (%label_with_message% "not a record" label),
 
-  "$forall_tail" = fun sealing_key polarity acc label value =>
-      if polarity == (%polarity% label) then
+  "$forall_tail" = fun sealing_key acc label value =>
+      let current_polarity = %polarity% label in
+      let {polarity, ..} = %lookup_type_variable% sealing_key label in
+      if polarity == current_polarity then
           if value == {} then
             let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
             let tail = %record_unseal_tail% sealing_key tagged_label value in
