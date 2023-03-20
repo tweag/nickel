@@ -1,38 +1,46 @@
-//! Implementation of the typechecker.
+//! Typechecking and type inference.
 //!
-//! # Mode
+//! Nickel uses a mix of a bidirectional typechecking algorithm, together with standard
+//! unification-based type inference. Nickel is gradually typed, and dynamic typing is the default.
+//! Static typechecking is triggered by a type annotation.
 //!
-//! Typechecking can be made in to different modes:
-//! - **Strict**: correspond to traditional typechecking in statically typed languages. This
-//!   happens inside a statically typed block. Statically typed blocks are introduced by the type
-//!   ascription operator `:`, as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`. This is
-//!   implemented by [`type_check_`] and variants.
-//! - **Non strict**: do not enforce any typing but continue to traverse the AST looking for other
-//!   typed blocks to typecheck and store the annotations of let bindings in the environment. This is
-//!   implemented by the [`walk`] function.
+//! # Modes
 //!
-//! The algorithm starts in non strict mode. It is switched to strict mode when entering a
-//! statically typed block (an expression annotated with a type), and is switched back to
-//! non-strict mode when entering an expression annotated with a contract. Type and contract
-//! annotations thus serve both another purpose beside enforcing a type or a contract, which is to
-//! switch the typechecking mode.
+//! Corresponding to dynamic typing static typing, the typechecking algorithm runs in two separate
+//! modes:
+//!
+//! - **enforce** corresponds to traditional typechecking in a statically typed language. This
+//!   happens inside a statically typed block. Such blocks are introduced by the type ascription
+//!   operator `:`, as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`. Enforce
+//!   mode is implemented by [`type_check_`] and variants.
+//! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
+//!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
+//!   is implemented by the [`walk`] function.
+//!
+//! The algorithm starts in walk mode. A typed block (an expression annotated with a type) switches
+//! to enforce mode, and is switched back to walk mode when entering an expression annotated with a
+//! contract. Type and contract annotations thus serve as a switch for the typechecking mode.
+//!
+//! Note that the static typing part is based on the bidirectional typing framework, which defines
+//! two different modes. Thus, the enforce mode is itself divided again into **checking** mode and
+//! **inference** mode.
 //!
 //! # Type inference
 //!
 //! Type inference is done via a form of bidirectional typechecking coupled with unification, in
-//! the same spirit as GHC (Haskell), albeit the type system of Nickel is much simpler. The type of
+//! the same spirit as GHC (Haskell), albeit the type system of Nickel is simpler. The type of
 //! un-annotated let-bound expressions (the type of `bound_exp` in `let x = bound_exp in body`) is
-//! inferred in strict mode, but it is never implicitly generalized. For example, the following
+//! inferred in enforce mode, but it is never implicitly generalized. For example, the following
 //! program is rejected:
 //!
 //! ```nickel
 //! # Rejected
-//! let id = fun x => x in seq (id "a") (id 5) : Num
+//! let id = fun x => x in seq (id "a") (id 5) : Number
 //! ```
 //!
 //! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
-//! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `Str`, and at the second
-//! call site the typechecker complains that `5` is not of type `Str`.
+//! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `String`, and at the second
+//! call site the typechecker complains that `5` is not of type `String`.
 //!
 //! This restriction is on purpose, as generalization is not trivial to implement efficiently and
 //! more importantly can interact with other components of the type system and type inference. If
@@ -43,7 +51,7 @@
 //! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
 //! ```
 //!
-//! In non-strict mode, the type of let-bound expressions is inferred in a shallow way (see
+//! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
 //! [`apparent_type`]).
 use crate::{
     cache::ImportResolver,
@@ -1044,7 +1052,7 @@ fn walk_annotated<L: Linearizer>(
 }
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
-/// type or contract annotation. A type annotation switches the typechecking mode to _checking_.
+/// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
 fn walk_with_annot<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
@@ -1067,7 +1075,7 @@ fn walk_with_annot<L: Linearizer>(
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
             let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
-            type_check_(state, ctxt, lin, linearizer.scope(), value, instantiated)
+            check(state, ctxt, lin, linearizer.scope(), value, instantiated)
         }
         (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
         // TODO: we might have something to do with the linearizer to clear the current
@@ -1077,9 +1085,41 @@ fn walk_with_annot<L: Linearizer>(
     }
 }
 
-/// Typecheck a term against a specific type.
+/// Check a term against a given type. Although this method mostly corresponds to checking mode in
+/// the classical bidirectional framework, it combines both checking and inference mode in
+/// practice, to avoid duplicating rules (that is, code) as detailed below.
 ///
-/// # Arguments
+/// # Literals
+///
+/// Checking a literal (a number, a string, a boolean, etc.) unifies the checked type with the
+/// corresponding primitive type (`Number`, `String`, `Bool`, etc.). If the checked type is a
+/// unification variable, `check` acts as an inference rule. If the type is concrete, unification
+/// enforces equality, and `check` acts as a checking rule.
+///
+/// # Introduction rules
+///
+/// Following Pfenning's recipe (see [Bidirectional Typing][bidirectional-typing]),
+/// introduction rules (e.g. typechecking a record) are checking. `check` follows the same logic
+/// here: it uses unification to "match" on the expected type (in the case of record, a record type
+/// or a dictionary type) and pushes typechecking down the record fields.
+///
+/// # Elimination rules
+///
+/// Elimination rules (such as function application or primitive operator application) are only in
+/// inference mode (still following Pfenning's recipe). `check` follows the inference mode here
+/// (typically on function application, where we first call to `infer` on the function part, and
+/// then check the argument).
+///
+/// Still, `check` is supposed to be implementing checking mode from the outside. We thus also
+/// apply the rule which switches from inference to checking mode. This is in particular where
+/// subtyping happens, for example, when there is subtyping. Currently, subtyping isn't supported
+/// yet in Nickel, so the corresponding switching rule doesn't do much. But the implementation of
+/// RFC004 will bring subtyping, and `switch_mode` one be the place to apply it.
+///
+/// To sum up, elimination rules inside `check` correspond to a checking elimination rule composed
+/// with the switching/subtyping rule, indeed resulting in a composite checking rule.
+///
+/// # Parameters
 ///
 /// - `state`: the unification state (see [`State`]).
 /// - `env`: the typing environment, mapping free variable to types.
@@ -1088,9 +1128,13 @@ fn walk_with_annot<L: Linearizer>(
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
 ///
-/// Registers every term with the `linearizer` and makes sure to scope the
-/// liearizer accordingly
-fn type_check_<L: Linearizer>(
+/// # Linearization (LSP)
+///
+/// `check` is in charge of registering every term with the `linearizer` and makes sure to scope
+/// the linearizer accordingly
+///
+/// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
+fn check<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -1122,7 +1166,7 @@ fn type_check_<L: Linearizer>(
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => type_check_(
+                        StrChunk::Expr(t, _) => check(
                             state,
                             ctxt.clone(),
                             lin,
@@ -1133,27 +1177,27 @@ fn type_check_<L: Linearizer>(
                     }
                 })
         }
+        // Fun is an introduction rule for the arrow type. The target type is thus expected to be
+        // `T -> U`, which is enforced by unification, and we then check the body of the function
+        // against `U`, after adding `x : T` in the environment.
         Term::Fun(x, t) => {
             let src = state.table.fresh_type_uvar();
-            // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
-            // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
+
             linearizer.retype_ident(lin, x, src.clone());
 
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             ctxt.type_env.insert(*x, src);
-            type_check_(state, ctxt, lin, linearizer, t, trg)
+            check(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
             let src_rows_ty = destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
             let src = UnifType::Concrete(TypeF::Record(src_rows_ty.clone()));
-
-            // TODO what to do here, this makes more sense to me, but it means let x = foo in bar
-            // behaves quite different to (\x.bar) foo, worth considering if it's ok to type these two differently
             let trg = state.table.fresh_type_uvar();
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
+
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
                 ctxt.type_env.insert(*x, src);
@@ -1161,7 +1205,7 @@ fn type_check_<L: Linearizer>(
 
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src_rows_ty);
             unify(state, &ctxt, ty, arr).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, ctxt, lin, linearizer, t, trg)
+            check(state, ctxt, lin, linearizer, t, trg)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar();
@@ -1172,7 +1216,7 @@ fn type_check_<L: Linearizer>(
             terms
                 .iter()
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    type_check_(
+                    check(
                         state,
                         ctxt.clone(),
                         lin,
@@ -1201,7 +1245,7 @@ fn type_check_<L: Linearizer>(
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
-            type_check_(
+            check(
                 state,
                 ctxt.clone(),
                 lin,
@@ -1213,7 +1257,7 @@ fn type_check_<L: Linearizer>(
             if !attrs.rec {
                 ctxt.type_env.insert(*x, ty_let);
             }
-            type_check_(state, ctxt, lin, linearizer, rt, ty)
+            check(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
             // The inferred type of the pattern w/ unification vars
@@ -1226,7 +1270,7 @@ fn type_check_<L: Linearizer>(
             unify(state, &ctxt, ty_let.clone(), pattern_type)
                 .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-            type_check_(
+            check(
                 state,
                 ctxt.clone(),
                 lin,
@@ -1247,7 +1291,7 @@ fn type_check_<L: Linearizer>(
                 pattern_rows_type,
             );
 
-            type_check_(state, ctxt, lin, linearizer, rt, ty)
+            check(state, ctxt, lin, linearizer, rt, ty)
         }
         Term::App(e, t) => {
             // This part corresponds to the infer rule for application.
@@ -1260,11 +1304,9 @@ fn type_check_<L: Linearizer>(
             unify(state, &ctxt, arr, function_type)
                 .map_err(|err| err.into_typecheck_err(state, e.pos))?;
 
-            type_check_(state, ctxt.clone(), lin, linearizer, t, src)?;
+            check(state, ctxt.clone(), lin, linearizer, t, src)?;
 
-            // This part corresponds to the "subtype" rule, switching from infer mode to check
-            // mode.
-            unify(state, &ctxt, ty, tgt).map_err(|err| err.into_typecheck_err(state, rt.pos))
+            subsumption(state, &ctxt, tgt, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Match { cases, default } => {
             // Currently, if it has a default value, we typecheck the whole thing as
@@ -1276,7 +1318,7 @@ fn type_check_<L: Linearizer>(
             let arg_type = state.table.fresh_type_uvar();
             let return_type = state.table.fresh_type_uvar();
 
-            // we unify the expected type of the match expression with `arg_type -> return_type`
+            // We unify the expected type of the match expression with `arg_type -> return_type`
             unify(
                 state,
                 &ctxt,
@@ -1286,7 +1328,7 @@ fn type_check_<L: Linearizer>(
             .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             for case in cases.values() {
-                type_check_(
+                check(
                     state,
                     ctxt.clone(),
                     lin,
@@ -1298,14 +1340,7 @@ fn type_check_<L: Linearizer>(
 
             let erows = match default {
                 Some(t) => {
-                    type_check_(
-                        state,
-                        ctxt.clone(),
-                        lin,
-                        linearizer.scope(),
-                        t,
-                        return_type.clone(),
-                    )?;
+                    check(state, ctxt.clone(), lin, linearizer.scope(), t, return_type)?;
                     state.table.fresh_erows_uvar()
                 }
                 None => cases.iter().try_fold(
@@ -1316,7 +1351,6 @@ fn type_check_<L: Linearizer>(
                 )?,
             };
 
-            // we unify the expected type of the match expression with `arg_type -> return_type`
             unify(state, &ctxt, arg_type, mk_uty_enum!(; erows))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
@@ -1337,7 +1371,9 @@ fn type_check_<L: Linearizer>(
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
-        // for some `a`
+        // for some `a`. In other words, the checking rule is not the same depending on the target
+        // type: if the target type is a dictionary type, we simply check each field against the
+        // element type.
         Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
             let ty_dict = state.table.fresh_type_uvar();
             unify(state, &ctxt, ty, mk_uniftype::dyn_record(ty_dict.clone()))
@@ -1349,13 +1385,13 @@ fn type_check_<L: Linearizer>(
                 linearizer.retype_ident(lin, id, ty_dict.clone())
             }
 
-            // We don't bind the fields in the term environment used to check for contract. See
-            // `Let` case in `walk`.
+            // We don't bind recursive fields in the term environment used to check for contract.
+            // See the recursive let case in `walk`.
             record
                 .fields
                 .iter()
                 .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                    type_check_field(
+                    check_field(
                         state,
                         ctxt.clone(),
                         lin,
@@ -1369,7 +1405,9 @@ fn type_check_<L: Linearizer>(
         Term::Record(record) | Term::RecRecord(record, ..) => {
             // For recursive records, we look at the apparent type of each field and bind it in
             // ctxt before actually typechecking the content of fields.
-            // Fields defined by interpolation are ignored.
+            //
+            // Fields defined by interpolation are ignored, because they can't be referred to
+            // recursively.
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, field) in &record.fields {
                     let uty = field_type(state, field, &ctxt, true);
@@ -1386,7 +1424,7 @@ fn type_check_<L: Linearizer>(
                     .fields
                     .iter()
                     .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                        type_check_field(
+                        check_field(
                             state,
                             ctxt.clone(),
                             lin,
@@ -1426,10 +1464,15 @@ fn type_check_<L: Linearizer>(
                             rows_expected_type.get(id).cloned().unwrap(),
                             affected_type,
                         )
-                        .map_err(|err| err.into_typecheck_err(&state, field.value.as_ref().map(|v| v.pos).unwrap_or_default()))?;
+                        .map_err(|err| {
+                            err.into_typecheck_err(
+                                state,
+                                field.value.as_ref().map(|v| v.pos).unwrap_or_default(),
+                            )
+                        })?;
                     }
 
-                    type_check_field(
+                    check_field(
                         state,
                         ctxt.clone(),
                         lin,
@@ -1445,21 +1488,35 @@ fn type_check_<L: Linearizer>(
                 Ok(())
             }
         }
+        // Primitive operator application follows the inference discipline, like function
+        // application, because it's an elimination rule (as far as typechecking is concerned,
+        // primitive operator application is strictly the same as normal function application).
+        //
+        // Note that the order of checking an argument against an inferred type or unifying the
+        // target type with an expected value doesn't matter (those operation commutes). We usually
+        // `unify` first, because it doesn't consume the context, while `check` needs an owned
+        // value.
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, op)?;
 
-            type_check_(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
+            //TODO: this should go after the call to `subsumption`, to avoid context cloning, once
+            //we get rid of the special casing of type instantation below. For the time being, the
+            //instantiation is depending on this check having happened before, so we have to leave
+            //it as it is.
+            check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
             let instantiated = instantiate_foralls(state, ty_res, ForallInst::Ptr);
-            unify(state, &ctxt, ty, instantiated)
+            subsumption(state, &ctxt, instantiated, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
 
-            unify(state, &ctxt, ty, ty_res).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            type_check_(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
-            type_check_(state, ctxt, lin, linearizer, t2, ty_arg2)
+            subsumption(state, &ctxt, ty_res, ty)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
+            check(state, ctxt, lin, linearizer, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
             let (tys_op, ty_ret) = get_nop_type(state, op)?;
@@ -1468,19 +1525,17 @@ fn type_check_<L: Linearizer>(
 
             tys_op.into_iter().zip(args.iter()).try_for_each(
                 |(ty_t, t)| -> Result<_, TypecheckError> {
-                    type_check_(state, ctxt.clone(), lin, linearizer.scope(), t, ty_t)?;
+                    check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_t)?;
                     Ok(())
                 },
             )?;
 
             Ok(())
         }
-        Term::Annotated(annot, rt) => {
-            type_check_annotated(state, ctxt, lin, linearizer, annot, rt, ty)
-        }
+        Term::Annotated(annot, rt) => check_annotated(state, ctxt, lin, linearizer, annot, rt, ty),
         Term::SealingKey(_) => unify(state, &ctxt, ty, mk_uniftype::sym())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t, _) => type_check_(state, ctxt, lin, linearizer, t, ty),
+        Term::Sealed(_, t, _) => check(state, ctxt, lin, linearizer, t, ty),
         Term::Import(_) => unify(state, &ctxt, ty, mk_uniftype::dynamic())
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
         // We use the apparent type of the import for checking. This function doesn't recursively
@@ -1499,7 +1554,21 @@ fn type_check_<L: Linearizer>(
     }
 }
 
-fn type_check_field<L: Linearizer>(
+/// Change from inference mode to checking mode, and apply a potential subsumption rule.
+///
+/// Currently, there is no subtyping (until RFC002 is implemented), hence this function simply
+/// performs unification (put differently, the subtyping relation is the equality relation). In the
+/// future, this function might implement a non-trivial subsumption rule.
+pub fn subsumption(
+    state: &mut State,
+    ctxt: &Context,
+    inferred: UnifType,
+    checked: UnifType,
+) -> Result<(), UnifError> {
+    unify(state, ctxt, checked, inferred)
+}
+
+fn check_field<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -1510,7 +1579,7 @@ fn type_check_field<L: Linearizer>(
 ) -> Result<(), TypecheckError> {
     linearizer.add_field_metadata(lin, field);
 
-    type_check_with_annot(
+    check_with_annot(
         state,
         ctxt,
         lin,
@@ -1522,7 +1591,7 @@ fn type_check_field<L: Linearizer>(
     )
 }
 
-fn type_check_annotated<L: Linearizer>(
+fn check_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -1531,16 +1600,16 @@ fn type_check_annotated<L: Linearizer>(
     rt: &RichTerm,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
-    type_check_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), ty, rt.pos)
+    check_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), ty, rt.pos)
 }
 
-/// Subfunction handling the common part of typechecking term with type or contract annotation, with
+/// Function handling the common part of typechecking term with type or contract annotation, with
 /// or without definitions. This encompasses both standalone type annotation (where `value` is
 /// always `Some(_)`) as well as field definiitions (where `value` may or may not be defined).
 ///
 /// The last argument is a position to use for error reporting when `value` is `None`.
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
-fn type_check_with_annot<L: Linearizer>(
+fn check_with_annot<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -1566,7 +1635,7 @@ fn type_check_with_annot<L: Linearizer>(
             let instantiated = instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
 
             unify(state, &ctxt, uty2, ty).map_err(|err| err.into_typecheck_err(state, pos))?;
-            type_check_(state, ctxt, lin, linearizer, value, instantiated)
+            check(state, ctxt, lin, linearizer, value, instantiated)
         }
         // A annotation without a type but with a contract switches the typechecker back to walk
         // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
@@ -1603,7 +1672,7 @@ fn type_check_with_annot<L: Linearizer>(
         }
         // A non-empty value without a type or a contract annotation is typechecked in the same way
         // as its inner value
-        (_, Some(value)) => type_check_(state, ctxt, lin, linearizer, value, ty),
+        (_, Some(value)) => check(state, ctxt, lin, linearizer, value, ty),
         // A empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         //
@@ -1620,6 +1689,16 @@ fn type_check_with_annot<L: Linearizer>(
     }
 }
 
+/// Infer a type for an expression.
+///
+/// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
+/// bidirectional typechecking together with traditional ML-like unification. In practice, to avoid
+/// duplicating a lot of rules for both checking mode and inference mode, the current `type_check_`
+/// function mixes both and inference simply correponds to checking against a free unification
+/// variable.
+///
+/// Still, using this dedicated method - although it is a thin wrapper - helps making clear when
+/// inference mode is used and when checking mode is used in the typechecking algorithm.
 fn infer<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
@@ -1628,8 +1707,8 @@ fn infer<L: Linearizer>(
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {
     let inferred = state.table.fresh_type_uvar();
-    type_check_(state, ctxt, lin, linearizer, rt, inferred.clone())?;
-    Ok(inferred.into_root(&state.table))
+    check(state, ctxt, lin, linearizer, rt, inferred.clone())?;
+    Ok(inferred.into_root(state.table))
 }
 
 /// Determine the type of a let-bound expression.
@@ -1648,7 +1727,7 @@ fn infer<L: Linearizer>(
 ///     * in strict mode, the wildcard is typechecked, and we return the unification variable
 ///       corresponding to it.
 fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
-    apparent_or_uvar(
+    apparent_or_infer(
         state,
         apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
@@ -1658,7 +1737,7 @@ fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> Un
 
 /// Same as `binding_type` but for record field definition.
 fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) -> UnifType {
-    apparent_or_uvar(
+    apparent_or_infer(
         state,
         field_apparent_type(field, Some(&ctxt.type_env), Some(state.resolver)),
         ctxt,
@@ -1666,7 +1745,11 @@ fn field_type(state: &mut State, field: &Field, ctxt: &Context, strict: bool) ->
     )
 }
 
-fn apparent_or_uvar(
+/// Either returns the exact type annotation extracted as an apparent type, or return a fresh
+/// unification variable, for the type to be inferred by the typechecker, in enforce mode.
+///
+/// In walk mode, returns the type as approximated by [`apparent_type`].
+fn apparent_or_infer(
     state: &mut State,
     aty: ApparentType,
     ctxt: &Context,
@@ -1722,11 +1805,10 @@ fn replace_wildcards_with_var(
 
 /// Different kinds of apparent types (see [`apparent_type`]).
 ///
-/// Indicate the nature of an apparent type. In particular, when in strict mode, the typechecker
-/// throws away approximations as it can do better and infer the actual type of an expression by
-/// generating a fresh unification variable.  In non-strict mode, however, the approximation is the
-/// best we can do. This type allows the caller of `apparent_type` to determine which situation it
-/// is.
+/// Indicate the nature of an apparent type. In particular, when in enforce mode, the typechecker
+/// throws away approximations as it can do better and infer the actual type of an expression.  In
+/// walk mode, however, the approximation is the best we can do. This type allows the caller of
+/// `apparent_type` to determine which situation it is.
 #[derive(Debug)]
 pub enum ApparentType {
     /// The apparent type is given by a user-provided annotation.
