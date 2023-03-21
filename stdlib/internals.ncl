@@ -38,6 +38,11 @@
           %seal% sealing_key (%chng_pol% label) value,
 
   "$forall" = fun sealing_key polarity contract label value =>
+    let flip = match {
+      `Positive => `Negative,
+      `Negative => `Positive,
+    } in
+    let polarity = if %dualize% label then flip polarity else polarity in
     contract (%insert_type_variable% sealing_key polarity label) value,
 
   "$enums" = fun case label value =>

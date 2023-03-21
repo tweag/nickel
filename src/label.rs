@@ -315,6 +315,9 @@ pub struct Label {
     /// An environment mapping type variables to [`TypeVarData`]. Used by
     /// polymorphic contracts to decide which actions to take when encountering a `forall`.
     pub type_environment: HashMap<SealingKey, TypeVarData>,
+    /// Signal to a polymorphic contract that it should generate the dual
+    /// contract. Part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
+    pub dualize: bool,
 }
 
 /// Data about type variables that is needed for polymorphic contracts to decide which actions to take.
@@ -522,6 +525,7 @@ impl Default for Label {
             arg_pos: Default::default(),
             path: Default::default(),
             type_environment: Default::default(),
+            dualize: false,
         }
     }
 }

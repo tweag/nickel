@@ -208,6 +208,8 @@ pub enum NormalToken<'input> {
     InsertTypeVar,
     #[token("%lookup_type_variable%")]
     LookupTypeVar,
+    #[token("%dualize%")]
+    Dualize,
 
     #[token("%seal%")]
     Seal,

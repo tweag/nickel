@@ -1347,6 +1347,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     )) }
                 }
             }
+            UnaryOp::Dualize() => {
+                match_sharedterm! {t, with {
+                    Term::Lbl(label) => {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(label.dualize),
+                            pos_op_inh,
+                        )))
+                    }
+                } else {
+                    Err(EvalError::TypeError(
+                        String::from("Label"),
+                        String::from("dualize"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }}
+            }
         }
     }
 

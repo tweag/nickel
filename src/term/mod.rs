@@ -1143,6 +1143,11 @@ pub enum UnaryOp {
     /// This primop shouldn't be used directly by user a priori, but is used internally during e.g.
     /// contract application.
     LabelPushDiag(),
+
+    /// Return the value of the `dualize` field in a label. Used by
+    /// polymorphic contracts to check if they are being invoked to generate
+    /// a dual contract, as part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
+    Dualize(),
 }
 
 // See: https://github.com/rust-lang/regex/issues/178
