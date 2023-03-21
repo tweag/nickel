@@ -1,6 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::*;
-use crate::position::TermPos;
+use crate::{label::Label, position::TermPos};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
@@ -87,7 +87,19 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
 
                 let with_ctr_applied = PendingContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
-                    field.pending_contracts.iter().cloned(),
+                    field.pending_contracts.iter().cloned().flat_map(|ctr| {
+                        [
+                            ctr.clone(),
+                            PendingContract {
+                                contract: ctr.contract,
+                                label: Label {
+                                    polarity: ctr.label.polarity.flip(),
+                                    dualize: true,
+                                    ..ctr.label
+                                },
+                            },
+                        ]
+                    }),
                     value.pos,
                 );
 
