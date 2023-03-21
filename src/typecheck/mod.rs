@@ -1114,10 +1114,10 @@ fn walk_with_annot<L: Linearizer>(
 /// apply the rule which switches from inference to checking mode. This is in particular where
 /// subtyping happens, for example, when there is subtyping. Currently, subtyping isn't supported
 /// yet in Nickel, so the corresponding switching rule doesn't do much. But the implementation of
-/// RFC004 will bring subtyping, and `switch_mode` one be the place to apply it.
+/// RFC004 will bring subtyping, and [`subsumption`] will be the place to apply it.
 ///
-/// To sum up, elimination rules inside `check` correspond to a checking elimination rule composed
-/// with the switching/subtyping rule, indeed resulting in a composite checking rule.
+/// To sum up, elimination rules inside `check` correspond to an inference elimination rule
+/// composed with the switching/subsumption rule, resulting in a composite checking rule.
 ///
 /// # Parameters
 ///
@@ -1693,7 +1693,7 @@ fn check_with_annot<L: Linearizer>(
 ///
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
 /// bidirectional typechecking together with traditional ML-like unification. In practice, to avoid
-/// duplicating a lot of rules for both checking mode and inference mode, the current `type_check_`
+/// duplicating a lot of rules for both checking mode and inference mode, the current [`check`]
 /// function mixes both and inference simply correponds to checking against a free unification
 /// variable.
 ///
