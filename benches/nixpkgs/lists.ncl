@@ -456,19 +456,29 @@
   = fun before list =>
     let dfsthis = listDfs true before list in
     let toporest = toposort before (dfsthis.visited @ dfsthis.rest) in
+
+    # The repeated `{_ : Array Dyn}` annotations are verbose, and due to
+    # the handling of dictionary types being cumbersome with the current
+    # typechecker.
+    #
+    # RFC004 is supposed to fix those kind of use-cases by introducing a limited
+    # form of subtyping.
     if array.length list < 2
-    then # finish
-      { result| Array Dyn =  list, }
+      then # finish
+        { result| Array Dyn =  list, } : {_ : Array Dyn}
     else if record.has_field "cycle" (dfsthis | {_: Dyn})
-    then # there's a cycle, starting from the current vertex, return it
-      { cycle = reverseList ([ (dfsthis | {cycle: Dyn}).cycle ] @ dfsthis.visited | Array Dyn),
-        loops = (dfsthis | {loops: Array Dyn}).loops, }
+      then # there's a cycle, starting from the current vertex, return it
+        { cycle = reverseList ([ (dfsthis | {cycle: Dyn}).cycle ] @ dfsthis.visited | Array Dyn),
+          loops = (dfsthis | {loops: Array Dyn}).loops, } : {_ : Array Dyn}
     else if record.has_field "cycle" toporest
-    then # there's a cycle somewhere else in the graph, return it
-      toporest
-    # Slow, but short. Can be made a bit faster with an explicit stack.
+      then # there's a cycle somewhere else in the graph, return it
+        toporest
+      # Slow, but short. Can be made a bit faster with an explicit stack.
     else # there are no cycles
-      { result = [ (dfsthis| {minimal:Dyn}).minimal ] @ (toporest | {result: Array Dyn}).result, },
+        {
+          result = [ (dfsthis| {minimal:Dyn}).minimal ]
+                   @ (toporest | {result: Array Dyn}).result
+        } : {_: Array Dyn},
 
   #TODO: can it be statically typed?
   sort | forall a. (a -> a -> Bool) -> Array a -> Array a
@@ -556,7 +566,7 @@
        take 2 [ ]
        >> [ ]
   "%
-  = fun 
+  = fun
     # Number of elements to take
     count => sublist 0 count,
 
