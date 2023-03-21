@@ -1436,18 +1436,18 @@ fn check<L: Linearizer>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut rows_expected_type: HashMap<Ident, UnifType> = record
+                let mut field_types: HashMap<Ident, UnifType> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar()))
                     .collect();
 
-                let rows_skeleton = rows_expected_type.iter().fold(
+                let rows = field_types.iter().fold(
                     mk_uty_row!(),
                     |acc, (id, row_ty)| mk_uty_row!((*id, row_ty.clone()); acc),
                 );
 
-                unify(state, &ctxt, ty, mk_uty_record!(; rows_skeleton))
+                unify(state, &ctxt, ty, mk_uty_record!(; rows))
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
                 for (id, field) in record.fields.iter() {
@@ -1456,7 +1456,7 @@ fn check<L: Linearizer>(
                         unify(
                             state,
                             &ctxt,
-                            rows_expected_type.get(id).cloned().unwrap(),
+                            field_types.get(id).cloned().unwrap(),
                             affected_type,
                         )
                         .map_err(|err| {
@@ -1474,9 +1474,11 @@ fn check<L: Linearizer>(
                         linearizer.scope(),
                         *id,
                         field,
-                        // unwrap(): we've built `rows_expected_type` in this very function
-                        // from record.fields.keys(), so it must contain `id`
-                        rows_expected_type.remove(id).unwrap(),
+                        // expect(): we've built `rows` in this very function from
+                        // record.fields.keys(), so it must contain `id`
+                        field_types
+                            .remove(id)
+                            .expect("inserted `id` inside the `field_types` hashmap previously; expected it to be there"),
                     )?;
                 }
 
