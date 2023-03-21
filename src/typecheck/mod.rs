@@ -1442,15 +1442,10 @@ fn check<L: Linearizer>(
                     .map(|id| (*id, state.table.fresh_type_uvar()))
                     .collect();
 
-                let rows_skeleton =
-                    rows_expected_type
-                        .iter()
-                        .fold(mk_uty_row!(), |acc, (id, row_ty)| {
-                            // if let Term::RecRecord(..) = t.as_ref() {
-                            //     ctxt.type_env.get(id).cloned().unwrap()
-                            // }
-                            mk_uty_row!((*id, row_ty.clone()); acc)
-                        });
+                let rows_skeleton = rows_expected_type.iter().fold(
+                    mk_uty_row!(),
+                    |acc, (id, row_ty)| mk_uty_row!((*id, row_ty.clone()); acc),
+                );
 
                 unify(state, &ctxt, ty, mk_uty_record!(; rows_skeleton))
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
