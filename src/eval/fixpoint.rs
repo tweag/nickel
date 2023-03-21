@@ -88,17 +88,21 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 let with_ctr_applied = PendingContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
                     field.pending_contracts.iter().cloned().flat_map(|ctr| {
-                        [
-                            ctr.clone(),
-                            PendingContract {
-                                contract: ctr.contract,
-                                label: Label {
-                                    polarity: ctr.label.polarity.flip(),
-                                    dualize: true,
-                                    ..ctr.label
+                        if ctr.label.type_environment.is_empty() {
+                            vec![ctr]
+                        } else {
+                            vec![
+                                ctr.clone(),
+                                PendingContract {
+                                    contract: ctr.contract,
+                                    label: Label {
+                                        polarity: ctr.label.polarity.flip(),
+                                        dualize: true,
+                                        ..ctr.label
+                                    },
                                 },
-                            },
-                        ]
+                            ]
+                        }
                     }),
                     value.pos,
                 );
