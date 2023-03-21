@@ -101,6 +101,11 @@ pub type Environment = GenericEnvironment<Ident, UnifType>;
 pub type Wildcards = Vec<Types>;
 /// Unification variable or type constants unique identifier.
 pub type VarId = usize;
+/// Variable levels. Levels are used in order to implement higher-rank polymorphism in a sound way:
+/// we need to associate to each unification variable and rigid type variable a level, which
+/// depends on when those variables were introduced, and to forbid some unifications if a condition
+/// on levels is not met.
+pub type VarLevel = usize;
 
 /// A table mapping variable IDs with their kind to names.
 pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
@@ -610,12 +615,17 @@ pub trait ReifyAsUnifType {
 /// The typing context is a structure holding the scoped, environment-like data structures required
 /// to perform typechecking.
 ///
-/// The typing context currently includes the typing environment, counterpart of the eval
-/// environment for typechecking, and the term environment.
+/// The typing context currently includes , and the term environment.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Context {
+    /// The typing environment, counterpart of the eval environment for typechecking
     pub type_env: Environment,
+    /// The term environment, used to decide type equality over contracts.
     pub term_env: SimpleTermEnvironment,
+    /// The current variable level, incremented each time we instantiate a polymorphic type and
+    /// thus introduce a new block of variables (either unification variables or rigid type
+    /// variables).
+    pub var_level: VarLevel,
 }
 
 impl Context {
@@ -623,6 +633,7 @@ impl Context {
         Context {
             type_env: Environment::new(),
             term_env: SimpleTermEnvironment::new(),
+            var_level: 0,
         }
     }
 }
@@ -682,7 +693,11 @@ pub fn mk_initial_ctxt(
         })
         .collect();
 
-    Ok(Context { type_env, term_env })
+    Ok(Context {
+        type_env,
+        term_env,
+        var_level: 0,
+    })
 }
 
 /// Add the bindings of a record to a typing environment. Ignore fields whose name are defined
@@ -1093,7 +1108,7 @@ fn walk_annotated<L: Linearizer>(
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
 fn walk_with_annot<L: Linearizer>(
     state: &mut State,
-    ctxt: Context,
+    mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     annot: &TypeAnnotation,
@@ -1112,7 +1127,7 @@ fn walk_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            let instantiated = instantiate_foralls(state, uty2, ForallInst::Constant);
+            let instantiated = instantiate_foralls(state, &mut ctxt, uty2, ForallInst::Constant);
             check(state, ctxt, lin, linearizer.scope(), value, instantiated)
         }
         (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
@@ -1219,8 +1234,8 @@ fn check<L: Linearizer>(
         // `T -> U`, which is enforced by unification, and we then check the body of the function
         // against `U`, after adding `x : T` in the environment.
         Term::Fun(x, t) => {
-            let src = state.table.fresh_type_uvar();
-            let trg = state.table.fresh_type_uvar();
+            let src = state.table.fresh_type_uvar(ctxt.var_level);
+            let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
             linearizer.retype_ident(lin, x, src.clone());
@@ -1233,7 +1248,7 @@ fn check<L: Linearizer>(
         Term::FunPattern(x, pat, t) => {
             let src_rows_ty = destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
             let src = UnifType::Concrete(TypeF::Record(src_rows_ty.clone()));
-            let trg = state.table.fresh_type_uvar();
+            let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
             if let Some(x) = x {
@@ -1246,7 +1261,7 @@ fn check<L: Linearizer>(
             check(state, ctxt, lin, linearizer, t, trg)
         }
         Term::Array(terms, _) => {
-            let ty_elts = state.table.fresh_type_uvar();
+            let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
 
             unify(state, &ctxt, ty, mk_uniftype::array(ty_elts.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -1335,8 +1350,8 @@ fn check<L: Linearizer>(
             // This part corresponds to the infer rule for application.
             let function_type = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
 
-            let src = state.table.fresh_type_uvar();
-            let tgt = state.table.fresh_type_uvar();
+            let src = state.table.fresh_type_uvar(ctxt.var_level);
+            let tgt = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), tgt.clone());
 
             unify(state, &ctxt, arr, function_type)
@@ -1353,8 +1368,8 @@ fn check<L: Linearizer>(
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
             // `a` is a enum type determined by the matched tags and `b` is the type of each match
             // arm.
-            let arg_type = state.table.fresh_type_uvar();
-            let return_type = state.table.fresh_type_uvar();
+            let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
+            let return_type = state.table.fresh_type_uvar(ctxt.var_level);
 
             // We unify the expected type of the match expression with `arg_type -> return_type`
             unify(
@@ -1379,7 +1394,7 @@ fn check<L: Linearizer>(
             let erows = match default {
                 Some(t) => {
                     check(state, ctxt.clone(), lin, linearizer.scope(), t, return_type)?;
-                    state.table.fresh_erows_uvar()
+                    state.table.fresh_erows_uvar(ctxt.var_level)
                 }
                 None => cases.iter().try_fold(
                     EnumRowsF::Empty.into(),
@@ -1399,12 +1414,12 @@ fn check<L: Linearizer>(
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
-            let instantiated = instantiate_foralls(state, x_ty, ForallInst::Ptr);
+            let instantiated = instantiate_foralls(state, &mut ctxt, x_ty, ForallInst::Ptr);
             unify(state, &ctxt, ty, instantiated)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
-            let row = state.table.fresh_erows_uvar();
+            let row = state.table.fresh_erows_uvar(ctxt.var_level);
             unify(state, &ctxt, ty, mk_uty_enum!(*id; row))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
@@ -1413,7 +1428,7 @@ fn check<L: Linearizer>(
         // type: if the target type is a dictionary type, we simply check each field against the
         // element type.
         Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
-            let ty_dict = state.table.fresh_type_uvar();
+            let ty_dict = state.table.fresh_type_uvar(ctxt.var_level);
             unify(state, &ctxt, ty, mk_uniftype::dict(ty_dict.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -1481,7 +1496,7 @@ fn check<L: Linearizer>(
                 let mut field_types: HashMap<Ident, UnifType> = record
                     .fields
                     .keys()
-                    .map(|id| (*id, state.table.fresh_type_uvar()))
+                    .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
                     .collect();
 
                 let rows = field_types.iter().fold(
@@ -1536,7 +1551,7 @@ fn check<L: Linearizer>(
         // `unify` first, because it doesn't consume the context, while `check` needs an owned
         // value.
         Term::Op1(op, t) => {
-            let (ty_arg, ty_res) = get_uop_type(state, op)?;
+            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
 
             //TODO: this should go after the call to `subsumption`, to avoid context cloning, once
             //we get rid of the special casing of type instantation below. For the time being, the
@@ -1544,12 +1559,12 @@ fn check<L: Linearizer>(
             //it as it is.
             check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
-            let instantiated = instantiate_foralls(state, ty_res, ForallInst::Ptr);
+            let instantiated = instantiate_foralls(state, &mut ctxt, ty_res, ForallInst::Ptr);
             subsumption(state, &ctxt, instantiated, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Op2(op, t1, t2) => {
-            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, op)?;
+            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
 
             subsumption(state, &ctxt, ty_res, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
@@ -1558,7 +1573,7 @@ fn check<L: Linearizer>(
             check(state, ctxt, lin, linearizer, t2, ty_arg2)
         }
         Term::OpN(op, args) => {
-            let (tys_op, ty_ret) = get_nop_type(state, op)?;
+            let (tys_op, ty_ret) = get_nop_type(state, ctxt.var_level, op)?;
 
             unify(state, &ctxt, ty, ty_ret).map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
@@ -1657,7 +1672,7 @@ fn check_annotated<L: Linearizer>(
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
 fn check_with_annot<L: Linearizer>(
     state: &mut State,
-    ctxt: Context,
+    mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     annot: &TypeAnnotation,
@@ -1678,7 +1693,8 @@ fn check_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            let instantiated = instantiate_foralls(state, uty2.clone(), ForallInst::Constant);
+            let instantiated =
+                instantiate_foralls(state, &mut ctxt, uty2.clone(), ForallInst::Constant);
 
             unify(state, &ctxt, uty2, ty).map_err(|err| err.into_typecheck_err(state, pos))?;
             check(state, ctxt, lin, linearizer, value, instantiated)
@@ -1752,7 +1768,7 @@ fn infer<L: Linearizer>(
     linearizer: L,
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {
-    let inferred = state.table.fresh_type_uvar();
+    let inferred = state.table.fresh_type_uvar(ctxt.var_level);
     check(state, ctxt, lin, linearizer, rt, inferred.clone())?;
     Ok(inferred.into_root(state.table))
 }
@@ -1803,9 +1819,9 @@ fn apparent_or_infer(
 ) -> UnifType {
     match aty {
         ApparentType::Annotated(ty) if strict => {
-            replace_wildcards_with_var(state.table, state.wildcard_vars, ty, &ctxt.term_env)
+            replace_wildcards_with_var(state.table, ctxt, state.wildcard_vars, ty)
         }
-        ApparentType::Approximated(_) if strict => state.table.fresh_type_uvar(),
+        ApparentType::Approximated(_) if strict => state.table.fresh_type_uvar(ctxt.var_level),
         ty_apt => UnifType::from_apparent_type(ty_apt, &ctxt.term_env),
     }
 }
@@ -1813,35 +1829,35 @@ fn apparent_or_infer(
 /// Substitute wildcards in a type for their unification variable.
 fn replace_wildcards_with_var(
     table: &mut UnifTable,
+    ctxt: &Context,
     wildcard_vars: &mut Vec<UnifType>,
     ty: Types,
-    env: &SimpleTermEnvironment,
 ) -> UnifType {
     fn replace_rrows(
         table: &mut UnifTable,
+        ctxt: &Context,
         wildcard_vars: &mut Vec<UnifType>,
         rrows: RecordRows,
-        env: &SimpleTermEnvironment,
     ) -> UnifRecordRows {
         UnifRecordRows::Concrete(rrows.0.map_state(
             |ty, (table, wildcard_vars)| {
-                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
             },
             |rrows, (table, wildcard_vars)| {
-                Box::new(replace_rrows(table, wildcard_vars, *rrows, env))
+                Box::new(replace_rrows(table, ctxt, wildcard_vars, *rrows))
             },
             &mut (table, wildcard_vars),
         ))
     }
 
     match ty.types {
-        TypeF::Wildcard(i) => get_wildcard_var(table, wildcard_vars, i),
-        TypeF::Flat(t) => UnifType::Contract(t, env.clone()),
+        TypeF::Wildcard(i) => get_wildcard_var(table, ctxt.var_level, wildcard_vars, i),
+        TypeF::Flat(t) => UnifType::Contract(t, ctxt.term_env.clone()),
         _ => UnifType::Concrete(ty.types.map_state(
             |ty, (table, wildcard_vars)| {
-                Box::new(replace_wildcards_with_var(table, wildcard_vars, *ty, env))
+                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
             },
-            |rrows, (table, wildcard_vars)| replace_rrows(table, wildcard_vars, rrows, env),
+            |rrows, (table, wildcard_vars)| replace_rrows(table, ctxt, wildcard_vars, rrows),
             // Enum rows contain neither wildcards nor contracts
             |erows, _| UnifEnumRows::from(erows),
             &mut (table, wildcard_vars),
@@ -2065,6 +2081,7 @@ fn has_wildcards(ty: &Types) -> bool {
 /// - Otherwise, raise a missing row error.
 fn rrows_add(
     state: &mut State,
+    var_level: VarLevel,
     id: &Ident,
     ty: Box<UnifType>,
     rrows: UnifRecordRows,
@@ -2080,7 +2097,7 @@ fn rrows_add(
                 if *id == row.id {
                     Ok((row.types, *tail))
                 } else {
-                    let (extracted_type, subrow) = rrows_add(state, id, ty, *tail)?;
+                    let (extracted_type, subrow) = rrows_add(state, var_level, id, ty, *tail)?;
                     Ok((
                         extracted_type,
                         UnifRecordRows::Concrete(RecordRowsF::Extend {
@@ -2096,7 +2113,7 @@ fn rrows_add(
             if excluded.contains(id) {
                 return Err(RowUnifError::UnsatConstr(*id, Some(*ty)));
             }
-            let tail_var_id = state.table.fresh_rrows_var_id();
+            let tail_var_id = state.table.fresh_rrows_var_id(var_level);
             let new_tail = UnifRecordRows::Concrete(RecordRowsF::Extend {
                 row: RecordRowF {
                     id: *id,
@@ -2129,6 +2146,7 @@ fn rrows_add(
 /// - Otherwise, raise a missing row error.
 fn erows_add(
     state: &mut State,
+    var_level: VarLevel,
     id: &Ident,
     uerows: UnifEnumRows,
 ) -> Result<UnifEnumRows, RowUnifError> {
@@ -2141,7 +2159,7 @@ fn erows_add(
                 if *id == row {
                     Ok(*tail)
                 } else {
-                    let subrow = erows_add(state, id, *tail)?;
+                    let subrow = erows_add(state, var_level, id, *tail)?;
                     Ok(UnifEnumRows::Concrete(EnumRowsF::Extend {
                         row,
                         tail: Box::new(subrow),
@@ -2150,7 +2168,7 @@ fn erows_add(
             }
         },
         UnifEnumRows::UnifVar(uvar) => {
-            let tail_var_id = state.table.fresh_erows_var_id();
+            let tail_var_id = state.table.fresh_erows_var_id(var_level);
             let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
                 row: *id,
                 tail: Box::new(UnifEnumRows::UnifVar(tail_var_id)),
@@ -2179,7 +2197,7 @@ pub fn unify(
         // If either type is a wildcard, unify with the associated type var
         (UnifType::Concrete(TypeF::Wildcard(id)), ty2)
         | (ty2, UnifType::Concrete(TypeF::Wildcard(id))) => {
-            let ty1 = get_wildcard_var(state.table, state.wildcard_vars, id);
+            let ty1 = get_wildcard_var(state.table, ctxt.var_level, state.wildcard_vars, id);
             unify(state, ctxt, ty1, ty2)
         }
         (UnifType::Concrete(s1), UnifType::Concrete(s2)) => match (s1, s2) {
@@ -2207,7 +2225,7 @@ pub fn unify(
             }
             (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
             (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
-                unify_erows(state, erows1.clone(), erows2.clone()).map_err(|err| {
+                unify_erows(state, ctxt.var_level, erows1.clone(), erows2.clone()).map_err(|err| {
                     err.into_unif_err(mk_uty_enum!(; erows1), mk_uty_enum!(; erows2))
                 })
             }
@@ -2239,21 +2257,21 @@ pub fn unify(
                 // Very stupid (slow) implementation
                 let (substd1, substd2) = match var_kind1 {
                     VarKind::Type => {
-                        let constant_type = state.table.fresh_type_const();
+                        let constant_type = state.table.fresh_type_const(ctxt.var_level);
                         (
                             body1.subst_type(&var1, &constant_type),
                             body2.subst_type(&var2, &constant_type),
                         )
                     }
                     VarKind::RecordRows { .. } => {
-                        let constant_type = state.table.fresh_rrows_const();
+                        let constant_type = state.table.fresh_rrows_const(ctxt.var_level);
                         (
                             body1.subst_rrows(&var1, &constant_type),
                             body2.subst_rrows(&var2, &constant_type),
                         )
                     }
                     VarKind::EnumRows => {
-                        let constant_type = state.table.fresh_erows_const();
+                        let constant_type = state.table.fresh_erows_const(ctxt.var_level);
                         (
                             body1.subst_erows(&var1, &constant_type),
                             body2.subst_erows(&var2, &constant_type),
@@ -2348,8 +2366,13 @@ pub fn unify_rrows(
                     },
                     r2 @ RecordRowsF::Extend { .. },
                 ) => {
-                    let (ty2, t2_tail) =
-                        rrows_add(state, &id, types.clone(), UnifRecordRows::Concrete(r2))?;
+                    let (ty2, t2_tail) = rrows_add(
+                        state,
+                        ctxt.var_level,
+                        &id,
+                        types.clone(),
+                        UnifRecordRows::Concrete(r2),
+                    )?;
                     unify(state, ctxt, *types, *ty2)
                         .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
                     unify_rrows(state, ctxt, *tail, t2_tail)
@@ -2379,6 +2402,7 @@ pub fn unify_rrows(
 /// Try to unify two enum row types.
 pub fn unify_erows(
     state: &mut State,
+    var_level: VarLevel,
     uerows1: UnifEnumRows,
     uerows2: UnifEnumRows,
 ) -> Result<(), RowUnifError> {
@@ -2399,8 +2423,8 @@ pub fn unify_erows(
                     Err(RowUnifError::MissingRow(ident))
                 }
                 (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
-                    let t2_tail = erows_add(state, &id, UnifEnumRows::Concrete(erows2))?;
-                    unify_erows(state, *tail, t2_tail)
+                    let t2_tail = erows_add(state, var_level, &id, UnifEnumRows::Concrete(erows2))?;
+                    unify_erows(state, var_level, *tail, t2_tail)
                 }
             }
         }
@@ -2447,8 +2471,18 @@ enum ForallInst {
 /// - `state`: the unification state
 /// - `ty`: the polymorphic type to instantiate
 /// - `inst`: the type of instantiation, either by a type constant or by a unification variable
-fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) -> UnifType {
+fn instantiate_foralls(
+    state: &mut State,
+    ctxt: &mut Context,
+    mut ty: UnifType,
+    inst: ForallInst,
+) -> UnifType {
     ty = ty.into_root(state.table);
+
+    // We are instantiating a polymorphic type: it's precisely the place where we have to increment
+    // the variable level, to prevent already existing unification variables to unify with rigid
+    // type variables introduced afterwards.
+    ctxt.var_level += 1;
 
     while let UnifType::Concrete(TypeF::Forall {
         var,
@@ -2459,7 +2493,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
         let kind = (&var_kind).into();
         match var_kind {
             VarKind::Type => {
-                let fresh_uid = state.table.fresh_type_var_id();
+                let fresh_uid = state.table.fresh_type_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifType::Constant(fresh_uid),
                     ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
@@ -2468,7 +2502,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                 ty = body.subst_type(&var, &uvar);
             }
             VarKind::RecordRows { excluded } => {
-                let fresh_uid = state.table.fresh_rrows_var_id();
+                let fresh_uid = state.table.fresh_rrows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
@@ -2481,7 +2515,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                 }
             }
             VarKind::EnumRows => {
-                let fresh_uid = state.table.fresh_erows_var_id();
+                let fresh_uid = state.table.fresh_erows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
@@ -2495,6 +2529,19 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
     ty
 }
 
+/// An element of the unification table. Contains the potential type this variable points to (or
+/// `None` if the variable hasn't been unified with something yet), and the variable's level.
+pub struct UnifSlot<Ty> {
+    value: Option<Ty>,
+    level: VarLevel,
+}
+
+impl<Ty> UnifSlot<Ty> {
+    pub fn new(level: VarLevel) -> Self {
+        UnifSlot { value: None, level }
+    }
+}
+
 /// The unification table.
 ///
 /// Map each unification variable to either another type variable or a concrete type it has been
@@ -2505,9 +2552,9 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
 /// types: standard types, record rows, and enum rows.
 #[derive(Default)]
 pub struct UnifTable {
-    types: Vec<Option<UnifType>>,
-    rrows: Vec<Option<UnifRecordRows>>,
-    erows: Vec<Option<UnifEnumRows>>,
+    types: Vec<UnifSlot<UnifType>>,
+    rrows: Vec<UnifSlot<UnifRecordRows>>,
+    erows: Vec<UnifSlot<UnifEnumRows>>,
 }
 
 impl UnifTable {
@@ -2516,107 +2563,136 @@ impl UnifTable {
     }
 
     /// Assign a type to a type unification variable.
+    ///
+    /// This is a low-level operation. In particular, `assign_xxx` methods don't check for variable
+    /// levels condition, and don't update variables level either. Unless you know what you're
+    /// doing, you should probably use `unify` instead.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         // Unifying a free variable with itself is a no-op.
         if matches!(uty, UnifType::UnifVar(x) if x == var) {
             return;
         }
 
-        debug_assert!(self.types[var].is_none());
-        self.types[var] = Some(uty);
+        debug_assert!(self.types[var].value.is_none());
+        self.types[var].value = Some(uty);
     }
 
     /// Assign record rows to a record rows unification variable.
+    ///
+    /// This is a low-level operation. In particular, `assign_xxx` methods don't check for variable
+    /// levels condition, and don't update variables level either. Unless you know what you're
+    /// doing, you should probably use `unify` instead.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(rrows, UnifRecordRows::UnifVar(x) if x == var) {
             return;
         }
 
-        debug_assert!(self.rrows[var].is_none());
-        self.rrows[var] = Some(rrows);
+        debug_assert!(self.rrows[var].value.is_none());
+        self.rrows[var].value = Some(rrows);
     }
 
     /// Assign enum rows to an enum rows unification variable.
+    ///
+    /// This is a low-level operation. In particular, `assign_xxx` methods don't check for variable
+    /// levels condition, and don't update variables level either. Unless you know what you're
+    /// doing, you should probably use `unify` instead.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(erows, UnifEnumRows::UnifVar(x) if x == var) {
             return;
         }
 
-        debug_assert!(self.erows[var].is_none());
-        self.erows[var] = Some(erows);
+        debug_assert!(self.erows[var].value.is_none());
+        self.erows[var].value = Some(erows);
     }
 
     /// Retrieve the current assignment of a type unification variable.
     pub fn get_type(&self, var: VarId) -> Option<&UnifType> {
-        self.types[var].as_ref()
+        self.types[var].value.as_ref()
+    }
+
+    /// Retrieve the current level of a unification variable or a rigid type variable.
+    pub fn get_level(&self, var: VarId) -> VarLevel {
+        self.types[var].level
     }
 
     /// Retrieve the current assignment of a record rows unification variable.
     pub fn get_rrows(&self, var: VarId) -> Option<&UnifRecordRows> {
-        self.rrows[var].as_ref()
+        self.rrows[var].value.as_ref()
+    }
+
+    /// Retrieve the current level of a record rows unification variable or a record rows rigid
+    /// type variable.
+    pub fn get_rrows_level(&self, var: VarId) -> VarLevel {
+        self.rrows[var].level
     }
 
     /// Retrieve the current assignment of an enum rows unification variable.
     pub fn get_erows(&self, var: VarId) -> Option<&UnifEnumRows> {
-        self.erows[var].as_ref()
+        self.erows[var].value.as_ref()
+    }
+
+    /// Retrieve the current level of an enu rows unification variable or a record rows rigid type
+    /// variable.
+    pub fn get_erows_level(&self, var: VarId) -> VarLevel {
+        self.erows[var].level
     }
 
     /// Create a fresh type unification variable (or constant) identifier and allocate a
     /// corresponding slot in the table.
-    fn fresh_type_var_id(&mut self) -> VarId {
+    fn fresh_type_var_id(&mut self, var_level: VarLevel) -> VarId {
         let next = self.types.len();
-        self.types.push(None);
+        self.types.push(UnifSlot::new(var_level));
         next
     }
 
     /// Create a fresh record rows variable (or constant) identifier and allocate a corresponding
     /// slot in the table.
-    fn fresh_rrows_var_id(&mut self) -> VarId {
+    fn fresh_rrows_var_id(&mut self, var_level: VarLevel) -> VarId {
         let next = self.rrows.len();
-        self.rrows.push(None);
+        self.rrows.push(UnifSlot::new(var_level));
         next
     }
 
     /// Create a fresh enum rows variable (or constant) identifier and allocate a corresponding
     /// slot in the table.
-    fn fresh_erows_var_id(&mut self) -> VarId {
+    fn fresh_erows_var_id(&mut self, var_level: VarLevel) -> VarId {
         let next = self.erows.len();
-        self.erows.push(None);
+        self.erows.push(UnifSlot::new(var_level));
         next
     }
 
     /// Create a fresh type unification variable and allocate a corresponding slot in the table.
-    pub fn fresh_type_uvar(&mut self) -> UnifType {
-        UnifType::UnifVar(self.fresh_type_var_id())
+    pub fn fresh_type_uvar(&mut self, var_level: VarLevel) -> UnifType {
+        UnifType::UnifVar(self.fresh_type_var_id(var_level))
     }
 
     /// Create a fresh record rows unification variable and allocate a corresponding slot in the
     /// table.
-    pub fn fresh_rrows_uvar(&mut self) -> UnifRecordRows {
-        UnifRecordRows::UnifVar(self.fresh_rrows_var_id())
+    pub fn fresh_rrows_uvar(&mut self, var_level: VarLevel) -> UnifRecordRows {
+        UnifRecordRows::UnifVar(self.fresh_rrows_var_id(var_level))
     }
 
     /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
     /// table.
-    pub fn fresh_erows_uvar(&mut self) -> UnifEnumRows {
-        UnifEnumRows::UnifVar(self.fresh_erows_var_id())
+    pub fn fresh_erows_uvar(&mut self, var_level: VarLevel) -> UnifEnumRows {
+        UnifEnumRows::UnifVar(self.fresh_erows_var_id(var_level))
     }
 
     /// Create a fresh type constant and allocate a corresponding slot in the table.
-    pub fn fresh_type_const(&mut self) -> UnifType {
-        UnifType::Constant(self.fresh_type_var_id())
+    pub fn fresh_type_const(&mut self, var_level: VarLevel) -> UnifType {
+        UnifType::Constant(self.fresh_type_var_id(var_level))
     }
 
     /// Create a fresh record rows constant and allocate a corresponding slot in the table.
-    pub fn fresh_rrows_const(&mut self) -> UnifRecordRows {
-        UnifRecordRows::Constant(self.fresh_rrows_var_id())
+    pub fn fresh_rrows_const(&mut self, var_level: VarLevel) -> UnifRecordRows {
+        UnifRecordRows::Constant(self.fresh_rrows_var_id(var_level))
     }
 
     /// Create a fresh enum rows constant and allocate a corresponding slot in the table.
-    pub fn fresh_erows_const(&mut self) -> UnifEnumRows {
-        UnifEnumRows::Constant(self.fresh_erows_var_id())
+    pub fn fresh_erows_const(&mut self, var_level: VarLevel) -> UnifEnumRows {
+        UnifEnumRows::Constant(self.fresh_erows_var_id(var_level))
     }
 
     /// Follow the links in the unification table to find the representative of the equivalence
@@ -2628,7 +2704,7 @@ impl UnifTable {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.types[var_id] {
+        match self.types[var_id].value.as_ref() {
             None => UnifType::UnifVar(var_id),
             Some(UnifType::UnifVar(y)) => self.root_type(*y),
             Some(ty) => ty.clone(),
@@ -2644,7 +2720,7 @@ impl UnifTable {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.rrows[var_id] {
+        match self.rrows[var_id].value.as_ref() {
             None => UnifRecordRows::UnifVar(var_id),
             Some(UnifRecordRows::UnifVar(y)) => self.root_rrows(*y),
             Some(ty) => ty.clone(),
@@ -2660,7 +2736,7 @@ impl UnifTable {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
-        match &self.erows[var_id] {
+        match self.erows[var_id].value.as_ref() {
             None => UnifEnumRows::UnifVar(var_id),
             Some(UnifEnumRows::UnifVar(y)) => self.root_erows(*y),
             Some(ty) => ty.clone(),
@@ -2743,12 +2819,13 @@ pub fn constr_unify_rrows(
 /// Get the type unification variable associated with a given wildcard ID.
 fn get_wildcard_var(
     table: &mut UnifTable,
+    var_level: VarLevel,
     wildcard_vars: &mut Vec<UnifType>,
     id: VarId,
 ) -> UnifType {
     // If `id` is not in `wildcard_vars`, populate it with fresh vars up to `id`
     if id >= wildcard_vars.len() {
-        wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_type_uvar()));
+        wildcard_vars.extend((wildcard_vars.len()..=id).map(|_| table.fresh_type_uvar(var_level)));
     }
     wildcard_vars[id].clone()
 }

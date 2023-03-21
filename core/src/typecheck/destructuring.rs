@@ -57,7 +57,7 @@ fn build_pattern_type(
                 if let Some(l_ty) = ty_annot {
                     UnifType::from_type(l_ty.types, &ctxt.term_env)
                 } else {
-                    state.table.fresh_type_uvar()
+                    state.table.fresh_type_uvar(ctxt.var_level)
                 }
             }
         }
@@ -69,7 +69,7 @@ fn build_pattern_type(
             // but if/when we remove dynamic record tails this could
             // likely be made an empty tail with no impact.
             TypecheckMode::Walk => mk_uty_row!(; RecordRowsF::TailDyn),
-            TypecheckMode::Check => state.table.fresh_rrows_uvar(),
+            TypecheckMode::Check => state.table.fresh_rrows_uvar(ctxt.var_level),
         }
     } else {
         UnifRecordRows::Concrete(RecordRowsF::Empty)
