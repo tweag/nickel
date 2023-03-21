@@ -147,5 +147,13 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let B = fun label value => value in
   let Contract = Array B in
   true,
+
+  # Polymorphism and dictionary interaction
+
+  (let nonsense
+    | forall free. {_: free -> (forall bound. bound -> bound) } -> free -> {_: (forall bound. bound -> bound) }
+    = fun r x => record.map_values (fun f => f x) r
+  in nonsense { foo = fun _x y => y, bar = fun _x y => y } 5 |> record.map_values (fun f => f 7))
+  == { foo = 7, bar = 7 },
 ]
 |> check
