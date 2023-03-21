@@ -12,7 +12,7 @@
 //! - **enforce** corresponds to traditional typechecking in a statically typed language. This
 //!   happens inside a statically typed block. Such blocks are introduced by the type ascription
 //!   operator `:`, as in `1 + 1 : Number` or `let f : Number -> Number = fun x => x + 1 in ..`. Enforce
-//!   mode is implemented by [`type_check_`] and variants.
+//!   mode is implemented by [`type_check`] and variants.
 //! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
 //!   is implemented by the [`walk`] function.
@@ -1111,13 +1111,13 @@ fn walk_with_annot<L: Linearizer>(
 /// then check the argument).
 ///
 /// Still, `check` is supposed to be implementing checking mode from the outside. We thus also
-/// apply the rule which switches from inference to checking mode. This is in particular where
-/// subtyping happens, for example, when there is subtyping. Currently, subtyping isn't supported
-/// yet in Nickel, so the corresponding switching rule doesn't do much. But the implementation of
-/// RFC004 will bring subtyping, and [`subsumption`] will be the place to apply it.
+/// apply the typing rule which switches from inference to checking mode. Currently, subtyping
+/// isn't supported yet in Nickel but is planned as part of RFC004. When subtyping lands, as the
+/// name suggests, [`subsumption`] will be the place where we apply subsumption, as customary in
+/// bidirectional type systems with subtyping.
 ///
-/// To sum up, elimination rules inside `check` correspond to an inference elimination rule
-/// composed with the switching/subsumption rule, resulting in a composite checking rule.
+/// To sum up, elimination rules inside `check` correspond to an inference rule composed with the
+/// switching/subsumption rule, resulting in a composite checking rule.
 ///
 /// # Parameters
 ///
@@ -1556,7 +1556,7 @@ fn check<L: Linearizer>(
 
 /// Change from inference mode to checking mode, and apply a potential subsumption rule.
 ///
-/// Currently, there is no subtyping (until RFC002 is implemented), hence this function simply
+/// Currently, there is no subtyping (until RFC004 is implemented), hence this function simply
 /// performs unification (put differently, the subtyping relation is the equality relation). In the
 /// future, this function might implement a non-trivial subsumption rule.
 pub fn subsumption(
