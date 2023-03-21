@@ -6,12 +6,12 @@
 //!
 //! # Modes
 //!
-//! Corresponding to dynamic typing static typing, the typechecking algorithm runs in two separate
-//! modes:
+//! The typechecking algorithm runs in two separate modes, corresponding to static and dynamic
+//! typing:
 //!
 //! - **enforce** corresponds to traditional typechecking in a statically typed language. This
 //!   happens inside a statically typed block. Such blocks are introduced by the type ascription
-//!   operator `:`, as in `1 + 1 : Num` or `let f : Num -> Num = fun x => x + 1 in ..`. Enforce
+//!   operator `:`, as in `1 + 1 : Number` or `let f : Number -> Number = fun x => x + 1 in ..`. Enforce
 //!   mode is implemented by [`type_check_`] and variants.
 //! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
@@ -28,7 +28,7 @@
 //! # Type inference
 //!
 //! Type inference is done via a form of bidirectional typechecking coupled with unification, in
-//! the same spirit as GHC (Haskell), albeit the type system of Nickel is simpler. The type of
+//! the same spirit as GHC (Haskell), although the type system of Nickel is simpler. The type of
 //! un-annotated let-bound expressions (the type of `bound_exp` in `let x = bound_exp in body`) is
 //! inferred in enforce mode, but it is never implicitly generalized. For example, the following
 //! program is rejected:
@@ -1086,7 +1086,7 @@ fn walk_with_annot<L: Linearizer>(
 }
 
 /// Check a term against a given type. Although this method mostly corresponds to checking mode in
-/// the classical bidirectional framework, it combines both checking and inference mode in
+/// the classical bidirectional framework, it combines both checking and inference modes in
 /// practice, to avoid duplicating rules (that is, code) as detailed below.
 ///
 /// # Literals
@@ -1105,7 +1105,7 @@ fn walk_with_annot<L: Linearizer>(
 ///
 /// # Elimination rules
 ///
-/// Elimination rules (such as function application or primitive operator application) are only in
+/// Elimination rules (such as function application or primitive operator application) only exist in
 /// inference mode (still following Pfenning's recipe). `check` follows the inference mode here
 /// (typically on function application, where we first call to `infer` on the function part, and
 /// then check the argument).
@@ -1603,7 +1603,7 @@ fn check_annotated<L: Linearizer>(
     check_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), ty, rt.pos)
 }
 
-/// Function handling the common part of typechecking term with type or contract annotation, with
+/// Function handling the common part of typechecking terms with type or contract annotation, with
 /// or without definitions. This encompasses both standalone type annotation (where `value` is
 /// always `Some(_)`) as well as field definiitions (where `value` may or may not be defined).
 ///
@@ -1694,7 +1694,7 @@ fn check_with_annot<L: Linearizer>(
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
 /// bidirectional typechecking together with traditional ML-like unification. In practice, to avoid
 /// duplicating a lot of rules for both checking mode and inference mode, the current [`check`]
-/// function mixes both and inference simply correponds to checking against a free unification
+/// function mixes both and inference simply corresponds to checking against a free unification
 /// variable.
 ///
 /// Still, using this dedicated method - although it is a thin wrapper - helps making clear when
