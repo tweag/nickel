@@ -1436,14 +1436,14 @@ fn check<L: Linearizer>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut rows_expected_type: HashMap<Ident, UnifType> = record
+                let mut free_rows: HashMap<Ident, UnifType> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar()))
                     .collect();
 
-                let rows_skeleton =
-                    rows_expected_type
+                let rows =
+                    free_rows
                         .iter()
                         .fold(mk_uty_row!(), |acc, (id, row_ty)| {
                             // if let Term::RecRecord(..) = t.as_ref() {
@@ -1452,7 +1452,9 @@ fn check<L: Linearizer>(
                             mk_uty_row!((*id, row_ty.clone()); acc)
                         });
 
-                unify(state, &ctxt, ty, mk_uty_record!(; rows_skeleton))
+                let record_type = mk_uty_record!(; rows);
+
+                unify(state, &ctxt, ty, record_type.clone())
                     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
                 for (id, field) in record.fields.iter() {
@@ -1461,7 +1463,7 @@ fn check<L: Linearizer>(
                         unify(
                             state,
                             &ctxt,
-                            rows_expected_type.get(id).cloned().unwrap(),
+                            free_rows.get(id).cloned().unwrap(),
                             affected_type,
                         )
                         .map_err(|err| {
@@ -1481,8 +1483,8 @@ fn check<L: Linearizer>(
                         field,
                         // unwrap(): we've built `rows_expected_type` in this very function
                         // from record.fields.keys(), so it must contain `id`
-                        rows_expected_type.remove(id).unwrap(),
-                    )?;
+                        free_rows.remove(id).unwrap(),
+                    ).map_err(|err| UnifError::FieldTypeMismatch { id: *id, expected: record_type.clone(), error: Box::new(err) }.into_typecheck_err(state, pos))?;
                 }
 
                 Ok(())

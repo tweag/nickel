@@ -65,6 +65,12 @@ pub enum UnifError {
     TypeMismatch(UnifType, UnifType),
     /// There are two incompatible definitions for the same row.
     RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
+    /// Typechecking a field of a record literal failed, given the expected type of the record.
+    FieldTypeMismatch {
+        id: Ident,
+        expected: UnifType,
+        error: Box<UnifError>,
+    },
     /// Tried to unify an enum row and a record row.
     RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
     /// Tried to unify two distinct type constants.
@@ -123,26 +129,32 @@ impl UnifError {
         self,
         state: &State,
         names: &mut reporting::NameReg,
-        pos_opt: TermPos,
+        pos: TermPos,
     ) -> TypecheckError {
         match self {
             UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
                 reporting::to_type(state.table, state.names, names, ty1),
                 reporting::to_type(state.table, state.names, names, ty2),
-                pos_opt,
+                pos,
             ),
             UnifError::RowMismatch(ident, uty1, uty2, err) => TypecheckError::RowMismatch(
                 ident,
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
-                pos_opt,
+                pos,
             ),
+            UnifError::FieldTypeMismatch {id, expected, error} => TypecheckError::FieldTypeMismatch {
+                id,
+                expected: reporting::to_type(state.table, state.names, names, expected),
+                error: Box::new((*error).into_typecheck_err_(state, names, TermPos::None)),
+                pos,
+            },
             UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
                 id,
                 ty1.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
                 ty2.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
-                pos_opt,
+                pos,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
@@ -150,47 +162,47 @@ impl UnifError {
             UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
                 reporting::to_type(state.table, state.names, names, UnifType::Constant(c1)),
                 reporting::to_type(state.table, state.names, names, UnifType::Constant(c2)),
-                pos_opt,
+                pos,
             ),
             UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
                 reporting::to_type(state.table, state.names, names, UnifType::Constant(c)),
                 reporting::to_type(state.table, state.names, names, ty),
-                pos_opt,
+                pos,
             ),
             UnifError::IncomparableFlatTypes(rt1, rt2) => {
-                TypecheckError::IncomparableFlatTypes(rt1, rt2, pos_opt)
+                TypecheckError::IncomparableFlatTypes(rt1, rt2, pos)
             }
             UnifError::MissingRow(id, uty1, uty2) => TypecheckError::MissingRow(
                 id,
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
-                pos_opt,
+                pos,
             ),
             UnifError::MissingDynTail(uty1, uty2) => TypecheckError::MissingDynTail(
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
-                pos_opt,
+                pos,
             ),
             UnifError::ExtraRow(id, uty1, uty2) => TypecheckError::ExtraRow(
                 id,
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
-                pos_opt,
+                pos,
             ),
             UnifError::ExtraDynTail(uty1, uty2) => TypecheckError::ExtraDynTail(
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
-                pos_opt,
+                pos,
             ),
             UnifError::RowConflict(id, uty, left, right) => TypecheckError::RowConflict(
                 id,
                 uty.map(|uty| reporting::to_type(state.table, state.names, names, uty)),
                 reporting::to_type(state.table, state.names, names, left),
                 reporting::to_type(state.table, state.names, names, right),
-                pos_opt,
+                pos,
             ),
             UnifError::UnboundTypeVariable(ident) => {
-                TypecheckError::UnboundTypeVariable(ident, pos_opt)
+                TypecheckError::UnboundTypeVariable(ident, pos)
             }
             err @ UnifError::CodomainMismatch(_, _, _)
             | err @ UnifError::DomainMismatch(_, _, _) => {
@@ -200,7 +212,7 @@ impl UnifError {
                     reporting::to_type(state.table, state.names, names, actual),
                     path,
                     Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
-                    pos_opt,
+                    pos,
                 )
             }
         }

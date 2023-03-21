@@ -168,7 +168,6 @@ pub enum TypecheckError {
         /* the inferred/annotated type */ Types,
         TermPos,
     ),
-
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident, TermPos),
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
@@ -193,6 +192,19 @@ pub enum TypecheckError {
         /* error at the given row */ Box<TypecheckError>,
         TermPos,
     ),
+    /// The actual type of a record field is incompatible with its expected type. In practice, this
+    /// happens in situations similar to [`TypecheckError::RowMismach`], but in a situation where
+    /// the actual type of the record literal hasn't been built.
+    FieldTypeMismatch {
+        /// The identifier of the field.
+        id: Ident,
+        /// The expected type of the enclosing record.
+        expected: Types,
+        /// The position of the enclosing record.
+        pos: TermPos,
+        /// The specific error raised when trying to typecheck the field.
+        error: Box<TypecheckError>,
+    },
     /// Two incompatible types have been deduced for the same identifier of a row type.
     ///
     /// This is similar to `RowKindMismatch` but occurs in a slightly different situation. Consider a a
@@ -1637,9 +1649,57 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 ];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
-                // error message to make it clear that this is not a separated error but a more
+                // error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
                 diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter()
+                    .map(|mut diag| {
+                        diag.message = format!("While typing field `{}`: {}", field, diag.message);
+                        diag
+                    }));
+                diags
+            }
+            TypecheckError::FieldTypeMismatch {id, expected, pos, mut error} => {
+                // If the error is on a nested field, we will have a succession of
+                // `FiedTypeMismatch` errors wrapping the underlying error. In this case, instead
+                // of showing a cascade of similar error messages, we determine the full path of
+                // the nested field (e.g. `pkg.subpkg1.meta.url`) and only show once the row
+                // mismatch error followed by the underlying error.
+                let mut path = vec![id];
+
+                while let TypecheckError::FieldTypeMismatch { id: id_next, error: next, .. } = *error {
+                    path.push(id_next);
+                    error = next;
+                }
+
+                let path_str: Vec<String> = path.clone().into_iter().map(|ident| format!("{ident}")).collect();
+                let field = path_str.join(".");
+
+                //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
+                //than doing this match.
+                let default_msg = |ty| format!("The type of the expression was expected to be `{ty}`");
+
+                let note = if let TypeF::Record(rrows) = &expected.types {
+                    match rrows.row_find_path(path.as_slice()) {
+                        Some(ty) => format!("The type of the expression was expected to have the row `{field}: {ty}`"),
+                        None => default_msg(&expected),
+                    }
+                } else {
+                    default_msg(&expected)
+                };
+
+                let mut diags = vec![Diagnostic::error()
+                    .with_message("incompatible rows declaration")
+                    .with_labels(mk_expr_label(&pos))
+                    .with_notes(vec![
+                        note,
+                        format!("Could not match the two declaration of `{field}`"),
+                    ])
+                ];
+
+                // We generate a diagnostic for the underlying error, but append a prefix to the
+                // error message to make it clear that this is not a separate error but a more
+                // precise description of what went wrong with this particular field.
+                diags.extend((*error).into_diagnostics(files, stdlib_ids).into_iter()
                     .map(|mut diag| {
                         diag.message = format!("While typing field `{}`: {}", field, diag.message);
                         diag
