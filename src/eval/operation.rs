@@ -2752,7 +2752,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::SealingKey(key) = t1 else {
                     return Err(EvalError::TypeError(
-                        String::from("Sym"),
+                        String::from("Symbol"),
                         String::from("lookup_type_variable, 1st argument"),
                         fst_pos,
                         RichTerm {
@@ -2764,7 +2764,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::Lbl(label) = t2 else {
                     return Err(EvalError::TypeError(
-                        String::from("Lbl"),
+                        String::from("Label"),
                         String::from("lookup_type_variable, 2nd argument"),
                         snd_pos,
                         RichTerm {
@@ -3181,7 +3181,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::SealingKey(key) = *key else {
                     return Err(EvalError::TypeError(
-                        String::from("Sym"),
+                        String::from("Symbol"),
                         String::from("insert_type_variable, 1st argument"),
                         key_pos,
                         RichTerm {
@@ -3205,7 +3205,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Term::Lbl(label) = &*label else {
                     return Err(EvalError::TypeError(
-                        String::from("Lbl"),
+                        String::from("Label"),
                         String::from("insert_type_variable, 3rd argument"),
                         label_pos,
                         RichTerm {
