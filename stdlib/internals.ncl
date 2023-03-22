@@ -27,7 +27,7 @@
 
   "$forall_var" = fun sealing_key label value =>
       let current_polarity = %polarity% label in
-      let {polarity, ..} = %lookup_type_variable% sealing_key label in
+      let polarity = (%lookup_type_variable% sealing_key label).polarity in
       if polarity == current_polarity then
           %unseal% sealing_key value (%blame% label)
       else
@@ -95,7 +95,7 @@
 
   "$forall_tail" = fun sealing_key acc label value =>
       let current_polarity = %polarity% label in
-      let {polarity, ..} = %lookup_type_variable% sealing_key label in
+      let polarity = (%lookup_type_variable% sealing_key label).polarity in
       if polarity == current_polarity then
           if value == {} then
             let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
