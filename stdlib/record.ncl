@@ -107,7 +107,7 @@
         else
           r in
         %record_insert% field r content,
-    
+
     map_values : forall a b. (a -> b) -> {_: a} -> {_: b}
     | doc m%"
       Maps a function over every field value of a record.
@@ -159,7 +159,7 @@
     is_empty : forall a. {_: a} -> Bool
     | doc m%"
       Check whether a record is empty.
-      
+
       ```nickel
       is_empty {} => true
       is_empty { foo = 1 } => false

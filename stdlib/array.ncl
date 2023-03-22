@@ -390,7 +390,7 @@
         "%
       = fun start end step => %generate%
           ((end - start) / step |> number.floor)
-          (fun i => start + i*step), 
+          (fun i => start + i*step),
 
     range
       : Number -> Number -> Array Number
@@ -402,7 +402,7 @@
       = fun start end => range_step start end 1,
 
     reduce_right
-      : forall a. (a -> a -> a) -> Array a -> a 
+      : forall a. (a -> a -> a) -> Array a -> a
       | doc m%"
            Fold a function over a array.
         `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
@@ -414,9 +414,9 @@
             [ 3, 2, 1 ]
         ```
         "%
-      = fun f array => 
-          let last = last array in 
-          let rest = drop_last array in 
+      = fun f array =>
+          let last = last array in
+          let rest = drop_last array in
           fold_right f last rest,
   }
 }
