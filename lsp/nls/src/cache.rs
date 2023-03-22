@@ -4,6 +4,8 @@ use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::{Error, ImportError},
+    position::TermPos,
+    term::{RichTerm, Term, Traverse, TraverseOrder},
     typecheck::{self, linearization::Linearization},
 };
 
@@ -50,13 +52,35 @@ impl CacheExt for Cache {
             for id in ids {
                 match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
                     Ok(_) => (),
-                    Err(error) => {
-                        // for now just unwrap
-                        let pos = self.get_ref(id).unwrap().pos;
-                        let f = String::from("<somefile>");
-                        let msg = String::from("Couldn't type check this imports content");
-                        let err = ImportError::IOError(f, msg, pos);
-                        import_errors.push(err);
+                    Err(..) => {
+                        // After self.parse(), the cache must be populated
+                        let CachedTerm { term, .. } = self.terms().get(&file_id).unwrap();
+                        let mut errors: Vec<(String, TermPos)> = Vec::new();
+
+                        let term = term.clone(); // Don't like this
+                        term.traverse::<_, _, ()>(
+                            &|rt, errors: &mut Vec<_>| {
+                                let RichTerm { ref term, pos } = rt;
+                                match term.as_ref() {
+                                    Term::ResolvedImport(id) if !lin_cache.contains_key(id) => {
+                                        let name: String = self.name(*id).to_str().unwrap().into();
+                                        errors.push((name, pos));
+                                        Ok(rt)
+                                    }
+                                    _ => Ok(rt),
+                                }
+                            },
+                            &mut errors,
+                            TraverseOrder::TopDown,
+                        )
+                        .unwrap();
+
+                        let message = "This import could not be resolved because its content either failed to parse or typecheck correctly.";
+                        let errors = errors.into_iter().map(|(name, pos)| {
+                            ImportError::IOError(name, String::from(message), pos)
+                        });
+
+                        import_errors.extend(errors);
                     }
                 }
             }
