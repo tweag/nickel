@@ -13,8 +13,8 @@ let {check, ..} = import "lib/assert.ncl" in
   ("9001" | string.NumLiteral) == "9001",
   # string.CharLiteral
   ("e" | string.Character) == "e",
-  # string.EnumTag
-  (`Foo | string.EnumTag) == `Foo,
+  # enum.Tag
+  (`Foo | enum.Tag) == `Foo,
   # string.Stringable
   (`Foo | string.Stringable) == `Foo,
   (true | string.Stringable) == true,
