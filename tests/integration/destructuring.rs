@@ -60,7 +60,7 @@ fn typecontract_fail() {
 fn type_mismatch_fail() {
     assert_matches!(
         eval_file("destructuring/type_mismatch_fail.ncl"),
-        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+        Err(Error::TypecheckError(TypecheckError::TypeMismatch(..)))
     )
 }
 
@@ -68,7 +68,7 @@ fn type_mismatch_fail() {
 fn type_mismatch_field_pattern_fail() {
     assert_matches!(
         eval_file("destructuring/type_mismatch_field_pattern_fail.ncl"),
-        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+        Err(Error::TypecheckError(TypecheckError::TypeMismatch(..)))
     )
 }
 
@@ -76,7 +76,7 @@ fn type_mismatch_field_pattern_fail() {
 fn type_mismatch_nested_destructuring_fail() {
     assert_matches!(
         eval_file("destructuring/type_mismatch_nested_destructuring_fail.ncl"),
-        Err(Error::TypecheckError(TypecheckError::RowMismatch(..)))
+        Err(Error::TypecheckError(TypecheckError::TypeMismatch(..)))
     )
 }
 
