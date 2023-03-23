@@ -156,8 +156,7 @@
           right argument, then `fold_right` provides early return. An example is
           the boolean AND operator `&&`: when evaluating `left && right`, if
           `left` is `false`, the whole expression will evaluate to `false`
-          without even evaluating `right`. Given the definition of `fold_right`,
-          and the lazy evaluation model of Nickel, the following expression:
+          without even evaluating `right`. Consider the following expression:
 
           ```nickel
           array.replicate 1000 true
@@ -167,9 +166,10 @@
           ```
 
           Here, `fold_right` will stop at the first element, and the operation
-          runs in constant time. If we had used `fold_left` instead, which is
-          closer to a standard iterator, we would have iterated over all of the
-          1000 elements of the array.
+          runs in constant time, given the definition of `fold_right` and the
+          lazy evaluation of Nickel. If we had used `fold_left` instead, which
+          is closer to a standard iterator, we would have iterated over all of
+          the 1000 elements of the array.
 
         # Examples
 
