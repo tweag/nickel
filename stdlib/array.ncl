@@ -59,12 +59,7 @@
             [ 1, 2 ]
         ```
         "%
-      = fun array =>
-        let length = %length% array in
-        if length == 0 then
-          array
-        else
-          %array_slice% 0 (length - 1) array,
+      = fun array => %array_slice% 0 (%length% array - 1) array,
 
     length : forall a. Array a -> Number
       | doc m%"
