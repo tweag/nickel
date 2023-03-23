@@ -47,7 +47,7 @@
             [ 2, 3 ]
         ```
         "%
-      = fun l => %tail% l,
+      = fun array => %array_slice% 1 (%length% array) array,
 
     drop_last : forall a. Array a -> Array a
       | doc m%"
@@ -59,11 +59,12 @@
             [ 1, 2 ]
         ```
         "%
-      # TODO: we need a slice primop
-      = fun l => l
-        |> reverse
-        |> drop_first
-        |> reverse,
+      = fun array =>
+        let length = %length% array in
+        if length == 0 then
+          array
+        else
+          %array_slice% 0 (length - 1) array,
 
     length : forall a. Array a -> Number
       | doc m%"
@@ -116,12 +117,49 @@
 
     fold_left : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
-        Fold a function over an array.
+        Fold a function over an array. Folds serves similar to loops or iterator
+        in a functional language like Nickel. `fold_left` iterates over an
+        array, by repeatedly applying a function over each element, threading an
+        additional arbitrary state (the accumulator, of type `a` in the
+        signature).
+
         `fold_left f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
         This function is strict in the intermediate accumulator.
 
-        For example:
+        # Left vs right
+
+        Folds come in two variants, left and right. How to decide which one to
+        use?
+
+        - If the folded function isn't associative (such as subtraction), then
+          both functions will give different results. Only one is correct,
+          depending on your use-case. For example:
+
+          ```nickel
+          array.fold_right (-) 0 [1, 2, 3, 4]
+           => -2
+          array.fold_left (-) 0 [1, 2, 3, 4]
+           => -10
+          ```
+        - If the folded function is associative, both `fold_right` and
+          `fold_left` return the same result. In that case, **`fold_left` is
+          generally preferred, because it forces the evaluation of the
+          intermediate results, resulting in less memory consumption and an
+          overall better performances (most of the time). `fold_left` iterates
+          from the start of the array, which correponds to the usual behavior of
+          loops and iterators in most programming languages.
+          There is one case where `fold_right` might be preferred, see below.
+        - If the folded function is associative but _(left) short-circuiting_,
+          meaning that it can sometimes determine the result without having to
+          evaluate the right operand, then `fold_right` provides early return.
+          An example is the boolean AND operator `&&`: when evaluating `left &&
+          right`, if `left` is `false`, the whole expression will evaluate to `false` without even
+          evaluating `right`. Given the definition of `fold_right`, and the lazy
+          evaluation model of Nickel, the following expression:
+
+        #Examples
+
         ```nickel
           fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
             (((0 + 1) + 2) 3) =>
@@ -142,10 +180,21 @@
 
     fold_right : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
-        Fold a function over a array.
+        Fold a function over an array. Folds serves similar to loops or iterator
+        in a functional language like Nickel. `fold_left` iterates over an
+        array, by repeatedly applying a function over each element, threading an
+        additional arbitrary state (the accumulator, of type `a` in the
+        signature).
+
         `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
-        For example:
+        # Left vs right
+
+        Folds come in two variants, left and right. How to decide which one to
+        use? Please refer to the documentation of `array.fold_left`.
+
+        # Examples
+
         ```nickel
           fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
             ((([] @ [3]) @ [2]) @ [1]) =>
@@ -350,22 +399,49 @@
     slice
       : forall a. Number -> Number -> Array a -> Array a
       | doc m%"
-          `slice start end array` the sub-array of `array`, starting at `start`
-(include  d) and ending at `end` (excluded).
+          Results in the slice of the given array between `start` (included) and
+          `end` (excluded).
 
-          TODO: errors (start < 0 , etc.)
+          # Preconditions
+
+          In `slice start end value`, `start` and `end` must be positive
+          integers such that `0 <= start <= end <= array.length value`.
+
+          # Examples
+
+          ```nickel
+          slice 1 3 [ 0, 1, 2, 3, 4, 5]
+            => [ 1, 2 ]
+          slice 0 3 [ "Hello", "world", "!" ]
+            => [ "Hello", "world", "!" ]
+          slice 2 3 [ "Hello", "world", "!" ]
+            => [ "!" ]
+           ```
         "%
-      # TODO: actually implement the operation using a slice primop
       = fun start end value => %array_slice% start end value,
 
     split_at
       : forall a. Number -> Array a -> {left: Array a, right: Array a}
       | doc m%"
-          Split an array in two at a given index, and return all the elements
+          Splits an array in two at a given index, and puts all the elements
           to the left of the element at the given index (excluded) in the
           `left` field, and the rest of the array in the `right` field.
 
-          TODO: errors (start < 0 , etc.)
+          # Preconditions
+
+          In `slice start end value`, `start` and `end` must be positive
+          integers such that `0 <= start <= end <= array.length value`.
+
+          # Examples
+
+          ```nickel
+          split_at 2 [ 0, 1, 2, 3, 4, 5]
+            => { left = [ 2, 3, 4, 5 ], right = [ 0, 1 ] }
+          split_at 0 [ "Hello", "world", "!" ]
+            => { left = [  ], right = [ "Hello", "world", "!" ] }
+          split_at 3 [ "Hello", "world", "!" ]
+            => { left = [ "Hello", "world", "!" ], right = [  ] }
+          ```
         "%
       = fun index value => {
         left = %array_slice% 0 index value,
@@ -377,16 +453,39 @@
       | doc m%"
           `replicate n x` creates an array containing `x` exactly `n` times.
 
-          TODO: example
+          # Preconditions
+
+          `n` must be an integer greater or equal to `0`.
+
+          # Examples
+
+          ```nickel
+          replicate 0 false
+            => [ ]
+          replicate 5 "x"
+            => [ "x", "x", "x", "x", "x" ]
+          ```
         "%
       = fun n x => %generate% n (fun _i => x),
 
     range_step
       : Number -> Number -> Number -> Array Number
       | doc m%"
-         `range_step start end step` generates the array of numbers
-           [start, start + step, start + 2*step, ...]
-         until the first element (excluded) larger than or equal to `end`
+          `range_step start end step` generates the array of numbers
+          `[start, start + step, start + 2*step, ..]` up to the first element
+          (excluded) larger than or equal to `end`
+
+          # Preconditions
+
+          In `range_step start end step`, `start` and `end` must verifies `start
+          <= end`.`step` must be an integer strictly greater than `0`.
+
+          # Examples
+
+          ```nickel
+          range_step (-1.5) 2 0.5
+           => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
+          ```
         "%
       = fun start end step => %generate%
           ((end - start) / step |> number.floor)
@@ -396,27 +495,93 @@
       : Number -> Number -> Array Number
       | doc m%"
           `range start end` generates the array of numbers
-            [start, start + 1, start + 2, ...]
-          until the first element (excluded) larger than or equal to `end`
+          `[start, start + 1, start + 2, ..]` up to the first element
+          (excluded) larger than or equal to `end`.
+
+          `range start end` is equivalent to `range_step start end 1`.
+
+          # Preconditions
+
+          In `range_step start end`, `start` and `end` must verify
+          `start <= end`.
+
+          # Examples
+
+          ```nickel
+          range 0 5
+           => [ 0, 1, 2, 3, 4 ]
+          ```
         "%
       = fun start end => range_step start end 1,
+
+    reduce_left
+      : forall a. (a -> a -> a) -> Array a -> a
+      | doc m%"
+        Reduces the elements to a single one, by repeatedly applying a reducing
+        operation. If the array is empty, returns an empty array.
+
+        `reduce_left` associates to the left, that is
+        `reduce_left op [x1, x2, ..., xn]` results in `op (... (op (op x1 x2) x3) ...) xn`.
+
+        `reduce_left` is the same as `fold_left`, but uses the first element as
+        the initial element.
+
+        # Left vs right
+
+        The rationale to decide between `fold_left` and `fold_right` applies to
+        `reduce_left` and `reduce_right` as well. See the documentation of
+        `fold_left`.
+
+        # Examples
+
+        ```nickel
+          reduce_left (@) [ [1, 2], [3], [4,5] ]
+            => (([1, 2] @ [3]) @ [4,5])
+            => [ 1, 2, 4, 5 ]
+          reduce_left (-) [ 1, 2, 3, 4]
+            => ((1 - 2) - 3) - 4
+            => -8
+        ```
+        "%
+      = fun f array =>
+        let first = %elem_at% array 0 in
+        let rest = %array_slice% 1 (%length% array) array in
+        fold_left f first rest,
 
     reduce_right
       : forall a. (a -> a -> a) -> Array a -> a
       | doc m%"
-           Fold a function over a array.
-        `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
+        Reduces the elements to a single one, by repeatedly applying a reducing
+        operation. If the array is empty, returns an empty array.
 
-        For example:
+        `reduce_right` associates to the right, that is
+        `reduce_right op [x1, x2, ..., xn]` results in
+        `op x1 (op x2 (... (op xn-1 xn) ...))`.
+
+        `reduce_right` is the same as `fold_right`, but uses the last element as
+        the initial element.
+
+        # Left vs right
+
+        The rationale to decide between `fold_left` and `fold_right` applies to
+        `reduce_left` and `reduce_right` as well. See the documentation of
+        `fold_left`.
+
+        # Examples
+
         ```nickel
-          fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
-            ((([] @ [3]) @ [2]) @ [1]) =>
-            [ 3, 2, 1 ]
+          reduce_right (@) [ [1, 2], [3], [4,5] ]
+            => [1, 2] @ ([3] @ [4,5])
+            => [ 1, 2, 4, 5 ]
+          reduce_right (-) [ 1, 2, 3, 4]
+            => 1 - (2 - (3 - 4))
+            => -2
         ```
         "%
       = fun f array =>
-          let last = last array in
-          let rest = drop_last array in
-          fold_right f last rest,
+         let last_index = %length% array - 1 in
+         let last =  %elem_at% array last_index in
+         let rest = %array_slice% 0 last_index array in
+         fold_right f last rest,
   }
 }
