@@ -1375,6 +1375,10 @@ pub enum NAryOp {
     ///   - the [kind](types::VarKind) of the type variable
     ///   - a [label](Term::Label) on which to operate
     InsertTypeVar(),
+    /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
+    /// hood, as long as the array isn't modified later, this operation is constant in time and
+    /// memory.
+    ArraySlice(),
 }
 
 impl NAryOp {
@@ -1385,7 +1389,8 @@ impl NAryOp {
             | NAryOp::StrSubstr()
             | NAryOp::MergeContract()
             | NAryOp::RecordUnsealTail()
-            | NAryOp::InsertTypeVar() => 3,
+            | NAryOp::InsertTypeVar()
+            | NAryOp::ArraySlice() => 3,
             NAryOp::RecordSealTail() => 4,
         }
     }
@@ -1394,13 +1399,14 @@ impl NAryOp {
 impl fmt::Display for NAryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            NAryOp::StrReplace() => write!(f, "strReplace"),
-            NAryOp::StrReplaceRegex() => write!(f, "strReplaceRegex"),
+            NAryOp::StrReplace() => write!(f, "str_replace"),
+            NAryOp::StrReplaceRegex() => write!(f, "str_replace_regex"),
             NAryOp::StrSubstr() => write!(f, "substring"),
-            NAryOp::MergeContract() => write!(f, "mergeContract"),
-            NAryOp::RecordSealTail() => write!(f, "%record_seal_tail%"),
-            NAryOp::RecordUnsealTail() => write!(f, "%record_unseal_tail%"),
-            NAryOp::InsertTypeVar() => write!(f, "%insert_type_variable%"),
+            NAryOp::MergeContract() => write!(f, "merge_contract"),
+            NAryOp::RecordSealTail() => write!(f, "record_seal_tail"),
+            NAryOp::RecordUnsealTail() => write!(f, "record_unseal_tail"),
+            NAryOp::InsertTypeVar() => write!(f, "insert_type_variable"),
+            NAryOp::ArraySlice() => write!(f, "array_slice"),
         }
     }
 }

@@ -53,12 +53,18 @@ impl ArrayAttrs {
     }
 }
 
+/// A Nickel array, represented as a view (slice) into a shared backing array. The view is
+/// delimited by `start` (included) and `end` (excluded). This allows to take the tail of an array,
+/// or an arbitrary slice, in constant time, providing actual linear time iteration when
+/// imlementing recursive functions, such as folds, for example.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
     inner: Rc<[RichTerm]>,
     start: usize,
     end: usize,
 }
+
+pub struct OutOfBoundError;
 
 impl Array {
     /// Creates a Nickel array from reference-counted slice.
@@ -67,6 +73,23 @@ impl Array {
         let end = inner.len();
 
         Self { inner, start, end }
+    }
+
+    /// Resize the view to be a a sub-view of the current one, by considering a slice `start`
+    /// (included) to `end` (excluded).
+    ///
+    /// The parameters must satisfy `0 <= start <= end <= self.end - self.start`. Otherwise,
+    /// `Err(..)` is returned.
+    pub fn slice(&mut self, start: usize, end: usize) -> Result<(), OutOfBoundError> {
+        if start > end || end > self.len() {
+            return Err(OutOfBoundError);
+        }
+
+        let prev_start = self.start;
+        self.start = prev_start + start;
+        self.end = prev_start + end;
+
+        Ok(())
     }
 
     /// Returns the effective length of the array.

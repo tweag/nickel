@@ -437,7 +437,7 @@ pub fn get_bop_type(
 }
 
 pub fn get_nop_type(
-    _state: &mut State,
+    state: &mut State,
     op: &NAryOp,
 ) -> Result<(Vec<UnifType>, UnifType), TypecheckError> {
     Ok(match op {
@@ -470,6 +470,19 @@ pub fn get_nop_type(
             ],
             mk_uniftype::dynamic(),
         ),
+        // Num -> Num -> Array a -> Array a
+        NAryOp::ArraySlice() => {
+            let element_type = state.table.fresh_type_uvar();
+
+            (
+                vec![
+                    mk_uniftype::num(),
+                    mk_uniftype::num(),
+                    mk_uniftype::array(element_type.clone()),
+                ],
+                mk_uniftype::array(element_type),
+            )
+        }
         // This should not happen, as MergeContract() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
         // Morally: Sym -> Polarity -> Lbl -> Lbl

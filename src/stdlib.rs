@@ -5,7 +5,7 @@ use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
 /// This is an array containing all the Nickel standard library modules.
-pub fn modules() -> [StdlibModule; 8] {
+pub fn modules() -> [StdlibModule; 9] {
     [
         StdlibModule::Builtin,
         StdlibModule::Contract,
@@ -14,6 +14,7 @@ pub fn modules() -> [StdlibModule; 8] {
         StdlibModule::String,
         StdlibModule::Number,
         StdlibModule::Function,
+        StdlibModule::Enum,
         StdlibModule::Internals,
     ]
 }
@@ -28,6 +29,7 @@ pub enum StdlibModule {
     String,
     Number,
     Function,
+    Enum,
     Internals,
 }
 
@@ -41,6 +43,7 @@ impl StdlibModule {
             StdlibModule::String => "<stdlib/string.ncl>",
             StdlibModule::Number => "<stdlib/number.ncl>",
             StdlibModule::Function => "<stdlib/function.ncl>",
+            StdlibModule::Enum => "<stdlib/enum.ncl>",
             StdlibModule::Internals => "<stdlib/internals.ncl>",
         }
     }
@@ -54,6 +57,7 @@ impl StdlibModule {
             StdlibModule::String => include_str!("../stdlib/string.ncl"),
             StdlibModule::Number => include_str!("../stdlib/number.ncl"),
             StdlibModule::Function => include_str!("../stdlib/function.ncl"),
+            StdlibModule::Enum => include_str!("../stdlib/enum.ncl"),
             StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
         }
     }
@@ -73,6 +77,7 @@ impl TryFrom<Ident> for StdlibModule {
             "string" => StdlibModule::String,
             "number" => StdlibModule::Number,
             "function" => StdlibModule::Function,
+            "enum" => StdlibModule::Enum,
             "internals" => StdlibModule::Internals,
             _ => return Err(UnknownStdlibModule),
         };
@@ -90,6 +95,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::String => "string",
             StdlibModule::Number => "number",
             StdlibModule::Function => "function",
+            StdlibModule::Enum => "enum",
             StdlibModule::Internals => "internals",
         };
         Ident::from(name)
