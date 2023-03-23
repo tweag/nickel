@@ -29,4 +29,7 @@ let {check, ..} = import "lib/assert.ncl" in
   # string.substring
   string.substring 3 5 "abcdef" == "de",
   string.substring 0 6 "nickel is great" == "nickel",
+  string.substring 0 1 "👩🏻‍🦲" == "👩🏻‍🦲",
+  string.substring 1 6 "👨‍❤️‍💋‍👨hello" == "hello",
+  string.substring 2 4 "ab👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨cd" == "👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨",
 ] |> check

@@ -2888,18 +2888,32 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             return Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be a positive integer smaller than {}, got the floating-point value {end}", usize::MAX), pos_op));
                         };
 
-                        if !s.is_char_boundary(start_as_usize) {
-                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op));
+                        let graphemes: Vec<_> = s.graphemes(true).collect();
+                        if start < &0. || start_as_usize > graphemes.len() {
+                            Err(EvalError::Other(
+                                    format!(
+                                        "substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}",
+                                        s.len(),
+                                        start_as_usize
+                                    ),
+                                    pos_op
+                                ))
+                        } else if end < start || end_as_usize > graphemes.len() {
+                            Err(EvalError::Other(
+                                    format!(
+                                        "substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}",
+                                        start_as_usize + 1,
+                                        graphemes.len(),
+                                        end_as_usize
+                                    ),
+                                    pos_op
+                                ))
+                        } else {
+                            Ok(Closure::atomic_closure(RichTerm::new(
+                                Term::Str(graphemes[start_as_usize..end_as_usize].join("")),
+                                pos_op_inh,
+                            )))
                         }
-
-                        if end <= start || !s.is_char_boundary(end_as_usize) {
-                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start + Number::ONE, s.len(), end), pos_op));
-                        };
-
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(s[start_as_usize..end_as_usize].to_owned()),
-                            pos_op_inh,
-                        )))
                     }
                     (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
                         String::from("Str"),
