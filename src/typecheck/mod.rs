@@ -576,7 +576,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
     }
 }
 
-pub trait HasUnifType {
+pub trait ReifyAsUnifType {
     fn unif_type() -> UnifType;
 }
 

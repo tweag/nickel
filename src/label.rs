@@ -13,7 +13,7 @@ use crate::{
         record::{Field, RecordData},
         RichTerm, SealingKey, Term,
     },
-    typecheck::{HasUnifType, UnifType},
+    typecheck::{ReifyAsUnifType, UnifType},
     types::{TypeF, Types},
 };
 
@@ -396,13 +396,13 @@ impl From<&TypeVarData> for Term {
     }
 }
 
-impl HasUnifType for TypeVarData {
+impl ReifyAsUnifType for TypeVarData {
     fn unif_type() -> UnifType {
         mk_uty_record!(("polarity", Polarity::unif_type()))
     }
 }
 
-impl HasUnifType for Polarity {
+impl ReifyAsUnifType for Polarity {
     fn unif_type() -> UnifType {
         mk_uty_enum!("Positive", "Negative")
     }
