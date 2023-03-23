@@ -146,7 +146,7 @@
           `fold_left` return the same result. In that case, **`fold_left` is
           generally preferred**, because it forces the evaluation of the
           intermediate results resulting in less memory consumption and overall
-          better performances (outside of pathological cases).
+          better performance (outside of pathological cases).
           `fold_left` also iterates from the start of the array, which
           correponds to the usual behavior of loops and iterators in most
           programming languages. There is one case where `fold_right` might be
