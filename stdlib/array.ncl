@@ -557,12 +557,9 @@
         ```
         "%
       = fun f array =>
-        if array == [] then
-          array
-        else
-          let first = %elem_at% array 0 in
-          let rest = %array_slice% 1 (%length% array) array in
-          fold_left f first rest,
+        let first = %elem_at% array 0 in
+        let rest = %array_slice% 1 (%length% array) array in
+        fold_left f first rest,
 
     reduce_right
       : forall a. (a -> a -> a) -> Array a -> a
@@ -595,12 +592,9 @@
         ```
         "%
       = fun f array =>
-         if array == [] then
-           array
-         else
-           let last_index = %length% array - 1 in
-           let last =  %elem_at% array last_index in
-           let rest = %array_slice% 0 last_index array in
-           fold_right f last rest,
+         let last_index = %length% array - 1 in
+         let last =  %elem_at% array last_index in
+         let rest = %array_slice% 0 last_index array in
+         fold_right f last rest,
   }
 }
