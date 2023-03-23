@@ -14,6 +14,9 @@ let {check, ..} = import "lib/assert.ncl" in
   string.replace "the present" "the future" "the present is now" == "the future is now",
   string.replace "iron" "nickel" "iron man" == "nickel man",
   string.replace "nickel" "iron" "iron man" == "iron man",
+  string.replace "❤" "egg" "👨‍❤️‍💋‍👨" == "👨‍❤️‍💋‍👨",
+  string.replace "has" "had" "this has multiple matches, has it?" == "this had multiple matches, had it?",
+  string.replace "hello👨" "goodbye" "hello👨‍❤️‍💋‍👨" == "hello👨‍❤️‍💋‍👨",
 
   # string.replace_regex
   string.replace_regex "\\d" "_" "1,234,1 1" == "_,___,_ _",

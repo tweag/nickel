@@ -2827,7 +2827,70 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match (&*fst, &*snd, &*thd) {
                     (Term::Str(s), Term::Str(from), Term::Str(to)) => {
                         let result = if let NAryOp::StrReplace() = n_op {
-                            str::replace(s, from, to)
+                            let mut result = String::new();
+
+                            if from.is_empty() {
+                                // If `from` is empty then we:
+                                //   1. insert `to` at the beginning.
+                                result.push_str(&to);
+                                //   2. insert `to` after each character.
+                                s.graphemes(true)
+                                    .flat_map(|grapheme| [grapheme, to])
+                                    .for_each(|s| result.push_str(s))
+                            } else {
+                                // Otherwise, we iterate through the graphemes.
+                                let mut cursor = GraphemeCursor::new(0, s.len(), true);
+                                // Because the cursor only provides a `next_boundary` method,
+                                // we have to separately track the `last_boundary` that we saw
+                                // in order to make sure we don't miss replacements at the
+                                // start of the string.
+                                let mut last_boundary = 0;
+                                while let Ok(Some(idx)) = cursor.next_boundary(s.as_str(), 0) {
+                                    // We ignore any case where a match ends partway through a cursor, as
+                                    // it's not a true match. e.g. we're looking for "a👨" but the string
+                                    // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
+                                    // match.
+                                    // But we also only want to bother cloning the cursor & checking this
+                                    // when we know we have a potential match, so we build a closure we
+                                    // can run if necessary.
+                                    let does_match_intersect_cluster = || {
+                                        let mut tmp_cursor = cursor.clone();
+                                        tmp_cursor.set_cursor(last_boundary + from.len());
+                                        !tmp_cursor.is_boundary(&s, 0)
+                                            .expect(
+                                                "None of the GraphemeIncomplete errors are possible here:
+                                                    - PreContext and PrevChunk only happen if chunk_start is nonzero.
+                                                    - NextChunk only happens if the chunk is smaller than the cursor's len parameter
+                                                      but we passed s1 and s1.len() respectively.
+                                                    - InvalidOffset can't happen because we've already checked that s contains from
+                                                      in the range (last_boundary, last_boundary + from.len())"
+                                        )
+                                    };
+
+                                    if s[last_boundary..].starts_with(from.as_str())
+                                        && !does_match_intersect_cluster()
+                                    {
+                                        // When we hit a match for `from`, we add `to`
+                                        // to the result.
+                                        result.push_str(to.as_str());
+                                        // Then jump the cursor to the end of the
+                                        // match.
+                                        let next_boundary = last_boundary + from.len();
+                                        cursor.set_cursor(next_boundary);
+                                        last_boundary = next_boundary;
+                                    } else {
+                                        // Otherwise we write the grapheme we just saw
+                                        // to the string & update the last_boundary
+                                        // accordingly.
+                                        let next_boundary = idx;
+                                        let grapheme = &s[last_boundary..next_boundary];
+                                        result.push_str(grapheme);
+                                        last_boundary = next_boundary;
+                                    }
+                                }
+                            }
+
+                            result
                         } else {
                             let re = regex::Regex::new(from)
                                 .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
