@@ -78,7 +78,7 @@ impl Array {
     /// Resize the view to be a a sub-view of the current one, by considering a slice `start`
     /// (included) to `end` (excluded).
     ///
-    /// The parameters must verify `0 <= start <= end <= self.end - self.start`. Otherwise,
+    /// The parameters must satisfy `0 <= start <= end <= self.end - self.start`. Otherwise,
     /// `Err(..)` is returned.
     pub fn slice(&mut self, start: usize, end: usize) -> Result<(), OutOfBoundError> {
         if start > end || end > self.len() {
