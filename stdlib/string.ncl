@@ -2,18 +2,21 @@
   string = {
     BoolLiteral
       | doc m%"
-      Contract to enforce the value is a string that represents a boolean literal. Additionally casts "True" to "true"
-      and "False" to "false".
+        Enforces that the value is a string that represents a boolean
+        literal, namely
+        - "True" or "true", which will be normalized to "true"; or
+        - "False" or "false", which will be normalized to "false".
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         ("True" | BoolLiteral) =>
           "true"
         ("hello" | BoolLiteral) =>
           error
         (true | BoolLiteral) =>
           error
-      ```
+        ```
       "%
       = fun l s =>
         if %typeof% s == `String then
@@ -26,19 +29,20 @@
         else
           %blame% (%label_with_message% "not a string" l),
 
-    NumLiteral
+    NumberLiteral
       | doc m%"
-      Contract to enforce the value is a string that represends a numerical value.
+        Enforces that the value is a string that represents a numerical value.
 
-      For example:
-      ```nickel
-        ("+1.2" | NumLiteral) =>
+        # Examples
+        
+        ```nickel
+        ("+1.2" | NumberLiteral) =>
           "+1.2"
-        ("5" | NumLiteral) =>
+        ("5" | NumberLiteral) =>
           "5"
-        (42 | NumLiteral) =>
+        (42 | NumberLiteral) =>
           error
-      ```
+        ```
       "%
       = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
       let is_num_literal = %str_is_match% pattern in
@@ -47,16 +51,17 @@
           if is_num_literal s then
             s
           else
-            %blame% (%label_with_message% "invalid num literal" l)
+            %blame% (%label_with_message% "invalid number literal" l)
         else
           %blame% (%label_with_message% "not a string" l),
 
     Character
       | doc m%"
-      Contract to enforce the value is a character (i.e. a string of length 1).
+        Enforces that the value is a character, i.e. a string of length 1.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         ("e" | Character) =>
           "e"
         ("#" | Character) =>
@@ -65,7 +70,7 @@
           error
         (1 | Character) =>
           error
-      ```
+        ```
       "%
       = fun l s =>
         if %typeof% s == `String then
@@ -78,17 +83,18 @@
 
     Stringable
       | doc m%"
-      Contract to enforce the value is convertible to a string via
-      `builtin.to_string` or `string.from`. Accepted values are:
+        Enforces that the value is convertible to a string via
+        `builtin.to_string` or `string.from`. Accepted values are:
 
-      - numbers
-      - booleans
-      - strings
-      - enum tags
-      - null
+        - numbers
+        - booleans
+        - strings
+        - enum tags
+        - null
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         (`Foo | Stringable) =>
           `Foo
         (false | Stringable) =>
@@ -97,7 +103,7 @@
           "barfoo"
         ({foo = "baz"} | Stringable) =>
           error
-      ```
+        ```
       "%
       = contract.from_predicate
         (
@@ -112,17 +118,18 @@
 
     NonEmpty
       | doc m%"
-      Contract to enforce the value is a non-empty string.
+        Enforces that the value is a non-empty string.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         ("" | NonEmpty) =>
           error
         ("hi!" | NonEmpty) =>
           "hi!"
         (42 | NonEmpty) =>
           error
-      ```
+        ```
       "%
       = fun l s =>
         if %typeof% s == `String then
@@ -136,13 +143,14 @@
     join
       : String -> Array String -> String
       | doc m%"
-      Joins a array of strings given a separator.
+        Joins an array of strings with a given separator.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
-      ```
+        ```
       "%
       = fun sep fragments =>
         let length = %length% fragments in
@@ -159,120 +167,127 @@
     split
       : String -> String -> Array String
       | doc m%"
-      Splits a string based on a separator string.
+        Splits a string based on a separator string.
 
-      For example:
-      ```nickel
-      split "," "1,2,3" =>
-        [ "1", "2", "3" ]
-      split "." "1,2,3" =>
-        [ "1,2,3" ]
-      ```
+        Note that this function never splits up Unicode extended grapheme
+        clusters, even in cases where the sought value exists within one.
 
-      Note that this function never splits up Unicode extended grapheme
-      clusters, even in cases where the sought value exists within one.
+        # Examples
+        
+        ```nickel
+        split "," "1,2,3" =>
+          [ "1", "2", "3" ]
+        split "." "1,2,3" =>
+          [ "1,2,3" ]
+        ```
       "%
       = fun sep s => %str_split% s sep,
 
     trim
       : String -> String
       | doc m%"
-      Trims whitespace from the start and end of the string.
+        Trims whitespace from the start and end of a string.
 
-      For example:
-      ```nickel
-      trim " hi  " =>
-        "hi"
-      trim "1   2   3   " =>
-        "1   2   3"
-      ```
+        # Examples
+        
+        ```nickel
+        trim " hi  " =>
+          "hi"
+        trim "1   2   3   " =>
+          "1   2   3"
+        ```
       "%
       = fun s => %str_trim% s,
 
     characters
       : String -> Array String
       | doc m%"
-      Separates a string into its individual Unicode extended grapheme clusters.
+        Separates a string into its individual Unicode extended grapheme clusters.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         chars "Hello" =>
           [ "H", "e", "l", "l", "o" ]
-      ```
+        ```
       "%
       = fun s => %str_chars% s,
 
     uppercase
       : String -> String
       | doc m%"
-      Results in the uppercase version of the given character (including non-ascii characters) if it exists, the same
-      character if not.
+        Returns the uppercase version of the given character (including non-ascii characters) if it exists, the same
+        character if not.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         uppercase "a" =>
           "A"
         uppercase "æ" =>
           "Æ"
         uppercase "." =>
           "."
-      ```
+        ```
       "%
       = fun s => %str_uppercase% s,
 
     lowercase
       : String -> String
       | doc m%"
-      Results in the lowercase version of the given character (including non-ascii characters) if it exists, the same
-      character if not.
+        Returns the lowercase version of the given character (including non-ascii characters) if it exists, the same
+        character if not.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         lowercase "A" =>
           "a"
         lowercase "Æ" =>
           "æ"
         lowercase "." =>
           "."
-      ```
+        ```
       "%
       = fun s => %str_lowercase% s,
 
     contains
       : String -> String -> Bool
       | doc m%"
-      Checks if the first string is part of the second string.
+        Checks if the first string is part of the second string.
 
-      For example:
-      ```nickel
+        Note that this function returns false if the sought string exists entirely inside
+        or straddles Unicode extended grapheme clusters.
+
+        # Examples
+        
+        ```nickel
         contains "cde" "abcdef" =>
           true
         contains "" "abcdef" =>
           true
         contains "ghj" "abcdef" =>
           false
-      ```
-
-      Note that this function returns false if the sought string exists inside
-      a Unicode extended grapheme cluster.
+        ```
       "%
       = fun subs s => %str_contains% s subs,
 
     replace
       : String -> String -> String -> String
       | doc m%"
-      `replace sub repl str` replaces every occurrence of `sub` in `str` with `repl`.
+        `replace sub repl str` replaces every occurrence of `sub` in `str` with `repl`.
 
-      For example:
-      ```nickel
+        Note that this function will not replace `sub` if it exists within a
+        larger unicode extended grapheme cluster.
+
+        # Examples
+        
+        ```nickel
         replace "cd" "   " "abcdef" =>
           "ab   ef"
         replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
-      ```
-
-      Note that this function will not replace `sub` if it exists within a
-      larger unicode extended grapheme cluster.
+        ```
       "%
       = fun pattern replace s =>
         %str_replace% s pattern replace,
@@ -280,19 +295,20 @@
     replace_regex
       : String -> String -> String -> String
       | doc m%"
-      `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
+        `replace_regex regex repl string` replaces every match of `regex` in `string` with `repl`.
 
-      For example:
-      ```nickel
+        **WARNING**: this function will currently break up Unicode extended
+        grapheme clusters if the regex matches a codepoint that exists within
+        one. This behaviour is expected to change in a future version.
+
+        # Examples
+        
+        ```nickel
         replace_regex "l+." "j" "Hello!" =>
           "Hej!"
         replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
-
-      **WARNING**: this function will currently break up Unicode extended
-      grapheme clusters if the regex matches a codepoint that exists within
-      one. This behaviour is expected to change in a future version.
       "%
       = fun pattern replace s =>
         %str_replace_regex% s pattern replace,
@@ -300,78 +316,92 @@
     is_match
       : String -> String -> Bool
       | doc m%"
-      `is_match regex String` checks if `String` matches `regex`.
+        `is_match regex string` checks if `string` matches `regex`.
 
-      For example:
-      ```nickel
+        **WARNING**: this function will currently return `true` even if the
+        regex match overlaps, or happens entirely within, with a Unicode extended
+        grapheme cluster. This behaviour is expected to change in a future version.
+
+        # Examples
+
+        ```nickel
         is_match "^\\d+$" "123" =>
           true
         is_match "\\d{4}" "123" =>
           false
-      ```
+        ```
 
-      For example, in the following program, the whole call to
-      `string.is_match "[0-9]*\\.?[0-9]+ x"` is re-evaluated at each invocation of
-      `is_number`. The regexp will be recompiled 3 times in total:
+        # Performance
 
-      ```nickel
-      let is_number = fun x => string.is_match "[0-9]*\\.?[0-9]+" x in
-      ["0", "42", "0.5"] |> array.all is_number =>
-        true
-      ```
+        When checking multiple strings against a common regular expression, it
+        is advantageous to store a partially applied version of this function. This
+        partial evaluation will store a compiled version of the regular expression and
+        prevent recompilation at each call site.
 
-      On the other hand, in the version below, the partial application of
-      `string.is_match "[0-9]*\\.?[0-9]+"` is evaluated once, returning a
-      function capturing the compiled regexp. The regexp will only be compiled
-      once and for all:
+        For example, in the following program, the whole call to
+        `string.is_match "[0-9]*\\.?[0-9]+ x"` is re-evaluated at each invocation of
+        `is_number`. The regexp will be recompiled 3 times in total:
 
-      ```nickel
-      let is_number' = string.is_match "[0-9]*\\.?[0-9]+" in
-      ["0", "42", "0.5"] |> array.all is_number' =>
-        true
-      ```
+        ```nickel
+        let is_number = fun x => string.is_match "[0-9]*\\.?[0-9]+" x in
+        ["0", "42", "0.5"] |> array.all is_number =>
+          true
+        ```
 
-      **WARNING**: this function will currently return `true` even if the
-      regex match overlaps, or happens entirely within, with a Unicode extended
-      grapheme cluster. This behaviour is expected to change in a future version.
+        On the other hand, in the version below, the partial application of
+        `string.is_match "[0-9]*\\.?[0-9]+"` is evaluated once, returning a
+        function capturing the compiled regexp. The regexp will only be compiled
+        once and for all:
+
+        ```nickel
+        let is_number' = string.is_match "[0-9]*\\.?[0-9]+" in
+        ["0", "42", "0.5"] |> array.all is_number' =>
+          true
+        ```
       "%
       = fun regex => %str_is_match% regex,
 
     find
       : String -> String -> { matched : String, index : Number, groups : Array String }
       | doc m%"
-          `find regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
-          first character that was part of the match in `str`, and a arrays of all capture groups if any.
+        `find regex string` looks for matches of `regexp` in `string`. Returns
+        the part of `string` that matched, the index of the first character that
+        was part of the match in `string`, and an array of all capture groups if
+        there were any.
 
-          For example:
-          ```nickel
-            find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
-              { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
-            find "3" "01234" =>
-              { matched = "3", index = 3, groups = [ ] }
-          ```
+        **WARNING**: this function will currently return incorrect indices if
+        `str` contains Unicode extended grapheme clusters. The indices returned
+        will be the location of the matching codepoints, rather than the
+        matching grapheme clusters.
 
-          Note that this function may perform better by sharing its partial application between multiple calls,
-          because in this case the underlying regular expression will only be compiled once (See the documentation
-          of `string.is_match` for more details).
+        # Examples
+        
+        ```nickel
+        find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
+          { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
+        find "3" "01234" =>
+          { matched = "3", index = 3, groups = [ ] }
+        ```
 
-          **WARNING**: this function will currently return incorrect indices if `str`
-          contains Unicode extended grapheme clusters. The indices returned will
-          be the location of the matching codepoints, rather than the matching
-          grapheme clusters. This behaviour is expected to change in a future version.
-        "%
+        # Performance
+        
+        Note that this function may perform better by sharing its partial application between multiple calls,
+        because in this case the underlying regular expression will only be compiled once (See the documentation
+        of `string.is_match` for more details).
+      "%
       = fun regex => %str_find% regex,
 
     length
       : String -> Number
       | doc m%"
-      Returns the length of the string, as measured by the number of UTF-8
-      [extended grapheme clusters](https://unicode.org/glossary/#extended_grapheme_cluster).
+        Returns the length of the string, as measured by the number of Unicode
+        [extended grapheme clusters](https://unicode.org/glossary/#extended_grapheme_cluster).
 
-      Generally speaking, this gives the number of "visible" glyphs in the string.
+        Generally speaking, this gives the number of "visible" glyphs in the string.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         length "" =>
           0
         length "hi" =>
@@ -380,126 +410,140 @@
           4
         length "👨🏾‍❤️‍💋‍👨🏻" =>
           1
-      ```
+        ```
       "%
       = fun s => %str_length% s,
 
     substring
       : Number -> Number -> String -> String
       | doc m%"
-      Takes a slice from the string. Errors if either index is out of range.
+        `substring start end str` takes the slice of `str` from `start` (included) to `end` (excluded).
 
-      The index arguments are the indices of Unicode extended grapheme clusters
-      rather than codepoints.
+        The index arguments are the indices of Unicode extended grapheme clusters
+        rather than codepoints.
 
-      For example:
-      ```nickel
+        # Preconditions
+
+        In `substring start end str`, `start` and `end` must be positive integers
+        such that `0 <= start <= end <= array.length value`.
+
+        # Examples
+
+        ```nickel
         substring 3 5 "abcdef" =>
           "de"
         substring 3 10 "abcdef" =>
           error
         substring (-3) 4 "abcdef" =>
           error
-      ```
+        ```
       "%
       = fun start end s => %str_substr% s start end,
 
     from
       | Stringable -> String
       | doc m%"
-      Converts a correct value to a string representation. Same as
-      `builtin.to_string`.
+        Converts a stringable value to its string representation. Same as
+        `builtin.to_string`.
 
-      For example:
-      ```nickel
-      from 42 =>
-        "42"
-      from `Foo =>
-        "Foo"
-      from null =>
-        "null"
+        # Examples
+        
+        ```nickel
+        from 42 =>
+          "42"
+        from `Foo =>
+          "Foo"
+        from null =>
+          "null"
+        ```
       "%
       = fun x => %to_str% x,
 
     from_number
       | Number -> String
       | doc m%"
-      Converts a number to its string representation.
+        Converts a number to its string representation.
 
-      For example:
-      ```nickel
-      from_number 42 =>
-        "42"
-      ```
+        # Examples
+        
+        ```nickel
+        from_number 42 =>
+          "42"
+        ```
       "%
       = from,
 
     from_enum
       | enum.Tag -> String
       | doc m%"
-      Converts an enum variant to its string representation.
+        Converts an enum variant to its string representation.
 
-      For example:
-      ```nickel
-      from_enum `MyEnum =>
-        "MyEnum"
-      ```
+        # Examples
+        
+        ```nickel
+        from_enum `MyEnum =>
+          "MyEnum"
+        ```
       "%
       = from,
 
     from_bool
       | Bool -> String
       | doc m%"
-      Converts a boolean value to its string representation.
+        Converts a boolean value to its string representation.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         from_bool true =>
           "true"
-      ```
+        ```
       "%
       = from,
 
     to_number
-      | NumLiteral -> Number
+      | NumberLiteral -> Number
       | doc m%"
-      Converts a string that represents an integer to that integer.
+        Converts a string that represents a number to that number.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         to_number "123" =>
           123
-      ```
+        ```
       "%
       = fun s => %num_from_str% s,
 
     to_bool
       | BoolLiteral -> Bool
       | doc m%"
-      Converts a string that represents a boolean to that boolean.
+        Converts a string that represents a bool to that bool.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         to_bool "true" =>
           true
         to_bool "True" =>
           true
         to_bool "false" =>
           false
-      ```
+        ```
       "%
       = fun s => s == "true",
 
     to_enum
       | String -> enum.Tag
       | doc m%"
-      Converts any string that represents an enum variant to that enum variant.
+        Converts any string that represents an enum variant to that enum variant.
 
-      For example:
-      ```nickel
+        # Examples
+        
+        ```nickel
         to_enum "Hello" =>
           `Hello
-      ```
+        ```
       "%
       = fun s => %enum_from_str% s,
   }
