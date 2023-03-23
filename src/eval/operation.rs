@@ -44,7 +44,7 @@ use malachite::{
 
 use md5::digest::Digest;
 use simple_counter::*;
-use unicode_segmentation::UnicodeSegmentation;
+use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 use std::{collections::HashMap, convert::TryFrom, iter::Extend, rc::Rc};
 
@@ -2410,14 +2410,82 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::StrSplit() => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => {
-                    let array = s1
-                        .split(s2)
-                        .map(|s| Term::Str(String::from(s)).into())
-                        .collect();
+                (Term::Str(input), Term::Str(separator)) => {
+                    let result = if separator.is_empty() {
+                        // If the separator is empty, then we just need to split
+                        // the input into its consituent extended grapheme clusters.
+                        input
+                            .graphemes(true)
+                            .map(|s| Term::Str(s.to_owned()).into())
+                            .collect()
+                    } else {
+                        let mut result = Vec::new();
+                        // For a nonempty separator, we iterate through the input
+                        // string's extended grapheme clusters.
+                        let mut cursor = GraphemeCursor::new(0, input.len(), true);
+                        // The start of the current split: either the start of
+                        // the string, or the start of the cluster immediately
+                        // following the last match.
+                        let mut current_split_start = 0;
+                        // The position of the last grapheme cluster boundary
+                        // that we processed. We need to track this since the
+                        // cursor always returns the *next* boundary.
+                        let mut last_boundary = 0;
+
+                        while let Ok(Some(idx)) = cursor.next_boundary(&input, 0) {
+                            // We ignore any case where a match ends partway through a cursor, as
+                            // it's not a true match. e.g. we're looking for "a👨" but the string
+                            // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
+                            // match.
+                            // But we also only want to bother cloning the cursor & checking this
+                            // when we know we have a potential match, so we build a closure we
+                            // can run if necessary.
+                            let does_match_intersect_cluster = || {
+                                let mut tmp_cursor = cursor.clone();
+                                tmp_cursor.set_cursor(last_boundary + separator.len());
+                                !tmp_cursor.is_boundary(&input, 0)
+                                    .expect(
+                                        "None of the GraphemeIncomplete errors are possible here:
+                                            - PreContext and PrevChunk only happen if chunk_start is nonzero.
+                                            - NextChunk only happens if the chunk is smaller than the cursor's len parameter
+                                              but we passed s1 and s1.len() respectively.
+                                            - InvalidOffset can't happen because we've already checked that s contains from
+                                              in the range (last_boundary, last_boundary + from.len())"
+                                )
+                            };
+                            // If the input string starting at this cluster boundary
+                            // begins with the separator string, then we've hit a potential match.
+                            if input[last_boundary..].starts_with(separator)
+                                && !does_match_intersect_cluster()
+                            {
+                                // We copy the entirety of the last split into the result vector...
+                                result.push(
+                                    Term::Str(input[current_split_start..last_boundary].to_owned())
+                                        .into(),
+                                );
+                                // ...and start the next split after the separator.
+                                current_split_start = last_boundary + separator.len();
+                                last_boundary = current_split_start;
+                                cursor.set_cursor(current_split_start);
+                            } else {
+                                last_boundary = idx;
+                            }
+                        }
+
+                        // If this condition is true then we have a final split to copy
+                        // into the result, otherwise the input ended with a separator.
+                        if current_split_start < input.len() {
+                            result.push(Term::Str(input[current_split_start..].to_owned()).into())
+                        }
+
+                        result
+                    };
 
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(array, ArrayAttrs::new().closurized()),
+                        Term::Array(
+                            Array::from_iter(result.into_iter()),
+                            ArrayAttrs::new().closurized(),
+                        ),
                         pos_op_inh,
                     )))
                 }
