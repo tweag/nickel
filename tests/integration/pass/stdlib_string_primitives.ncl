@@ -3,10 +3,12 @@ let {check, ..} = import "lib/assert.ncl" in
 [
   # string.characters
   string.characters "漢字" == ["漢", "字"],
-  string.characters "👨‍❤️‍💋‍👨" == ["👨", "‍", "❤", "️", "‍", "💋", "‍", "👨"], # arguably wrong, splits the ZWJ combined emoji
+  string.characters "👨‍❤️‍💋‍👨" == ["👨‍❤️‍💋‍👨"],
   string.characters "ab_cd" == ["a", "b", "_", "c", "d"],
   string.characters "" == [],
   string.characters "😭👻👀" == ["😭", "👻", "👀"],
+  string.characters "👩🏾‍🦲👩🏻‍🦲👩🏿‍🦲" == ["👩🏾‍🦲", "👩🏻‍🦲", "👩🏿‍🦲"],
+  string.characters "unicőde" == ["u", "n", "i", "c", "ő", "d", "e"],
 
   # string.length
   string.length "" == 0,

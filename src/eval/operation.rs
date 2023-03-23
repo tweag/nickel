@@ -876,8 +876,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrChars() => {
                 if let Term::Str(s) = &*t {
                     let ts = s
-                        .chars()
-                        .map(|c| RichTerm::from(Term::Str(c.to_string())))
+                        .graphemes(true)
+                        .map(|c| RichTerm::from(Term::Str(c.to_owned())))
                         .collect();
 
                     Ok(Closure::atomic_closure(RichTerm::new(
