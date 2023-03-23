@@ -1375,7 +1375,7 @@ pub enum NAryOp {
     ///   - the [kind](types::VarKind) of the type variable
     ///   - a [label](Term::Label) on which to operate
     InsertTypeVar(),
-    /// Return a sub-array corresponding to a range. Given that Nickel use array slices under the
+    /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
     /// hood, as long as the array isn't modified later, this operation is constant in time and
     /// memory.
     ArraySlice(),

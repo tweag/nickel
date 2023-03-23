@@ -117,10 +117,10 @@
 
     fold_left : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
-        Fold a function over an array. Folds serves similar to loops or iterator
-        in a functional language like Nickel. `fold_left` iterates over an
-        array, by repeatedly applying a function over each element, threading an
-        additional arbitrary state (the accumulator, of type `a` in the
+        Fold a function over an array. Folds serve a similar purpose to loops or
+        iterator in a functional language like Nickel. `fold_left` iterates over
+        an array, by repeatedly applying a function over each element, threading
+        an additional arbitrary state (the accumulator, of type `a` in the
         signature).
 
         `fold_left f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
@@ -133,8 +133,8 @@
         use?
 
         - If the folded function isn't associative (such as subtraction), then
-          both functions will give different results. Only one is correct,
-          depending on your use-case. For example:
+          each variant will give a different result. The choice is dictacted by
+          which one you need. For example:
 
           ```nickel
           array.fold_right (-) 0 [1, 2, 3, 4]
@@ -144,21 +144,34 @@
           ```
         - If the folded function is associative, both `fold_right` and
           `fold_left` return the same result. In that case, **`fold_left` is
-          generally preferred, because it forces the evaluation of the
-          intermediate results, resulting in less memory consumption and an
-          overall better performances (most of the time). `fold_left` iterates
-          from the start of the array, which correponds to the usual behavior of
-          loops and iterators in most programming languages.
-          There is one case where `fold_right` might be preferred, see below.
+          generally preferred**, because it forces the evaluation of the
+          intermediate results resulting in less memory consumption and overall
+          better performances (outside of pathological cases).
+          `fold_left` also iterates from the start of the array, which
+          correponds to the usual behavior of loops and iterators in most
+          programming languages. There is one case where `fold_right` might be
+          preferred, see the next point.
         - If the folded function is associative but _(left) short-circuiting_,
-          meaning that it can sometimes determine the result without having to
-          evaluate the right operand, then `fold_right` provides early return.
-          An example is the boolean AND operator `&&`: when evaluating `left &&
-          right`, if `left` is `false`, the whole expression will evaluate to `false` without even
-          evaluating `right`. Given the definition of `fold_right`, and the lazy
-          evaluation model of Nickel, the following expression:
+          meaning that it can sometimes determine the result without using the
+          right argument, then `fold_right` provides early return. An example is
+          the boolean AND operator `&&`: when evaluating `left && right`, if
+          `left` is `false`, the whole expression will evaluate to `false`
+          without even evaluating `right`. Given the definition of `fold_right`,
+          and the lazy evaluation model of Nickel, the following expression:
 
-        #Examples
+          ```nickel
+          array.replicate 1000 true
+          # gives [false, .. true 1000 times]
+          |> array.prepend false
+          |> array.fold_right (&&) [false]
+          ```
+
+          Here, `fold_right` will stop at the first element, and the operation
+          runs in constant time. If we had used `fold_left` instead, which is
+          closer to a standard iterator, we would have iterated over all of the
+          1000 elements of the array.
+
+        # Examples
 
         ```nickel
           fold_left (fun acc e => acc + e) 0 [ 1, 2, 3 ] =>
@@ -180,18 +193,18 @@
 
     fold_right : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
-        Fold a function over an array. Folds serves similar to loops or iterator
-        in a functional language like Nickel. `fold_left` iterates over an
-        array, by repeatedly applying a function over each element, threading an
-        additional arbitrary state (the accumulator, of type `a` in the
-        signature).
+        Fold a function over an array. Folds serve a similar purpose to loops or
+        iterator in a functional language like Nickel. `fold_right` iterates
+        over an array, by repeatedly applying a function over each element and
+        threading an additional arbitrary state (the accumulator of type `a` in
+        the signature).
 
         `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
         # Left vs right
 
         Folds come in two variants, left and right. How to decide which one to
-        use? Please refer to the documentation of `array.fold_left`.
+        use? Please refer to the documentation of `fold_left`.
 
         # Examples
 
@@ -429,8 +442,8 @@
 
           # Preconditions
 
-          In `slice start end value`, `start` and `end` must be positive
-          integers such that `0 <= start <= end <= array.length value`.
+          In `split_at inded value`, `index` must be a positive integer such
+          that `0 <= index <= array.length value`.
 
           # Examples
 
@@ -478,7 +491,8 @@
           # Preconditions
 
           In `range_step start end step`, `start` and `end` must verifies `start
-          <= end`.`step` must be an integer strictly greater than `0`.
+          <= end`.`step` must be strictly greater than `0` (or the function will
+          loop).
 
           # Examples
 
@@ -544,9 +558,12 @@
         ```
         "%
       = fun f array =>
-        let first = %elem_at% array 0 in
-        let rest = %array_slice% 1 (%length% array) array in
-        fold_left f first rest,
+        if array == [] then
+          array
+        else
+          let first = %elem_at% array 0 in
+          let rest = %array_slice% 1 (%length% array) array in
+          fold_left f first rest,
 
     reduce_right
       : forall a. (a -> a -> a) -> Array a -> a
@@ -579,9 +596,12 @@
         ```
         "%
       = fun f array =>
-         let last_index = %length% array - 1 in
-         let last =  %elem_at% array last_index in
-         let rest = %array_slice% 0 last_index array in
-         fold_right f last rest,
+         if array == [] then
+           array
+         else
+           let last_index = %length% array - 1 in
+           let last =  %elem_at% array last_index in
+           let rest = %array_slice% 0 last_index array in
+           fold_right f last rest,
   }
 }
