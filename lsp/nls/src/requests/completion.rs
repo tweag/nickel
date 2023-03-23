@@ -820,7 +820,7 @@ mod tests {
 
     #[test]
     fn test_extract_ident_with_path() {
-        use nickel_lang::{mk_uty_record, mk_uty_row, types::RecordRowsF};
+        use nickel_lang::{mk_uty_record, mk_uty_row};
         use std::convert::TryInto;
 
         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}

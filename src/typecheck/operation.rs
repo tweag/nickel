@@ -2,10 +2,11 @@
 use super::*;
 use crate::{
     error::TypecheckError,
+    label::{Polarity, TypeVarData},
     term::{BinaryOp, NAryOp, RecordExtKind, UnaryOp},
     types::TypeF,
 };
-use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row};
+use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_record};
 
 /// Type of unary operations.
 pub fn get_uop_type(
@@ -425,6 +426,13 @@ pub fn get_bop_type(
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
         ),
+        // Morally: Sym -> Lbl -> TypeVarData
+        // Actual: Sym -> Dyn -> TypeVarData
+        BinaryOp::LookupTypeVar() => (
+            mk_uniftype::sym(),
+            mk_uniftype::dynamic(),
+            TypeVarData::unif_type(),
+        ),
     })
 }
 
@@ -464,5 +472,15 @@ pub fn get_nop_type(
         ),
         // This should not happen, as MergeContract() is only produced during evaluation.
         NAryOp::MergeContract() => panic!("cannot typecheck MergeContract()"),
+        // Morally: Sym -> Polarity -> Lbl -> Lbl
+        // Actual: Sym -> Polarity -> Dyn -> Dyn
+        NAryOp::InsertTypeVar() => (
+            vec![
+                mk_uniftype::sym(),
+                Polarity::unif_type(),
+                mk_uniftype::dynamic(),
+            ],
+            mk_uniftype::dynamic(),
+        ),
     })
 }

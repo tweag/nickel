@@ -13,7 +13,7 @@ macro_rules! mk_uty_arrow {
         )
     };
     ( $fst:expr, $snd:expr , $( $types:expr ),+ ) => {
-        mk_uty_arrow!($fst, mk_uty_arrow!($snd, $( $types ),+))
+        $crate::mk_uty_arrow!($fst, $crate::mk_uty_arrow!($snd, $( $types ),+))
     };
 }
 
@@ -22,7 +22,7 @@ macro_rules! mk_uty_arrow {
 #[macro_export]
 macro_rules! mk_uty_enum_row {
     () => {
-        $crate::typecheck::UnifEnumRows::Concrete(EnumRowsF::Empty)
+        $crate::typecheck::UnifEnumRows::Concrete($crate::types::EnumRowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifEnumRows::from($tail)
@@ -31,7 +31,7 @@ macro_rules! mk_uty_enum_row {
         $crate::typecheck::UnifEnumRows::Concrete(
             $crate::types::EnumRowsF::Extend {
                 row: Ident::from($id),
-                tail: Box::new(mk_uty_enum_row!($( $ids ),* $(; $tail)?))
+                tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))
             }
         )
     };
@@ -43,7 +43,7 @@ macro_rules! mk_uty_enum_row {
 #[macro_export]
 macro_rules! mk_uty_row {
     () => {
-        $crate::typecheck::UnifRecordRows::Concrete(RecordRowsF::Empty)
+        $crate::typecheck::UnifRecordRows::Concrete($crate::types::RecordRowsF::Empty)
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifRecordRows::from($tail)
@@ -55,7 +55,7 @@ macro_rules! mk_uty_row {
                     id: Ident::from($id),
                     types: Box::new($ty.into()),
                 },
-                tail: Box::new(mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),
+                tail: Box::new($crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),
             }
         )
     };
@@ -67,7 +67,7 @@ macro_rules! mk_uty_enum {
     ($( $ids:expr ),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::Concrete(
             $crate::types::TypeF::Enum(
-                mk_uty_enum_row!($( $ids ),* $(; $tail)?)
+                $crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?)
             )
         )
     };
@@ -79,7 +79,7 @@ macro_rules! mk_uty_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::Concrete(
             $crate::types::TypeF::Record(
-                mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
+                $crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
             )
         )
     };

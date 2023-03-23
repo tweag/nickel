@@ -864,6 +864,7 @@ BOpPre: BinaryOp = {
     "label_with_message" => BinaryOp::LabelWithMessage(),
     "label_with_notes" => BinaryOp::LabelWithNotes(),
     "label_append_note" => BinaryOp::LabelAppendNote(),
+    "lookup_type_variable" => BinaryOp::LookupTypeVar(),
 }
 
 NOpPre<ArgRule>: UniTerm = {
@@ -877,6 +878,8 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::RecordSealTail(), t1, t2, t3, t4)),
     "record_unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
         UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail(), t1, t2, t3)),
+    "insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::InsertTypeVar(), key, pol, label)),
 }
 
 TypeBuiltin: Types = {
@@ -1029,6 +1032,8 @@ extern {
         "rec_force_op" => Token::Normal(NormalToken::RecForceOp),
         "rec_default_op" => Token::Normal(NormalToken::RecDefaultOp),
         "trace" => Token::Normal(NormalToken::Trace),
+        "insert_type_variable" => Token::Normal(NormalToken::InsertTypeVar),
+        "lookup_type_variable" => Token::Normal(NormalToken::LookupTypeVar),
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),

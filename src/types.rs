@@ -137,6 +137,29 @@ pub enum VarKind {
     RecordRows,
 }
 
+impl From<VarKind> for Term {
+    fn from(value: VarKind) -> Self {
+        match value {
+            VarKind::Type => Term::Enum(Ident::new("Type")),
+            VarKind::EnumRows => Term::Enum(Ident::new("EnumRows")),
+            VarKind::RecordRows => Term::Enum(Ident::new("RecordRows")),
+        }
+    }
+}
+
+impl TryFrom<&Term> for VarKind {
+    type Error = ();
+
+    fn try_from(value: &Term) -> Result<Self, Self::Error> {
+        match value {
+            Term::Enum(type_) if type_.label() == "Type" => Ok(Self::Type),
+            Term::Enum(enum_rows) if enum_rows.label() == "EnumRows" => Ok(Self::EnumRows),
+            Term::Enum(record_rows) if record_rows.label() == "RecordRows" => Ok(Self::RecordRows),
+            _ => Err(()),
+        }
+    }
+}
+
 /// A Nickel type.
 ///
 /// # Generic representation (functor)
@@ -904,22 +927,21 @@ impl Types {
                 var_kind,
             } => {
                 use VarKind::*;
-                let contract = match var_kind {
-                    Type => mk_app!(
-                        contract::forall_var(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                    EnumRows | RecordRows => mk_app!(
-                        contract::forall_tail(),
-                        Term::SealingKey(*sy),
-                        Term::from(pol)
-                    ),
-                };
 
+                let sealing_key = Term::SealingKey(*sy);
+                let contract = match var_kind {
+                    Type => mk_app!(contract::forall_var(), sealing_key.clone()),
+                    EnumRows | RecordRows => mk_app!(contract::forall_tail(), sealing_key.clone()),
+                };
                 vars.insert(*var, contract);
+
                 *sy += 1;
-                body.subcontract(vars, pol, sy)?
+                mk_app!(
+                    contract::forall(),
+                    sealing_key,
+                    Term::from(pol),
+                    body.subcontract(vars, pol, sy)?
+                )
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,

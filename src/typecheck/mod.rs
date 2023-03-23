@@ -584,6 +584,10 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
     }
 }
 
+pub trait ReifyAsUnifType {
+    fn unif_type() -> UnifType;
+}
+
 /// The typing context is a structure holding the scoped, environment-like data structures required
 /// to perform typechecking.
 ///
