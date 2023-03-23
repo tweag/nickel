@@ -23,7 +23,7 @@
             converted to an enum tag.
 
             `TagOrString` is typically used in conjunction with an enum type, to
-            accept tags represented as string (e.g. coming from a JSON
+            accept tags represented as strings (e.g. coming from a JSON
             serialization) as well.
 
             # Examples

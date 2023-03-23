@@ -118,7 +118,7 @@
     fold_left : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
         Fold a function over an array. Folds serve a similar purpose to loops or
-        iterator in a functional language like Nickel. `fold_left` iterates over
+        iterators in a functional language like Nickel. `fold_left` iterates over
         an array, by repeatedly applying a function over each element, threading
         an additional arbitrary state (the accumulator, of type `a` in the
         signature).
@@ -194,8 +194,8 @@
     fold_right : forall a b. (a -> b -> b) -> b -> Array a -> b
       | doc m%"
         Fold a function over an array. Folds serve a similar purpose to loops or
-        iterator in a functional language like Nickel. `fold_right` iterates
-        over an array, by repeatedly applying a function over each element and
+        iterators in a functional language like Nickel. `fold_right` iterates
+        over an array, by repeatedly applying a function to each element and
         threading an additional arbitrary state (the accumulator of type `a` in
         the signature).
 
@@ -412,7 +412,7 @@
     slice
       : forall a. Number -> Number -> Array a -> Array a
       | doc m%"
-          Results in the slice of the given array between `start` (included) and
+          `slice start end array` returns the slice of `array` between `start` (included) and
           `end` (excluded).
 
           # Preconditions
@@ -490,9 +490,8 @@
 
           # Preconditions
 
-          In `range_step start end step`, `start` and `end` must verifies `start
-          <= end`.`step` must be strictly greater than `0` (or the function will
-          loop).
+          In `range_step start end step`, `start` and `end` must satisfy `start
+          <= end`. `step` must be strictly greater than `0`.
 
           # Examples
 
@@ -516,7 +515,7 @@
 
           # Preconditions
 
-          In `range_step start end`, `start` and `end` must verify
+          In `range_step start end`, `start` and `end` must satisfy
           `start <= end`.
 
           # Examples
@@ -538,7 +537,7 @@
         `reduce_left op [x1, x2, ..., xn]` results in `op (... (op (op x1 x2) x3) ...) xn`.
 
         `reduce_left` is the same as `fold_left`, but uses the first element as
-        the initial element.
+        the initial accumulator.
 
         # Left vs right
 
