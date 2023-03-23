@@ -300,8 +300,6 @@ where
             ArrayGen() => allocator.text("%gen%").append(allocator.space()),
             ArrayMap() => allocator.text("%map%").append(allocator.space()),
             ArrayLength() => allocator.text("%length%").append(allocator.space()),
-            ArrayTail() => allocator.text("%tail%").append(allocator.space()),
-            ArrayHead() => allocator.text("%head%").append(allocator.space()),
             DeepSeq(_) => allocator.text("%deep_seq%").append(allocator.space()),
             Typeof() => allocator.text("%typeof%").append(allocator.space()),
             BoolNot() => allocator.text("!"),

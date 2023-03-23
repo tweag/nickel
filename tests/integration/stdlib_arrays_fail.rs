@@ -39,19 +39,19 @@ fn elem_at() {
 #[test]
 fn head_tail() {
     assert_matches!(
-        eval("%head% []"),
+        eval("%elem_at% [] 0"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%tail% []"),
+        eval("%array_slice% 1 1 []"),
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%head% {}"),
+        eval("%elem_at% {} 0"),
         Err(Error::EvalError(EvalError::TypeError(..)))
     );
     assert_matches!(
-        eval("%tail% {}"),
+        eval("%array_slice% 0 1 {}"),
         Err(Error::EvalError(EvalError::TypeError(..)))
     );
 

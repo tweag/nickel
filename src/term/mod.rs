@@ -1019,10 +1019,6 @@ pub enum UnaryOp {
     /// else ideally (like on the stack).
     DeepSeq(Option<crate::eval::callstack::StackElem>),
 
-    /// Return the head of an array.
-    ArrayHead(),
-    /// Return the tail of an array.
-    ArrayTail(),
     /// Return the length of an array.
     ArrayLength(),
     /// Generate an array of a given length by mapping a `Num -> Num` function onto `[1,..,n]`.

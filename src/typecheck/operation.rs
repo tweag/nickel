@@ -115,19 +115,6 @@ pub fn get_uop_type(
 
             (fst, mk_uty_arrow!(snd.clone(), snd))
         }
-        // forall a. Array a -> a
-        UnaryOp::ArrayHead() => {
-            let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            (mk_uniftype::array(ty_elt.clone()), ty_elt)
-        }
-        // forall a. Array a -> Array a
-        UnaryOp::ArrayTail() => {
-            let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
-            (
-                mk_uniftype::array(ty_elt.clone()),
-                mk_uniftype::array(ty_elt),
-            )
-        }
         // forall a. Array a -> Num
         UnaryOp::ArrayLength() => {
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());

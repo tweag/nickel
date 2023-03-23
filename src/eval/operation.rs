@@ -802,51 +802,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
             }
-            UnaryOp::ArrayHead() => {
-                if let Term::Array(ts, attrs) = &*t {
-                    if let Some(head) = ts.get(0) {
-                        let head_with_ctr = PendingContract::apply_all(
-                            head.clone(),
-                            attrs.pending_contracts.iter().cloned(),
-                            pos.into_inherited(),
-                        );
-
-                        Ok(Closure {
-                            body: head_with_ctr,
-                            env,
-                        })
-                    } else {
-                        Err(EvalError::Other(String::from("head: empty array"), pos_op))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Array"),
-                        String::from("head"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                }
-            }
-            UnaryOp::ArrayTail() => match_sharedterm! {t, with {
-                        Term::Array(ts, attrs) => {
-                            if !ts.is_empty() {
-                                Ok(Closure {
-                                    body: RichTerm::new(Term::Array(ts.advance_by(1), attrs), pos_op_inh),
-                                    env,
-                                })
-                            } else {
-                                Err(EvalError::Other(String::from("tail: empty array"), pos_op))
-                            }
-                        }
-                    } else {
-                        Err(EvalError::TypeError(
-                            String::from("Array"),
-                            String::from("tail"),
-                            arg_pos,
-                            RichTerm { term: t, pos },
-                        ))
-                    }
-            },
             UnaryOp::ArrayLength() => {
                 if let Term::Array(ts, _) = &*t {
                     // A num does not have any free variable so we can drop the environment
