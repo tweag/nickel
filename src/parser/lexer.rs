@@ -286,10 +286,6 @@ pub enum NormalToken<'input> {
     StrTrim,
     #[token("%str_chars%")]
     StrChars,
-    #[token("%char_code%")]
-    CharCode,
-    #[token("%char_from_code%")]
-    CharFromCode,
     #[token("%str_uppercase%")]
     StrUppercase,
     #[token("%str_lowercase%")]

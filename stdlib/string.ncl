@@ -194,38 +194,6 @@
       "%
     = fun s => %str_chars% s,
 
-    codepoint | Character -> Number
-    | doc m%%"
-      Results in the unicode codepoint of the given character if it fits into a single codepoint.
-
-      For example:
-      ```nickel
-        code "A" =>
-          65
-        code "%" =>
-          37
-        code "å" =>
-          error
-      ```
-      "%%
-    = fun s => %char_code% s,
-
-    from_codepoint | Number -> Character
-    | doc m%%"
-      Results in the character for a given unicode codepoint.
-
-      For example:
-      ```nickel
-        from_code 65 =>
-          "A"
-        from_code 37 =>
-          "%"
-        from_code 128 =>
-          error
-      ```
-      "%%
-    = fun s => %char_from_code% s,
-
     uppercase : String -> String
     | doc m%"
       Results in the uppercase version of the given character (including non-ascii characters) if it exists, the same

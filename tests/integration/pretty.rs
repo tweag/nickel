@@ -107,7 +107,6 @@ fn string_interpolation() {
 #[test]
 fn stdlib_string() {
     for f in [
-        "codepoint",
         "contains_find_replace",
         "contracts",
         "conversions",

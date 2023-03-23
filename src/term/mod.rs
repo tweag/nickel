@@ -1035,10 +1035,6 @@ pub enum UnaryOp {
     StrTrim(),
     /// Return the array of characters of a string.
     StrChars(),
-    /// Return the code of a character (givne as a string of length 1).
-    CharCode(),
-    /// Return the character corresponding to a code.
-    CharFromCode(),
     /// Transform a string to uppercase.
     StrUppercase(),
     /// Transform a string to lowercase.

@@ -144,10 +144,6 @@ pub fn get_uop_type(
         UnaryOp::StrTrim() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Array Str
         UnaryOp::StrChars() => (mk_uniftype::str(), mk_uniftype::array(mk_uniftype::str())),
-        // Str -> Num
-        UnaryOp::CharCode() => (mk_uniftype::str(), mk_uniftype::num()),
-        // Num -> Str
-        UnaryOp::CharFromCode() => (mk_uniftype::num(), mk_uniftype::str()),
         // Str -> Str
         UnaryOp::StrUppercase() => (mk_uniftype::str(), mk_uniftype::str()),
         // Str -> Str

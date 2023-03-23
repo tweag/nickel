@@ -893,55 +893,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::CharCode() => {
-                if let Term::Str(s) = &*t {
-                    if s.len() == 1 {
-                        let code = s.chars().next().unwrap() as u32;
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(code.into()),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        Err(EvalError::Other(
-                            format!("charCode: expected 1-char string, got `{}`", s.len()),
-                            pos,
-                        ))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("charCode"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                }
-            }
-            UnaryOp::CharFromCode() => {
-                let Term::Num(ref code) = *t else {
-                    return Err(EvalError::TypeError(
-                        String::from("Num"),
-                        String::from("charFromCode"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                };
-
-                let Ok(code_as_u32) = u32::try_from(code) else {
-                   return Err(EvalError::Other(format!("charFromCode: expected the argument to be a positive integer smaller than {}, got {code}", u32::MAX), pos_op));
-                };
-
-                if let Some(car) = std::char::from_u32(code_as_u32) {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(String::from(car)),
-                        pos_op_inh,
-                    )))
-                } else {
-                    Err(EvalError::Other(
-                        format!("charFromCode: invalid character code {code}"),
-                        pos_op,
-                    ))
-                }
-            }
             UnaryOp::StrUppercase() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
