@@ -156,7 +156,7 @@
 
     split : String -> String -> Array String
     | doc m%"
-      Splits a string based on a separator string. The separator string is not included in any string.
+      Splits a string based on a separator string.
 
       For example:
       ```nickel
@@ -165,6 +165,9 @@
       split "." "1,2,3" =>
         [ "1,2,3" ]
       ```
+
+      Note that this function never splits up Unicode extended grapheme
+      clusters, even in cases where the sought value exists within one.
       "%
     = fun sep s => %str_split% s sep,
 
@@ -184,7 +187,7 @@
 
     characters : String -> Array String
     | doc m%"
-      Separates a string into its individual characters.
+      Separates a string into its individual Unicode extended grapheme clusters.
 
       For example:
       ```nickel
@@ -241,12 +244,15 @@
         contains "ghj" "abcdef" =>
           false
       ```
+
+      Note that this function returns false if the sought string exists inside
+      a Unicode extended grapheme cluster.
       "%
     = fun subs s => %str_contains% s subs,
 
     replace: String -> String -> String -> String
     | doc m%"
-      `replace sub repl String` replaces every occurrence of `sub` in `String` with `repl`.
+      `replace sub repl str` replaces every occurrence of `sub` in `str` with `repl`.
 
       For example:
       ```nickel
@@ -255,6 +261,9 @@
         replace "" "A" "abcdef" =>
           "AaAbAcAdAeAfA"
       ```
+
+      Note that this function will not replace `sub` if it exists within a
+      larger unicode extended grapheme cluster.
       "%
     = fun pattern replace s =>
        %str_replace% s pattern replace,
@@ -352,6 +361,9 @@
     substring: Number -> Number -> String -> String
     | doc m%"
       Takes a slice from the string. Errors if either index is out of range.
+
+      The index arguments are the indices of Unicode extended grapheme clusters
+      rather than codepoints.
 
       For example:
       ```nickel
