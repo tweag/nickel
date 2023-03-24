@@ -154,7 +154,7 @@ fn bind_open_field(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
         var,
         matches.iter().fold(Term::Var(x).into(), |x, m| match m {
             Match::Simple(i, _) | Match::Assign(i, _, _) => {
-                op2(DynRemove(), Term::Str(i.to_string()), x)
+                op2(DynRemove(), Term::Str(i.to_string().into()), x)
             }
         }),
         body,

@@ -1042,6 +1042,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
+name = "indoc"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f2cb48b81b1dc9f39676bf99f5499babfec7cd8fe14307f7b3d747208fb5690"
+
+[[package]]
 name = "inferno"
 version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1424,6 +1430,7 @@ dependencies = [
  "comrak",
  "criterion 0.4.0",
  "directories",
+ "indoc 2.0.1",
  "insta",
  "js-sys",
  "lalrpop",
@@ -1868,7 +1875,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "268be0c73583c183f2b14052337465768c07726936a260f480f0857cb95ba543"
 dependencies = [
  "cfg-if",
- "indoc",
+ "indoc 1.0.9",
  "libc",
  "memoffset 0.6.5",
  "parking_lot",

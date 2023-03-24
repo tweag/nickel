@@ -551,7 +551,7 @@ StrChunks: RichTerm = {
 
         if let StringStartDelimiter::Symbolic(prefix) = start {
             let terms = chunks.into_iter().map(|chunk| match chunk {
-                StrChunk::Literal(l) => Term::Str(l).into(),
+                StrChunk::Literal(l) => Term::Str(l.into()).into(),
                 StrChunk::Expr(e, _) => e,
             }).collect();
 

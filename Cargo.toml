@@ -46,6 +46,7 @@ sha2 = "0.10.6"
 md-5 = "0.10.5"
 directories = "4.0.1"
 unicode-segmentation = "1.10.1"
+indoc = "2"
 
 termimad = { version = "0.23.0", optional = true }
 ansi_term = { version = "0.12", optional = true }

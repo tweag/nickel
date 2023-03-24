@@ -74,6 +74,7 @@
 //! something to consider at some point.
 
 use crate::term::record::FieldMetadata;
+use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     environment::Environment as GenericEnvironment,
@@ -498,12 +499,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let mut chunks_iter = chunks.iter();
                     match chunks_iter.next_back() {
                         None => Closure {
-                            body: Term::Str(String::new()).into(),
+                            body: Term::Str(NickelString::new()).into(),
                             env: Environment::new(),
                         },
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
-                                StrChunk::Literal(s) => (Term::Str(s.clone()).into(), 0),
+                                StrChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
                                 StrChunk::Expr(e, indent) => (e.clone(), *indent),
                             };
 

@@ -153,7 +153,7 @@ fn overriding() {
 #[test]
 fn str_vs_strchunks() {
     assert_eq!(
-        pretty(&Term::Str("string".to_string()).into()),
+        pretty(&Term::Str("string".into()).into()),
         pretty(&Term::StrChunks(vec![StrChunk::Literal("string".to_string())]).into())
     );
 }

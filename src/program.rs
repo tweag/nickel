@@ -569,7 +569,7 @@ mod tests {
         // [2, "ab", [1, [3]]]
         let expd = mk_array!(
             mk_term::integer(2),
-            Term::Str(String::from("ab")),
+            Term::Str("ab".into()),
             mk_array!(
                 mk_term::integer(1),
                 mk_array!(mk_term::integer(3); ArrayAttrs::new().closurized());

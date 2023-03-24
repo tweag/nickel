@@ -26,6 +26,7 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
+        string::NickelString,
         BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
         SharedTerm, StrChunk, Term, UnaryOp,
     },
@@ -35,7 +36,7 @@ use crate::{
 use malachite::{
     num::{
         arithmetic::traits::Pow,
-        basic::traits::{One, Zero},
+        basic::traits::Zero,
         conversion::traits::{RoundingFrom, ToSci},
     },
     rounding_modes::RoundingMode,
@@ -44,7 +45,7 @@ use malachite::{
 
 use md5::digest::Digest;
 use simple_counter::*;
-use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
+use unicode_segmentation::UnicodeSegmentation;
 
 use std::{collections::HashMap, convert::TryFrom, iter::Extend, rc::Rc};
 
@@ -814,7 +815,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..indent).map(|_| ' '))
                             .collect();
-                        s.replace('\n', &indent_str)
+                        s.as_str().replace('\n', &indent_str).into()
                     } else {
                         s.clone()
                     };
@@ -843,7 +844,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     } else {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(acc),
+                            Term::Str(acc.into()),
                             pos_op_inh,
                         )))
                     }
@@ -861,7 +862,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrTrim() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(String::from(s.trim())),
+                        Term::Str(s.trim().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -875,11 +876,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrChars() => {
                 if let Term::Str(s) = &*t {
-                    let ts = s
-                        .graphemes(true)
-                        .map(|c| RichTerm::from(Term::Str(c.to_owned())))
-                        .collect();
-
+                    let ts = s.characters();
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Array(ts, ArrayAttrs::new().closurized()),
                         pos_op_inh,
@@ -896,7 +893,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrUppercase() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(s.to_uppercase()),
+                        Term::Str(s.to_uppercase().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -911,7 +908,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrLowercase() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(s.to_lowercase()),
+                        Term::Str(s.to_lowercase().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -941,11 +938,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::ToStr() => {
                 let result = match_sharedterm! {t, with {
-                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()))),
+                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()).into())),
                     Term::Str(s) => Ok(Term::Str(s)),
-                    Term::Bool(b) => Ok(Term::Str(b.to_string())),
-                    Term::Enum(id) => Ok(Term::Str(id.to_string())),
-                    Term::Null => Ok(Term::Str(String::from("null"))),
+                    Term::Bool(b) => Ok(Term::Str(b.to_string().into())),
+                    Term::Enum(id) => Ok(Term::Str(id.to_string().into())),
+                    Term::Null => Ok(Term::Str("null".into())),
                 } else {
                     Err(EvalError::Other(
                         format!(
@@ -961,7 +958,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
                     let n = parse_number(s).map_err(|_| {
-                        EvalError::Other(format!("num_from_string: invalid num literal `{s}`"), pos)
+                        EvalError::Other(
+                            format!("num_from_string: invalid num literal `{}`", s.as_str()),
+                            pos,
+                        )
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n),
@@ -979,7 +979,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::EnumFromStr() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(s.into()),
+                        Term::Enum(Ident::from(s)),
                         pos_op_inh,
                     )))
                 } else {
@@ -1069,12 +1069,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .iter()
                             .skip(1)
                             .filter_map(|s_opt| {
-                                s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
+                                s_opt.map(|s| RichTerm::from(Term::Str(s.as_str().into())))
                             })
                             .collect();
 
                         mk_record!(
-                            ("matched", Term::Str(String::from(first_match.as_str()))),
+                            ("matched", Term::Str(first_match.as_str().into())),
                             ("index", Term::Num(first_match.start().into())),
                             (
                                 "groups",
@@ -1084,7 +1084,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     } else {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
-                            ("matched", Term::Str(String::new())),
+                            ("matched", Term::Str(NickelString::new())),
                             ("index", Term::Num(Number::from(-1))),
                             (
                                 "groups",
@@ -1529,7 +1529,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Term::Str(s2) = &*t2 {
                         let ss: [&str; 2] = [s1, s2];
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(ss.concat()),
+                            Term::Str(ss.concat().into()),
                             pos_op_inh,
                         )))
                     } else {
@@ -1833,7 +1833,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(field) => match_sharedterm! {t2, with {
                             Term::Lbl(l) => {
                                 let mut l = l;
-                                l.path.push(ty_path::Elem::Field(Ident::from(field)));
+                                l.path.push(ty_path::Elem::Field(field.into_inner().into()));
                                 Ok(Closure::atomic_closure(RichTerm::new(
                                     Term::Lbl(l),
                                     pos_op_inh,
@@ -1871,16 +1871,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // and again, which is not optimal. The same thing happens with array
                             // contracts. There are several way to improve this, but this is left
                             // as future work.
-                            match record.get_value_with_ctrs(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
+                            let ident = Ident::from(&id);
+                            match record.get_value_with_ctrs(&ident).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
                                 Some(value) => {
-                                    self.call_stack.enter_field(Ident::from(id), pos2, value.pos, pos_op);
+                                    self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
                                     Ok(Closure {
                                         body: value,
                                         env: env2,
                                     })
                                 }
                                 None => Err(EvalError::FieldMissing(
-                                    id,
+                                    id.into_inner(),
                                     String::from("(.$)"),
                                     RichTerm {
                                         term: t2,
@@ -1986,7 +1987,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                       }) =>
                                     {
                                         Err(EvalError::FieldMissing(
-                                            id,
+                                            id.into_inner(),
                                             String::from("remove"),
                                             RichTerm::new(
                                                 Term::Record(RecordData { fields, ..record }),
@@ -2033,7 +2034,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(record.fields.get(&Ident::from(id)), Some(field) if !field.is_empty_optional())),
+                                Term::Bool(matches!(record.fields.get(&Ident::from(id.into_inner())), Some(field) if !field.is_empty_optional())),
                                 pos_op_inh,
                             )))
                         } else {
@@ -2222,29 +2223,29 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let result = match id.as_ref() {
                             "Md5" => {
                                 let mut hasher = md5::Md5::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha1" => {
                                 let mut hasher = sha1::Sha1::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha256" => {
                                 let mut hasher = sha2::Sha256::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha512" => {
                                 let mut hasher = sha2::Sha512::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             _ => return mk_err_fst(t1),
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(result),
+                            Term::Str(result.into()),
                             pos_op_inh,
                         )))
                     } else {
@@ -2297,7 +2298,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     serialize::validate(format, &rt2)?;
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(serialize::to_string(format, &rt2)?),
+                        Term::Str(serialize::to_string(format, &rt2)?.into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -2362,81 +2363,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::StrSplit() => match (&*t1, &*t2) {
                 (Term::Str(input), Term::Str(separator)) => {
-                    let result = if separator.is_empty() {
-                        // If the separator is empty, then we just need to split
-                        // the input into its consituent extended grapheme clusters.
-                        input
-                            .graphemes(true)
-                            .map(|s| Term::Str(s.to_owned()).into())
-                            .collect()
-                    } else {
-                        let mut result = Vec::new();
-                        // For a nonempty separator, we iterate through the input
-                        // string's extended grapheme clusters.
-                        let mut cursor = GraphemeCursor::new(0, input.len(), true);
-                        // The start of the current split: either the start of
-                        // the string, or the start of the cluster immediately
-                        // following the last match.
-                        let mut current_split_start = 0;
-                        // The position of the last grapheme cluster boundary
-                        // that we processed. We need to track this since the
-                        // cursor always returns the *next* boundary.
-                        let mut last_boundary = 0;
-
-                        while let Ok(Some(idx)) = cursor.next_boundary(&input, 0) {
-                            // We ignore any case where a match ends partway through a cursor, as
-                            // it's not a true match. e.g. we're looking for "a👨" but the string
-                            // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
-                            // match.
-                            // But we also only want to bother cloning the cursor & checking this
-                            // when we know we have a potential match, so we build a closure we
-                            // can run if necessary.
-                            let does_match_intersect_cluster = || {
-                                let mut tmp_cursor = cursor.clone();
-                                tmp_cursor.set_cursor(last_boundary + separator.len());
-                                !tmp_cursor.is_boundary(&input, 0)
-                                    .expect(
-                                        "None of the GraphemeIncomplete errors are possible here:
-                                            - PreContext and PrevChunk only happen if chunk_start is nonzero.
-                                            - NextChunk only happens if the chunk is smaller than the cursor's len parameter
-                                              but we passed s1 and s1.len() respectively.
-                                            - InvalidOffset can't happen because we've already checked that s contains from
-                                              in the range (last_boundary, last_boundary + from.len())"
-                                )
-                            };
-                            // If the input string starting at this cluster boundary
-                            // begins with the separator string, then we've hit a potential match.
-                            if input[last_boundary..].starts_with(separator)
-                                && !does_match_intersect_cluster()
-                            {
-                                // We copy the entirety of the last split into the result vector...
-                                result.push(
-                                    Term::Str(input[current_split_start..last_boundary].to_owned())
-                                        .into(),
-                                );
-                                // ...and start the next split after the separator.
-                                current_split_start = last_boundary + separator.len();
-                                last_boundary = current_split_start;
-                                cursor.set_cursor(current_split_start);
-                            } else {
-                                last_boundary = idx;
-                            }
-                        }
-
-                        // If this condition is true then we have a final split to copy
-                        // into the result, otherwise the input ended with a separator.
-                        if current_split_start < input.len() {
-                            result.push(Term::Str(input[current_split_start..].to_owned()).into())
-                        }
-
-                        result
-                    };
-
+                    let result = input.split(separator);
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(
-                            Array::from_iter(result.into_iter()),
-                            ArrayAttrs::new().closurized(),
-                        ),
+                        Term::Array(result, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
                 }
@@ -2461,47 +2390,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::StrContains() => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
-                    let mut is_contained = false;
-
-                    if s2.is_empty() {
-                        is_contained = true;
-                    } else {
-                        let mut cursor = GraphemeCursor::new(0, s1.len(), true);
-                        let mut last_boundary = 0;
-
-                        while let Ok(Some(next_boundary)) = cursor.next_boundary(&s1, 0) {
-                            if s1[last_boundary..].starts_with(s2) {
-                                let end = last_boundary + s2.len();
-                                let mut tmp_cursor = cursor.clone();
-                                tmp_cursor.set_cursor(end);
-
-                                // We ignore any case where a match ends partway through a cursor, as
-                                // it's not a true match. e.g. we're looking for "a👨" but the string
-                                // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
-                                // match.
-                                let match_intersects_cluster = !tmp_cursor.is_boundary(&s1, 0)
-                                    .expect(
-                                        "None of the GraphemeIncomplete errors are possible here:
-                                            - PreContext and PrevChunk only happen if chunk_start is nonzero.
-                                            - NextChunk only happens if the chunk is smaller than the cursor's len parameter
-                                                but we passed s1 and s1.len() respectively.
-                                            - InvalidOffset can't happen because we've already checked that s1 contains s2
-                                                in the range (last_boundary, last_boundary + s2.len())
-                                        "
-                                    );
-
-                                if !match_intersects_cluster {
-                                    is_contained = true;
-                                    break;
-                                }
-                            }
-
-                            last_boundary = next_boundary;
-                        }
-                    }
-
+                    let result = s1.contains(s2.as_str());
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(is_contained),
+                        Term::Bool(result),
                         pos_op_inh,
                     )))
                 }
@@ -2701,7 +2592,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_message(message)),
+                    Term::Lbl(label.with_diagnostic_message(message.into_inner())),
                     pos_op_inh,
                 )))
             }
@@ -2740,7 +2631,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let term = element.term.into_owned();
 
                         if let Term::Str(s) = term {
-                            Ok(s)
+                            Ok(s.into_inner())
                         } else {
                             Err(EvalError::TypeError(
                                 String::from("Str"),
@@ -2801,7 +2692,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.append_diagnostic_note(note)),
+                    Term::Lbl(label.append_diagnostic_note(note.into_inner())),
                     pos2.into_inherited(),
                 )))
             }
@@ -2868,75 +2759,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match (&*fst, &*snd, &*thd) {
                     (Term::Str(s), Term::Str(from), Term::Str(to)) => {
                         let result = if let NAryOp::StrReplace() = n_op {
-                            let mut result = String::new();
-
-                            if from.is_empty() {
-                                // If `from` is empty then we:
-                                //   1. insert `to` at the beginning.
-                                result.push_str(&to);
-                                //   2. insert `to` after each character.
-                                s.graphemes(true)
-                                    .flat_map(|grapheme| [grapheme, to])
-                                    .for_each(|s| result.push_str(s))
-                            } else {
-                                // Otherwise, we iterate through the graphemes.
-                                let mut cursor = GraphemeCursor::new(0, s.len(), true);
-                                // Because the cursor only provides a `next_boundary` method,
-                                // we have to separately track the `last_boundary` that we saw
-                                // in order to make sure we don't miss replacements at the
-                                // start of the string.
-                                let mut last_boundary = 0;
-                                while let Ok(Some(idx)) = cursor.next_boundary(s.as_str(), 0) {
-                                    // We ignore any case where a match ends partway through a cursor, as
-                                    // it's not a true match. e.g. we're looking for "a👨" but the string
-                                    // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
-                                    // match.
-                                    // But we also only want to bother cloning the cursor & checking this
-                                    // when we know we have a potential match, so we build a closure we
-                                    // can run if necessary.
-                                    let does_match_intersect_cluster = || {
-                                        let mut tmp_cursor = cursor.clone();
-                                        tmp_cursor.set_cursor(last_boundary + from.len());
-                                        !tmp_cursor.is_boundary(&s, 0)
-                                            .expect(
-                                                "None of the GraphemeIncomplete errors are possible here:
-                                                    - PreContext and PrevChunk only happen if chunk_start is nonzero.
-                                                    - NextChunk only happens if the chunk is smaller than the cursor's len parameter
-                                                      but we passed s1 and s1.len() respectively.
-                                                    - InvalidOffset can't happen because we've already checked that s contains from
-                                                      in the range (last_boundary, last_boundary + from.len())"
-                                        )
-                                    };
-
-                                    if s[last_boundary..].starts_with(from.as_str())
-                                        && !does_match_intersect_cluster()
-                                    {
-                                        // When we hit a match for `from`, we add `to`
-                                        // to the result.
-                                        result.push_str(to.as_str());
-                                        // Then jump the cursor to the end of the
-                                        // match.
-                                        let next_boundary = last_boundary + from.len();
-                                        cursor.set_cursor(next_boundary);
-                                        last_boundary = next_boundary;
-                                    } else {
-                                        // Otherwise we write the grapheme we just saw
-                                        // to the string & update the last_boundary
-                                        // accordingly.
-                                        let next_boundary = idx;
-                                        let grapheme = &s[last_boundary..next_boundary];
-                                        result.push_str(grapheme);
-                                        last_boundary = next_boundary;
-                                    }
-                                }
-                            }
-
-                            result
+                            s.replace(from.as_str(), to.as_str())
                         } else {
                             let re = regex::Regex::new(from)
                                 .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                            re.replace_all(s, to.as_str()).into_owned()
+                            re.replace_all(s, to.as_str()).into()
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
@@ -2983,42 +2811,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args_wo_env.next().is_none());
 
                 match (&*fst, &*snd, &*thd) {
-                    (Term::Str(s), Term::Num(start), Term::Num(end)) => {
-                        let Ok(start_as_usize) = usize::try_from(start) else {
-                            return Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be a positive integer smaller than {}, got {start}", usize::MAX), pos_op));
-                        };
-
-                        let Ok(end_as_usize) = usize::try_from(end) else {
-                            return Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be a positive integer smaller than {}, got the floating-point value {end}", usize::MAX), pos_op));
-                        };
-
-                        let graphemes: Vec<_> = s.graphemes(true).collect();
-                        if start < &0. || start_as_usize > graphemes.len() {
-                            Err(EvalError::Other(
-                                    format!(
-                                        "substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}",
-                                        s.len(),
-                                        start_as_usize
-                                    ),
-                                    pos_op
-                                ))
-                        } else if end < start || end_as_usize > graphemes.len() {
-                            Err(EvalError::Other(
-                                    format!(
-                                        "substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}",
-                                        start_as_usize + 1,
-                                        graphemes.len(),
-                                        end_as_usize
-                                    ),
-                                    pos_op
-                                ))
-                        } else {
-                            Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Str(graphemes[start_as_usize..end_as_usize].join("")),
-                                pos_op_inh,
-                            )))
-                        }
-                    }
+                    (Term::Str(s), Term::Num(start), Term::Num(end)) => s
+                        .substring(start, end)
+                        .map(|substr| {
+                            Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
+                        })
+                        .map_err(|e| EvalError::Other(format!("{}", e), pos_op)),
                     (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
                         String::from("Str"),
                         String::from("strReplace, 3rd argument"),

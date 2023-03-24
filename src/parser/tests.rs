@@ -56,7 +56,7 @@ fn mk_symbolic_single_chunk(prefix: &str, s: &str) -> RichTerm {
             (
                 FieldPathElem::Ident("fragments".into()),
                 Field::from(RichTerm::from(Array(
-                    Array::new(Rc::new([Str(String::from(s)).into()])),
+                    Array::new(Rc::new([Str(s.into()).into()])),
                     Default::default(),
                 ))),
             ),
