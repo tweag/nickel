@@ -7,7 +7,8 @@ let {check, ..} = import "lib/assert.ncl" in
   string.contains "\n" "\n\n\n",
   !(string.contains "\n" "\r"),
   !(string.contains "_" "no underscores"),
-  !(string.contains "👨‍❤️‍💋‍👨" "❤"),
+  !(string.contains "❤" "👨‍❤️‍💋‍👨"),
+  !(string.contains "words👨" "words👨‍❤️‍💋‍👨"),
 
   # string.replace
   string.replace "" "a" "bnn" == "abanana",

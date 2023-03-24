@@ -2460,10 +2460,51 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 )),
             },
             BinaryOp::StrContains() => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(s1.contains(s2)),
-                    pos_op_inh,
-                ))),
+                (Term::Str(s1), Term::Str(s2)) => {
+                    let mut is_contained = false;
+
+                    if s2.is_empty() {
+                        is_contained = true;
+                    } else {
+                        let mut cursor = GraphemeCursor::new(0, s1.len(), true);
+                        let mut last_boundary = 0;
+
+                        while let Ok(Some(next_boundary)) = cursor.next_boundary(&s1, 0) {
+                            if s1[last_boundary..].starts_with(s2) {
+                                let end = last_boundary + s2.len();
+                                let mut tmp_cursor = cursor.clone();
+                                tmp_cursor.set_cursor(end);
+
+                                // We ignore any case where a match ends partway through a cursor, as
+                                // it's not a true match. e.g. we're looking for "a👨" but the string
+                                // contains "a👨‍❤️‍💋‍👨", so starts_with is true, but we should discount the
+                                // match.
+                                let match_intersects_cluster = !tmp_cursor.is_boundary(&s1, 0)
+                                    .expect(
+                                        "None of the GraphemeIncomplete errors are possible here:
+                                            - PreContext and PrevChunk only happen if chunk_start is nonzero.
+                                            - NextChunk only happens if the chunk is smaller than the cursor's len parameter
+                                                but we passed s1 and s1.len() respectively.
+                                            - InvalidOffset can't happen because we've already checked that s1 contains s2
+                                                in the range (last_boundary, last_boundary + s2.len())
+                                        "
+                                    );
+
+                                if !match_intersects_cluster {
+                                    is_contained = true;
+                                    break;
+                                }
+                            }
+
+                            last_boundary = next_boundary;
+                        }
+                    }
+
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(is_contained),
+                        pos_op_inh,
+                    )))
+                }
                 (Term::Str(_), _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strContains, 2nd argument"),
