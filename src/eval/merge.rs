@@ -56,6 +56,7 @@ use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::Label;
 use crate::position::TermPos;
 use crate::term::{
+    array,
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
     BinaryOp, RichTerm, SharedTerm, Term, TypeAnnotation,
 };
@@ -205,13 +206,55 @@ pub fn merge<C: Cache>(
                 ))
             }
         }
-        (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
-            if arr1.is_empty() && arr2.is_empty() =>
+        (Term::Array(array1, attrs1), Term::Array(array2, attrs2))
+            if array1.len() == array2.len() =>
         {
-            Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Array(arr1, ArrayAttrs::new().closurized()),
-                pos_op.into_inherited(),
-            )))
+            debug_assert!(
+                attrs1.closurized,
+                "the left-hand side of merge (&) is an array, but isn't closurized."
+            );
+            debug_assert!(
+                attrs2.closurized,
+                "the right-hand side of merge (&) is an array, but isn't closurized."
+            );
+
+            // We have to handle lazy array contracts here. This code is largely common to
+            // array concatenation (in `eval::operation`).
+            let mut env = Environment::new();
+
+            let array: array::Array = array1
+                .into_iter()
+                .zip(array2.into_iter())
+                .map(|(elt1, elt2)| {
+                    let pos1 = elt1.pos;
+                    let pos2 = elt2.pos;
+
+                    let elt1_with_ctrs = PendingContract::apply_all(
+                        elt1,
+                        attrs1.pending_contracts.iter().cloned(),
+                        pos1,
+                    )
+                    .closurize(cache, &mut env, env1.clone());
+                    let elt2_with_ctrs = PendingContract::apply_all(
+                        elt2,
+                        attrs2.pending_contracts.iter().cloned(),
+                        pos2,
+                    )
+                    .closurize(cache, &mut env, env2.clone());
+
+                    RichTerm::from(Term::Op2(BinaryOp::Merge(), elt1_with_ctrs, elt2_with_ctrs))
+                })
+                .collect();
+
+            let attrs = ArrayAttrs {
+                closurized: true,
+                pending_contracts: Vec::new(),
+            };
+
+            Ok(Closure {
+                body: RichTerm::new(Term::Array(array, attrs), pos_op.into_inherited()),
+                env,
+            })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
