@@ -25,17 +25,27 @@
       | doc m%"
         Results in the first element of the given array.
 
-        For example:
+        # Examples
+
         ```nickel
           first [ "this is the head", "this is not" ] =>
             "this is the head"
         ```
         "%
-      = fun l => %head% l,
+      = fun array => %elem_at% array 0,
 
     last : forall a. Array a -> a
-      | doc "TODO"
-      = fun l => %elem_at% l (%length% l - 1),
+      | doc m%"
+        Results in the last element of the given array.
+
+        # Examples
+
+        ```nickel
+          last [ "this is the head", "this is not" ] =>
+            "this is not"
+        ```
+        "%
+      = fun array => %elem_at% array (%length% array - 1),
 
     drop_first : forall a. Array a -> Array a
       | doc m%"
@@ -364,11 +374,13 @@
         ```
         "%
       #TODO: maybe inline partition to avoid contract checks?
-      = fun cmp l =>
-        let first = %head% l in
-        let parts = partition (fun x => (cmp x first == `Lesser)) (%tail% l) in
-        if %length% l <= 1 then
-          l
+      = fun cmp array =>
+        let length = %length% array in
+        let first = %elem_at% array 0 in
+        let rest = %array_slice% 1 length array in
+        let parts = partition (fun x => (cmp x first == `Lesser)) rest in
+        if length <= 1 then
+          array 
         else
           (sort cmp (parts.right)) @ [first] @ (sort cmp (parts.wrong)),
 
@@ -399,10 +411,14 @@
           => []
         ```
       "%
-      = fun v arr =>
-        if %length% arr <= 1
-        then arr
-        else [ %head% arr ] @ (%tail% arr |> flat_map (fun a => [v, a])),
+      = fun v array =>
+        let length = %length% array in
+        if length <= 1 then
+          array 
+        else
+          let first = %elem_at% array 0 in
+          let rest = %array_slice% 1 length array in
+          [ first ] @ (flat_map (fun a => [v, a]) rest),
 
     slice
       : forall a. Number -> Number -> Array a -> Array a

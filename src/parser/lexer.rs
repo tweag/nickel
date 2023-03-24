@@ -233,10 +233,6 @@ pub enum NormalToken<'input> {
     DeepSeq,
     #[token("%force%")]
     OpForce,
-    #[token("%head%")]
-    Head,
-    #[token("%tail%")]
-    Tail,
     #[token("%length%")]
     Length,
     #[token("%fields%")]

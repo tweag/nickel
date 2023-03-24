@@ -83,15 +83,20 @@
         in
         tail_contract fields_with_contracts label tail_fields
       else
-        %blame% (%label_with_message% "missing field %{%head% missing_fields}" label)
+        let plural = if %length% missing_fields == 1 then "" else "s" in
+        %blame% (
+          %label_with_message%
+            "missing field%{plural} `%{string.join ", " missing_fields}`"
+            label
+        )
     else
       %blame% (%label_with_message% "not a record" label),
 
   "$dyn_record" = fun contract label value =>
-      if %typeof% value == `Record then
-          %dictionary_assume% (%go_dict% label) value contract
-      else
-          %blame% (%label_with_message% "not a record" label),
+    if %typeof% value == `Record then
+      %dictionary_assume% (%go_dict% label) value contract
+    else
+      %blame% (%label_with_message% "not a record" label),
 
   "$forall_tail" = fun sealing_key acc label value =>
       let current_polarity = %polarity% label in
@@ -102,7 +107,13 @@
             let tail = %record_unseal_tail% sealing_key tagged_label value in
             acc & tail
           else
-            %blame% (%label_with_message% "extra field `%{%head% (%fields% value)}`" label)
+            let extra_fields = %fields% value in
+            let plural = if %length% extra_fields == 1 then "" else "s" in
+            %blame% (
+              %label_with_message%
+              "extra field%{plural} `%{string.join ", " extra_fields}`"
+              label
+            )
       else
           # Note: in order to correctly attribute blame, the polarity of `l`
           # must match the polarity of the `forall` which introduced the
@@ -114,8 +125,16 @@
   "$dyn_tail" = fun acc label value => acc & value,
 
   "$empty_tail" = fun acc label value =>
-      if value == {} then acc
-      else %blame% (%label_with_message% "extra field `%{%head% (%fields% value)}`" label),
+    if value == {} then
+      acc
+    else
+      let extra_fields = %fields% value in
+      let plural = if %length% extra_fields == 1 then "" else "s" in
+      %blame% (
+        %label_with_message%
+          "extra field%{plural} `%{string.join ", " extra_fields}`"
+          label
+      ),
 
   # Recursive priorities operators
 

@@ -140,11 +140,19 @@
           "Hello, World!"
       ```
       "%
-    = fun sep l =>
-      if %length% l == 0 then
-        ""
+    = fun sep fragments =>
+      let length = %length% fragments in
+
+      if length == 0 then
+        "" 
       else
-        %head% l ++ array.fold_left (fun acc s => acc ++ sep ++ s) "" (%tail% l),
+        let first = %elem_at% fragments 0 in
+        let rest =
+          %array_slice% 1 length fragments
+          |> array.fold_left (fun acc s => acc ++ sep ++ s) ""
+        in
+
+        first ++ rest,
 
     split : String -> String -> Array String
     | doc m%"

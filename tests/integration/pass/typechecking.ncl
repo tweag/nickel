@@ -121,8 +121,6 @@ let typecheck = [
   (fun x => [x]) : forall a. a -> Array a,
 
   # arrays_ops
-  (fun l => %tail% l) : forall a. Array a -> Array a,
-  (fun l => %head% l) : forall a. Array a -> a,
   (fun f l => %map% l f) : forall a b. (a -> b) -> Array a -> Array b,
   (fun l1 => fun l2 => l1 @ l2) : forall a. Array a -> Array a -> Array a,
   (fun i l => %elem_at% l i) : forall a. Number -> Array a -> a,

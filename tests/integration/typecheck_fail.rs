@@ -142,7 +142,7 @@ fn simple_array() {
 
 #[test]
 fn arrays_operations() {
-    assert_typecheck_fails!("(fun l => %head% l) : forall a b. (Array a -> b)");
+    assert_typecheck_fails!("(fun l => %elem_at% l 0) : forall a b. (Array a -> b)");
     assert_typecheck_fails!(
         "(fun f l => %elem_at% (%map% l f) 0) : forall a. (forall b. (a -> b) -> Array Dyn -> b)"
     );
@@ -261,17 +261,17 @@ fn recursive_let() {
 fn fails_only_with_wildcard() {
     // Without a wildcard annotation, this type checks
     assert_matches!(
-        type_check_expr("let head = fun l => %head% l in head 10"),
+        type_check_expr("let head = fun l => (%elem_at% l 0) in head 10"),
         Ok(_)
     );
     // However, with one, we get a type error
     assert_matches!(
-        type_check_expr("(let head = fun l => %head% l in (head 10)) : _"),
+        type_check_expr("(let head = fun l => (%elem_at% l 0) in (head 10)) : _"),
         Err(TypecheckError::TypeMismatch(..))
     );
     // With an actual array, this passes
     assert_matches!(
-        type_check_expr("(let head = fun l => %head% l in (head [10])) : _"),
+        type_check_expr("(let head = fun l => (%elem_at% l 0) in (head [10])) : _"),
         Ok(_)
     );
 }
