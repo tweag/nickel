@@ -7,8 +7,7 @@
 //! On the other hand, the functions `process_unary_operation` and `process_binary_operation`
 //! receive evaluated operands and implement the actual semantics of operators.
 use super::{
-    callstack, merge,
-    merge::{merge, MergeMode},
+    merge::{self, MergeMode},
     stack::StrAccData,
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
@@ -718,35 +717,29 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 .pop_arg(&self.cache)
                 .map(|(next, ..)| next)
                 .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("seq"), pos_op)),
-            UnaryOp::DeepSeq(_) => {
-                /// Build a RichTerm that forces a given list of terms, and at the end resumes the
-                /// evaluation of the argument on the top of the stack. The argument must iterate over
-                /// a tuple, which first element is an optional call stack element to add to the
-                /// callstack before starting evaluation. This is a temporary fix to have reasonable
-                /// missing definition error when deepsequing a record.
-                ///
-                /// Requires its first argument to be non-empty.
+            UnaryOp::DeepSeq() => {
+                // Build a `RichTerm` that forces a given list of terms, and at the end resumes the
+                // evaluation of the argument on the top of the stack.
+                //
+                // Requires its first argument to be non-empty.
                 fn seq_terms<I>(mut it: I, pos_op_inh: TermPos) -> RichTerm
                 where
-                    I: Iterator<Item = (Option<callstack::StackElem>, RichTerm)>,
+                    I: Iterator<Item = RichTerm>,
                 {
-                    let (first_elem, first) = it
+                    let first = it
                         .next()
                         .expect("expected the argument to be a non-empty iterator");
 
                     it.fold(
-                        mk_term::op1(UnaryOp::DeepSeq(first_elem), first).with_pos(pos_op_inh),
-                        |acc, (elem, t)| {
-                            mk_app!(mk_term::op1(UnaryOp::DeepSeq(elem), t), acc)
-                                .with_pos(pos_op_inh)
+                        mk_term::op1(UnaryOp::DeepSeq(), first).with_pos(pos_op_inh),
+                        |acc, t| {
+                            mk_app!(mk_term::op1(UnaryOp::DeepSeq(), t), acc).with_pos(pos_op_inh)
                         },
                     )
                 }
 
                 match t.into_owned() {
                     Term::Record(record) if !record.fields.is_empty() => {
-                        let pos_record = pos;
-                        let pos_access = pos_op;
                         let defined = record
                             // into_iter_without_opts applies pending contracts as well
                             .into_iter_without_opts()
@@ -755,17 +748,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 missing_def_err.into_eval_err(pos, pos_op)
                             })?;
 
-                        let terms = defined.into_iter().map(|(id, value)| {
-                            (
-                                Some(callstack::StackElem::Field {
-                                    id,
-                                    pos_record,
-                                    pos_field: value.pos,
-                                    pos_access,
-                                }),
-                                value,
-                            )
-                        });
+                        let terms = defined.into_iter().map(|(_, field)| field);
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op),
@@ -783,7 +766,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         pos.into_inherited(),
                                     )
                                     .closurize(&mut self.cache, &mut shared_env, env.clone());
-                                    (None, t_with_ctr)
+                                    t_with_ctr
                                 }),
                                 pos_op,
                             );
@@ -1169,7 +1152,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::Force(_) => {
+            UnaryOp::Force() => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
                 fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
                 where
@@ -1185,15 +1168,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
-                                let stack_elem = Some(callstack::StackElem::Field {
-                                    id,
-                                    pos_record: pos,
-                                    pos_field: t.pos,
-                                    pos_access: pos_op,
-                                });
-
-                                mk_term::op1(UnaryOp::Force(stack_elem), t)
+                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |_, t| {
+                                mk_term::op1(UnaryOp::Force(), t)
                             }).map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
 
                             // unwrap: the call to map_fields_without_optionals must ensure that
@@ -1212,7 +1188,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .into_iter()
                                 .map(|t| {
                                     mk_term::op1(
-                                        UnaryOp::Force(None),
+                                        UnaryOp::Force(),
                                         PendingContract::apply_all(
                                             t,
                                             attrs.pending_contracts.iter().cloned(),
@@ -2261,7 +2237,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                 )),
             },
-            BinaryOp::Merge() => merge(
+            BinaryOp::Merge() => merge::merge(
                 &mut self.cache,
                 RichTerm {
                     term: t1,
@@ -2970,7 +2946,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 match_sharedterm! {t1, with {
                         Term::Lbl(lbl) => {
-                            merge(
+                            merge::merge(
                                 &mut self.cache,
                                 RichTerm {
                                     term: t2,

@@ -189,7 +189,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         rt: RichTerm,
         initial_env: &Environment,
     ) -> Result<(RichTerm, Environment), EvalError> {
-        let wrapper = mk_term::op1(UnaryOp::Force(None), rt);
+        let wrapper = mk_term::op1(UnaryOp::Force(), rt);
         self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
     }
 
@@ -440,15 +440,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.call_stack.len(),
                         pos,
                     );
-
-                    // Special casing (hopefully temporary) due to the need for `DeepSeq` to produce
-                    // acceptable error message for missing field definition occurring when sequencing
-                    // a record. See the definition of `UnaryOp::DeepSeq`.
-                    if let UnaryOp::DeepSeq(Some(stack_elem)) | UnaryOp::Force(Some(stack_elem)) =
-                        op
-                    {
-                        self.call_stack.0.push(stack_elem.clone());
-                    }
 
                     Closure {
                         body: t.clone(),
