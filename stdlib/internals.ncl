@@ -146,4 +146,11 @@
 
   "$rec_force" = fun value => %rec_force% (%force% value),
   "$rec_default" = fun value => %rec_default% (%force% value),
+
+  # Provide an access to contract.Equal within the initial environement. Merging
+  # makes use of `contract.Equal`, but it can't blindly substitute such an
+  # expression, because `contract` might have been redefined locally. Putting it
+  # in an internal value prefixed with `$` makes it accessible from the initial
+  # environment and prevent it from being shadowed.
+  "$stdlib_contract_equal" = contract.Equal,
 }

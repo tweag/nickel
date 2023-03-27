@@ -37,14 +37,15 @@
                   contract.apply (Equal (%elem_at% constant i)) label' value)
               else
                 label'
-                |> label.with_message "array length mismatch (expected `%{%length% constant}`, got `%{value_length}`)"
-                |> label.append_note "`Equal constant` requires that the checked value is equal to the array `constant`, but their lengths differ.`"
+                |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length}`)"
+                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
                 |> blame
             else
-              blame_with_message
-                "expected array, got %{builtin.typeof value}"
-                label,
-        # Outside of datastructures, we just use (==)
+              label'
+                |> label.with_message "expected Array, got %{%to_str% (%typeof% value)}"
+                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but the provided value isn't an array."
+                |> blame,
+        # Outside of lazy data structure, we just use (==)
         _ => from_predicate ((==) constant),
       },
 
