@@ -195,5 +195,19 @@
       |> to_array
       |> array.filter (fun { field, value } => f field value)
       |> from_array,
+
+    length
+      : forall a. {_: a} -> Number
+      | doc m%"
+          Returns the number of fields in a record. This cound doesn't include
+          fields both marked as optional and without a definition.
+
+          Because of the need to filter empty optional fields, the cost of
+          `length` is linear in the size of the record.
+        "%
+      = fun record =>
+        record
+        |> fields
+        |> array.length,
   }
 }

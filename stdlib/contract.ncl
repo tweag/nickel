@@ -1,5 +1,53 @@
 {
   contract = {
+    Equal
+      | doc m%"
+        `Equal` is a contract enforcing equality to a given constant.
+
+        `Equal` is lazy over arrays and records. When checking such values,
+        `Equal` doesn't test for equality of elements right away (it just test
+        that the size is the same for arrays and that fields are the same for
+        records), but return a new value where an equality contract has been
+        pushed down each element.
+
+        # Example
+
+        ```nickel
+        1 + 4 | Equal 5
+         => 5
+        4 | Equal 5
+         => ERROR (contract broken by a value)
+        ```
+      "%
+    = fun constant =>
+      %typeof% constant
+      |> match {
+        `Record =>
+          #TODO: lazy version for records. The difficulty is not to make it lazy
+          #right now, but to make it preserve recursivity as well. We might need
+          #something like a recursivity-preserving map, or a primop for
+          # per-field contract application, like %array_lazy_assume%.
+          from_predicate ((==) constant),
+        `Array =>
+          fun label' value =>
+            if %typeof% value == `Array then
+              let value_length = %length% value in
+              if value_length == %length% constant then
+                %generate% value_length (fun i =>
+                  contract.apply (Equal (%elem_at% constant i)) label' value)
+              else
+                label'
+                |> label.with_message "array length mismatch (expected `%{%length% constant}`, got `%{value_length}`)"
+                |> label.append_note "`Equal constant` requires that the checked value is equal to the array `constant`, but their lengths differ.`"
+                |> blame
+            else
+              blame_with_message
+                "expected array, got %{builtin.typeof value}"
+                label,
+        # Outside of datastructures, we just use (==)
+        _ => from_predicate ((==) constant),
+      },
+
     blame
       | doc m%"
         Raise blame for a given label.
