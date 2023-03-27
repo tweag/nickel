@@ -49,10 +49,8 @@ impl CacheExt for Cache {
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
-                match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
-                    Ok(_) => (),
-                    Err(..) => {} // we'll handle this error later on
-                }
+                // Ignore the results, and check for errors after resolution
+                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
             }
         }
 
@@ -64,10 +62,14 @@ impl CacheExt for Cache {
         } = self.terms_mut().remove(&file_id).unwrap();
 
         // We do this to get a list of the imports that have been resolved
-        // but don't typecheck, and output an appriopiate diagnostics
+        // but don't typecheck, and then, we give an appriopiate diagnostics
         let mut errors = Vec::new();
         let term = term.traverse::<_, _, ()>(
-            // O(n) every time
+            // O(n) every time, where n is the size of the term
+            // Alternatively, we can get the list of resolved imports of this file 
+            // that do not have a corresponding entry in `lin_cache`, but with that 
+            // we cannot know the correct location of the import term, which is more 
+            // important for resporting diagnostics.
             &|rt, errors: &mut Vec<_>| {
                 let RichTerm { ref term, pos } = rt;
                 match term.as_ref() {
@@ -93,7 +95,7 @@ impl CacheExt for Cache {
             },
         );
 
-        let message = "This import could not be resolved because its content either failed to parse or typecheck correctly.";
+        let message = "This import could not be resolved because its content have either failed to parse or typecheck correctly.";
         let errors = errors
             .into_iter()
             .map(|(name, pos)| ImportError::IOError(name, String::from(message), pos));
@@ -119,7 +121,7 @@ impl CacheExt for Cache {
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
-            panic!()
+            unreachable!()
         };
         if import_errors.is_empty() {
             result
