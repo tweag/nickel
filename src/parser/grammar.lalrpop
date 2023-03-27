@@ -674,6 +674,7 @@ UOp: UnaryOp = {
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
     "trace" => UnaryOp::Trace(),
     "label_push_diag" => UnaryOp::LabelPushDiag(),
+    "dualize" => UnaryOp::Dualize(),
 };
 
 MatchCase: MatchCase = {
@@ -1032,6 +1033,7 @@ extern {
         "trace" => Token::Normal(NormalToken::Trace),
         "insert_type_variable" => Token::Normal(NormalToken::InsertTypeVar),
         "lookup_type_variable" => Token::Normal(NormalToken::LookupTypeVar),
+        "dualize" => Token::Normal(NormalToken::Dualize),
 
         "has_field" => Token::Normal(NormalToken::HasField),
         "map" => Token::Normal(NormalToken::Map),

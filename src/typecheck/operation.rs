@@ -213,6 +213,9 @@ pub fn get_uop_type(
         // Morally: Lbl -> Lbl
         // Actual: Dyn -> Dyn
         UnaryOp::LabelPushDiag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Morally: Lbl -> Bool
+        // Actual: Dyn -> Bool
+        UnaryOp::Dualize() => (mk_uniftype::dynamic(), mk_uniftype::bool()),
     })
 }
 
