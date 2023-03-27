@@ -300,7 +300,7 @@ where
             ArrayGen() => allocator.text("%gen%").append(allocator.space()),
             ArrayMap() => allocator.text("%map%").append(allocator.space()),
             ArrayLength() => allocator.text("%length%").append(allocator.space()),
-            DeepSeq(_) => allocator.text("%deep_seq%").append(allocator.space()),
+            DeepSeq() => allocator.text("%deep_seq%").append(allocator.space()),
             Typeof() => allocator.text("%typeof%").append(allocator.space()),
             BoolNot() => allocator.text("!"),
             BoolAnd() => allocator.space().append(allocator.text("&&")),
@@ -311,7 +311,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id))
                 .append(allocator.space()),
-            Force(_) => allocator.text("%force%").append(allocator.space()),
+            Force() => allocator.text("%force%").append(allocator.space()),
             op => allocator
                 .text(format!("%{op:?}%").to_lowercase())
                 .append(allocator.space()),

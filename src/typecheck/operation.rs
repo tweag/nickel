@@ -109,7 +109,7 @@ pub fn get_uop_type(
             )
         }
         // forall a b. a -> b -> b
-        UnaryOp::Seq() | UnaryOp::DeepSeq(_) => {
+        UnaryOp::Seq() | UnaryOp::DeepSeq() => {
             let fst = UnifType::UnifVar(state.table.fresh_type_var_id());
             let snd = UnifType::UnifVar(state.table.fresh_type_var_id());
 
@@ -192,7 +192,7 @@ pub fn get_uop_type(
             ),
         ),
         // Dyn -> Dyn
-        UnaryOp::Force(_) => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        UnaryOp::Force() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // forall a. a -> a
         UnaryOp::RecDefault() => {
             let ty = state.table.fresh_type_uvar();

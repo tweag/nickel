@@ -1013,11 +1013,7 @@ pub enum UnaryOp {
     ///
     /// Recursive here means that the evaluation does not stop at a WHNF, but the content of arrays
     /// and records is also recursively forced.
-    ///
-    /// The parameter is a fix used for error reporting of missing field definitions ocurring
-    /// during the deep sequencing of a record. This is temporary and should be stored somewhere
-    /// else ideally (like on the stack).
-    DeepSeq(Option<crate::eval::callstack::StackElem>),
+    DeepSeq(),
 
     /// Return the length of an array.
     ArrayLength(),
@@ -1083,7 +1079,7 @@ pub enum UnaryOp {
     ///
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
-    Force(Option<crate::eval::callstack::StackElem>),
+    Force(),
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.
