@@ -199,7 +199,7 @@
     length
       : forall a. {_: a} -> Number
       | doc m%"
-          Returns the number of fields in a record. This cound doesn't include
+          Returns the number of fields in a record. This count doesn't include
           fields both marked as optional and without a definition.
 
           Because of the need to filter empty optional fields, the cost of

@@ -5,9 +5,9 @@
         `Equal` is a contract enforcing equality to a given constant.
 
         `Equal` is lazy over arrays and records. When checking such values,
-        `Equal` doesn't test for equality of elements right away (it just test
+        `Equal` doesn't test for equality of elements right away (it just tests
         that the size is the same for arrays and that fields are the same for
-        records), but return a new value where an equality contract has been
+        records), but returns a new value where an equality contract has been
         pushed down each element.
 
         # Example
