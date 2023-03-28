@@ -100,7 +100,7 @@
 
   "$dyn_record" = fun contract label value =>
     if %typeof% value == `Record then
-      %dictionary_assume% (%go_dict% label) value contract
+      %record_lazy_assume% (%go_dict% label) value (fun _field => contract)
     else
       %blame% (%label_with_message% "not a record" label),
 

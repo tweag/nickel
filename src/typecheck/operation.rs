@@ -382,7 +382,7 @@ pub fn get_bop_type(
         }
         // The first argument is a label, the third is a contract.
         // forall a. Dyn -> {_: a} -> Dyn -> {_: a}
-        BinaryOp::DictionaryAssume() => {
+        BinaryOp::RecordLazyAssume() => {
             let ty_field = UnifType::UnifVar(state.table.fresh_type_var_id());
             let ty_dict = mk_uniftype::dyn_record(ty_field);
             (

@@ -1,5 +1,5 @@
 //! Compute the fixpoint of a recursive record.
-use super::*;
+use super::{merge::RevertClosurize, *};
 use crate::{label::Label, position::TermPos};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
@@ -202,4 +202,42 @@ pub fn patch_field<C: Cache>(
     }
 
     Ok(())
+}
+
+/// Revert an evaluated record (`Record`) back to a recursive record (`RecRecord`). The fixpoint
+/// will be recomputed again at evaluation.
+///
+/// `revert` is used when an operation (excluding `merge`, which has its own reverting logic) might
+/// have changed the value of fields (e.g. a lazy contract application on a record), requiring to
+/// update recursive dependencies.
+///
+/// # Parameters
+///
+/// `env` and `local_env` are similar to the parameters of
+/// `[crate::transform::Closurize::closurize]`.
+///
+/// - `cache`: the evaluation cache
+/// - `record_data`: the data of the record to revert
+/// - `env`: the final environment in which the fields of the result will be closurized
+/// - `local_env`: the environment of the record represented by `record_data`
+pub fn revert<C: Cache>(
+    cache: &mut C,
+    record_data: RecordData,
+    env: &mut Environment,
+    local_env: &Environment,
+) -> Term {
+    let fields = record_data
+        .fields
+        .into_iter()
+        .map(|(id, field)| (id, field.revert_closurize(cache, env, local_env.clone())))
+        .collect();
+
+    let record_data = RecordData {
+        fields,
+        ..record_data
+    };
+
+    // At run-time, we don't care about `RecordDeps`, because this information is already stored in
+    // the cache (formerly thunks in call-by-need). We set it to `None`.
+    Term::RecRecord(record_data, Vec::new(), None)
 }

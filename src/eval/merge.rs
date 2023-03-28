@@ -562,7 +562,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 }
 
 /// Same as [Closurizable], but also revert the element if the term is a variable.
-trait RevertClosurize {
+pub(super) trait RevertClosurize {
     /// Revert the element at the index inside the term (if any), and closurize the result inside `env`.
     fn revert_closurize<C: Cache>(
         self,

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
-use crate::position::TermPos;
+use crate::{position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
@@ -106,6 +106,12 @@ where
 impl Into<String> for Ident {
     fn into(self) -> String {
         self.into_label()
+    }
+}
+
+impl From<Ident> for NickelString {
+    fn from(id: Ident) -> Self {
+        id.to_string().into()
     }
 }
 
