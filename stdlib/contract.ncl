@@ -1,5 +1,54 @@
 {
   contract = {
+    Equal
+      | doc m%"
+        `Equal` is a contract enforcing equality to a given constant.
+
+        `Equal` is lazy over arrays and records. When checking such values,
+        `Equal` doesn't test for equality of elements right away (it just tests
+        that the size is the same for arrays and that fields are the same for
+        records), but returns a new value where an equality contract has been
+        pushed down each element.
+
+        # Example
+
+        ```nickel
+        1 + 4 | Equal 5
+         => 5
+        4 | Equal 5
+         => ERROR (contract broken by a value)
+        ```
+      "%
+    = fun constant =>
+      %typeof% constant
+      |> match {
+        `Record =>
+          #TODO: lazy version for records. The difficulty is not to make it lazy
+          #right now, but to make it preserve recursivity as well. We might need
+          #something like a recursivity-preserving map, or a primop for
+          # per-field contract application, like %array_lazy_assume%.
+          from_predicate ((==) constant),
+        `Array =>
+          fun label' value =>
+            if %typeof% value == `Array then
+              let value_length = %length% value in
+              if value_length == %length% constant then
+                %generate% value_length (fun i =>
+                  contract.apply (Equal (%elem_at% constant i)) label' value)
+              else
+                label'
+                |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length}`)"
+                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
+                |> blame
+            else
+              label'
+                |> label.with_message "expected Array, got %{%to_str% (%typeof% value)}"
+                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but the provided value isn't an array."
+                |> blame,
+        # Outside of lazy data structure, we just use (==)
+        _ => from_predicate ((==) constant),
+      },
+
     blame
       | doc m%"
         Raise blame for a given label.

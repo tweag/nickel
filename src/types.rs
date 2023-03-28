@@ -709,7 +709,7 @@ fn get_var_contract(
 
 impl EnumRows {
     fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::contract;
+        use crate::stdlib::internals;
 
         let mut cases = HashMap::new();
         let mut has_tail = false;
@@ -752,14 +752,14 @@ impl EnumRows {
             mk_app!(
                 Term::Match {
                     cases,
-                    default: Some(mk_app!(contract::enum_fail(), mk_term::var(label_arg))),
+                    default: Some(mk_app!(internals::enum_fail(), mk_term::var(label_arg))),
                 },
                 mk_term::var(value_arg)
             )
         };
         let case = mk_fun!(label_arg, value_arg, case_body);
 
-        Ok(mk_app!(contract::enums(), case))
+        Ok(mk_app!(internals::enums(), case))
     }
 
     pub fn iter(&self) -> EnumRowsIterator<EnumRows> {
@@ -775,7 +775,7 @@ impl RecordRows {
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::contract;
+        use crate::stdlib::internals;
 
         // We begin by building a record whose arguments are contracts
         // derived from the types of the statically known fields.
@@ -794,8 +794,8 @@ impl RecordRows {
         // Now that we've dealt with the row extends, we just need to
         // work out the tail.
         let tail = match &rrows.0 {
-            RecordRowsF::Empty => contract::empty_tail(),
-            RecordRowsF::TailDyn => contract::dyn_tail(),
+            RecordRowsF::Empty => internals::empty_tail(),
+            RecordRowsF::TailDyn => internals::dyn_tail(),
             RecordRowsF::TailVar(id) => get_var_contract(&vars, id)?,
             // Safety: the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
@@ -803,7 +803,7 @@ impl RecordRows {
 
         let rec = RichTerm::from(Term::Record(RecordData::with_field_values(fcs)));
 
-        Ok(mk_app!(contract::record(), rec, tail))
+        Ok(mk_app!(internals::record(), rec, tail))
     }
 
     /// Find a nested binding in a record row type. The nested field is given as a list of
@@ -903,19 +903,19 @@ impl Types {
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
-        use crate::stdlib::contract;
+        use crate::stdlib::internals;
 
         let ctr = match self.types {
-            TypeF::Dyn => contract::dynamic(),
-            TypeF::Number => contract::num(),
-            TypeF::Bool => contract::bool(),
-            TypeF::String => contract::string(),
+            TypeF::Dyn => internals::dynamic(),
+            TypeF::Number => internals::num(),
+            TypeF::Bool => internals::bool(),
+            TypeF::String => internals::string(),
             //TODO: optimization: have a specialized contract for `Array Dyn`, to avoid mapping an
             //always successful contract on each element.
-            TypeF::Array(ref ty) => mk_app!(contract::array(), ty.subcontract(vars, pol, sy)?),
+            TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
             TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
             TypeF::Arrow(ref s, ref t) => mk_app!(
-                contract::func(),
+                internals::func(),
                 s.subcontract(vars.clone(), pol.flip(), sy)?,
                 t.subcontract(vars, pol, sy)?
             ),
@@ -930,14 +930,14 @@ impl Types {
 
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
-                    Type => mk_app!(contract::forall_var(), sealing_key.clone()),
-                    EnumRows | RecordRows => mk_app!(contract::forall_tail(), sealing_key.clone()),
+                    Type => mk_app!(internals::forall_var(), sealing_key.clone()),
+                    EnumRows | RecordRows => mk_app!(internals::forall_tail(), sealing_key.clone()),
                 };
                 vars.insert(*var, contract);
 
                 *sy += 1;
                 mk_app!(
-                    contract::forall(),
+                    internals::forall(),
                     sealing_key,
                     Term::from(pol),
                     body.subcontract(vars, pol, sy)?
@@ -946,9 +946,9 @@ impl Types {
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
             TypeF::Dict(ref ty) => {
-                mk_app!(contract::dyn_record(), ty.subcontract(vars, pol, sy)?)
+                mk_app!(internals::dyn_record(), ty.subcontract(vars, pol, sy)?)
             }
-            TypeF::Wildcard(_) => contract::dynamic(),
+            TypeF::Wildcard(_) => internals::dynamic(),
         };
 
         Ok(ctr)

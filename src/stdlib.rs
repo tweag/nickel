@@ -110,8 +110,8 @@ macro_rules! generate_accessor {
     };
 }
 
-/// Accessors to the builtin contracts.
-pub mod contract {
+/// Accessors to the builtin contracts and other internals that aren't accessible from user code.
+pub mod internals {
     use super::*;
 
     // `dyn` is a reserved keyword in rust
@@ -135,10 +135,7 @@ pub mod contract {
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
-}
-
-pub mod internals {
-    use super::*;
+    generate_accessor!(contract_equal);
 
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);
