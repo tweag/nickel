@@ -16,6 +16,10 @@
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    topiary = {
+      url = "github:tweag/topiary";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   nixConfig = {
@@ -30,6 +34,7 @@
     , pre-commit-hooks
     , rust-overlay
     , crane
+    , topiary
     }:
     let
       SYSTEMS = [
@@ -264,6 +269,7 @@
           pkgs.node2nix
           pkgs.nodePackages.markdownlint-cli
           pkgs.python3
+          topiary.packages.${system}.default
         ];
 
         shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
