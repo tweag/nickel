@@ -58,6 +58,40 @@ fn check_error_snapshots(file: &str) {
     });
 }
 
+#[test_resources("tests/snapshot/inputs/docs/*.ncl")]
+fn check_doc_stdout_snapshots(file: &str) {
+    let file = TestFile::from_project_path(file);
+
+    let snapshot = NickelInvocation::new()
+        .subcommand("doc")
+        .file(&file)
+        .args(["--stdout"])
+        .snapshot_stdout();
+
+    insta::assert_snapshot!(file.prefixed_test_name("doc_stdout"), snapshot);
+}
+
+#[test_resources("tests/snapshot/inputs/docs/*.ncl")]
+fn check_doc_stderr_snapshots(file: &str) {
+    let file = TestFile::from_project_path(file);
+
+    let snapshot = NickelInvocation::new()
+        .subcommand("doc")
+        .file(&file)
+        .args(["--stdout"])
+        .snapshot_stderr();
+
+    insta::with_settings!({filters => vec![
+        // Since error output includes fully-qualified paths to the source file
+        // we need to replace those with something static to avoid snapshots
+        // differing across machines.
+        (r"(?:/.+/tests/snapshot/inputs)", "[INPUTS_PATH]")
+    ]},
+    {
+        insta::assert_snapshot!(file.prefixed_test_name("doc_stderr"), snapshot)
+    });
+}
+
 struct TestFile {
     path_buf: PathBuf,
 }
@@ -105,6 +139,15 @@ impl NickelInvocation {
 
     fn file(&mut self, f: &TestFile) -> &mut Self {
         self.cmd.args(["-f", f.as_nickel_argument()]);
+        self
+    }
+
+    fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.cmd.args(args);
         self
     }
 

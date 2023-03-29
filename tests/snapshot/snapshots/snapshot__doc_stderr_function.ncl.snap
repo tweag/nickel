@@ -1,0 +1,13 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+error: no documentation found
+  ┌─ [INPUTS_PATH]/docs/function.ncl:1:1
+  │
+1 │ fun x => x
+  │ ^^^^^^^^^^
+  │
+  = documentation can only be collected from records
+
+
