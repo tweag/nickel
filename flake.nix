@@ -381,7 +381,7 @@
       };
 
       # Generate the stdlib documentation from `nickel doc` as `format`.
-      stdlibDoc' = format:
+      stdlibDoc = format:
         let
           extension =
             {
@@ -417,8 +417,8 @@
         dockerImage = buildDocker packages.nickel; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
-        stdlibDoc = stdlibDoc' "markdown";
-        stdlibDocJson = stdlibDoc' "json";
+        stdlibMarkdown = stdlibDoc "markdown";
+        stdlibJson = stdlibDoc "json";
       };
 
       apps = {
