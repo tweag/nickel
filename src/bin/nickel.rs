@@ -86,9 +86,9 @@ enum Command {
         /// `~/.nickel/doc/out.md` if the input is read from stdin.
         #[structopt(short = "o", long, parse(from_os_str))]
         output: Option<PathBuf>,
-        /// The output format for the generated documentation. Defaults
-        /// to rendered markdown. Possible values: markdown, json
-        #[structopt(long)]
+        /// The output format for the generated documentation. Possible values:
+        /// markdown, json
+        #[structopt(long, default_value = "markdown")]
         format: nickel_lang::program::DocFormat,
     },
 }

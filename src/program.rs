@@ -568,12 +568,15 @@ mod doc {
     ) -> Result<(), Error> {
         let mut entries: Vec<(_, _)> = docs.fields.iter().collect();
         entries.sort_by_key(|(k, _)| *k);
+
         for (ident, field) in entries {
             let header = mk_header(ident, header_level + 1, arena);
             document.append(header);
+
             if let Some(ref doc) = field.documentation {
                 document.append(parse_documentation(header_level + 1, arena, doc, options));
             }
+
             if let Some(ref subfields) = field.fields {
                 to_markdown(subfields, header_level + 1, arena, document, options)?;
             }
