@@ -33,7 +33,7 @@ pub enum Error {
     TypecheckError(TypecheckError),
     ParseErrors(ParseErrors),
     ImportError(ImportError),
-    SerializationError(SerializationError),
+    ExportError(ExportError),
     IOError(IOError),
     ReplError(ReplError),
 }
@@ -98,7 +98,7 @@ pub enum EvalError {
     /// An element in the evaluation Cache was entered during its own update.
     InfiniteRecursion(CallStack, TermPos),
     /// A serialization error occurred during a call to the builtin `serialize`.
-    SerializationError(SerializationError),
+    SerializationError(ExportError),
     /// A parse error occurred during a call to the builtin `deserialize`.
     DeserializationError(
         String,  /* format */
@@ -384,13 +384,15 @@ pub enum ImportError {
 
 /// An error occurred during serialization.
 #[derive(Debug, PartialEq, Clone)]
-pub enum SerializationError {
+pub enum ExportError {
     /// Encountered a null value for a format that doesn't support them.
     UnsupportedNull(ExportFormat, RichTerm),
     /// Tried exporting something else than a `Str` to raw format.
     NotAString(RichTerm),
     /// A term contains constructs that cannot be serialized.
     NonSerializable(RichTerm),
+    /// No exportable documentation was found when requested.
+    NoDocumentation(RichTerm),
     Other(String),
 }
 
@@ -441,9 +443,9 @@ impl From<ImportError> for Error {
     }
 }
 
-impl From<SerializationError> for Error {
-    fn from(error: SerializationError) -> Error {
-        Error::SerializationError(error)
+impl From<ExportError> for Error {
+    fn from(error: ExportError) -> Error {
+        Error::ExportError(error)
     }
 }
 
@@ -459,8 +461,8 @@ impl From<std::io::Error> for IOError {
     }
 }
 
-impl From<SerializationError> for EvalError {
-    fn from(error: SerializationError) -> EvalError {
+impl From<ExportError> for EvalError {
+    fn from(error: ExportError) -> EvalError {
         EvalError::SerializationError(error)
     }
 }
@@ -754,7 +756,7 @@ impl IntoDiagnostics<FileId> for Error {
             Error::TypecheckError(err) => err.into_diagnostics(files, stdlib_ids),
             Error::EvalError(err) => err.into_diagnostics(files, stdlib_ids),
             Error::ImportError(err) => err.into_diagnostics(files, stdlib_ids),
-            Error::SerializationError(err) => err.into_diagnostics(files, stdlib_ids),
+            Error::ExportError(err) => err.into_diagnostics(files, stdlib_ids),
             Error::IOError(err) => err.into_diagnostics(files, stdlib_ids),
             Error::ReplError(err) => err.into_diagnostics(files, stdlib_ids),
         }
@@ -1754,14 +1756,14 @@ impl IntoDiagnostics<FileId> for ImportError {
     }
 }
 
-impl IntoDiagnostics<FileId> for SerializationError {
+impl IntoDiagnostics<FileId> for ExportError {
     fn into_diagnostics(
         self,
         files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         match self {
-            SerializationError::NotAString(rt) => vec![Diagnostic::error()
+            ExportError::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
                     "raw export only supports `Str`, got {}",
                     rt.as_ref()
@@ -1769,13 +1771,19 @@ impl IntoDiagnostics<FileId> for SerializationError {
                         .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
                 .with_labels(vec![primary_term(&rt, files)])],
-            SerializationError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
+            ExportError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
                 .with_message(format!("{format} doesn't support null values"))
                 .with_labels(vec![primary_term(&rt, files)])],
-            SerializationError::NonSerializable(rt) => vec![Diagnostic::error()
+            ExportError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
                 .with_labels(vec![primary_term(&rt, files)])],
-            SerializationError::Other(msg) => vec![Diagnostic::error()
+            ExportError::NoDocumentation(rt) => vec![Diagnostic::error()
+                .with_message("no documentation found")
+                .with_labels(vec![primary_term(&rt, files)])
+                .with_notes(vec![
+                    "documentation can only be collected from records".to_owned()
+                ])],
+            ExportError::Other(msg) => vec![Diagnostic::error()
                 .with_message("error during serialization")
                 .with_notes(vec![msg])],
         }

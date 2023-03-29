@@ -307,7 +307,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_docs(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
-        use crate::error::SerializationError;
+        use crate::error::ExportError;
 
         self.vm.import_resolver_mut().parse(self.main_id)?;
         let term = self
@@ -315,8 +315,8 @@ impl<EC: EvalCache> Program<EC> {
             .import_resolver()
             .get_ref(self.main_id)
             .expect("The file has been parsed and must therefore be in the cache");
-        doc::ExtractedDocumentation::extract_from_term(term).ok_or(Error::SerializationError(
-            SerializationError::Other("No documentation found to extract".to_owned()),
+        doc::ExtractedDocumentation::extract_from_term(term).ok_or(Error::ExportError(
+            ExportError::NoDocumentation(term.clone()),
         ))
     }
 
@@ -413,7 +413,7 @@ impl From<ColorOpt> for ColorChoice {
 
 #[cfg(feature = "doc")]
 mod doc {
-    use crate::error::{Error, IOError, SerializationError};
+    use crate::error::{Error, ExportError, IOError};
     use crate::term::{RichTerm, Term};
     use comrak::arena_tree::NodeEdge;
     use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
@@ -486,7 +486,7 @@ mod doc {
 
         pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
             serde_json::to_writer(out, self)
-                .map_err(|e| Error::SerializationError(SerializationError::Other(e.to_string())))
+                .map_err(|e| Error::ExportError(ExportError::Other(e.to_string())))
         }
 
         pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
