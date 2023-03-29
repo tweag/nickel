@@ -416,7 +416,9 @@ mod doc {
     use crate::error::{Error, ExportError, IOError};
     use crate::term::{RichTerm, Term};
     use comrak::arena_tree::NodeEdge;
-    use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
+    use comrak::nodes::{
+        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+    };
     use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
@@ -521,6 +523,10 @@ mod doc {
                 let header = mk_header(ident, header_level + 1, arena);
                 document.append(header);
 
+                if let Some(ref types) = field.types {
+                    document.append(mk_type(ident, types, arena));
+                }
+
                 if let Some(ref doc) = field.documentation {
                     document.append(parse_markdown_string(header_level + 1, arena, doc, options));
                 }
@@ -580,6 +586,35 @@ mod doc {
 
         res.append(code);
 
+        res
+    }
+
+    fn mk_type<'a>(ident: &str, types: &str, arena: &'a Arena<AstNode<'a>>) -> &'a AstNode<'a> {
+        let res = arena.alloc(AstNode::from(NodeValue::List(NodeList {
+            list_type: ListType::Bullet,
+            marker_offset: 1,
+            padding: 0,
+            start: 0,
+            delimiter: ListDelimType::Period,
+            bullet_char: b'*',
+            tight: true,
+        })));
+
+        let list_item = arena.alloc(AstNode::from(NodeValue::Item(NodeList {
+            list_type: ListType::Bullet,
+            marker_offset: 1,
+            padding: 0,
+            start: 0,
+            delimiter: ListDelimType::Period,
+            bullet_char: b'*',
+            tight: true,
+        })));
+
+        list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+            literal: format!("{ident}: {types}").bytes().collect(),
+            num_backticks: 1,
+        }))));
+        res.append(list_item);
         res
     }
 }
