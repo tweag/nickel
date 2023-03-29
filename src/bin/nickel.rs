@@ -1,4 +1,5 @@
 //! Entry point of the program.
+use core::fmt;
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CacheImpl;
 use nickel_lang::program::{ColorOpt, Program};
@@ -89,8 +90,54 @@ enum Command {
         /// The output format for the generated documentation. Possible values:
         /// markdown, json
         #[structopt(long, default_value = "markdown")]
-        format: nickel_lang::program::DocFormat,
+        format: DocFormat,
     },
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub enum DocFormat {
+    Json,
+    #[default]
+    Markdown,
+}
+
+impl DocFormat {
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Markdown => "md",
+        }
+    }
+}
+
+impl fmt::Display for DocFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Json => write!(f, "json"),
+            Self::Markdown => write!(f, "markdown"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ParseFormatError(String);
+
+impl fmt::Display for ParseFormatError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "unsupported export format {}", self.0)
+    }
+}
+
+impl std::str::FromStr for DocFormat {
+    type Err = ParseFormatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "json" => Ok(DocFormat::Json),
+            "markdown" => Ok(DocFormat::Markdown),
+            _ => Err(ParseFormatError(String::from(s))),
+        }
+    }
 }
 
 fn main() {
@@ -208,7 +255,13 @@ fn main() {
                         )))
                     })
                 })
-                .and_then(|mut out| program.output_doc(format, &mut out)),
+                .and_then(|mut out| {
+                    let docs = program.extract_docs()?;
+                    match format {
+                        DocFormat::Json => docs.write_json(&mut out),
+                        DocFormat::Markdown => docs.write_markdown(&mut out),
+                    }
+                }),
             None => program
                 .eval_full()
                 .map(|t| println!("{}", Term::from(t).deep_repr())),
