@@ -59,6 +59,7 @@ use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
     BinaryOp, RichTerm, Term, TypeAnnotation,
 };
+use crate::transform::Closurizable;
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
@@ -185,13 +186,59 @@ pub fn merge<C: Cache>(
                 })
             }
         }
-        (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
-            if arr1.is_empty() && arr2.is_empty() =>
-        {
-            Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Array(arr1, ArrayAttrs::new().closurized()),
-                pos_op.into_inherited(),
-            )))
+        // There are several different (and valid) ways of merging arrays. We don't want to choose
+        // for the user, so future custom merge functions will provide a way to overload the native
+        // merging function. For the time being, we still need to be idempotent: thus we rewrite
+        // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
+        // minimum way such that it is idempotent.
+        (t1 @ Term::Array(..), t2 @ Term::Array(..)) => {
+            use crate::{mk_app, stdlib, types::TypeF};
+            use std::rc::Rc;
+
+            let mut env = Environment::new();
+            let t1 = RichTerm::new(t1, pos1).closurize(cache, &mut env, env1);
+            let t2 = RichTerm::new(t2, pos2).closurize(cache, &mut env, env2);
+
+            // We reconstruct the contract we apply later on just to fill the label. This will be
+            // printed out when reporting the error.
+            let contract_for_display = mk_app!(
+                mk_term::op1(
+                    UnaryOp::StaticAccess("Equal".into()),
+                    Term::Var("contract".into()),
+                ),
+                // We would need to substitute variables inside `t1` to make it useful to print,
+                // but currently we don't want to do it preventively at each array merging, so we
+                // just print `contract.Equal some_array`.
+                //
+                // If the error reporting proves to be insufficient, consider substituting the
+                // variables inside `t1`, but be aware that it might (or might not) have a
+                // noticeable impact on performance.
+                mk_term::var("some_array")
+            );
+
+            let label = Label {
+                types: Rc::new(TypeF::Flat(contract_for_display).into()),
+                span: MergeLabel::from(mode).span,
+                ..Default::default()
+            }
+            .with_diagnostic_message("cannot merge unequal arrays")
+            .append_diagnostic_note(
+                "\
+                This equality contract was auto-generated from a merge operation on two arrays. \
+                Arrays can only be merged if they are equal.",
+            );
+
+            // We don't actually use `contract.Equal` directly, because contract could have been
+            // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
+            // exactly the same, but can't be shadowed.
+            let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
+            let result = mk_app!(
+                mk_term::op2(BinaryOp::Assume(), eq_contract, Term::Lbl(label)),
+                t2
+            )
+            .with_pos(pos_op);
+
+            Ok(Closure { body: result, env })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
