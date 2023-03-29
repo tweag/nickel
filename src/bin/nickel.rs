@@ -81,11 +81,15 @@ enum Command {
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
     Doc {
-        /// Specify the path of the generated documentation file. Default to
+        /// The path of the generated documentation file. Default to
         /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
         /// `~/.nickel/doc/out.md` if the input is read from stdin.
         #[structopt(short = "o", long, parse(from_os_str))]
         output: Option<PathBuf>,
+        /// The output format for the generated documentation. Defaults
+        /// to rendered markdown. Possible values: markdown, json
+        #[structopt(long)]
+        format: nickel_lang::program::DocFormat,
     },
 }
 
@@ -160,7 +164,7 @@ fn main() {
             Some(Command::Typecheck) => program.typecheck(),
             Some(Command::Repl { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
-            Some(Command::Doc { ref output }) => output
+            Some(Command::Doc { ref output, format }) => output
                 .as_ref()
                 .map(|output| {
                     fs::File::create(output.clone()).map_err(|e| {
@@ -180,31 +184,31 @@ fn main() {
                             e
                         )))
                     })?;
-                    let mut markdown_file = docpath.to_path_buf();
+                    let mut output_file = docpath.to_path_buf();
 
                     let mut has_file_name = false;
 
                     if let Some(path) = opts.file {
                         if let Some(file_stem) = path.file_stem() {
-                            markdown_file.push(file_stem);
+                            output_file.push(file_stem);
                             has_file_name = true;
                         }
                     }
 
                     if !has_file_name {
-                        markdown_file.push("out");
+                        output_file.push("out");
                     }
 
-                    markdown_file.set_extension("md");
-                    File::create(markdown_file.clone().into_os_string()).map_err(|e| {
+                    output_file.set_extension(format.extension());
+                    File::create(output_file.clone().into_os_string()).map_err(|e| {
                         Error::IOError(IOError(format!(
                             "when opening or creating output file `{}`: {}",
-                            markdown_file.to_string_lossy(),
+                            output_file.to_string_lossy(),
                             e
                         )))
                     })
                 })
-                .and_then(|mut out| program.output_doc(&mut out)),
+                .and_then(|mut out| program.output_doc(format, &mut out)),
             None => program
                 .eval_full()
                 .map(|t| println!("{}", Term::from(t).deep_repr())),

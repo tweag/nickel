@@ -306,8 +306,12 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
     #[cfg(feature = "doc")]
-    pub fn output_doc(&mut self, out: &mut dyn std::io::Write) -> Result<(), Error> {
-        doc::output_doc(self.vm.import_resolver_mut(), self.main_id, out)
+    pub fn output_doc(
+        &mut self,
+        format: doc::DocFormat,
+        out: &mut dyn std::io::Write,
+    ) -> Result<(), Error> {
+        doc::output_doc(format, self.vm.import_resolver_mut(), self.main_id, out)
     }
 
     #[cfg(debug_assertions)]
@@ -402,18 +406,126 @@ impl From<ColorOpt> for ColorChoice {
 }
 
 #[cfg(feature = "doc")]
+pub use doc::DocFormat;
+
+#[cfg(feature = "doc")]
 mod doc {
     use crate::cache::Cache;
-    use crate::error::{Error, IOError};
+    use crate::error::{Error, IOError, SerializationError};
     use crate::term::{RichTerm, Term};
     use codespan::FileId;
     use comrak::arena_tree::NodeEdge;
-    use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
+    use comrak::nodes::{
+        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+    };
     use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
+    use std::fmt;
     use std::io::Write;
 
-    /// Create a markdown file with documentation for the specified FileId.
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+    pub enum DocFormat {
+        Json,
+        #[default]
+        Markdown,
+    }
+
+    impl DocFormat {
+        pub fn extension(&self) -> &'static str {
+            match self {
+                Self::Json => "json",
+                Self::Markdown => "md",
+            }
+        }
+    }
+
+    impl fmt::Display for DocFormat {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                Self::Json => write!(f, "json"),
+                Self::Markdown => write!(f, "markdown"),
+            }
+        }
+    }
+
+    #[derive(Clone, Eq, PartialEq, Debug)]
+    pub struct ParseFormatError(String);
+
+    impl fmt::Display for ParseFormatError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "unsupported export format {}", self.0)
+        }
+    }
+
+    impl std::str::FromStr for DocFormat {
+        type Err = ParseFormatError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s.to_lowercase().as_ref() {
+                "json" => Ok(DocFormat::Json),
+                "markdown" => Ok(DocFormat::Markdown),
+                _ => Err(ParseFormatError(String::from(s))),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(transparent)]
+    struct ExtractedDocumentation {
+        fields: HashMap<String, DocumentationField>,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DocumentationField {
+        /// Field value [`ExtractedDocumentation`], if any
+        fields: Option<ExtractedDocumentation>,
+        /// Rendered type annotation, if any
+        types: Option<String>,
+        /// Rendered contract annotations
+        contracts: Vec<String>,
+        /// Rendered documentation, if any
+        documentation: Option<String>,
+    }
+
+    fn extract_documentation(rt: &RichTerm) -> Option<ExtractedDocumentation> {
+        match rt.term.as_ref() {
+            Term::Record(record) | Term::RecRecord(record, _, _) => {
+                let fields = record
+                    .fields
+                    .iter()
+                    .map(|(ident, field)| {
+                        (
+                            ident.label().to_owned(),
+                            DocumentationField {
+                                fields: field.value.as_ref().and_then(extract_documentation),
+                                types: field
+                                    .metadata
+                                    .annotation
+                                    .types
+                                    .as_ref()
+                                    .map(|lt| lt.types.to_string()),
+                                contracts: field
+                                    .metadata
+                                    .annotation
+                                    .contracts
+                                    .iter()
+                                    .map(|lt| lt.types.to_string())
+                                    .collect(),
+                                documentation: field.metadata.doc.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+                Some(ExtractedDocumentation { fields })
+            }
+            _ => None,
+        }
+    }
+
+    /// Create a markdown or json file with documentation for the specified FileId.
     pub fn output_doc(
+        format: DocFormat,
         cache: &mut Cache,
         file_id: FileId,
         out: &mut dyn Write,
@@ -421,50 +533,52 @@ mod doc {
         cache.parse(file_id)?;
         // unwrap(): at this point the term was correctly parsed and should exist in cache
         let term = cache.get_ref(file_id).unwrap();
-        let document = AstNode::from(NodeValue::Document);
 
-        // Our nodes in the Markdown document are owned by this arena
-        let arena = Arena::new();
+        let Some(docs) = extract_documentation(term) else {
+            return Ok(());
+        };
 
-        // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
-        let options = ComrakOptions::default();
+        match format {
+            DocFormat::Markdown => {
+                let document = AstNode::from(NodeValue::Document);
 
-        to_markdown(term, 0, &arena, &document, &options)?;
-        format_commonmark(&document, &options, out)
-            .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+                // Our nodes in the Markdown document are owned by this arena
+                let arena = Arena::new();
 
-        Ok(())
+                // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
+                let options = ComrakOptions::default();
+
+                to_markdown(&docs, 0, &arena, &document, &options)?;
+                format_commonmark(&document, &options, out)
+                    .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+
+                Ok(())
+            }
+            DocFormat::Json => serde_json::to_writer(out, &docs)
+                .map_err(|e| Error::SerializationError(SerializationError::Other(e.to_string()))),
+        }
     }
 
-    /// Recursively walk the given richterm, recursing into fields of record, looking for documentation.
+    /// Recursively walk the given `DocOutput`, recursing into fields, looking for documentation.
     /// This documentation is then added to the provided document.
     fn to_markdown<'a>(
-        rt: &'a RichTerm,
+        docs: &'a ExtractedDocumentation,
         header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
         document: &'a AstNode<'a>,
         options: &ComrakOptions,
     ) -> Result<(), Error> {
-        match rt.term.as_ref() {
-            Term::Record(record) | Term::RecRecord(record, _, _) => {
-                // Sorting fields for a deterministic output
-                let mut entries: Vec<(_, _)> = record.fields.iter().collect();
-                entries.sort_by_key(|(k, _)| *k);
-
-                for (ident, field) in entries {
-                    let header = mk_header(ident.label(), header_level + 1, arena);
-                    document.append(header);
-
-                    if let Some(ref doc) = field.metadata.doc {
-                        document.append(parse_documentation(header_level, arena, doc, options));
-                    }
-
-                    if let Some(ref value) = field.value {
-                        to_markdown(value, header_level + 1, arena, document, options)?;
-                    }
-                }
+        let mut entries: Vec<(_, _)> = docs.fields.iter().collect();
+        entries.sort_by_key(|(k, _)| *k);
+        for (ident, field) in entries {
+            let header = mk_header(ident, header_level + 1, arena);
+            document.append(header);
+            if let Some(ref doc) = field.documentation {
+                document.append(parse_documentation(header_level + 1, arena, doc, options));
             }
-            _ => (),
+            if let Some(ref subfields) = field.fields {
+                to_markdown(subfields, header_level + 1, arena, document, options)?;
+            }
         }
         Ok(())
     }
