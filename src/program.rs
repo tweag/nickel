@@ -415,9 +415,7 @@ mod doc {
     use crate::term::{RichTerm, Term};
     use codespan::FileId;
     use comrak::arena_tree::NodeEdge;
-    use comrak::nodes::{
-        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
-    };
+    use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
     use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;

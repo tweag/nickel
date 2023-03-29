@@ -380,20 +380,27 @@
         '';
       };
 
-      # Generate the stdlib documentation from `nickel doc`.
-      stdlibDoc = pkgs.stdenv.mkDerivation {
-        name = "nickel-stdlib-doc-${version}";
-        src = ./stdlib;
-        installPhase = ''
-          mkdir -p $out
-          for file in *
-          do
-            module=$(basename $file .ncl)
-            ${self.packages."${system}".default}/bin/nickel doc -f "$module.ncl" \
-              --output "$out/$module.md"
-          done
-        '';
-      };
+      # Generate the stdlib documentation from `nickel doc` as `format`.
+      stdlibDoc' = format:
+        let
+          extension =
+            {
+              "markdown" = "md";
+            }."${format}" or format;
+        in
+        pkgs.stdenv.mkDerivation {
+          name = "nickel-stdlib-doc-${format}-${version}";
+          src = ./stdlib;
+          installPhase = ''
+            mkdir -p $out
+            for file in *
+            do
+              module=$(basename $file .ncl)
+              ${self.packages."${system}".default}/bin/nickel doc --format "${format}" -f "$module.ncl" \
+                --output "$out/$module.${extension}"
+            done
+          '';
+        };
 
     in
     rec {
@@ -410,7 +417,8 @@
         dockerImage = buildDocker packages.nickel; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
-        inherit stdlibDoc;
+        stdlibDoc = stdlibDoc' "markdown";
+        stdlibDocJson = stdlibDoc' "json";
       };
 
       apps = {
