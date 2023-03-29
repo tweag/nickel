@@ -19,9 +19,11 @@
 
 pub mod array;
 pub mod record;
+pub mod string;
 
 use array::{Array, ArrayAttrs};
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
+use string::NickelString;
 
 use crate::{
     destructuring::RecordPattern,
@@ -71,7 +73,7 @@ pub enum Term {
     #[serde(deserialize_with = "crate::serialize::deserialize_num")]
     Num(Number),
     /// A literal string.
-    Str(String),
+    Str(NickelString),
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
     ///
@@ -1035,10 +1037,6 @@ pub enum UnaryOp {
     StrTrim(),
     /// Return the array of characters of a string.
     StrChars(),
-    /// Return the code of a character (givne as a string of length 1).
-    CharCode(),
-    /// Return the character corresponding to a code.
-    CharFromCode(),
     /// Transform a string to uppercase.
     StrUppercase(),
     /// Transform a string to lowercase.
@@ -1935,7 +1933,7 @@ pub mod make {
 
     pub fn string<S>(s: S) -> RichTerm
     where
-        S: Into<String>,
+        S: Into<NickelString>,
     {
         Term::Str(s.into()).into()
     }

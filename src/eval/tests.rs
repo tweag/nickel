@@ -213,7 +213,7 @@ fn interpolation_simple() {
     let t: RichTerm = Term::StrChunks(chunks).into();
     assert_eq!(
         eval_no_import(t),
-        Ok(Term::Str(String::from("Hello, World! How are you?")))
+        Ok(Term::Str("Hello, World! How are you?".into()))
     );
 }
 
@@ -247,7 +247,7 @@ fn interpolation_nested() {
     let t: RichTerm = Term::StrChunks(chunks).into();
     assert_eq!(
         eval_no_import(t),
-        Ok(Term::Str(String::from("Hello, World! How are you?")))
+        Ok(Term::Str("Hello, World! How are you?".into()))
     );
 }
 

@@ -55,7 +55,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
             Term::Null => visitor.visit_unit(),
             Term::Bool(v) => visitor.visit_bool(v),
             Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest)),
-            Term::Str(v) => visitor.visit_string(v),
+            Term::Str(v) => visitor.visit_string(v.into_inner()),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
                 variant: v.into_label(),
                 rich_term: None,
@@ -186,7 +186,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         match unwrap_term(self)? {
-            Term::Str(v) => visitor.visit_string(v),
+            Term::Str(v) => visitor.visit_string(v.into_inner()),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Str".to_string(),
                 occurred: other.type_of().unwrap_or_else(|| "Other".to_string()),
@@ -208,7 +208,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         V: Visitor<'de>,
     {
         match unwrap_term(self)? {
-            Term::Str(v) => visitor.visit_string(v),
+            Term::Str(v) => visitor.visit_string(v.into_inner()),
             Term::Array(v, _) => visit_array(v, visitor),
             other => Err(RustDeserializationError::InvalidType {
                 expected: "Str or Array".to_string(),

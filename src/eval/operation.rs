@@ -26,6 +26,7 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
+        string::NickelString,
         BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
         SharedTerm, StrChunk, Term, UnaryOp,
     },
@@ -35,7 +36,7 @@ use crate::{
 use malachite::{
     num::{
         arithmetic::traits::Pow,
-        basic::traits::{One, Zero},
+        basic::traits::Zero,
         conversion::traits::{RoundingFrom, ToSci},
     },
     rounding_modes::RoundingMode,
@@ -814,7 +815,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let indent_str: String = std::iter::once('\n')
                             .chain((0..indent).map(|_| ' '))
                             .collect();
-                        s.replace('\n', &indent_str)
+                        s.as_str().replace('\n', &indent_str).into()
                     } else {
                         s.clone()
                     };
@@ -843,7 +844,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     } else {
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(acc),
+                            Term::Str(acc.into()),
                             pos_op_inh,
                         )))
                     }
@@ -861,7 +862,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrTrim() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(String::from(s.trim())),
+                        Term::Str(s.trim().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -875,11 +876,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrChars() => {
                 if let Term::Str(s) = &*t {
-                    let ts = s
-                        .chars()
-                        .map(|c| RichTerm::from(Term::Str(c.to_string())))
-                        .collect();
-
+                    let ts = s.characters();
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Array(ts, ArrayAttrs::new().closurized()),
                         pos_op_inh,
@@ -893,59 +890,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::CharCode() => {
-                if let Term::Str(s) = &*t {
-                    if s.len() == 1 {
-                        let code = s.chars().next().unwrap() as u32;
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Num(code.into()),
-                            pos_op_inh,
-                        )))
-                    } else {
-                        Err(EvalError::Other(
-                            format!("charCode: expected 1-char string, got `{}`", s.len()),
-                            pos,
-                        ))
-                    }
-                } else {
-                    Err(EvalError::TypeError(
-                        String::from("Str"),
-                        String::from("charCode"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                }
-            }
-            UnaryOp::CharFromCode() => {
-                let Term::Num(ref code) = *t else {
-                    return Err(EvalError::TypeError(
-                        String::from("Num"),
-                        String::from("charFromCode"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
-                };
-
-                let Ok(code_as_u32) = u32::try_from(code) else {
-                   return Err(EvalError::Other(format!("charFromCode: expected the argument to be a positive integer smaller than {}, got {code}", u32::MAX), pos_op));
-                };
-
-                if let Some(car) = std::char::from_u32(code_as_u32) {
-                    Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(String::from(car)),
-                        pos_op_inh,
-                    )))
-                } else {
-                    Err(EvalError::Other(
-                        format!("charFromCode: invalid character code {code}"),
-                        pos_op,
-                    ))
-                }
-            }
             UnaryOp::StrUppercase() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(s.to_uppercase()),
+                        Term::Str(s.to_uppercase().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -960,7 +908,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrLowercase() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(s.to_lowercase()),
+                        Term::Str(s.to_lowercase().into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -990,11 +938,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::ToStr() => {
                 let result = match_sharedterm! {t, with {
-                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()))),
+                    Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()).into())),
                     Term::Str(s) => Ok(Term::Str(s)),
-                    Term::Bool(b) => Ok(Term::Str(b.to_string())),
-                    Term::Enum(id) => Ok(Term::Str(id.to_string())),
-                    Term::Null => Ok(Term::Str(String::from("null"))),
+                    Term::Bool(b) => Ok(Term::Str(b.to_string().into())),
+                    Term::Enum(id) => Ok(Term::Str(id.to_string().into())),
+                    Term::Null => Ok(Term::Str("null".into())),
                 } else {
                     Err(EvalError::Other(
                         format!(
@@ -1010,7 +958,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
                     let n = parse_number(s).map_err(|_| {
-                        EvalError::Other(format!("num_from_string: invalid num literal `{s}`"), pos)
+                        EvalError::Other(
+                            format!("num_from_string: invalid num literal `{}`", s.as_str()),
+                            pos,
+                        )
                     })?;
                     Ok(Closure::atomic_closure(RichTerm::new(
                         Term::Num(n),
@@ -1028,7 +979,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::EnumFromStr() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(s.into()),
+                        Term::Enum(Ident::from(s)),
                         pos_op_inh,
                     )))
                 } else {
@@ -1118,12 +1069,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .iter()
                             .skip(1)
                             .filter_map(|s_opt| {
-                                s_opt.map(|s| RichTerm::from(Term::Str(String::from(s.as_str()))))
+                                s_opt.map(|s| RichTerm::from(Term::Str(s.as_str().into())))
                             })
                             .collect();
 
                         mk_record!(
-                            ("matched", Term::Str(String::from(first_match.as_str()))),
+                            ("matched", Term::Str(first_match.as_str().into())),
                             ("index", Term::Num(first_match.start().into())),
                             (
                                 "groups",
@@ -1133,7 +1084,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     } else {
                         //FIXME: what should we return when there's no match?
                         mk_record!(
-                            ("matched", Term::Str(String::new())),
+                            ("matched", Term::Str(NickelString::new())),
                             ("index", Term::Num(Number::from(-1))),
                             (
                                 "groups",
@@ -1578,7 +1529,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Term::Str(s2) = &*t2 {
                         let ss: [&str; 2] = [s1, s2];
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(ss.concat()),
+                            Term::Str(ss.concat().into()),
                             pos_op_inh,
                         )))
                     } else {
@@ -1882,7 +1833,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(field) => match_sharedterm! {t2, with {
                             Term::Lbl(l) => {
                                 let mut l = l;
-                                l.path.push(ty_path::Elem::Field(Ident::from(field)));
+                                l.path.push(ty_path::Elem::Field(field.into_inner().into()));
                                 Ok(Closure::atomic_closure(RichTerm::new(
                                     Term::Lbl(l),
                                     pos_op_inh,
@@ -1920,16 +1871,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // and again, which is not optimal. The same thing happens with array
                             // contracts. There are several way to improve this, but this is left
                             // as future work.
-                            match record.get_value_with_ctrs(&Ident::from(&id)).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
+                            let ident = Ident::from(&id);
+                            match record.get_value_with_ctrs(&ident).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
                                 Some(value) => {
-                                    self.call_stack.enter_field(Ident::from(id), pos2, value.pos, pos_op);
+                                    self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
                                     Ok(Closure {
                                         body: value,
                                         env: env2,
                                     })
                                 }
                                 None => Err(EvalError::FieldMissing(
-                                    id,
+                                    id.into_inner(),
                                     String::from("(.$)"),
                                     RichTerm {
                                         term: t2,
@@ -2035,7 +1987,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                       }) =>
                                     {
                                         Err(EvalError::FieldMissing(
-                                            id,
+                                            id.into_inner(),
                                             String::from("remove"),
                                             RichTerm::new(
                                                 Term::Record(RecordData { fields, ..record }),
@@ -2082,7 +2034,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(record.fields.get(&Ident::from(id)), Some(field) if !field.is_empty_optional())),
+                                Term::Bool(matches!(record.fields.get(&Ident::from(id.into_inner())), Some(field) if !field.is_empty_optional())),
                                 pos_op_inh,
                             )))
                         } else {
@@ -2271,29 +2223,29 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let result = match id.as_ref() {
                             "Md5" => {
                                 let mut hasher = md5::Md5::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha1" => {
                                 let mut hasher = sha1::Sha1::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha256" => {
                                 let mut hasher = sha2::Sha256::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             "Sha512" => {
                                 let mut hasher = sha2::Sha512::new();
-                                hasher.update(s);
+                                hasher.update(s.as_ref());
                                 format!("{:x}", hasher.finalize())
                             }
                             _ => return mk_err_fst(t1),
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(result),
+                            Term::Str(result.into()),
                             pos_op_inh,
                         )))
                     } else {
@@ -2346,7 +2298,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     serialize::validate(format, &rt2)?;
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Str(serialize::to_string(format, &rt2)?),
+                        Term::Str(serialize::to_string(format, &rt2)?.into()),
                         pos_op_inh,
                     )))
                 } else {
@@ -2410,14 +2362,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::StrSplit() => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => {
-                    let array = s1
-                        .split(s2)
-                        .map(|s| Term::Str(String::from(s)).into())
-                        .collect();
-
+                (Term::Str(input), Term::Str(separator)) => {
+                    let result = input.split(separator);
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(array, ArrayAttrs::new().closurized()),
+                        Term::Array(result, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
                 }
@@ -2441,10 +2389,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 )),
             },
             BinaryOp::StrContains() => match (&*t1, &*t2) {
-                (Term::Str(s1), Term::Str(s2)) => Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Bool(s1.contains(s2)),
-                    pos_op_inh,
-                ))),
+                (Term::Str(s1), Term::Str(s2)) => {
+                    let result = s1.contains(s2.as_str());
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Bool(result),
+                        pos_op_inh,
+                    )))
+                }
                 (Term::Str(_), _) => Err(EvalError::TypeError(
                     String::from("Str"),
                     String::from("strContains, 2nd argument"),
@@ -2641,7 +2592,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.with_diagnostic_message(message)),
+                    Term::Lbl(label.with_diagnostic_message(message.into_inner())),
                     pos_op_inh,
                 )))
             }
@@ -2680,7 +2631,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let term = element.term.into_owned();
 
                         if let Term::Str(s) = term {
-                            Ok(s)
+                            Ok(s.into_inner())
                         } else {
                             Err(EvalError::TypeError(
                                 String::from("Str"),
@@ -2741,7 +2692,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Lbl(label.append_diagnostic_note(note)),
+                    Term::Lbl(label.append_diagnostic_note(note.into_inner())),
                     pos2.into_inherited(),
                 )))
             }
@@ -2808,12 +2759,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match (&*fst, &*snd, &*thd) {
                     (Term::Str(s), Term::Str(from), Term::Str(to)) => {
                         let result = if let NAryOp::StrReplace() = n_op {
-                            str::replace(s, from, to)
+                            s.replace(from.as_str(), to.as_str())
                         } else {
                             let re = regex::Regex::new(from)
                                 .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                            re.replace_all(s, to.as_str()).into_owned()
+                            re.replace_all(s, to.as_str()).into()
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
@@ -2860,28 +2811,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args_wo_env.next().is_none());
 
                 match (&*fst, &*snd, &*thd) {
-                    (Term::Str(s), Term::Num(start), Term::Num(end)) => {
-                        let Ok(start_as_usize) = usize::try_from(start) else {
-                            return Err(EvalError::Other(format!("substring: expected the 2nd argument (start) to be a positive integer smaller than {}, got {start}", usize::MAX), pos_op));
-                        };
-
-                        let Ok(end_as_usize) = usize::try_from(end) else {
-                            return Err(EvalError::Other(format!("substring: expected the 3nd argument (end) to be a positive integer smaller than {}, got the floating-point value {end}", usize::MAX), pos_op));
-                        };
-
-                        if !s.is_char_boundary(start_as_usize) {
-                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 2nd argument (start) to be between 0 and {}, got {}", s.len(), start), pos_op));
-                        }
-
-                        if end <= start || !s.is_char_boundary(end_as_usize) {
-                            return Err(EvalError::Other(format!("substring: index out of bounds. Expected the 3rd argument (end) to be between {} and {}, got {}", start + Number::ONE, s.len(), end), pos_op));
-                        };
-
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Str(s[start_as_usize..end_as_usize].to_owned()),
-                            pos_op_inh,
-                        )))
-                    }
+                    (Term::Str(s), Term::Num(start), Term::Num(end)) => s
+                        .substring(start, end)
+                        .map(|substr| {
+                            Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
+                        })
+                        .map_err(|e| EvalError::Other(format!("{}", e), pos_op)),
                     (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
                         String::from("Str"),
                         String::from("strReplace, 3rd argument"),

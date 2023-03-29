@@ -106,7 +106,17 @@ fn string_interpolation() {
 
 #[test]
 fn stdlib_string() {
-    check_file("stdlib_string.ncl")
+    for f in [
+        "contains_find_replace",
+        "contracts",
+        "conversions",
+        "primitives",
+        "split_join",
+        "trim",
+        "uppercase_lowercase",
+    ] {
+        check_file(format!("stdlib_string_{}.ncl", f).as_str())
+    }
 }
 
 #[test]
@@ -143,7 +153,7 @@ fn overriding() {
 #[test]
 fn str_vs_strchunks() {
     assert_eq!(
-        pretty(&Term::Str("string".to_string()).into()),
+        pretty(&Term::Str("string".into()).into()),
         pretty(&Term::StrChunks(vec![StrChunk::Literal("string".to_string())]).into())
     );
 }
