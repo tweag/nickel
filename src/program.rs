@@ -523,8 +523,13 @@ mod doc {
                 let header = mk_header(ident, header_level + 1, arena);
                 document.append(header);
 
-                if let Some(ref types) = field.types {
-                    document.append(mk_type(ident, types, arena));
+                if field.types.is_some() || !field.contracts.is_empty() {
+                    document.append(mk_types_and_contracts(
+                        ident,
+                        arena,
+                        field.types.as_deref(),
+                        field.contracts.as_ref(),
+                    ))
                 }
 
                 if let Some(ref doc) = field.documentation {
@@ -589,8 +594,13 @@ mod doc {
         res
     }
 
-    fn mk_type<'a>(ident: &str, types: &str, arena: &'a Arena<AstNode<'a>>) -> &'a AstNode<'a> {
-        let res = arena.alloc(AstNode::from(NodeValue::List(NodeList {
+    fn mk_types_and_contracts<'a>(
+        ident: &str,
+        arena: &'a Arena<AstNode<'a>>,
+        types: Option<&'a str>,
+        contracts: &'a [String],
+    ) -> &'a AstNode<'a> {
+        let list = arena.alloc(AstNode::from(NodeValue::List(NodeList {
             list_type: ListType::Bullet,
             marker_offset: 1,
             padding: 0,
@@ -600,6 +610,23 @@ mod doc {
             tight: true,
         })));
 
+        if let Some(t) = types {
+            list.append(mk_type(ident, ':', t, arena));
+        }
+
+        for contract in contracts {
+            list.append(mk_type(ident, '|', contract, arena));
+        }
+
+        list
+    }
+
+    fn mk_type<'a>(
+        ident: &str,
+        separator: char,
+        types: &str,
+        arena: &'a Arena<AstNode<'a>>,
+    ) -> &'a AstNode<'a> {
         let list_item = arena.alloc(AstNode::from(NodeValue::Item(NodeList {
             list_type: ListType::Bullet,
             marker_offset: 1,
@@ -611,11 +638,11 @@ mod doc {
         })));
 
         list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
-            literal: format!("{ident}: {types}").bytes().collect(),
+            literal: format!("{ident} {separator} {types}").bytes().collect(),
             num_backticks: 1,
         }))));
-        res.append(list_item);
-        res
+
+        list_item
     }
 }
 

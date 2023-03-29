@@ -4,6 +4,7 @@ expression: snapshot
 ---
 # `Hello`
 
-- `Hello: Number`
+- `Hello : Number`
+- `Hello | string.Stringable`
 World\!
 
