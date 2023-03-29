@@ -270,7 +270,7 @@
 
     replace_regex: String -> String -> String -> String
     | doc m%"
-      `replace_regex regex repl String` replaces every match of `regex` in `String` with `repl`.
+      `replace_regex regex repl str` replaces every match of `regex` in `str` with `repl`.
 
       For example:
       ```nickel
@@ -279,6 +279,9 @@
         replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
           "This \"a\" is not a number."
       ```
+
+      WARNING: this function will currently break up Unicode extended grapheme
+      clusters if the regex matches a codepoint that exists within one.
       "%
     = fun pattern replace s =>
        %str_replace_regex% s pattern replace,
@@ -315,13 +318,17 @@
       ["0", "42", "0.5"] |> array.all is_number' =>
         true
       ```
+
+      WARNING: this function will currently return `true` even if the regex
+      match overlaps, or happens entirely within, with a Unicode extended
+      grapheme cluster.
       "%
     = fun regex => %str_is_match% regex,
 
     find : String -> String -> {matched: String, index: Number, groups: Array String}
     | doc m%"
-      `find regex String` matches `String` given `regex`. Results in the part of `String` that matched, the index of the
-      first character that was part of the match in `String`, and a arrays of all capture groups if any.
+      `find regex str` matches `str` given `regex`. Results in the part of `str` that matched, the index of the
+      first character that was part of the match in `str`, and a arrays of all capture groups if any.
 
       For example:
       ```nickel
@@ -334,6 +341,11 @@
       Note that this function may perform better by sharing its partial application between multiple calls,
       because in this case the underlying regular expression will only be compiled once (See the documentation
       of `string.is_match` for more details).
+
+      WARNING: this function will currently return incorrect indices if `str`
+      contains Unicode extended grapheme clusters. The indices returned will
+      be the location of the matching codepoints, rather than the matching
+      grapheme clusters.
       "%
     = fun regex => %str_find% regex,
 
