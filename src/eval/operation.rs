@@ -25,7 +25,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         make as mk_term,
-        record::{self, Field, FieldMetadata, RecordAttrs, RecordData},
+        record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
         BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
         SharedTerm, StrChunk, Term, UnaryOp,
@@ -941,7 +941,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()).into())),
                     Term::Str(s) => Ok(Term::Str(s)),
                     Term::Bool(b) => Ok(Term::Str(b.to_string().into())),
-                    Term::Enum(id) => Ok(Term::Str(id.to_string().into())),
+                    Term::Enum(id) => Ok(Term::Str(id.into())),
                     Term::Null => Ok(Term::Str("null".into())),
                 } else {
                     Err(EvalError::Other(
@@ -2466,16 +2466,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            // This implementation of `%dictionary_assume%` internally creates
-            // essentially a copy of the record that is being checked, albeit
-            // without values for the fields. If the record in question is
-            // particularly huge, this could have performance implications.
-            //
-            // An alternative implementation would be to duplicate some of the
-            // logic from `eval::merge` in here. We decided not to do that for
-            // simplicity and to keep all the magic operations on revertible
-            // thunks contained in their own module.
-            BinaryOp::DictionaryAssume() => {
+            BinaryOp::RecordLazyAssume() => {
+                // The contract is expected to be of type `String -> Contract`: it takes the name
+                // of the field as a parameter, and returns a contract.
                 let (
                     Closure {
                         body: contract_term,
@@ -2483,14 +2476,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(3, String::from("dictionary_assume"), pos_op)
+                    EvalError::NotEnoughArgs(3, String::from("record_lazy_assume"), pos_op)
                 })?;
 
-                let lbl = match_sharedterm! {t1, with {
-                        Term::Lbl(lbl) => lbl
+                let label = match_sharedterm! {t1, with {
+                        Term::Lbl(label) => label
                     } else return Err(EvalError::TypeError(
-                        String::from("Lbl"),
-                        String::from("dictionary_assume, 2nd argument"),
+                        String::from("Label"),
+                        String::from("record_lazy_assume, 2nd argument"),
                         fst_pos,
                         RichTerm {
                             term: t1,
@@ -2502,55 +2495,47 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match_sharedterm! {t2,
                     with {
                         Term::Record(record_data) => {
-                            let contract = contract_term.closurize(&mut self.cache, &mut env2, contract_env);
-                            let record_contract = Term::Record(RecordData {
-                                fields: record_data
-                                    .fields
-                                    .iter()
-                                    .map(|(key, value)| {
-                                        (
-                                            *key,
-                                            Field {
-                                                value: None,
-                                                pending_contracts: vec![PendingContract::new(
-                                                    contract.clone(),
-                                                    lbl.clone(),
-                                                )],
-                                                // This is intentionally not written as
-                                                // `{ opt: value.metadata.opt, ..Default::default() }`
-                                                //
-                                                // When `FieldMetadata` is changed in the future, we will need to consider
-                                                // which values should be inherited from `value.metadata`.
-                                                //
-                                                // The `metadata` field here must be chosen such that, upon merging it
-                                                // with `value.metadata`, the result is identical to the original metadata
-                                                // `value.metadata` of the field.
-                                                metadata: FieldMetadata {
-                                                    opt: value.metadata.opt,
+                            // due to a limitation of `match_sharedterm`: see the macro's
+                            // documentation
+                            let mut record_data = record_data;
 
-                                                    doc: None,
-                                                    annotation: Default::default(),
-                                                    not_exported: false,
-                                                    priority: Default::default(),
-                                                },
-                                            },
-                                        )
-                                    })
-                                    .collect(),
-                                attrs: RecordAttrs { open: true },
-                                ..Default::default()
-                            });
-
-                            let merge_term = Closure {
-                                body: mk_opn!(
-                                    NAryOp::MergeContract(),
-                                    Term::Lbl(lbl),
-                                    Term::Record(record_data),
-                                    record_contract
-                                ),
-                                env: env2,
+                            let mut contract_at_field = |id: Ident| {
+                                let pos = contract_term.pos;
+                                mk_app!(
+                                    contract_term.clone(),
+                                    RichTerm::new(Term::Str(id.into()), id.pos))
+                                        .with_pos(pos)
+                                        .closurize(&mut self.cache, &mut env2, contract_env.clone(),
+                                )
                             };
-                            Ok(merge_term)
+
+                            for (id, field) in record_data.fields.iter_mut() {
+                                field.pending_contracts.push(PendingContract {
+                                    contract: contract_at_field(*id),
+                                    label: label.clone(),
+                                });
+                            }
+
+                            // IMPORTANT: here, we revert the record back to a `RecRecord`. The
+                            // reason is that applying a contract over fields might change the
+                            // value of said fields (the typical example is adding a value to a
+                            // subrecord via the default value of a contract).
+                            //
+                            // We want recursive occurrences of fields to pick this new value as
+                            // well: hence, we need to recompute the fixpoint, which is done by
+                            // `fixpoint::revert`.
+                            let mut env = Environment::new();
+                            let reverted = super::fixpoint::revert(
+                                &mut self.cache,
+                                record_data,
+                                &mut env,
+                                &env2
+                            );
+
+                            Ok(Closure {
+                                body: RichTerm::new(reverted, pos2),
+                                env,
+                            })
                         }
                     } else Err(EvalError::TypeError(
                         String::from("Record"),
