@@ -5,6 +5,20 @@ use std::{
 };
 use test_generator::test_resources;
 
+macro_rules! assert_snapshot_filtered {
+    { $name:expr, $snapshot:expr } => {
+        insta::with_settings!({filters => vec![
+            // Since error output includes fully-qualified paths to the source file
+            // we need to replace those with something static to avoid snapshots
+            // differing across machines.
+            (r"(?:/.+/tests/snapshot/inputs)", "[INPUTS_PATH]")
+        ]},
+        {
+            insta::assert_snapshot!($name, $snapshot);
+        })
+    }
+}
+
 #[test_resources("tests/snapshot/inputs/pretty/*.ncl")]
 fn check_pretty_print_snapshots(file: &str) {
     let file = TestFile::from_project_path(file);
@@ -14,7 +28,7 @@ fn check_pretty_print_snapshots(file: &str) {
         .file(&file)
         .snapshot_stdout();
 
-    insta::assert_snapshot!(file.prefixed_test_name("pretty"), snapshot)
+    insta::assert_snapshot!(file.prefixed_test_name("pretty"), snapshot);
 }
 
 #[test_resources("tests/snapshot/inputs/export/*.ncl")]
@@ -46,16 +60,7 @@ fn check_error_snapshots(file: &str) {
     let file = TestFile::from_project_path(file);
 
     let snapshot = NickelInvocation::new().file(&file).snapshot_stderr();
-
-    insta::with_settings!({filters => vec![
-        // Since error output includes fully-qualified paths to the source file
-        // we need to replace those with something static to avoid snapshots
-        // differing across machines.
-        (r"(?:/.+/tests/snapshot/inputs)", "[INPUTS_PATH]")
-    ]},
-    {
-        insta::assert_snapshot!(file.prefixed_test_name("error"), snapshot)
-    });
+    assert_snapshot_filtered!(file.prefixed_test_name("error"), snapshot);
 }
 
 #[test_resources("tests/snapshot/inputs/docs/*.ncl")]
@@ -81,15 +86,7 @@ fn check_doc_stderr_snapshots(file: &str) {
         .args(["--stdout"])
         .snapshot_stderr();
 
-    insta::with_settings!({filters => vec![
-        // Since error output includes fully-qualified paths to the source file
-        // we need to replace those with something static to avoid snapshots
-        // differing across machines.
-        (r"(?:/.+/tests/snapshot/inputs)", "[INPUTS_PATH]")
-    ]},
-    {
-        insta::assert_snapshot!(file.prefixed_test_name("doc_stderr"), snapshot)
-    });
+    assert_snapshot_filtered!(file.prefixed_test_name("doc_stderr"), snapshot);
 }
 
 struct TestFile {
