@@ -19,35 +19,41 @@
          => ERROR (contract broken by a value)
         ```
       "%
-    = fun constant =>
-      %typeof% constant
-      |> match {
-        `Record =>
-          #TODO: lazy version for records. The difficulty is not to make it lazy
-          #right now, but to make it preserve recursivity as well. We might need
-          #something like a recursivity-preserving map, or a primop for
-          # per-field contract application, like %array_lazy_assume%.
-          from_predicate ((==) constant),
-        `Array =>
-          fun label' value =>
-            if %typeof% value == `Array then
-              let value_length = %length% value in
-              if value_length == %length% constant then
-                %generate% value_length (fun i =>
-                  contract.apply (Equal (%elem_at% constant i)) label' value)
+      = fun constant =>
+        %typeof% constant
+        |> match {
+          `Record =>
+            #TODO: lazy version for records. The difficulty is not to make it lazy
+            #right now, but to make it preserve recursivity as well. We might need
+            #something like a recursivity-preserving map, or a primop for
+            # per-field contract application, like %array_lazy_assume%.
+            from_predicate ((==) constant),
+          `Array =>
+            fun label' value =>
+              if %typeof% value == `Array then
+                let value_length = %length% value in
+                if value_length == %length% constant then
+                  %generate%
+                    value_length
+                    (
+                      fun i =>
+                        contract.apply (Equal (%elem_at% constant i)) label' value
+                    )
+                else
+                  label'
+                  |> label.with_message  "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length}`)"
+
+                  |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
+                  |> blame
               else
                 label'
-                |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length}`)"
-                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
-                |> blame
-            else
-              label'
                 |> label.with_message "expected Array, got %{%to_str% (%typeof% value)}"
+
                 |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but the provided value isn't an array."
                 |> blame,
-        # Outside of lazy data structure, we just use (==)
-        _ => from_predicate ((==) constant),
-      },
+          # Outside of lazy data structure, we just use (==)
+          _ => from_predicate ((==) constant),
+        },
 
     blame
       | doc m%"
@@ -236,7 +242,7 @@
               (for technical reasons, this function isn't actually statically typed)
             "%
           = fun note label => %label_append_note% note label,
-    },
+      },
 
     apply
       | doc m%"

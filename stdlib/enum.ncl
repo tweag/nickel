@@ -1,7 +1,7 @@
 {
-    enum = {
-      Tag
-        | doc m%"
+  enum = {
+    Tag
+      | doc m%"
           Contract to enforce the value is an enum tag.
 
           # Examples
@@ -15,10 +15,10 @@
               error
           ```
           "%
-        = contract.from_predicate builtin.is_enum,
+      = contract.from_predicate builtin.is_enum,
 
-      TagOrString
-        | doc m%%"
+    TagOrString
+      | doc m%%"
             Accepts both enum tags and strings. Strings are automatically
             converted to an enum tag.
 
@@ -49,14 +49,15 @@
             serialized | Schema
             ```
           "%%
-        = fun label value =>
-          %typeof% value
-          |> match {
-            `String => %enum_from_str% value,
-            `Enum => value,
-             _ => contract.blame_with_message
-               "expected either a string or an enum tag"
-               label,
-            },
-    }
+      = fun label value =>
+        %typeof% value
+        |> match {
+          `String => %enum_from_str% value,
+          `Enum => value,
+          _ =>
+            contract.blame_with_message
+              "expected either a string or an enum tag"
+              label,
+        },
+  }
 }

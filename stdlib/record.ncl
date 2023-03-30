@@ -1,7 +1,8 @@
 {
   record = {
-    map : forall a b. (String -> a -> b) -> {_: a} -> {_: b}
-    | doc m%"
+    map
+      : forall a b. (String -> a -> b) -> { _ : a } -> { _ : b }
+      | doc m%"
       Maps a function on every field of a record. The string argument of the function argument is the name of the
       field.
 
@@ -13,10 +14,11 @@
           { hello = 2, world = 3 }
       ```
       "%
-    = fun f r => %record_map% r f,
+      = fun f r => %record_map% r f,
 
-    fields : forall a. { _: a } -> Array String
-    | doc m%"
+    fields
+      : forall a. { _ : a } -> Array String
+      | doc m%"
       Given a record, results in a array of the string representation of all fields in the record.
 
       ```nickel
@@ -24,10 +26,11 @@
           [ "one", "two" ]
       ```
       "%
-    = fun r => %fields% r,
+      = fun r => %fields% r,
 
-    values : forall a. { _: a } -> Array a
-    | doc m%"
+    values
+      : forall a. { _ : a } -> Array a
+      | doc m%"
       Given a record, results in a array containing all the values in that record.
 
       ```nickel
@@ -35,10 +38,11 @@
           [ 1, "world" ]
       ```
       "%
-    = fun r => %values% r,
+      = fun r => %values% r,
 
-    has_field : forall a. String -> {_ : a} -> Bool
-    | doc m%"
+    has_field
+      : forall a. String -> { _ : a } -> Bool
+      | doc m%"
       Given the name of a field and a record, checks if the record contains the given field.
 
       ```nickel
@@ -48,9 +52,10 @@
           true
       ```
       "%
-    = fun field r => %has_field% field r,
+      = fun field r => %has_field% field r,
 
-    insert : forall a. String -> a -> {_: a} -> {_: a}
+    insert
+      : forall a. String -> a -> { _ : a } -> { _ : a }
       | doc m%%"
         Insert a new field in a record. `insert` doesn't mutate the original
         record but returns a new one instead.
@@ -67,7 +72,8 @@
       "%%
       = fun field content r => %record_insert% field r content,
 
-    remove : forall a. String -> {_: a} -> {_: a}
+    remove
+      : forall a. String -> { _ : a } -> { _ : a }
       | doc m%"
         Remove a field from a record. `remove` doesn't mutate the original
         record but returns a new one instead.
@@ -79,7 +85,8 @@
       "%
       = fun field r => %record_remove% field r,
 
-    update : forall a. String -> a -> {_: a} -> {_: a}
+    update
+      : forall a. String -> a -> { _ : a } -> { _ : a }
       | doc m%"
         Update a field of a record with a new value. `update` doesn't mutate the
         original record but returns a new one instead. If the field to update is absent
@@ -102,14 +109,17 @@
         ```
       "%
       = fun field content r =>
-        let r = if %has_field% field r then
-          %record_remove% field r
-        else
-          r in
+        let r =
+          if %has_field% field r then
+            %record_remove% field r
+          else
+            r
+        in
         %record_insert% field r content,
 
-    map_values : forall a b. (a -> b) -> {_: a} -> {_: b}
-    | doc m%"
+    map_values
+      : forall a b. (a -> b) -> { _ : a } -> { _ : b }
+      | doc m%"
       Maps a function over every field value of a record.
 
       For example:
@@ -120,10 +130,11 @@
           { hello = 2, world = 3 }
       ```
     "%
-    = fun f => map (fun _field value => f value),
+      = fun f => map (fun _field value => f value),
 
-    to_array : forall a. {_: a} -> Array {field: String, value: a}
-    | doc m%"
+    to_array
+      : forall a. { _ : a } -> Array { field : String, value : a }
+      | doc m%"
       Converts a record to an array of key-value pairs.
 
       For example:
@@ -134,13 +145,14 @@
           ]
       ```
     "%
-    = fun record =>
-      record
-      |> fields
-      |> array.map (fun field' => {field = field', value = record."%{field'}"}),
+      = fun record =>
+        record
+        |> fields
+        |> array.map (fun field' => { field = field', value = record."%{field'}" }),
 
-    from_array : forall a. Array { field: String, value: a} -> {_: a}
-    | doc m%"
+    from_array
+      : forall a. Array { field : String, value : a } -> { _ : a }
+      | doc m%"
       Convert an array of key-value pairs into a record.
 
       For example:
@@ -151,13 +163,14 @@
           => { hello = "world", foo = "bar" }
       ```
     "%
-    = fun bindings =>
-      bindings
-      |> array.map (fun binding => { "%{binding.field}" = binding.value })
-      |> merge_all,
+      = fun bindings =>
+        bindings
+        |> array.map (fun binding => { "%{binding.field}" = binding.value })
+        |> merge_all,
 
-    is_empty : forall a. {_: a} -> Bool
-    | doc m%"
+    is_empty
+      : forall a. { _ : a } -> Bool
+      | doc m%"
       Check whether a record is empty.
 
       ```nickel
@@ -165,10 +178,11 @@
       is_empty { foo = 1 } => false
       ```
     "%
-    = (==) {},
+      = (==) {},
 
-    merge_all | forall a. Array {_: a} -> {_: a}
-    | doc m%"
+    merge_all
+      | forall a. Array { _ : a } -> { _ : a }
+      | doc m%"
       Merge an array of records.
 
       For example:
@@ -177,10 +191,11 @@
         => { foo = 1, bar = 2 }
       ```
     "%
-    = array.fold_left (&) {},
+      = array.fold_left (&) {},
 
-    filter : forall a. (String -> a -> Bool) -> {_: a} -> {_: a}
-    | doc m%"
+    filter
+      : forall a. (String -> a -> Bool) -> { _ : a } -> { _ : a }
+      | doc m%"
       Filter a record using the given function, which is passed the name and
       value for each key to make a decision.
 
@@ -190,14 +205,14 @@
         => { even = 2 }
       ```
     "%
-    = fun f record =>
-      record
-      |> to_array
-      |> array.filter (fun { field, value } => f field value)
-      |> from_array,
+      = fun f record =>
+        record
+        |> to_array
+        |> array.filter (fun { field, value } => f field value)
+        |> from_array,
 
     length
-      : forall a. {_: a} -> Number
+      : forall a. { _ : a } -> Number
       | doc m%"
           Returns the number of fields in a record. This count doesn't include
           fields both marked as optional and without a definition.
