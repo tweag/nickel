@@ -48,6 +48,14 @@
         { extra = diff.extra, missing = record.fields diff.rest }
       in
 
+      let blame_fields_differ = fun qualifier fields ctr_label =>
+        let plural = if %length% fields == 1 then "" else "s" in
+        ctr_label
+        |> label.with_message "%{qualifier} field%{plural} `%{string.join ", " fields}`"
+        |> label.append_note "`contract.Equal some_record` requires that the checked value is equal to the record `some_record`, but the sets of their fields differ."
+        |> blame
+      in
+
       fun constant =>
         let constant_type = %typeof% constant in
         let check_typeof_eq = fun ctr_label value =>
@@ -72,12 +80,13 @@
               let diff = fields_diff constant value in
 
               if %length% diff.extra != 0 then
-                %blame% ctr_label
+                blame_fields_differ "extra" diff.extra ctr_label
               else if %length% diff.missing != 0 then
-                %blame% ctr_label
+                blame_fields_differ "missing" diff.missing ctr_label
               else
                 %record_lazy_assume% ctr_label value (fun field =>
                   contract_map."%{field}"),
+
           `Array =>
             fun ctr_label value =>
               let value = check_typeof_eq ctr_label value in
