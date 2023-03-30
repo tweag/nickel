@@ -586,7 +586,7 @@ mod doc {
 
         let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
             num_backticks: 1,
-            literal: ident.bytes().collect(),
+            literal: ident.into(),
         })));
 
         res.append(code);
@@ -638,7 +638,7 @@ mod doc {
         })));
 
         list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
-            literal: format!("{ident} {separator} {types}").bytes().collect(),
+            literal: format!("{ident} {separator} {types}"),
             num_backticks: 1,
         }))));
 
