@@ -4,6 +4,7 @@ use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::{Error, ImportError},
+    position::TermPos,
     term::{RichTerm, Term, Traverse, TraverseOrder},
     typecheck::{self, linearization::Linearization},
 };
@@ -57,16 +58,12 @@ impl CacheExt for Cache {
         }
 
         // After self.parse(), the cache must be populated
-        let CachedTerm {
-            term,
-            state,
-            parse_errs,
-        } = self.terms_mut().remove(&file_id).unwrap();
+        let CachedTerm { term, .. } = self.terms().get(&file_id).unwrap();
+        let mut errors: Vec<(String, TermPos)> = Vec::new();
 
-        // We do this to get a list of the imports that have been resolved
-        // but don't typecheck, and output an appriopiate diagnostics
-        let mut errors = Vec::new();
-        let term = term.traverse::<_, _, ()>(
+        let term = term.clone(); // Don't like this
+
+        term.traverse::<_, _, ()>(
             // O(n) every time
             &|rt, errors: &mut Vec<_>| {
                 let RichTerm { ref term, pos } = rt;
@@ -83,15 +80,6 @@ impl CacheExt for Cache {
             TraverseOrder::TopDown,
         )
         .unwrap();
-
-        self.terms_mut().insert(
-            file_id,
-            CachedTerm {
-                term,
-                state,
-                parse_errs,
-            },
-        );
 
         let message = "This import could not be resolved because its content either failed to parse or typecheck correctly.";
         let errors = errors
