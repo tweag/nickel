@@ -280,8 +280,9 @@
           "This \"a\" is not a number."
       ```
 
-      WARNING: this function will currently break up Unicode extended grapheme
-      clusters if the regex matches a codepoint that exists within one.
+      **WARNING**: this function will currently break up Unicode extended
+      grapheme clusters if the regex matches a codepoint that exists within
+      one. This behaviour is expected to change in a future version.
       "%
     = fun pattern replace s =>
        %str_replace_regex% s pattern replace,
@@ -319,9 +320,9 @@
         true
       ```
 
-      WARNING: this function will currently return `true` even if the regex
-      match overlaps, or happens entirely within, with a Unicode extended
-      grapheme cluster.
+      **WARNING**: this function will currently return `true` even if the
+      regex match overlaps, or happens entirely within, with a Unicode extended
+      grapheme cluster. This behaviour is expected to change in a future version.
       "%
     = fun regex => %str_is_match% regex,
 
