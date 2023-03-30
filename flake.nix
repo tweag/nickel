@@ -393,7 +393,7 @@
           src = ./stdlib;
           installPhase = ''
             mkdir -p $out
-            for file in *
+            for file in $(ls *.ncl | grep -v 'internals.ncl')
             do
               module=$(basename $file .ncl)
               ${self.packages."${system}".default}/bin/nickel doc --format "${format}" -f "$module.ncl" \
