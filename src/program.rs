@@ -306,7 +306,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
-    pub fn extract_docs(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
+    pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
         self.vm.import_resolver_mut().parse(self.main_id)?;

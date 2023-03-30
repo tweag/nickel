@@ -309,9 +309,9 @@ fn export_doc(
                 })?,
         )
     };
-    let docs = program.extract_docs()?;
+    let doc = program.extract_doc()?;
     match format {
-        DocFormat::Json => docs.write_json(&mut out),
-        DocFormat::Markdown => docs.write_markdown(&mut out),
+        DocFormat::Json => doc.write_json(&mut out),
+        DocFormat::Markdown => doc.write_markdown(&mut out),
     }
 }
