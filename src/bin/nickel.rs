@@ -1,4 +1,5 @@
 //! Entry point of the program.
+use core::fmt;
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CacheImpl;
 use nickel_lang::program::{ColorOpt, Program};
@@ -81,12 +82,65 @@ enum Command {
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
     Doc {
-        /// Specify the path of the generated documentation file. Default to
+        /// The path of the generated documentation file. Default to
         /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
         /// `~/.nickel/doc/out.md` if the input is read from stdin.
         #[structopt(short = "o", long, parse(from_os_str))]
         output: Option<PathBuf>,
+        /// Write documentation to stdout. Takes precedence over `output`
+        #[structopt(long)]
+        stdout: bool,
+        /// The output format for the generated documentation. Possible values:
+        /// markdown, json
+        #[structopt(long, default_value = "markdown")]
+        format: DocFormat,
     },
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub enum DocFormat {
+    Json,
+    #[default]
+    Markdown,
+}
+
+impl DocFormat {
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Markdown => "md",
+        }
+    }
+}
+
+impl fmt::Display for DocFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Json => write!(f, "json"),
+            Self::Markdown => write!(f, "markdown"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ParseFormatError(String);
+
+impl fmt::Display for ParseFormatError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "unsupported export format {}", self.0)
+    }
+}
+
+impl std::str::FromStr for DocFormat {
+    type Err = ParseFormatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "json" => Ok(DocFormat::Json),
+            "markdown" => Ok(DocFormat::Markdown),
+            _ => Err(ParseFormatError(String::from(s))),
+        }
+    }
 }
 
 fn main() {
@@ -160,51 +214,11 @@ fn main() {
             Some(Command::Typecheck) => program.typecheck(),
             Some(Command::Repl { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
-            Some(Command::Doc { ref output }) => output
-                .as_ref()
-                .map(|output| {
-                    fs::File::create(output.clone()).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when opening or creating output file `{}`: {}",
-                            output.to_string_lossy(),
-                            e
-                        )))
-                    })
-                })
-                .unwrap_or_else(|| {
-                    let docpath = Path::new(".nickel/doc/");
-                    fs::create_dir_all(docpath).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when creating output path `{}`: {}",
-                            docpath.to_string_lossy(),
-                            e
-                        )))
-                    })?;
-                    let mut markdown_file = docpath.to_path_buf();
-
-                    let mut has_file_name = false;
-
-                    if let Some(path) = opts.file {
-                        if let Some(file_stem) = path.file_stem() {
-                            markdown_file.push(file_stem);
-                            has_file_name = true;
-                        }
-                    }
-
-                    if !has_file_name {
-                        markdown_file.push("out");
-                    }
-
-                    markdown_file.set_extension("md");
-                    File::create(markdown_file.clone().into_os_string()).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when opening or creating output file `{}`: {}",
-                            markdown_file.to_string_lossy(),
-                            e
-                        )))
-                    })
-                })
-                .and_then(|mut out| program.output_doc(&mut out)),
+            Some(Command::Doc {
+                output,
+                stdout,
+                format,
+            }) => export_doc(&mut program, opts.file.as_ref(), output, stdout, format),
             None => program
                 .eval_full()
                 .map(|t| println!("{}", Term::from(t).deep_repr())),
@@ -235,4 +249,69 @@ fn export(
     }
 
     Ok(())
+}
+
+#[cfg(feature = "doc")]
+fn export_doc(
+    program: &mut Program<CacheImpl>,
+    file: Option<&PathBuf>,
+    output: Option<PathBuf>,
+    stdout: bool,
+    format: DocFormat,
+) -> Result<(), Error> {
+    let mut out: Box<dyn std::io::Write> = if stdout {
+        Box::new(std::io::stdout())
+    } else {
+        Box::new(
+            output
+                .as_ref()
+                .map(|output| {
+                    fs::File::create(output.clone()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            output.to_string_lossy(),
+                            e
+                        )))
+                    })
+                })
+                .unwrap_or_else(|| {
+                    let docpath = Path::new(".nickel/doc/");
+                    fs::create_dir_all(docpath).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when creating output path `{}`: {}",
+                            docpath.to_string_lossy(),
+                            e
+                        )))
+                    })?;
+                    let mut output_file = docpath.to_path_buf();
+
+                    let mut has_file_name = false;
+
+                    if let Some(path) = file {
+                        if let Some(file_stem) = path.file_stem() {
+                            output_file.push(file_stem);
+                            has_file_name = true;
+                        }
+                    }
+
+                    if !has_file_name {
+                        output_file.push("out");
+                    }
+
+                    output_file.set_extension(format.extension());
+                    File::create(output_file.clone().into_os_string()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            output_file.to_string_lossy(),
+                            e
+                        )))
+                    })
+                })?,
+        )
+    };
+    let doc = program.extract_doc()?;
+    match format {
+        DocFormat::Json => doc.write_json(&mut out),
+        DocFormat::Markdown => doc.write_markdown(&mut out),
+    }
 }
