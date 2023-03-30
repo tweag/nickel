@@ -62,7 +62,7 @@ impl CacheExt for Cache {
         } = self.terms_mut().remove(&file_id).unwrap();
 
         // We do this to get a list of the imports that have been resolved
-        // but don't typecheck, and then, we give an appriopiate diagnostics
+        // but don't typecheck, and then, we give an appropriate diagnostics
         let mut errors = Vec::new();
         let term = term.traverse::<_, _, ()>(
             // O(n) every time, where n is the size of the term
