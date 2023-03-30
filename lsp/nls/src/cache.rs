@@ -52,41 +52,39 @@ impl CacheExt for Cache {
             for id in ids {
                 match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
                     Ok(_) => (),
-                    Err(..) => {} // we'll handle this error later on
+                    Err(..) => {
+                        // After self.parse(), the cache must be populated
+                        let CachedTerm { term, .. } = self.terms().get(&file_id).unwrap();
+                        let mut errors: Vec<(String, TermPos)> = Vec::new();
+
+                        let term = term.clone(); // Don't like this
+                        term.traverse::<_, _, ()>(
+                            &|rt, errors: &mut Vec<_>| {
+                                let RichTerm { ref term, pos } = rt;
+                                match term.as_ref() {
+                                    Term::ResolvedImport(id) if !lin_cache.contains_key(id) => {
+                                        let name: String = self.name(*id).to_str().unwrap().into();
+                                        errors.push((name, pos));
+                                        Ok(rt)
+                                    }
+                                    _ => Ok(rt),
+                                }
+                            },
+                            &mut errors,
+                            TraverseOrder::TopDown,
+                        )
+                        .unwrap();
+
+                        let message = "This import could not be resolved because its content either failed to parse or typecheck correctly.";
+                        let errors = errors.into_iter().map(|(name, pos)| {
+                            ImportError::IOError(name, String::from(message), pos)
+                        });
+
+                        import_errors.extend(errors);
+                    }
                 }
             }
         }
-
-        // After self.parse(), the cache must be populated
-        let CachedTerm { term, .. } = self.terms().get(&file_id).unwrap();
-        let mut errors: Vec<(String, TermPos)> = Vec::new();
-
-        let term = term.clone(); // Don't like this
-
-        term.traverse::<_, _, ()>(
-            // O(n) every time
-            &|rt, errors: &mut Vec<_>| {
-                let RichTerm { ref term, pos } = rt;
-                match term.as_ref() {
-                    Term::ResolvedImport(id) if !lin_cache.contains_key(id) => {
-                        let name: String = self.name(*id).to_str().unwrap().into();
-                        errors.push((name, pos));
-                        Ok(rt)
-                    }
-                    _ => Ok(rt),
-                }
-            },
-            &mut errors,
-            TraverseOrder::TopDown,
-        )
-        .unwrap();
-
-        let message = "This import could not be resolved because its content either failed to parse or typecheck correctly.";
-        let errors = errors
-            .into_iter()
-            .map(|(name, pos)| ImportError::IOError(name, String::from(message), pos));
-
-        import_errors.extend(errors);
 
         // After self.parse(), the cache must be populated
         let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();
