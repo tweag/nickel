@@ -32,6 +32,7 @@ use crate::{
 };
 
 pub const DOT_COMPL_TRIGGER: &str = ".";
+pub const FORMATTING_COMMAND: [&str; 3] = ["topiary", "-l", "nickel"];
 
 pub struct Server {
     pub connection: Connection,
