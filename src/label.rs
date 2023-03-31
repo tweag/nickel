@@ -529,3 +529,21 @@ impl Default for Label {
         }
     }
 }
+
+/// A merge label.
+///
+/// Like [`Label`], a merge label is used to carry and propagate error reporting data during the
+/// evaluation. While [`Label`] is used for contracts, `MergeLabel` is used for merging. The latter
+/// track less information than the former, but this information is still important. Indeed,
+/// recursive merging of records usually can't track original positions very well. The merge label
+/// allows to at least remember the original position of the merge, as written somewhere in a
+/// Nickel source.
+///
+/// Additionally, the merging arrays currently generates a contract and its associated label for
+/// which we don't necessarily have a defined span at hand. The merge label makes it possible to
+/// fallback to the original position of the merge.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MergeLabel {
+    /// The span of the original merge (which might then decompose into many others).
+    pub span: RawSpan,
+}
