@@ -54,10 +54,10 @@
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
-use crate::position::{RawSpan, TermPos};
+use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, RichTerm, SharedTerm, Term, TypeAnnotation,
+    BinaryOp, RichTerm, Term, TypeAnnotation,
 };
 use std::collections::HashMap;
 
@@ -78,17 +78,6 @@ impl From<MergeMode> for MergeLabel {
         match mode {
             MergeMode::Standard(merge_label) => merge_label,
             MergeMode::Contract(label) => label.into(),
-        }
-    }
-}
-
-impl MergeMode {
-    // Extract the span of the original merge or contract application from the label contained
-    // in `MergeMode`.
-    fn merge_span(&self) -> RawSpan {
-        match self {
-            MergeMode::Standard(merge_label) => merge_label.span,
-            MergeMode::Contract(label) => label.span,
         }
     }
 }
@@ -133,17 +122,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b2)),
-                        pos: pos2,
-                    },
-                    mode.merge_span().into(),
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Bool(b1), pos1),
+                    right_arg: RichTerm::new(Term::Bool(b2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
@@ -153,17 +136,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n2)),
-                        pos: pos2,
-                    },
-                    mode.merge_span().into(),
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Num(n1), pos1),
+                    right_arg: RichTerm::new(Term::Num(n2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Str(s1), Term::Str(s2)) => {
@@ -173,17 +150,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s2)),
-                        pos: pos2,
-                    },
-                    mode.merge_span().into(),
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Str(s1), pos1),
+                    right_arg: RichTerm::new(Term::Str(s2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
@@ -193,17 +164,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l2)),
-                        pos: pos2,
-                    },
-                    mode.merge_span().into(),
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Lbl(l1), pos1),
+                    right_arg: RichTerm::new(Term::Lbl(l2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Enum(i1), Term::Enum(i2)) => {
@@ -213,17 +178,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i2)),
-                        pos: pos2,
-                    },
-                    mode.merge_span().into(),
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Enum(i1), pos1),
+                    right_arg: RichTerm::new(Term::Enum(i2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
@@ -358,17 +317,11 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 call_stack: call_stack.clone(),
             }),
             // The following cases are either errors or not yet implemented
-            (mode, _) => Err(EvalError::MergeIncompatibleArgs(
-                RichTerm {
-                    term: SharedTerm::new(t1_),
-                    pos: pos1,
-                },
-                RichTerm {
-                    term: SharedTerm::new(t2_),
-                    pos: pos2,
-                },
-                mode.merge_span().into(),
-            )),
+            (mode, _) => Err(EvalError::MergeIncompatibleArgs {
+                left_arg: RichTerm::new(t1_, pos1),
+                right_arg: RichTerm::new(t2_, pos2),
+                merge_label: mode.into(),
+            }),
         },
     }
 }
