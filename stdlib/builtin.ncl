@@ -209,7 +209,7 @@
     deserialize
       : [| `Json, `Toml, `Yaml |] -> String -> Dyn
       | doc m%"
-        Deserializes a string into a nickel value from the given representation.
+        Deserializes a string into a Nickel value from the given representation.
 
         # Examples
 

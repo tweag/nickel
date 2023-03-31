@@ -386,7 +386,7 @@
         # Performance
 
         Note that this function may perform better by sharing its partial application between multiple calls,
-        because in this case the underlying regular expression will only be compiled once (See the documentation
+        because in this case the underlying regular expression will only be compiled once (see the documentation
         of `string.is_match` for more details).
       "%
       = fun regex => %str_find% regex,

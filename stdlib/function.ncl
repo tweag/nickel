@@ -4,9 +4,11 @@
       : forall a. a -> a
       | doc m%"
         The identity function, that is
+
         ```nickel
         id x = x
         ```
+
         for any value `x`.
       "%
       = fun x => x,
@@ -28,6 +30,7 @@
       : forall a b c. (b -> c) -> (a -> b) -> (a -> c)
       | doc m%"
         Function composition, from right to left. That is,
+
         ```nickel
         compose f g x == f (g x)
         ```
