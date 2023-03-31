@@ -11,9 +11,10 @@ use lsp_types::{
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
-    OneOf, ReferenceParams, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, WorkDoneProgressOptions,
+    DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams, HoverOptions,
+    HoverParams, HoverProviderCapability, OneOf, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    WorkDoneProgressOptions,
 };
 
 use nickel_lang::{
@@ -26,7 +27,7 @@ use nickel_lang::{stdlib, typecheck::Context};
 use crate::{
     cache::CacheExt,
     linearization::{completed::Completed, interface::TermKind, Environment, ItemId},
-    requests::{completion, goto, hover, symbols},
+    requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
 
@@ -243,6 +244,12 @@ impl Server {
                 debug!("handle completion");
                 let params: DocumentSymbolParams = serde_json::from_value(req.params).unwrap();
                 symbols::handle_document_symbols(params, req.id.clone(), self)
+            }
+
+            Formatting::METHOD => {
+                debug!("handle formatting");
+                let params: DocumentFormattingParams = serde_json::from_value(req.params).unwrap();
+                formatting::handle_format_document(params, req.id.clone(), self)
             }
 
             _ => Ok(()),
