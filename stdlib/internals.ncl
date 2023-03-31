@@ -15,86 +15,93 @@
 
   "$array" = fun element_contract label value =>
     if %typeof% value == `Array then
-        %array_lazy_assume% (%go_array% label) value element_contract
+      %array_lazy_assume% (%go_array% label) value element_contract
     else
-        %blame% label,
+      %blame% label,
 
   "$func" = fun domain codomain label value =>
-      if %typeof% value == `Function then
-          (fun x => %assume% codomain (%go_codom% label) (value (%assume% domain (%chng_pol% (%go_dom% label)) x)))
-      else
-          %blame% label,
+    if %typeof% value == `Function then
+      (fun x => %assume% codomain (%go_codom% label) (value (%assume% domain (%chng_pol% (%go_dom% label)) x)))
+    else
+      %blame% label,
 
   "$forall_var" = fun sealing_key label value =>
-      let current_polarity = %polarity% label in
-      let polarity = (%lookup_type_variable% sealing_key label).polarity in
-      if polarity == current_polarity then
-          %unseal% sealing_key value (%blame% label)
-      else
-          # Here, we know that this term should be sealed, but to give the right
-          # blame for the contract, we have to change the polarity to match the
-          # polarity of the `Forall`, because this is what's important for
-          # blaming polymorphic contracts.
-          %seal% sealing_key (%chng_pol% label) value,
+    let current_polarity = %polarity% label in
+    let polarity = (%lookup_type_variable% sealing_key label).polarity in
+    if polarity == current_polarity then
+      %unseal% sealing_key value (%blame% label)
+    else
+      # Here, we know that this term should be sealed, but to give the right
+      # blame for the contract, we have to change the polarity to match the
+      # polarity of the `Forall`, because this is what's important for
+      # blaming polymorphic contracts.
+      %seal% sealing_key (%chng_pol% label) value,
 
-  "$forall" =
-    let flip = match {
+  "$forall" = let flip =
+    match {
       `Positive => `Negative,
       `Negative => `Positive,
-    } in
-    fun sealing_key polarity contract label value =>
+    }
+  in
+  fun sealing_key polarity contract label value =>
     let polarity = if %dualize% label then flip polarity else polarity in
     contract (%insert_type_variable% sealing_key polarity label) value,
 
   "$enums" = fun case label value =>
-      if %typeof% value == `Enum then
-          %assume% case label value
-      else
-          %blame% (%label_with_message% "not an enum tag" label),
+    if %typeof% value == `Enum then
+      %assume% case label value
+    else
+      %blame% (%label_with_message% "not an enum tag" label),
 
   "$enum_fail" = fun label =>
-      %blame% (%label_with_message% "tag not included in the enum type" label),
+    %blame% (%label_with_message% "tag not included in the enum type" label),
 
   "$record" = fun field_contracts tail_contract label value =>
     if %typeof% value == `Record then
       # Returns the sub-record of `l` containing only those fields which are not
       # present in `r`. If `l` has a sealed polymorphic tail then it will be
       # preserved.
-      let field_diff = fun left right => array.fold_left
-        (fun acc field =>
-          if %has_field% field right then
-            acc
-          else
-            %record_insert% field acc (left."%{field}"))
-        (%record_empty_with_tail% left)
-        (%fields% left)
+      let field_diff =
+        fun left right =>
+          array.fold_left
+            (
+              fun acc field =>
+                if %has_field% field right then
+                  acc
+                else
+                  %record_insert% field acc (left."%{field}")
+            )
+            (%record_empty_with_tail% left)
+            (%fields% left)
       in
-
       let contracts_not_in_value = field_diff field_contracts value in
       let missing_fields = %fields% contracts_not_in_value in
-
       if %length% missing_fields == 0 then
         let tail_fields = field_diff value field_contracts in
-        let fields_with_contracts = array.fold_left
-          (fun acc field =>
-            if %has_field% field field_contracts then
-              let contract = field_contracts."%{field}" in
-              let label = %go_field% field label in
-              let val = value."%{field}" in
-              %record_insert% field acc (%assume% contract label val)
-            else
-              acc)
-          {}
-          (%fields% value)
+        let fields_with_contracts =
+          array.fold_left
+            (
+              fun acc field =>
+                if %has_field% field field_contracts then
+                  let contract = field_contracts."%{field}" in
+                  let label = %go_field% field label in
+                  let val = value."%{field}" in
+                  %record_insert% field acc (%assume% contract label val)
+                else
+                  acc
+            )
+            {}
+            (%fields% value)
         in
         tail_contract fields_with_contracts label tail_fields
       else
         let plural = if %length% missing_fields == 1 then "" else "s" in
-        %blame% (
-          %label_with_message%
-            "missing field%{plural} `%{string.join ", " missing_fields}`"
-            label
-        )
+        %blame%
+          (
+            %label_with_message%
+              "missing field%{plural} `%{string.join ", " missing_fields}`"
+              label
+          )
     else
       %blame% (%label_with_message% "not a record" label),
 
@@ -105,28 +112,29 @@
       %blame% (%label_with_message% "not a record" label),
 
   "$forall_tail" = fun sealing_key acc label value =>
-      let current_polarity = %polarity% label in
-      let polarity = (%lookup_type_variable% sealing_key label).polarity in
-      if polarity == current_polarity then
-          if value == {} then
-            let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
-            let tail = %record_unseal_tail% sealing_key tagged_label value in
-            acc & tail
-          else
-            let extra_fields = %fields% value in
-            let plural = if %length% extra_fields == 1 then "" else "s" in
-            %blame% (
-              %label_with_message%
+    let current_polarity = %polarity% label in
+    let polarity = (%lookup_type_variable% sealing_key label).polarity in
+    if polarity == current_polarity then
+      if value == {} then
+        let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
+        let tail = %record_unseal_tail% sealing_key tagged_label value in
+        acc & tail
+      else
+        let extra_fields = %fields% value in
+        let plural = if %length% extra_fields == 1 then "" else "s" in
+        %blame%
+          (
+            %label_with_message%
               "extra field%{plural} `%{string.join ", " extra_fields}`"
               label
-            )
-      else
-          # Note: in order to correctly attribute blame, the polarity of `l`
-          # must match the polarity of the `forall` which introduced the
-          # polymorphic contract (i.e. `pol`). Since we know in this branch
-          # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
-          # we continue.
-          %record_seal_tail% sealing_key (%chng_pol% label) acc value,
+          )
+    else
+      # Note: in order to correctly attribute blame, the polarity of `l`
+      # must match the polarity of the `forall` which introduced the
+      # polymorphic contract (i.e. `pol`). Since we know in this branch
+      # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
+      # we continue.
+      %record_seal_tail% sealing_key (%chng_pol% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
 
@@ -136,11 +144,12 @@
     else
       let extra_fields = %fields% value in
       let plural = if %length% extra_fields == 1 then "" else "s" in
-      %blame% (
-        %label_with_message%
-          "extra field%{plural} `%{string.join ", " extra_fields}`"
-          label
-      ),
+      %blame%
+        (
+          %label_with_message%
+            "extra field%{plural} `%{string.join ", " extra_fields}`"
+            label
+        ),
 
   # Recursive priorities operators
 

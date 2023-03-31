@@ -1,7 +1,8 @@
 {
   builtin = {
-    is_number : Dyn -> Bool
-    | doc m%"
+    is_number
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a number.
 
       For example:
@@ -12,10 +13,11 @@
           false
       ```
       "%
-    = fun x => %typeof% x == `Number,
+      = fun x => %typeof% x == `Number,
 
-    is_bool : Dyn -> Bool
-    | doc m%"
+    is_bool
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a boolean.
 
       For example:
@@ -26,10 +28,11 @@
           false
       ```
       "%
-    = fun x => %typeof% x == `Bool,
+      = fun x => %typeof% x == `Bool,
 
-    is_string : Dyn -> Bool
-    | doc m%"
+    is_string
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a string.
 
       For example:
@@ -40,10 +43,11 @@
           true
       ```
       "%
-    = fun x => %typeof% x == `String,
+      = fun x => %typeof% x == `String,
 
-    is_enum : Dyn -> Bool
-    | doc m%"
+    is_enum
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is an enum tag.
 
       For example:
@@ -54,11 +58,11 @@
           true
       ```
       "%
+      = fun x => %typeof% x == `Enum,
 
-    = fun x => %typeof% x == `Enum,
-
-    is_function : Dyn -> Bool
-    | doc m%"
+    is_function
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a function.
 
       For example
@@ -69,10 +73,11 @@
           false
       ```
       "%
-    = fun x => %typeof% x == `Function,
+      = fun x => %typeof% x == `Function,
 
-    is_array : Dyn -> Bool
-    | doc m%"
+    is_array
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a array.
 
       For example
@@ -83,10 +88,11 @@
           false
       ```
       "%
-    = fun x => %typeof% x == `Array,
+      = fun x => %typeof% x == `Array,
 
-    is_record : Dyn -> Bool
-    | doc m%"
+    is_record
+      : Dyn -> Bool
+      | doc m%"
       Checks if the given value is a record.
 
       For example
@@ -97,9 +103,10 @@
           true
       ```
       "%
-    = fun x => %typeof% x == `Record,
+      = fun x => %typeof% x == `Record,
 
-    typeof : Dyn -> [|
+    typeof
+      : Dyn -> [|
         `Number,
         `Bool,
         `String,
@@ -110,7 +117,7 @@
         `Record,
         `Other
       |]
-    | doc m%"
+      | doc m%"
       Results in a value representing the type of the typed value.
 
       For example:
@@ -121,10 +128,11 @@
           `Function
       ```
       "%
-    = fun x => %typeof% x,
+      = fun x => %typeof% x,
 
-    seq : forall a. Dyn -> a -> a
-    | doc m%"
+    seq
+      : forall a. Dyn -> a -> a
+      | doc m%"
       `seq x y` forces the evaluation of `x`, before resulting in `y`.
 
       For example:
@@ -137,10 +145,11 @@
           37
       ```
       "%
-    = fun x y => %seq% x y,
+      = fun x y => %seq% x y,
 
-    deep_seq : forall a. Dyn -> a -> a
-    | doc m%"
+    deep_seq
+      : forall a. Dyn -> a -> a
+      | doc m%"
       `deep_seq x y` forces a deep evaluation `x`, before resulting in `y`.
 
       For example:
@@ -153,10 +162,11 @@
           error
       ```
       "%
-    = fun x y => %deep_seq% x y,
+      = fun x y => %deep_seq% x y,
 
-    hash : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> String -> String
-    | doc m%"
+    hash
+      : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> String -> String
+      | doc m%"
       Hashes the given string provided the desired hash algorithm.
 
       For example:
@@ -165,10 +175,11 @@
           "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
       "%
-    = fun type s => %hash% type s,
+      = fun type s => %hash% type s,
 
-    serialize : [| `Json, `Toml, `Yaml |] -> Dyn -> String
-    | doc m%"
+    serialize
+      : [| `Json, `Toml, `Yaml |] -> Dyn -> String
+      | doc m%"
       Serializes the given value to the desired representation.
 
       For example:
@@ -180,10 +191,11 @@
           }"
       ```
       "%
-    = fun format x => %serialize% format (%force% x),
+      = fun format x => %serialize% format (%force% x),
 
-    deserialize : [| `Json, `Toml, `Yaml |] -> String -> Dyn
-    | doc m%"
+    deserialize
+      : [| `Json, `Toml, `Yaml |] -> String -> Dyn
+      | doc m%"
       Deserializes the given string to a nickel value given the encoding of the string.
 
       For example:
@@ -192,10 +204,11 @@
           { hello = "Hello", world = "World" }
       ```
       "%
-    = fun format x => %deserialize% format x,
+      = fun format x => %deserialize% format x,
 
-    to_string | string.Stringable -> String
-    | doc m%"
+    to_string
+      | string.Stringable -> String
+      | doc m%"
       Converts a stringable value to a string representation. Same as
       `string.from`.
 
@@ -209,10 +222,11 @@
         "null"
       ```
       "%
-    = fun x => %to_str% x,
+      = fun x => %to_str% x,
 
-    trace : forall a. String -> a -> a
-    | doc m%"
+    trace
+      : forall a. String -> a -> a
+      | doc m%"
       `builtin.trace msg x` prints `msg` to standard output when encountered by the evaluator,
       and proceed with the evaluation of `x`.
 
@@ -223,10 +237,10 @@
         true
       ```
       "%
-    = fun msg x => %trace% msg x,
+      = fun msg x => %trace% msg x,
 
     FailWith
-    | doc m%"
+      | doc m%"
       A contract that always fails with a given message.
 
       For example:
@@ -244,10 +258,11 @@
           │ ^ applied to this expression
       ```
     "%
-    = fun msg label value => contract.blame_with_message msg label,
+      = fun msg label value => contract.blame_with_message msg label,
 
-    fail_with | String -> Dyn
-    | doc m%"
+    fail_with
+      | String -> Dyn
+      | doc m%"
       Unconditionally abort evaluation with the given message.
 
       For example:
@@ -256,7 +271,6 @@
         error: contract broken by a value: message
       ```
     "%
-    = fun msg => null | FailWith msg,
-
+      = fun msg => null | FailWith msg,
   },
 }

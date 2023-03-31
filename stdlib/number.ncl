@@ -1,7 +1,7 @@
 {
   number = {
     Integer
-    | doc m%"
+      | doc m%"
       Contract to enforce a number is an integer.
 
       For example:
@@ -12,17 +12,17 @@
           42
       ```
       "%
-    = fun label value =>
-      if %typeof% value == `Number then
-        if value % 1 == 0 then
-          value
+      = fun label value =>
+        if %typeof% value == `Number then
+          if value % 1 == 0 then
+            value
+          else
+            %blame% (%label_with_message% "not an integer" label)
         else
-          %blame% (%label_with_message% "not an integer" label)
-      else
-        %blame% (%label_with_message% "not a number" label),
+          %blame% (%label_with_message% "not a number" label),
 
     Nat
-    | doc m%"
+      | doc m%"
       Contract to enforce a number is a natural number (including 0).
 
       For example:
@@ -35,17 +35,17 @@
           error
       ```
       "%
-    = fun label value =>
-      if %typeof% value == `Number then
-        if value % 1 == 0 && value >= 0 then
-          value
+      = fun label value =>
+        if %typeof% value == `Number then
+          if value % 1 == 0 && value >= 0 then
+            value
+          else
+            %blame% (%label_with_message% "not a natural" label)
         else
-          %blame% (%label_with_message% "not a natural" label)
-      else
-        %blame% (%label_with_message% "not a number" label),
+          %blame% (%label_with_message% "not a number" label),
 
     PosNat
-    | doc m%"
+      | doc m%"
       Contract to enforce a number is a positive natural number.
 
       For example:
@@ -58,17 +58,17 @@
           error
       ```
       "%
-    = fun label value =>
-      if %typeof% value == `Number then
-        if value % 1 == 0 && value > 0 then
-          value
+      = fun label value =>
+        if %typeof% value == `Number then
+          if value % 1 == 0 && value > 0 then
+            value
+          else
+            %blame% (%label_with_message% "not positive integer" label)
         else
-          %blame% (%label_with_message% "not positive integer" label)
-      else
-        %blame% (%label_with_message% "not a number" label),
+          %blame% (%label_with_message% "not a number" label),
 
     NonZero
-    | doc m%"
+      | doc m%"
       Contract to enforce a number is anything but zero.
 
       For example:
@@ -79,17 +79,18 @@
           error
       ```
       "%
-    = fun label value =>
-      if %typeof% value == `Number then
-        if value != 0 then
-          value
+      = fun label value =>
+        if %typeof% value == `Number then
+          if value != 0 then
+            value
+          else
+            %blame% (%label_with_message% "non-zero" label)
         else
-          %blame% (%label_with_message% "non-zero" label)
-      else
-        %blame% (%label_with_message% "not a number" label),
+          %blame% (%label_with_message% "not a number" label),
 
-    is_integer : Number -> Bool
-    | doc m%"
+    is_integer
+      : Number -> Bool
+      | doc m%"
       Checks if the given number is an integer.
 
       For example:
@@ -100,10 +101,11 @@
           false
       ```
       "%
-    = fun x => x % 1 == 0,
+      = fun x => x % 1 == 0,
 
-    min : Number -> Number -> Number
-    | doc m%"
+    min
+      : Number -> Number -> Number
+      | doc m%"
       Results in the lowest of the given two numbers.
 
       For example:
@@ -112,10 +114,11 @@
           -1337
       ```
       "%
-    = fun x y => if x <= y then x else y,
+      = fun x y => if x <= y then x else y,
 
-    max : Number -> Number -> Number
-    | doc m%"
+    max
+      : Number -> Number -> Number
+      | doc m%"
       Results in the highest of the given two numbers.
 
       For example:
@@ -124,10 +127,11 @@
           42
       ```
       "%
-    = fun x y => if x >= y then x else y,
+      = fun x y => if x >= y then x else y,
 
-    floor : Number -> Number
-    | doc m%"
+    floor
+      : Number -> Number
+      | doc m%"
       Rounds the number down to the next integer.
 
       For example:
@@ -136,13 +140,15 @@
           42
       ```
       "%
-    = fun x =>
-      if x >= 0
-      then x - (x % 1)
-      else x - 1 - (x % 1),
+      = fun x =>
+        if x >= 0 then
+          x - (x % 1)
+        else
+          x - 1 - (x % 1),
 
-    abs : Number -> Number
-    | doc m%"
+    abs
+      : Number -> Number
+      | doc m%"
       Results in the absolute value of the given number.
 
       For example:
@@ -153,10 +159,11 @@
           42
       ```
       "%
-    = fun x => if x < 0 then -x else x,
+      = fun x => if x < 0 then -x else x,
 
-    fract : Number -> Number
-    | doc m%"
+    fract
+      : Number -> Number
+      | doc m%"
       Results in the fractional part of the given number.
 
       For example:
@@ -167,10 +174,11 @@
           0
       ```
       "%
-    = fun x => x % 1,
+      = fun x => x % 1,
 
-    truncate : Number -> Number
-    | doc m%"
+    truncate
+      : Number -> Number
+      | doc m%"
       Truncates the given number.
 
       For example:
@@ -181,10 +189,11 @@
           42
       ```
       "%
-    = fun x => x - (x % 1),
+      = fun x => x - (x % 1),
 
-    pow : Number -> Number -> Number
-    | doc m%"
+    pow
+      : Number -> Number -> Number
+      | doc m%"
       `pow x y` results in `x` to the power of `y`.
 
       For example:
@@ -206,6 +215,6 @@
       case, **be aware that both the conversion from rationals to floats, and
       the power operation, might incur rounding errors**.
       "%
-    = fun x n => %pow% x n,
+      = fun x n => %pow% x n,
   }
 }
