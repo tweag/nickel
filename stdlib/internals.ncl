@@ -58,8 +58,8 @@
 
   "$record" = fun field_contracts tail_contract label value =>
     if %typeof% value == `Record then
-      # Returns the sub-record of `l` containing only those fields which are not
-      # present in `r`. If `l` has a sealed polymorphic tail then it will be
+      # Returns the sub-record of `left` containing only those fields which are not
+      # present in `right`. If `left` has a sealed polymorphic tail then it will be
       # preserved.
       let field_diff =
         fun left right =>

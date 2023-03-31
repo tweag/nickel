@@ -1,5 +1,4 @@
-{
-  contract = {
+{ contract = {
     Equal
       | doc m%"
         `Equal` is a contract enforcing equality to a given constant.
@@ -19,40 +18,96 @@
          => ERROR (contract broken by a value)
         ```
       "%
-      = fun constant =>
-        %typeof% constant
-        |> match {
+    =
+      let fields_diff
+        | doc m%"
+            Compute the difference between the fields of two records.
+            `fields_diff` isn't concerned with the actual values themselves, but
+            just with field names.
+
+            Return a record of type
+            `{extra : Array String, missing: Array String}`, relative to the
+            first argument `constant`.
+          "%
+        = fun constant value =>
+        let diff = value
+          |> record.fields
+          |> array.fold_left (fun acc field =>
+            if record.has_field field acc.rest then
+              {
+                extra = acc.extra,
+                rest = record.remove field acc.rest,
+              }
+            else
+              {
+                extra = array.append field acc.extra,
+                rest = acc.rest,
+              }
+          ) { extra = [], rest = constant }
+        in
+        { extra = diff.extra, missing = record.fields diff.rest }
+      in
+
+      let blame_fields_differ = fun qualifier fields ctr_label =>
+        let plural = if %length% fields == 1 then "" else "s" in
+        ctr_label
+        |> label.with_message "%{qualifier} field%{plural} `%{string.join ", " fields}`"
+        |> label.append_note "`contract.Equal some_record` requires that the checked value is equal to the record `some_record`, but the sets of their fields differ."
+        |> blame
+      in
+
+      fun constant =>
+        let constant_type = %typeof% constant in
+        let check_typeof_eq = fun ctr_label value =>
+          let value_type = %typeof% value in
+          if value_type == constant_type then
+            value
+          else
+            ctr_label
+            |> label.with_message "expected `%{%to_str% constant_type}`, got `%{%to_str% value_type}`"
+            |> label.append_note "`contract.Equal some_value` requires that the checked value is equal to `some_value`, but they don't have the same type."
+            |> blame
+        in
+
+        constant_type |> match {
           `Record =>
-            #TODO: lazy version for records. The difficulty is not to make it lazy
-            #right now, but to make it preserve recursivity as well. We might need
-            #something like a recursivity-preserving map, or a primop for
-            # per-field contract application, like %array_lazy_assume%.
-            from_predicate ((==) constant),
-          `Array =>
-            fun label' value =>
-              if %typeof% value == `Array then
-                let value_length = %length% value in
-                if value_length == %length% constant then
-                  %generate%
-                    value_length
-                    (
-                      fun i =>
-                        contract.apply (Equal (%elem_at% constant i)) label' value
-                    )
-                else
-                  label'
-                  |> label.with_message  "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length}`)"
+            # we map the constant from {field1 = val1, .., fieldn = valn} to
+            # {field1 = Equal val1, .., fieldn = Equal valn}, building a
+            # dictionary of equality contracts
+            let contract_map = %record_map% constant (fun _key => Equal) in
+            fun ctr_label value =>
+              let value = check_typeof_eq ctr_label value in
+              let diff = fields_diff constant value in
 
-                  |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
-                  |> blame
+              if %length% diff.extra != 0 then
+                blame_fields_differ "extra" diff.extra ctr_label
+              else if %length% diff.missing != 0 then
+                blame_fields_differ "missing" diff.missing ctr_label
               else
-                label'
-                |> label.with_message "expected Array, got %{%to_str% (%typeof% value)}"
+                %record_lazy_assume% ctr_label value (fun field =>
+                  contract_map."%{field}"),
 
-                |> label.append_note "`Equal some_array` requires that the checked value is equal to the array `some_array`, but the provided value isn't an array."
+          `Array =>
+            fun ctr_label value =>
+              let value = check_typeof_eq ctr_label value in
+              let value_length = %length% value in
+
+              if value_length == %length% constant then
+                %generate% value_length (fun i =>
+                  %elem_at% value i
+                  |> contract.apply (Equal (%elem_at% constant i)) ctr_label)
+              else
+                ctr_label
+                |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length})`"
+                |> label.append_note "`contract.Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
                 |> blame,
-          # Outside of lazy data structure, we just use (==)
-          _ => from_predicate ((==) constant),
+
+          # Outside of lazy data structures, we just use (==)
+          _ =>
+            fun ctr_label value =>
+              value
+              |> check_typeof_eq ctr_label
+              |> from_predicate ((==) constant) ctr_label,
         },
 
     blame
