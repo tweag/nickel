@@ -443,6 +443,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 })
             }
             Term::ResolvedImport(file) => {
+                lin.import_locations.insert(*file, pos);
                 fn final_term_pos(term: &RichTerm) -> &TermPos {
                     let RichTerm { term, pos } = term;
                     match term.as_ref() {
@@ -539,7 +540,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         debug!("unresolved references: {:?}", unresolved);
 
         let Building {
-            mut linearization, ..
+            mut linearization,
+            import_locations,
+            ..
         } = lin.into_inner();
 
         linearization.sort_by(
@@ -593,7 +596,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, id_mapping))
+        Linearization::new(Completed::new(lin_, id_mapping, import_locations))
     }
 
     fn scope(&mut self) -> Self {

@@ -4,7 +4,6 @@ use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
     error::{Error, ImportError},
-    term::{RichTerm, Term, Traverse, TraverseOrder},
     typecheck::{self, linearization::Linearization},
 };
 
@@ -48,59 +47,34 @@ impl CacheExt for Cache {
         let mut import_errors = Vec::new();
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
+            let mut errors = Vec::new();
             for id in ids {
                 // Ignore the results, and check for errors after resolution
-                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
+                match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
+                    Ok(..) => {}
+                    Err(..) if !lin_cache.contains_key(&id) => {
+                        let name: String = self.name(id).to_str().unwrap().into();
+                        if let Some(pos) = lin_cache
+                            .get(&file_id)
+                            .and_then(|lin| lin.import_locations.get(&id))
+                        {
+                            errors.push((name, *pos));
+                        }
+                    }
+                    Err(..) => {}
+                }
             }
+            let message = "This import could not be resolved because its content have either failed to parse or typecheck correctly.";
+            let errors = errors
+                .into_iter()
+                .map(|(name, pos)| ImportError::IOError(name, String::from(message), pos));
+
+            import_errors.extend(errors);
         }
 
-        // After self.parse(), the cache must be populated
-        let CachedTerm {
-            term,
-            state,
-            parse_errs,
-        } = self.terms_mut().remove(&file_id).unwrap();
-
-        // We do this to get a list of the imports that have been resolved
-        // but don't typecheck, and then, we give an appropriate diagnostics
-        let mut errors = Vec::new();
-        let term = term.traverse::<_, _, ()>(
-            // O(n) every time, where n is the size of the term
-            // Alternatively, we can get the list of resolved imports of this file 
-            // that do not have a corresponding entry in `lin_cache`, but with that 
-            // we cannot know the correct location of the import term, which is more 
-            // important for resporting diagnostics.
-            &|rt, errors: &mut Vec<_>| {
-                let RichTerm { ref term, pos } = rt;
-                match term.as_ref() {
-                    Term::ResolvedImport(id) if !lin_cache.contains_key(id) => {
-                        let name: String = self.name(*id).to_str().unwrap().into();
-                        errors.push((name, pos));
-                        Ok(rt)
-                    }
-                    _ => Ok(rt),
-                }
-            },
-            &mut errors,
-            TraverseOrder::TopDown,
-        )
-        .unwrap();
-
-        self.terms_mut().insert(
-            file_id,
-            CachedTerm {
-                term,
-                state,
-                parse_errs,
-            },
-        );
-
-        let message = "This import could not be resolved because its content have either failed to parse or typecheck correctly.";
-        let errors = errors
-            .into_iter()
-            .map(|(name, pos)| ImportError::IOError(name, String::from(message), pos));
-
-        import_errors.extend(errors);
+        // Two things
+        // 1. keep track of the positions of imports in a file during linearization
+        // 2. we might want to know if the previous `for` succeded
 
         // After self.parse(), the cache must be populated
         let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();
@@ -112,6 +86,7 @@ impl CacheExt for Cache {
             let building = Linearization::new(Building {
                 lin_cache,
                 linearization: Vec::new(),
+                import_locations: HashMap::new(),
                 cache: self,
             });
             let (_, linearized) =

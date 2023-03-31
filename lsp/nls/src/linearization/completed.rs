@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use codespan::{ByteIndex, FileId};
-use nickel_lang::{term::record::FieldMetadata, typecheck::linearization::LinearizationState};
+use nickel_lang::{
+    position::TermPos, term::record::FieldMetadata, typecheck::linearization::LinearizationState,
+};
 
 use super::{
     interface::{Resolved, TermKind, UsageState, ValueState},
@@ -11,6 +13,7 @@ use super::{
 #[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
+    pub import_locations: HashMap<FileId, TermPos>,
     id_to_index: HashMap<ItemId, usize>,
 }
 
@@ -18,9 +21,11 @@ impl Completed {
     pub fn new(
         linearization: Vec<LinearizationItem<Resolved>>,
         id_to_index: HashMap<ItemId, usize>,
+        import_locations: HashMap<FileId, TermPos>,
     ) -> Self {
         Self {
             linearization,
+            import_locations,
             id_to_index,
         }
     }

@@ -748,7 +748,7 @@ mod tests {
             .enumerate()
             .map(|(index, id)| (id, index))
             .collect();
-        Completed::new(linearization, id_to_index)
+        Completed::new(linearization, id_to_index, HashMap::new())
     }
 
     #[test]
@@ -909,7 +909,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, id)| (id, index))
                 .collect();
-            Completed::new(linearization, id_to_index)
+            Completed::new(linearization, id_to_index, HashMap::new())
         }
 
         // ids is an array of the ids from this linearization
