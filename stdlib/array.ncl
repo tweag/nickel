@@ -70,7 +70,7 @@
           Returns the given array without its last element.
 
           # Examples
-          
+
           ```nickel
           drop_last [ 1, 2, 3 ] =>
             [ 1, 2 ]
@@ -84,7 +84,7 @@
           Returns the length of the given array.
 
           # Examples
-          
+
           ```nickel
           length [ "Hello,", " World!" ] =>
             2
@@ -102,7 +102,7 @@
           ```
 
           # Examples
-          
+
           ```nickel
           map (fun x => x + 1) [ 1, 2, 3 ] =>
             [ 2, 3, 4 ]
@@ -116,7 +116,7 @@
           Retrieves the n-th element from an array, with indices starting at 0.
 
           # Examples
-          
+
           ```nickel
           at 3 [ "zero" "one" "two" "three" "four" ] =>
             "three"
@@ -130,7 +130,7 @@
           Appends the second array to the first one.
 
           # Examples
-          
+
           ```nickel
             concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
               [ 1, 2, 3, 4, 5, 6 ]
@@ -259,7 +259,7 @@
           Builds an array given the first element and the rest of the array.
 
           # Examples
-          
+
           ```nickel
           prepend 1 [ 2, 3 ] =>
             [ 1, 2, 3 ]
@@ -273,7 +273,7 @@
           Builds an array given the last element and the rest of the array.
 
           # Examples
-          
+
           ```nickel
           append 3 [ 1, 2 ] =>
             [ 1, 2, 3 ]
@@ -287,7 +287,7 @@
           Reverses an array.
 
           # Examples
-          
+
           ```nickel
           reverse [ 1, 2, 3 ] =>
             [ 3, 2, 1 ]
@@ -301,7 +301,7 @@
           `filter f xs` returns an array containing all elements from `xs` that satisfy `f`.
 
           # Examples
-          
+
           ```nickel
           filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
             [ 3, 2, 1 ]
@@ -315,7 +315,7 @@
           Concatenates all elements of a given array of arrays.
 
           # Examples
-          
+
           ```nickel
           flatten [[1, 2], [3, 4]] =>
             [1, 2, 3, 4]
@@ -329,7 +329,7 @@
           Returns true if all elements in the given array satisfy the predicate, false otherwise.
 
           # Examples
-          
+
           ```nickel
           all (fun x => x < 3) [ 1, 2 ] =>
             true
@@ -345,7 +345,7 @@
           Returns true if at least one element in the given array satisfies the predicate, false otherwise.
 
           # Examples
-          
+
           ```nickel
           any (fun x => x < 3) [ 1, 2, 3, 4 ] =>
             true
@@ -361,7 +361,7 @@
           Returns true if the given value appears in the array, false otherwise.
 
           # Examples
-          
+
           ```nickel
           elem 3 [ 1, 2, 3, 4, 5 ] =>
             true
@@ -377,7 +377,7 @@
           that do not.
 
           # Examples
-          
+
           ```nickel
           partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
             { right = [ 3, 4, 2 ], wrong = [ 6, 8, 7, 5 ] }
@@ -402,7 +402,7 @@
           ```
 
           # Examples
-          
+
           ```nickel
           generate (fun x => x * x) 4 =>
             [ 0, 1, 4, 9 ]
@@ -416,7 +416,7 @@
           Sorts the given array based on the provided comparison operator.
 
           # Examples
-          
+
           ```nickel
           sort (fun x y => if x < y then `Lesser else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
             [ 1, 2, 4, 5 ]
@@ -440,7 +440,7 @@
           result.
 
           # Examples
-          
+
           ```nickel
           flat_map (fun x => [x, x]) [1, 2, 3]
             => [1, 1, 2, 2, 3, 3]
@@ -454,7 +454,7 @@
           Intersperses a value between the elements of an array.
 
           # Examples
-          
+
           ```nickel
           intersperse ", " [ "Hello", "wonderful", "world!" ]
             => [ "Hello", ", ", "wonderful", ", ", "world!" ]

@@ -5,7 +5,7 @@
         Enforces that a number is an integer.
 
         # Examples
-        
+
         ```nickel
         (1.5 | Integer) =>
           error
@@ -27,7 +27,7 @@
         Enforces that a number is a natural number (including 0).
 
         # Examples
-        
+
         ```nickel
         (42 | Nat) =>
           42
@@ -51,7 +51,7 @@
         Enforces that a number is a strictly positive natural number.
 
         # Examples
-        
+
         ```nickel
         (42 | PosNat) =>
           42
@@ -98,7 +98,7 @@
         Checks if the given number is an integer.
 
         # Examples
-        
+
         ```nickel
         is_int 42 =>
           true
@@ -128,7 +128,7 @@
         Returns the higher of two numbers.
 
         # Examples
-        
+
         ```nickel
         max (-1337) 42 =>
           42
@@ -162,7 +162,7 @@
         Returns the absolute value of a number.
 
         # Examples
-        
+
         ```nickel
         abs (-5) =>
           5
@@ -178,7 +178,7 @@
         Returns the fractional part of a number.
 
         # Examples
-        
+
         ```nickel
         fract 13.37 =>
           0.37
@@ -194,7 +194,7 @@
         Truncates a number, rounding it towards 0.
 
         # Examples
-        
+
         ```nickel
         truncate (-13.37) =>
           -13
@@ -210,7 +210,7 @@
         `pow x y` returns `x` to the power of `y`.
 
         # Examples
-        
+
         ```nickel
         pow 2 8 =>
           256

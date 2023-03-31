@@ -7,7 +7,7 @@
         name and value of each field.
 
         # Examples
-        
+
         ```nickel
         map (fun s x => s) { hi = 2 } =>
           { hi = "hi" }
@@ -23,7 +23,7 @@
         Returns an array containing the names of all the fields of a record.
 
         # Examples
-        
+
         ```nickel
         fields { one = 1, two = 2 } =>
           [ "one", "two" ]
@@ -37,7 +37,7 @@
         Returns an array containing the values of all the fields of a record.
 
         # Examples
-        
+
         ```nickel
         values { one = 1, world = "world" }
           [ 1, "world" ]
@@ -51,7 +51,7 @@
         Given a string, checks if a record contains a field of that name.
 
         # Examples
-        
+
         ```nickel
         has_field "hello" { one = 1, two = 2 } =>
           false
@@ -68,7 +68,7 @@
           record but returns a new one instead.
 
           # Examples
-          
+
           ```nickel
           insert "foo" 5 { bar = "bar" } =>
             { foo = 5, bar = "bar }
@@ -87,7 +87,7 @@
           record but returns a new one instead.
 
           # Examples
-          
+
           ```nickel
           remove "foo" { foo = "foo", bar = "bar" } =>
             { bar = "bar }
@@ -103,7 +103,7 @@
           from the given record, `update` adds it.
 
           # Examples
-          
+
           ```nickel
           update "foo" 5 { foo = "foo", bar = "bar" } =>
             { foo = 5, bar = "bar" }
@@ -112,7 +112,7 @@
           ```
 
           # Overriding
-          
+
           As opposed to overriding a value with the merge operator `&`, `update`
           will only change the specified field and won't automatically update the other
           fields which depend on it:
@@ -155,7 +155,7 @@
         Converts a record to an array of key-value pairs.
 
         # Examples
-        
+
         ```nickel
         to_array { hello = "world", foo = "bar" } =>
           [ { field = "hello", value = "world" },
@@ -166,7 +166,7 @@
       = fun record =>
         record
         |> fields
-        |> array.map (fun field' => {field = field', value = record."%{field'}"}),
+        |> array.map (fun field' => { field = field', value = record."%{field'}" }),
 
     from_array
       : forall a. Array { field : String, value : a } -> { _ : a }
@@ -174,7 +174,7 @@
         Converts an array of key-value pairs into a record.
 
         # Examples
-        
+
         ```nickel
         from_array [ { field = "hello", value = "world" },
                      { field = "foo", value = "bar" }
@@ -193,7 +193,7 @@
         Checks whether a record is empty.
 
         # Examples
-        
+
         ```nickel
         is_empty {} => true
         is_empty { foo = 1 } => false
@@ -207,7 +207,7 @@
         Merges an array of records.
 
         # Examples
-        
+
         ```nickel
         merge_array [ { foo = 1 }, { bar = 2 } ]
           => { foo = 1, bar = 2 }
@@ -223,7 +223,7 @@
         to make a decision.
 
         # Examples
-        
+
         ```nickel
         filter (fun name x => x % 2 == 0) { even = 2, odd = 3 }
           => { even = 2 }

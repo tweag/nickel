@@ -17,7 +17,7 @@
         Always returns the first argument, ignoring the second.
 
         # Examples
-        
+
         ```nickel
         const 5 42 == 5
         ```
@@ -40,7 +40,7 @@
         Flips the argument order for a two-argument function.
 
         # Examples
-        
+
         ```nickel
         flip (fun x y => "%{x} %{y}") "world!" "Hello,"
           => "Hello, world!"
@@ -54,7 +54,7 @@
         Always returns the first argument, ignoring the second.
 
         # Examples
-        
+
         ```nickel
         first 5 7 => 5
         ```
@@ -67,7 +67,7 @@
         Always returns the second argument, ignoring the first.
 
         # Examples
-        
+
         ```nickel
         second 5 7 => 7
         ```

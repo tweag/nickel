@@ -8,7 +8,7 @@
         - "False" or "false", which will be normalized to "false".
 
         # Examples
-        
+
         ```nickel
         ("True" | BoolLiteral) =>
           "true"
@@ -34,7 +34,7 @@
         Enforces that the value is a string that represents a numerical value.
 
         # Examples
-        
+
         ```nickel
         ("+1.2" | NumberLiteral) =>
           "+1.2"
@@ -60,7 +60,7 @@
         Enforces that the value is a character, i.e. a string of length 1.
 
         # Examples
-        
+
         ```nickel
         ("e" | Character) =>
           "e"
@@ -93,7 +93,7 @@
         - null
 
         # Examples
-        
+
         ```nickel
         (`Foo | Stringable) =>
           `Foo
@@ -121,7 +121,7 @@
         Enforces that the value is a non-empty string.
 
         # Examples
-        
+
         ```nickel
         ("" | NonEmpty) =>
           error
@@ -146,7 +146,7 @@
         Joins an array of strings with a given separator.
 
         # Examples
-        
+
         ```nickel
         join ", " [ "Hello", "World!" ] =>
           "Hello, World!"
@@ -173,7 +173,7 @@
         clusters, even in cases where the sought value exists within one.
 
         # Examples
-        
+
         ```nickel
         split "," "1,2,3" =>
           [ "1", "2", "3" ]
@@ -189,7 +189,7 @@
         Trims whitespace from the start and end of a string.
 
         # Examples
-        
+
         ```nickel
         trim " hi  " =>
           "hi"
@@ -205,7 +205,7 @@
         Separates a string into its individual Unicode extended grapheme clusters.
 
         # Examples
-        
+
         ```nickel
         chars "Hello" =>
           [ "H", "e", "l", "l", "o" ]
@@ -220,7 +220,7 @@
         character if not.
 
         # Examples
-        
+
         ```nickel
         uppercase "a" =>
           "A"
@@ -239,7 +239,7 @@
         character if not.
 
         # Examples
-        
+
         ```nickel
         lowercase "A" =>
           "a"
@@ -260,7 +260,7 @@
         or straddles Unicode extended grapheme clusters.
 
         # Examples
-        
+
         ```nickel
         contains "cde" "abcdef" =>
           true
@@ -281,7 +281,7 @@
         larger unicode extended grapheme cluster.
 
         # Examples
-        
+
         ```nickel
         replace "cd" "   " "abcdef" =>
           "ab   ef"
@@ -302,7 +302,7 @@
         one. This behaviour is expected to change in a future version.
 
         # Examples
-        
+
         ```nickel
         replace_regex "l+." "j" "Hello!" =>
           "Hej!"
@@ -375,7 +375,7 @@
         matching grapheme clusters.
 
         # Examples
-        
+
         ```nickel
         find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
           { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
@@ -384,7 +384,7 @@
         ```
 
         # Performance
-        
+
         Note that this function may perform better by sharing its partial application between multiple calls,
         because in this case the underlying regular expression will only be compiled once (See the documentation
         of `string.is_match` for more details).
@@ -400,7 +400,7 @@
         Generally speaking, this gives the number of "visible" glyphs in the string.
 
         # Examples
-        
+
         ```nickel
         length "" =>
           0
@@ -447,7 +447,7 @@
         `builtin.to_string`.
 
         # Examples
-        
+
         ```nickel
         from 42 =>
           "42"
@@ -465,7 +465,7 @@
         Converts a number to its string representation.
 
         # Examples
-        
+
         ```nickel
         from_number 42 =>
           "42"
@@ -479,7 +479,7 @@
         Converts an enum variant to its string representation.
 
         # Examples
-        
+
         ```nickel
         from_enum `MyEnum =>
           "MyEnum"
@@ -493,7 +493,7 @@
         Converts a boolean value to its string representation.
 
         # Examples
-        
+
         ```nickel
         from_bool true =>
           "true"
@@ -507,7 +507,7 @@
         Converts a string that represents a number to that number.
 
         # Examples
-        
+
         ```nickel
         to_number "123" =>
           123
@@ -521,7 +521,7 @@
         Converts a string that represents a bool to that bool.
 
         # Examples
-        
+
         ```nickel
         to_bool "true" =>
           true
@@ -539,7 +539,7 @@
         Converts any string that represents an enum variant to that enum variant.
 
         # Examples
-        
+
         ```nickel
         to_enum "Hello" =>
           `Hello

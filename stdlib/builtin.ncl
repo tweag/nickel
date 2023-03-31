@@ -6,7 +6,7 @@
         Checks if a value is a number.
 
         # Examples
-        
+
         ```nickel
         is_number 1 =>
           true
@@ -22,7 +22,7 @@
         Checks if a value is a bool.
 
         # Examples
-        
+
         ```nickel
         is_bool false =>
           true
@@ -38,7 +38,7 @@
         Checks if a value is a string.
 
         # Examples
-        
+
         ```nickel
         is_string true =>
           false
@@ -54,7 +54,7 @@
         Checks if a value is an enum tag.
 
         # Examples
-        
+
         ```nickel
         is_enum true =>
           false
@@ -70,7 +70,7 @@
         Checks if a value is a function.
 
         # Examples
-        
+
         ```nickel
         is_function (fun x => x) =>
           true
@@ -86,7 +86,7 @@
         Checks if a value is an array.
 
         # Examples
-        
+
         ```nickel
         is_array [ 1, 2 ] =>
           true
@@ -103,7 +103,7 @@
         Checks if a value is a record.
 
         # Examples
-        
+
         ```nickel
         is_record [ 1, 2 ] =>
           false
@@ -129,7 +129,7 @@
         Returns the type of a value.
 
         # Examples
-        
+
         ```nickel
         typeof [ 1, 2 ] =>
           `Array
@@ -145,7 +145,7 @@
         `seq x y` forces the evaluation of `x`, before returning `y`.
 
         # Examples
-        
+
         ```nickel
         seq (42 / 0) 37 =>
           error
@@ -163,7 +163,7 @@
         `deep_seq x y` forces a deep evaluation `x`, before returning `y`.
 
         # Examples
-        
+
         ```nickel
         deep_seq (42 / 0) 37 =>
           error
@@ -181,7 +181,7 @@
         Hashes the given string with the desired hashing algorithm.
 
         # Examples
-        
+
         ```nickel
         hash `Md5 "hunter2" =>
           "2ab96390c7dbe3439de74d0c9b0b1767"
@@ -195,7 +195,7 @@
         Serializes a value into the desired representation.
 
         # Examples
-        
+
         ```nickel
         serialize `Json { hello = "Hello", world = "World" } =>
           "{
@@ -212,7 +212,7 @@
         Deserializes a string into a nickel value from the given representation.
 
         # Examples
-        
+
         ```nickel
         deserialize `Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
           { hello = "Hello", world = "World" }
@@ -227,7 +227,7 @@
         `string.from`.
 
         # Examples
-        
+
         ```nickel
         from 42 =>
           "42"
@@ -246,7 +246,7 @@
         the evaluation of `x`.
 
         # Examples
-        
+
         ```nickel
         builtin.trace "Hello, world!" true =>
           builtin.trace: Hello, world!
@@ -260,7 +260,7 @@
         A contract that always fails with the given message.
 
         # Examples
-        
+
         ```nickel
         1 | FailWith "message" =>
           error: contract broken by a value: message
@@ -274,13 +274,12 @@
         Abort evaluation with the given message.
 
         # Examples
-        
+
         ```nickel
         fail_with "message" =>
           error: contract broken by a value: message
         ```
       "%
       = fun msg => null | FailWith msg,
-
   },
 }
