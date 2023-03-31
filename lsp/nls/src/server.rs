@@ -62,6 +62,7 @@ impl Server {
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
+            document_formatting_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
     }
