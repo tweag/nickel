@@ -13,7 +13,7 @@ use crate::{
     destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::Ident,
-    label::Label,
+    label::{Label, MergeLabel},
     mk_fun,
     position::{RawSpan, TermPos},
     term::{
@@ -528,7 +528,15 @@ where
 /// merging operator) and their metadata (statically).
 fn merge_fields(field1: Field, field2: Field) -> Field {
     let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
+        //TODO: what position should we use here for the label? For now, we arbitrarily pick the
+        //one of the first occurrence of the definition, which must be set at this stage
+        (Some(t1), Some(t2)) => Some(mk_term::op2(
+            BinaryOp::Merge(MergeLabel {
+                span: t1.pos.unwrap(),
+            }),
+            t1,
+            t2,
+        )),
         (Some(t), None) | (None, Some(t)) => Some(t),
         (None, None) => None,
     };
@@ -563,6 +571,12 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         types: Rc::new(types),
         span: mk_span(src_id, l, r),
         ..Default::default()
+    }
+}
+
+pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
+    MergeLabel {
+        span: mk_span(src_id, l, r),
     }
 }
 

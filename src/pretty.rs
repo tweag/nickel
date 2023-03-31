@@ -341,7 +341,7 @@ where
             GreaterOrEq() => allocator.text(">="),
             LessOrEq() => allocator.text("<="),
 
-            Merge() => allocator.text("&"),
+            Merge(_) => allocator.text("&"),
 
             StrConcat() => allocator.text("++"),
             ArrayConcat() => allocator.text("@"),

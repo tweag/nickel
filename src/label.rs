@@ -547,3 +547,9 @@ pub struct MergeLabel {
     /// The span of the original merge (which might then decompose into many others).
     pub span: RawSpan,
 }
+
+impl From<Label> for MergeLabel {
+    fn from(label: Label) -> Self {
+        MergeLabel { span: label.span }
+    }
+}

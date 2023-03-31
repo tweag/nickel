@@ -29,7 +29,7 @@ use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
     identifier::Ident,
-    label::Label,
+    label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
     types::{TypeF, Types, UnboundTypeVariableError},
@@ -1263,8 +1263,10 @@ pub enum BinaryOp {
     ArrayConcat(),
     /// Access the n-th element of an array.
     ArrayElemAt(),
-    /// The merge operator (see [crate::eval::merge]).
-    Merge(),
+    /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
+    /// [crate::label::MergeLabel], which carries additional information for error-reporting
+    /// purpose.
+    Merge(MergeLabel),
 
     /// Hash a string.
     Hash(),
@@ -1320,7 +1322,7 @@ impl BinaryOp {
             | DynRemove()
             | DynAccess()
             | ArrayConcat()
-            | Merge() => OpPos::Infix,
+            | Merge(_) => OpPos::Infix,
             _ => OpPos::Prefix,
         }
     }
