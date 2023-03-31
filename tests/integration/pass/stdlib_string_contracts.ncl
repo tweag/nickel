@@ -7,10 +7,10 @@ let {check, ..} = import "lib/assert.ncl" in
   ("true" | string.BoolLiteral) == "true",
   ("false" | string.BoolLiteral) == "false",
 
-  # string.NumLiteral
-  ("+1.2" | string.NumLiteral) == "+1.2",
-  ("-1.2" | string.NumLiteral) == "-1.2",
-  ("9001" | string.NumLiteral) == "9001",
+  # string.NumberLiteral
+  ("+1.2" | string.NumberLiteral) == "+1.2",
+  ("-1.2" | string.NumberLiteral) == "-1.2",
+  ("9001" | string.NumberLiteral) == "9001",
 
   # string.Character
   # single ascii chars
