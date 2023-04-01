@@ -282,7 +282,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                     id,
                     merge_fields(
                         cache,
-                        merge_label.clone(),
+                        merge_label,
                         field1,
                         env1.clone(),
                         field2,
@@ -329,6 +329,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
 /// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
+#[allow(clippy::too_many_arguments)]
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     cache: &mut C,
     merge_label: MergeLabel,
@@ -504,6 +505,7 @@ fn field_deps<C: Cache>(
 ///
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
+#[allow(clippy::too_many_arguments)]
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
     cache: &mut C,
     merge_label: MergeLabel,
