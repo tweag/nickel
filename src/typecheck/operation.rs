@@ -333,7 +333,7 @@ pub fn get_bop_type(
             )
         }
         // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() => (
+        BinaryOp::Merge(_) => (
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),

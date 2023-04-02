@@ -53,23 +53,33 @@
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
-use crate::label::Label;
+use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, RichTerm, SharedTerm, Term, TypeAnnotation,
+    BinaryOp, RichTerm, Term, TypeAnnotation,
 };
 use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum MergeMode {
     /// Standard merging, for combining data.
-    #[default]
-    Standard,
+    Standard(MergeLabel),
     /// Merging to apply a record contract to a value, with the associated label.
     Contract(Label),
+}
+
+impl From<MergeMode> for MergeLabel {
+    /// Either takes the inner merge label if the mode is `Standard`, or converts a contract label
+    /// to a merge label if the mode is `Contract`.
+    fn from(mode: MergeMode) -> Self {
+        match mode {
+            MergeMode::Standard(merge_label) => merge_label,
+            MergeMode::Contract(label) => label.into(),
+        }
+    }
 }
 
 /// Compute the merge of two evaluated operands. Support both standard merging and record contract
@@ -112,17 +122,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Bool(b1), pos1),
+                    right_arg: RichTerm::new(Term::Bool(b2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
@@ -132,17 +136,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Num(n1), pos1),
+                    right_arg: RichTerm::new(Term::Num(n2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Str(s1), Term::Str(s2)) => {
@@ -152,17 +150,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Str(s1), pos1),
+                    right_arg: RichTerm::new(Term::Str(s2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
@@ -172,17 +164,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Lbl(l1), pos1),
+                    right_arg: RichTerm::new(Term::Lbl(l2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Enum(i1), Term::Enum(i2)) => {
@@ -192,17 +178,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Enum(i1), pos1),
+                    right_arg: RichTerm::new(Term::Enum(i2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
@@ -260,6 +240,14 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 _ => (),
             };
 
+            let final_pos = if let MergeMode::Standard(_) = mode {
+                pos_op.into_inherited()
+            } else {
+                pos1.into_inherited()
+            };
+
+            let merge_label = MergeLabel::from(mode);
+
             let field_names: Vec<_> = left
                 .keys()
                 .chain(center.keys())
@@ -294,6 +282,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                     id,
                     merge_fields(
                         cache,
+                        merge_label,
                         field1,
                         env1.clone(),
                         field2,
@@ -303,12 +292,6 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                     )?,
                 );
             }
-
-            let final_pos = if mode == MergeMode::Standard {
-                pos_op.into_inherited()
-            } else {
-                pos1.into_inherited()
-            };
 
             Ok(Closure {
                 body: RichTerm::new(
@@ -334,17 +317,11 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 call_stack: call_stack.clone(),
             }),
             // The following cases are either errors or not yet implemented
-            _ => Err(EvalError::MergeIncompatibleArgs(
-                RichTerm {
-                    term: SharedTerm::new(t1_),
-                    pos: pos1,
-                },
-                RichTerm {
-                    term: SharedTerm::new(t2_),
-                    pos: pos2,
-                },
-                pos_op,
-            )),
+            (mode, _) => Err(EvalError::MergeIncompatibleArgs {
+                left_arg: RichTerm::new(t1_, pos1),
+                right_arg: RichTerm::new(t2_, pos2),
+                merge_label: mode.into(),
+            }),
         },
     }
 }
@@ -352,8 +329,10 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
 /// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
+#[allow(clippy::too_many_arguments)]
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     cache: &mut C,
+    merge_label: MergeLabel,
     field1: Field,
     env1: Environment,
     field2: Field,
@@ -379,7 +358,10 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
-            Some(fields_merge_closurize(cache, env_final, t1, &env1, t2, &env2, fields).unwrap()),
+            Some(
+                fields_merge_closurize(cache, merge_label, env_final, t1, &env1, t2, &env2, fields)
+                    .unwrap(),
+            ),
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
@@ -523,8 +505,10 @@ fn field_deps<C: Cache>(
 ///
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
+#[allow(clippy::too_many_arguments)]
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
     cache: &mut C,
+    merge_label: MergeLabel,
     env: &mut Environment,
     t1: RichTerm,
     env1: &Environment,
@@ -536,7 +520,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 
     let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
     let body = RichTerm::from(Term::Op2(
-        BinaryOp::Merge(),
+        BinaryOp::Merge(merge_label),
         t1.saturate(cache, &mut local_env, env1, fields.clone())?,
         t2.saturate(cache, &mut local_env, env2, fields)?,
     ));

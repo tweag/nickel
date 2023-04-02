@@ -18,11 +18,11 @@ fn records_access() {
 fn non_mergeable() {
     assert_matches!(
         eval("({a=1} & {a=2}).a"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
     assert_matches!(
         eval("({a | default = false} & {a | default = true}).a"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
 }
 
@@ -30,15 +30,15 @@ fn non_mergeable() {
 fn non_mergeable_piecewise() {
     assert_matches!(
         eval("({a.b=1, a = {b = 2}}).a.b"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
     assert_matches!(
         eval("({foo.bar | default = false, foo.bar | default = true}).foo.bar"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
     assert_matches!(
         eval("({a.b = {}} & {a.b.c = []} & {a.b.c = {}}).a.b.c"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
 }
 
@@ -46,15 +46,15 @@ fn non_mergeable_piecewise() {
 fn non_mergeable_prio() {
     assert_matches!(
         eval("({a.b | priority 0 = 1, a = {b = 2}}).a.b"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
     assert_matches!(
         eval("({a | force = false} & {a | force = true}).a"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
     assert_matches!(
         eval("({foo.bar | priority -10 = false, foo.bar | priority -10 = true}).foo.bar"),
-        Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+        Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
     );
 }
 

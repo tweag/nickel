@@ -2189,7 +2189,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                 )),
             },
-            BinaryOp::Merge() => merge::merge(
+            BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
                 RichTerm {
                     term: t1,
@@ -2202,7 +2202,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 },
                 env2,
                 pos_op,
-                MergeMode::Standard,
+                MergeMode::Standard(merge_label),
                 &mut self.call_stack,
             ),
             BinaryOp::Hash() => {

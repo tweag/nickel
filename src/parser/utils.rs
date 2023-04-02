@@ -13,7 +13,7 @@ use crate::{
     destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::Ident,
-    label::Label,
+    label::{Label, MergeKind, MergeLabel},
     mk_fun,
     position::{RawSpan, TermPos},
     term::{
@@ -455,8 +455,8 @@ where
                 // temporarily putting an empty field in the entry to take the previous value.
                 let prev = occpd.insert(Field::default());
 
-                // A field of a record without metadata AND without value is impossible
-                occpd.insert(merge_fields(prev, field));
+                // unwrap(): the field's identifier must have a position during parsing.
+                occpd.insert(merge_fields(id.pos.unwrap(), prev, field));
             }
             Entry::Vacant(vac) => {
                 vac.insert(field);
@@ -526,9 +526,16 @@ where
 
 /// Merge two fields by performing the merge of both their value (dynamically, by introducing a
 /// merging operator) and their metadata (statically).
-fn merge_fields(field1: Field, field2: Field) -> Field {
+fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
     let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
+        (Some(t1), Some(t2)) => Some(mk_term::op2(
+            BinaryOp::Merge(MergeLabel {
+                span: id_span,
+                kind: MergeKind::PiecewiseDef,
+            }),
+            t1,
+            t2,
+        )),
         (Some(t), None) | (None, Some(t)) => Some(t),
         (None, None) => None,
     };
@@ -563,6 +570,15 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         types: Rc::new(types),
         span: mk_span(src_id, l, r),
         ..Default::default()
+    }
+}
+
+/// Same as `mk_span`, but for merge labels. The kind is set to the default one
+/// (`MergeKind::Standard`).
+pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
+    MergeLabel {
+        span: mk_span(src_id, l, r),
+        kind: Default::default(),
     }
 }
 
