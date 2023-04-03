@@ -239,6 +239,9 @@ fn export(
 ) -> Result<(), Error> {
     let rt = program.eval_full().map(RichTerm::from)?;
     let format = format.unwrap_or_default();
+
+    // We only add a trailing newline for JSON exports. Both YAML and TOML
+    // exporters already append a trailing newline by default.
     let trailing_newline = format == ExportFormat::Json;
 
     serialize::validate(format, &rt)?;
