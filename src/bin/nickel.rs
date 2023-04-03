@@ -11,6 +11,7 @@ use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
+    io::Write,
     process,
 };
 // use std::ffi::OsStr;
@@ -238,14 +239,23 @@ fn export(
 ) -> Result<(), Error> {
     let rt = program.eval_full().map(RichTerm::from)?;
     let format = format.unwrap_or_default();
+    let trailing_newline = format == ExportFormat::Json;
 
     serialize::validate(format, &rt)?;
 
     if let Some(file) = output {
-        let file = fs::File::create(file).map_err(IOError::from)?;
-        serialize::to_writer(file, format, &rt)?;
+        let mut file = fs::File::create(file).map_err(IOError::from)?;
+        serialize::to_writer(&mut file, format, &rt)?;
+
+        if trailing_newline {
+            write!(file, "\n");
+        }
     } else {
         serialize::to_writer(std::io::stdout(), format, &rt)?;
+
+        if trailing_newline {
+            print!("\n");
+        }
     }
 
     Ok(())
