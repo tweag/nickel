@@ -11,6 +11,7 @@ use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
+    io::Write,
     process,
 };
 // use std::ffi::OsStr;
@@ -239,13 +240,25 @@ fn export(
     let rt = program.eval_full().map(RichTerm::from)?;
     let format = format.unwrap_or_default();
 
+    // We only add a trailing newline for JSON exports. Both YAML and TOML
+    // exporters already append a trailing newline by default.
+    let trailing_newline = format == ExportFormat::Json;
+
     serialize::validate(format, &rt)?;
 
     if let Some(file) = output {
-        let file = fs::File::create(file).map_err(IOError::from)?;
-        serialize::to_writer(file, format, &rt)?;
+        let mut file = fs::File::create(file).map_err(IOError::from)?;
+        serialize::to_writer(&mut file, format, &rt)?;
+
+        if trailing_newline {
+            writeln!(file).map_err(IOError::from)?;
+        }
     } else {
         serialize::to_writer(std::io::stdout(), format, &rt)?;
+
+        if trailing_newline {
+            println!();
+        }
     }
 
     Ok(())
