@@ -227,7 +227,7 @@ pub enum TypecheckError {
     /// argument of a wrong type in some cases:
     ///
     /// ```text
-    /// let id_mono = fun x => x in let _ign = id_mono true in id_mono 0 : Num
+    /// let id_mono = fun x => x in let _ign = id_mono true in id_mono 0 : Number
     /// ```
     ///
     /// This specific error stores additionally the [type path][crate::label::ty_path] that
@@ -347,8 +347,8 @@ pub enum ParseError {
     /// the original syntax. Typically, a field assignment:
     ///
     /// ```nickel
-    /// forall a. {foo : Num; a} # allowed
-    /// forall a. {foo : Num = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
+    /// forall a. {foo : Number; a} # allowed
+    /// forall a. {foo : Number = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
     /// ```
     ///
     /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
@@ -391,7 +391,7 @@ pub enum ImportError {
 pub enum ExportError {
     /// Encountered a null value for a format that doesn't support them.
     UnsupportedNull(ExportFormat, RichTerm),
-    /// Tried exporting something else than a `Str` to raw format.
+    /// Tried exporting something else than a `String` to raw format.
     NotAString(RichTerm),
     /// A term contains constructs that cannot be serialized.
     NonSerializable(RichTerm),
@@ -1207,7 +1207,7 @@ mod blame_error {
                     vec![
                         String::from(
                             "This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `Bool -> Num`.
+    1. A function `f` is bound by a contract: e.g. `Bool -> Number`.
     2. `f` returns a value of the wrong type: e.g. `f = fun c => \"string\"` while `Number` is expected.",
                         ),
                         String::from(
@@ -1224,10 +1224,10 @@ mod blame_error {
                     String::from("expected type of an argument of an inner call"),
                     vec![
                         String::from("This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `(Str -> Str) -> Str)`.
+    1. A function `f` is bound by a contract: e.g. `(String -> String) -> String)`.
     2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
-    3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `Str -> Str` is expected."),
-                        String::from("Either change the contract accordingly, or call `g` with a `Str` argument."),
+    3. `f` calls `g` with an argument that does not respect the contract: e.g. `g 0` while `String -> String` is expected."),
+                        String::from("Either change the contract accordingly, or call `g` with a `String` argument."),
                         end_note,
                     ],
                 )
@@ -1241,7 +1241,7 @@ mod blame_error {
                     String::from("expected return type of a sub-function passed as an argument of an inner call"),
                     vec![
                         String::from("This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `((Num -> Num) -> Num) -> Num)`.
+    1. A function `f` is bound by a contract: e.g. `((Number -> Number) -> Number) -> Number)`.
     2. `f` take another function `g` as an argument: e.g. `f = fun g => g (fun x => true)`.
     3. `g` itself takes a function as an argument.
     4. `f` passes a function that does not respect the contract to `g`: e.g. `g (fun x => true)` (expected to be of type `Number -> Number`)."),
@@ -1273,7 +1273,7 @@ mod blame_error {
                     String::from("expected return type of a function provided by the caller"),
                     vec![
                         String::from("This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `(Num -> Num) -> Num`.
+    1. A function `f` is bound by a contract: e.g. `(Number -> Number) -> Number`.
     2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
     3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`."),
                         String::from("Either change the contract accordingly, or call `f` with a function that returns a value of the right type."),
@@ -1728,7 +1728,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .with_notes(vec![
                         String::from("Due to a temporary limitation, contracts don't mix well with static types (see https://github.com/tweag/nickel/issues/724). This error may happen when using a contract as a type annotation or when calling to a function whose type contain contracts."),
                         String::from("As a temporary fix, please annotate the offending expression with its expected type using the pipe operator `|`. This disables static typing for the given expression."),
-                        String::from("For example: if `foo` has type `MyContract -> Num`, rewrite `foo value + 1` as `(foo value | Num) + 1`."),
+                        String::from("For example: if `foo` has type `MyContract -> Number`, rewrite `foo value + 1` as `(foo value | Number) + 1`."),
                     ])
                 ]
             }
@@ -1781,7 +1781,7 @@ impl IntoDiagnostics<FileId> for ExportError {
         match self {
             ExportError::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
-                    "raw export only supports `Str`, got {}",
+                    "raw export only supports `String`, got {}",
                     rt.as_ref()
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>"))
