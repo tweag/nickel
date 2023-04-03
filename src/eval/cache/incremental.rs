@@ -101,52 +101,6 @@ impl IncCache {
         }
     }
 
-    fn propagate_dirty(&mut self, idx: CacheIndex) {
-        let mut node = self.store.get_mut(idx).unwrap();
-        node.cached = None;
-        node.state = IncNodeState::Suspended;
-
-        let mut visited = HashSet::new();
-        let mut stack = node.backlinks.clone();
-
-        visited.insert(idx);
-
-        while !stack.is_empty() {
-            let i = stack.pop().unwrap();
-            visited.insert(i.idx);
-            let mut current_node = self.store.get_mut(i.idx).unwrap();
-            current_node.cached = None;
-            current_node.state = IncNodeState::Suspended;
-            stack.extend(
-                current_node
-                    .backlinks
-                    .iter()
-                    .filter(|x| !visited.contains(&x.idx)),
-            )
-        }
-    }
-
-    fn propagate_dirty_vec(&mut self, indices: Vec<CacheIndex>) {
-        let mut visited = HashSet::new();
-        let mut stack = indices;
-
-        while !stack.is_empty() {
-            let i = stack.pop().unwrap();
-            visited.insert(i);
-            let mut current_node = self.store.get_mut(i).unwrap();
-            current_node.cached = None;
-            current_node.state = IncNodeState::Suspended;
-            println!("IDX: {:?} BLs: {:?}", i, current_node.backlinks);
-            stack.extend(
-                current_node
-                    .backlinks
-                    .iter()
-                    .map(|x| x.idx)
-                    .filter(|x| !visited.contains(&x)),
-            )
-        }
-    }
-
     /* Do we need this when we can revert in place?
 
     fn propagate_revert(&mut self, id: Ident, idx: CacheIndex) -> HashMap<Ident, CacheIndex> {
@@ -177,48 +131,6 @@ impl IncCache {
 
         nodes_reverted
     } */
-
-    fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex> {
-        let mut new_indices = HashMap::new();
-
-        for i in v.iter() {
-            let current_node = self.store.get(*i).unwrap().clone();
-            new_indices.insert(*i, self.add_node(current_node));
-        }
-
-        for i in new_indices.values() {
-            let current_node = self.store.get_mut(*i).unwrap();
-
-            for dep in current_node.backlinks.iter_mut() {
-                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
-                    *idx
-                } else {
-                    dep.idx
-                }
-            }
-
-            let mut to_be_updated = vec![];
-
-            for dep in current_node.fwdlinks.iter_mut() {
-                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
-                    *idx
-                } else {
-                    to_be_updated.push(dep.clone());
-                    dep.idx
-                }
-            }
-
-            for dep in to_be_updated {
-                let target_node = self.store.get_mut(dep.idx).unwrap();
-                target_node.backlinks.push(DependencyLink {
-                    id: dep.id,
-                    idx: *i,
-                });
-            }
-        }
-
-        new_indices
-    }
 }
 
 impl Cache for IncCache {
@@ -404,10 +316,65 @@ impl Cache for IncCache {
     }
 
     fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex> {
-        self.smart_clone(v)
+        let mut new_indices = HashMap::new();
+
+        for i in v.iter() {
+            let current_node = self.store.get(*i).unwrap().clone();
+            new_indices.insert(*i, self.add_node(current_node));
+        }
+
+        for i in new_indices.values() {
+            let current_node = self.store.get_mut(*i).unwrap();
+
+            for dep in current_node.backlinks.iter_mut() {
+                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
+                    *idx
+                } else {
+                    dep.idx
+                }
+            }
+
+            let mut to_be_updated = vec![];
+
+            for dep in current_node.fwdlinks.iter_mut() {
+                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
+                    *idx
+                } else {
+                    to_be_updated.push(dep.clone());
+                    dep.idx
+                }
+            }
+
+            for dep in to_be_updated {
+                let target_node = self.store.get_mut(dep.idx).unwrap();
+                target_node.backlinks.push(DependencyLink {
+                    id: dep.id,
+                    idx: *i,
+                });
+            }
+        }
+
+        new_indices
     }
 
     fn propagate_dirty(&mut self, indices: Vec<CacheIndex>) {
-        self.propagate_dirty_vec(indices);
+        let mut visited = HashSet::new();
+        let mut stack = indices;
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i);
+            let mut current_node = self.store.get_mut(i).unwrap();
+            current_node.cached = None;
+            current_node.state = IncNodeState::Suspended;
+
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .map(|x| x.idx)
+                    .filter(|x| !visited.contains(&x)),
+            )
+        }
     }
 }

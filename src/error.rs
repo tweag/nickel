@@ -938,7 +938,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     )])]
             }
             EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
-                .with_message("unbound identifier")
+                .with_message(format!("unbound identifier {ident}"))
                 .with_labels(vec![primary_alt(
                     span_opt.into_opt(),
                     ident.to_string(),
