@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// The Nickel generic evaluation cache. This module abstracts away the details for managing
 /// suspended computations and their memoization strategies.
 ///
@@ -94,4 +96,8 @@ pub trait Cache: Clone {
         &mut self,
         idx: &mut CacheIndex,
     ) -> Result<Self::UpdateIndex, BlackholedError>;
+
+    fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex>;
+
+    fn propagate_dirty(&mut self, indices: Vec<CacheIndex>);
 }

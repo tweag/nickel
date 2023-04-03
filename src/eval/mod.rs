@@ -805,7 +805,7 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
 }
 
 /// Kind of an identifier.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum IdentKind {
     Let,
     Lambda,

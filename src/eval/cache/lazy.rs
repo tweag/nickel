@@ -4,8 +4,11 @@ use crate::{
     identifier::Ident,
     term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
-use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
+};
 
 /// The state of a thunk.
 ///
@@ -355,7 +358,7 @@ impl ThunkData {
 /// inside a record may be invalidated by merging, and thus need to store the unaltered original
 /// expression. Those aspects are handled and discussed in more detail in
 /// [InnerThunkData].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
     ident_kind: IdentKind,
@@ -560,6 +563,21 @@ impl Thunk {
         self.data.borrow().deps()
     }
 }
+
+impl PartialEq for Thunk {
+    fn eq(&self, other: &Self) -> bool {
+        self.data.as_ptr() == other.data.as_ptr() && self.ident_kind == other.ident_kind
+    }
+}
+
+impl Eq for Thunk {}
+
+impl std::hash::Hash for Thunk {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let raw_ptr = self.data.as_ptr();
+        (self.ident_kind, raw_ptr).hash(state)
+    }
+}
 /// A thunk update frame.
 ///
 /// A thunk update frame is put on the stack whenever a variable is entered, such that once this
@@ -692,4 +710,15 @@ impl Cache for CBNCache {
     ) -> Result<Self::UpdateIndex, BlackholedError> {
         idx.mk_update_frame()
     }
+
+    fn smart_clone(
+        &mut self,
+        v: Vec<CacheIndex>,
+    ) -> std::collections::HashMap<CacheIndex, CacheIndex> {
+        v.into_iter()
+            .map(|idx| (idx.clone(), self.revert(&idx)))
+            .collect()
+    }
+
+    fn propagate_dirty(&mut self, indices: Vec<CacheIndex>) {}
 }

@@ -70,7 +70,7 @@ impl IncCache {
         idx
     }
 
-    fn revnode_as_explicit_fun<'a, I>(node: &IncNode, args: I) -> IncNode
+    fn revnode_as_explicit_fun<'a, I>(node: &mut IncNode, args: I)
     where
         I: DoubleEndedIterator<Item = &'a Ident>,
     {
@@ -85,16 +85,12 @@ impl IncCache {
                 let as_function =
                     args.rfold(body, |built, id| RichTerm::from(Term::Fun(*id, built)));
 
-                IncNode::new(
-                    Closure {
-                        body: as_function,
-                        env,
-                    },
-                    node.kind,
-                    node.bty.clone(),
-                )
+                node.orig = Closure {
+                    body: as_function,
+                    env,
+                }
             }
-            _ => node.clone(),
+            _ => (),
         }
     }
 
@@ -127,6 +123,27 @@ impl IncCache {
                     .backlinks
                     .iter()
                     .filter(|x| !visited.contains(&x.idx)),
+            )
+        }
+    }
+
+    fn propagate_dirty_vec(&mut self, indices: Vec<CacheIndex>) {
+        let mut visited = HashSet::new();
+        let mut stack = indices;
+
+        while !stack.is_empty() {
+            let i = stack.pop().unwrap();
+            visited.insert(i);
+            let mut current_node = self.store.get_mut(i).unwrap();
+            current_node.cached = None;
+            current_node.state = IncNodeState::Suspended;
+            println!("IDX: {:?} BLs: {:?}", i, current_node.backlinks);
+            stack.extend(
+                current_node
+                    .backlinks
+                    .iter()
+                    .map(|x| x.idx)
+                    .filter(|x| !visited.contains(&x)),
             )
         }
     }
@@ -174,11 +191,30 @@ impl IncCache {
             let current_node = self.store.get_mut(*i).unwrap();
 
             for dep in current_node.backlinks.iter_mut() {
-                dep.idx = *new_indices.get(i).unwrap();
+                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
+                    *idx
+                } else {
+                    dep.idx
+                }
             }
 
+            let mut to_be_updated = vec![];
+
             for dep in current_node.fwdlinks.iter_mut() {
-                dep.idx = *new_indices.get(i).unwrap();
+                dep.idx = if let Some(idx) = new_indices.get(&dep.idx) {
+                    *idx
+                } else {
+                    to_be_updated.push(dep.clone());
+                    dep.idx
+                }
+            }
+
+            for dep in to_be_updated {
+                let target_node = self.store.get_mut(dep.idx).unwrap();
+                target_node.backlinks.push(DependencyLink {
+                    id: dep.id,
+                    idx: *i,
+                });
             }
         }
 
@@ -345,7 +381,7 @@ impl Cache for IncCache {
         env: &mut Environment,
         fields: I,
     ) -> RichTerm {
-        let node = self.store.get(idx).unwrap();
+        let node = self.store.get_mut(idx).unwrap();
 
         let mut deps_filter: Box<dyn FnMut(&&Ident) -> bool> = match node.bty.clone() {
             BindingType::Revertible(FieldDeps::Known(deps)) => {
@@ -355,13 +391,10 @@ impl Cache for IncCache {
             BindingType::Normal => Box::new(|_: &&Ident| false),
         };
 
-        let node_as_function = self.add_node(IncCache::revnode_as_explicit_fun(
-            node,
-            fields.clone().filter(&mut deps_filter),
-        ));
+        IncCache::revnode_as_explicit_fun(node, fields.clone().filter(&mut deps_filter));
 
         let fresh_var = Ident::fresh();
-        env.insert(fresh_var, node_as_function);
+        env.insert(fresh_var, idx);
 
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
@@ -369,5 +402,13 @@ impl Cache for IncCache {
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))
         })
+    }
+
+    fn smart_clone(&mut self, v: Vec<CacheIndex>) -> HashMap<CacheIndex, CacheIndex> {
+        self.smart_clone(v)
+    }
+
+    fn propagate_dirty(&mut self, indices: Vec<CacheIndex>) {
+        self.propagate_dirty_vec(indices);
     }
 }

@@ -210,11 +210,28 @@ pub fn merge<C: Cache>(
                 });
             }
 
+            let mut env = Environment::new();
+            let fields_1 = smart_clone_closurize(cache, r1.fields, &mut env, &env1);
+            let fields_2 = smart_clone_closurize(cache, r2.fields, &mut env, &env2);
+
             let hashmap::SplitResult {
                 left,
                 center,
                 right,
-            } = hashmap::split(r1.fields, r2.fields);
+            } = hashmap::split(fields_1, fields_2);
+
+            let mut center_indices = Vec::with_capacity(2 * center.len());
+
+            for (field_l, field_r) in center.values() {
+                if let Some(idx) = field_l.get_idx(&env) {
+                    center_indices.push(idx);
+                }
+                if let Some(idx) = field_r.get_idx(&env) {
+                    center_indices.push(idx);
+                }
+            }
+
+            cache.propagate_dirty(center_indices);
 
             match mode {
                 MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
@@ -255,7 +272,6 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 .cloned()
                 .collect();
             let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
-            let mut env = Environment::new();
 
             // Merging recursive records is the one operation that may override recursive fields. To
             // have the recursive fields depend on the updated values, we need to revert the
@@ -266,16 +282,9 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
             // The fields in the intersection (center) need a slightly more general treatment to
             // correctly propagate the recursive values down each field: saturation. See
             // [crate::eval::cache::Cache::saturate()].
-            m.extend(
-                left.into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache, &mut env, env1.clone()))),
-            );
 
-            m.extend(
-                right
-                    .into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache, &mut env, env2.clone()))),
-            );
+            m.extend(left.into_iter());
+            m.extend(right.into_iter());
 
             for (id, (field1, field2)) in center.into_iter() {
                 m.insert(
@@ -284,9 +293,9 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                         cache,
                         merge_label,
                         field1,
-                        env1.clone(),
+                        env.clone(),
                         field2,
-                        env2.clone(),
+                        env.clone(),
                         &mut env,
                         field_names.iter(),
                     )?,
@@ -346,7 +355,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     let Field {
         metadata: metadata1,
         value: value1,
-        pending_contracts: pending_contracts1,
+        pending_contracts: pending_contracts1, //TODO smart_clone should take care of these
     } = field1;
     let Field {
         metadata: metadata2,
@@ -364,25 +373,16 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
             ),
             metadata1.priority,
         ),
-        (Some(t1), _) if metadata1.priority > metadata2.priority => (
-            Some(t1.revert_closurize(cache, env_final, env1.clone())),
-            metadata1.priority,
-        ),
-        (Some(t1), None) => (
-            Some(t1.revert_closurize(cache, env_final, env1.clone())),
-            metadata1.priority,
-        ),
-        (_, Some(t2)) if metadata2.priority > metadata1.priority => (
-            Some(t2.revert_closurize(cache, env_final, env2.clone())),
-            metadata2.priority,
-        ),
-        (None, Some(t2)) => (
-            Some(t2.revert_closurize(cache, env_final, env2.clone())),
-            metadata2.priority,
-        ),
+        (Some(t1), _) if metadata1.priority > metadata2.priority => (Some(t1), metadata1.priority),
+        (Some(t1), None) => (Some(t1), metadata1.priority),
+        (_, Some(t2)) if metadata2.priority > metadata1.priority => (Some(t2), metadata2.priority),
+        (None, Some(t2)) => (Some(t2), metadata2.priority),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
+
+    //let mut pending_contracts = pending_contracts1;
+    //pending_contracts.extend(pending_contracts2.into_iter());
 
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
     pending_contracts.extend(
@@ -481,7 +481,7 @@ impl Saturate for RichTerm {
 }
 
 /// Return the dependencies of a field when represented as a `RichTerm`.
-fn field_deps<C: Cache>(
+pub fn field_deps<C: Cache>(
     cache: &C,
     rt: &RichTerm,
     local_env: &Environment,
@@ -543,6 +543,83 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
     );
 
     Ok(RichTerm::from(Term::Var(fresh_var)))
+}
+
+fn smart_clone_closurize<C: Cache>(
+    cache: &mut C,
+    mut fields: HashMap<Ident, Field>,
+    env: &mut Environment,
+    with_env: &Environment,
+) -> HashMap<Ident, Field> {
+    let index_map: HashMap<_, _> = fields
+        .iter()
+        .map(|(id, field)| {
+            let contracts: Vec<_> = field
+                .pending_contracts
+                .iter()
+                .map(|contract| contract.contract.get_idx(with_env))
+                .collect();
+            (*id, (field.get_idx(with_env), contracts))
+        })
+        .collect();
+    let to_smart_clone = index_map
+        .values()
+        .flat_map(|(field_idx, contract_idxs)| {
+            std::iter::once(field_idx).chain(contract_idxs.iter())
+        })
+        .filter_map(|x| x.as_ref().cloned())
+        .collect();
+    let new_indices = cache.smart_clone(to_smart_clone);
+
+    for (id, (old_idx, old_contract_indices)) in index_map {
+        if let Some(idx) = old_idx {
+            let new_idx = new_indices.get(&idx).unwrap();
+            let fresh_ident = Ident::fresh();
+            env.insert(fresh_ident, new_idx.clone());
+            let mut field = fields.get_mut(&id).unwrap();
+            let pos = field.value.as_ref().unwrap().pos;
+            field.value = Some(RichTerm::new(Term::Var(fresh_ident), pos));
+        }
+        for (i, idx) in old_contract_indices
+            .into_iter()
+            .enumerate()
+            .filter_map(|(id, idx)| Some((id, idx?)))
+        {
+            let new_idx = new_indices.get(&idx).unwrap();
+            let fresh_ident = Ident::fresh();
+            env.insert(fresh_ident, new_idx.clone());
+            let mut pending_contract = fields
+                .get_mut(&id)
+                .unwrap()
+                .pending_contracts
+                .get_mut(i)
+                .unwrap();
+            let pos = pending_contract.contract.pos;
+            pending_contract.contract = RichTerm::new(Term::Var(fresh_ident), pos);
+        }
+    }
+
+    fields
+}
+
+trait GetCacheIndex {
+    fn get_idx(&self, env: &Environment) -> Option<CacheIndex>;
+}
+
+impl GetCacheIndex for Field {
+    fn get_idx(&self, env: &Environment) -> Option<CacheIndex> {
+        self.value.as_ref().and_then(|v| v.get_idx(env))
+    }
+}
+
+impl GetCacheIndex for RichTerm {
+    fn get_idx(&self, env: &Environment) -> Option<CacheIndex> {
+        if let Term::Var(id) = self.as_ref() {
+            env.get(id).cloned()
+        } else {
+            None
+        }
+    }
 }
 
 /// Same as [Closurizable], but also revert the element if the term is a variable.
