@@ -1,10 +1,7 @@
 //! Compute the fixpoint of a recursive record.
 use std::collections::HashSet;
 
-use super::{
-    merge::{field_deps, RevertClosurize},
-    *,
-};
+use super::{merge::RevertClosurize, *};
 use crate::{label::Label, position::TermPos, term::record::FieldDeps};
 
 // Update the environment of a term by extending it with a recursive environment. In the general

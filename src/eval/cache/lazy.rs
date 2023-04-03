@@ -4,11 +4,8 @@ use crate::{
     identifier::Ident,
     term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
+use std::cell::{Ref, RefCell, RefMut};
 use std::rc::{Rc, Weak};
-use std::{
-    cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-};
 
 /// The state of a thunk.
 ///
@@ -720,5 +717,5 @@ impl Cache for CBNCache {
             .collect()
     }
 
-    fn propagate_dirty(&mut self, indices: Vec<CacheIndex>) {}
+    fn propagate_dirty(&mut self, _indices: Vec<CacheIndex>) {}
 }
