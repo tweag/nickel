@@ -1,6 +1,5 @@
-use std::collections::{HashMap, HashSet};
-
 //! A [Cache] implementation with incremental computation features.
+use std::collections::{HashMap, HashSet};
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
     identifier::Ident,

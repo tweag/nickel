@@ -1,8 +1,11 @@
 //! Compute the fixpoint of a recursive record.
 use std::collections::HashSet;
 
-use super::{merge::{field_deps, RevertClosurize}, *};
-use crate::{position::TermPos, term::record::FieldDeps, label::Label};
+use super::{
+    merge::{field_deps, RevertClosurize},
+    *,
+};
+use crate::{label::Label, position::TermPos, term::record::FieldDeps};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
