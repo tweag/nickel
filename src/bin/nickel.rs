@@ -248,13 +248,13 @@ fn export(
         serialize::to_writer(&mut file, format, &rt)?;
 
         if trailing_newline {
-            write!(file, "\n");
+            writeln!(file).map_err(IOError::from)?;
         }
     } else {
         serialize::to_writer(std::io::stdout(), format, &rt)?;
 
         if trailing_newline {
-            print!("\n");
+            println!();
         }
     }
 
