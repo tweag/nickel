@@ -356,7 +356,7 @@
       = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
 
     elem
-      : forall a. a -> Array a -> Bool
+      : Dyn -> Array Dyn -> Bool
       | doc m%"
           Returns true if the given value appears in the array, false otherwise.
 
