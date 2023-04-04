@@ -1,6 +1,6 @@
 use std::process;
 
-use lsp_server::{RequestId, Response, ResponseError};
+use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
 
 use crate::server::{self, Server};
@@ -12,7 +12,7 @@ pub fn handle_format_document(
 ) -> Result<(), ResponseError> {
     let document_id = params.text_document.uri.to_file_path().unwrap();
     let file_id = server.cache.id_of(document_id).unwrap();
-    let text = server.cache.files().source(file_id);
+    let text = server.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
     let last_line_length = text.lines().rev().next().unwrap().len() as u32;
 
@@ -21,6 +21,7 @@ pub fn handle_format_document(
         .args(&formatting_command[1..])
         .stdin(process::Stdio::piped())
         .stdout(process::Stdio::piped())
+        .stderr(process::Stdio::piped())
         .spawn() else {
 	    // Also give a notification to tell the user that topiary is not
 	    // available
@@ -28,12 +29,25 @@ pub fn handle_format_document(
 	};
 
     let mut stdin = topiary.stdin.take().unwrap();
-    let mut text_bytes = text.as_bytes();
-    let _ = std::io::copy(&mut text_bytes, &mut stdin);
+
+    std::thread::spawn(move || {
+        let mut text_bytes = text.as_bytes();
+        std::io::copy(&mut text_bytes, &mut stdin).unwrap();
+    });
 
     let output = topiary.wait_with_output().unwrap();
 
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(ResponseError {
+            code: ErrorCode::InternalError as i32,
+            message: error.to_string(),
+            data: None,
+        });
+    }
+
     let new_text = String::from_utf8(output.stdout).unwrap();
+
     let result = Some(vec![TextEdit {
         range: Range {
             start: Position {
@@ -42,7 +56,7 @@ pub fn handle_format_document(
             },
             end: Position {
                 line: document_length - 1,
-                character: last_line_length - 1,
+                character: last_line_length,
             },
         },
         new_text,
