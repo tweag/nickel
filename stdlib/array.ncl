@@ -355,8 +355,20 @@
         "%
       = fun pred l => fold_right (fun x acc => if pred x then true else acc) false l,
 
+    # **Warning**: unless you know what you're doing, please don't change the
+    # type of `elem` to be polymorphic.
+    # 
+    # `elem` must operate on elements of type `Dyn` only, because `elem` performs
+    # equality tests, and those aren't allowed on generic variables (as it
+    # breaks parametricity).
+    #
+    # However, as a current work-around to use equality easily in typed code,
+    # `(==)` has type `forall a. a -> a -> Bool`. We could
+    # be tempted to assign the type `elem : forall a. a -> Array a -> Bool`, but
+    # that would be lying (as `==` is currently lying as well), and more
+    # importantly, the contract will fail on any non-trivial call at run-time.
     elem
-      : forall a. a -> Array a -> Bool
+      : Dyn -> Array Dyn -> Bool
       | doc m%"
           Returns true if the given value appears in the array, false otherwise.
 

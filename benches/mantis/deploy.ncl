@@ -67,6 +67,7 @@ fun vars =>
       loggers = defaultLoggers,
       job = vars.job,
       role | [| `passive, `miner, `backup |] = vars.role,
+      reschedule = {},
     }
   in
   let jobDefs =

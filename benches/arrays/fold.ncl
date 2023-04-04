@@ -1,6 +1,7 @@
-let letter | Number -> string.CharLiteral = fun n =>
-  string.code "a" + (n % 26)
-  |> string.from_code in
+let letter | Number -> string.Character = fun n =>
+  let letters = string.characters "abcdefghijklmnopqrstuvwxyz" in
+  array.at (n % 26) letters
+in
 
 {
   right = {
