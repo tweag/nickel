@@ -129,5 +129,8 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # regression test for [#1161](https://github.com/tweag/nickel/issues/1161)
   (record.map (function.const function.id) { a = 1, b = a }).b == 1,
+
+  # regression test for [#1224](https://github.com/tweag/nickel/issues/1224)
+  record.fields ({} | { field | optional = "value" }) == [ "field" ],
 ]
 |> check
