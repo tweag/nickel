@@ -2,7 +2,7 @@
 
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
-use crate::parser::lexer::Lexer;
+use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::record::{Field, RecordData};
@@ -452,7 +452,7 @@ impl Cache {
             InputFormat::Nickel => {
                 let (t, parse_errs) =
                     // TODO: Should this really be parse_term if self.error_tolerant = false?
-                    parser::grammar::TermParser::new().parse_term_lax(file_id, Lexer::new(buf))?;
+                    parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
             }
@@ -1248,7 +1248,7 @@ pub mod resolvers {
             if let hash_map::Entry::Vacant(e) = self.term_cache.entry(file_id) {
                 let buf = self.files.source(file_id);
                 let term = parser::grammar::TermParser::new()
-                    .parse_term(file_id, Lexer::new(buf))
+                    .parse_strict(file_id, Lexer::new(buf))
                     .map_err(|e| ImportError::ParseErrors(e, *pos))?;
                 e.insert(term);
                 Ok((

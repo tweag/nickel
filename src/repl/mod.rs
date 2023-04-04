@@ -11,7 +11,7 @@ use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
-use crate::parser::{grammar, lexer, ExtendedTerm};
+use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::QueryPath;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
@@ -116,7 +116,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
         let (term, parse_errs) = self
             .parser
-            .parse_term_tolerant(file_id, lexer::Lexer::new(exp))?;
+            .parse_tolerant(file_id, lexer::Lexer::new(exp))?;
 
         if !parse_errs.no_errors() {
             return Err(parse_errs.into());
@@ -372,7 +372,7 @@ impl InputParser {
 
         let result = self
             .parser
-            .parse_term_tolerant(self.file_id, lexer::Lexer::new(input));
+            .parse_tolerant(self.file_id, lexer::Lexer::new(input));
 
         let partial = |pe| {
             matches!(
