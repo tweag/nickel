@@ -17,7 +17,7 @@ pub fn handle_format_document(
     let last_line_length = text.lines().rev().next().unwrap().len() as u32;
 
     let formatting_command = server::FORMATTING_COMMAND;
-    let Ok(mut topiary) = process::Command::new(&formatting_command[0])
+    let Ok(mut topiary) = process::Command::new(formatting_command[0])
         .args(&formatting_command[1..])
         .stdin(process::Stdio::piped())
         .stdout(process::Stdio::piped())
