@@ -197,7 +197,10 @@ Types: Types = {
 };
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
-FixedType: Types = {
+//
+// This rule is public and can be used from external modules to parse an input
+// directly as a type.
+pub FixedType: Types = {
     <l: @L> <mut ty: Types> <r: @R> =>? {
         ty.fix_type_vars(mk_span(src_id, l, r))?;
         Ok(ty)

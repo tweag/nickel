@@ -8,7 +8,7 @@ use nickel_lang::{
         cache::{Cache as EvalCache, CacheImpl},
         VirtualMachine,
     },
-    parser::{grammar, lexer},
+    parser::{grammar, lexer, ErrorTolerantParser},
     program::Program,
     term::{RichTerm, Term},
     transform::import_resolution,
@@ -36,7 +36,7 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::TermParser::new()
-        .parse_term(id, lexer::Lexer::new(s))
+        .parse_strict(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }
 
