@@ -23,9 +23,12 @@ pub fn handle_format_document(
         .stdout(process::Stdio::piped())
         .stderr(process::Stdio::piped())
         .spawn() else {
-	    // Also give a notification to tell the user that topiary is not
-	    // available
-	    return Ok(())
+	    let message = "Executing topiary failed";
+	    return Err(ResponseError {
+		code: ErrorCode::InternalError as i32,
+		message: String::from(message),
+		data: None,
+            });
 	};
 
     let mut stdin = topiary.stdin.take().unwrap();
@@ -61,7 +64,6 @@ pub fn handle_format_document(
         },
         new_text,
     }]);
-    let response = Response::new_ok(id, result);
-    server.reply(response);
+    server.reply(Response::new_ok(id, result));
     Ok(())
 }
