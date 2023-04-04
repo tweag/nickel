@@ -1,6 +1,8 @@
 //! Compute the fixpoint of a recursive record.
+use std::collections::HashSet;
+
 use super::{merge::RevertClosurize, *};
-use crate::{label::Label, position::TermPos};
+use crate::{label::Label, position::TermPos, term::record::FieldDeps};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
@@ -83,7 +85,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 // so we start from in the environment of the original record.
                 let mut final_env = env.clone();
                 let id_value = Ident::fresh();
-                final_env.insert(id_value, idx);
+                final_env.insert(id_value, idx.clone());
 
                 let with_ctr_applied = PendingContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
@@ -131,10 +133,15 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                     env: final_env,
                 };
 
-                Ok((
-                    *id,
-                    cache.add(final_closure, IdentKind::Record, BindingType::Normal),
-                ))
+                let deps = FieldDeps::from(HashSet::from([*id]));
+                let mut new_idx = cache.add(
+                    final_closure,
+                    IdentKind::Record,
+                    BindingType::Revertible(deps),
+                );
+                cache.build_cached(&mut new_idx, &[(*id, idx)]);
+
+                Ok((*id, new_idx))
             } else {
                 let error = EvalError::MissingFieldDef {
                     id: *id,
