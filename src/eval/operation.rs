@@ -517,8 +517,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let mut fields: Vec<String> = record
                             .fields
                             .into_iter()
-                            .filter_map(|(id, field)| (!field.metadata.opt).then(|| id.to_string()))
                             // Ignore optional fields without definitions.
+                            .filter_map(|(id, field)| (!field.is_empty_optional()).then(|| id.to_string()))
                             .collect();
                         fields.sort();
                         let terms = fields.into_iter().map(mk_term::string).collect();
