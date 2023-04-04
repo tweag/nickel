@@ -34,12 +34,13 @@ pub enum ExtendedTerm {
     ToplevelLet(Ident, RichTerm),
 }
 
-/// The interface of LALRPOP-generated parsers, for each public rule. This trait is used to
-/// implement parser-independent features (such as error tolerance helpers), which don't have to be
-/// reimplemented for each and every parser.
-///
-/// The type of `parse` was just copy-pasted from the generated code of LALRPOP.
-pub trait LalrpopParser<T> {
+// The interface of LALRPOP-generated parsers, for each public rule. This trait is used as a facade
+// to implement parser-independent features (such as error tolerance helpers), which don't have to
+// be reimplemented for each and every parser. It's LALRPOP-specific and shouldn't be used outside
+// of this module, if we don't want our implementation to be coupled to LALRPOP details.
+//
+// The type of `parse` was just copy-pasted from the generated code of LALRPOP.
+trait LalrpopParser<T> {
     fn parse<'input, 'err, 'wcard, __TOKEN, __TOKENS>(
         &self,
         src_id: FileId,
@@ -89,7 +90,27 @@ generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm);
 generate_lalrpop_parser_impl!(grammar::TermParser, RichTerm);
 generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Types);
 
-pub trait ErrorTolerantParser<T>: LalrpopParser<T> {
+/// Generic interface of the various specialized Nickel parsers.
+///
+/// `T` is the product of the parser (a term, a type, etc.).
+pub trait ErrorTolerantParser<T> {
+    /// Parse a value from a lexer with the given `file_id` in an error-tolerant way. This methods
+    /// can still fail for non-recoverable errors.
+    fn parse_tolerant(
+        &self,
+        file_id: FileId,
+        lexer: lexer::Lexer,
+    ) -> Result<(T, ParseErrors), ParseError>;
+
+    /// Parse a value from a lexer with the given `file_id`, failing at the first encountered
+    /// error.
+    fn parse_strict(&self, file_id: FileId, lexer: lexer::Lexer) -> Result<T, ParseErrors>;
+}
+
+impl<T, P> ErrorTolerantParser<T> for P
+where
+    P: LalrpopParser<T>,
+{
     fn parse_tolerant(
         &self,
         file_id: FileId,
@@ -116,5 +137,3 @@ pub trait ErrorTolerantParser<T>: LalrpopParser<T> {
         }
     }
 }
-
-impl<T, P> ErrorTolerantParser<T> for P where P: LalrpopParser<T> {}
