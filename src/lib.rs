@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod conversion;
 pub mod deserialize;
 pub mod destructuring;
 pub mod environment;
@@ -6,6 +7,8 @@ pub mod error;
 pub mod eval;
 pub mod identifier;
 pub mod label;
+#[cfg(feature = "nix")]
+pub mod nix;
 pub mod parser;
 pub mod position;
 pub mod pretty;

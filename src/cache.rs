@@ -27,6 +27,7 @@ use void::Void;
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum InputFormat {
     Nickel,
+    Nix,
     Json,
     Yaml,
     Toml,
@@ -36,6 +37,19 @@ impl InputFormat {
     fn from_path_buf(path_buf: &Path) -> Option<InputFormat> {
         match path_buf.extension().and_then(OsStr::to_str) {
             Some("ncl") => Some(InputFormat::Nickel),
+            Some("nix") => {
+                #[cfg(feature = "nix")]
+                {
+                    Some(InputFormat::Nix)
+                }
+                #[cfg(not(feature = "nix"))]
+                {
+                    eprintln!(
+                        "error: this executable was not compiled with Nix evaluation support"
+                    );
+                    None
+                }
+            }
             Some("json") => Some(InputFormat::Json),
             Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
             Some("toml") => Some(InputFormat::Toml),
@@ -455,6 +469,22 @@ impl Cache {
                     parser::grammar::TermParser::new().parse_tolerant(file_id, Lexer::new(buf))?;
 
                 Ok((t, parse_errs))
+            }
+            // TODO: Error management for parse errors.
+            // May be better to throw an error instead of panicing if nickel has been compiled
+            // without Nix support
+            InputFormat::Nix => {
+                #[cfg(feature = "nix")]
+                {
+                    Ok((
+                        crate::nix::parse(self, file_id).unwrap(),
+                        ParseErrors::default(),
+                    ))
+                }
+                #[cfg(not(feature = "nix"))]
+                {
+                    panic!("error: this executable was not compiled with Nix evaluation support")
+                }
             }
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
                 .map(|t| (t, ParseErrors::default()))

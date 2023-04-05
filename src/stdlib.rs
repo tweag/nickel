@@ -16,6 +16,7 @@ pub fn modules() -> [StdlibModule; 9] {
         StdlibModule::Function,
         StdlibModule::Enum,
         StdlibModule::Internals,
+        StdlibModule::Compat,
     ]
 }
 
@@ -31,6 +32,7 @@ pub enum StdlibModule {
     Function,
     Enum,
     Internals,
+    Compat,
 }
 
 impl StdlibModule {
@@ -45,6 +47,7 @@ impl StdlibModule {
             StdlibModule::Function => "<stdlib/function.ncl>",
             StdlibModule::Enum => "<stdlib/enum.ncl>",
             StdlibModule::Internals => "<stdlib/internals.ncl>",
+            StdlibModule::Compat => "<stdlib/compat.ncl>",
         }
     }
 
@@ -59,6 +62,7 @@ impl StdlibModule {
             StdlibModule::Function => include_str!("../stdlib/function.ncl"),
             StdlibModule::Enum => include_str!("../stdlib/enum.ncl"),
             StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
+            StdlibModule::Compat => include_str!("../stdlib/compat.ncl"),
         }
     }
 }
@@ -79,6 +83,7 @@ impl TryFrom<Ident> for StdlibModule {
             "function" => StdlibModule::Function,
             "enum" => StdlibModule::Enum,
             "internals" => StdlibModule::Internals,
+            "compat" => StdlibModule::Compat,
             _ => return Err(UnknownStdlibModule),
         };
         Ok(module)
@@ -97,6 +102,7 @@ impl From<StdlibModule> for Ident {
             StdlibModule::Function => "function",
             StdlibModule::Enum => "enum",
             StdlibModule::Internals => "internals",
+            StdlibModule::Compat => "Compat",
         };
         Ident::from(name)
     }
@@ -139,4 +145,47 @@ pub mod internals {
 
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);
+}
+
+/// Contains functions helper for Nix evaluation by Nickel.
+pub mod compat {
+    use super::*;
+    use crate::mk_app;
+    use crate::term::make::op1;
+    use crate::term::{array::Array, Term, UnaryOp};
+
+    /// helper function to perform a Nix like update (`//` operator).
+    pub fn update() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("update_all".into()),
+            Term::Var("compat".into()),
+        )
+    }
+
+    /// helper function to check if a record has a nested field.
+    pub fn has_field_path() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("has_field_path".into()),
+            Term::Var("compat".into()),
+        )
+    }
+
+    /// Generate the `with` compatibility Nickel function which may be applied to an `Ident`
+    /// you have to pass a list of with records in ordered from outer-most to inner-most one.
+    pub fn with(array: Array) -> RichTerm {
+        mk_app!(
+            op1(
+                UnaryOp::StaticAccess("with".into()),
+                Term::Var("compat".into()),
+            ),
+            Term::Array(array, Default::default())
+        )
+    }
+
+    pub fn add() -> RichTerm {
+        op1(
+            UnaryOp::StaticAccess("add".into()),
+            Term::Var("compat".into()),
+        )
+    }
 }

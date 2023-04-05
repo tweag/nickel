@@ -318,6 +318,11 @@ impl IntoDiagnostics<FileId> for ParseErrors {
 /// An error occurring during parsing.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
+    #[cfg(feature = "nix")]
+    /// Temporary Nix error variant.
+    /// TODO: because parsing errors are almost the same between Nix and Nickel, Have a seamless
+    /// convertion from Nix errors to Nickel ones could be a good improvement.
+    NixParseError(FileId),
     /// Unexpected end of file.
     UnexpectedEOF(FileId, /* tokens expected by the parser */ Vec<String>),
     /// Unexpected token.
@@ -1416,6 +1421,22 @@ impl IntoDiagnostics<FileId> for ParseError {
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
         let diagnostic = match self {
+            // TODO: improve error management for nix parser.
+            #[cfg(feature = "nix")]
+            ParseError::NixParseError(file_id) => {
+                let end = files.source_span(file_id).end();
+                let start = files.source_span(file_id).start();
+                Diagnostic::error()
+                    .with_message(format!(
+                        "error parsing nix file {}",
+                        files.name(file_id).to_string_lossy()
+                    ))
+                    .with_labels(vec![primary(&RawSpan {
+                        start,
+                        end,
+                        src_id: file_id,
+                    })])
+            }
             ParseError::UnexpectedEOF(file_id, _expected) => {
                 let end = files.source_span(file_id).end();
                 Diagnostic::error()
