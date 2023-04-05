@@ -1176,7 +1176,7 @@ mod blame_error {
     }
 
     /// Calls [`crate::label::ty_path::span`], but if the call returns `None` (the position of the
-    /// subtype isn't defined), [path_span] pretty-print the type inside a new source, parse it,
+    /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
     pub fn path_span(files: &mut Files<String>, path: &[ty_path::Elem], ty: &Types) -> PathSpan {
