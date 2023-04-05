@@ -6,7 +6,7 @@ error: contract broken by a value: main error message
    ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:11:1
    │
 11 │ null | Contract
-   │ ^^^^   ^^^^^^^^ expected type
+   │ ^^^^   -------- expected type
    │ │       
    │ applied to this expression
    │
