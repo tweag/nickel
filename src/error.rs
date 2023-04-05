@@ -1366,8 +1366,6 @@ is None but last_arrow_elem is Some"),
             .unwrap_or_default();
         let (path_label, notes_higher_order) = report_ty_path(files, &label);
 
-        // Report contract error with the surrounding source program for more context.
-        // let path_label = contract_error_with_context(&label, &path_label.message, path_label.range);
         let labels = build_diagnostic_labels(evaluated_arg, &label, path_label, files, stdlib_ids);
 
         // If there are notes in the head contract diagnostic, we build the first
