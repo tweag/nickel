@@ -5,6 +5,9 @@ use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
 
 use crate::server::{self, Server};
 
+/// Handle the LSP formatting request from a client using an external binary as a formatter.
+/// If this succeds, it sends a reponse to the server and returns `Ok(..)`, otherwise,
+/// it only returns an `Err(..)`.
 pub fn handle_format_document(
     params: DocumentFormattingParams,
     id: RequestId,
