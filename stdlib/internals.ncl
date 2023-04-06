@@ -63,7 +63,7 @@
       # preserved.
       let field_diff =
         fun left right =>
-          array.fold_left
+          std.array.fold_left
             (
               fun acc field =>
                 if %has_field% field right then
@@ -79,7 +79,7 @@
       if %length% missing_fields == 0 then
         let tail_fields = field_diff value field_contracts in
         let fields_with_contracts =
-          array.fold_left
+          std.array.fold_left
             (
               fun acc field =>
                 if %has_field% field field_contracts then
@@ -99,7 +99,7 @@
         %blame%
           (
             %label_with_message%
-              "missing field%{plural} `%{string.join ", " missing_fields}`"
+              "missing field%{plural} `%{std.string.join ", " missing_fields}`"
               label
           )
     else
@@ -125,7 +125,7 @@
         %blame%
           (
             %label_with_message%
-              "extra field%{plural} `%{string.join ", " extra_fields}`"
+              "extra field%{plural} `%{std.string.join ", " extra_fields}`"
               label
           )
     else
@@ -147,7 +147,7 @@
       %blame%
         (
           %label_with_message%
-            "extra field%{plural} `%{string.join ", " extra_fields}`"
+            "extra field%{plural} `%{std.string.join ", " extra_fields}`"
             label
         ),
 
@@ -156,10 +156,10 @@
   "$rec_force" = fun value => %rec_force% (%force% value),
   "$rec_default" = fun value => %rec_default% (%force% value),
 
-  # Provide access to contract.Equal within the initial environement. Merging
-  # makes use of `contract.Equal`, but it can't blindly substitute such an
+  # Provide access to std.contract.Equal within the initial environement. Merging
+  # makes use of `std.contract.Equal`, but it can't blindly substitute such an
   # expression, because `contract` might have been redefined locally. Putting it
   # in an internal value prefixed with `$` makes it accessible from the initial
   # environment and prevents it from being shadowed.
-  "$stdlib_contract_equal" = contract.Equal,
+  "$stdlib_contract_equal" = std.contract.Equal,
 }

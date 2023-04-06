@@ -6,7 +6,7 @@ let GccFlag =
   # We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-  if builtin.is_string value then
+  if std.is_string value then
     if string.length value > 0 &&
       array.any (fun x => x == string.substring 0 1 value) available then
       value

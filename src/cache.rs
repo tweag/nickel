@@ -1017,16 +1017,16 @@ impl Cache {
     /// Generate the initial typing context from the list of `file_ids` corresponding to the
     /// standard library parts.
     pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec: Vec<RichTerm> =
+        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> =
             self.stdlib_ids
                 .as_ref()
                 .map_or(Err(CacheError::NotParsed), |ids| {
                     Ok(ids
                         .iter()
-                        .map(|(_, file_id)| {
-                            self.get_owned(*file_id).expect(
+                        .map(|(module, file_id)| {
+                            (*module, self.get_owned(*file_id).expect(
                                 "cache::mk_type_env(): can't build environment, stdlib not parsed",
-                            )
+                            ))
                         })
                         .collect())
                 })?;
@@ -1041,22 +1041,32 @@ impl Cache {
     ) -> Result<eval::Environment, CacheError<Void>> {
         if let Some(ids) = self.stdlib_ids.as_ref().cloned() {
             let mut eval_env = eval::Environment::new();
-            ids.iter().for_each(|(_, file_id)| {
-                let result = eval::env_add_term(
-                    eval_cache,
-                    &mut eval_env,
-                    self.get_owned(*file_id).expect(
-                        "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                    ),
-                );
-                if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
-                     panic!(
-                        "cache::load_stdlib(): expected the stdlib module {} to be a record, got {:?}",
-                        self.name(*file_id).to_string_lossy().as_ref(),
-                        rt
-                     )
+            ids.iter().for_each(|(module, file_id)| {
+                // The internals module needs special treatment: it's required to be a record
+                // literal, and its bindings are added directly to the environment
+                if let nickel_stdlib::StdlibModule::Internals = module {
+                    let result = eval::env_add_term(
+                        eval_cache,
+                        &mut eval_env,
+                        self.get_owned(*file_id).expect(
+                            "cache::mk_eval_env(): can't build environment, stdlib not parsed",
+                        ),
+                    );
+                    if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
+                         panic!(
+                            "cache::load_stdlib(): expected the stdlib module {} to be a record, got {:?}",
+                            self.name(*file_id).to_string_lossy().as_ref(),
+                            rt
+                         )
+                    }
+                }
+                else {
+                    eval::env_add(eval_cache, &mut eval_env, module.name().into(), self.get_owned(*file_id).expect(
+                            "cache::mk_eval_env(): can't build environment, stdlib not parsed",
+                        ), eval::Environment::new());
                 }
             });
+
             Ok(eval_env)
         } else {
             Err(CacheError::NotParsed)
