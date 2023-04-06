@@ -48,7 +48,7 @@ impl CacheExt for Cache {
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
-                // Don't crash when an import doens't type check
+                // Don't crash when an import doesn't type check
                 let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
             }
         }

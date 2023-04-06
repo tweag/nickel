@@ -25,7 +25,7 @@ use nickel_lang::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
-    linearization::{completed::Completed, interface::TermKind, Environment, ItemId},
+    linearization::{completed::Completed, Environment, ItemId},
     requests::{completion, goto, hover, symbols},
     trace::Trace,
 };
@@ -88,22 +88,13 @@ impl Server {
             if module == StdlibModule::Internals {
                 continue;
             }
-            let name: Ident = module.into();
-            let file_id = self.cache.get_submodule_file_id(module)?;
-            let lin = self.lin_cache_get(&file_id).ok()?;
-            // We're using the ID 0 here because a stdlib module is currently
-            // REQUIRED to be a record literal. The linearization ID of this
-            // record must thus be 0
-            let id = match lin
-                .get_item(ItemId { file_id, index: 0 }, &self.lin_cache)
-                .map(|item| &item.kind)
-            {
-                Some(TermKind::Record(table)) => table.get(&name),
-                _ => None,
-            }
-            .unwrap();
 
-            self.initial_env.insert(name, *id);
+            // The module is bound to its name in the environment.
+            let name: Ident = Ident::from(module.name());
+            let file_id = self.cache.get_submodule_file_id(module)?;
+            // We're using the ID 0 to get the top-level value, which is the body of the module.
+            let content_id = ItemId { file_id, index: 0 };
+            self.initial_env.insert(name, content_id);
         }
         Some(())
     }
