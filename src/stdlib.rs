@@ -135,7 +135,7 @@ pub mod internals {
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);
     generate_accessor!(empty_tail);
-    generate_accessor!(contract_equal);
+    generate_accessor!(stdlib_contract_equal);
 
     generate_accessor!(rec_default);
     generate_accessor!(rec_force);

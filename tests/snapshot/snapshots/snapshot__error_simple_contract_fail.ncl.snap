@@ -6,7 +6,7 @@ error: contract broken by a value
   ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:1:1
   │
 1 │ 1 | String
-  │ ^   ^^^^^^ expected type
+  │ ^   ------ expected type
   │ │    
   │ applied to this expression
 
