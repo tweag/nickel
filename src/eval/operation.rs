@@ -691,15 +691,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
                             // As for `ArrayMap` (see above), we closurize the content of fields
-                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
-                                let pos = t.pos.into_inherited();
 
-                                mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
-                                    .with_pos(pos)
-                            }).map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
+                            let fields = record
+                                .fields
+                                .into_iter()
+                                .filter(|(_, field)| !field.is_empty_optional())
+                                .map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
+                                    let pos = t.pos.into_inherited();
+
+                                    mk_app!(f_as_var.clone(), mk_term::string(id.label()), t).with_pos(pos)
+                                })
+                                .map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Record(record), pos_op_inh),
+                                body: RichTerm::new(Term::Record(RecordData { fields, ..record }), pos_op_inh),
                                 env: shared_env,
                             })
                         }
@@ -1119,17 +1124,33 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(record) if !record.fields.is_empty() => {
                             let mut shared_env = Environment::new();
 
-                            let record = record.map_values_closurize(&mut self.cache, &mut shared_env, &env, |_, t| {
-                                mk_term::op1(UnaryOp::Force(), t)
-                            }).map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
+                            let fields = record.fields
+                                .into_iter()
+                                .filter(|(_, field)| {
+                                    !(field.is_empty_optional() || (for_export && field.metadata.not_exported))
+                                })
+                                .map_values_closurize(&mut self.cache, &mut shared_env, &env, |_, value| {
+                                    mk_term::op1(UnaryOp::Force { for_export }, value)
+                                })
+                                .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
-                            // unwrap: the call to map_fields_without_optionals must ensure that
-                            // the fields all have a definition, so `field.value` must be `Some`.
-                            let terms = record.fields.clone().into_values().map(|field| field.value.unwrap());
-                            let cont = RichTerm::new(Term::Record(record), pos.into_inherited());
+                            let terms = fields
+                                .values()
+                                .cloned()
+                                .map(|field| {
+                                    field
+                                        .value
+                                        .expect("fields without definition would have thrown MissingFieldDefError before")
+                                })
+                                .collect::<Vec<_>>();
+
+                            let cont = RichTerm::new(
+                                Term::Record(RecordData { fields, ..record }),
+                                pos.into_inherited(),
+                            );
 
                             Ok(Closure {
-                                body: seq_terms(terms, pos_op, cont),
+                                body: seq_terms(terms.into_iter(), pos_op, cont),
                                 env: shared_env,
                             })
                         },
@@ -3630,15 +3651,14 @@ fn eq<C: Cache>(
     }
 }
 
-trait RecordDataExt: Sized {
-    /// Returns the record resulting from:
+trait MapValuesClosurize: Sized {
+    /// Returns a HashMap from `Ident` to `Field` by:
     ///
-    /// 1. Filtering out any field which is an empty optional
-    /// 2. Appplying the pending contracts to each fields
-    /// 3. Applying the provided function
-    /// 4. Closurizing each result into the shared environment.
+    /// 1. Appplying the pending contracts to each fields
+    /// 2. Applying the provided function
+    /// 3. Closurizing each result into the shared environment.
     ///
-    /// Because we applied the pending contracts in 2., they are dropped in the result: all fields
+    /// Because we applied the pending contracts in 1., they are dropped in the result: all fields
     /// have an empty set of pending contracts.
     fn map_values_closurize<F, C: Cache>(
         self,
@@ -3646,58 +3666,53 @@ trait RecordDataExt: Sized {
         shared_env: &mut Environment,
         env: &Environment,
         f: F,
-    ) -> Result<Self, record::MissingFieldDefError>
+    ) -> Result<IndexMap<Ident, Field>, record::MissingFieldDefError>
     where
         F: FnMut(Ident, RichTerm) -> RichTerm;
 }
 
-impl RecordDataExt for RecordData {
+impl<Iter> MapValuesClosurize for Iter
+where
+    Iter: IntoIterator<Item = (Ident, Field)>,
+{
     fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
         shared_env: &mut Environment,
         env: &Environment,
         mut f: F,
-    ) -> Result<Self, record::MissingFieldDefError>
+    ) -> Result<IndexMap<Ident, Field>, record::MissingFieldDefError>
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
     {
-        let fields: Result<IndexMap<_, _>, _> = self
-            .fields
-            .into_iter()
-            .filter_map(|(id, field)| {
-                (!field.is_empty_optional()).then(|| {
-                    let value = field
-                        .value
-                        .map(|value| {
-                            let pos = value.pos;
-                            let value_with_ctrs = PendingContract::apply_all(
-                                value,
-                                field.pending_contracts.iter().cloned(),
-                                pos,
-                            );
-                            f(id, value_with_ctrs)
-                        })
-                        .ok_or(record::MissingFieldDefError {
-                            id,
-                            metadata: field.metadata.clone(),
-                        })?;
+        self.into_iter()
+            .map(|(id, field)| {
+                let value = field
+                    .value
+                    .map(|value| {
+                        let pos = value.pos;
+                        let value_with_ctrs = PendingContract::apply_all(
+                            value,
+                            field.pending_contracts.iter().cloned(),
+                            pos,
+                        );
+                        f(id, value_with_ctrs)
+                    })
+                    .ok_or(record::MissingFieldDefError {
+                        id,
+                        metadata: field.metadata.clone(),
+                    })?;
 
-                    let field = Field {
-                        value: Some(value),
-                        pending_contracts: Vec::new(),
-                        ..field
-                    }
-                    .closurize(cache, shared_env, env.clone());
+                let field = Field {
+                    value: Some(value),
+                    pending_contracts: Vec::new(),
+                    ..field
+                }
+                .closurize(cache, shared_env, env.clone());
 
-                    Ok((id, field))
-                })
+                Ok((id, field))
             })
-            .collect();
-        Ok(Self {
-            fields: fields?,
-            ..self
-        })
+            .collect()
     }
 }
 
