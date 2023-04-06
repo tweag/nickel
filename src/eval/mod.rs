@@ -171,7 +171,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         t0: RichTerm,
         initial_env: &Environment,
     ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(t0, initial_env)
+        self.eval_deep_closure(t0, initial_env, false)
+            .map(|(term, env)| subst(&self.cache, term, initial_env, &env))
+    }
+
+    /// Like `eval_full`, but skips evaluating record fields marked `not_exported`.
+    pub fn eval_full_for_export(
+        &mut self,
+        t0: RichTerm,
+        initial_env: &Environment,
+    ) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure(t0, initial_env, true)
             .map(|(term, env)| subst(&self.cache, term, initial_env, &env))
     }
 
@@ -181,7 +191,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         t0: RichTerm,
         initial_env: &Environment,
     ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(t0, initial_env)
+        self.eval_deep_closure(t0, initial_env, false)
             .map(|(term, _)| term)
     }
 
@@ -189,8 +199,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self,
         rt: RichTerm,
         initial_env: &Environment,
+        for_export: bool,
     ) -> Result<(RichTerm, Environment), EvalError> {
-        let wrapper = mk_term::op1(UnaryOp::Force(), rt);
+        let wrapper = mk_term::op1(UnaryOp::Force { for_export }, rt);
         self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
     }
 

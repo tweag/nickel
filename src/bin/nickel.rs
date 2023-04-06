@@ -237,7 +237,7 @@ fn export(
     format: Option<ExportFormat>,
     output: Option<PathBuf>,
 ) -> Result<(), Error> {
-    let rt = program.eval_full().map(RichTerm::from)?;
+    let rt = program.eval_full_for_export().map(RichTerm::from)?;
     let format = format.unwrap_or_default();
 
     // We only add a trailing newline for JSON exports. Both YAML and TOML

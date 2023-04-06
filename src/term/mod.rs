@@ -1081,7 +1081,17 @@ pub enum UnaryOp {
     ///
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
-    Force(),
+    ///
+    /// # About `for_export`
+    ///
+    /// When exporting a Nickel term, we first apply `Force` to the term to
+    /// evaluate it. If there are record fields that have been marked `not_exported`,
+    /// they would still be evaluated ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230).
+    /// To stop this from happening, we introduce the `for_export` parameter
+    /// here. When `for_export` is `true`, the evaluation of `Force` will skip
+    /// fields that are marked as `not_exported`. When `for_export` is `false`,
+    /// these fields are evaluated.
+    Force { for_export: bool },
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.

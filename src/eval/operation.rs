@@ -1103,7 +1103,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::Force() => {
+            UnaryOp::Force { for_export } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
                 fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
                 where
@@ -1139,7 +1139,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .into_iter()
                                 .map(|t| {
                                     mk_term::op1(
-                                        UnaryOp::Force(),
+                                        UnaryOp::Force { for_export },
                                         PendingContract::apply_all(
                                             t,
                                             attrs.pending_contracts.iter().cloned(),

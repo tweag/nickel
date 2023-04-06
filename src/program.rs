@@ -240,6 +240,16 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
+    /// Same as `eval`, but proceeds to a full evaluation.
+    /// Skips record fields marked `not_exported`
+    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
+        let (t, initial_env) = self.prepare_eval()?;
+        self.vm.reset();
+        self.vm
+            .eval_full_for_export(t, &initial_env)
+            .map_err(|e| e.into())
+    }
+
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
