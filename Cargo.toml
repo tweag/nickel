@@ -26,10 +26,10 @@ repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 doc = [ "comrak" ]
 
 [build-dependencies]
-lalrpop = "0.19.6"
+lalrpop = "0.19.9"
 
 [dependencies]
-lalrpop-util = "0.19.6"
+lalrpop-util = "0.19.9"
 regex = "1"
 simple-counter = "0.1.0"
 codespan = "0.11"
