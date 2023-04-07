@@ -1,5 +1,5 @@
-Version 1.0 (?)
-===============
+Version 1.0 (pending)
+=====================
 
 This is WIP, registering breaking changes for the next major version.
 
@@ -15,6 +15,16 @@ Breaking changes
   renamed to `is_number`, `is_string` and `to_string`
 - The `string.to_num` and `string.from_num` functions have been renamed to
   `to_number` and `from_number`
+- All the stdlib module, `array`, `string`, `record`, etc. have no been put
+    under a `std` namespace. They must be accessed as `std.array`, `std.string`
+    and so on.
+- RFC005 was implemented, which changes the semantics of contract annotations
+    and merging. See [the RFC
+    content](https://github.com/tweag/nickel/blob/master/rfcs/005-metadata-rework.md)
+    for more details. Most notably, metadata annotation (default values,
+    `optional`, documentation, etc.) can only appear next to a record field.
+    Contract and type annotations can still appear anywhere. Documentation can
+    still appear on let-binding as well.
 
 Version 0.3.1 (2022-12-15)
 ==========================
