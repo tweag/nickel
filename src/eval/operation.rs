@@ -27,8 +27,8 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, MergePriority, NAryOp, Number, PendingContract, RecordExtKind, RichTerm,
-        SharedTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, IndexMap, MergePriority, NAryOp, Number, PendingContract, RecordExtKind,
+        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -47,7 +47,7 @@ use md5::digest::Digest;
 use simple_counter::*;
 use unicode_segmentation::UnicodeSegmentation;
 
-use std::{collections::HashMap, convert::TryFrom, iter::Extend, rc::Rc};
+use std::{convert::TryFrom, iter::Extend, rc::Rc};
 
 generate_counter!(FreshVariableCounter, usize);
 
@@ -3484,11 +3484,11 @@ fn eq<C: Cache>(
         (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
         (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1 == id2)),
         (Term::Record(r1), Term::Record(r2)) => {
-            let merge::hashmap::SplitResult {
+            let merge::split::SplitResult {
                 left,
                 center,
                 right,
-            } = merge::hashmap::split(r1.fields, r2.fields);
+            } = merge::split::split(r1.fields, r2.fields);
 
             // As for other record operations, we ignore optional fields without a definition.
             if !left.values().all(Field::is_empty_optional)
@@ -3662,7 +3662,7 @@ impl RecordDataExt for RecordData {
     where
         F: FnMut(Ident, RichTerm) -> RichTerm,
     {
-        let fields: Result<HashMap<_, _>, _> = self
+        let fields: Result<IndexMap<_, _>, _> = self
             .fields
             .into_iter()
             .filter_map(|(id, field)| {
