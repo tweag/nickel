@@ -1,6 +1,4 @@
 //! Load the Nickel standard library in strings at compile-time.
-
-use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
