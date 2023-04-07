@@ -1972,7 +1972,7 @@ pub fn infer_record_type(
                     let uty = match field_apparent_type(field, None, None) {
                         ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
                         ApparentType::FromEnv(uty) => uty,
-                        // If we haven't reached max_depth yet, and the time is only approximated,
+                        // If we haven't reached max_depth yet, and the type is only approximated,
                         // we try to recursively infer a better type.
                         ApparentType::Inferred(ty) | ApparentType::Approximated(ty)
                             if max_depth > 0 =>
