@@ -22,7 +22,7 @@
 #
 # Typing
 #
-# Stdlib module shouldn't recursively refer to other modules directly, they
+# Stdlib modules shouldn't recursively refer to other modules directly, they
 # should use the stdlib provided in the environment instead. This means using
 # `std.array` from within the `record` module instead of just `array`. While the
 # latter could work in principle, typechecking mutually recursive records is
