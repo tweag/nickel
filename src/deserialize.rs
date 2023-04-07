@@ -1,7 +1,6 @@
 //! Deserialization of an evaluated program to plain Rust types.
 
 use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
-use std::collections::HashMap;
 use std::iter::ExactSizeIterator;
 
 use serde::de::{
@@ -12,7 +11,7 @@ use serde::de::{
 use crate::identifier::Ident;
 use crate::term::array::{self, Array};
 use crate::term::record::Field;
-use crate::term::{RichTerm, Term};
+use crate::term::{IndexMap, RichTerm, Term};
 
 macro_rules! deserialize_number {
     ($method:ident, $type:tt, $visit:ident) => {
@@ -387,12 +386,12 @@ where
 }
 
 struct RecordDeserializer {
-    iter: <HashMap<Ident, Field> as IntoIterator>::IntoIter,
+    iter: <IndexMap<Ident, Field> as IntoIterator>::IntoIter,
     field: Option<Field>,
 }
 
 impl RecordDeserializer {
-    fn new(map: HashMap<Ident, Field>) -> Self {
+    fn new(map: IndexMap<Ident, Field>) -> Self {
         RecordDeserializer {
             iter: map.into_iter(),
             field: None,
@@ -444,7 +443,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
 }
 
 fn visit_record<'de, V>(
-    record: HashMap<Ident, Field>,
+    record: IndexMap<Ident, Field>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where

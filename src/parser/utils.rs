@@ -1,7 +1,6 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use indexmap::map::Entry;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -19,8 +18,7 @@ use crate::{
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, LetMetadata, Rational, RichTerm, StrChunk, Term, TypeAnnotation,
-        UnaryOp,
+        *,
     },
     types::{TypeF, Types},
 };
@@ -146,7 +144,7 @@ impl FieldDef {
 
             match path_elem {
                 FieldPathElem::Ident(id) => {
-                    let mut fields = HashMap::new();
+                    let mut fields = IndexMap::new();
                     fields.insert(id, acc);
                     Field::from(RichTerm::new(
                         Term::Record(RecordData {
@@ -161,7 +159,7 @@ impl FieldDef {
 
                     if let Some(static_access) = static_access {
                         let id = Ident::new_with_pos(static_access, exp.pos);
-                        let mut fields = HashMap::new();
+                        let mut fields = IndexMap::new();
                         fields.insert(id, acc);
                         Field::from(RichTerm::new(
                             Term::Record(RecordData {
@@ -446,10 +444,10 @@ pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, Field)> + Debug,
 {
-    let mut static_fields = HashMap::new();
+    let mut static_fields = IndexMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(static_fields: &mut HashMap<Ident, Field>, id: Ident, field: Field) {
+    fn insert_static_field(static_fields: &mut IndexMap<Ident, Field>, id: Ident, field: Field) {
         match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
                 // temporarily putting an empty field in the entry to take the previous value.

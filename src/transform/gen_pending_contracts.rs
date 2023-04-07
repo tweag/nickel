@@ -11,12 +11,10 @@ use crate::{
     match_sharedterm,
     term::{
         record::{Field, RecordData},
-        RichTerm, Term,
+        IndexMap, RichTerm, Term,
     },
     types::UnboundTypeVariableError,
 };
-
-use std::collections::HashMap;
 
 pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
     fn attach_to_field(field: Field) -> Result<Field, UnboundTypeVariableError> {
@@ -29,8 +27,8 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     }
 
     fn attach_to_fields(
-        fields: HashMap<Ident, Field>,
-    ) -> Result<HashMap<Ident, Field>, UnboundTypeVariableError> {
+        fields: IndexMap<Ident, Field>,
+    ) -> Result<IndexMap<Ident, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
             .map(|(id, field)| Ok((id, attach_to_field(field)?)))

@@ -23,7 +23,7 @@ default = ["markdown", "repl", "doc"]
 markdown = ["termimad"]
 repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
-doc = [ "comrak" ]
+doc = ["comrak"]
 
 [build-dependencies]
 lalrpop = "0.19.9"
@@ -67,6 +67,7 @@ once_cell = "1.17.1"
 typed-arena = "2.0.2"
 malachite = {version = "0.3.2", features = ["enable_serde"] }
 malachite-q = "0.3.2"
+indexmap = {version = "1.9.3", features = ["serde"] }
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

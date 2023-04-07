@@ -5,7 +5,7 @@ use log::debug;
 use nickel_lang::{
     cache::Cache,
     identifier::Ident,
-    term::record::Field,
+    term::{record::Field, IndexMap},
     typecheck::{linearization::LinearizationState, UnifType},
     types::TypeF,
 };
@@ -105,7 +105,7 @@ impl<'b> Building<'b> {
     pub(super) fn register_fields(
         &mut self,
         current_file: FileId,
-        record_fields: &HashMap<Ident, Field>,
+        record_fields: &IndexMap<Ident, Field>,
         record: ItemId,
         env: &mut Environment,
     ) {

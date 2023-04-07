@@ -55,8 +55,9 @@ use crate::{
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
-    term::make as mk_term,
-    term::{record::RecordData, RichTerm, Term, Traverse, TraverseOrder},
+    term::{
+        make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse, TraverseOrder,
+    },
 };
 
 use std::{
@@ -711,7 +712,7 @@ impl EnumRows {
     fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::internals;
 
-        let mut cases = HashMap::new();
+        let mut cases = IndexMap::new();
         let mut has_tail = false;
         let value_arg = Ident::from("x");
         let label_arg = Ident::from("l");
@@ -780,7 +781,7 @@ impl RecordRows {
         // We begin by building a record whose arguments are contracts
         // derived from the types of the statically known fields.
         let mut rrows = self;
-        let mut fcs = HashMap::new();
+        let mut fcs = IndexMap::new();
 
         while let RecordRowsF::Extend {
             row: RecordRowF { id, types: ty },

@@ -35,7 +35,6 @@
 //! corresponding more precise return type. Other rules that produce or just
 //! propagate general uniterms have to return a `UniTerm`.
 use std::{
-    collections::HashMap,
     ffi::OsString,
     convert::TryFrom,
 };
@@ -290,7 +289,7 @@ Applicative: UniTerm = {
     NOpPre<AsTerm<RecordOperand>>,
     RecordOperand,
     "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
-        let mut acc = HashMap::with_capacity(cases.len());
+        let mut acc = IndexMap::with_capacity(cases.len());
         let mut default = None;
 
         for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {

@@ -1,9 +1,6 @@
 use super::*;
 use crate::{error::EvalError, identifier::Ident, label::Label};
-use std::{
-    collections::{HashMap, HashSet},
-    rc::Rc,
-};
+use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone)]
@@ -71,7 +68,7 @@ impl From<HashSet<Ident>> for FieldDeps {
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
     /// Must have exactly the same keys as the static fields map of the recursive record.
-    pub stat_fields: HashMap<Ident, FieldDeps>,
+    pub stat_fields: IndexMap<Ident, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
     pub dyn_fields: Vec<FieldDeps>,
 }
@@ -235,7 +232,7 @@ impl Traverse<RichTerm> for Field {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RecordData {
     /// Fields whose names are known statically.
-    pub fields: HashMap<Ident, Field>,
+    pub fields: IndexMap<Ident, Field>,
     /// Attributes which may be applied to a record.
     pub attrs: RecordAttrs,
     /// The hidden part of a record under a polymorphic contract.
@@ -263,7 +260,7 @@ impl MissingFieldDefError {
 
 impl RecordData {
     pub fn new(
-        fields: HashMap<Ident, Field>,
+        fields: IndexMap<Ident, Field>,
         attrs: RecordAttrs,
         sealed_tail: Option<SealedTail>,
     ) -> Self {
@@ -280,7 +277,7 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: HashMap<Ident, RichTerm>) -> Self {
+    pub fn with_field_values(field_values: IndexMap<Ident, RichTerm>) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| {

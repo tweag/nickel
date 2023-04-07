@@ -57,10 +57,9 @@ use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, RichTerm, Term, TypeAnnotation,
+    BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
 };
 use crate::transform::Closurizable;
-use std::collections::HashMap;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
@@ -257,11 +256,11 @@ pub fn merge<C: Cache>(
                 });
             }
 
-            let hashmap::SplitResult {
+            let split::SplitResult {
                 left,
                 center,
                 right,
-            } = hashmap::split(r1.fields, r2.fields);
+            } = split::split(r1.fields, r2.fields);
 
             match mode {
                 MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
@@ -301,7 +300,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 .chain(right.keys())
                 .cloned()
                 .collect();
-            let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
+            let mut m = IndexMap::with_capacity(left.len() + center.len() + right.len());
             let mut env = Environment::new();
 
             // Merging recursive records is the one operation that may override recursive fields. To
@@ -671,24 +670,24 @@ impl RevertClosurize for Vec<PendingContract> {
     }
 }
 
-pub mod hashmap {
-    use std::collections::HashMap;
+pub mod split {
+    use crate::term::IndexMap;
 
     pub struct SplitResult<K, V1, V2> {
-        pub left: HashMap<K, V1>,
-        pub center: HashMap<K, (V1, V2)>,
-        pub right: HashMap<K, V2>,
+        pub left: IndexMap<K, V1>,
+        pub center: IndexMap<K, (V1, V2)>,
+        pub right: IndexMap<K, V2>,
     }
 
-    /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
+    /// Split two maps m1 and m2 in three parts (left,center,right), where left holds bindings
     /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
     /// in m1), and center holds bindings for keys that are both in m1 and m2.
-    pub fn split<K, V1, V2>(m1: HashMap<K, V1>, m2: HashMap<K, V2>) -> SplitResult<K, V1, V2>
+    pub fn split<K, V1, V2>(m1: IndexMap<K, V1>, m2: IndexMap<K, V2>) -> SplitResult<K, V1, V2>
     where
         K: std::hash::Hash + Eq,
     {
-        let mut left = HashMap::new();
-        let mut center = HashMap::new();
+        let mut left = IndexMap::new();
+        let mut center = IndexMap::new();
         let mut right = m2;
 
         for (key, value) in m1 {
@@ -712,8 +711,8 @@ pub mod hashmap {
 
         #[test]
         fn all_left() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let m2 = HashMap::<isize, isize>::new();
+            let mut m1 = IndexMap::new();
+            let m2 = IndexMap::<isize, isize>::new();
 
             m1.insert(1, 1);
             let SplitResult {
@@ -735,8 +734,8 @@ pub mod hashmap {
 
         #[test]
         fn all_right() -> Result<(), String> {
-            let m1 = HashMap::<isize, isize>::new();
-            let mut m2 = HashMap::new();
+            let m1 = IndexMap::<isize, isize>::new();
+            let mut m2 = IndexMap::new();
 
             m2.insert(1, 1);
             let SplitResult {
@@ -760,8 +759,8 @@ pub mod hashmap {
 
         #[test]
         fn all_center() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let mut m2 = HashMap::new();
+            let mut m1 = IndexMap::new();
+            let mut m2 = IndexMap::new();
 
             m1.insert(1, 1);
             m2.insert(1, 2);
@@ -786,8 +785,8 @@ pub mod hashmap {
 
         #[test]
         fn mixed() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let mut m2 = HashMap::new();
+            let mut m1 = IndexMap::new();
+            let mut m2 = IndexMap::new();
 
             m1.insert(1, 1);
             m1.insert(2, 1);

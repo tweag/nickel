@@ -36,6 +36,7 @@ use crate::{
 };
 
 use codespan::FileId;
+
 pub use malachite::{
     num::{
         basic::traits::Zero,
@@ -47,9 +48,12 @@ pub use malachite::{
 
 use serde::{Deserialize, Serialize};
 
+// Because we use `IndexMap` for recors, consumer of Nickel (as a library) might have to
+// manipulate values of this type, so we re-export this type.
+pub use indexmap::IndexMap;
+
 use std::{
     cmp::{Ordering, PartialOrd},
-    collections::HashMap,
     ffi::OsString,
     fmt,
     ops::Deref,
@@ -127,7 +131,7 @@ pub enum Term {
     /// able to handle yet unapplied match expressions.
     #[serde(skip)]
     Match {
-        cases: HashMap<Ident, RichTerm>,
+        cases: IndexMap<Ident, RichTerm>,
         default: Option<RichTerm>,
     },
 
@@ -1530,7 +1534,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Match { cases, default } => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_result : Result<HashMap<Ident, RichTerm>, E> = cases
+                let cases_result : Result<IndexMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
@@ -1577,7 +1581,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<HashMap<Ident, Field>, E> = record.fields
+                let fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
@@ -1590,7 +1594,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<HashMap<Ident, Field>, E> = record.fields
+                let static_fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
@@ -1785,7 +1789,7 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = std::collections::HashMap::new();
+                let mut fields = indexmap::IndexMap::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
@@ -1802,7 +1806,7 @@ pub mod make {
     macro_rules! mk_match {
         ( $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
             {
-                let mut cases = std::collections::HashMap::new();
+                let mut cases = indexmap::IndexMap::new();
                 $(
                     cases.insert($id.into(), $body.into());
                 )*
@@ -1810,7 +1814,7 @@ pub mod make {
             }
         };
         ( $( ($id:expr, $body:expr) ),*) => {
-                let mut cases = std::collections::HashMap::new();
+                let mut cases = indexmap::IndexMap::new();
                 $(
                     cases.insert($id.into(), $body.into());
                 )*

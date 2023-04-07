@@ -6,7 +6,7 @@ use crate::{
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        Number, RichTerm, Term, TypeAnnotation,
+        IndexMap, Number, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -17,7 +17,7 @@ use serde::{
 
 use malachite::num::conversion::traits::IsInteger;
 
-use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
+use std::{fmt, io, rc::Rc, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -117,7 +117,6 @@ where
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
-/// (by default, `HashMap`'s randomness implies a randomized order of fields in the output).
 pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -147,7 +146,7 @@ pub fn deserialize_record<'de, D>(deserializer: D) -> Result<RecordData, D::Erro
 where
     D: Deserializer<'de>,
 {
-    let fields = HashMap::deserialize(deserializer)?;
+    let fields = IndexMap::deserialize(deserializer)?;
     Ok(RecordData::with_field_values(fields))
 }
 

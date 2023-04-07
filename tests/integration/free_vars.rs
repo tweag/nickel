@@ -1,15 +1,11 @@
-use nickel_lang::term::record::FieldDeps;
+use nickel_lang::term::{record::FieldDeps, IndexMap};
 use nickel_lang::{identifier::Ident, term::Term, transform::free_vars};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::iter::IntoIterator;
 use std::rc::Rc;
 
 use nickel_lang_utilities::parse;
-
-// fn is_subset_of<'a>(free_vars: impl IntoIterator<Item = &'a Ident>, rec_fields: &Vec<&Ident>) -> bool {
-//    free_vars.into_iter().all(|id| rec_fields.contains(&id))
-// }
 
 fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
     let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
@@ -17,8 +13,8 @@ fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
 }
 
 fn stat_free_vars_incl(
-    stat_fields: &HashMap<Ident, FieldDeps>,
-    mut expected: HashMap<&str, Vec<&str>>,
+    stat_fields: &IndexMap<Ident, FieldDeps>,
+    mut expected: IndexMap<&str, Vec<&str>>,
 ) -> bool {
     stat_fields
         .iter()
@@ -45,7 +41,7 @@ fn check_dyn_vars(expr: &str, expected: Vec<Vec<&str>>) -> bool {
     }
 }
 
-fn check_stat_vars(expr: &str, expected: HashMap<&str, Vec<&str>>) -> bool {
+fn check_stat_vars(expr: &str, expected: IndexMap<&str, Vec<&str>>) -> bool {
     let mut rt = parse(expr).unwrap();
     free_vars::transform(&mut rt);
 
@@ -71,7 +67,7 @@ fn static_record() {
           b = f (a + 1) z,
           c = if a.r then [b] else {foo = c}
         }",
-        HashMap::from([
+        IndexMap::from([
             ("a", vec!["b"]),
             ("b", vec!["a"]),
             ("c", vec!["a", "b", "c"])
@@ -101,7 +97,7 @@ fn simple_let() {
           b = let a = c in f (a + 1) z,
           c = let foo = null in let bar = null in if a.r then [b] else {foo = c}
         }",
-        HashMap::from([
+        IndexMap::from([
             ("a", vec!["a"]),
             ("b", vec!["c"]),
             ("c", vec!["a", "b", "c"])
@@ -117,7 +113,7 @@ fn destruct_let() {
           b = let {a, b={c=e@{d}}} = null in f (a + 1 - c) z,
           c = null
         }",
-        HashMap::from([("a", vec!["a", "b"]), ("b", vec!["c"]), ("c", vec![]),])
+        IndexMap::from([("a", vec!["a", "b"]), ("b", vec!["c"]), ("c", vec![]),])
     ));
 }
 
@@ -129,7 +125,7 @@ fn simple_fun() {
           b = (fun a => a + (fun b => b + (fun z => c))) a,
           c = [],
         }",
-        HashMap::from([("a", vec!["c"]), ("b", vec!["a", "c"]), ("c", vec![]),])
+        IndexMap::from([("a", vec!["c"]), ("b", vec!["a", "c"]), ("c", vec![]),])
     ));
 }
 
@@ -141,7 +137,7 @@ fn destruct_fun() {
           b = (fun {a={b={a}}} => a + (fun {foo={bar=b@{b=e}}} => b + (fun z => b))) c,
           c = [],
         }",
-        HashMap::from([("a", vec!["a", "c"]), ("b", vec!["c"]), ("c", vec![]),])
+        IndexMap::from([("a", vec!["a", "c"]), ("b", vec!["c"]), ("c", vec![]),])
     ));
 }
 
@@ -163,7 +159,7 @@ fn nested_records() {
             baz.e = b,
           },
         }",
-        HashMap::from([("a", vec!["c"]), ("b", vec!["a", "c"]), ("c", vec!["b"]),])
+        IndexMap::from([("a", vec!["c"]), ("b", vec!["a", "c"]), ("c", vec!["b"]),])
     ));
 }
 
@@ -175,7 +171,7 @@ fn recursive_let() {
           b = let rec a = a + b in f (a + 1) z,
           c = let rec foo = b in let rec bar = c in if a.r then [b] else {foo = c}
         }",
-        HashMap::from([
+        IndexMap::from([
             ("a", vec!["a"]),
             ("b", vec!["b"]),
             ("c", vec!["a", "b", "c"])
