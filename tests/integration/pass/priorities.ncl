@@ -19,7 +19,7 @@ let {Assert, check, ..} =  import "lib/assert.ncl" in
     y  = 2,
     z | priority 10 = 2,
 
-  } in 
+  } in
 
   let block3 = {
     foo | priority -10.1 = 3,
@@ -59,7 +59,7 @@ let {Assert, check, ..} =  import "lib/assert.ncl" in
     bar = {
         baz = "old",
         baz' = "old"
-      } |> record.map (fun _name value => value)
+      } |> std.record.map (fun _name value => value)
   } in
   {val | rec default = x} & {val = {foo = "new", bar.baz = "new"}}
     == { val = {foo = "old", bar = {baz = "new", baz' = "old"}}}

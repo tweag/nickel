@@ -55,7 +55,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # enums_applied
   # Regression test for enum types converted to contracts outside of annotations
   # causing issues wrt typechecking
-  let Wrapper = contract.apply [| `Foo, `Bar |] in
+  let Wrapper = std.contract.apply [| `Foo, `Bar |] in
   (`Foo | Wrapper) == `Foo,
 
   # records_simple

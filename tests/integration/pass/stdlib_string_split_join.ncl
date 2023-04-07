@@ -1,4 +1,5 @@
 let {check, ..} = import "lib/assert.ncl" in
+let {string, ..} = std in
 
 [
   # string.join
@@ -22,7 +23,7 @@ let {check, ..} = import "lib/assert.ncl" in
   string.split "a👨" "a👨‍❤️‍💋‍👨" == ["a👨‍❤️‍💋‍👨"],
 
   # string.split/string.join roundtrip
-  array.all (fun {sep, str} => str == string.join sep (string.split sep str)) [
+  std.array.all (fun {sep, str} => str == string.join sep (string.split sep str)) [
     { sep = ",", str = "a,b,c,d,e,f,g" },
     { sep = ":", str = "1:2:3:4:5" },
     { sep = "--", str = "yes--no--maybe--x--y--z" },

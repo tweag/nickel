@@ -1,5 +1,6 @@
 let {check, ..} = import "lib/assert.ncl" in
 let sym = fun prefix_ fragments_ => { tag = `SymbolicString, prefix = prefix_, fragments = fragments_ } in
+
 [
   # Static symbolic string
   foo-s%"hello, world"% == sym `foo ["hello, world"] ,

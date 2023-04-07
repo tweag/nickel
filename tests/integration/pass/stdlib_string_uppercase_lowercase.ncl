@@ -1,4 +1,5 @@
 let {check, ..} = import "lib/assert.ncl" in
+let {string, ..} = std in
 
 [
     # string.uppercase
@@ -16,7 +17,7 @@ let {check, ..} = import "lib/assert.ncl" in
   string.lowercase "👨‍❤️‍💋‍👨" == "👨‍❤️‍💋‍👨",
 
   # string.uppercase/string.lowercase roundtrip
-  array.all (fun s => s == string.lowercase (string.uppercase s)) [
+  std.array.all (fun s => s == string.lowercase (string.uppercase s)) [
     "abacus",
     "abcd",
     "xxxxyyyyzzzz",
@@ -24,7 +25,7 @@ let {check, ..} = import "lib/assert.ncl" in
   ],
 
   # string.lowercase/string.uppercase roundtrip
-  array.all (fun s => s == string.uppercase (string.lowercase s)) [
+  std.array.all (fun s => s == string.uppercase (string.lowercase s)) [
     "ABACUS",
     "ABCD",
     "XXXXYYYYZZZZ",
