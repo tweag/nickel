@@ -9,7 +9,7 @@ let mgc
 # let params = { m = number.pow 2 32, a = 2480367069 } in
 
 # These parameters are from the "Numerical Recipes" book.
-let params = { m = number.pow 2 32, a = 1664525, c = 1013904223 } in
+let params = { m = std.number.pow 2 32, a = 1664525, c = 1013904223 } in
 
 let rec array_random = fun init n =>
   if n == 0 then [init]

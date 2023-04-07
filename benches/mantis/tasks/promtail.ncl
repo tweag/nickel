@@ -14,7 +14,7 @@ types.stanza.task
     args = [ "-config.file", "local/config.yaml" ],
   },
 
-  template."local/config.yaml".data = builtin.serialize
+  template."local/config.yaml".data = std.serialize
     `Yaml
     {
       server = {

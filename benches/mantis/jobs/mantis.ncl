@@ -8,7 +8,7 @@ let baseTags = [""] in
 let Params =
   {
     count
-      | number.Nat
+      | std.number.Nat
       | default
       = 5,
     role | [| `passive, `miner, `backup |],
@@ -125,7 +125,7 @@ fun params =>
         = {
           #infinte rec?
           # #namespace = namespace,
-          name = "%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
+          name = "%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
           ,
           prometheusPort = "metrics",
         },
@@ -151,7 +151,7 @@ fun params =>
       if params.role == `passive then
         {
           #TODO: dependent if
-          service."%{params.namespace}-mantis-%{string.from_enum params.role}-rpc"
+          service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc"
           = {
             address_mode = `host,
             port = "rpc",
@@ -159,11 +159,12 @@ fun params =>
               "rpc",
               "ingress",
               "traefik.enable=true",
-              "traefik.http.routers.%{params.namespace}-mantis-%{string.from_enum params.role}.rule=Host(`%{params.namespace}-%{string.from_enum params.role}.%{params.fqdn}`)"
+              "traefik.http.routers.%{params.namespace}-mantis-%{std.string.from_enum
+params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.%{params.fqdn}`)"
               ,
-              "traefik.http.routers.%{params.namespace}-mantis-%{string.from_enum params.role}.entrypoints=https"
+              "traefik.http.routers.%{params.namespace}-mantis-%{std.string.from_enum params.role}.entrypoints=https"
               ,
-              "traefik.http.routers.%{params.namespace}-mantis-%{string.from_enum params.role}.tls=true"
+              "traefik.http.routers.%{params.namespace}-mantis-%{std.string.from_enum params.role}.tls=true"
               ,
             ]
             @ baseTags,
@@ -175,7 +176,7 @@ fun params =>
     & {
       #TODO: dependent if
       #For now, redefining namespace
-      service."%{params.namespace}-mantis-%{string.from_enum params.role}-rpc"
+      service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc"
       = {
         check.rpc = {
           address_mode = `host,
@@ -202,7 +203,7 @@ fun params =>
       if params.role == `miner then
         {
           # TODO: dependent if
-          service."%{params.namespace}-mantis-%{string.from_enum params.role}-rpc"
+          service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc"
           = {
             address_mode = `host,
             port = "rpc",
@@ -214,14 +215,14 @@ fun params =>
     )
     & {
       service = {
-        "%{params.namespace}-mantis-%{string.from_enum params.role}-prometheus"
+        "%{params.namespace}-mantis-%{std.string.from_enum params.role}-prometheus"
         = {
           address_mode = `host,
           port = "metrics",
           tags = ["prometheus"] @ baseTags,
         },
 
-        "%{params.namespace}-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
+        "%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
         = {
           address_mode = `host,
           port = "rpc",
@@ -229,17 +230,17 @@ fun params =>
             "rpc",
             "ingress",
             "traefik.enable=true",
-            "traefik.http.routers.%{params.namespace}-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.rule=Host(`%{params.namespace}-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.%{params.fqdn}`)"
+            "traefik.http.routers.%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.%{params.fqdn}`)"
             ,
-            "traefik.http.routers.%{params.namespace}-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.entrypoints=https"
+            "traefik.http.routers.%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.entrypoints=https"
             ,
-            "traefik.http.routers.%{params.namespace}-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.tls=true"
+            "traefik.http.routers.%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}.tls=true"
             ,
           ]
           @ baseTags,
         },
 
-        "%{params.namespace}-mantis-%{string.from_enum params.role}-discovery-${NOMAD_ALLOC_INDEX}"
+        "%{params.namespace}-mantis-%{std.string.from_enum params.role}-discovery-${NOMAD_ALLOC_INDEX}"
         = {
           port = "discovery",
         }
@@ -274,7 +275,7 @@ fun params =>
           }
         },
 
-        "%{params.namespace}-mantis-%{string.from_enum params.role}-server-${NOMAD_ALLOC_INDEX}"
+        "%{params.namespace}-mantis-%{std.string.from_enum params.role}-server-${NOMAD_ALLOC_INDEX}"
         = {
           address_mode = `host,
           port = "server",
@@ -304,7 +305,7 @@ fun params =>
         )
         & {
           meta = {
-            Name = "mantis-%{string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
+            Name = "mantis-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}"
             ,
             PublicIp = "${attr.unique.platform.aws.public-ipv4}",
           },
@@ -329,7 +330,7 @@ fun params =>
           ),
         },
 
-        "%{params.namespace}-mantis-%{string.from_enum params.role}-server"
+        "%{params.namespace}-mantis-%{std.string.from_enum params.role}-server"
         = {
           address_mode = `host,
           port = "server",
@@ -340,7 +341,7 @@ fun params =>
           }
         },
 
-        "%{params.namespace}-mantis-%{string.from_enum params.role}"
+        "%{params.namespace}-mantis-%{std.string.from_enum params.role}"
         = {
           address_mode = `host,
           port = "server",

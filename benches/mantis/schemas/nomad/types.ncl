@@ -16,8 +16,8 @@ in
       Id | Name,
       Name | String,
       Type | [| `service, `system, `batch |],
-      Priority | number.Nat,
-      Datacenters | array.NonEmpty,
+      Priority | std.number.Nat,
+      Datacenters | std.array.NonEmpty,
       TaskGroups
         | Array TaskGroup
         | default
@@ -78,7 +78,7 @@ in
             ]
         ),
       Weight
-        | number.Nat
+        | std.number.Nat
         | lib.contracts.NotEq 0
         | lib.contracts.GreaterEq
         - 100
@@ -119,7 +119,7 @@ in
           (
             lib.contracts.AllOf
               [
-                number.Nat,
+                std.number.Nat,
                 lib.contracts.GreaterEq - 100,
                 lib.contracts.LesserEq 100
               ]
@@ -139,7 +139,7 @@ in
           (
             lib.contracts.AllOf
               [
-                number.PosNat,
+                std.number.PosNat,
                 lib.contracts.LesserEq 100
               ]
           )
@@ -148,9 +148,9 @@ in
     },
 
     RestartPolicy = {
-      Attempts | number.Nat,
-      Interval | number.Nat,
-      Delay | number.Nat,
+      Attempts | std.number.Nat,
+      Interval | std.number.Nat,
+      Delay | std.number.Nat,
       Mode | (lib.contracts.OneOf [ "delay", "fail" ]),
     },
 
@@ -180,7 +180,7 @@ in
 
     ReschedulePolicy = {
       Attempts
-        | lib.contracts.Nullable number.Nat
+        | lib.contracts.Nullable std.number.Nat
         | default
         = null,
       DelayFunction
@@ -200,18 +200,18 @@ in
           (
             lib.contracts.AllOf
               [
-                number.Nat,
+                std.number.Nat,
                 lib.contracts.GreaterEq 5 * 1000
               ]
           ) # >=time.ParseDuration("5s")
         | default
         = null,
       Interval
-        | lib.contracts.Nullable number.Nat
+        | lib.contracts.Nullable std.number.Nat
         | default
         = null,
       MaxDelay
-        | lib.contracts.Nullable number.Nat
+        | lib.contracts.Nullable std.number.Nat
         | default
         = null,
       Unlimited
@@ -226,15 +226,15 @@ in
         | default
         = `checks,
       HealthyDeadline
-        | number.Nat
+        | std.number.Nat
         | default
         = 500000000000,
       MaxParallel
-        | number.Nat
+        | std.number.Nat
         | default
         = 1,
       MinHealthyTime
-        | number.Nat
+        | std.number.Nat
         | default
         = 10000000000,
     },
@@ -259,16 +259,16 @@ in
     Update = {
       AutoPromote | Bool | default = false,
       AutoRevert | Bool | default = false,
-      Canary | number.Nat | default = 0,
+      Canary | std.number.Nat | default = 0,
       HealthCheck
         | [| `checks, `task_states, `manual |]
         | default
         = `checks,
-      HealthyDeadline | lib.contracts.Nullable number.Nat | default = null,
-      MaxParallel | number.Nat | default = 1,
-      MinHealthyTime | lib.contracts.Nullable number.Nat | default = null,
-      ProgressDeadline | lib.contracts.Nullable number.Nat | default = null,
-      Stagger | lib.contracts.Nullable number.Nat | default = null,
+      HealthyDeadline | lib.contracts.Nullable std.number.Nat | default = null,
+      MaxParallel | std.number.Nat | default = 1,
+      MinHealthyTime | lib.contracts.Nullable std.number.Nat | default = null,
+      ProgressDeadline | lib.contracts.Nullable std.number.Nat | default = null,
+      Stagger | lib.contracts.Nullable std.number.Nat | default = null,
     },
 
     TaskGroup = {
@@ -285,7 +285,7 @@ in
         | default
         = [],
       Count
-        | number.Nat
+        | std.number.Nat
         | lib.contracts.Greater 0,
       # TODO: Meta  [string]  string
       Name | String,
@@ -297,7 +297,7 @@ in
         | Array Service
         | default
         = [],
-      ShutdownDelay | number.Nat | default = 0,
+      ShutdownDelay | std.number.Nat | default = 0,
       Tasks
         | Array Task
         | default
@@ -308,7 +308,7 @@ in
         | lib.contracts.Nullable
           {
             Migrate | Bool,
-            SizeMB | number.Nat,
+            SizeMB | std.number.Nat,
             Sticky | Bool,
           }
         | default
@@ -326,7 +326,7 @@ in
         | default
         = [],
       StopAfterClientDisconnect
-        | lib.contracts.Nullable number.Nat
+        | lib.contracts.Nullable std.number.Nat
         | default
         = null,
       Scaling = null,
@@ -338,9 +338,9 @@ in
 
     Port = {
       Label | String,
-      Value | lib.contracts.Nullable number.Nat | default = null,
+      Value | lib.contracts.Nullable std.number.Nat | default = null,
       # used for static ports
-      To | lib.contracts.Nullable number.Nat | default = null,
+      To | lib.contracts.Nullable std.number.Nat | default = null,
       HostNetwork | String | default = "",
     },
 
@@ -361,18 +361,18 @@ in
       CheckRestart | json.CheckRestart,
       Command | String | default = "",
       Expose = false,
-      FailuresBeforeCritical | number.Nat | default = 0,
+      FailuresBeforeCritical | std.number.Nat | default = 0,
       Id | String | default = "",
       InitialStatus | String | default = "",
-      Interval | number.Nat | default = 10000000000,
+      Interval | std.number.Nat | default = 10000000000,
       Method | String | default = "",
       Name | String | default = "",
       Path | String | default = "",
       PortLabel | String,
       Protocol | String | default = "",
-      SuccessBeforePassing | number.Nat | default = 0,
+      SuccessBeforePassing | std.number.Nat | default = 0,
       TaskName | String | default = "",
-      Timeout | number.Nat,
+      Timeout | std.number.Nat,
       TLSSkipVerify | Bool | default = false,
       Type | [| `http, `tcp, `script, `grpc |],
       Body | lib.contracts.Nullable String | default = null,
@@ -382,8 +382,8 @@ in
     CheckRestart
       | lib.contracts.Nullable
         {
-          Limit | number.Nat | default = 0,
-          Grace | number.Nat | default = 10000000000,
+          Limit | std.number.Nat | default = 0,
+          Grace | std.number.Nat | default = 10000000000,
           IgnoreWarnings | Bool | default = false,
         },
 
@@ -395,8 +395,8 @@ in
     LogConfig
       | lib.contracts.Nullable
         {
-          MaxFiles | number.PosNat,
-          MaxFileSizeMB | number.PosNat,
+          MaxFiles | std.number.PosNat,
+          MaxFileSizeMB | std.number.PosNat,
         },
 
     Service = {
@@ -447,26 +447,26 @@ in
         = [],
       Resources = {
         CPU
-          | number.Nat
+          | std.number.Nat
           | lib.contracts.GreaterEq 100
           | default
           = 100,
         MemoryMB
-          | number.Nat
+          | std.number.Nat
           | lib.contracts.GreaterEq 32
           | default
           = 300,
         DiskMB
-          | lib.contracts.Nullable number.Nat
+          | lib.contracts.Nullable std.number.Nat
           | default
           = null,
       },
       Meta = {},
       RestartPolicy | lib.contracts.Nullable json.RestartPolicy | default = null,
-      ShutdownDelay | number.Nat | default = 0,
+      ShutdownDelay | std.number.Nat | default = 0,
       User | String | default = "",
       Lifecycle | lib.contracts.Nullable json.Lifecycle | default = null,
-      KillTimeout | lib.contracts.Nullable number.Nat | default = null,
+      KillTimeout | lib.contracts.Nullable std.number.Nat | default = null,
       LogConfig | json.LogConfig,
       Artifacts
         | Array json.Artifact
@@ -508,7 +508,7 @@ in
       EmbeddedTmpl | String,
       ChangeMode | [| `restart, `noop, `signal |] | default = `restart,
       ChangeSignal | String | default = "",
-      Splay | number.Nat | default = 5000000000,
+      Splay | std.number.Nat | default = 5000000000,
       Perms | lib.contracts.MatchRegexp "^[0-7]{4}$" | default = "0644",
       LeftDelim | String,
       RightDelim | String,
@@ -520,7 +520,7 @@ in
       ChangeSignal | String | default = "",
       Env | Bool | default = true,
       Namespace | String | default = "",
-      Policies | array.NonEmpty,
+      Policies | std.array.NonEmpty,
     }
   },
 
@@ -589,7 +589,7 @@ in
     #   }
     # }
 
-    Affinities = array.map
+    Affinities = std.array.map
       (
         fun a =>
           {
@@ -601,7 +601,7 @@ in
       )
       job.affinities,
 
-    Constraints = array.map
+    Constraints = std.array.map
       (
         fun c =>
           {
@@ -612,13 +612,13 @@ in
       )
       job.constraints,
 
-    Spreads = array.map
+    Spreads = std.array.map
       (
         fun s =>
           {
             Attribute = s.attribute,
             Weight = s.weight,
-            SpreadTarget = array.map
+            SpreadTarget = std.array.map
               (
                 fun t =>
                   {
@@ -638,7 +638,7 @@ in
             Name = tgName,
             Count = tg.count,
 
-            Affinities = array.map
+            Affinities = std.array.map
               (
                 fun a =>
                   {
@@ -650,7 +650,7 @@ in
               )
               tg.affinities,
 
-            Constraints = array.map
+            Constraints = std.array.map
               (
                 fun c =>
                   {
@@ -661,13 +661,13 @@ in
               )
               tg.constraints,
 
-            Spreads = array.map
+            Spreads = std.array.map
               (
                 fun s =>
                   {
                     Attribute = s.attribute,
                     Weight = s.weight,
-                    SpreadTarget = array.map
+                    SpreadTarget = std.array.map
                       (
                         fun t =>
                           {
@@ -754,7 +754,7 @@ in
               let ports =
                 tg.network.port
                 |> lib.records.toArray
-                |> array.partition
+                |> std.array.partition
                   tg.network.port
                   (
                     fun entry =>
@@ -774,15 +774,15 @@ in
               {
                 Networks = [{
                   Mode = tg.network.mode,
-                  ReservedPorts = array.map mkPort ports.right,
-                  DynamicPorts = array.map mkPort ports.wrong,
+                  ReservedPorts = std.array.map mkPort ports.right,
+                  DynamicPorts = std.array.map mkPort ports.wrong,
                 }]
               }
             else
               {}
           )
           & {
-            Services = array.map
+            Services = std.array.map
               (
                 fun sName s =>
                   {
@@ -872,7 +872,7 @@ in
                       {}
                   )
                   & {
-                    Affinities = array.map
+                    Affinities = std.array.map
                       (
                         fun { attribute, value, operator, weight, .. } =>
                           {
@@ -1046,7 +1046,7 @@ in
   stanza = {
     job = let type_schema = [| `batch, `service, `system |] in
     {
-      datacenters | array.NonEmpty,
+      datacenters | std.array.NonEmpty,
       namespace | String,
       type
         | type_schema
@@ -1080,7 +1080,7 @@ in
         | default
         = null,
       priority_
-        | number.Nat
+        | std.number.Nat
         | default
         = 50,
       periodic
@@ -1099,15 +1099,15 @@ in
         | default
         = `checks,
       healthy_deadline
-        | number.Nat
+        | std.number.Nat
         | default
         = 500000000000,
       max_parallel
-        | number.Nat
+        | std.number.Nat
         | default
         = 1,
       min_healthy_time
-        | number.Nat
+        | std.number.Nat
         | default
         = 10000000000,
     },
@@ -1151,7 +1151,7 @@ in
         | default
         = "=",
       Weight
-        | number.Nat
+        | std.number.Nat
         | lib.contracts.NotEq 0
         | lib.contracts.GreaterEq
         - 100
@@ -1196,7 +1196,7 @@ in
           (
             lib.contracts.AllOf
               [
-                number.Nat,
+                std.number.Nat,
                 lib.contracts.GreaterEq - 100,
                 lib.contracts.SmallerEq 100
               ]
@@ -1219,7 +1219,7 @@ in
           (
             lib.contracts.AllOf
               [
-                number.Nat,
+                std.number.Nat,
                 lib.contracts.GreaterEq - 100,
                 lib.contracts.SmallerEq 100
               ]
@@ -1230,7 +1230,7 @@ in
 
     ephemeral_disk = lib.contracts.Nullable
       {
-        size | number.PosNat,
+        size | std.number.PosNat,
         migrate | Bool | default = false,
         sticky | Bool | default = false,
       },
@@ -1256,7 +1256,7 @@ in
         = null,
       service | { _ : stanza.service },
       task | { _ : stanza.task },
-      count | number.Nat,
+      count | std.number.Nat,
       volume | { _ : stanza.volume } | default = {},
       vault
         | lib.contracts.Nullable stanza.vault
@@ -1319,11 +1319,11 @@ in
         | {
           _ : {
             static
-              | lib.contracts.Nullable number.Nat
+              | lib.contracts.Nullable std.number.Nat
               | default
               = null,
             to
-              | lib.contracts.Nullable number.Nat
+              | lib.contracts.Nullable std.number.Nat
               | default
               = null,
             host_network
@@ -1335,7 +1335,7 @@ in
     },
 
     check_restart = {
-      limit | number.PosNat,
+      limit | std.number.PosNat,
       grace | Duration,
       ignore_warnings
         | Bool
@@ -1388,11 +1388,11 @@ in
         | default
         = "",
       success_before_passing
-        | number.Nat
+        | std.number.Nat
         | default
         = 0,
       failures_before_critical
-        | number.Nat
+        | std.number.Nat
         | default
         = 0,
       tls_skip_verify
@@ -1474,8 +1474,8 @@ in
     },
 
     logs = {
-      max_files | number.PosNat,
-      max_file_size | number.PosNat,
+      max_files | std.number.PosNat,
+      max_file_size | std.number.PosNat,
     },
 
     task = {
@@ -1553,10 +1553,10 @@ in
 
       resources = {
         cpu
-          | number.Nat
+          | std.number.Nat
           | lib.contracts.GreaterEq 100,
         memory
-          | number.Nat
+          | std.number.Nat
           | lib.contracts.GreaterEq 32,
       },
 
@@ -1630,7 +1630,7 @@ in
 
     restart = {
       interval | Duration,
-      attempts | number.PosNat,
+      attempts | std.number.PosNat,
       delay | Duration,
       mode | [| `delay, `fail |],
     },
@@ -1645,7 +1645,7 @@ in
         | default
         = false,
       canary
-        | number.Nat
+        | std.number.Nat
         | default
         = 0,
       health_check
@@ -1657,7 +1657,7 @@ in
         | default
         = "5m",
       max_parallel
-        | number.Nat
+        | std.number.Nat
         | default
         = 1,
       min_healthy_time
