@@ -29,7 +29,7 @@
 # just harder, and the chances are this won't typecheck.
 #
 # On the other hand, the `std` module in the environment is properly typed, as
-# the interface is elaborated from individual notations.
+# the interface is elaborated from individual annotations.
 {
   array = {
     NonEmpty
