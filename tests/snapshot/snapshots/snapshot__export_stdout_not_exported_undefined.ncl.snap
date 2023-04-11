@@ -1,0 +1,8 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+{
+  "bar": 42
+}
+
