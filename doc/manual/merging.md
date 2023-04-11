@@ -20,9 +20,9 @@ this means that order doesn't matter, and `left & right` is the same thing as
 default values for example, the idea is to use metadata to do so (annotations),
 rather than relying on the left or right position.
 
-**Warning**: At the time of writing, Nickel's version is 0.3.1. Custom merge
-functions are planned for a future version. They are not detailed here yet. For
-more details, see the associated technical document [RFC001][rfc001].
+**Warning**: At the time of writing, Nickel's version is 1.0. Custom merge
+functions are planned for a future version. They are not detailed here yet. See
+the associated technical document [RFC001][rfc001].
 
 The section describes the behavior and use-cases of merge, by considering the
 following situations:
@@ -266,11 +266,11 @@ documentation. We describe in this section how metadata interacts with merging.
 
 Note that metadata can only be syntactically attached to record fields, at the
 exception of type and contract annotations, which can appear anywhere in a
-free-standing expression such as `(x | Num) + 1`. However, a contract annotation
+freestanding expression such as `(x | Num) + 1`. However, a contract annotation
 outside of a record field isn't considered a metadata (it's a mere contract
 check) and doesn't behave the same with respect to merging. **In particular,
-`{foo | Num = 1}` behave differently from `{foo = (1 | Num)}` when merging it
-with other values**. See [the contracts section](#contracts) for more details.
+`{foo | Num = 1}` can behave differently from `{foo = (1 | Num)}` when merged**.
+See [the contracts section](#contracts) for more details.
 
 ### Optional fields
 
@@ -467,11 +467,11 @@ priority between the recursive priority and the existing one.
 #### Specification
 
 To each field definition `foo = val` is associated a priority `p(val)`. When
-merging two common fields `value_left` and `value_right`, then the results is
-either the one with the highest priority (that overrides the other), or the two
-are tentatively recursively merged if the priorities are the same. Without loss
-of generality, we consider the simple case of two records with only one field,
-which is the same on both side:
+merging two common fields `value_left` and `value_right`, the results is either
+the one with the highest priority (that overrides the other), or the two are
+tentatively recursively merged if the priorities are the same. Without loss of
+generality, we consider the simple case of two records with only one common
+field:
 
 ```text
 {common = left} & {common = right}
@@ -608,10 +608,10 @@ Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 `common: LeftType` that can just be considered as an additional contract
 `Left0`.
 
-The accumulated contracts are applied in a lazily: as long as the value isn't
-requested, contracts are stored but not applied. This makes it possible to build
-a value piecewise, while the intermediate values don't necessarily respect the
-contract. For example:
+The accumulated contracts are applied lazily: as long as the field's value isn't
+requested, contracts are accumulated but not applied. This makes it possible to
+build a value piecewise, whereas the intermediate values don't necessarily
+respect the contract. For example:
 
 ```nickel
 let FooContract = {
@@ -624,12 +624,12 @@ let FooContract = {
 ```
 
 Running the above program succeeds, although the intermediate value
-`{foo.required_field1 = "here"}` doesn't respect `FooContract` (it misses
-`required_field2`.
+`{foo.required_field1 = "here"}` doesn't respect `FooContract` (it misses the
+field `required_field2`).
 
-If we try to observe the intermediate result (using `deep_seq` which forces the
-full evaluation of its first argument and proceeds with evaluating the second),
-we do get a contract violation error:
+If we try to observe the intermediate result (`deep_seq` recrusively forces the
+evaluation of its first argument and proceeds with evaluating the second
+argument), we do get a contract violation error:
 
 ```nickel
 let FooContract = {

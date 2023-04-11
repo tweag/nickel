@@ -27,8 +27,8 @@ let x | Number = 1 + 1 in x
 ```
 
 **Important**: contracts attached to a record field, such as `{x | Number = 1}`,
-and a free standing contract annotation such as `{x = (1 | Number)}` behave
-*differently* with respect to record merging. However, as far as runtime checks
+and a freestanding contract annotation such as `{x = (1 | Number)}` *behave
+differently with respect to record merging*. However, as far as runtime checks
 are concerned (which is the focus of this document), they are equivalent.
 
 Here, `x` is bound to a `Number` contract. When evaluating `x`, the following steps

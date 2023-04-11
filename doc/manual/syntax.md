@@ -565,32 +565,61 @@ Examples:
 "HELLO"
 ```
 
-## Typing
+## Annotations
 
-To give a type to a value, we write it with `< value > : < type >`. More
-information on typing in the [relevant document](./typing.md).
+Contract and type annotations help enforce additional properties for an
+expression. They can be attached to any Nickel expression. See [the corectness
+section](./correctness.md) for more details.
+
+### Type annotations
+
+A type annotation is introduced using `<expr> : <type>` and serves to delimit a
+statically typed block which will be statically checked by the typechecker. A
+type annotation can be directly attached to the variable of a let-binding `let <var>
+: <type> = <expr> in <body>` or to a record field declaration `{<field> : <type>
+= <value>}` as well.
+
+A type wildcard `_` indicates that part of a type is unknown to the user (or not
+worth spelling out). The typechecker will infer it. Slapping an `: _` on top of
+an existing expression is particulary useful for debugging, as it's the simplest
+way to have the typechecker run on an expression without having to come up with
+a type.
 
 Examples:
 
-```nickel
-5 : Number
-"Hello" : String
+```text
+> 5 : Number
+5
 
-(fun a b => a + b) : Number -> Number -> Number
-let add : Number -> Number -> Number = fun a b => a + b
+> "hello" : String
+"hello"
 
-{a: Number = 1, b: Bool = true, c : Array Number = [ 1 ]}
-let r : {a : Number, b : Bool, c : Array Number} = { a = 1, b = true, c = [ 1 ] }
+> "Hello," ++ " world!" : String
+"Hello, world!"
 
-{ a = 1, b = 2 } : { _ : Number }
-let r : { _ : Number } = { a = 1, b = 2 }
+> 5 + "a" : _
+error: incompatible types
+[..]
+
+> (1 + 1 : Number) + ((`foo |> match { `foo => 1, _ => 2 }) : Number)
+3
+
+> let x : Number = "a" in x
+error: incompatible types
+[..]
+
+> let complex_argument : _ -> Number = fun {field1, field2, field3} => field1 in
+complex_argument {field1 = 5, field2 = null, field3 = false}
+5
 ```
 
-## Metadata
+### Contract annotations
 
-Metadata are used to attach contracts (more information in relevant
-documentation), documentation or priority to values. A metadata is introduced
-with the syntax `<value> | <metadata>`. Multiple metadata can be chained.
+A contract annotation is introduced by `<exp> | <contract>` and serves to apply
+a runtime check to an expression (among other things).
+
+As detailed in the next section, `<expr>`, `<type>` and `<contract>` are in fact
+all the same and can be arbitrary Nickel expressions in practice.
 
 Examples:
 
@@ -619,19 +648,182 @@ error: contract broken by a value.
 3
 ```
 
-Adding documentation can be done with `| doc < string >`. Examples:
+### Types
+
+The Nickel syntax mixes both terms and types in the same namespace. The
+following program is perfectly legal: `let value = Number -> (fun value label =>
+value) in ((fun x => x + 1) : value)`. See the
+[RFC002](https://github.com/tweag/nickel/blob/d723a3721c6b0fe9c4b856e889bb7211d6136665/rfcs/002-merge-types-terms-syntax.md)
+for a detailed account of this design.
+
+The documentation still makes a distinction between *types* and other
+expressions, the former being constructs which are handled specifically by the
+typechecker and are listed below. However, any expression can be considered a
+type (in the generic case, it's considered as an opaque type), and types
+constructors can also appear inside an expression (where they are understood as
+their associated contract, which is indeed an expression, most often a
+function).
+
+Thus, placeholders such as `<source>`, `<target>` or `<type>` can actually be
+substituted for any valid Nickel expression (which includes the type
+constructors we've just listed), and types can appear anywhere.
+
+Nickel features the following builtin types and type constructors:
+
+- Primitive types: `Number`, `String`, `Bool`, and `Dyn` (the dynamic type, wich
+represents any value)
+- Array: `Array <type>` is an array whose elements are of type `<type>`.
+- Dictionary: `{_ : <type>}` is a record whose fields are of type `<type>`.
+- Enum: ``[| `tag1, .., `tagn |]`` is an enumeration comprised of alternatives
+  `` `tag1 ``, .., `` `tagn``. Tags have the same syntax as identifiers and must
+  be prefixed with a backtick `` ` ``. As for record fields, they can be however
+  espaced with double quotes if they contain special characters:
+  `` `"tag with space" ``.
+- Arrow: `<source> -> <target>` is a function taking an argument of type
+  `<source>` and returns values of type `<target>`.
+- Forall: `forall var1 .. varn. <type>` is a polymorphic type quantifying over type
+variables `var1`, .., `varn`.
+- Record: see the next section [Record types](#record-types).
+
+Type variables bound by a `forall` are only visible inside types (any of the
+constructor listed above). As soon as a term expression arise under a `forall`
+binder, the type variables aren't in scope anymore:
+
+```test
+> forall a. a -> (a -> a) -> {_ : {foo : a}}
+<func>
+
+> forall a. a -> (a -> (fun x => a))
+error: unbound identifier
+  ┌─ repl-input-4:1:32
+  │
+1 │ forall a. a -> (a -> (fun x => a))
+  │                                ^ this identifier is unbound
+```
+
+Examples:
 
 ```text
-> 5 | doc "The number five"
+> let f : forall a. a -> a = fun x => x in (f 5 : Number)
 5
 
-> true | Bool | doc m%"
-    If something is true,
-    it is based on facts rather than being invented or imagined,
-    and is accurate and reliable.
-    (Collins dictionary)
-    "%
+> {foo = [[1]]} : {foo : Array (Array Number)}
+{ foo = [ [ 1 ] ] }
+
+> let select
+    : forall a. {left: a, right: a} -> [| `left, `right |] -> a
+    = fun {left, right} =>
+       match {
+         `left => left,
+         `right => right,
+       }
+  in
+  (select {left = true, right = false} `left) : Bool
 true
+
+> let add_foo : forall a. {_: a} -> a -> {_: a} = fun dict value =>
+    record.insert "foo" value dict
+in
+add_foo {bar = 1} 5 : _
+{ bar = 1, foo = 5 }
+
+> {foo = 1, bar = "string"} : {_ : Number}
+error: incompatible types
+  ┌─ repl-input-12:1:17
+  │
+1 │ {foo = 1, bar = "string"} : {_ : Number}
+  │                 ^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to be `Number`
+  = The type of the expression was inferred to be `String`
+  = These types are not compatible
+```
+
+#### Record types
+
+Record types are syntactically a restricted subset of records literal. They are
+handled differently from normal record literals with respect to typechecking.
+
+A record literal is a record type if:
+
+- No field has a defined value: there are only fields without a definition.
+- Each field has exactly one type annotation
+- Each field doesn't have any other metadata attached (see [Metadata](#metadata))
+- The record literal might have a record tail, written as
+  `{ <fields> ; <tail> }`. The tail appears at the end of the field declarations
+  and is preceded by `;`. `<tail>` must be a valid identifier.
+
+If the above properties are satisfied, a record literal is considered to be a
+record type by the typechecker.
+
+Trying to attach a tail `; tail` to a record literal which isn't a record type
+is a parse error.
+
+Examples:
+
+```text
+> {foo = 1, bar = "foo" } : {foo : Number, bar: String}
+{ bar = "foo", foo = 1 }
+
+> {foo.bar = 1, baz = 2} : {foo: {bar : Number}, baz : Number}
+{ baz = 2, foo = { bar = 1 } }
+
+># the right-hand side is missing a type annotation for baz, so it isn't a
+ # record type
+ {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
+error: incompatible types
+  ┌─ repl-input-6:1:1
+  │
+1 │ {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
+  │ ^^^^^^^^^^^^^^^^^^^^^^^ this expression
+  │
+  = The type of the expression was expected to be `{ bar : String, baz, foo : Numb…` (a contract)
+  = The type of the expression was inferred to be `{bar: _a, foo: _b}`
+  = Static types and contracts are not compatible
+
+> # the annotation has a metadata
+ {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
+error: incompatible types
+[..]
+
+> # while MyDyn isn't a proper type, the right record respect all the
+  # requirements of a record type
+let MyDyn = fun label value => value in
+{foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
+{ bar = "foo", foo = 1 }
+```
+
+## Metadata
+
+Metadata are used to attach type and contract annotations, documentation, a
+merge priority or other decorations to record fields (and record fields only).
+Multiple metadata can be chained. A metadata is introduced with the syntax
+`<field_name> | <metadata1> | .. | <metadatan> [= value]`.
+
+Adding documentation can be done with `| doc <string>`. Examples:
+
+```text
+> let record = {
+  value
+    | doc "The number five"
+    | default = 5
+}
+>:query record value
+• default: 5
+• documentation: The number five
+
+> {
+  truth
+    | Bool
+    | doc m%"
+        If something is true,
+        it is based on facts rather than being invented or imagined,
+        and is accurate and reliable.
+        (Collins dictionary)
+      "%
+    = true,
+}
+{ truth = true }
 ```
 
 Metadata can also set merge priorities using the following annotations:
