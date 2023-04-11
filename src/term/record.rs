@@ -370,10 +370,12 @@ impl RecordData {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
                 Some(ref v) if !field.metadata.not_exported => Some(Ok((id, v))),
-                None if !field.metadata.opt => Some(Err(MissingFieldDefError {
-                    id: *id,
-                    metadata: field.metadata.clone(),
-                })),
+                None if !field.metadata.opt && !field.metadata.not_exported => {
+                    Some(Err(MissingFieldDefError {
+                        id: *id,
+                        metadata: field.metadata.clone(),
+                    }))
+                }
                 _ => None,
             }
         })
