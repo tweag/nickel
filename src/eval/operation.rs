@@ -1135,8 +1135,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
                             let terms = fields
-                                .values()
-                                .cloned()
+                                .clone()
+                                .into_values()
                                 .map(|field| {
                                     field
                                         .value
