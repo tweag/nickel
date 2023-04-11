@@ -367,7 +367,7 @@ impl RecordData {
         &self,
     ) -> impl Iterator<Item = Result<(&Ident, &RichTerm), MissingFieldDefError>> {
         self.fields.iter().filter_map(|(id, field)| {
-            // debug_assert!(field.pending_contracts.is_empty());
+            debug_assert!(field.pending_contracts.is_empty());
             match field.value {
                 Some(ref v) if !field.metadata.not_exported => Some(Ok((id, v))),
                 None if !field.metadata.opt && !field.metadata.not_exported => {
