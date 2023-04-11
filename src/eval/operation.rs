@@ -1141,8 +1141,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     field
                                         .value
                                         .expect("fields without definition would have thrown MissingFieldDefError before")
-                                })
-                                .collect::<Vec<_>>();
+                                });
 
                             let cont = RichTerm::new(
                                 Term::Record(RecordData { fields, ..record }),
@@ -1150,7 +1149,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             );
 
                             Ok(Closure {
-                                body: seq_terms(terms.into_iter(), pos_op, cont),
+                                body: seq_terms(terms, pos_op, cont),
                                 env: shared_env,
                             })
                         },
