@@ -488,7 +488,13 @@ fn collect_record_info(
                         .chain(find_fields_from_term_kind(*body_id, &mut path_copy, &info))
                         .collect()
                 }
-                _ => Vec::new(),
+                (kind, ty) => {
+                    // It might be the case that the item isn't coming from a declaration
+                    // (let-binding or record field), but is still record with completion data that
+                    // can be leveraged. This is typically the case for the `std` entry point of
+                    // the stdlib.
+                    find_fields_from_term_kind(id, path, &info)
+                }
             }
         })
         .unwrap_or_default()
