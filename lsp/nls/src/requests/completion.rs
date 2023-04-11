@@ -488,11 +488,10 @@ fn collect_record_info(
                         .chain(find_fields_from_term_kind(*body_id, &mut path_copy, &info))
                         .collect()
                 }
-                (kind, ty) => {
-                    // It might be the case that the item isn't coming from a declaration
-                    // (let-binding or record field), but is still record with completion data that
-                    // can be leveraged. This is typically the case for the `std` entry point of
-                    // the stdlib.
+                _ => {
+                    // The item might not com from a declaration (let-binding nor a record field),
+                    // but is nontheless a record with interesting completion data. This is
+                    // typically the case for the `std` entry point of the stdlib.
                     find_fields_from_term_kind(id, path, &info)
                 }
             }
