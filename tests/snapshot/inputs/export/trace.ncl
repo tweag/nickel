@@ -1,1 +1,1 @@
-builtin.trace "Hello, world!" true
+std.trace "Hello, world!" true

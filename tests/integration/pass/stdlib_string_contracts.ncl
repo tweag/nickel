@@ -1,4 +1,5 @@
 let {check, ..} = import "lib/assert.ncl" in
+let {string, ..} = std in
 
 [
   # string.BoolLiteral
@@ -24,8 +25,8 @@ let {check, ..} = import "lib/assert.ncl" in
   ("👩🏿‍❤️‍💋‍👩🏼" | string.Character) == "👩🏿‍❤️‍💋‍👩🏼",
 
   # string.EnumTag
-  (`Foo | enum.Tag) == `Foo,
-  (`Barr | enum.Tag) == `Barr,
+  (`Foo | std.enum.Tag) == `Foo,
+  (`Barr | std.enum.Tag) == `Barr,
 
   # string.Stringable
   (`Foo | string.Stringable) == `Foo,

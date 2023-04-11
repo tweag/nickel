@@ -2,20 +2,20 @@ let {check, ..} = import "lib/assert.ncl" in
 
 [
   # accesses
-  array.at 1 [1,2,3] == 2,
-  array.at 1 (array.map (fun x => x + 1) [1,2,3]) == 3,
+  std.array.at 1 [1,2,3] == 2,
+  std.array.at 1 (std.array.map (fun x => x + 1) [1,2,3]) == 3,
 
   # length
-  array.length [] == 0,
-  array.length [1,2,3] == 3,
-  array.length ([] @ [1,2] @ [3,4] @ []) == 4,
+  std.array.length [] == 0,
+  std.array.length [1,2,3] == 3,
+  std.array.length ([] @ [1,2] @ [3,4] @ []) == 4,
 
   # sort
   let cmp = fun x y =>
     if x < y then `Lesser
     else if x == y then `Equal
     else `Greater
-  in array.sort cmp [3, 42, -1, -5] == [-5, -1, 3, 42],
+  in std.array.sort cmp [3, 42, -1, -5] == [-5, -1, 3, 42],
 
   # Test case added after https://github.com/tweag/nickel/issues/154
   let x = 1 in let l = [x] @ [2] in (%elem_at% l 0) == 1,

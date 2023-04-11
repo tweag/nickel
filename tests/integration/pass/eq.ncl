@@ -25,7 +25,7 @@ let {check, ..} = import "lib/assert.ncl" in
     == [1, "ab", true],
   [[[]]] == [[[]]],
   [[1], [[2]]] == [[2 + (-1)], [[1 + 1]]],
-  [[true, false]] == array.flatten [[[true, false]]],
+  [[true, false]] == std.array.flatten [[[true, false]]],
 
   [] != [1],
   [] != 1,
@@ -36,8 +36,8 @@ let {check, ..} = import "lib/assert.ncl" in
   # records
   {} == {},
   ({}
-  |> record.insert "a" 1
-  |> record.insert "b" true)
+  |> std.record.insert "a" 1
+  |> std.record.insert "b" true)
     == {a = 1, b = true},
   {a = 1 + 0, b = 1 + 1, c = 1 + 1 + 1}
     == { a = 1, b = 2, c = 3 },
@@ -47,7 +47,7 @@ let {check, ..} = import "lib/assert.ncl" in
       baz = if true then true else false
     } == {foo = 1, bar = "ab", baz = true},
 
-  record.insert "a" {a.a = {}} {}
+  std.record.insert "a" {a.a = {}} {}
     == { a = { a = { a = {} } } },
   {
       foo = {bar = 2 + (-1)},

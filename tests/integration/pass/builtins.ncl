@@ -2,7 +2,7 @@ let {check, ..} = import "lib/assert.ncl" in
 
 [
   # is_record
-  builtin.is_record {},
+  std.is_record {},
 
   # This currently does not check that subexpressions are actually forced,
   # just that the evaluation succeeds
@@ -21,10 +21,10 @@ let {check, ..} = import "lib/assert.ncl" in
     %deep_seq% r (r.a.b) == 3,
 
   [1,2,3]
-   |> array.map (fun x => x + 1)
-   |> array.filter (fun x => x > 2)
-   |> builtin.serialize `Json
-   |> builtin.deserialize `Json
+   |> std.array.map (fun x => x + 1)
+   |> std.array.filter (fun x => x > 2)
+   |> std.serialize `Json
+   |> std.deserialize `Json
    == [3,4],
 ]
 |> check

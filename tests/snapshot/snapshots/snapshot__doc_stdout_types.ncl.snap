@@ -5,6 +5,6 @@ expression: snapshot
 # `Hello`
 
 - `Hello : Number`
-- `Hello | string.Stringable`
+- `Hello | (std.string).Stringable`
 World\!
 

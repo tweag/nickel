@@ -59,7 +59,7 @@ fun vars =>
         | default
         = m%"
                     mantis.blockchains.testnet-internal-nomad.bootstrap-nodes = [
-                      %{string.join ",\n" bootstrapNodes."%{vars.namespace}"})
+                      %{std.string.join ",\n" bootstrapNodes."%{vars.namespace}"})
                     ]
                     "%
       ,

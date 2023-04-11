@@ -4,4 +4,4 @@ let ascending = fun x y =>
   else `Greater 
 in
 
-{ run = array.sort ascending }
+{ run = std.array.sort ascending }

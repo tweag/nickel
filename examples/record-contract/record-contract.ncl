@@ -6,8 +6,8 @@
 
 let Port
   | doc "A contract for a port number"
-  = contract.from_predicate (fun value =>
-    builtin.is_number value &&
+  = std.contract.from_predicate (fun value =>
+    std.is_number value &&
     value % 1 == 0 &&
     value >= 0 &&
     value <= 65535) in
@@ -38,7 +38,7 @@ let KubernetesConfig = {
   },
 
   spec = {
-    replicas | number.PosNat
+    replicas | std.number.PosNat
              | doc "The number of replicas"
              | default = 1,
 

@@ -81,7 +81,14 @@ impl<'b> Building<'b> {
             .get_item_kind_mut(current_file, decl)
             .expect("Could not find parent")
         {
-            TermKind::Record(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
+            // In principle, we shouldn't add an usage to a bare record. However, the way the
+            // stdlib is currently loaded makes usage of `std` referring to a record. In this
+            // specific case, we simply ignore it (meaning that one can't do goto references for
+            // `std` currently).
+            TermKind::Record(_) => (),
+            // unreachable()!: add_usage can only called on let binding, functions and record
+            // fields, only referring to items which support usages.
+            TermKind::Structure | TermKind::Usage(_) => unreachable!(),
             TermKind::Declaration { ref mut usages, .. }
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };

@@ -2,7 +2,7 @@ let {check, ..} = import "lib/assert.ncl" in
 
 [
   # array pointwise merging
-  let x = array.generate (fun x => 2*x + 1) 10 in x & x == x,
+  let x = std.array.generate (fun x => 2*x + 1) 10 in x & x == x,
   [1 / 1, 2*1, 1/3*9] & [0 + 1, 1 + 1, 1 + 2] == [1, 2, 3],
   # test that double application of a contract with a non-empty array as a
   # default value doesn't fail (regression test for

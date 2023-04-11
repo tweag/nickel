@@ -55,7 +55,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # enums_applied
   # Regression test for enum types converted to contracts outside of annotations
   # causing issues wrt typechecking
-  let Wrapper = contract.apply [| `Foo, `Bar |] in
+  let Wrapper = std.contract.apply [| `Foo, `Bar |] in
   (`Foo | Wrapper) == `Foo,
 
   # records_simple
@@ -129,11 +129,11 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   (f {foo = 1}).bar == 1,
   # user-written contract application
   let Extend = fun base label value =>
-    let derived = if builtin.is_record base then
+    let derived = if std.is_record base then
       (base & {foo | Number})
     else
       base in
-    contract.apply derived label value in
+    std.contract.apply derived label value in
   let Contract = Extend {bar | Number, ..} in
   let Id = Extend (fun label value => value) in
   ({bar = 1, foo = 1} | Contract)
@@ -152,8 +152,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
 
   (let nonsense
     | forall free. {_: free -> (forall bound. bound -> bound) } -> free -> {_: (forall bound. bound -> bound) }
-    = fun r x => record.map_values (fun f => f x) r
-  in nonsense { foo = fun _x y => y, bar = fun _x y => y } 5 |> record.map_values (fun f => f 7))
+    = fun r x => std.record.map_values (fun f => f x) r
+  in nonsense { foo = fun _x y => y, bar = fun _x y => y } 5 |> std.record.map_values (fun f => f 7))
   == { foo = 7, bar = 7 },
 ]
 |> check

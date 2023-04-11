@@ -5,13 +5,13 @@ let {check, ..} = import "lib/assert.ncl" in
   {foo = 1 + 1, bar = foo + 1} == {foo = 2, bar = 3},
 
   let r = {foo | default = 1 + 1, bar = foo + 1} in
-  builtin.deep_seq (r & {foo = 3}) r == {foo = 2, bar = 3},
+  std.deep_seq (r & {foo = 3}) r == {foo = 2, bar = 3},
 
   let r = {foo | default = 1 + 1, bar = foo + 1} in
   (r & {foo = 3}) == {foo = 3, bar = 4},
 
   let r = {foo | default = 1 + 1, bar = foo + 1} in
-  builtin.deep_seq r (r & {foo = 3}) == {foo = 3, bar = 4},
+  std.deep_seq r (r & {foo = 3}) == {foo = 3, bar = 4},
 
   let ext = 0 + 1 in
   let r = {
@@ -20,7 +20,7 @@ let {check, ..} = import "lib/assert.ncl" in
     b = let inner = 1 in a + ext + inner,
     c = let inner = 2 in b + ext + inner,
   } in
-  builtin.deep_seq (r & {foo = 1 - 1}) r
+  std.deep_seq (r & {foo = 1 - 1}) r
     == {foo = 2, a = 3, b = 5, c = 8},
 
   let ext = 0 + 1 in
@@ -30,7 +30,7 @@ let {check, ..} = import "lib/assert.ncl" in
     b = let inner = 1 in a + ext + inner,
     c = let inner = 2 in b + ext + inner,
   } in
-  builtin.deep_seq r (r & {foo = 1 - 1})
+  std.deep_seq r (r & {foo = 1 - 1})
     == {foo = 0, a = 1, b = 3, c = 6},
 
   let nested = {
@@ -40,7 +40,7 @@ let {check, ..} = import "lib/assert.ncl" in
       other = stuff + 1,
     },
   } in
-  builtin.deep_seq (nested & {foo.bar.baz = 1}) nested
+  std.deep_seq (nested & {foo.bar.baz = 1}) nested
     == {foo.bar.baz = 0, some.nested.stuff = 1, some.nested.other = 2},
 
   let nested = {
@@ -50,7 +50,7 @@ let {check, ..} = import "lib/assert.ncl" in
       other = stuff + 1,
     },
   } in
-  builtin.deep_seq nested (nested & {foo.bar.baz = 1})
+  std.deep_seq nested (nested & {foo.bar.baz = 1})
     == {foo.bar.baz = 1, some.nested.stuff = 2, some.nested.other = 3},
 
   let base = {foo | default = "a", bar = foo ++ "b"} in
@@ -59,9 +59,9 @@ let {check, ..} = import "lib/assert.ncl" in
   (base.bar == "ab"
   && ext1.bar == "1b"
   && ext2.bar == "Ab")
-  |> builtin.deep_seq base
-  |> builtin.deep_seq ext1
-  |> builtin.deep_seq ext2,
+  |> std.deep_seq base
+  |> std.deep_seq ext1
+  |> std.deep_seq ext2,
 
   # Test that the evaluation of a recursive record patches the right
   # environment in some edge cases (when fields only contains a variable)

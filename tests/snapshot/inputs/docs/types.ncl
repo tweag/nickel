@@ -1,6 +1,6 @@
 {
   Hello
     : Number
-    | string.Stringable
+    | std.string.Stringable
     | doc "World!"
 }

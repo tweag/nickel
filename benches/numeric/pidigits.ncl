@@ -9,7 +9,7 @@
 
   sum = fun x total n iterCount =>
     if n == iterCount - 1 then
-      total 
+      total
     else
       sum x (total + (nth_term x n)) (n+1) iterCount,
 

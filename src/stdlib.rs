@@ -1,106 +1,51 @@
 //! Load the Nickel standard library in strings at compile-time.
-
-use crate::identifier::Ident;
 use crate::term::make as mk_term;
 use crate::term::RichTerm;
 
-/// This is an array containing all the Nickel standard library modules.
-pub fn modules() -> [StdlibModule; 9] {
-    [
-        StdlibModule::Builtin,
-        StdlibModule::Contract,
-        StdlibModule::Array,
-        StdlibModule::Record,
-        StdlibModule::String,
-        StdlibModule::Number,
-        StdlibModule::Function,
-        StdlibModule::Enum,
-        StdlibModule::Internals,
-    ]
+/// This is an array containing all the Nickel standard library modules. Currently, this is one
+/// monolithic `std` module, and the definitions of `internals` living at the toplevel.
+///
+/// Using a dedicated enum tpe, handling arrays, etc. for two modules can seem a bit overkill, but
+/// we'll probably extend `StdlibModule` when we'll split the `std` module into several files.
+pub fn modules() -> [StdlibModule; 2] {
+    [StdlibModule::Std, StdlibModule::Internals]
 }
 
 /// Represents a particular Nickel standard library module.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum StdlibModule {
-    Builtin,
-    Contract,
-    Array,
-    Record,
-    String,
-    Number,
-    Function,
-    Enum,
+    Std,
     Internals,
 }
 
 impl StdlibModule {
     pub fn file_name(&self) -> &'static str {
         match self {
-            StdlibModule::Builtin => "<stdlib/builtin.ncl>",
-            StdlibModule::Contract => "<stdlib/contract.ncl>",
-            StdlibModule::Array => "<stdlib/array.ncl>",
-            StdlibModule::Record => "<stdlib/record.ncl>",
-            StdlibModule::String => "<stdlib/string.ncl>",
-            StdlibModule::Number => "<stdlib/number.ncl>",
-            StdlibModule::Function => "<stdlib/function.ncl>",
-            StdlibModule::Enum => "<stdlib/enum.ncl>",
+            StdlibModule::Std => "<stdlib/std.ncl>",
             StdlibModule::Internals => "<stdlib/internals.ncl>",
         }
     }
 
-    pub const fn content(&self) -> &'static str {
+    /// The name of the module. Used to determine its namespace in the initial environment (the
+    /// module named `std` will be put under the `std` identifier). `StdlibModule::Internals` is an
+    /// exception, because although it has a name, it's not put under any namespace but directly at
+    /// top-level in the environment.
+    pub fn name(&self) -> &'static str {
         match self {
-            StdlibModule::Builtin => include_str!("../stdlib/builtin.ncl"),
-            StdlibModule::Contract => include_str!("../stdlib/contract.ncl"),
-            StdlibModule::Array => include_str!("../stdlib/array.ncl"),
-            StdlibModule::Record => include_str!("../stdlib/record.ncl"),
-            StdlibModule::String => include_str!("../stdlib/string.ncl"),
-            StdlibModule::Number => include_str!("../stdlib/number.ncl"),
-            StdlibModule::Function => include_str!("../stdlib/function.ncl"),
-            StdlibModule::Enum => include_str!("../stdlib/enum.ncl"),
+            StdlibModule::Std => "std",
+            StdlibModule::Internals => "internals",
+        }
+    }
+
+    pub fn content(&self) -> &'static str {
+        match self {
+            StdlibModule::Std => include_str!("../stdlib/std.ncl"),
             StdlibModule::Internals => include_str!("../stdlib/internals.ncl"),
         }
     }
 }
 
 pub struct UnknownStdlibModule;
-
-impl TryFrom<Ident> for StdlibModule {
-    type Error = UnknownStdlibModule;
-
-    fn try_from(value: Ident) -> Result<Self, Self::Error> {
-        let module = match value.label() {
-            "builtin" => StdlibModule::Builtin,
-            "contract" => StdlibModule::Contract,
-            "array" => StdlibModule::Array,
-            "record" => StdlibModule::Record,
-            "string" => StdlibModule::String,
-            "number" => StdlibModule::Number,
-            "function" => StdlibModule::Function,
-            "enum" => StdlibModule::Enum,
-            "internals" => StdlibModule::Internals,
-            _ => return Err(UnknownStdlibModule),
-        };
-        Ok(module)
-    }
-}
-
-impl From<StdlibModule> for Ident {
-    fn from(module: StdlibModule) -> Self {
-        let name = match module {
-            StdlibModule::Builtin => "builtin",
-            StdlibModule::Contract => "contract",
-            StdlibModule::Array => "array",
-            StdlibModule::Record => "record",
-            StdlibModule::String => "string",
-            StdlibModule::Number => "number",
-            StdlibModule::Function => "function",
-            StdlibModule::Enum => "enum",
-            StdlibModule::Internals => "internals",
-        };
-        Ident::from(name)
-    }
-}
 
 macro_rules! generate_accessor {
     ($value:ident) => {

@@ -10,25 +10,25 @@ let {check, ..} = import "lib/assert.ncl" in
   {"%{if true then "foo" else "bar"}" = false, bar = true}."%{"foo"}"
    == false,
 
-  (record.insert "foo" true {bar = 3}).foo == true,
+  (std.record.insert "foo" true {bar = 3}).foo == true,
 
   # primitive_ops
-  record.has_field "foo" {foo = 1, bar = 2},
-  record.has_field "fop" {foo = 1, bar = 2} == false,
+  std.record.has_field "foo" {foo = 1, bar = 2},
+  std.record.has_field "fop" {foo = 1, bar = 2} == false,
   ({foo = 2, bar = 3}
-  |> record.remove "foo"
-  |> record.has_field "foo")
+  |> std.record.remove "foo"
+  |> std.record.has_field "foo")
     == false,
 
   {bar = 3}
-  |> record.insert "foo" 1
-  |> record.has_field "foo",
+  |> std.record.insert "foo" 1
+  |> std.record.has_field "foo",
 
   # laziness of map
-  (record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
+  (std.record.map (fun x y => y + 1) {foo = 1, bar = "it's lazy"}).foo
     == 2,
 
-  let r = record.map
+  let r = std.record.map
       (fun y x => if %typeof% x == `Number then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
@@ -105,7 +105,7 @@ let {check, ..} = import "lib/assert.ncl" in
   # regression tests for [#579](https://github.com/tweag/nickel/issues/579)
   # and [#583](https://github.com/tweag/nickel/issues/583)
   ({foo.bar = foo.baz, foo.baz | default = 2} & {foo.baz = 1}).foo.bar == 1,
-  let Name = fun b label name => if b then "hijack" else contract.blame label in
+  let Name = fun b label name => if b then "hijack" else std.contract.blame label in
   let Config = {
       b | Bool,
       name | Name b,
@@ -128,9 +128,9 @@ let {check, ..} = import "lib/assert.ncl" in
    } }).b.foo == 0,
 
   # regression test for [#1161](https://github.com/tweag/nickel/issues/1161)
-  (record.map (function.const function.id) { a = 1, b = a }).b == 1,
+  (std.record.map (std.function.const std.function.id) { a = 1, b = a }).b == 1,
 
   # regression test for [#1224](https://github.com/tweag/nickel/issues/1224)
-  record.fields ({} | { field | optional = "value" }) == [ "field" ],
+  std.record.fields ({} | { field | optional = "value" }) == [ "field" ],
 ]
 |> check

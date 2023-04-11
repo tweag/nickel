@@ -59,6 +59,7 @@ use crate::{
     error::TypecheckError,
     identifier::Ident,
     position::TermPos,
+    stdlib as nickel_stdlib,
     term::{
         record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
         TypeAnnotation,
@@ -89,6 +90,9 @@ pub mod eq;
 use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
+
+/// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
+const INFER_RECORD_MAX_DEPTH: u8 = 4;
 
 /// The typing environment.
 pub type Environment = GenericEnvironment<Ident, UnifType>;
@@ -614,14 +618,19 @@ pub enum EnvBuildError {
 }
 
 /// Populate the initial typing environment from a `Vec` of parsed files.
-pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildError> {
+pub fn mk_initial_ctxt(
+    initial_env: &[(nickel_stdlib::StdlibModule, RichTerm)],
+) -> Result<Context, EnvBuildError> {
     // Collect the bindings for each module, clone them and flatten the result to a single list.
-    let bindings = initial_env
-        .iter()
-        .map(|rt| {
-            if let Term::RecRecord(record, ..) = rt.as_ref() {
-                // We reject fields without a value (that would a stdlib module without defintion)
-                Ok(record.fields.iter().map(|(id, field)| {
+    let mut bindings = Vec::new();
+
+    for (module, rt) in initial_env {
+        match (module, rt.as_ref()) {
+            // The internals module is special: it is required to be syntactically a record,
+            // and is added directly to the top-level environment.
+            (nickel_stdlib::StdlibModule::Internals, Term::RecRecord(record, ..)) => {
+                // We reject fields without a value (that would be a stdlib module without defintion)
+                bindings.extend(record.fields.iter().map(|(id, field)| {
                     (
                         *id,
                         field
@@ -632,22 +641,30 @@ pub fn mk_initial_ctxt(initial_env: &[RichTerm]) -> Result<Context, EnvBuildErro
                             })
                             .clone(),
                     )
-                }))
-            } else {
-                Err(EnvBuildError::NotARecord(rt.clone()))
+                }));
             }
-        })
-        .collect::<Result<Vec<_>, EnvBuildError>>()?
-        .into_iter()
-        .flatten();
+            (nickel_stdlib::StdlibModule::Internals, _) => {
+                return Err(EnvBuildError::NotARecord(rt.clone()));
+            }
+            // Otherwise, we insert a value in the environment bound to the name of the module
+            (module, _) => bindings.push((module.name().into(), rt.clone())),
+        }
+    }
 
     let term_env = bindings
-        .clone()
+        .iter()
+        .cloned()
         .map(|(id, rt)| (id, (rt, SimpleTermEnvironment::new())))
         .collect();
 
     let type_env = bindings
-        .map(|(id, rt)| (id, infer_record_type(&rt, &term_env)))
+        .into_iter()
+        .map(|(id, rt)| {
+            (
+                id,
+                infer_record_type(&rt, &term_env, INFER_RECORD_MAX_DEPTH),
+            )
+        })
         .collect();
 
     Ok(Context { type_env, term_env })
@@ -1932,18 +1949,45 @@ pub fn apparent_type(
     apparent_type_check_cycle(t, env, resolver, HashSet::new())
 }
 
-/// Infer the type of a non annotated record by gathering the apparent type of the fields. It's
-/// currently used essentially to type the stdlib.
-pub fn infer_record_type(rt: &RichTerm, term_env: &SimpleTermEnvironment) -> UnifType {
+/// Infer the type of a non-annotated record by recursing inside gathering the apparent type of the
+/// fields. It's currently used essentially to type the stdlib.
+///
+/// # Parameters
+///
+/// - `rt`: the term to infer a type for
+/// - `term_env`: the current term environment, used for contracts equality
+/// - `max_depth`: the max recursion depth. `infer_record_type` descends into sub-records, as long
+///   as it only encounters nested record literals. `max_depth` is used to control this behavior
+///   and cap the work that `infer_record_type` might do.
+pub fn infer_record_type(
+    rt: &RichTerm,
+    term_env: &SimpleTermEnvironment,
+    max_depth: u8,
+) -> UnifType {
     match rt.as_ref() {
-        Term::Record(record) | Term::RecRecord(record, ..) => UnifType::from(TypeF::Record(
-            UnifRecordRows::Concrete(record.fields.iter().fold(
+        Term::Record(record) | Term::RecRecord(record, ..) if max_depth > 0 => UnifType::from(
+            TypeF::Record(UnifRecordRows::Concrete(record.fields.iter().fold(
                 RecordRowsF::Empty,
                 |r, (id, field)| {
-                    let uty = UnifType::from_apparent_type(
-                        field_apparent_type(field, None, None),
-                        term_env,
-                    );
+                    let uty = match field_apparent_type(field, None, None) {
+                        ApparentType::Annotated(ty) => UnifType::from_type(ty, term_env),
+                        ApparentType::FromEnv(uty) => uty,
+                        // If we haven't reached max_depth yet, and the type is only approximated,
+                        // we try to recursively infer a better type.
+                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty)
+                            if max_depth > 0 =>
+                        {
+                            field
+                                .value
+                                .as_ref()
+                                .map(|v| infer_record_type(v, term_env, max_depth - 1))
+                                .unwrap_or(UnifType::from_type(ty, term_env))
+                        }
+                        ApparentType::Inferred(ty) | ApparentType::Approximated(ty) => {
+                            UnifType::from_type(ty, term_env)
+                        }
+                    };
+
                     RecordRowsF::Extend {
                         row: UnifRecordRow {
                             id: *id,
@@ -1952,8 +1996,8 @@ pub fn infer_record_type(rt: &RichTerm, term_env: &SimpleTermEnvironment) -> Uni
                         tail: Box::new(r.into()),
                     }
                 },
-            )),
-        )),
+            ))),
+        ),
         t => UnifType::from_apparent_type(
             apparent_type(t, None, None),
             &SimpleTermEnvironment::new(),
