@@ -1091,7 +1091,7 @@ pub enum UnaryOp {
     /// here. When `for_export` is `true`, the evaluation of `Force` will skip
     /// fields that are marked as `not_exported`. When `for_export` is `false`,
     /// these fields are evaluated.
-    Force { for_export: bool },
+    Force { ignore_not_exported: bool },
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.

@@ -201,7 +201,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         initial_env: &Environment,
         for_export: bool,
     ) -> Result<(RichTerm, Environment), EvalError> {
-        let wrapper = mk_term::op1(UnaryOp::Force { for_export }, rt);
+        let wrapper = mk_term::op1(
+            UnaryOp::Force {
+                ignore_not_exported: for_export,
+            },
+            rt,
+        );
         self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
     }
 

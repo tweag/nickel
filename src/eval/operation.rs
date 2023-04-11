@@ -1108,7 +1108,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::Force { for_export } => {
+            UnaryOp::Force {
+                ignore_not_exported,
+            } => {
                 /// `Seq` the `terms` iterator and then resume evaluating the `cont` continuation.
                 fn seq_terms<I>(terms: I, pos: TermPos, cont: RichTerm) -> RichTerm
                 where
@@ -1127,10 +1129,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let fields = record.fields
                                 .into_iter()
                                 .filter(|(_, field)| {
-                                    !(field.is_empty_optional() || (for_export && field.metadata.not_exported))
+                                    !(field.is_empty_optional() || (ignore_not_exported && field.metadata.not_exported))
                                 })
                                 .map_values_closurize(&mut self.cache, &mut shared_env, &env, |_, value| {
-                                    mk_term::op1(UnaryOp::Force { for_export }, value)
+                                    mk_term::op1(UnaryOp::Force { ignore_not_exported }, value)
                                 })
                                 .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
@@ -1140,7 +1142,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map(|field| {
                                     field
                                         .value
-                                        .expect("fields without definition would have thrown MissingFieldDefError before")
+                                        .expect("map_values_closurize ensures that values without a definition throw a MissingFieldDefError")
                                 });
 
                             let cont = RichTerm::new(
@@ -1159,7 +1161,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .into_iter()
                                 .map(|t| {
                                     mk_term::op1(
-                                        UnaryOp::Force { for_export },
+                                        UnaryOp::Force { ignore_not_exported },
                                         PendingContract::apply_all(
                                             t,
                                             attrs.pending_contracts.iter().cloned(),
