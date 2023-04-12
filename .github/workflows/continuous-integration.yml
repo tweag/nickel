@@ -53,7 +53,7 @@ jobs:
 
     - name: Run all checks
       run: |
-        nix flake check --print-build-logs
+        export GC_DONT_GC=1; nix flake check --print-build-logs
 
     - name: Typecheck benchmarks
       run: find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- -f file typecheck
