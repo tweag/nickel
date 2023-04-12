@@ -81,7 +81,7 @@ pub mod ty_path {
             .any(|elt| matches!(*elt, Elem::Domain | Elem::Codomain))
     }
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Debug)]
     /// Represent the span of a type path in the string representation of the corresponding type,
     /// together with additional data useful to error reporting.
     ///
@@ -105,6 +105,7 @@ pub mod ty_path {
     /// `Codomain`, instead of `Array` and `Codomain`. This helps specializing the error message
     /// accordingly.
     pub struct PathSpan {
+        /// The span of the subtype corresponding to the path.
         pub span: RawSpan,
         pub last: Option<Elem>,
         pub last_arrow_elem: Option<Elem>,
@@ -114,6 +115,10 @@ pub mod ty_path {
     /// string representation of the corresponding type.
     ///
     /// Used in the error reporting of blame errors (see `crate::error::report_ty_path`).
+    ///
+    /// # Returns
+    ///
+    /// The function returns `None` if the position of the found subtype is not defined.
     ///
     /// # Example
     ///
@@ -136,7 +141,7 @@ pub mod ty_path {
     /// Here, the type path will contain an `Array` (added by the builtin implementation of the
     /// `Array` contract), but the original type will be `Foo`, which isn't of the form `Array _`.
     /// Thus we can't underline the subtype `_`, and stops at the whole `Array T`.
-    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> PathSpan
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> Option<PathSpan>
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
@@ -149,28 +154,20 @@ pub mod ty_path {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 match next {
                     Elem::Domain => {
-                        let PathSpan {
-                            span,
-                            last,
-                            last_arrow_elem,
-                        } = span(path_it, dom.as_ref());
-                        PathSpan {
-                            span,
-                            last: last.or(Some(*next)),
-                            last_arrow_elem: last_arrow_elem.or(Some(*next)),
-                        }
+                        let path_span = span(path_it, dom.as_ref())?;
+                        Some(PathSpan {
+                            last: path_span.last.or(Some(*next)),
+                            last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
+                            ..path_span
+                        })
                     }
                     Elem::Codomain => {
-                        let PathSpan {
-                            span,
-                            last,
-                            last_arrow_elem,
-                        } = span(path_it, codom.as_ref());
-                        PathSpan {
-                            span,
-                            last: last.or(Some(*next)),
-                            last_arrow_elem: last_arrow_elem.or(Some(*next)),
-                        }
+                        let path_span = span(path_it, codom.as_ref())?;
+                        Some(PathSpan {
+                            last: path_span.last.or(Some(*next)),
+                            last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
+                            ..path_span
+                        })
                     }
                     _ => panic!("span(): seeing an arrow type, but the type path is neither domain nor codomain"),
                 }
@@ -181,18 +178,13 @@ pub mod ty_path {
                         RecordRowsIteratorItem::Row(RecordRowF { id, types: ty })
                             if id == *ident =>
                         {
-                            let PathSpan {
-                                last,
-                                last_arrow_elem,
-                                ..
-                            } = span(path_it, ty);
+                            let path_span = span(path_it, ty)?;
 
-                            let span = ty.pos.unwrap();
-                            return PathSpan {
-                                span,
-                                last: last.or_else(|| next.copied()),
-                                last_arrow_elem,
-                            };
+                            return Some(PathSpan {
+                                last: path_span.last.or_else(|| next.copied()),
+                                last_arrow_elem: path_span.last_arrow_elem,
+                                ..path_span
+                            });
                         }
                         RecordRowsIteratorItem::Row(RecordRowF { .. }) => (),
                         RecordRowsIteratorItem::TailDyn | RecordRowsIteratorItem::TailVar(_) => (),
@@ -212,42 +204,30 @@ but this field doesn't exist in {}",
                 panic!("span(): unexpected blame of a dyn contract inside an array")
             }
             (TypeF::Array(ty), next @ Some(Elem::Array)) => {
-                let PathSpan {
-                    last,
-                    last_arrow_elem,
-                    ..
-                } = span(path_it, ty);
+                let path_span = span(path_it, ty)?;
 
-                let span = ty.pos.unwrap();
-                PathSpan {
-                    span,
-                    last: last.or_else(|| next.copied()),
-                    last_arrow_elem,
-                }
+                Some(PathSpan {
+                    last: path_span.last.or_else(|| next.copied()),
+                    last_arrow_elem: path_span.last_arrow_elem,
+                    ..path_span
+                })
             }
             (TypeF::Dict(ty), next @ Some(Elem::Dict)) => {
+                let path_span = span(path_it, ty)?;
 
-                let PathSpan {
-                    last,
-                    last_arrow_elem,
-                    ..
-                } = span(path_it, ty);
-
-                let span = ty.pos.unwrap();
-                PathSpan {
-                    span,
-                    last: last.or_else(|| next.copied()),
-                    last_arrow_elem,
-                }
+                Some(PathSpan {
+                    last: path_span.last.or_else(|| next.copied()),
+                    last_arrow_elem: path_span.last_arrow_elem,
+                    ..path_span
+                })
             }
-            // The type and the path don't match, we stop here.
+            // The type and the path don't match, or the path is empty. We stop here.
             _ => {
-                let span = ty.pos.unwrap();
-                PathSpan {
+                ty.pos.into_opt().map(|span| PathSpan {
                     span,
                     last: None,
                     last_arrow_elem: None,
-                }
+                })
             }
         }
     }
@@ -526,6 +506,49 @@ impl Default for Label {
             path: Default::default(),
             type_environment: Default::default(),
             dualize: false,
+        }
+    }
+}
+
+/// Possible origins of a merge operation.
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
+pub enum MergeKind {
+    /// A standard, user-written merge operation (or a merge operation descending from a
+    /// user-written merge operation).
+    #[default]
+    Standard,
+    /// A merge generated by the parser when reconstructing piecewise definition, for example:
+    ///
+    /// ```nickel
+    /// { foo = def1, foo = def2}
+    /// ```
+    PiecewiseDef,
+}
+
+/// A merge label.
+///
+/// Like [`Label`], a merge label is used to carry and propagate error reporting data during the
+/// evaluation. While [`Label`] is used for contracts, `MergeLabel` is used for merging. The latter
+/// track less information than the former, but this information is still important. Indeed,
+/// recursive merging of records usually can't track original positions very well. The merge label
+/// allows to at least remember the original position of the merge, as written somewhere in a
+/// Nickel source.
+///
+/// Additionally, the merging arrays currently generates a contract and its associated label for
+/// which we don't necessarily have a defined span at hand. The merge label makes it possible to
+/// fallback to the original position of the merge.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MergeLabel {
+    /// The span of the original merge (which might then decompose into many others).
+    pub span: RawSpan,
+    pub kind: MergeKind,
+}
+
+impl From<Label> for MergeLabel {
+    fn from(label: Label) -> Self {
+        MergeLabel {
+            span: label.span,
+            kind: Default::default(),
         }
     }
 }

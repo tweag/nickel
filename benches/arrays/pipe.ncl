@@ -1,8 +1,8 @@
 {
   run = fun n =>
-    array.generate (fun n => n*n) n
-    |> array.filter (fun n => n % 2 == 0)
-    |> array.map (fun n => [n, n+1])
-    |> array.flatten
-    |> array.partition (fun n => n % 2 == 0)
+    std.array.generate (fun n => n*n) n
+    |> std.array.filter (fun n => n % 2 == 0)
+    |> std.array.map (fun n => [n, n+1])
+    |> std.array.flatten
+    |> std.array.partition (fun n => n % 2 == 0)
 }

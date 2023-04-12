@@ -55,8 +55,9 @@ use crate::{
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
-    term::make as mk_term,
-    term::{record::RecordData, RichTerm, Term, Traverse, TraverseOrder},
+    term::{
+        make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse, TraverseOrder,
+    },
 };
 
 use std::{
@@ -711,7 +712,7 @@ impl EnumRows {
     fn subcontract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::internals;
 
-        let mut cases = HashMap::new();
+        let mut cases = IndexMap::new();
         let mut has_tail = false;
         let value_arg = Ident::from("x");
         let label_arg = Ident::from("l");
@@ -780,7 +781,7 @@ impl RecordRows {
         // We begin by building a record whose arguments are contracts
         // derived from the types of the statically known fields.
         let mut rrows = self;
-        let mut fcs = HashMap::new();
+        let mut fcs = IndexMap::new();
 
         while let RecordRowsF::Extend {
             row: RecordRowF { id, types: ty },
@@ -1105,30 +1106,17 @@ impl Display for Types {
 #[cfg(test)]
 mod test {
     use super::Types;
-    use crate::parser::grammar::TermParser;
     use crate::parser::lexer::Lexer;
-    use crate::term::Term;
+    use crate::parser::{grammar::FixedTypeParser, ErrorTolerantParser};
     use codespan::Files;
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Types {
-        use crate::term::TypeAnnotation;
+        let id = Files::new().add("<test>", s);
 
-        // Wrap the type in a contract to have it accepted by the parser.
-        let wrapper = format!("null | {s}");
-        println!("{wrapper}");
-        let id = Files::new().add("<test>", wrapper.clone());
-
-        let rt = TermParser::new()
-            .parse_term(id, Lexer::new(&wrapper))
-            .unwrap();
-
-        match rt.term.into_owned() {
-            Term::Annotated(TypeAnnotation { mut contracts, .. }, _) if contracts.len() == 1 => {
-                contracts.remove(0).types
-            }
-            _ => panic!("types::test::parse_type(): expected contract"),
-        }
+        FixedTypeParser::new()
+            .parse_strict(id, Lexer::new(s))
+            .unwrap()
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the

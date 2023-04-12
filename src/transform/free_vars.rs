@@ -8,12 +8,12 @@ use crate::{
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
-        RichTerm, SharedTerm, StrChunk, Term,
+        IndexMap, RichTerm, SharedTerm, StrChunk, Term,
     },
     types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
 };
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// Apply the full free var transformation on a term.
 pub fn transform(rt: &mut RichTerm) {
@@ -117,7 +117,7 @@ impl CollectFreeVars for RichTerm {
                 let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
-                    stat_fields: HashMap::with_capacity(record.fields.len()),
+                    stat_fields: IndexMap::with_capacity(record.fields.len()),
                     dyn_fields: Vec::with_capacity(dyn_fields.len()),
                 };
 

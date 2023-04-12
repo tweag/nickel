@@ -56,12 +56,12 @@ let ctr = {
           = "package",
   }
 } in
-builtin.serialize `Json (
+std.serialize `Json (
   {
     name = "nickel",
     buildInputs = [{package = "hello"}],
   } | ctr.Shell
-) == builtin.serialize `Json {
+) == std.serialize `Json {
   name = "nickel",
   buildInputs = [{input = "nixpkgs", package = "hello", "_type" = "package"}],
 }

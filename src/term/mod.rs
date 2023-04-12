@@ -29,13 +29,14 @@ use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
     identifier::Ident,
-    label::Label,
+    label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
     types::{TypeF, Types, UnboundTypeVariableError},
 };
 
 use codespan::FileId;
+
 pub use malachite::{
     num::{
         basic::traits::Zero,
@@ -47,9 +48,12 @@ pub use malachite::{
 
 use serde::{Deserialize, Serialize};
 
+// Because we use `IndexMap` for recors, consumer of Nickel (as a library) might have to
+// manipulate values of this type, so we re-export this type.
+pub use indexmap::IndexMap;
+
 use std::{
     cmp::{Ordering, PartialOrd},
-    collections::HashMap,
     ffi::OsString,
     fmt,
     ops::Deref,
@@ -127,7 +131,7 @@ pub enum Term {
     /// able to handle yet unapplied match expressions.
     #[serde(skip)]
     Match {
-        cases: HashMap<Ident, RichTerm>,
+        cases: IndexMap<Ident, RichTerm>,
         default: Option<RichTerm>,
     },
 
@@ -1077,7 +1081,17 @@ pub enum UnaryOp {
     ///
     /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
     /// as it does less cloning.
-    Force(),
+    ///
+    /// # About `for_export`
+    ///
+    /// When exporting a Nickel term, we first apply `Force` to the term to
+    /// evaluate it. If there are record fields that have been marked `not_exported`,
+    /// they would still be evaluated ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230).
+    /// To stop this from happening, we introduce the `for_export` parameter
+    /// here. When `for_export` is `true`, the evaluation of `Force` will skip
+    /// fields that are marked as `not_exported`. When `for_export` is `false`,
+    /// these fields are evaluated.
+    Force { ignore_not_exported: bool },
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.
@@ -1263,8 +1277,10 @@ pub enum BinaryOp {
     ArrayConcat(),
     /// Access the n-th element of an array.
     ArrayElemAt(),
-    /// The merge operator (see [crate::eval::merge]).
-    Merge(),
+    /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
+    /// [crate::label::MergeLabel], which carries additional information for error-reporting
+    /// purpose.
+    Merge(MergeLabel),
 
     /// Hash a string.
     Hash(),
@@ -1320,7 +1336,7 @@ impl BinaryOp {
             | DynRemove()
             | DynAccess()
             | ArrayConcat()
-            | Merge() => OpPos::Infix,
+            | Merge(_) => OpPos::Infix,
             _ => OpPos::Prefix,
         }
     }
@@ -1528,7 +1544,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Match { cases, default } => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_result : Result<HashMap<Ident, RichTerm>, E> = cases
+                let cases_result : Result<IndexMap<Ident, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
@@ -1575,7 +1591,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<HashMap<Ident, Field>, E> = record.fields
+                let fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
@@ -1588,7 +1604,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<HashMap<Ident, Field>, E> = record.fields
+                let static_fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
@@ -1783,7 +1799,7 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = std::collections::HashMap::new();
+                let mut fields = indexmap::IndexMap::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
@@ -1800,7 +1816,7 @@ pub mod make {
     macro_rules! mk_match {
         ( $( ($id:expr, $body:expr) ),* ; $default:expr ) => {
             {
-                let mut cases = std::collections::HashMap::new();
+                let mut cases = indexmap::IndexMap::new();
                 $(
                     cases.insert($id.into(), $body.into());
                 )*
@@ -1808,7 +1824,7 @@ pub mod make {
             }
         };
         ( $( ($id:expr, $body:expr) ),*) => {
-                let mut cases = std::collections::HashMap::new();
+                let mut cases = indexmap::IndexMap::new();
                 $(
                     cases.insert($id.into(), $body.into());
                 )*

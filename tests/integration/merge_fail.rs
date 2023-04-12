@@ -21,7 +21,7 @@ macro_rules! assert_merge_fails {
     ($term:expr) => {
         assert_matches!(
             eval_full($term),
-            Err(Error::EvalError(EvalError::MergeIncompatibleArgs(..)))
+            Err(Error::EvalError(EvalError::MergeIncompatibleArgs { .. }))
         )
     };
 }

@@ -39,7 +39,7 @@ let {check, ..} = import "lib/assert.ncl" in
   m%"%Hel%%{"1"}lo%%%{"2"}"% == "%Hel%1lo%%2",
 
   # Regression tests for [#987](https://github.com/tweag/nickel/issues/987)
-  let res = string.find "a" "bac" in res.matched == "a" && res.index == 1,
+  let res = std.string.find "a" "bac" in res.matched == "a" && res.index == 1,
 
   # Regression tests for [#1012](https://github.com/tweag/nickel/issues/1012)
   let actual = m%%"Some text s%"%{not-interpolated}"% more text"%% in

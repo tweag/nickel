@@ -411,11 +411,11 @@
         "rust-overlay": "rust-overlay_4"
       },
       "locked": {
-        "lastModified": 1680007860,
-        "narHash": "sha256-H36jb8pjR3vUl2xKVnazM6Hn+S5dsUmtN8xk9FwhzJo=",
+        "lastModified": 1680178226,
+        "narHash": "sha256-EZtmLYPQII8Ma9yH0udqlNjSXiYUg134j+0Srzb4rbM=",
         "owner": "tweag",
         "repo": "topiary",
-        "rev": "399d59415eef6193e4959b8774b285a2615ab692",
+        "rev": "1af03d77abf6aef3ea36f878554c16619207252b",
         "type": "github"
       },
       "original": {

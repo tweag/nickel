@@ -27,11 +27,11 @@ fn elem_at() {
     );
 
     assert_matches!(
-        eval("array.at 0 {} 0"),
+        eval("std.array.at 0 {} 0"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
-        eval("array.at \"a\" []"),
+        eval("std.array.at \"a\" []"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }
@@ -65,11 +65,11 @@ fn head_tail() {
     //     Err(Error::EvalError(EvalError::BlameError {..}))
     // );
     assert_matches!(
-        eval("array.first false"),
+        eval("std.array.first false"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
     assert_matches!(
-        eval("array.drop_first 2"),
+        eval("std.array.drop_first 2"),
         Err(Error::EvalError(EvalError::BlameError { .. }))
     );
 }

@@ -52,13 +52,13 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value | Contract = {foo = 1} in
   (
     (value == {foo = 1} | Assert) &&
-    (builtin.serialize `Json value
-      == builtin.serialize `Json {foo = 1}
+    (std.serialize `Json value
+      == std.serialize `Json {foo = 1}
       | Assert) &&
-    (record.has_field "foo" value | Assert) &&
-    (!(record.has_field "opt" value) | Assert) &&
-    (record.values value == [1] | Assert) &&
-    (record.fields value == ["foo"] | Assert)
+    (std.record.has_field "foo" value | Assert) &&
+    (!(std.record.has_field "opt" value) | Assert) &&
+    (std.record.values value == [1] | Assert) &&
+    (std.record.fields value == ["foo"] | Assert)
   ),
 
   # Although unintuitive, we have to:
@@ -71,27 +71,27 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value | Contract = with_ctr & {foo = 1, baz = false} in
   (
     (value == {foo = 1, baz = false} | Assert) &&
-    (builtin.serialize `Json value
-      == builtin.serialize `Json {foo = 1, baz = false}
+    (std.serialize `Json value
+      == std.serialize `Json {foo = 1, baz = false}
       | Assert) &&
-    (record.has_field "foo" value | Assert) &&
-    (record.has_field "baz" value | Assert) &&
-    (!(record.has_field "opt" value) | Assert) &&
-    (record.values value == [false, 1] | Assert) &&
-    (record.fields value == ["baz", "foo"] | Assert)
+    (std.record.has_field "foo" value | Assert) &&
+    (std.record.has_field "baz" value | Assert) &&
+    (!(std.record.has_field "opt" value) | Assert) &&
+    (std.record.values value == [false, 1] | Assert) &&
+    (std.record.fields value == ["baz", "foo"] | Assert)
   ),
 
   let Contract = {foo | Number, opt | String | optional} in
   let value | Contract = {foo = 1 + 0, opt = "a" ++ "b"} in
   (
     (value == {foo = 1, opt = "ab"} | Assert) &&
-    (builtin.serialize `Json value
-      == builtin.serialize `Json {foo = 1, opt = "ab"}
+    (std.serialize `Json value
+      == std.serialize `Json {foo = 1, opt = "ab"}
       | Assert) &&
-    (record.has_field "foo" value | Assert) &&
-    (record.has_field "opt" value | Assert) &&
-    (record.values value == [1, "ab"] | Assert) &&
-    (record.fields value == ["foo", "opt"] | Assert)
+    (std.record.has_field "foo" value | Assert) &&
+    (std.record.has_field "opt" value | Assert) &&
+    (std.record.values value == [1, "ab"] | Assert) &&
+    (std.record.fields value == ["foo", "opt"] | Assert)
   ),
 
   let Contract = {foo | Number, opt | String | optional} in
@@ -100,13 +100,13 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value = with_ctr & {foo = 1, opt = "a" ++ "b"} in
   (
     (value == {foo = 1, opt = "ab"} | Assert) &&
-    (builtin.serialize `Json value
-      == builtin.serialize `Json {foo = 1, opt = "ab"}
+    (std.serialize `Json value
+      == std.serialize `Json {foo = 1, opt = "ab"}
       | Assert) &&
-    (record.has_field "foo" value | Assert) &&
-    (record.has_field "opt" value | Assert) &&
-    (record.values value == [1, "ab"] | Assert) &&
-    (record.fields value == ["foo", "opt"] | Assert)
+    (std.record.has_field "foo" value | Assert) &&
+    (std.record.has_field "opt" value | Assert) &&
+    (std.record.values value == [1, "ab"] | Assert) &&
+    (std.record.fields value == ["foo", "opt"] | Assert)
   ),
 
   let Contract = {foo | Number, opt | String | optional} in
@@ -117,15 +117,15 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # fine
   let value = with_ctr & {foo = 1, opt} in
   (
-    # record.has_field/record.fields have a dictionnary contract `{_ : T}`
-    # attached, which currently uses `record.map` under the hood, which will
+    # std.record.has_field/std.record.fields have a dictionnary contract `{_ : T}`
+    # attached, which currently uses `std.record.map` under the hood, which will
     # throw an error for `opt` missing a defnition. They
     # probably shouldn't, but for the time being, we bypass them using the
     # lowlevel primop. Uncomment the 3 following line once #XXX is closed
     # (https://github.com/tweag/nickel/issues/892)
-    # (record.has_field "foo" value | Assert) &&
-    # (record.has_field "opt" value | Assert) &&
-    # (record.fields value == ["foo", "opt"] | Assert)
+    # (std.record.has_field "foo" value | Assert) &&
+    # (std.record.has_field "opt" value | Assert) &&
+    # (std.record.fields value == ["foo", "opt"] | Assert)
     (%has_field% "foo" value | Assert) &&
     (%has_field% "opt" value | Assert) &&
     (%fields% value == ["foo", "opt"] | Assert)

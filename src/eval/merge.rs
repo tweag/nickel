@@ -53,23 +53,33 @@
 //! evaluates to a contract check, that is an `Assume(..., t)`
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
-use crate::label::Label;
+use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, RichTerm, SharedTerm, Term, TypeAnnotation,
+    BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
 };
-use std::collections::HashMap;
+use crate::transform::Closurizable;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum MergeMode {
     /// Standard merging, for combining data.
-    #[default]
-    Standard,
+    Standard(MergeLabel),
     /// Merging to apply a record contract to a value, with the associated label.
     Contract(Label),
+}
+
+impl From<MergeMode> for MergeLabel {
+    /// Either takes the inner merge label if the mode is `Standard`, or converts a contract label
+    /// to a merge label if the mode is `Contract`.
+    fn from(mode: MergeMode) -> Self {
+        match mode {
+            MergeMode::Standard(merge_label) => merge_label,
+            MergeMode::Contract(label) => label.into(),
+        }
+    }
 }
 
 /// Compute the merge of two evaluated operands. Support both standard merging and record contract
@@ -112,17 +122,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Bool(b2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Bool(b1), pos1),
+                    right_arg: RichTerm::new(Term::Bool(b2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Num(n1), Term::Num(n2)) => {
@@ -132,17 +136,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Num(n2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Num(n1), pos1),
+                    right_arg: RichTerm::new(Term::Num(n2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Str(s1), Term::Str(s2)) => {
@@ -152,17 +150,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Str(s2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Str(s1), pos1),
+                    right_arg: RichTerm::new(Term::Str(s2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Lbl(l1), Term::Lbl(l2)) => {
@@ -172,17 +164,11 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Lbl(l2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Lbl(l1), pos1),
+                    right_arg: RichTerm::new(Term::Lbl(l2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
         (Term::Enum(i1), Term::Enum(i2)) => {
@@ -192,26 +178,66 @@ pub fn merge<C: Cache>(
                     pos_op.into_inherited(),
                 )))
             } else {
-                Err(EvalError::MergeIncompatibleArgs(
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i1)),
-                        pos: pos1,
-                    },
-                    RichTerm {
-                        term: SharedTerm::new(Term::Enum(i2)),
-                        pos: pos2,
-                    },
-                    pos_op,
-                ))
+                Err(EvalError::MergeIncompatibleArgs {
+                    left_arg: RichTerm::new(Term::Enum(i1), pos1),
+                    right_arg: RichTerm::new(Term::Enum(i2), pos2),
+                    merge_label: mode.into(),
+                })
             }
         }
-        (Term::Array(arr1, _attrs1), Term::Array(arr2, _attrs2))
-            if arr1.is_empty() && arr2.is_empty() =>
-        {
-            Ok(Closure::atomic_closure(RichTerm::new(
-                Term::Array(arr1, ArrayAttrs::new().closurized()),
-                pos_op.into_inherited(),
-            )))
+        // There are several different (and valid) ways of merging arrays. We don't want to choose
+        // for the user, so future custom merge functions will provide a way to overload the native
+        // merging function. For the time being, we still need to be idempotent: thus we rewrite
+        // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
+        // minimum way such that it is idempotent.
+        (t1 @ Term::Array(..), t2 @ Term::Array(..)) => {
+            use crate::{mk_app, stdlib, types::TypeF};
+            use std::rc::Rc;
+
+            let mut env = Environment::new();
+            let t1 = RichTerm::new(t1, pos1).closurize(cache, &mut env, env1);
+            let t2 = RichTerm::new(t2, pos2).closurize(cache, &mut env, env2);
+
+            // We reconstruct the contract we apply later on just to fill the label. This will be
+            // printed out when reporting the error.
+            let contract_for_display = mk_app!(
+                mk_term::op1(
+                    UnaryOp::StaticAccess("Equal".into()),
+                    Term::Var("contract".into()),
+                ),
+                // We would need to substitute variables inside `t1` to make it useful to print,
+                // but currently we don't want to do it preventively at each array merging, so we
+                // just print `contract.Equal some_array`.
+                //
+                // If the error reporting proves to be insufficient, consider substituting the
+                // variables inside `t1`, but be aware that it might (or might not) have a
+                // noticeable impact on performance.
+                mk_term::var("some_array")
+            );
+
+            let label = Label {
+                types: Rc::new(TypeF::Flat(contract_for_display).into()),
+                span: MergeLabel::from(mode).span,
+                ..Default::default()
+            }
+            .with_diagnostic_message("cannot merge unequal arrays")
+            .append_diagnostic_note(
+                "\
+                This equality contract was auto-generated from a merge operation on two arrays. \
+                Arrays can only be merged if they are equal.",
+            );
+
+            // We don't actually use `contract.Equal` directly, because contract could have been
+            // locally redefined. We rather use the internal `$stdlib_contract_equal`, which is
+            // exactly the same, but can't be shadowed.
+            let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
+            let result = mk_app!(
+                mk_term::op2(BinaryOp::Assume(), eq_contract, Term::Lbl(label)),
+                t2
+            )
+            .with_pos(pos_op);
+
+            Ok(Closure { body: result, env })
         }
         // Merge put together the fields of records, and recursively merge
         // fields that are present in both terms
@@ -230,11 +256,11 @@ pub fn merge<C: Cache>(
                 });
             }
 
-            let hashmap::SplitResult {
+            let split::SplitResult {
                 left,
                 center,
                 right,
-            } = hashmap::split(r1.fields, r2.fields);
+            } = split::split(r1.fields, r2.fields);
 
             match mode {
                 MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
@@ -260,13 +286,21 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 _ => (),
             };
 
+            let final_pos = if let MergeMode::Standard(_) = mode {
+                pos_op.into_inherited()
+            } else {
+                pos1.into_inherited()
+            };
+
+            let merge_label = MergeLabel::from(mode);
+
             let field_names: Vec<_> = left
                 .keys()
                 .chain(center.keys())
                 .chain(right.keys())
                 .cloned()
                 .collect();
-            let mut m = HashMap::with_capacity(left.len() + center.len() + right.len());
+            let mut m = IndexMap::with_capacity(left.len() + center.len() + right.len());
             let mut env = Environment::new();
 
             // Merging recursive records is the one operation that may override recursive fields. To
@@ -294,6 +328,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                     id,
                     merge_fields(
                         cache,
+                        merge_label,
                         field1,
                         env1.clone(),
                         field2,
@@ -303,12 +338,6 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                     )?,
                 );
             }
-
-            let final_pos = if mode == MergeMode::Standard {
-                pos_op.into_inherited()
-            } else {
-                pos1.into_inherited()
-            };
 
             Ok(Closure {
                 body: RichTerm::new(
@@ -334,17 +363,11 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
                 call_stack: call_stack.clone(),
             }),
             // The following cases are either errors or not yet implemented
-            _ => Err(EvalError::MergeIncompatibleArgs(
-                RichTerm {
-                    term: SharedTerm::new(t1_),
-                    pos: pos1,
-                },
-                RichTerm {
-                    term: SharedTerm::new(t2_),
-                    pos: pos2,
-                },
-                pos_op,
-            )),
+            (mode, _) => Err(EvalError::MergeIncompatibleArgs {
+                left_arg: RichTerm::new(t1_, pos1),
+                right_arg: RichTerm::new(t2_, pos2),
+                merge_label: mode.into(),
+            }),
         },
     }
 }
@@ -352,8 +375,10 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
 /// Take two record fields in their respective environment and combine both their metadata and
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
+#[allow(clippy::too_many_arguments)]
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     cache: &mut C,
+    merge_label: MergeLabel,
     field1: Field,
     env1: Environment,
     field2: Field,
@@ -379,7 +404,10 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
-            Some(fields_merge_closurize(cache, env_final, t1, &env1, t2, &env2, fields).unwrap()),
+            Some(
+                fields_merge_closurize(cache, merge_label, env_final, t1, &env1, t2, &env2, fields)
+                    .unwrap(),
+            ),
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
@@ -523,8 +551,10 @@ fn field_deps<C: Cache>(
 ///
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
+#[allow(clippy::too_many_arguments)]
 fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
     cache: &mut C,
+    merge_label: MergeLabel,
     env: &mut Environment,
     t1: RichTerm,
     env1: &Environment,
@@ -536,7 +566,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 
     let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
     let body = RichTerm::from(Term::Op2(
-        BinaryOp::Merge(),
+        BinaryOp::Merge(merge_label),
         t1.saturate(cache, &mut local_env, env1, fields.clone())?,
         t2.saturate(cache, &mut local_env, env2, fields)?,
     ));
@@ -640,24 +670,24 @@ impl RevertClosurize for Vec<PendingContract> {
     }
 }
 
-pub mod hashmap {
-    use std::collections::HashMap;
+pub mod split {
+    use crate::term::IndexMap;
 
     pub struct SplitResult<K, V1, V2> {
-        pub left: HashMap<K, V1>,
-        pub center: HashMap<K, (V1, V2)>,
-        pub right: HashMap<K, V2>,
+        pub left: IndexMap<K, V1>,
+        pub center: IndexMap<K, (V1, V2)>,
+        pub right: IndexMap<K, V2>,
     }
 
-    /// Split two hashmaps m1 and m2 in three parts (left,center,right), where left holds bindings
+    /// Split two maps m1 and m2 in three parts (left,center,right), where left holds bindings
     /// `(key,value)` where key is not in `m2.keys()`, right is the dual (keys of m2 that are not
     /// in m1), and center holds bindings for keys that are both in m1 and m2.
-    pub fn split<K, V1, V2>(m1: HashMap<K, V1>, m2: HashMap<K, V2>) -> SplitResult<K, V1, V2>
+    pub fn split<K, V1, V2>(m1: IndexMap<K, V1>, m2: IndexMap<K, V2>) -> SplitResult<K, V1, V2>
     where
         K: std::hash::Hash + Eq,
     {
-        let mut left = HashMap::new();
-        let mut center = HashMap::new();
+        let mut left = IndexMap::new();
+        let mut center = IndexMap::new();
         let mut right = m2;
 
         for (key, value) in m1 {
@@ -681,8 +711,8 @@ pub mod hashmap {
 
         #[test]
         fn all_left() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let m2 = HashMap::<isize, isize>::new();
+            let mut m1 = IndexMap::new();
+            let m2 = IndexMap::<isize, isize>::new();
 
             m1.insert(1, 1);
             let SplitResult {
@@ -704,8 +734,8 @@ pub mod hashmap {
 
         #[test]
         fn all_right() -> Result<(), String> {
-            let m1 = HashMap::<isize, isize>::new();
-            let mut m2 = HashMap::new();
+            let m1 = IndexMap::<isize, isize>::new();
+            let mut m2 = IndexMap::new();
 
             m2.insert(1, 1);
             let SplitResult {
@@ -729,8 +759,8 @@ pub mod hashmap {
 
         #[test]
         fn all_center() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let mut m2 = HashMap::new();
+            let mut m1 = IndexMap::new();
+            let mut m2 = IndexMap::new();
 
             m1.insert(1, 1);
             m2.insert(1, 2);
@@ -755,8 +785,8 @@ pub mod hashmap {
 
         #[test]
         fn mixed() -> Result<(), String> {
-            let mut m1 = HashMap::new();
-            let mut m2 = HashMap::new();
+            let mut m1 = IndexMap::new();
+            let mut m2 = IndexMap::new();
 
             m1.insert(1, 1);
             m1.insert(2, 1);

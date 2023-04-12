@@ -24,7 +24,7 @@
         )
         >> [ "1" "2" ]
     "%
-  = fun xs f => array.map f xs,
+  = fun xs f => std.array.map f xs,
 
   foldr: forall a b. (a -> b -> b) -> b -> (Array a) -> b
   | doc m%"
@@ -42,11 +42,11 @@
        => "2345a"
   "%
   = fun op nul list =>
-    let len = array.length list in
+    let len = std.array.length list in
     let rec fold_ = fun n =>
         if n == len
         then nul
-        else op (array.at n list) (fold_ (n + 1))
+        else op (std.array.at n list) (fold_ (n + 1))
     in fold_ 0,
 
   fold: forall a b. (a -> b -> b) -> b -> (Array a) -> b
@@ -74,8 +74,8 @@
     let rec foldl_ = fun n =>
         if n == -1
         then nul
-        else op (foldl_ (n - 1)) (array.at n list)
-    in foldl_ (array.length list - 1),
+        else op (foldl_ (n - 1)) (std.array.at n list)
+    in foldl_ (std.array.length list - 1),
 
   foldl_: forall a b. (b -> a -> b) -> b -> (Array a) -> b
   | doc m%"
@@ -85,7 +85,7 @@
      with small whole results (in contrast with lazily-generated list or large
      lists where only a part is consumed.)
   "%
-  = fun op nul list => array.fold_left op nul list,
+  = fun op nul list => std.array.fold_left op nul list,
 
   imap0: forall a b. (Number -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
@@ -95,7 +95,7 @@
        imap0 (fun i v => "%{v}-%{%to_string% i}") ["a", "b"]
        >> [ "a-0", "b-1" ]
   "%%
-  = fun f list => array.generate (fun n => f n (array.at n list)) (array.length list),
+  = fun f list => std.array.generate (fun n => f n (std.array.at n list)) (std.array.length list),
 
   imap1: forall a b. (Number -> a -> b) -> (Array a) -> (Array b)
   | doc m%%"
@@ -105,7 +105,7 @@
        imap1 (fun i v => "%{v}-%{toString i}") ["a", "b"]
        >> [ "a-1", "b-2" ]
   "%%
-  = fun f list => array.generate (fun n => f (n + 1) (array.at n list)) (array.length list),
+  = fun f list => std.array.generate (fun n => f (n + 1) (std.array.at n list)) (std.array.length list),
 
   concatMap: forall a b. (a -> (Array b)) -> (Array a) -> (Array b)
   | doc m%"
@@ -115,7 +115,7 @@
        concatMap (fun x => [x] @ ["z"]) ["a", "b"]
        >> [ "a", "z", "b", "z" ]
   "%
-  = (fun f list => array.flatten (array.map f list)),
+  = (fun f list => std.array.flatten (std.array.map f list)),
 
   flatten: Dyn -> Array Dyn
   | doc m%"
@@ -129,7 +129,7 @@
        >> [1]
   "%
   = fun x =>
-    if builtin.is_array x
+    if std.is_array x
     then concatMap (fun y => flatten y) (x | Array Dyn)
     else [x],
 
@@ -142,7 +142,7 @@
        >> [ 1, 4 ]
   "%
   = # Element to remove from the list
-    fun e => array.filter ((!=) e),
+    fun e => std.array.filter ((!=) e),
 
   findSingle: forall a. (a -> Bool) -> a -> a -> Array a -> a
   | doc m%"
@@ -167,11 +167,11 @@
     multiple
     # Input list
     list
-    => let found = array.filter pred list in
-       let len = array.length found in
+    => let found = std.array.filter pred list in
+       let len = std.array.length found in
        if len == 0 then def
        else if len != 1 then multiple
-       else array.first found,
+       else std.array.first found,
 
   findFirst: forall a. (a -> Bool) -> a -> Array a -> a
   | doc m%"
@@ -191,8 +191,8 @@
     def
     # Input list
     list
-    => let found = array.filter pred list in
-       if found == [] then def else array.first found,
+    => let found = std.array.filter pred list in
+       if found == [] then def else std.array.first found,
 
   any: forall a. (a -> Bool) -> Array a -> Bool
   | doc m%"
@@ -277,7 +277,7 @@
        toList "hi"
        >> [ "hi "]
   "%
-  = fun x => if builtin.is_array x then (x | Array Dyn) else [x],
+  = fun x => if std.is_array x then (x | Array Dyn) else [x],
 
   range: Number -> Number -> Array Number
   | doc m%"
@@ -297,7 +297,7 @@
     => if first > last then
       []
     else
-      array.generate (fun n => first + n) (last - first + 1),
+      std.array.generate (fun n => first + n) (last - first + 1),
 
   partition: forall a. (a -> Bool) -> Array a -> { right : Array a, wrong : Array a }
   | doc m%"
@@ -337,7 +337,7 @@
   "%
   = fun pred => foldl_ (fun r e =>
        let key = pred e in
-         { "%{key}" = (r."%{key}" @ [e]) } & (record.remove key r)
+         { "%{key}" = (r."%{key}" @ [e]) } & (std.record.remove key r)
     ) {},
 
   groupBy_ : forall a b. (b -> a -> b) ->  b -> (a -> String) -> Array a -> { _: b}
@@ -348,7 +348,7 @@
        groupBy_ builtins.add 0 (fun x => boolToString (x > 2)) [ 5, 1, 2, 3, 4 ]
        >> { true = 12, false = 3 }
   "%
-  = fun op nul pred lst => record.map (fun name value => foldl op nul value) (groupBy pred lst),
+  = fun op nul pred lst => std.record.map (fun name value => foldl op nul value) (groupBy pred lst),
 
   zipListsWith: forall a b c. (a -> b -> c) -> Array a -> Array b -> Array c
   | doc m%"
@@ -367,7 +367,7 @@
     fst
     # Second list
     snd
-    => array.generate (fun n => f (array.at n fst) (array.at n snd)) (number.min (array.length fst) (array.length snd)),
+    => std.array.generate (fun n => f (std.array.at n fst) (std.array.at n snd)) (std.number.min (std.array.length fst) (std.array.length snd)),
 
   zipLists: forall a b. Array a -> Array b -> Array { fst: a, snd: b}
   | doc m%"
@@ -389,8 +389,8 @@
        >> [ "j", "o", "b" ]
   "%
   = fun xs =>
-    let l = array.length xs in
-    array.generate (fun n => array.at (l - n - 1) xs) l,
+    let l = std.array.length xs in
+    std.array.generate (fun n => std.array.at (l - n - 1) xs) l,
 
   #TODO: is there a way to type statically?
   listDfs |  forall a. Bool -> (a -> a -> Bool) -> Array a -> {visited: Array a, rest: Array a ; Dyn}
@@ -416,19 +416,19 @@
    "%
   = fun stopOnCycles before list =>
     let rec dfs_ = fun us visited_ rest_ =>
-        let c = array.filter (fun x => before x us) visited_ in
+        let c = std.array.filter (fun x => before x us) visited_ in
         let b = partition (fun x => before x us) rest_ in
-        if stopOnCycles && (array.length c > 0)
+        if stopOnCycles && (std.array.length c > 0)
         then { cycle = us, loops = c, visited = visited_, rest = rest_ }
-        else if array.length b.right == 0
+        else if std.array.length b.right == 0
         then # nothing is before us
           { minimal = us, visited = visited_, rest = rest_ }
         else # grab the first one before us and continue
-          (dfs_ (array.first b.right)
+          (dfs_ (std.array.first b.right)
                 ([ us ] @ visited_)
-                (array.drop_first b.right @ b.wrong)
+                (std.array.drop_first b.right @ b.wrong)
     ) in
-    dfs_ (array.first list) [] (array.drop_first list),
+    dfs_ (std.array.first list) [] (std.array.drop_first list),
 
   toposort: forall a. (a -> a -> Bool) -> Array a -> {_: Array Dyn}
   | doc m%"
@@ -463,14 +463,14 @@
     #
     # RFC004 is supposed to fix those kind of use-cases by introducing a limited
     # form of subtyping.
-    if array.length list < 2
+    if std.array.length list < 2
       then # finish
         { result| Array Dyn =  list, } : {_ : Array Dyn}
-    else if record.has_field "cycle" (dfsthis | {_: Dyn})
+    else if std.record.has_field "cycle" (dfsthis | {_: Dyn})
       then # there's a cycle, starting from the current vertex, return it
         { cycle = reverseList ([ (dfsthis | {cycle: Dyn}).cycle ] @ dfsthis.visited | Array Dyn),
           loops = (dfsthis | {loops: Array Dyn}).loops, } : {_ : Array Dyn}
-    else if record.has_field "cycle" toporest
+    else if std.record.has_field "cycle" toporest
       then # there's a cycle somewhere else in the graph, return it
         toporest
       # Slow, but short. Can be made a bit faster with an explicit stack.
@@ -493,10 +493,10 @@
        >> [ 3, 5, 7 ]
   "%
   = fun strictLess list =>
-    let len = array.length list in
-    let first = array.first list in
+    let len = std.array.length list in
+    let first = std.array.first list in
     let rec pivot_ = (fun n acc@{ left=left_, right=right_ } =>
-      let el = array.at n list in
+      let el = std.array.at n list in
       let next = pivot_ (n + 1) in
       if n == len
       then acc
@@ -529,9 +529,9 @@
          else -1
     else if b == []
          then 1
-         else let rel = cmp (array.first a) (array.first b) in
+         else let rel = cmp (std.array.first a) (std.array.first b) in
               if rel == 0
-              then compareLists cmp (array.drop_first a) (array.drop_first b)
+              then compareLists cmp (std.array.drop_first a) (std.array.drop_first b)
               else rel,
 
 # naturalSort: Array String -> Array String
@@ -549,11 +549,11 @@
 # "%
 # # TODO: broken. how to implement it in nickel?
 # = fun lst =>
-#   let vectorise = fun s => array.map (fun x => if builtin.is_array x then (array.first x) | Number else x | Number) (string.split "(0|[1-9][0-9]*)" s) | Array Dyn
+#   let vectorise = fun s => std.array.map (fun x => if builtin.is_array x then (std.array.first x) | Number else x | Number) (std.string.split "(0|[1-9][0-9]*)" s) | Array Dyn
 #   in
-#     let prepared = array.map (fun x => [ (vectorise x), x ]) lst in # remember vectorised version for O(n) regex splits
-#     let less = fun a b => (compareLists compare (array.first a) (array.first b)) < 0 in
-#     array.map (fun x => array.at 1 x) (sort less prepared),
+#     let prepared = std.array.map (fun x => [ (vectorise x), x ]) lst in # remember vectorised version for O(n) regex splits
+#     let less = fun a b => (compareLists compare (std.array.first a) (std.array.first b)) < 0 in
+#     std.array.map (fun x => std.array.at 1 x) (sort less prepared),
 
   take: forall a. Number -> Array a -> Array a
   | doc m%"
@@ -585,7 +585,7 @@
     # Number of elements to drop
     count
     # Input list
-    lst => sublist count (array.length lst) lst,
+    lst => sublist count (std.array.length lst) lst,
 
   sublist: forall a. Number -> Number -> Array a -> Array a
   | doc m%"
@@ -606,9 +606,9 @@
     count
     # Input list
     lst =>
-    let len = array.length lst in
-    array.generate
-      (fun n => array.at (n + start) lst)
+    let len = std.array.length lst in
+    std.array.generate
+      (fun n => std.array.at (n + start) lst)
       (if start >= len then 0
        else if start + count > len then len - start
        else count),
@@ -626,7 +626,7 @@
   "%
   = fun lst =>
     #assert lib.assertMsg (lst != []) "lists.last: list must not be empty!",
-    array.at (array.length lst - 1) lst,
+    std.array.at (std.array.length lst - 1) lst,
 
   init: forall a. Array a -> Array a
   | doc m%"
@@ -640,7 +640,7 @@
   "%
   = fun lst =>
     #assert lib.assertMsg (lst != []) "lists.init: list must not be empty!",
-    take (array.length lst - 1) lst,
+    take (std.array.length lst - 1) lst,
 
   unique: Array Dyn -> Array Dyn
   | doc m%"
@@ -650,7 +650,7 @@
        unique [ 3, 2, 3, 4 ]
        >> [ 3, 2, 4 ]
    "%
-  = foldl_ (fun acc e => if array.elem e acc then acc else acc @ [ e ]) [],
+  = foldl_ (fun acc e => if std.array.elem e acc then acc else acc @ [ e ]) [],
 
   intersectLists: Array Dyn -> Array Dyn -> Array Dyn
   | doc m%"
@@ -660,7 +660,7 @@
        intersectLists [ 1, 2, 3 ] [ 6, 3, 2 ]
        >> [ 3, 2 ]
   "%
-  = fun e => array.filter (fun x => array.elem x e),
+  = fun e => std.array.filter (fun x => std.array.elem x e),
 
   subtractLists: Array Dyn -> Array Dyn -> Array Dyn
   | doc m%"
@@ -670,13 +670,13 @@
        subtractLists [ 3, 2 ] [ 1, 2, 3, 4, 5, 3 ]
        >> [ 1, 4, 5 ]
   "%
-  = fun e => array.filter (fun x => !(array.elem x e)),
+  = fun e => std.array.filter (fun x => !(std.array.elem x e)),
 
   mutuallyExclusive: Array Dyn -> Array Dyn -> Bool
   | doc m%"
       Test if two lists have no common element.
      It should be slightly more efficient than (intersectLists a b == [])
   "%
-  = fun a b => array.length a == 0 || !(any (fun x => array.elem x a) b),
+  = fun a b => std.array.length a == 0 || !(any (fun x => std.array.elem x a) b),
 
 }

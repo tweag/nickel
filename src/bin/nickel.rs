@@ -1,4 +1,5 @@
 //! Entry point of the program.
+use core::fmt;
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CacheImpl;
 use nickel_lang::program::{ColorOpt, Program};
@@ -10,6 +11,7 @@ use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},
+    io::Write,
     process,
 };
 // use std::ffi::OsStr;
@@ -81,12 +83,65 @@ enum Command {
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
     Doc {
-        /// Specify the path of the generated documentation file. Default to
+        /// The path of the generated documentation file. Default to
         /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
         /// `~/.nickel/doc/out.md` if the input is read from stdin.
         #[structopt(short = "o", long, parse(from_os_str))]
         output: Option<PathBuf>,
+        /// Write documentation to stdout. Takes precedence over `output`
+        #[structopt(long)]
+        stdout: bool,
+        /// The output format for the generated documentation. Possible values:
+        /// markdown, json
+        #[structopt(long, default_value = "markdown")]
+        format: DocFormat,
     },
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub enum DocFormat {
+    Json,
+    #[default]
+    Markdown,
+}
+
+impl DocFormat {
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Markdown => "md",
+        }
+    }
+}
+
+impl fmt::Display for DocFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Json => write!(f, "json"),
+            Self::Markdown => write!(f, "markdown"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ParseFormatError(String);
+
+impl fmt::Display for ParseFormatError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "unsupported export format {}", self.0)
+    }
+}
+
+impl std::str::FromStr for DocFormat {
+    type Err = ParseFormatError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_ref() {
+            "json" => Ok(DocFormat::Json),
+            "markdown" => Ok(DocFormat::Markdown),
+            _ => Err(ParseFormatError(String::from(s))),
+        }
+    }
 }
 
 fn main() {
@@ -160,7 +215,68 @@ fn main() {
             Some(Command::Typecheck) => program.typecheck(),
             Some(Command::Repl { .. }) => unreachable!(),
             #[cfg(feature = "doc")]
-            Some(Command::Doc { ref output }) => output
+            Some(Command::Doc {
+                output,
+                stdout,
+                format,
+            }) => export_doc(&mut program, opts.file.as_ref(), output, stdout, format),
+            None => program
+                .eval_full()
+                .map(|t| println!("{}", Term::from(t).deep_repr())),
+        };
+
+        if let Err(err) = result {
+            program.report(err);
+            process::exit(1)
+        }
+    }
+}
+
+fn export(
+    program: &mut Program<CacheImpl>,
+    format: Option<ExportFormat>,
+    output: Option<PathBuf>,
+) -> Result<(), Error> {
+    let rt = program.eval_full_for_export().map(RichTerm::from)?;
+    let format = format.unwrap_or_default();
+
+    // We only add a trailing newline for JSON exports. Both YAML and TOML
+    // exporters already append a trailing newline by default.
+    let trailing_newline = format == ExportFormat::Json;
+
+    serialize::validate(format, &rt)?;
+
+    if let Some(file) = output {
+        let mut file = fs::File::create(file).map_err(IOError::from)?;
+        serialize::to_writer(&mut file, format, &rt)?;
+
+        if trailing_newline {
+            writeln!(file).map_err(IOError::from)?;
+        }
+    } else {
+        serialize::to_writer(std::io::stdout(), format, &rt)?;
+
+        if trailing_newline {
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "doc")]
+fn export_doc(
+    program: &mut Program<CacheImpl>,
+    file: Option<&PathBuf>,
+    output: Option<PathBuf>,
+    stdout: bool,
+    format: DocFormat,
+) -> Result<(), Error> {
+    let mut out: Box<dyn std::io::Write> = if stdout {
+        Box::new(std::io::stdout())
+    } else {
+        Box::new(
+            output
                 .as_ref()
                 .map(|output| {
                     fs::File::create(output.clone()).map_err(|e| {
@@ -180,59 +296,35 @@ fn main() {
                             e
                         )))
                     })?;
-                    let mut markdown_file = docpath.to_path_buf();
+                    let mut output_file = docpath.to_path_buf();
 
                     let mut has_file_name = false;
 
-                    if let Some(path) = opts.file {
+                    if let Some(path) = file {
                         if let Some(file_stem) = path.file_stem() {
-                            markdown_file.push(file_stem);
+                            output_file.push(file_stem);
                             has_file_name = true;
                         }
                     }
 
                     if !has_file_name {
-                        markdown_file.push("out");
+                        output_file.push("out");
                     }
 
-                    markdown_file.set_extension("md");
-                    File::create(markdown_file.clone().into_os_string()).map_err(|e| {
+                    output_file.set_extension(format.extension());
+                    File::create(output_file.clone().into_os_string()).map_err(|e| {
                         Error::IOError(IOError(format!(
                             "when opening or creating output file `{}`: {}",
-                            markdown_file.to_string_lossy(),
+                            output_file.to_string_lossy(),
                             e
                         )))
                     })
-                })
-                .and_then(|mut out| program.output_doc(&mut out)),
-            None => program
-                .eval_full()
-                .map(|t| println!("{}", Term::from(t).deep_repr())),
-        };
-
-        if let Err(err) = result {
-            program.report(err);
-            process::exit(1)
-        }
+                })?,
+        )
+    };
+    let doc = program.extract_doc()?;
+    match format {
+        DocFormat::Json => doc.write_json(&mut out),
+        DocFormat::Markdown => doc.write_markdown(&mut out),
     }
-}
-
-fn export(
-    program: &mut Program<CacheImpl>,
-    format: Option<ExportFormat>,
-    output: Option<PathBuf>,
-) -> Result<(), Error> {
-    let rt = program.eval_full().map(RichTerm::from)?;
-    let format = format.unwrap_or_default();
-
-    serialize::validate(format, &rt)?;
-
-    if let Some(file) = output {
-        let file = fs::File::create(file).map_err(IOError::from)?;
-        serialize::to_writer(file, format, &rt)?;
-    } else {
-        serialize::to_writer(std::io::stdout(), format, &rt)?;
-    }
-
-    Ok(())
 }

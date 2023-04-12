@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
     error::TypecheckError,
     identifier::Ident,
     mk_uty_row,
-    term::LabeledType,
+    term::{IndexMap, LabeledType},
     typecheck::{unify, UnifRecordRow},
     types::{RecordRowF, RecordRowsF, TypeF},
 };
@@ -204,7 +202,7 @@ pub fn inject_pattern_variables(
 /// have already been "used" in the pattern, to ensure that we can
 /// correctly construct the type of a `..rest` match, if it exists.
 struct RecordTypes {
-    known_types: HashMap<Ident, UnifType>,
+    known_types: IndexMap<Ident, UnifType>,
     tail: UnifRecordRows,
 }
 
@@ -212,7 +210,7 @@ impl From<&UnifRecordRows> for RecordTypes {
     fn from(u: &UnifRecordRows) -> Self {
         let (known_types, tail) =
             u.iter()
-                .fold((HashMap::new(), None), |(mut m, _), ty| match ty {
+                .fold((IndexMap::new(), None), |(mut m, _), ty| match ty {
                     GenericUnifRecordRowsIteratorItem::Row(rt) => {
                         m.insert(rt.id, rt.types.clone());
                         (m, None)

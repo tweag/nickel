@@ -1,0 +1,10 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+# `Hello`
+
+- `Hello : Number`
+- `Hello | (std.string).Stringable`
+World\!
+

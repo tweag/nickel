@@ -6,7 +6,7 @@ error: contract broken by a value
   ┌─ [INPUTS_PATH]/errors/dictionary_contract_fail.ncl:1:9
   │
 1 │ { foo = 1, bar = "bar" } | {_: String}
-  │         ^                      ^^^^^^ expected dictionary field type
+  │         ^                      ------ expected dictionary field type
   │         │                       
   │         applied to this expression
 

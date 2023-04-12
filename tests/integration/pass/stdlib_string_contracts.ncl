@@ -1,4 +1,5 @@
 let {check, ..} = import "lib/assert.ncl" in
+let {string, ..} = std in
 
 [
   # string.BoolLiteral
@@ -7,10 +8,10 @@ let {check, ..} = import "lib/assert.ncl" in
   ("true" | string.BoolLiteral) == "true",
   ("false" | string.BoolLiteral) == "false",
 
-  # string.NumLiteral
-  ("+1.2" | string.NumLiteral) == "+1.2",
-  ("-1.2" | string.NumLiteral) == "-1.2",
-  ("9001" | string.NumLiteral) == "9001",
+  # string.NumberLiteral
+  ("+1.2" | string.NumberLiteral) == "+1.2",
+  ("-1.2" | string.NumberLiteral) == "-1.2",
+  ("9001" | string.NumberLiteral) == "9001",
 
   # string.Character
   # single ascii chars
@@ -24,8 +25,8 @@ let {check, ..} = import "lib/assert.ncl" in
   ("👩🏿‍❤️‍💋‍👩🏼" | string.Character) == "👩🏿‍❤️‍💋‍👩🏼",
 
   # string.EnumTag
-  (`Foo | enum.Tag) == `Foo,
-  (`Barr | enum.Tag) == `Barr,
+  (`Foo | std.enum.Tag) == `Foo,
+  (`Barr | std.enum.Tag) == `Barr,
 
   # string.Stringable
   (`Foo | string.Stringable) == `Foo,

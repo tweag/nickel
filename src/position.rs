@@ -132,3 +132,9 @@ impl PartialOrd for RawSpan {
         }
     }
 }
+
+impl From<RawSpan> for TermPos {
+    fn from(span: RawSpan) -> Self {
+        TermPos::Original(span)
+    }
+}

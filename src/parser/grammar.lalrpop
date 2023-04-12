@@ -35,7 +35,6 @@
 //! corresponding more precise return type. Other rules that produce or just
 //! propagate general uniterms have to return a `UniTerm`.
 use std::{
-    collections::HashMap,
     ffi::OsString,
     convert::TryFrom,
 };
@@ -197,7 +196,10 @@ Types: Types = {
 };
 
 // A type with type variables fixed. See `parser::utils::fix_type_vars`.
-FixedType: Types = {
+//
+// This rule is public and can be used from external modules to parse an input
+// directly as a type.
+pub FixedType: Types = {
     <l: @L> <mut ty: Types> <r: @R> =>? {
         ty.fix_type_vars(mk_span(src_id, l, r))?;
         Ok(ty)
@@ -287,7 +289,7 @@ Applicative: UniTerm = {
     NOpPre<AsTerm<RecordOperand>>,
     RecordOperand,
     "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
-        let mut acc = HashMap::with_capacity(cases.len());
+        let mut acc = IndexMap::with_capacity(cases.len());
         let mut default = None;
 
         for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
@@ -653,7 +655,7 @@ UOp: UnaryOp = {
     "record_map" => UnaryOp::RecordMap(),
     "seq" => UnaryOp::Seq(),
     "deep_seq" => UnaryOp::DeepSeq(),
-    "op force" => UnaryOp::Force(),
+    "op force" => UnaryOp::Force{ ignore_not_exported: false },
     "length" => UnaryOp::ArrayLength(),
     "fields" => UnaryOp::FieldsOf(),
     "values" => UnaryOp::ValuesOf(),
@@ -703,10 +705,6 @@ InfixUOp5: UnaryOp = {
     "!" => UnaryOp::BoolNot(),
 }
 
-InfixBOp6: BinaryOp = {
-    "&" => BinaryOp::Merge(),
-}
-
 InfixBOp7: BinaryOp = {
     "<" => BinaryOp::LessThan(),
     "<=" => BinaryOp::LessOrEq(),
@@ -730,7 +728,6 @@ InfixBOp: BinaryOp = {
     InfixBOp2,
     InfixBOp3,
     InfixBOp4,
-    InfixBOp6,
     InfixBOp7,
     InfixBOp8,
 }
@@ -749,6 +746,9 @@ InfixOp: InfixOp = {
 CurriedOp: RichTerm = {
     <l: @L> <op: InfixOp> <r: @R> =>
         op.eta_expand(mk_pos(src_id, l, r)),
+    <l: @L> "&" <r: @R> =>
+        InfixOp::from(BinaryOp::Merge(mk_merge_label(src_id, l, r)))
+            .eta_expand(mk_pos(src_id, l, r)),
     <l: @L> "|>" <r: @R> =>
         mk_fun!("x1", "x2",
             mk_app!(mk_term::var("x2"), mk_term::var("x1"))
@@ -785,7 +785,7 @@ InfixUOpApp<UOp, Expr>: UniTerm =
 
 InfixBOpApp<BOp, LExpr, RExpr>: UniTerm =
   <t1: AsTerm<LExpr>> <op: BOp> <t2: AsTerm<RExpr>> =>
-      UniTerm::from(mk_term::op2(op, t1, t2));
+    UniTerm::from(mk_term::op2(op, t1, t2));
 
 InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
   <t1: AsTerm<LExpr>> <op: UOp> <t2: AsTerm<RExpr>> =>
@@ -812,7 +812,9 @@ InfixExpr: UniTerm = {
     InfixUOpApp<InfixUOp5, InfixExpr>,
 
     #[precedence(level="6")] #[assoc(side="left")]
-    InfixBOpApp<InfixBOp6, InfixExpr, InfixExpr>,
+    <l: @L> <t1: AsTerm<InfixExpr>> "&" <t2: AsTerm<InfixExpr>> <r: @R> =>
+      UniTerm::from(mk_term::op2(BinaryOp::Merge(mk_merge_label(src_id, l, r)), t1, t2)),
+
     <t1: AsTerm<InfixExpr>> "|>" <t2: AsTerm<InfixExpr>> =>
         UniTerm::from(mk_app!(t2, t1)),
 

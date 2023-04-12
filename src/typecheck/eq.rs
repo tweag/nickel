@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    term::{self, record::Field, UnaryOp},
+    term::{self, record::Field, IndexMap, UnaryOp},
 };
 
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
@@ -351,9 +351,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
 fn map_eq<V, F, E>(
     mut f: F,
     state: &mut State,
-    map1: &HashMap<Ident, V>,
+    map1: &IndexMap<Ident, V>,
     env1: &E,
-    map2: &HashMap<Ident, V>,
+    map2: &IndexMap<Ident, V>,
     env2: &E,
 ) -> bool
 where
@@ -373,8 +373,8 @@ where
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
     erows: &GenericUnifRecordRows<E>,
-) -> Option<HashMap<Ident, &GenericUnifType<E>>> {
-    let map: Option<HashMap<Ident, _>> = erows
+) -> Option<IndexMap<Ident, &GenericUnifType<E>>> {
+    let map: Option<IndexMap<Ident, _>> = erows
         .iter()
         .map(|item| match item {
             GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, types }) => Some((id, types)),

@@ -240,6 +240,16 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
+    /// Same as `eval`, but proceeds to a full evaluation.
+    /// Skips record fields marked `not_exported`
+    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
+        let (t, initial_env) = self.prepare_eval()?;
+        self.vm.reset();
+        self.vm
+            .eval_full_for_export(t, &initial_env)
+            .map_err(|e| e.into())
+    }
+
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
         let (t, initial_env) = self.prepare_eval()?;
@@ -304,10 +314,20 @@ impl<EC: EvalCache> Program<EC> {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
-    /// Create a markdown file with documentation for the specified program in `.nickel/doc/program_main_file_name.md`
+    /// Extract documentation from the program
     #[cfg(feature = "doc")]
-    pub fn output_doc(&mut self, out: &mut dyn std::io::Write) -> Result<(), Error> {
-        doc::output_doc(self.vm.import_resolver_mut(), self.main_id, out)
+    pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
+        use crate::error::ExportError;
+
+        self.vm.import_resolver_mut().parse(self.main_id)?;
+        let term = self
+            .vm
+            .import_resolver()
+            .get_ref(self.main_id)
+            .expect("The file has been parsed and must therefore be in the cache");
+        doc::ExtractedDocumentation::extract_from_term(term).ok_or(Error::ExportError(
+            ExportError::NoDocumentation(term.clone()),
+        ))
     }
 
     #[cfg(debug_assertions)]
@@ -403,75 +423,139 @@ impl From<ColorOpt> for ColorChoice {
 
 #[cfg(feature = "doc")]
 mod doc {
-    use crate::cache::Cache;
-    use crate::error::{Error, IOError};
+    use crate::error::{Error, ExportError, IOError};
     use crate::term::{RichTerm, Term};
-    use codespan::FileId;
     use comrak::arena_tree::NodeEdge;
-    use comrak::nodes::{Ast, AstNode, NodeCode, NodeHeading, NodeValue};
+    use comrak::nodes::{
+        Ast, AstNode, ListDelimType, ListType, NodeCode, NodeHeading, NodeList, NodeValue,
+    };
     use comrak::{format_commonmark, parse_document, Arena, ComrakOptions};
+    use serde::{Deserialize, Serialize};
+    use std::collections::HashMap;
     use std::io::Write;
 
-    /// Create a markdown file with documentation for the specified FileId.
-    pub fn output_doc(
-        cache: &mut Cache,
-        file_id: FileId,
-        out: &mut dyn Write,
-    ) -> Result<(), Error> {
-        cache.parse(file_id)?;
-        // unwrap(): at this point the term was correctly parsed and should exist in cache
-        let term = cache.get_ref(file_id).unwrap();
-        let document = AstNode::from(NodeValue::Document);
-
-        // Our nodes in the Markdown document are owned by this arena
-        let arena = Arena::new();
-
-        // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
-        let options = ComrakOptions::default();
-
-        to_markdown(term, 0, &arena, &document, &options)?;
-        format_commonmark(&document, &options, out)
-            .map_err(|e| Error::IOError(IOError(e.to_string())))?;
-
-        Ok(())
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    #[serde(transparent)]
+    pub struct ExtractedDocumentation {
+        fields: HashMap<String, DocumentationField>,
     }
 
-    /// Recursively walk the given richterm, recursing into fields of record, looking for documentation.
-    /// This documentation is then added to the provided document.
-    fn to_markdown<'a>(
-        rt: &'a RichTerm,
-        header_level: u8,
-        arena: &'a Arena<AstNode<'a>>,
-        document: &'a AstNode<'a>,
-        options: &ComrakOptions,
-    ) -> Result<(), Error> {
-        match rt.term.as_ref() {
-            Term::Record(record) | Term::RecRecord(record, _, _) => {
-                // Sorting fields for a deterministic output
-                let mut entries: Vec<(_, _)> = record.fields.iter().collect();
-                entries.sort_by_key(|(k, _)| *k);
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DocumentationField {
+        /// Field value [`ExtractedDocumentation`], if any
+        fields: Option<ExtractedDocumentation>,
+        /// Rendered type annotation, if any
+        types: Option<String>,
+        /// Rendered contract annotations
+        contracts: Vec<String>,
+        /// Rendered documentation, if any
+        documentation: Option<String>,
+    }
 
-                for (ident, field) in entries {
-                    let header = mk_header(ident.label(), header_level + 1, arena);
-                    document.append(header);
+    impl ExtractedDocumentation {
+        pub fn extract_from_term(rt: &RichTerm) -> Option<Self> {
+            match rt.term.as_ref() {
+                Term::Record(record) | Term::RecRecord(record, _, _) => {
+                    let fields = record
+                        .fields
+                        .iter()
+                        .map(|(ident, field)| {
+                            let fields = field.value.as_ref().and_then(Self::extract_from_term);
 
-                    if let Some(ref doc) = field.metadata.doc {
-                        document.append(parse_documentation(header_level, arena, doc, options));
-                    }
+                            let types = field
+                                .metadata
+                                .annotation
+                                .types
+                                .as_ref()
+                                .map(|lt| lt.types.to_string());
 
-                    if let Some(ref value) = field.value {
-                        to_markdown(value, header_level + 1, arena, document, options)?;
-                    }
+                            let contracts = field
+                                .metadata
+                                .annotation
+                                .contracts
+                                .iter()
+                                .map(|lt| lt.types.to_string())
+                                .collect();
+
+                            let documentation = field.metadata.doc.clone();
+
+                            (
+                                ident.label().to_owned(),
+                                DocumentationField {
+                                    fields,
+                                    types,
+                                    contracts,
+                                    documentation,
+                                },
+                            )
+                        })
+                        .collect();
+                    Some(Self { fields })
+                }
+                _ => None,
+            }
+        }
+
+        pub fn write_json(&self, out: &mut dyn Write) -> Result<(), Error> {
+            serde_json::to_writer(out, self)
+                .map_err(|e| Error::ExportError(ExportError::Other(e.to_string())))
+        }
+
+        pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
+            let document = AstNode::from(NodeValue::Document);
+
+            // Our nodes in the Markdown document are owned by this arena
+            let arena = Arena::new();
+
+            // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
+            let options = ComrakOptions::default();
+
+            self.markdown_append(0, &arena, &document, &options);
+            format_commonmark(&document, &options, out)
+                .map_err(|e| Error::IOError(IOError(e.to_string())))?;
+
+            Ok(())
+        }
+
+        /// Recursively walk the given `DocOutput`, recursing into fields, looking for documentation.
+        /// This documentation is then appended to the provided document.
+        fn markdown_append<'a>(
+            &'a self,
+            header_level: u8,
+            arena: &'a Arena<AstNode<'a>>,
+            document: &'a AstNode<'a>,
+            options: &ComrakOptions,
+        ) {
+            let mut entries: Vec<(_, _)> = self.fields.iter().collect();
+            entries.sort_by_key(|(k, _)| *k);
+
+            for (ident, field) in entries {
+                let header = mk_header(ident, header_level + 1, arena);
+                document.append(header);
+
+                if field.types.is_some() || !field.contracts.is_empty() {
+                    document.append(mk_types_and_contracts(
+                        ident,
+                        arena,
+                        field.types.as_deref(),
+                        field.contracts.as_ref(),
+                    ))
+                }
+
+                if let Some(ref doc) = field.documentation {
+                    document.append(parse_markdown_string(header_level + 1, arena, doc, options));
+                }
+
+                if let Some(ref subfields) = field.fields {
+                    subfields.markdown_append(header_level + 1, arena, document, options);
                 }
             }
-            _ => (),
         }
-        Ok(())
     }
 
     /// Parses a string into markdown and increases any headers in the markdown by the specified level.
     /// This allows having headers in documentation without clashing with the structure of the document.
-    fn parse_documentation<'a>(
+    fn parse_markdown_string<'a>(
         header_level: u8,
         arena: &'a Arena<AstNode<'a>>,
         md: &str,
@@ -512,12 +596,63 @@ mod doc {
 
         let code = arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
             num_backticks: 1,
-            literal: ident.bytes().collect(),
+            literal: ident.into(),
         })));
 
         res.append(code);
 
         res
+    }
+
+    fn mk_types_and_contracts<'a>(
+        ident: &str,
+        arena: &'a Arena<AstNode<'a>>,
+        types: Option<&'a str>,
+        contracts: &'a [String],
+    ) -> &'a AstNode<'a> {
+        let list = arena.alloc(AstNode::from(NodeValue::List(NodeList {
+            list_type: ListType::Bullet,
+            marker_offset: 1,
+            padding: 0,
+            start: 0,
+            delimiter: ListDelimType::Period,
+            bullet_char: b'*',
+            tight: true,
+        })));
+
+        if let Some(t) = types {
+            list.append(mk_type(ident, ':', t, arena));
+        }
+
+        for contract in contracts {
+            list.append(mk_type(ident, '|', contract, arena));
+        }
+
+        list
+    }
+
+    fn mk_type<'a>(
+        ident: &str,
+        separator: char,
+        types: &str,
+        arena: &'a Arena<AstNode<'a>>,
+    ) -> &'a AstNode<'a> {
+        let list_item = arena.alloc(AstNode::from(NodeValue::Item(NodeList {
+            list_type: ListType::Bullet,
+            marker_offset: 1,
+            padding: 0,
+            start: 0,
+            delimiter: ListDelimType::Period,
+            bullet_char: b'*',
+            tight: true,
+        })));
+
+        list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
+            literal: format!("{ident} {separator} {types}"),
+            num_backticks: 1,
+        }))));
+
+        list_item
     }
 }
 

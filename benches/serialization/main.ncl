@@ -1,6 +1,6 @@
 
 {
     input.run = (
-        builtin.serialize `Json (import "input.json")
+        std.serialize `Json (import "input.json")
     )
 }

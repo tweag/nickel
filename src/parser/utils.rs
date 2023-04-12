@@ -1,7 +1,6 @@
 //! Various helpers and companion code for the parser are put here to keep the grammar definition
 //! uncluttered.
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use indexmap::map::Entry;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -13,14 +12,13 @@ use crate::{
     destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::Ident,
-    label::Label,
+    label::{Label, MergeKind, MergeLabel},
     mk_fun,
     position::{RawSpan, TermPos},
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
-        BinaryOp, LabeledType, LetMetadata, Rational, RichTerm, StrChunk, Term, TypeAnnotation,
-        UnaryOp,
+        *,
     },
     types::{TypeF, Types},
 };
@@ -146,7 +144,7 @@ impl FieldDef {
 
             match path_elem {
                 FieldPathElem::Ident(id) => {
-                    let mut fields = HashMap::new();
+                    let mut fields = IndexMap::new();
                     fields.insert(id, acc);
                     Field::from(RichTerm::new(
                         Term::Record(RecordData {
@@ -161,7 +159,7 @@ impl FieldDef {
 
                     if let Some(static_access) = static_access {
                         let id = Ident::new_with_pos(static_access, exp.pos);
-                        let mut fields = HashMap::new();
+                        let mut fields = IndexMap::new();
                         fields.insert(id, acc);
                         Field::from(RichTerm::new(
                             Term::Record(RecordData {
@@ -446,17 +444,17 @@ pub fn build_record<I>(fields: I, attrs: RecordAttrs) -> Term
 where
     I: IntoIterator<Item = (FieldPathElem, Field)> + Debug,
 {
-    let mut static_fields = HashMap::new();
+    let mut static_fields = IndexMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(static_fields: &mut HashMap<Ident, Field>, id: Ident, field: Field) {
+    fn insert_static_field(static_fields: &mut IndexMap<Ident, Field>, id: Ident, field: Field) {
         match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
                 // temporarily putting an empty field in the entry to take the previous value.
                 let prev = occpd.insert(Field::default());
 
-                // A field of a record without metadata AND without value is impossible
-                occpd.insert(merge_fields(prev, field));
+                // unwrap(): the field's identifier must have a position during parsing.
+                occpd.insert(merge_fields(id.pos.unwrap(), prev, field));
             }
             Entry::Vacant(vac) => {
                 vac.insert(field);
@@ -526,9 +524,16 @@ where
 
 /// Merge two fields by performing the merge of both their value (dynamically, by introducing a
 /// merging operator) and their metadata (statically).
-fn merge_fields(field1: Field, field2: Field) -> Field {
+fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
     let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) => Some(mk_term::op2(BinaryOp::Merge(), t1, t2)),
+        (Some(t1), Some(t2)) => Some(mk_term::op2(
+            BinaryOp::Merge(MergeLabel {
+                span: id_span,
+                kind: MergeKind::PiecewiseDef,
+            }),
+            t1,
+            t2,
+        )),
         (Some(t), None) | (None, Some(t)) => Some(t),
         (None, None) => None,
     };
@@ -563,6 +568,15 @@ pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
         types: Rc::new(types),
         span: mk_span(src_id, l, r),
         ..Default::default()
+    }
+}
+
+/// Same as `mk_span`, but for merge labels. The kind is set to the default one
+/// (`MergeKind::Standard`).
+pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
+    MergeLabel {
+        span: mk_span(src_id, l, r),
+        kind: Default::default(),
     }
 }
 

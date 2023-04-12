@@ -1,17 +1,17 @@
 let ChildContract = fun label value =>
   label
-  |> contract.label.with_message "child's message"
-  |> contract.label.append_note "child's note"
-  |> contract.blame
+  |> std.contract.label.with_message "child's message"
+  |> std.contract.label.append_note "child's note"
+  |> std.contract.blame
 in
 
 let ParentContract = fun label value =>
   let label =
     label
-    |> contract.label.with_message "parent's message"
-    |> contract.label.append_note "parent's note"
+    |> std.contract.label.with_message "parent's message"
+    |> std.contract.label.append_note "parent's note"
   in
-  contract.apply ChildContract label value
+  std.contract.apply ChildContract label value
 in
 
 null | ParentContract

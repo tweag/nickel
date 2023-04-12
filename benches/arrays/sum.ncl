@@ -1,8 +1,8 @@
 let rec sum
   | Array Number -> Number 
   = fun xs =>
-    if array.length xs == 0 then 0
-    else array.first xs + sum (array.drop_first xs)
+    if std.array.length xs == 0 then 0
+    else std.array.first xs + sum (std.array.drop_first xs)
 in {
-  run = fun n => array.generate (fun x => x + 1) n |> sum
+  run = fun n => std.array.generate (fun x => x + 1) n |> sum
 }

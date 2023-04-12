@@ -187,14 +187,14 @@ let typecheck = [
   {"foo" = 1} : {foo : Number},
 
   # stdlib typechecking:
-  string.length : String -> Number,
-  (string.length "Ok") : Number,
-  (string.length "Ok" == 2) : Bool,
+  std.string.length : String -> Number,
+  (std.string.length "Ok") : Number,
+  (std.string.length "Ok" == 2) : Bool,
 
   # partial application
-  (string.split ".") : String -> Array String,
-  (array.length [] == 0) : Bool,
-  (array.map (fun x => x ++ "1") ["a", "b", "c"]) : Array String,
+  (std.string.split ".") : String -> Array String,
+  (std.array.length [] == 0) : Bool,
+  (std.array.map (fun x => x ++ "1") ["a", "b", "c"]) : Array String,
 
   # wildcards
   ("hello" : _) : String,
@@ -204,7 +204,7 @@ let typecheck = [
   # Regression test for #700 (https://github.com/tweag/nickel/issues/700)
   # The (| ExportFormat) cast is only temporary, and can be removed once #671
   # (https://github.com/tweag/nickel/issues/671) is closed
-  (record.update "foo" 5 {foo = 1}) : {_: Number},
+  (std.record.update "foo" 5 {foo = 1}) : {_: Number},
 
   # contracts_equality
   let lib = {

@@ -188,7 +188,7 @@ pub fn get_uop_type(
             ),
         ),
         // Dyn -> Dyn
-        UnaryOp::Force() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        UnaryOp::Force { .. } => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
         // forall a. a -> a
         UnaryOp::RecDefault() => {
             let ty = state.table.fresh_type_uvar();
@@ -333,7 +333,7 @@ pub fn get_bop_type(
             )
         }
         // Dyn -> Dyn -> Dyn
-        BinaryOp::Merge() => (
+        BinaryOp::Merge(_) => (
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),

@@ -2,11 +2,11 @@
 use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
 
 use crate::{
-    error::SerializationError,
+    error::ExportError,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
-        Number, RichTerm, Term, TypeAnnotation,
+        IndexMap, Number, RichTerm, Term, TypeAnnotation,
     },
 };
 
@@ -17,7 +17,7 @@ use serde::{
 
 use malachite::num::conversion::traits::IsInteger;
 
-use std::{collections::HashMap, fmt, io, rc::Rc, str::FromStr};
+use std::{fmt, io, rc::Rc, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -117,7 +117,6 @@ where
 }
 
 /// Serializer for a record. Serialize fields in alphabetical order to get a deterministic output
-/// (by default, `HashMap`'s randomness implies a randomized order of fields in the output).
 pub fn serialize_record<S>(record: &RecordData, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -147,7 +146,7 @@ pub fn deserialize_record<'de, D>(deserializer: D) -> Result<RecordData, D::Erro
 where
     D: Deserializer<'de>,
 {
-    let fields = HashMap::deserialize(deserializer)?;
+    let fields = IndexMap::deserialize(deserializer)?;
     Ok(RecordData::with_field_values(fields))
 }
 
@@ -199,20 +198,20 @@ impl<'de> Deserialize<'de> for RichTerm {
 
 /// Check that a term is serializable. Serializable terms are booleans, numbers, strings, enum,
 /// arrays of serializable terms or records of serializable terms.
-pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationError> {
+pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     use Term::*;
 
     if format == ExportFormat::Raw {
         if let Term::Str(_) = t.term.as_ref() {
             Ok(())
         } else {
-            Err(SerializationError::NotAString(t.clone()))
+            Err(ExportError::NotAString(t.clone()))
         }
     } else {
         match t.term.as_ref() {
             // TOML doesn't support null values
             Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
-            Null => Err(SerializationError::UnsupportedNull(format, t.clone())),
+            Null => Err(ExportError::UnsupportedNull(format, t.clone())),
             Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
             Record(record) => {
                 record.iter_serializable().try_for_each(|binding| {
@@ -227,36 +226,33 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), SerializationE
                 array.iter().try_for_each(|t| validate(format, t))?;
                 Ok(())
             }
-            _ => Err(SerializationError::NonSerializable(t.clone())),
+            _ => Err(ExportError::NonSerializable(t.clone())),
         }
     }
 }
 
-pub fn to_writer<W>(
-    mut writer: W,
-    format: ExportFormat,
-    rt: &RichTerm,
-) -> Result<(), SerializationError>
+pub fn to_writer<W>(mut writer: W, format: ExportFormat, rt: &RichTerm) -> Result<(), ExportError>
 where
     W: io::Write,
 {
     match format {
         ExportFormat::Json => serde_json::to_writer_pretty(writer, &rt)
-            .map_err(|err| SerializationError::Other(err.to_string())),
-        ExportFormat::Yaml => serde_yaml::to_writer(writer, &rt)
-            .map_err(|err| SerializationError::Other(err.to_string())),
+            .map_err(|err| ExportError::Other(err.to_string())),
+        ExportFormat::Yaml => {
+            serde_yaml::to_writer(writer, &rt).map_err(|err| ExportError::Other(err.to_string()))
+        }
         ExportFormat::Toml => toml::to_string_pretty(rt)
-            .map_err(|err| SerializationError::Other(err.to_string()))
+            .map_err(|err| ExportError::Other(err.to_string()))
             .and_then(|s| {
                 writer
                     .write_all(s.as_bytes())
-                    .map_err(|err| SerializationError::Other(err.to_string()))
+                    .map_err(|err| ExportError::Other(err.to_string()))
             }),
         ExportFormat::Raw => match rt.as_ref() {
             Term::Str(s) => writer
                 .write_all(s.as_bytes())
-                .map_err(|err| SerializationError::Other(err.to_string())),
-            t => Err(SerializationError::Other(format!(
+                .map_err(|err| ExportError::Other(err.to_string())),
+            t => Err(ExportError::Other(format!(
                 "raw export requires a `String`, got {}",
                 // unwrap(): terms must be fully evaluated before serialization,
                 // and fully evaluated terms have a definite type.
@@ -266,7 +262,7 @@ where
     }
 }
 
-pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, SerializationError> {
+pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportError> {
     let mut buffer: Vec<u8> = Vec::new();
     to_writer(&mut buffer, format, rt)?;
 
@@ -391,7 +387,7 @@ mod tests {
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
-            r#"array.fold_right (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
+            r#"std.array.fold_right (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
             json!([[1], [2], [3], [4]])
         );
         assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1, false, "foo"]));

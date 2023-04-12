@@ -4,15 +4,13 @@ use crate::parser::lexer::KEYWORDS;
 
 use crate::term::{
     record::{Field, FieldMetadata},
-    BinaryOp, MergePriority, Number, RichTerm, StrChunk, Term, TypeAnnotation, UnaryOp,
+    *,
 };
-use crate::types::{EnumRows, EnumRowsF, RecordRowF, RecordRows, RecordRowsF, TypeF, Types};
+use crate::types::*;
 
 use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
-
-use std::collections::HashMap;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum StringRenderStyle {
@@ -39,7 +37,7 @@ fn min_interpolate_sign(text: &str) -> usize {
         .unwrap_or(1)
 }
 
-fn sorted_map<K: Ord, V>(m: &'_ HashMap<K, V>) -> Vec<(&'_ K, &'_ V)> {
+fn sorted_map<K: Ord, V>(m: &'_ IndexMap<K, V>) -> Vec<(&'_ K, &'_ V)> {
     let mut ret: Vec<(&K, &V)> = m.iter().collect();
     ret.sort_by_key(|(k, _)| *k);
     ret
@@ -229,7 +227,11 @@ where
             .append(self.text(","))
     }
 
-    fn fields(&'a self, fields: &HashMap<Ident, Field>, with_doc: bool) -> DocBuilder<'a, Self, A> {
+    fn fields(
+        &'a self,
+        fields: &IndexMap<Ident, Field>,
+        with_doc: bool,
+    ) -> DocBuilder<'a, Self, A> {
         self.intersperse(
             sorted_map(fields)
                 .iter()
@@ -311,7 +313,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id))
                 .append(allocator.space()),
-            Force() => allocator.text("%force%").append(allocator.space()),
+            Force { .. } => allocator.text("%force%").append(allocator.space()),
             op => allocator
                 .text(format!("%{op:?}%").to_lowercase())
                 .append(allocator.space()),
@@ -341,7 +343,7 @@ where
             GreaterOrEq() => allocator.text(">="),
             LessOrEq() => allocator.text("<="),
 
-            Merge() => allocator.text("&"),
+            Merge(_) => allocator.text("&"),
 
             StrConcat() => allocator.text("++"),
             ArrayConcat() => allocator.text("@"),
