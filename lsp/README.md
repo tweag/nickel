@@ -166,4 +166,4 @@ edit `coc-settings.json`) and add:
 
 ### Emacs
 
-TODO
+Follow the instructions on the the `nickel-mode` [repo](https://github.com/nickel-lang/nickel-mode).
