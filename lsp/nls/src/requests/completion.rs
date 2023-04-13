@@ -348,8 +348,8 @@ fn find_fields_from_term(
         Term::Annotated(annot, term) => {
             find_fields_from_term_with_annot(annot, Some(term), path, info)
         }
-        Term::Var(..) | Term::Op1(UnaryOp::StaticAccess(..), _) => {
-            let pos = term.pos;
+        Term::Var(ident) | Term::Op1(UnaryOp::StaticAccess(ident), _) => {
+            let pos = ident.pos;
             let span = pos.unwrap();
             let locator = (span.src_id, span.start);
             // This unwrap is safe because we're getting an expression from
