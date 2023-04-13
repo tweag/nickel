@@ -18,8 +18,8 @@ By default, Nickel code is dynamically typed. For example:
   name = "hello",
   version = "0.1.1",
   fullname =
-    if builtin.is_number version then
-      "hello-v%{string.from_number version}"
+    if std.is_number version then
+      "hello-v%{std.string.from_number version}"
     else
       "hello-%{version}",
 }
@@ -34,8 +34,8 @@ example:
   name = "hello",
   version = "0.1.1",
   fullname =
-    if builtin.is_number version then
-      "hello-v%{string.from_number version}"
+    if std.is_number version then
+      "hello-v%{std.string.from_number version}"
     else
       "hello-%{version + 1}",
 }
@@ -63,20 +63,20 @@ are using functions. Say we want to filter over an array of elements:
 
 ```nickel
 let filter = fun pred l =>
-  array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
+  std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
 
 ```text
-error: Type error
-  ┌─ repl-input-11:2:32
+error: type error
+  ┌─ repl-input-0:2:40
   │
-2 │   array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
-  │                                ^^^^^^ This expression has type Number, but Bool was expected
+2 │   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
+  │                                        ^^^^^^ this expression has type Null, but Bool was expected
 3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │                                                             - evaluated to this
+  │                                            ---- evaluated to this
   │
   = if
 ```
@@ -123,7 +123,7 @@ a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
-     array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
+     std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Number
 ```
 
@@ -179,7 +179,7 @@ The following type constructors are available:
 
   ```nickel
   let x : Array (Array Number) = [[1,2], [3,4]] in
-  array.flatten x : Array Number
+  std.array.flatten x : Array Number
   ```
 
 - **Record**: `{field1: T1, .., fieldn: Tn}`. A record whose field
@@ -201,7 +201,7 @@ The following type constructors are available:
 
   ```nickel
   let occurrences : {_: Number} = {a = 1, b = 3, c = 0} in
-  record.map (fun char count => count + 1) occurrences : {_ : Number}
+  std.record.map (fun char count => count + 1) occurrences : {_ : Number}
   ```
 
 - **Enum**: ``[| `tag1, .., `tagn |]``: an enumeration comprised of alternatives
@@ -262,7 +262,7 @@ well:
 
 ```nickel
 {
-  foo : Array String = filter (fun s => string.length s > 2) ["a","ab","abcd"],
+  foo : Array String = filter (fun s => std.string.length s > 2) ["a","ab","abcd"],
   bar : Array Number = filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6],
 }
 ```
@@ -294,18 +294,18 @@ the typechecker surprisingly rejects our code:
 ```nickel
 (let filter = ... in
 let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
-let dummy = filter (fun s => string.length s > 2) ["a","ab","abcd"] in
+let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
 result) : Array Number
 ```
 
 Result:
 
 ```text
-error: Incompatible types
-  ┌─ repl-input-35:2:37
+error: incompatible types
+  ┌─ repl-input-1:5:48
   │
-2 │ let dummy = filter (fun s => string.length s > 2) ["a","ab","abcd"] in
-  │                                            ^ this expression
+5 │ let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
+  │                                                ^ this expression
   │
   = The type of the expression was expected to be `String`
   = The type of the expression was inferred to be `Number`
@@ -435,7 +435,7 @@ We'll now explore how typed and untyped code interact.
 Until now, we have written the statically typed `filter` examples using
 statically typed blocks that enclosed both the definition of `filter` and the
 call sites. More realistically, `filter` would be a statically typed library
-function (it is actually part of the standard library as `array.filter`) and
+function (it is actually part of the standard library as `std.array.filter`) and
 likely be called from dynamically typed configuration files. In this situation,
 the call site escapes the typechecker. Thus, without an additional mechanism,
 static typing would only ensure that the implementation of `filter` doesn't
@@ -447,45 +447,38 @@ an error from within `filter`.
 
 Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation. Let us see that by ourselves by
-calling to the statically typed `array.filter` from dynamically typed code:
+calling to the statically typed `std.array.filter` from dynamically typed code:
 
 ```nickel
-array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
 Result:
 
 ```text
-error: Blame error: contract broken by the caller.
-  ┌─ :1:17
-  │
-1 │ forall a. (a -> Bool) -> Array a -> Array a
-  │                 ---- expected return type of a function provided by the caller
-  │
-  ┌─ repl-input-45:1:67
-  │
-1 │ array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │                                                                   - evaluated to this expression
-  │
-  = This error may happen in the following situation:
-    1. A function `f` is bound by a contract: e.g. `(Number -> Number) -> Number`.
-    2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
-    3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`.
-  = Either change the contract accordingly, or call `f` with a function that returns a value of the right type.
-  = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
-
-note:
-    ┌─ <stdlib/array>:160:14
+error: contract broken by the caller
+    ┌─ <stdlib/std.ncl>:335:25
     │
-160 │     filter : forall a. (a -> Bool) -> Array a -> Array a
-    │              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ bound here
+335 │       : forall a. (a -> Bool) -> Array a -> Array a
+    │                         ---- expected return type of a function provided by the caller
+    │
+    ┌─ repl-input-1:1:54
+    │
+  1 │ std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+    │                                                      ---- evaluated to this expression
+    │
+    = This error may happen in the following situation:
+          1. A function `f` is bound by a contract: e.g. `(Number -> Number) -> Number`.
+          2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
+          3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`.
+    = Either change the contract accordingly, or call `f` with a function that returns a value of the right type.
+    = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
 
-[...]
 note:
-  ┌─ repl-input-45:1:1
+  ┌─ repl-input-1:1:1
   │
-1 │ array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │ ------------------------------------------------------------------- (3) calling <func>
+1 │ std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+  │ ------------------------------------------------------------------------ (1) calling filter
 ```
 
 We call `filter` from a dynamically typed location, but still get a spot-on
@@ -629,8 +622,8 @@ technically use custom contracts as any other type inside a static type
 annotation.
 
 ```nickel
-let Port = contract.from_predicate (fun value =>
-  builtin.is_number value
+let Port = std.contract.from_predicate (fun value =>
+  std.is_number value
   && value % 1 == 0
   && value >= 0
   && value <= 65535) in

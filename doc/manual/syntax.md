@@ -132,7 +132,7 @@ Yes it is, indeed it is"
 > let n = 5 in "The number %{n}."
 error: Type error
 
-> let n = 5 in "The number %{string.from_number n}."
+> let n = 5 in "The number %{std.string.from_number n}."
 "The number 5."
 ```
 
@@ -272,10 +272,10 @@ which uses symbolic strings, remember that:
 - the main operation supported by symbolic strings is interpolation: `%{value}`.
   What interpolation means, and which values can be interpolated in a given
   symbolic string is again defined by each library. Other string functions don't
-  work on symbolic strings (e.g. `string.length`, `string.characters`, and so
-  on), because they might not have any valid meaning. Instead, libraries should
-  export their own string API, if they support additional operations on their
-  symbolic strings.
+  work on symbolic strings (e.g. `std.string.length`, `std.string.characters`,
+  and so on), because they might not have any valid meaning. Instead, libraries
+  should export their own string API, if they support additional operations on
+  their symbolic strings.
 
 The following examples show how symbolic strings are desugared:
 
@@ -304,15 +304,15 @@ The following examples show how symbolic strings are desugared:
 
 Enumeration tags are used to express finite alternatives. They are formed by
 writing a backtick `` ` `` followed by any valid identifier. For example,
-`builtin.serialize` takes an export format as a first argument, which is an enum
+`std.serialize` takes an export format as a first argument, which is an enum
 tag among `` `Json ``, `` `Toml `` or `` `Yaml `` (as of version 0.1):
 
 ```nickel
-builtin.serialize `Json {foo = 1}
+std.serialize `Json {foo = 1}
 # gives "{
 #          \"foo\": 1
 #        }"
-builtin.serialize `Toml {foo = 1}
+std.serialize `Toml {foo = 1}
 # gives "foo = 1
 #       "
 ```
@@ -320,7 +320,7 @@ builtin.serialize `Toml {foo = 1}
 An enum tag `` `foo `` is serialized as the string `"foo"`:
 
 ```nickel
-let as_yaml_string = builtin.serialize `Yaml {foo = `bar}
+let as_yaml_string = std.serialize `Yaml {foo = `bar}
 # gives "---
 #       foo: bar
 #       "
@@ -539,7 +539,7 @@ Examples:
     increment 41
 42
 
-> let flatten = array.fold_right (@) [] in flatten [[1, 2], [3], [4, 5]]
+> let flatten = std.array.fold_right (@) [] in flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 
@@ -550,18 +550,18 @@ left-associative, so `x |> f |> g` will be interpreted as `g (f x)`.
 Examples:
 
 ```text
-> "Hello World" |> string.split " "
+> "Hello World" |> std.string.split " "
 ["Hello", "World"]
 
 > "Hello World"
-  |> string.split " "
-  |> array.first
+  |> std.string.split " "
+  |> std.array.first
 "Hello"
 
 > "Hello World"
-  |> string.split " "
-  |> array.first
-  |> string.uppercase
+  |> std.string.split " "
+  |> std.array.first
+  |> std.string.uppercase
 "HELLO"
 ```
 
@@ -602,17 +602,17 @@ Examples:
 error: contract broken by a value.
 [..]
 
-> let SmallNumber = contract.from_predicate (fun x => x < 5) in
+> let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
 1 | SmallNum
 1
 
-> let SmallNumber = contract.from_predicate (fun x => x < 5) in
+> let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
 10 | SmallNum
 error: contract broken by a value.
 [..]
 
-> let SmallNumber = contract.from_predicate (fun x => x < 5) in
-  let NotTooSmallNumber = contract.from_predicate (fun x => x >= 2) in
+> let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
+  let NotTooSmallNumber = std.contract.from_predicate (fun x => x >= 2) in
   3 | Number
     | SmallNum
     | NotTooSmallNum
@@ -696,7 +696,7 @@ serialization (including the output of the `nickel export` command):
 > value
 { foo = 1, bar = 2 }
 
-> builtin.serialize `Json value
+> std.serialize `Json value
 "{
   "foo": 1
 }"

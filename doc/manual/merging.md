@@ -300,15 +300,15 @@ attached contract will be applied as well (here, `String` on `alias`).
 
 As long as an optional field doesn't have a value, it will be invisible to
 record operations. Optional fields without a value don't show up in
-`record.fields`, it won't make `record.values` throw a missing field definition
+`std.record.fields`, it won't make `std.record.values` throw a missing field definition
 error, etc.
 
 ```nickel
 nickel> let Contract = {foo = 1, bar | optional}
-nickel> record.values Contract
+nickel> std.record.values Contract
 [ 1 ]
 
-nickel> record.has_field "bar" Contract
+nickel> std.record.has_field "bar" Contract
 false
 ```
 
@@ -594,14 +594,14 @@ Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 ```nickel
 let Port
   | doc "A valid port number"
-  = contract.from_predicate (fun value =>
-    builtin.is_number value &&
+  = std.contract.from_predicate (fun value =>
+    std.is_number value &&
     value % 1 == 0 &&
     value >= 0 &&
     value <= 65535) in
 let GreaterThan
   | doc "A number greater than the parameter"
-  = fun x => contract.from_predicate (fun value => value > x) in
+  = fun x => std.contract.from_predicate (fun value => value > x) in
 
 {
     port | GreaterThan 1024
@@ -633,7 +633,7 @@ note:
 A field can be marked as not exported, using the `not_exported` annotation. Such
 fields behave like regular fields during evaluation, but they are ignored during
 serialization: they won't appear in the output of `nickel export`, nor in the
-output of `builtin.serialize`.
+output of `serialize`.
 
 For example, say we want to add some high-level configuration field to a modular
 configuration, from which other fields are derived:

@@ -57,27 +57,27 @@ properties. Let us see how to define our very own contract. We start the REPL
 
 ```nickel
 let IsFoo = fun label value =>
-  if builtin.is_string value then
+  if std.is_string value then
     if value == "foo" then
       value
     else
-      contract.blame_with_message "not equal to \"foo\"" label
+      std.contract.blame_with_message "not equal to \"foo\"" label
   else
-    contract.blame_with_message "not a string" label
+    std.contract.blame_with_message "not a string" label
 ```
 
 A custom contract is a function of two arguments:
 
 - A `label`. Provided by the interpreter, the label contains tracking information
-  for error reporting. Its main usage is to be passed to `contract.blame` or
-  `contract.blame_with_message` when the contract isn't satisfied.
+  for error reporting. Its main usage is to be passed to `std.contract.blame` or
+  `std.contract.blame_with_message` when the contract isn't satisfied.
 - The value being checked.
 
 Upon success, the contract must return the original value. We will see the
 reason why in the [laziness](#laziness) section. To signal failure, we use
-`contract.blame` or its variant `contract.blame_with_message` that takes an additional
-error message as a parameter. `blame` immediately aborts the execution and
-reports a contract violation error.
+`std.contract.blame` or its variant `std.contract.blame_with_message` that takes
+an additional error message as a parameter. `blame` immediately aborts the
+execution and reports a contract violation error.
 
 In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
@@ -107,10 +107,10 @@ error, as well as various other data) is enough to understand the error. In this
 case, we can write our contract more succinctly as:
 
 ```nickel
-let IsFoo = contract.from_predicate ((==) "foo")
+let IsFoo = std.contract.from_predicate ((==) "foo")
 ```
 
-`contract.from_predicate` takes a predicate (a function of one argument that
+`std.contract.from_predicate` takes a predicate (a function of one argument that
 returns a boolean) and converts it to a contract. The syntax `(==)` turns the
 equality operator `==` into a function, and is a shorthand for
 `fun x y => x == y`. The partial application to `(==) "foo"` is then the function
@@ -121,9 +121,9 @@ the contract is simple enough to not require custom error message.
 Here is an example of a port number contract:
 
 ```nickel
-let Port = contract.from_predicate (fun value =>
-  builtin.is_number value &&
-  number.is_int value &&
+let Port = std.contract.from_predicate (fun value =>
+  std.is_number value &&
+  std.number.is_int value &&
   value >= 0 &&
   value <= 65535)
 ```
@@ -133,8 +133,8 @@ let Port = contract.from_predicate (fun value =>
 Let us consider a contract for bound checking:
 
 ```nickel
-let Between5And10 = contract.from_predicate (fun value =>
-  builtin.is_number value &&
+let Between5And10 = std.contract.from_predicate (fun value =>
+  std.is_number value &&
   value >= 5 &&
   value <= 10) in
 let MyConfig = {
@@ -145,12 +145,12 @@ let MyConfig = {
 Now, we add a new field to our schema, that must be between `0` and `1`:
 
 ```nickel
-let Between5And10 = contract.from_predicate (fun value =>
-  builtin.is_number value &&
+let Between5And10 = std.contract.from_predicate (fun value =>
+  std.is_number value &&
   value >= 5 &&
   value <= 10) in
-let Between0And1 = contract.from_predicate (fun value =>
-  builtin.is_number value &&
+let Between0And1 = std.contract.from_predicate (fun value =>
+  std.is_number value &&
   value >= 0 &&
   value <= 1) in
 let MyConfig = {
@@ -166,17 +166,17 @@ parameters must appear first, before the `label` and `value` arguments:
 
 ```nickel
 let Between = fun min max =>
-  contract.from_predicate (fun value =>
+  std.contract.from_predicate (fun value =>
     value >= min &&
     value <= max) in
 # alternative without from_predicate
 let BetweenAlt = fun min max label value =>
-  if builtin.is_number value &&
+  if std.is_number value &&
      value >= min &&
      value <= max then
     value
   else
-    contract.blame label in
+    std.contract.blame label in
 let MyConfig = {
   level | Between 5 10,
   strength | Between 0 1,
@@ -190,8 +190,8 @@ parametrized contracts, but note that although contracts can be functions, we
 will see soon that they can be different objects as well. Even with functions,
 contract application behaves slightly differently than bare function
 application. Thus, when manually handling a contract `contract`, do not apply it
-as a function `contract label value`, but use `contract.apply`:
-`contract.apply contract label value`. One example of such a contract is a
+as a function `contract label value`, but use `std.contract.apply`:
+`std.contract.apply contract label value`. One example of such a contract is a
 `Nullable` contract, that accepts a value that is either null or of some other
 given format:
 
@@ -200,7 +200,7 @@ let Nullable = fun contract label value =>
   if value == null then
     value
   else
-    contract.apply contract label value in
+    std.contract.apply contract label value in
 # succeeds
 null | Nullable Number
 # succeeds too
@@ -311,7 +311,7 @@ nickel>let MyConfig = {
     bar | Number,
 }
 nickel>let config | MyConfig = {bar = 2}
-nickel> builtin.serialize `Json config
+nickel> std.serialize `Json config
 "{
   "bar": 2,
   "foo": "foo"
@@ -356,7 +356,7 @@ nickel>let Secure = {
   must_be_very_secure | Bool = true,
   data | String,
 }
-nickel>builtin.serialize `Json ({data = ""} | Secure)
+nickel> std.serialize `Json ({data = ""} | Secure)
 "{
   "data": "",
   "must_be_very_secure": true
@@ -420,8 +420,8 @@ An array contract checks that the value is an array and applies the parameter
 contract to each element:
 
 ```text
-nickel>let VeryBig = contract.from_predicate (fun value =>
-  builtin.is_number value
+nickel>let VeryBig = std.contract.from_predicate (fun value =>
+  std.is_number value
   && value >= 1000)
 nickel>[1000, 10001, 2] | Array VeryBig
 error: contract broken by a value.
@@ -579,24 +579,24 @@ is the rationale behind contracts returning a value. Let us see:
 
 ```nickel
 let NumberBoolDict = fun label value =>
-  if builtin.is_record value then
+  if std.is_record value then
     let check_fields = value
-      |> record.fields
-      |> array.fold_left (fun acc field_name =>
-        if string.is_match "^\\d+$" field_name then
+      |> std.record.fields
+      |> std.array.fold_left (fun acc field_name =>
+        if std.string.is_match "^\\d+$" field_name then
           acc # unused and always null through iteration
         else
-          contract.blame_with_message "field name `#{field_name}` is not a number" label
+          std.contract.blame_with_message "field name `#{field_name}` is not a number" label
         ) null in
 
     value
-      |> record.map (fun name value =>
+      |> std.record.map (fun name value =>
         let label_with_msg =
-            contract.label.with_message "field `#{name}` is not a boolean" label in
-        contract.apply Bool label_with_msg value)
-      |> builtin.seq check_fields
+            std.contract.label.with_message "field `#{name}` is not a boolean" label in
+        std.contract.apply Bool label_with_msg value)
+      |> std.seq check_fields
   else
-    contract.blame_with_message "not a record" label
+    std.contract.blame_with_message "not a record" label
 ```
 
 There is a lot to unwrap here. Please refer to the [syntax](./syntax.md) section
@@ -610,9 +610,9 @@ For laziness, the interesting bit happens here:
 
 ```nickel
 value
-  |> record.map (fun _name value =>
-    contract.apply Bool label value)
-  |> builtin.seq check_fields
+  |> std.record.map (fun _name value =>
+    std.contract.apply Bool label value)
+  |> std.seq check_fields
 ```
 
 This is the final return value of the contract (at least when `value` is a
