@@ -264,10 +264,10 @@ Metadata can be attached to values thanks to the `|` operator. Metadata
 currently include contract annotation, default value, merge priority, and
 documentation. We describe in this section how metadata interacts with merging.
 
-Note that metadata can only be syntactically attached to record fields, at the
+Note that metadata can only be syntactically attached to record fields, with the
 exception of type and contract annotations, which can appear anywhere in a
 freestanding expression such as `(x | Num) + 1`. However, a contract annotation
-outside of a record field isn't considered a metadata (it's a mere contract
+outside of a record field isn't considered metadata (it's a mere contract
 check) and doesn't behave the same with respect to merging. **In particular,
 `{foo | Num = 1}` can behave differently from `{foo = (1 | Num)}` when merged**.
 See [the contracts section](#contracts) for more details.
@@ -466,8 +466,8 @@ priority between the recursive priority and the existing one.
 
 #### Specification
 
-To each field definition `foo = val` is associated a priority `p(val)`. When
-merging two common fields `value_left` and `value_right`, the results is either
+Each field definition `foo = val` is assigned a priority `p(val)`. When
+merging two common fields `value_left` and `value_right`, the result is either
 the one with the highest priority (that overrides the other), or the two are
 tentatively recursively merged if the priorities are the same. Without loss of
 generality, we consider the simple case of two records with only one common
@@ -574,10 +574,10 @@ including being dropped in favor of another value, the final value for `foo` has
 to respect the contract as well or the evaluation will fail accordingly.
 
 This is only true for *contracts attached directly to record fields* (either
-directly, on coming from an enclosing record contract). In particular, `{foo |
+directly, or coming from an enclosing record contract). In particular, `{foo |
 Num = 1} & {foo | force = "bar"}` will fail, but `{foo = (1 | Num)} & {foo |
-force = "bar"}` will succeed. In the later case, the contract is not considered
-to be a field metadata, but a local contract check, which is not propagated by
+force = "bar"}` will succeed. In the latter case, the contract is not considered
+to be field metadata, but a local contract check, which is not propagated by
 merging.
 
 #### Specification
@@ -627,7 +627,7 @@ Running the above program succeeds, although the intermediate value
 `{foo.required_field1 = "here"}` doesn't respect `FooContract` (it misses the
 field `required_field2`).
 
-If we try to observe the intermediate result (`deep_seq` recrusively forces the
+If we try to observe the intermediate result (`deep_seq` recursively forces the
 evaluation of its first argument and proceeds with evaluating the second
 argument), we do get a contract violation error:
 

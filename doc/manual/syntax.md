@@ -657,9 +657,9 @@ value) in ((fun x => x + 1) : value)`. See the
 for a detailed account of this design.
 
 The documentation still makes a distinction between *types* and other
-expressions, the former being constructs which are handled specifically by the
+expressions, the former being constructs which are handled specially by the
 typechecker and are listed below. However, any expression can be considered a
-type (in the generic case, it's considered as an opaque type), and types
+type (in the generic case, it's considered as an opaque type), and type
 constructors can also appear inside an expression (where they are understood as
 their associated contract, which is indeed an expression, most often a
 function).
@@ -676,8 +676,8 @@ represents any value)
 - Dictionary: `{_ : <type>}` is a record whose fields are of type `<type>`.
 - Enum: ``[| `tag1, .., `tagn |]`` is an enumeration comprised of alternatives
   `` `tag1 ``, .., `` `tagn``. Tags have the same syntax as identifiers and must
-  be prefixed with a backtick `` ` ``. As for record fields, they can be however
-  espaced with double quotes if they contain special characters:
+  be prefixed with a backtick `` ` ``. As for record fields, they can however be
+  enclosed in double quotes if they contain special characters:
   `` `"tag with space" ``.
 - Arrow: `<source> -> <target>` is a function taking an argument of type
   `<source>` and returns values of type `<target>`.
@@ -686,7 +686,7 @@ variables `var1`, .., `varn`.
 - Record: see the next section [Record types](#record-types).
 
 Type variables bound by a `forall` are only visible inside types (any of the
-constructor listed above). As soon as a term expression arise under a `forall`
+constructor listed above). As soon as a term expression arises under a `forall`
 binder, the type variables aren't in scope anymore:
 
 ```test
@@ -741,8 +741,8 @@ error: incompatible types
 
 #### Record types
 
-Record types are syntactically a restricted subset of records literal. They are
-handled differently from normal record literals with respect to typechecking.
+Record types are syntactically a restricted subset of record literals. They are
+handled differently than normal record literals with respect to typechecking.
 
 A record literal is a record type if:
 
@@ -797,7 +797,7 @@ let MyDyn = fun label value => value in
 
 Metadata are used to attach type and contract annotations, documentation, a
 merge priority or other decorations to record fields (and record fields only).
-Multiple metadata can be chained. A metadata is introduced with the syntax
+Multiple metadata annotations can be chained. Metadata is introduced with the syntax
 `<field_name> | <metadata1> | .. | <metadatan> [= value]`.
 
 Adding documentation can be done with `| doc <string>`. Examples:

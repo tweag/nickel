@@ -351,7 +351,7 @@ nickel>{foo = "a", bar = 1} | Contract
 #### Giving values for fields
 
 While most record contracts don't have field definitions, they can. In fact,
-records contracts are nothing special: any record literal can be used both as a
+record contracts are nothing special: any record literal can be used both as a
 contract or a normal value. If a field is defined both in the contract and the
 checked value, the two definitions will be merged in the final result. For
 example:
