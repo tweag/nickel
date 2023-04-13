@@ -37,15 +37,15 @@
       # blaming polymorphic contracts.
       %seal% sealing_key (%chng_pol% label) value,
 
-  "$forall" = let flip =
-    match {
+  "$forall" =
+    let flip = match {
       `Positive => `Negative,
       `Negative => `Positive,
     }
-  in
-  fun sealing_key polarity contract label value =>
-    let polarity = if %dualize% label then flip polarity else polarity in
-    contract (%insert_type_variable% sealing_key polarity label) value,
+    in
+    fun sealing_key polarity contract label value =>
+      let polarity = if %dualize% label then flip polarity else polarity in
+      contract (%insert_type_variable% sealing_key polarity label) value,
 
   "$enums" = fun case label value =>
     if %typeof% value == `Enum then
@@ -61,18 +61,17 @@
       # Returns the sub-record of `left` containing only those fields which are not
       # present in `right`. If `left` has a sealed polymorphic tail then it will be
       # preserved.
-      let field_diff =
-        fun left right =>
-          std.array.fold_left
-            (
-              fun acc field =>
-                if %has_field% field right then
-                  acc
-                else
-                  %record_insert% field acc (left."%{field}")
-            )
-            (%record_empty_with_tail% left)
-            (%fields% left)
+      let field_diff = fun left right =>
+        std.array.fold_left
+          (
+            fun acc field =>
+              if %has_field% field right then
+                acc
+              else
+                %record_insert% field acc (left."%{field}")
+          )
+          (%record_empty_with_tail% left)
+          (%fields% left)
       in
       let contracts_not_in_value = field_diff field_contracts value in
       let missing_fields = %fields% contracts_not_in_value in

@@ -48,8 +48,7 @@
               rest
         )
         (std.contract.blame_with_message "no alternative matched" label),
-    OrableFromPred
-      : (Dyn -> Bool) -> { pred : Dyn -> Bool, contract : Dyn -> Dyn -> Dyn },
+    OrableFromPred : (Dyn -> Bool) -> { pred : Dyn -> Bool, contract : Dyn -> Dyn -> Dyn },
     OrableFromPred = fun pred_ =>
       {
         pred = pred_,
