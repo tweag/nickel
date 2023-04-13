@@ -27,7 +27,7 @@ use nickel_lang::{stdlib, typecheck::Context};
 use crate::{
     cache::CacheExt,
     linearization::{completed::Completed, Environment, ItemId},
-    requests::{completion, goto, hover, symbols},
+    requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
 
