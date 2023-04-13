@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot.stderr
+expression: snapshot
 ---
-builtin.trace: Hello, world!
+std.trace: Hello, world!
 

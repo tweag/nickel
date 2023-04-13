@@ -1018,7 +1018,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                 contract_label,
                 evaluated_arg,
                 &call_stack,
-                &format!("- {}", &action.message()),
+                &format!(": {}", &action.message()),
             ),
         }
     }
