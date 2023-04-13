@@ -574,11 +574,11 @@ including being dropped in favor of another value, the final value for `foo` has
 to respect the contract as well or the evaluation will fail accordingly.
 
 This is only true for *contracts attached directly to record fields* (either
-directly, or coming from an enclosing record contract). In particular, `{foo |
-Num = 1} & {foo | force = "bar"}` will fail, but `{foo = (1 | Num)} & {foo |
-force = "bar"}` will succeed. In the latter case, the contract is not considered
-to be field metadata, but a local contract check, which is not propagated by
-merging.
+directly, or coming from an enclosing record contract). In particular,
+`{foo | Number = 1} & {foo | force = "bar"}` will fail, but
+`{foo = (1 | Number)} & {foo | force = "bar"}` will succeed. In the latter case,
+the contract is not considered to be field metadata, but a local contract check,
+which is not propagated by merging.
 
 #### Specification
 
