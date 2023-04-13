@@ -624,9 +624,9 @@ impl Term {
         match self {
             Term::Null => Some("Null"),
             Term::Bool(_) => Some("Bool"),
-            Term::Num(_) => Some("Num"),
-            Term::Str(_) => Some("Str"),
-            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Fun"),
+            Term::Num(_) => Some("Number"),
+            Term::Str(_) => Some("String"),
+            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function"),
             Term::Match { .. } => Some("MatchExpression"),
             Term::Lbl(_) => Some("Label"),
             Term::Enum(_) => Some("Enum"),

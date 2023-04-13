@@ -676,7 +676,7 @@ mod tests {
             A::deserialize(q),
             Err(RustDeserializationError::InvalidType {
                 expected: "Null".to_string(),
-                occurred: "Fun".to_string()
+                occurred: "Function".to_string()
             })
         )
     }
