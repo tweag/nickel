@@ -45,36 +45,24 @@ impl CacheExt for Cache {
         }
 
         let mut import_errors = Vec::new();
+        let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
-            let mut errors = Vec::new();
             for id in ids {
-                // Ignore the results, and check for errors after resolution
-                match self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache) {
-                    Ok(..) => {}
-                    Err(..) if !lin_cache.contains_key(&id) => {
-                        let name: String = self.name(id).to_str().unwrap().into();
-                        if let Some(pos) = lin_cache
-                            .get(&file_id)
-                            .and_then(|lin| lin.import_locations.get(&id))
-                        {
-                            errors.push((name, *pos));
-                        }
-                    }
-                    Err(..) => {}
-                }
+                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
             }
-            let message = "This import could not be resolved because its content have either failed to parse or typecheck correctly.";
-            let errors = errors
-                .into_iter()
-                .map(|(name, pos)| ImportError::IOError(name, String::from(message), pos));
-
-            import_errors.extend(errors);
         }
 
-        // Two things
-        // 1. keep track of the positions of imports in a file during linearization
-        // 2. we might want to know if the previous `for` succeded
+        if let Some(ids) = self.get_imports(&file_id) {
+            for id in ids {
+                // If we have typechecked a file correctly, its imports should be
+                // in the `lin_cache`. The imports that are not in `lin_cache`
+                // were not typechecked correctly.
+                if !lin_cache.contains_key(&id) {
+                    typecheck_import_diagnostics.push(id);
+                }
+            }
+        }
 
         // After self.parse(), the cache must be populated
         let CachedTerm { term, state, .. } = self.terms().get(&file_id).unwrap();
@@ -98,9 +86,24 @@ impl CacheExt for Cache {
         } else {
             unreachable!()
         };
-        if import_errors.is_empty() {
+        if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
             result
         } else {
+            // Add the correct position to typecheck import errors and then
+            // transform them to normal import errors.
+            let typecheck_import_diagnostics = typecheck_import_diagnostics
+            .into_iter()
+            .map(|id| {
+                let message = "This import could not be resolved because its content has failed to typecheck correctly.";
+                // The unwrap is safe here because (1) we have linearized `file_id` and it must be 
+                // in the `lin_cache` and (2) every resolved import has a corresponding position in 
+                // the linearization of the file that imports it.
+                let pos = lin_cache.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
+                let name: String = self.name(id).to_str().unwrap().into();
+                ImportError::IOError(name, String::from(message), *pos)
+            });
+            import_errors.extend(typecheck_import_diagnostics);
+
             Err(CacheError::Error(
                 import_errors.into_iter().map(Error::ImportError).collect(),
             ))
