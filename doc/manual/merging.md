@@ -20,9 +20,8 @@ this means that order doesn't matter, and `left & right` is the same thing as
 default values for example, the idea is to use metadata to do so (annotations),
 rather than relying on the left or right position.
 
-**Warning**: At the time of writing, Nickel's version is 0.1. Important
-additions to merging are planned for coming versions, including priorities and
-custom merge functions. They are not detailed here yet. For more details, see
+**Warning**: At the time of writing, Nickel's version is 1.0. Custom merge
+functions are planned for a future version. They are not detailed here yet. See
 the associated technical document [RFC001][rfc001].
 
 The section describes the behavior and use-cases of merge, by considering the
@@ -50,7 +49,7 @@ to `{foo = 1, bar = "bar", baz = false}`.
 
 ### Specification
 
-Technically, if we write the left operand as:
+Formally, if we write the left operand as:
 
 ```text
 left = {
@@ -163,6 +162,8 @@ unless one of the following condition hold:
 
 - They are both of a primitive data type `Number`, `Bool`, `Enum`, `String` and
   they are equal
+- They are both arrays and they are equal (checked by generating an application
+  of the lazy contract `contract.Equal`)
 - They are both null
 
 ### Specification
@@ -211,9 +212,13 @@ Then the merge `left & right` evaluates to the record:
 For two values `v1` and `v2`, if at least one value is not a record, then
 
 ```text
-v1 & v2 = v1    if (type_of(v1) is Number, Bool, String, Enum or v1 == null)
-                   AND v1 == v2
-          _|_   otherwise (indicates failure)
+v1 & v2 = v1               if (type_of(v1) is Number, Bool, String, Enum or
+                           v1 == null) AND v1 == v2
+
+          v2 | Equal v1    if type_of(v1) is Array and type_of(v2) is Array
+
+
+          _|_              otherwise (indicates failure)
 ```
 
 ### Example
@@ -256,8 +261,16 @@ final record:
 ## Merging records with metadata
 
 Metadata can be attached to values thanks to the `|` operator. Metadata
-currently includes contract annotations, default value, merge priority, and
+currently include contract annotation, default value, merge priority, and
 documentation. We describe in this section how metadata interacts with merging.
+
+Note that metadata can only be syntactically attached to record fields, with the
+exception of type and contract annotations, which can appear anywhere in a
+freestanding expression such as `(x | Num) + 1`. However, a contract annotation
+outside of a record field isn't considered metadata (it's a mere contract
+check) and doesn't behave the same with respect to merging. **In particular,
+`{foo | Num = 1}` can behave differently from `{foo = (1 | Num)}` when merged**.
+See [the contracts section](#contracts) for more details.
 
 ### Optional fields
 
@@ -453,13 +466,12 @@ priority between the recursive priority and the existing one.
 
 #### Specification
 
-We can consider the merging system to feature priorities. To each field
-definition `foo = val` is associated a priority `p(val)`. When merging two
-common fields `value_left` and `value_right`, then the results is either the one
-with the highest priority (that overrides the other), or the two are tentatively
-recursively merged, if the priorities are the same. Without loss of generality,
-we consider the simple case of two records with only one field, which is the
-same on both side:
+Each field definition `foo = val` is assigned a priority `p(val)`. When
+merging two common fields `value_left` and `value_right`, the result is either
+the one with the highest priority (that overrides the other), or the two are
+tentatively recursively merged if the priorities are the same. Without loss of
+generality, we consider the simple case of two records with only one common
+field:
 
 ```text
 {common = left} & {common = right}
@@ -561,10 +573,17 @@ to a field `foo`, merging ensures that whatever is this field merged with,
 including being dropped in favor of another value, the final value for `foo` has
 to respect the contract as well or the evaluation will fail accordingly.
 
+This is only true for *contracts attached directly to record fields* (either
+directly, or coming from an enclosing record contract). In particular,
+`{foo | Number = 1} & {foo | force = "bar"}` will fail, but
+`{foo = (1 | Number)} & {foo | force = "bar"}` will succeed. In the latter case,
+the contract is not considered to be field metadata, but a local contract check,
+which is not propagated by merging.
+
 #### Specification
 
-For two operands with one field each, which is the same on both side, with respective
-contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
+For two operands with one field each, which is the same on both side, and
+respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
 
 ```nickel
 left = {
@@ -588,6 +607,64 @@ Then the `common` field of `left & right` will be checked against `Left1, ..,
 Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 `common: LeftType` that can just be considered as an additional contract
 `Left0`.
+
+The accumulated contracts are applied lazily: as long as the field's value isn't
+requested, contracts are accumulated but not applied. This makes it possible to
+build a value piecewise, whereas the intermediate values don't necessarily
+respect the contract. For example:
+
+```nickel
+let FooContract = {
+  required_field1,
+  required_field2,
+} in
+{ foo | FooContract}
+& { foo.required_field1 = "here" }
+& { foo.required_field2 = "here" }
+```
+
+Running the above program succeeds, although the intermediate value
+`{foo.required_field1 = "here"}` doesn't respect `FooContract` (it misses the
+field `required_field2`).
+
+If we try to observe the intermediate result (`deep_seq` recursively forces the
+evaluation of its first argument and proceeds with evaluating the second
+argument), we do get a contract violation error:
+
+```nickel
+let FooContract = {
+  required_field1,
+  required_field2,
+}
+in
+
+let intermediate =
+  { foo | FooContract}
+  & { foo.required_field1 = "here" }
+in
+
+builtin.deep_seq intermediate (intermediate & { foo.required_field2 = "here" })
+```
+
+Result:
+
+```text
+error: missing definition for `required_field2`
+    ┌─ example.ncl:3:3
+    │
+  3 │   required_field2,
+    │   ^^^^^^^^^^^^^^^ defined here
+    ·
+  9 │   & { foo.required_field1 = "here" }
+    │           ^^^^^^^^^^^^^^^^^^^^^^^^ in this record
+    │
+    ┌─ <stdlib/builtin.ncl>:176:20
+    │
+176 │       = fun x y => %deep_seq% x y,
+    │                    ------------ accessed here
+
+
+```
 
 #### Example
 

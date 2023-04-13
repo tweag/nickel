@@ -26,6 +26,11 @@ let x | Number = 1 + 1 in x
 {x | Number = 1 + 1}
 ```
 
+**Important**: contracts attached to a record field, such as `{x | Number = 1}`,
+and a freestanding contract annotation such as `{x = (1 | Number)}` *behave
+differently with respect to record merging*. However, as far as runtime checks
+are concerned (which is the focus of this document), they are equivalent.
+
 Here, `x` is bound to a `Number` contract. When evaluating `x`, the following steps
 are performed:
 
@@ -346,7 +351,7 @@ nickel>{foo = "a", bar = 1} | Contract
 #### Giving values for fields
 
 While most record contracts don't have field definitions, they can. In fact,
-records contracts are not special: any record literal can be used both as a
+record contracts are nothing special: any record literal can be used both as a
 contract or a normal value. If a field is defined both in the contract and the
 checked value, the two definitions will be merged in the final result. For
 example:
@@ -385,9 +390,9 @@ At first sight, `=` also fits the bill. However, there are a number of subtle
 but potentially surprising differences.
 
 One concerns open contracts. Merging never requires the presence of specific
-fields: thus, the contract `{bar | String}` attached to `foo` will actually behave
-as an open contract, even if you didn't use `..`. This is usually not what you
-want:
+fields: thus, the contract `{bar | String}` attached to `foo` will actually
+behave as an open contract, even if you didn't use `..`. This might not be what
+you want:
 
 ```text
 nickel>let ContractPipe = {
@@ -538,11 +543,11 @@ needed. For example, record fields are not evaluated until they are accessed,
 printed (in the REPL or as a result of `nickel`), or until the whole record is
 serialized/exported. Thanks to laziness, you can for example query specific
 information on a large configuration without having to actually evaluate
-everything. We will use a dummy failing expression `1 + "a"` to observe where
-evaluation takes place:
+everything. We will use a failing expression `builtin.fail_with "ooch!"` to observe
+where evaluation takes place:
 
 ```text
-nickel>let config = {fail = 1 + "a", data | doc "Some information" = 42}
+nickel>let config = {fail = builtin.fail_with "ooch", data | doc "Some information" = 42}
 nickel>:query config.data
 * value: 42
 * documentation: Some information
@@ -560,8 +565,8 @@ corresponding to its schema. If this contract checked everything eagerly,
 forcing the evaluation of the most part of the configuration, we would lose the
 benefits of laziness. Thus, *we want contracts to be lazy as well*. In
 particular, a subcontract attached to a field should only fire when the field is
-requested. This is the case with record contracts, and in general all native
-contracts combinators are lazy too.
+requested. This is the case with record contracts, and in general with all native
+contracts combinators.
 
 ### Writing lazy contracts
 
