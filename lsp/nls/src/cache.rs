@@ -84,6 +84,9 @@ impl CacheExt for Cache {
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
+            // This is unreachable because `EntryState::Parsed` is the first item of the enum, and
+            // we have the case `if *state >= EntryState::Parsed` just before this branch.
+            // It it actually unreachable unless the order of the enum `EntryState` is changed.
             unreachable!()
         };
         if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
