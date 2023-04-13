@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::OsString, io};
 use codespan::FileId;
 use nickel_lang::{
     cache::{Cache, CacheError, CacheOp, CachedTerm, EntryState},
-    error::Error,
+    error::{Error, ImportError},
     typecheck::{self, linearization::Linearization},
 };
 
@@ -45,11 +45,22 @@ impl CacheExt for Cache {
         }
 
         let mut import_errors = Vec::new();
+        let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
-                // Don't crash when an import doesn't type check
                 let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
+            }
+        }
+
+        if let Some(ids) = self.get_imports(&file_id) {
+            for id in ids {
+                // If we have typechecked a file correctly, its imports should be
+                // in the `lin_cache`. The imports that are not in `lin_cache`
+                // were not typechecked correctly.
+                if !lin_cache.contains_key(&id) {
+                    typecheck_import_diagnostics.push(id);
+                }
             }
         }
 
@@ -63,6 +74,7 @@ impl CacheExt for Cache {
             let building = Linearization::new(Building {
                 lin_cache,
                 linearization: Vec::new(),
+                import_locations: HashMap::new(),
                 cache: self,
             });
             let (_, linearized) =
@@ -72,11 +84,29 @@ impl CacheExt for Cache {
             lin_cache.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
-            panic!()
+            // This is unreachable because `EntryState::Parsed` is the first item of the enum, and
+            // we have the case `if *state >= EntryState::Parsed` just before this branch.
+            // It it actually unreachable unless the order of the enum `EntryState` is changed.
+            unreachable!()
         };
-        if import_errors.is_empty() {
+        if import_errors.is_empty() && typecheck_import_diagnostics.is_empty() {
             result
         } else {
+            // Add the correct position to typecheck import errors and then
+            // transform them to normal import errors.
+            let typecheck_import_diagnostics = typecheck_import_diagnostics
+            .into_iter()
+            .map(|id| {
+                let message = "This import could not be resolved because its content has failed to typecheck correctly.";
+                // The unwrap is safe here because (1) we have linearized `file_id` and it must be 
+                // in the `lin_cache` and (2) every resolved import has a corresponding position in 
+                // the linearization of the file that imports it.
+                let pos = lin_cache.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
+                let name: String = self.name(id).to_str().unwrap().into();
+                ImportError::IOError(name, String::from(message), *pos)
+            });
+            import_errors.extend(typecheck_import_diagnostics);
+
             Err(CacheError::Error(
                 import_errors.into_iter().map(Error::ImportError).collect(),
             ))

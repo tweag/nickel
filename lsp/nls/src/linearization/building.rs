@@ -5,6 +5,7 @@ use log::debug;
 use nickel_lang::{
     cache::Cache,
     identifier::Ident,
+    position::TermPos,
     term::{record::Field, IndexMap},
     typecheck::{linearization::LinearizationState, UnifType},
     types::TypeF,
@@ -23,6 +24,7 @@ use super::{
 /// while recording terms.
 pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
+    pub import_locations: HashMap<FileId, TermPos>,
     pub lin_cache: &'a mut HashMap<FileId, Completed>,
     pub cache: &'a Cache,
 }
