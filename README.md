@@ -75,30 +75,28 @@ abstractions or just feel ad hoc. Nickel buys you more for less.
 
 Please follow the getting started guide for Nickel users on the [nickel-lang
 website](https://nickel-lang.org/getting-started). The instructions below are
-either reproduced for this document to be relatively self-sufficient, or because
+either reproduced for this document to be self-contained or because
 they are aimed toward hacking on the Nickel interpreter itself (e.g. building
 the `nickel-lang` crate documentation).
 
 ### Run
 
-1. Start Nickel
-
-   - with [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix directly
-     with `nix run nickel` (which pulls it from the global flakes
-     registry), or with `nix run github:tweag/nickel` (which pulls it
-     from the repo). You can use
-     [our binary cache](https://tweag-nickel.cachix.org/) to prevent rebuilding
-     a lot of packages. You pass in arguments with an extra `--` as in `nix run
-     nickel -- repl`,
-   - with `./nickel`, after [building](#build) this repo, depending on the
-     location of the executable and passing in arguments directly,
-   - or with `cargo run` after [building](#build), passing in arguments with
-     an extra `--` as in `cargo run -- -f program.ncl`.
+1. Get a Nickel binary:
+   - With [flake-enabled](https://nixos.wiki/wiki/Flakes) Nix, run
+     Nickel directly with `nix run github:tweag/nickel`. You can use [our binary
+     cache](https://tweag-nickel.cachix.org/) to prevent rebuilding a lot of
+     packages. Pass arguments to Nickel with an extra `--` as in `nix run
+     github:tweag/nickel -- repl`,
+   - Again with flake-enabled Nix, you can install Nickel in your profile with
+     `nix profile add github:tweag/nickel`. The `nickel` command is then in your
+     `$PATH` and is available anywhere.
+   - Without Nix, you can use `cargo run` after [building](#build), passing
+     arguments with an extra `--` as in `cargo run -- -f program.ncl`.
 
 2. Run your first program:
 
     ```console
-    $ ./nickel <<< 'let x = 2 in x + x'
+    $ nickel <<< 'let x = 2 in x + x'
     4
     ```
 
@@ -106,14 +104,14 @@ the `nickel-lang` crate documentation).
 
     ```console
     $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
-    $ ./nickel -f program.ncl
+    $ nickel -f program.ncl
     "Hello, world"
     ```
 
 3. Start a REPL:
 
     ```console
-    $ ./nickel repl
+    $ nickel repl
     nickel> let x = 2 in x + x
     4
 
@@ -124,7 +122,7 @@ the `nickel-lang` crate documentation).
 4. Export your configuration to JSON, YAML or TOML:
 
   ```console
-  $ ./nickel export --format json <<< '{foo = "Hello, world!"}'
+  $ nickel export --format json <<< '{foo = "Hello, world!"}'
   {
     "foo": "Hello, world!"
   }
@@ -138,8 +136,21 @@ for help about a specific subcommand.
 Nickel has syntax highlighting plugins for Vim/Neovim, and VSCode. In-editor
 diagnostics, type hints, and auto-completion are provided by the Nickel Language
 Server. Please follow
-[this guide](https://github.com/tweag/nickel/tree/master/lsp) to setup syntax
+[the LSP guide](https://github.com/tweag/nickel/tree/master/lsp) to set up syntax
 highlighting and NLS.
+
+#### Formatting
+
+You can format Nickel source code using [Topiary](https://github.com/tweag/topiary/):
+
+```console
+topiary -i -f my-config.ncl
+```
+
+Please follow the Formatting Capabilities section of the [LSP
+documentation](https://github.com/tweag/nickel/tree/master/lsp) to know how to
+hook up the Nickel LSP and topiary in order to enable formatting inside your
+code editor.
 
 ### Build
 
@@ -151,11 +162,10 @@ highlighting and NLS.
 
      ```console
      nix-shell
-     # Or if you use Nix Flakes
-     nix develop
+     nix develop # if you use Nix Flakes
      ```
 
-     to be dropped in a shell, ready to build. You can use
+     You will be dropped in a shell, ready to build. You can use
      [our binary cache](https://tweag-nickel.cachix.org/) to prevent rebuilding
      a lot of packages.
    - **Without Nix**: otherwise, follow [this guide][rust-guide] to install Rust
@@ -164,17 +174,14 @@ highlighting and NLS.
 1. Build Nickel:
 
    ```console
-   cargo build
+   cargo build --release
    ```
 
-   And voilà! Generated files are placed in `target/debug`.
-1. *(optional)* make a symbolic link to the executable:
+   And voilà! Generated files are placed in `target/release`.
 
-  ```console
-  ln --symbolic target/debug/nickel
-  ```
+### Test
 
-### Tests
+Run tests with
 
 ```console
 cargo test
