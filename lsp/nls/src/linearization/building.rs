@@ -5,8 +5,8 @@ use log::debug;
 use nickel_lang::{
     cache::Cache,
     identifier::Ident,
-    term::{record::Field, IndexMap},
     position::TermPos,
+    term::{record::Field, IndexMap},
     typecheck::{linearization::LinearizationState, UnifType},
     types::TypeF,
 };

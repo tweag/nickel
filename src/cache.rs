@@ -919,8 +919,8 @@ impl Cache {
     }
 
     pub fn get_imports(&self, file: &FileId) -> Option<Vec<FileId>> {
-        let s = self.imports.get(file)?;
-        Some(s.iter().copied().collect())
+        let imports_set = self.imports.get(file)?;
+        Some(imports_set.iter().copied().collect())
     }
 
     /// Retrieve the FileIds for all the stdlib modules
