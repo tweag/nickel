@@ -4,7 +4,7 @@ use malachite::Rational;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{array::Array, Number, Term};
+use super::{array::Array, CompiledRegex, Number, Term};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which
@@ -229,6 +229,26 @@ impl NickelString {
                 Ok(substr)
             }
         }
+    }
+
+    pub fn matches_regex(&self, regex: &CompiledRegex) -> Term {
+        Term::Bool(
+            regex
+                .0
+                .find(&self)
+                .map(|m| {
+                    use unicode_segmentation::GraphemeCursor;
+
+                    let mut cursor = GraphemeCursor::new(0, self.len(), true);
+                    cursor.set_cursor(m.start());
+                    let starts_on_boundary = cursor.is_boundary(self, 0).expect("bad start");
+                    cursor.set_cursor(m.end());
+                    let ends_on_boundary = cursor.is_boundary(self, 0).expect("bad end");
+
+                    starts_on_boundary && ends_on_boundary
+                })
+                .unwrap_or(false),
+        )
     }
 
     /// Consumes `self`, returning the Rust `String`.

@@ -1053,7 +1053,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrIsMatchCompiled(regex) => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(regex.is_match(s)),
+                        s.matches_regex(regex),
                         pos_op_inh,
                     )))
                 } else {

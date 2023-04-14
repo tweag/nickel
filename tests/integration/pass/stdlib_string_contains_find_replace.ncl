@@ -30,6 +30,9 @@ let {string, ..} = std in
   string.is_match "^___$" "___",
   string.is_match "___" "___)",
   !(string.is_match "^___$" "___)"),
+  # we don't want matches if they occur as part of an extended grapheme cluster
+  !(string.is_match "👨" "👨‍❤️‍💋‍👨"),
+  !(string.is_match "❤️" "👨‍❤️‍💋‍👨"),
 
   # string.find
   string.find "([0-9]{1,3}\\.){3}([0-9]{1,3})" "1.2.3.4" == { matched = "1.2.3.4", index = 0, groups = ["3.", "4"]},

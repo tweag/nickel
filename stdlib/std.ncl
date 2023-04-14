@@ -2042,9 +2042,11 @@
       | doc m%"
         `is_match regex string` checks if `string` matches `regex`.
 
-        **WARNING**: this function will currently return `true` even if the
-        regex match overlaps, or happens entirely within, with a Unicode extended
-        grapheme cluster. This behaviour is expected to change in a future version.
+        **Note**: this function only returns `true` when the regex match does
+        not begin or end in the middle of a Unicode extended grapheme cluster.
+        For example, searching for `"❤️"` within the string `"👨‍❤️‍💋‍👨"` will
+        return `false`, as the heart codepoint is contained in the larger
+        extended grapheme cluster.
 
         # Examples
 
