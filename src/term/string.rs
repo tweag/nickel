@@ -231,12 +231,25 @@ impl NickelString {
         }
     }
 
+    /// Returns `true` if `self` matches `regex` and `false` otherwise.
+    ///
+    /// Note that this function returns `false` if a match occurs in the middle
+    /// of a Unicode extended grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
     pub fn matches_regex(&self, regex: &CompiledRegex) -> Term {
         use grapheme_cluster_preservation::regex;
 
         Term::Bool(regex::find_iter(self, regex).next().is_some())
     }
 
+    /// Returns a new string in which every occurence of `regex` in `self` is
+    /// replaced by `replacement`.
+    ///
+    /// Note that this function will not replace matches that begin or end
+    /// in the middle of a Unicode extended grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
     pub fn replace_regex(&self, regex: &CompiledRegex, replacement: &NickelString) -> NickelString {
         use grapheme_cluster_preservation::regex;
 
@@ -257,6 +270,15 @@ impl NickelString {
         result.into()
     }
 
+    /// Find the first match in `self` for a given `regex`, and return the
+    /// match itself, the index in `self` where it appears, and any capture
+    /// groups specified.
+    ///
+    /// Note that matches will be ignored if either the match itself or any
+    /// of its capture groups begin or end in the middle of a Unicode extended
+    /// grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
     pub fn find_regex(&self, regex: &CompiledRegex) -> RegexFindResult {
         use grapheme_cluster_preservation::regex;
 
@@ -495,10 +517,15 @@ mod grapheme_cluster_preservation {
         }
     }
 
+    /// Functions for working with regex without accidentally breaking up
+    /// Unicode extended grapheme clusters.
     pub mod regex {
         use regex::Regex;
         use unicode_segmentation::GraphemeCursor;
 
+        /// An iterator which finds occurences of a given `Regex` pattern in
+        /// some source `str`, while filtering out any matches which either
+        /// begin or end in the middle of a Unicode extended grapheme cluster.
         pub fn find_iter<'a>(
             haystack: &'a str,
             needle: &'a Regex,
@@ -508,6 +535,10 @@ mod grapheme_cluster_preservation {
                 .filter(|m| does_match_start_and_end_on_boundary(haystack, m))
         }
 
+        /// Find the left-most match for `needle` in `haystack`, filtering out
+        /// any match where either the match itself, or any of its capture
+        /// groups, begin or end in the middle of a Unicode extended grapheme
+        /// cluster.
         pub fn captures<'a>(haystack: &'a str, needle: &'a Regex) -> Option<regex::Captures<'a>> {
             needle.captures_iter(haystack).find(|c| {
                 c.iter().all(|maybe_match| {
