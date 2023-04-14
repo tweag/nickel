@@ -259,7 +259,7 @@ impl NickelString {
             // Push everything between the last match and this one
             result.push_str(&self[prev_match_end..m.start()]);
             // Push the replacement
-            result.push_str(&replacement);
+            result.push_str(replacement);
             // Skip to the end of the match
             prev_match_end = m.end();
         }
