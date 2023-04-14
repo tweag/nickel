@@ -25,6 +25,9 @@ let {string, ..} = std in
   string.replace_regex "\\d+" "_" "1,234,1 1" == "_,_,_ _",
   string.replace_regex "\\d" "_" "１２３" == "___",
   string.replace_regex "\\d" "_" "一二三" == "一二三",
+  # we don't want to replace codepoints inside extended grapheme clusters
+  string.replace_regex "❤️" "_" "👨‍❤️‍💋‍👨" == "👨‍❤️‍💋‍👨",
+  string.replace_regex "❤️" "_" "x❤️y❤️z" == "x_y_z",
 
   # string.is_match
   string.is_match "^___$" "___",

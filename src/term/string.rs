@@ -251,6 +251,31 @@ impl NickelString {
         )
     }
 
+    pub fn replace_regex(&self, regex: &CompiledRegex, replacement: &NickelString) -> NickelString {
+        let matches = regex.find_iter(self).filter(|m| {
+            use unicode_segmentation::GraphemeCursor;
+
+            let mut cursor = GraphemeCursor::new(0, self.len(), true);
+            cursor.set_cursor(m.start());
+            let starts_on_boundary = cursor.is_boundary(self, 0).expect("bad start");
+            cursor.set_cursor(m.end());
+            let ends_on_boundary = cursor.is_boundary(self, 0).expect("bad end");
+
+            starts_on_boundary && ends_on_boundary
+        });
+
+        let mut result = String::new();
+        let mut prev_match_end = 0;
+        for m in matches {
+            result.push_str(&self[prev_match_end..m.start()]);
+            result.push_str(&replacement);
+            prev_match_end = m.end();
+        }
+        result.push_str(&self[prev_match_end..]);
+
+        result.into()
+    }
+
     /// Consumes `self`, returning the Rust `String`.
     pub fn into_inner(self) -> String {
         self.0

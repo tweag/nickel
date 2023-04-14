@@ -2021,9 +2021,10 @@
       | doc m%"
         `replace_regex regex repl string` replaces every match of `regex` in `string` with `repl`.
 
-        **WARNING**: this function will currently break up Unicode extended
-        grapheme clusters if the regex matches a codepoint that exists within
-        one. This behaviour is expected to change in a future version.
+        **Note**: this function will only replace matches which start & end
+        on the boundary of Unicode extended grapheme clusters. For example,
+        `replace_regex "❤️" "_" "👨‍❤️‍💋‍👨"` will return `"👨‍❤️‍💋‍👨"`, since the
+        heart codepoint occurs within the larger emoji grapheme cluster.
 
         # Examples
 

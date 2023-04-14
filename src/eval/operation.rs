@@ -27,8 +27,8 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, IndexMap, MergePriority, NAryOp, Number, PendingContract, RecordExtKind,
-        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, PendingContract,
+        RecordExtKind, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -1053,7 +1053,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrIsMatchCompiled(regex) => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        s.matches_regex(regex),
+                        s.matches_regex(&regex),
                         pos_op_inh,
                     )))
                 } else {
@@ -2771,7 +2771,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let re = regex::Regex::new(from)
                                 .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                            re.replace_all(s, to.as_str()).into()
+                            s.replace_regex(&CompiledRegex(re), to)
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
