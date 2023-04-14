@@ -353,7 +353,7 @@ impl NickelString {
     }
 }
 
-/// Errors returned by `NclString`'s `substring` method.
+/// Errors returned by `NickelString`'s `substring` method.
 pub enum SubstringError {
     /// The start index was not an int
     NonIntStart(Rational),
