@@ -1,0 +1,7 @@
+---
+source: tests/snapshot/main.rs
+expression: snapshot
+---
+error: record_insert: tried to extend a record with the field bar, but it already exists
+
+

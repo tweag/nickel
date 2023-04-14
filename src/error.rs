@@ -61,10 +61,25 @@ pub enum EvalError {
     /// Mismatch between the expected type and the actual type of an expression.
     TypeError(
         /* expected type */ String,
-        /* operation */ String,
+        /* free form message */ String,
         /* position of the original unevaluated expression */ TermPos,
         /* evaluated expression */ RichTerm,
     ),
+    /// `TypeError` when evaluating a unary primop
+    UnaryPrimopTypeError {
+        primop: String,
+        expected: String,
+        arg_pos: TermPos,
+        arg_evaluated: RichTerm,
+    },
+    /// `TypeError` when evaluating a binary primop
+    NAryPrimopTypeError {
+        primop: String,
+        expected: String,
+        arg_number: usize,
+        arg_pos: TermPos,
+        arg_evaluated: RichTerm,
+    },
     /// Tried to evaluate a term which wasn't parsed correctly.
     ParseError(ParseError),
     /// A term which is not a function has been applied to an argument.
@@ -743,6 +758,19 @@ fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
 }
 
+fn cardinal(number: usize) -> String {
+    let suffix = if number % 10 == 1 {
+        "st"
+    } else if number % 10 == 2 {
+        "nd"
+    } else if number % 10 == 3 {
+        "rd"
+    } else {
+        "th"
+    };
+    format!("{number}{suffix}")
+}
+
 impl IntoDiagnostics<FileId> for Error {
     fn into_diagnostics(
         self,
@@ -1018,8 +1046,36 @@ impl IntoDiagnostics<FileId> for EvalError {
                 contract_label,
                 evaluated_arg,
                 &call_stack,
-                &format!("- {}", &action.message()),
+                &format!(": {}", &action.message()),
             ),
+            EvalError::UnaryPrimopTypeError {
+                primop,
+                ref expected,
+                arg_pos,
+                arg_evaluated,
+            } => EvalError::TypeError(
+                expected.clone(),
+                format!("{primop} expects its argument to be a {expected}"),
+                arg_pos,
+                arg_evaluated,
+            )
+            .into_diagnostics(files, stdlib_ids),
+            EvalError::NAryPrimopTypeError {
+                primop,
+                expected,
+                arg_number,
+                arg_pos,
+                arg_evaluated,
+            } => EvalError::TypeError(
+                expected.clone(),
+                format!(
+                    "{primop} expects its {} argument to be a {expected}",
+                    cardinal(arg_number)
+                ),
+                arg_pos,
+                arg_evaluated,
+            )
+            .into_diagnostics(files, stdlib_ids),
         }
     }
 }

@@ -19,7 +19,7 @@ fn elem_at() {
     );
     assert_matches!(
         eval("%elem_at% {} 0"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("%elem_at% [1, 2, 3] 0.5"),
@@ -47,12 +47,8 @@ fn head_tail() {
         Err(Error::EvalError(EvalError::Other(..)))
     );
     assert_matches!(
-        eval("%elem_at% {} 0"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
-    );
-    assert_matches!(
         eval("%array_slice% 0 1 {}"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
 
     // TODO: add non-empty contract to the input of array.first and array.tail

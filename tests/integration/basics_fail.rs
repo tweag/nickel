@@ -15,27 +15,27 @@ fn div_by_zero() {
 fn comparisons() {
     assert_matches!(
         eval("1 < 2 < 3"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("1 < 2 > 3"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("\"a\" < 2"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("true <= []"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("\"a\" > \"b\""),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("\"a\" >= \"b\""),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
 }
 
@@ -47,11 +47,11 @@ fn boolean_ops() {
     );
     assert_matches!(
         eval("0 && true"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
     assert_matches!(
         eval("\"a\" || false"),
-        Err(Error::EvalError(EvalError::TypeError(..)))
+        Err(Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
     );
 }
 
