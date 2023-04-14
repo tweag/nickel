@@ -16,7 +16,7 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::Ident,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    match_sharedterm, mk_app, mk_fun, mk_opn,
     parser::utils::parse_number,
     position::TermPos,
     serialize,
@@ -26,7 +26,6 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
-        string::NickelString,
         BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, PendingContract,
         RecordExtKind, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
@@ -1067,37 +1066,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrFindCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    let capt = regex.captures(s);
-                    let result = if let Some(capt) = capt {
-                        let first_match = capt.get(0).unwrap();
-                        let groups = capt
-                            .iter()
-                            .skip(1)
-                            .filter_map(|s_opt| {
-                                s_opt.map(|s| RichTerm::from(Term::Str(s.as_str().into())))
-                            })
-                            .collect();
-
-                        mk_record!(
-                            ("matched", Term::Str(first_match.as_str().into())),
-                            ("index", Term::Num(first_match.start().into())),
-                            (
-                                "groups",
-                                Term::Array(groups, ArrayAttrs::new().closurized())
-                            )
-                        )
-                    } else {
-                        //FIXME: what should we return when there's no match?
-                        mk_record!(
-                            ("matched", Term::Str(NickelString::new())),
-                            ("index", Term::Num(Number::from(-1))),
-                            (
-                                "groups",
-                                Term::Array(Array::default(), ArrayAttrs::default())
-                            )
-                        )
-                    };
-
+                    let result = s.find_regex(&regex);
                     Ok(Closure::atomic_closure(result))
                 } else {
                     Err(EvalError::TypeError(

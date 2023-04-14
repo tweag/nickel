@@ -4,7 +4,12 @@ use malachite::Rational;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{array::Array, CompiledRegex, Number, Term};
+use crate::mk_record;
+
+use super::{
+    array::{Array, ArrayAttrs},
+    CompiledRegex, Number, RichTerm, Term,
+};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which
@@ -274,6 +279,72 @@ impl NickelString {
         result.push_str(&self[prev_match_end..]);
 
         result.into()
+    }
+
+    pub fn find_regex(&self, regex: &CompiledRegex) -> RichTerm {
+        // Find the first capture for which every group begins & ends on a
+        // cluster boundary.
+        let capt = regex.captures_iter(self).find(|c| {
+            use unicode_segmentation::GraphemeCursor;
+
+            c.iter().all(|m_opt| {
+                m_opt
+                    .map(|m| {
+                        let mut cursor = GraphemeCursor::new(0, self.len(), true);
+                        cursor.set_cursor(m.start());
+                        let starts_on_boundary = cursor.is_boundary(self, 0).expect("bad start");
+                        cursor.set_cursor(m.end());
+                        let ends_on_boundary = cursor.is_boundary(self, 0).expect("bad end");
+
+                        starts_on_boundary && ends_on_boundary
+                    })
+                    .unwrap_or(false)
+            })
+        });
+
+        let result = if let Some(capt) = capt {
+            let first_match = capt.get(0).unwrap();
+            let groups = capt
+                .iter()
+                .skip(1)
+                .filter_map(|s_opt| s_opt.map(|s| RichTerm::from(Term::Str(s.as_str().into()))))
+                .collect();
+
+            // The indices returned by the `regex` crate are byte offsets into
+            // the string, but we need to return the index into the Nickel string,
+            // i.e., the grapheme cluster index which starts at this byte offset.
+            let adjusted_index = self
+                .grapheme_indices(true)
+                .enumerate()
+                .find_map(|(grapheme_idx, (byte_offset, _))| {
+                    if byte_offset == first_match.start() {
+                        Some(grapheme_idx as isize)
+                    } else {
+                        None
+                    }
+                })
+                .expect("We already know that `first_match.start()` occurs on a cluster boundary.");
+
+            mk_record!(
+                ("matched", Term::Str(first_match.as_str().into())),
+                ("index", Term::Num(adjusted_index.into())),
+                (
+                    "groups",
+                    Term::Array(groups, ArrayAttrs::new().closurized())
+                )
+            )
+        } else {
+            mk_record!(
+                ("matched", Term::Str(NickelString::new())),
+                ("index", Term::Num(Number::from(-1))),
+                (
+                    "groups",
+                    Term::Array(Array::default(), ArrayAttrs::default())
+                )
+            )
+        };
+
+        result
     }
 
     /// Consumes `self`, returning the Rust `String`.

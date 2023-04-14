@@ -41,4 +41,6 @@ let {string, ..} = std in
   string.find "([0-9]{1,3}\\.){3}([0-9]{1,3})" "1.2.3.4" == { matched = "1.2.3.4", index = 0, groups = ["3.", "4"]},
   string.find "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})" "ip: 192.168.1.4, sorry, what's ipv6?" == { matched = "192.168.1.4", index = 4, groups = ["192", "168", "1", "4"]},
   string.find "\\d" "no numeral" == { matched = "", index = -1, groups = []},
-] |> check
+  string.find "❤️" "👨‍❤️‍💋‍👨" == { matched = "", index = -1, groups = []},
+  string.find "❤️" "👨‍❤️‍💋‍👨❤️" == { matched = "❤️", index = 1, groups = [] },
+  ] |> check

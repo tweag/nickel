@@ -2096,10 +2096,9 @@
         was part of the match in `string`, and an array of all capture groups if
         there were any.
 
-        **WARNING**: this function will currently return incorrect indices if
-        `str` contains Unicode extended grapheme clusters. The indices returned
-        will be the location of the matching codepoints, rather than the
-        matching grapheme clusters.
+        **Note**: this function ignores any matches where either the match
+        itself, or one of its capture groups, begin or end in the middle of a
+        Unicode extended grapheme cluster.
 
         # Examples
 
