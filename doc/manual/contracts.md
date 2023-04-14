@@ -4,6 +4,9 @@ slug: contracts
 
 # Contracts in Nickel
 
+**Note**: Most of the examples of this document are run in the Nickel REPL. To
+start a session, run `nickel repl` in your terminal.
+
 (For the motivation behind contracts and a high-level overview of contracts and
 types, first read the [correctness](./correctness.md) section.)
 
@@ -39,11 +42,10 @@ are performed:
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
 ```text
-$ nickel repl
-nickel>1 + 1 | Number
+nickel> 1 + 1 | Number
 2
 
-nickel>"a" | Number
+nickel> "a" | Number
 error: contract broken by a value.
 [..]
 ```
@@ -55,49 +57,59 @@ are available. `Dyn` is a contract that never fails.
 
 ### By hand
 
-Where run-time
-mechanisms like contracts really shine is in the ability to check for arbitrary
-properties. Let us see how to define our very own contract. We start the REPL
-(`nickel repl`) and input:
+The ability to check for arbitrary properties is where run-time contracts really
+shine. Let us see how to define our very own contract. Here is an example of a
+custom contract:
 
 ```nickel
-let IsFoo = fun label value =>
-  if std.is_string value then
-    if value == "foo" then
-      value
+{
+  IsFoo = fun label value =>
+    if std.is_string value then
+      if value == "foo" then
+        value
+      else
+        std.contract.blame_with_message "not equal to \"foo\"" label
     else
-      std.contract.blame_with_message "not equal to \"foo\"" label
-  else
-    std.contract.blame_with_message "not a string" label
+      std.contract.blame_with_message "not a string" label,
+}
 ```
 
 A custom contract is a function of two arguments:
 
-- A `label`. Provided by the interpreter, the label contains tracking information
-  for error reporting. Its main usage is to be passed to `std.contract.blame` or
-  `std.contract.blame_with_message` when the contract isn't satisfied.
+- A `label`. The label is provided by the interpreter and contains tracking
+  information for error reporting. The label can be used by the contract to
+  customize the error reporting as well.
 - The value being checked.
 
 Upon success, the contract must return the original value. We will see the
-reason why in the [laziness](#laziness) section. To signal failure, we use
-`std.contract.blame` or its variant `std.contract.blame_with_message` that takes
-an additional error message as a parameter. `blame` immediately aborts the
-execution and reports a contract violation error.
+reason why in the [laziness](#laziness) section. To signal failure, a custom
+contract uses `std.contract.blame`. Custom contracts can use the label to
+customize error reporting upon failure via the functions from
+`std.contract.label`, which set various attributes of the label.
+`std.contract.blame_with_message message label` is just a shorthand for:
+
+```nickel
+label
+|> std.contract.label.with_message message
+|> std.contract.blame
+```
+
+`blame` immediately aborts the execution and reports a contract violation error.
 
 In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
 appropriate error messages. Let us try:
 
 ```text
-nickel>1 | IsFoo
+nickel> 1 | IsFoo
 error: contract broken by a value [not a string].
 [..]
 
-nickel>"a" | IsFoo
+nickel> "a" | IsFoo
 error: contract broken by a value [not equal to "foo"].
 [..]
 
-nickel>"foo" | IsFoo
+nickel> "foo" | IsFoo
 "foo"
 ```
 
@@ -107,30 +119,36 @@ Our contract is simple: in the end, it tests the condition `value == "foo"`.
 Unfortunately, it has a few cascading ifs that don't look very nice. This is a
 necessary evil if you want to provide distinct error messages (`not a string`
 and `not a "foo"`). However, one could argue in this case that the information
-of the contract's name (which is automatically printed for contract violation
-error, as well as various other data) is enough to understand the error. In this
-case, we can write our contract more succinctly as:
+of the contract's name (which is printed for contract violation errors amongst
+other data) is enough to understand the error. In this case, we can write our
+contract more succinctly as:
 
 ```nickel
-let IsFoo = std.contract.from_predicate ((==) "foo")
+{ IsFoo = std.contract.from_predicate ((==) "foo") }
 ```
 
-`std.contract.from_predicate` takes a predicate (a function of one argument that
-returns a boolean) and converts it to a contract. The syntax `(==)` turns the
-equality operator `==` into a function, and is a shorthand for
-`fun x y => x == y`. The partial application to `(==) "foo"` is then the function
-`fun y => "foo" == y`, which is exactly the condition we want. `from_predicate`
-is useful to quickly define contracts based on a boolean condition, and when
-the contract is simple enough to not require custom error message.
+`std.contract.from_predicate` takes a predicate (a function of one argument
+which returns a boolean) and converts it to a contract. The syntax `(==)` turns
+the equality operator `==` into a function, and is a shorthand for `fun x y => x
+== y`. The partial application to `(==) "foo"` is then the function `fun y =>
+"foo" == y`, which is exactly the condition we want. `from_predicate` is useful
+to quickly define contracts based on a boolean condition, and when the contract
+is simple enough to not require a custom error message.
 
 Here is an example of a port number contract:
 
 ```nickel
-let Port = std.contract.from_predicate (fun value =>
-  std.is_number value &&
-  std.number.is_int value &&
-  value >= 0 &&
-  value <= 65535)
+{
+  Port =
+    std.contract.from_predicate
+      (
+        fun value =>
+          std.is_number value
+          && std.number.is_integer value
+          && value >= 0
+          && value <= 65535
+      )
+}
 ```
 
 ### Parametrized contracts
@@ -138,30 +156,54 @@ let Port = std.contract.from_predicate (fun value =>
 Let us consider a contract for bound checking:
 
 ```nickel
-let Between5And10 = std.contract.from_predicate (fun value =>
-  std.is_number value &&
-  value >= 5 &&
-  value <= 10) in
-let MyConfig = {
+let Between5And10 =
+  std.contract.from_predicate
+    (
+      fun value =>
+        std.is_number value
+        && value >= 5
+        && value <= 10
+    )
+in
+let Schema = {
   level | Between5And10,
 }
+in
+
+{ level = 5 } | Schema
 ```
 
-Now, we add a new field to our schema, that must be between `0` and `1`:
+Now, we add a new field to our schema, which must be between `0` and `1`:
 
 ```nickel
-let Between5And10 = std.contract.from_predicate (fun value =>
-  std.is_number value &&
-  value >= 5 &&
-  value <= 10) in
-let Between0And1 = std.contract.from_predicate (fun value =>
-  std.is_number value &&
-  value >= 0 &&
-  value <= 1) in
-let MyConfig = {
+let Between5And10 =
+  std.contract.from_predicate
+    (
+      fun value =>
+        std.is_number value
+        && value >= 5
+        && value <= 10
+    )
+in
+let Between0And1 =
+  std.contract.from_predicate
+    (
+      fun value =>
+        std.is_number value
+        && value >= 0
+        && value <= 1
+    )
+in
+let Schema = {
   level | Between5And10,
   strength | Between0And1,
 }
+in
+
+{
+  level = 5,
+  strength = 0.5,
+} | Schema
 ```
 
 `Between5And9` and `Between0And1` are awkwardly similar. Because custom
@@ -174,42 +216,47 @@ let Between = fun min max =>
   std.contract.from_predicate (fun value =>
     value >= min &&
     value <= max) in
-# alternative without from_predicate
-let BetweenAlt = fun min max label value =>
-  if std.is_number value &&
-     value >= min &&
-     value <= max then
-    value
-  else
-    std.contract.blame label in
-let MyConfig = {
+let Schema = {
   level | Between 5 10,
   strength | Between 0 1,
 }
+in
+
+{
+  level = 5,
+  strength = 0.5,
+} | Schema
 ```
 
 ### Contracts parametrized by contracts
 
-Contracts parametrized by other contracts are not really special among
+Contracts parametrized by other contracts are not really special amongst
 parametrized contracts, but note that although contracts can be functions, we
-will see soon that they can be different objects as well. Even with functions,
-contract application behaves slightly differently than bare function
-application. Thus, when manually handling a contract `contract`, do not apply it
-as a function `contract label value`, but use `std.contract.apply`:
-`std.contract.apply contract label value`. One example of such a contract is a
-`Nullable` contract, that accepts a value that is either null or of some other
-given format:
+will see soon that they can be different objects as well. Even with a contract
+defined as a function, contract application behaves differently than bare
+function application. Thus, when manually handling another contract `Contract`,
+do not apply it as a function `Contract label value`, but use
+`std.contract.apply Contract label value` instead.
+
+One example of a contract parametrized by another contract is a `Nullable`
+contract, that accepts a value that is either null or of some other given
+format:
 
 ```nickel
 let Nullable = fun contract label value =>
   if value == null then
     value
   else
-    std.contract.apply contract label value in
-# succeeds
-null | Nullable Number
-# succeeds too
-1 | Nullable Number
+    std.contract.apply contract label value
+in
+[
+  # succeeds
+  null | Nullable Number,
+  # succeeds
+  1 | Nullable Number,
+  # fails
+  "a" | Nullable Number,
+]
 ```
 
 ## Compound contracts
@@ -220,19 +267,21 @@ together to create new ones.
 ### Records
 
 Record contracts are fundamental in a configuration language like Nickel. They
-encode the data schema of a configuration. A record contract is just a record
-literal with contract annotations and whose field definitions are usually
-missing:
+encode the data schema of a configuration. A record contract is a record literal
+with contract annotations and whose field definitions are usually (but not
+necessarily) missing:
 
 ```nickel
-let MyConfig = {
+let Schema = {
   path | String,
 
-  connection | {
-    server_port | Port,
-    host | String,
-  }
-} in
+  connection
+    | {
+      server_port | Port,
+      host | String,
+    }
+}
+in
 
 {
   path = "/foo/bar",
@@ -244,45 +293,41 @@ let MyConfig = {
         80,
     host = "localhost",
   }
-} | MyConfig
+} | Schema
 ```
 
-`MyConfig` is a schema describing a configuration with:
+`Schema` is schema describing a configuration with:
 
 - a field `path` that must be a string
 - a sub-record `connection`, which has a `server_port` and a `host` field that
   are respectively a port number and a string.
 
-See how we've combined contracts: while defining the `MyConfig` record contract,
+See how we've combined contracts: while defining the `Schema` record contract,
 we wrote another inline record contract for the `connection` field, and we
 reused the `Port` contract defined earlier. Composition is this ability of using
 existing contracts seamlessly as building blocks for new contracts.
 
-If we export this example to json, we get:
+If we export this example to JSON, we get:
 
 ```console
 $ nickel -f config.ncl export
-error: contract broken by a value.
-   ┌─ :1:1
+error: contract broken by a value
+   ┌─ example.ncl:26:7
    │
- 1 │ Port
-   │ ---- expected type
-   │
-   ┌─ .../config.ncl:22:9
-   │
-22 │         "8080"
-   │         ^^^^^^ applied to this expression
+16 │         server_port | Port,
+   │                       ---- expected type
+   ·
+26 │ ╭       if host == "localhost" then
+27 │ │         "8080"
+   │ │         ------ evaluated to this expression
+28 │ │       else
+29 │ │         80,
+   │ ╰──────────^ applied to this expression
    │
    ┌─ <unknown> (generated by evaluation):1:1
    │
  1 │ "8080"
    │ ------ evaluated to this value
-
-note:
-   ┌─ .../config.ncl:12:19
-   │
-12 │     server_port | Port,
-   │                   ^^^^ bound here
 ```
 
 Indeed, our `server_port` is a string, while a number was expected. If we
@@ -304,25 +349,28 @@ representing valid port numbers.
 
 #### Metadata
 
-Additionally to defining the contracts of fields, record contract can also
+In addition to defining the contracts of fields, record contract can also
 attach metadata (see [merging](./merging.md)) to fields, such as a documentation
 or default value:
 
 ```text
-nickel>let MyConfig = {
-    foo | doc "This documentation will propagate to the final value!"
-        | String
-        | default = "foo",
-    bar | Number,
+nickel>
+let Schema = {
+  foo
+    | doc "This documentation will propagate to the final value!"
+    | String
+    | default
+    = "foo",
+  bar | Number,
 }
-nickel>let config | MyConfig = {bar = 2}
+nickel> let config | Schema = {bar = 2}
 nickel> std.serialize `Json config
 "{
   "bar": 2,
   "foo": "foo"
 }"
-nickel>
-nickel>:query config.foo
+
+nickel>:query config foo
 * contract: String
 * default: "foo"
 * documentation: This documentation will propagate to the final value!
@@ -333,8 +381,8 @@ nickel>:query config.foo
 By default, record contracts are closed, meaning that additional fields are forbidden:
 
 ```text
-nickel>let Contract = {foo | String}
-nickel>{foo = "a", bar = 1} | Contract
+nickel> let Contract = {foo | String}
+nickel> {foo = "a", bar = 1} | Contract
 error: contract broken by a value [extra field `bar`].
 [..]
 ```
@@ -343,12 +391,12 @@ If you want to allow additional fields, append `, ..` after the last field
 definition to define an open contract:
 
 ```text
-nickel>let Contract = {foo | String, ..}
-nickel>{foo = "a", bar = 1} | Contract
-{ foo = <contract,value="a">, bar = 1}
+nickel> let Contract = {foo | String, ..}
+nickel> {foo = "a", bar = 1} | Contract
+{ bar = 1, foo = "a" }
 ```
 
-#### Giving values for fields
+#### Giving values to fields
 
 While most record contracts don't have field definitions, they can. In fact,
 record contracts are nothing special: any record literal can be used both as a
@@ -357,7 +405,8 @@ checked value, the two definitions will be merged in the final result. For
 example:
 
 ```text
-nickel>let Secure = {
+nickel>
+let Secure = {
   must_be_very_secure | Bool = true,
   data | String,
 }
@@ -367,17 +416,21 @@ nickel> std.serialize `Json ({data = ""} | Secure)
   "must_be_very_secure": true
 }"
 
-nickel>{data = "", must_be_very_secure = false} | Secure
-error: Non mergeable terms
-  ┌─ repl-input-7:1:35
+nickel> {data = "", must_be_very_secure = false} | Secure
+error: non mergeable terms
+  ┌─ repl-input-15:1:35
   │
 1 │ {data = "", must_be_very_secure = false} | Secure
-  │                                   ^^^^^ cannot merge this expression
+  │                                   ^^^^^    ------ originally merged here
+  │                                   │
+  │                                   cannot merge this expression
   │
-  ┌─ repl-input-4:2:32
+  ┌─ repl-input-13:2:32
   │
 2 │   must_be_very_secure | Bool = true,
   │                                ^^^^ with this expression
+  │
+  = Both values have the same merge priority but they can't be combined
 ```
 
 **Warning: `=` vs `|`**
@@ -391,21 +444,23 @@ but potentially surprising differences.
 
 One concerns open contracts. Merging never requires the presence of specific
 fields: thus, the contract `{bar | String}` attached to `foo` will actually
-behave as an open contract, even if you didn't use `..`. This might not be what
-you want:
+behave as an open contract, even if you didn't use `..`. This might or might not
+be what you want:
 
 ```text
-nickel>let ContractPipe = {
+nickel>
+let ContractPipe = {
   sub_field | {foo | String}
 }
-nickel>let ContractEq = {
+nickel>
+let ContractEq = {
   sub_field = {foo | String}
 }
-nickel>{sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
+nickel> {sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
 error: contract broken by a value [extra field `bar`].
 [..]
 
-nickel>{sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
+nickel> {sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
 { sub_field = { foo = <contract,value="a">, bar = "b"}}
 ```
 
@@ -425,35 +480,35 @@ An array contract checks that the value is an array and applies the parameter
 contract to each element:
 
 ```text
-nickel>let VeryBig = std.contract.from_predicate (fun value =>
-  std.is_number value
-  && value >= 1000)
-nickel>[1000, 10001, 2] | Array VeryBig
-error: contract broken by a value.
-  ┌─ :1:7
-  │
-1 │ Array (VeryBig)
-  │        ------- expected array element type
-  │
-  ┌─ repl-input-14:1:15
+nickel>
+let VeryBig =
+  std.contract.from_predicate (
+      fun value =>
+        std.is_number value
+        && value >= 1000
+    )
+nickel> [1000, 10001, 2] | Array VeryBig
+error: contract broken by a value
+  ┌─ repl-input-22:1:15
   │
 1 │ [1000, 10001, 2] | Array VeryBig
-  │               - evaluated to this expression
-[..]
+  │               ^          ------- expected array element type
+  │               │
+  │               applied to this expression
 ```
 
 #### Functions
 
 A function contract `In -> Out` returns a wrapped function which, for each call,
-will additionally check the parameter against the `In` contract and the return
-value against the `Out` contract. Put differently, `In` represents
-*pre-conditions* that must hold about the parameter, and `Out` *post-conditions*
-that must hold about the return value of the function.
+will check the parameter against the `In` contract and the return value against
+the `Out` contract. Put differently, `In` represents *pre-conditions* which must
+hold about the parameter, and `Out` represents *post-conditions* which must hold
+about the return value of the function.
 
 ##### Caller vs callee
 
 Function contracts, as opposed to a contract like `Number`, have the peculiarity
-of involving two parties in the contract checking. For example:
+of involving two parties. For example:
 
 ```nickel
 let add_semi | String -> String = fun x => x ++ ";" in
@@ -468,16 +523,16 @@ different in nature: in the first one, the function `add_semi` respects its
 contract. Whenever `x` is a string, `add_semi` does return a string. Here, the
 **caller** (the user of the function) is to blame, and not the **callee** (the
 function). This is an important distinction. Say you wrote `add_semi` as a part
-of a library. A wrong call is a random user, somewhere, making a programming
-mistake. This is not your direct responsibility, assuming the contract error
-messages are good enough to let users understand the issue immediately.
+of a library. A wrong call is a random user, somewhere, misusing `add_semi`.
+This is not your responsibility to fix it, assuming the contract error messages
+are good enough to let users understand the issue quickly.
 
-The second example is reversed. The caller provides a string, as requested by
-the contract, but the function returns a number. The blame is on the **callee**.
-If you are the library writer who shipped the `wrong` function, this means you
-have a bug that you need to fix.
+The second example is the converse. The caller provides a string, as requested
+by the contract, but the function returns a number. The blame is on the
+**callee**. If you are the library writer who shipped the `wrong` function, this
+is a bug you have to fix.
 
-The interpreter automatically performs book-keeping for functions contracts in
+The interpreter automatically performs bookkeeping for functions contracts in
 order to make this caller/callee distinction:
 
 ```text
@@ -499,32 +554,34 @@ functions as well. Higher-order functions are functions that take other
 functions as parameters. Here is an example:
 
 ```text
-nickel>let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
+nickel>
+let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
 apply_fun (fun x => "a")
-error: contract broken by the caller.
-  ┌─ :1:9
+
+error: contract broken by the caller
+  ┌─ repl-input-25:1:28
   │
-1 │ (Number -> Number) -> Number
-  │         --- expected return type of a function provided by the caller
-  │
-  ┌─ repl-input-17:2:21
-  │
+1 │ let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
+  │                            ------ expected return type of a function provided by the caller
 2 │ apply_fun (fun x => "a")
   │                     --- evaluated to this expression
+  │
 [..]
 ```
 
 #### Dictionary
 
-The type constructor `{_ : Contract}` represents a record whose field names are not
-constrained but whose field values are checked against `Contract`. In practice, the
-contract `Contract` is mapped onto each field. Such a contract is useful when using
+The type constructor `{_ : Contract}` represents a record whose field names are
+not constrained but whose field values must satisfy `Contract`. In practice,
+`Contract` is mapped onto each field. Such a contract is useful when using
 records as an extensible dictionary, that is a key/value store, where keys are
-strings and values respect `Contract`. Example:
+strings and values satisfy `Contract`. Example:
 
 ```nickel
+nickel>
 let occurrences | {_: Number} = {a = 2, b = 3, "!" = 5, "^" = 1} in
 occurrences."!"
+5
 ```
 
 ## Laziness
@@ -532,28 +589,31 @@ occurrences."!"
 In the [writing a custom contract by hand](#by-hand) section, we noted the
 strange fact that a custom contract must return a value, instead of just
 returning e.g. a boolean to indicate success or failure. A contract could even
-simply return `null`, as failure is handled separately by aborting. Moreover, the
-contracts we have written so far always returned the original unmodified
+always return `null`, as failure is handled separately by aborting. Moreover,
+the contracts we have written so far always returned the original unmodified
 value upon success, which doesn't sound very useful: after all, the caller and
 the interpreter already had access to this value to begin with.
 
-The motivation for this return value relates to laziness. Nickel is designed to
-be *lazy*, meaning that values are evaluated on-demand, only when they are
-needed. For example, record fields are not evaluated until they are accessed,
-printed (in the REPL or as a result of `nickel`), or until the whole record is
-serialized/exported. Thanks to laziness, you can for example query specific
-information on a large configuration without having to actually evaluate
-everything. We will use a failing expression `builtin.fail_with "ooch!"` to observe
-where evaluation takes place:
+The motivation for this return value is laziness. Nickel is designed to be
+*lazy*, only evaluating values on-demand.
+
+For example, record fields are not evaluated until they are accessed, printed
+(in the REPL or as a result of `nickel`), or serialized/exported. Thanks to
+laziness, you can for example query specific information on a large
+configuration without having to actually evaluate everything. We will use the
+always failing contract `std.FailWith` to observe where evaluation takes place:
 
 ```text
-nickel>let config = {fail = builtin.fail_with "ooch", data | doc "Some information" = 42}
-nickel>:query config.data
-* value: 42
+nickel>
+let config = {
+  fail | std.FailWith "ooch" = null,
+  data | doc "Some information" = 42
+}
+nickel>:query config data
 * documentation: Some information
 
-nickel>config.fail
-error: type error
+nickel> config.fail
+error: contract broken by a value: ooch
 [..]
 ```
 
@@ -562,11 +622,11 @@ causes an error when evaluated.
 
 A large configuration will most probably have a root contract attached,
 corresponding to its schema. If this contract checked everything eagerly,
-forcing the evaluation of the most part of the configuration, we would lose the
-benefits of laziness. Thus, *we want contracts to be lazy as well*. In
-particular, a subcontract attached to a field should only fire when the field is
-requested. This is the case with record contracts, and in general with all native
-contracts combinators.
+forcing the evaluation of most of the configuration, we would lose the benefits
+of laziness. Thus, *we want contracts to be lazy as well*. In particular, a
+subcontract attached to a field should only fire when the field is requested.
+This is the case with record contracts, and in general with all native contracts
+combinators.
 
 ### Writing lazy contracts
 
@@ -576,37 +636,47 @@ represented as strings). A valid value could look like
 `{"1": true, "2": false, "10": true}`. If we used boolean predicates as the
 default for contracts, it would be impossible to make it lazy: as soon as your
 contract is called, you would need to produce a `true` or `false` answer, and
-checking that fields are all `Bool` would force their evaluation.
+checking that fields are all `Bool` requires evaluating them first.
 
 What we can do is to not perform all the checks right away, but **return a new
-value, which is wrapping the original value with delayed checks inside**. This
+value which is wrapping the original value with delayed checks inside**. This
 is the rationale behind contracts returning a value. Let us see:
 
 ```nickel
-let NumberBoolDict = fun label value =>
-  if std.is_record value then
-    let check_fields = value
-      |> std.record.fields
-      |> std.array.fold_left (fun acc field_name =>
-        if std.string.is_match "^\\d+$" field_name then
-          acc # unused and always null through iteration
-        else
-          std.contract.blame_with_message "field name `#{field_name}` is not a number" label
-        ) null in
-
-    value
-      |> std.record.map (fun name value =>
-        let label_with_msg =
-            std.contract.label.with_message "field `#{name}` is not a boolean" label in
-        std.contract.apply Bool label_with_msg value)
+{
+  NumberBoolDict = fun label value =>
+    if std.is_record value then
+      let check_fields =
+        value
+        |> std.record.fields
+        |> std.array.fold_left
+          (
+            fun acc field_name =>
+              if std.string.is_match "^\\d+$" field_name then
+                acc # unused and always null through iteration
+              else
+                std.contract.blame_with_message "field name `%{field_name}` is not a number" label
+          )
+          null
+      in
+      value
+      |> std.record.map
+        (
+          fun name value =>
+            let label_with_msg =
+              std.contract.label.with_message "field `%{name}` is not a boolean" label
+            in
+            std.contract.apply Bool label_with_msg value
+        )
       |> std.seq check_fields
-  else
-    std.contract.blame_with_message "not a record" label
+    else
+      std.contract.blame_with_message "not a record" label
+}
 ```
 
 There is a lot to unwrap here. Please refer to the [syntax](./syntax.md) section
 if you have trouble parsing the example. We first check that the value is a
-record on line 2. We then define `check_fields` one line 3, an expression that
+record on line 3. We then define `check_fields` one line 4, an expression that
 goes over the record field names and check that each one is a sequence of
 digits. We use a left fold with a dummy `null` accumulator as a way to just
 iterate through the array without building up anything interesting.
@@ -615,17 +685,23 @@ For laziness, the interesting bit happens here:
 
 ```nickel
 value
-  |> std.record.map (fun _name value =>
-    std.contract.apply Bool label value)
-  |> std.seq check_fields
+|> std.record.map
+  (
+    fun name value =>
+      let label_with_msg =
+        std.contract.label.with_message "field `%{name}` is not a boolean" label
+      in
+      std.contract.apply Bool label_with_msg value
+  )
+|> std.seq check_fields
 ```
 
 This is the final return value of the contract (at least when `value` is a
 record). This code takes the original record, and maps a function which
 substitutes each fields for the same value but wrapped in a `Bool` contract on
-it. Because records are lazy, *this doesn't actually execute the `Bool`
-contracts right away*. They will be run only when the corresponding field will
-be requested.
+it. Because records (and record mapping) are lazy, *this doesn't actually
+execute the `Bool` contracts right away*. Each contract will only be run when
+the corresponding field will be requested.
 
 Finally, we sequence the result with `check_fields`: if we remove this last line
 and return the mapped value directly, because Nickel is lazy and `check_fields`
@@ -636,12 +712,12 @@ value and continues with the second argument (here, our wrapped `value`).
 Let us see if we indeed preserved laziness:
 
 ```text
-nickel>let config | NumberBoolDict = {
-    "1" = 1 + "a", # Same as our previous "fail"
-    "0" | doc "Some information" = true,
+nickel>
+let config | NumberBoolDict = {
+  "1" | std.FailWith "ooch" = null, # same as our previous "fail"
+  "0" | doc "Some information" = true,
 }
-nickel>:query config."0"
-* value: true
+nickel>:query config "0"
 * documentation: Some information
 ```
 
@@ -649,7 +725,8 @@ Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
 ```text
-nickel>let config | NumberBoolDict = {
+nickel>
+let config | NumberBoolDict = {
   not_a_number = false,
   "0" | doc "Some information" = false,
 }
@@ -657,7 +734,8 @@ nickel>:q config."0"
 error: contract broken by a value [field name `not_a_number` is not a number].
 [..]
 
-nickel>let config | NumberBoolDict = {
+nickel>
+let config | NumberBoolDict = {
   "0" | doc "Some information" = "not a boolean",
 }
 nickel>:q config."0"
@@ -669,14 +747,17 @@ It does!
 
 #### Remark: lazy, always?
 
-Note that our check for field names is not lazy in the sense that even when
-requesting another field `"0"`, we've already triggered this check for all field
-names. This is totally fine: early error reporting is a good thing, as long we
+Note that our check that field names are digits is not lazy in the sense that
+even when requesting another field `"0"`, we've already triggered this check for
+all field names. When evaluating a record lazily, Nickel must still
+determine its structure and in particular the field names. What's not evaluated
+right away is the *content* of each field.
+
+Thus, performing the check for field names right away is fine: early error
+reporting is a good thing, and the field names are readily available, so we
 don't force the evaluation of something that wouldn't be evaluated without the
-contract. The field names of a record are readily available and don't incur any
-evaluation, so we can check for them directly. We could also have put this check
-inside each field, along the `Bool` contract application, making it lazy. But we
-prefer to report this error as soon as possible.
+contract. We could have made this check lazy by putting it inside each field,
+together with the `Bool` contract application.
 
 #### Conclusion
 
