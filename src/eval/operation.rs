@@ -16,7 +16,7 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::Ident,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn,
+    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     parser::utils::parse_number,
     position::TermPos,
     serialize,
@@ -26,6 +26,7 @@ use crate::{
         array::{Array, ArrayAttrs},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
+        string::NickelString,
         BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, PendingContract,
         RecordExtKind, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
@@ -1066,7 +1067,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrFindCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    let result = s.find_regex(&regex);
+                    use crate::term::string::RegexFindResult;
+                    let result = match s.find_regex(&regex) {
+                        RegexFindResult::NoMatch => mk_record!(
+                            ("matched", RichTerm::from(Term::Str(NickelString::new()))),
+                            ("index", RichTerm::from(Term::Num(Number::from(-1)))),
+                            (
+                                "groups",
+                                RichTerm::from(Term::Array(
+                                    Array::default(),
+                                    ArrayAttrs::default()
+                                ))
+                            )
+                        ),
+                        RegexFindResult::Match {
+                            mtch,
+                            index,
+                            groups,
+                        } => mk_record!(
+                            ("matched", RichTerm::from(Term::Str(mtch))),
+                            ("index", RichTerm::from(Term::Num(index))),
+                            (
+                                "groups",
+                                RichTerm::from(Term::Array(
+                                    Array::from_iter(
+                                        groups.into_iter().map(|s| Term::Str(s).into())
+                                    ),
+                                    ArrayAttrs::new().closurized()
+                                ))
+                            )
+                        ),
+                    };
                     Ok(Closure::atomic_closure(result))
                 } else {
                     Err(EvalError::TypeError(
