@@ -175,6 +175,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         } = clos;
         let pos_op_inh = pos_op.into_inherited();
 
+        macro_rules! mk_type_error {
+            ($primop:expr, $expected:expr) => {
+                EvalError::UnaryPrimopTypeError {
+                    primop: String::from($primop),
+                    expected: String::from($expected),
+                    arg_pos,
+                    arg_evaluated: RichTerm { term: t, pos },
+                }
+            };
+            ($primop:expr, $expected:expr, $arg_number:expr) => {
+                EvalError::NAryPrimopTypeError {
+                    primop: String::from($primop),
+                    expected: String::from($expected),
+                    arg_number: $arg_number,
+                    arg_pos,
+                    arg_evaluated: RichTerm { term: t, pos },
+                }
+            };
+        }
+
         match u_op {
             UnaryOp::Ite() => {
                 if let Term::Bool(b) = *t {
@@ -193,6 +213,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         panic!("An If-Then-Else wasn't saturated")
                     }
                 } else {
+                    // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
                         String::from("Bool"),
                         String::from("the condition in an if expression must have type Bool"),
@@ -233,12 +254,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             term: t,
                             pos: pos_op_inh,
                         })),
-                        _ => Err(EvalError::TypeError(
-                            String::from("Bool"),
-                            String::from("&&"),
-                            arg_pos,
-                            RichTerm { term: t, pos },
-                        )),
+                        _ => Err(mk_type_error!("(&&)", "Bool", 1)),
                     }
                 } else {
                     Err(EvalError::NotEnoughArgs(2, String::from("&&"), pos_op))
@@ -257,12 +273,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // only once primary operators have better support for laziness in some
                         // arguments.
                         Term::Bool(false) => Ok(next),
-                        _ => Err(EvalError::TypeError(
-                            String::from("Bool"),
-                            String::from("||"),
-                            arg_pos,
-                            RichTerm { term: t, pos },
-                        )),
+                        _ => Err(mk_type_error!("(||)", "Bool", 1)),
                     }
                 } else {
                     Err(EvalError::NotEnoughArgs(2, String::from("||"), pos_op))
@@ -275,12 +286,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Bool"),
-                        String::from("the unary negation operator must only be applied to values of type Bool"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("unary negation", "Bool"))
                 }
             }
             UnaryOp::Blame() => match_sharedterm! { t, with {
@@ -291,12 +297,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             call_stack: std::mem::take(&mut self.call_stack),
                         }),
                 } else
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("contract.blame takes a Label to blame"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("blame", "Label"))
             },
             UnaryOp::Embed(_id) => {
                 if let Term::Enum(_) = &*t {
@@ -305,12 +306,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos: pos_op_inh,
                     }))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Enum"),
-                        String::from("embed must be applied to an Enum"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("embed", "Enum"))
                 }
             }
             UnaryOp::Match { has_default } => {
@@ -356,24 +352,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .or(default)
                         .ok_or_else(||
                         // ? We should have a dedicated error for unmatched pattern
-                        EvalError::TypeError(
-                            String::from("Enum"),
-                            String::from("match"),
-                            arg_pos,
-                            RichTerm {
-                                term: t,
-                                pos,
-                            },
-                        ))
+                        mk_type_error!("match", "Enum"))
                 } else if let Some(clos) = default {
                     Ok(clos)
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Enum"),
-                        String::from("match must be applied to an Enum"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("match", "Enum", 2))
                 }
             }
             UnaryOp::ChangePolarity() => match_sharedterm! {t, with {
@@ -386,12 +369,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("chng_pol must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("chng_pol", "Label"))
                 }
             },
             UnaryOp::Pol() => {
@@ -401,12 +379,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("polarity must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("polarity", "Label"))
                 }
             }
             UnaryOp::GoDom() => match_sharedterm! {t, with {
@@ -419,12 +392,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("go_dom must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("go_dom", "Label"))
                 }
             },
             UnaryOp::GoCodom() => match_sharedterm! {t, with {
@@ -437,12 +405,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("go_codom must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("go_codom", "Label"))
                 }
             },
             UnaryOp::GoArray() => match_sharedterm! {t, with {
@@ -455,12 +418,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("go_array must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("go_array", "Label"))
                 }
             },
             UnaryOp::GoDict() => match_sharedterm! {t, with {
@@ -473,12 +431,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("go_dict must be applied to a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("go_dict", "Label"))
                 }
             },
             UnaryOp::StaticAccess(id) => {
@@ -504,6 +457,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )), //TODO include the position of operators on the stack
                     }
                 } else {
+                    // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
                         String::from("Record"),
                         String::from("field access only makes sense for records"),
@@ -529,12 +483,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("fields expectes its argument to be a Record"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("fields", "Record"))
                 }
             },
             UnaryOp::ValuesOf() => match_sharedterm! {t, with {
@@ -558,12 +507,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("values expects its argument to be a Record"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("values", "Record"))
                 }
             },
             UnaryOp::ArrayMap() => {
@@ -599,12 +543,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                         }
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Array"),
-                            String::from("map expects its first argument to be an Array"),
-                            arg_pos,
-                            RichTerm { term: t, pos },
-                        ))
+                        Err(mk_type_error!("map", "Array"))
                     }
                 }
             }
@@ -615,12 +554,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op))?;
 
                 let Term::Num(ref n) = *t else {
-                    return Err(EvalError::TypeError(
-                        String::from("Num"),
-                        String::from("generate its first argument to be a Number"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    return Err(mk_type_error!("generate", "Number"))
                 };
 
                 if n < &Number::ZERO {
@@ -709,12 +643,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                         }
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Record"),
-                            String::from("record_map expects its first argument to be a Record"),
-                            arg_pos,
-                            RichTerm { term: t, pos },
-                        ))
+                        Err(mk_type_error!("record_map", "Record", 1))
                     }
                 }
             }
@@ -803,12 +732,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: Environment::new(),
                     })
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Array"),
-                        String::from("length expects its argument to be an Array"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("length", "Array"))
                 }
             }
             UnaryOp::ChunksConcat() => {
@@ -860,6 +784,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     // Since the error halts the evaluation, we don't bother cleaning the stack of the
                     // remaining string chunks.
+                    //
+                    // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
                         String::from("String"),
                         String::from("interpolated values must be of type String"),
@@ -875,12 +801,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_trim expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_trim", "String"))
                 }
             }
             UnaryOp::StrChars() => {
@@ -891,12 +812,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_chars expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_chars", "String"))
                 }
             }
             UnaryOp::StrUppercase() => {
@@ -906,12 +822,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_uppercase expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_uppercase", "String"))
                 }
             }
             UnaryOp::StrLowercase() => {
@@ -921,12 +832,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("string_lowercase expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("string_lowercase", "String"))
                 }
             }
             UnaryOp::StrLength() => {
@@ -937,12 +843,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_length expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_length", "String"))
                 }
             }
             UnaryOp::ToStr() => {
@@ -977,12 +878,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("num_from_str expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("num_from_str", "String"))
                 }
             }
             UnaryOp::EnumFromStr() => {
@@ -992,12 +888,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("enum_from_str expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("enum_from_str", "String"))
                 }
             }
             UnaryOp::StrIsMatch() => {
@@ -1019,12 +910,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_is_match expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_is_match", "String", 1))
                 }
             }
             UnaryOp::StrFind() => {
@@ -1046,12 +932,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(RichTerm::new(matcher, pos)))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_find expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("str_find", "String", 1))
                 }
             }
             UnaryOp::StrIsMatchCompiled(regex) => {
@@ -1061,13 +942,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from(
-                            "a compiled regular expression match expects its argument to be a String",
-                        ),
-                        arg_pos,
-                        RichTerm { term: t, pos },
+                    Err(mk_type_error!(
+                        "a compiled regular expression match",
+                        "String"
                     ))
                 }
             }
@@ -1106,11 +983,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     Ok(Closure::atomic_closure(result))
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("a compiled regular expression search expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
+                    Err(mk_type_error!(
+                        "a compiled regular expression match",
+                        "String"
                     ))
                 }
             }
@@ -1212,12 +1087,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     },
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("record_empty_with_tail expects its first argument to be a Record"),
-                        arg_pos,
-                        RichTerm { term: t, pos }
-                    ))
+                    Err(mk_type_error!("record_empty_with_tail", "Record"))
                 }
             },
             UnaryOp::Trace() => {
@@ -1225,12 +1095,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     eprintln!("std.trace: {s}");
                     Ok(())
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("trace expects its argument to be a String"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("trace", "String"))
                 }?;
 
                 self.stack
@@ -1249,13 +1114,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("label_push_diag expects its argument to be a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    )) }
-                }
+                    Err(mk_type_error!("label_push_diag", "Label"))
+                }}
             }
             UnaryOp::Dualize() => {
                 match_sharedterm! {t, with {
@@ -1266,12 +1126,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("dualize expects its argument to be a Label"),
-                        arg_pos,
-                        RichTerm { term: t, pos },
-                    ))
+                    Err(mk_type_error!("dualize", "Label"))
                 }}
             }
         }
@@ -1306,6 +1161,27 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         } = clos;
         let pos_op_inh = pos_op.into_inherited();
 
+        macro_rules! mk_type_error {
+            ($primop:expr, $expected:expr, $arg_number:expr, $term:expr, $pos:expr) => {
+                EvalError::NAryPrimopTypeError {
+                    primop: String::from($primop),
+                    expected: String::from($expected),
+                    arg_number: $arg_number,
+                    arg_pos: {
+                        match $arg_number {
+                            1 => fst_pos,
+                            2 => snd_pos,
+                            _ => unimplemented!(),
+                        }
+                    },
+                    arg_evaluated: RichTerm {
+                        term: $term,
+                        pos: $pos,
+                    },
+                }
+            };
+        }
+
         match b_op {
             BinaryOp::Seal() => {
                 if let Term::SealingKey(s) = &*t1 {
@@ -1315,26 +1191,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .with_pos(pos_op_inh),
                         ))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Label"),
-                            String::from("seal expects its second argument to be Label"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("seal", "Label", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from("seal expects its first argument to be a SealingKey"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("seal", "SealingKey", 1, t1, pos1))
                 }
             }
             BinaryOp::Plus() => {
@@ -1345,26 +1205,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(+) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(+)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(+) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(+)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::Sub() => {
@@ -1375,26 +1219,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(-) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(-)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(-) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(-)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::Mult() => {
@@ -1405,26 +1233,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(*) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(*)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(*) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(*)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::Div() => {
@@ -1439,51 +1251,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )))
                         }
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(/) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(/)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(/) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(/)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::Modulo() => {
                 let Term::Num(ref n1) = *t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(%) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    return Err(mk_type_error!("(%)", "Number", 1, t1, pos1))
                 };
 
                 let Term::Num(ref n2) = *t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(%) expects its second argument to be a Number"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
-                    ))
+                    return Err(mk_type_error!("(%)", "Number", 2, t2, pos2))
                 };
 
                 if n2 == &Number::ZERO {
@@ -1530,26 +1310,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("pow expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("pow", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("pow expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("pow", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::StrConcat() => {
@@ -1561,26 +1325,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("String"),
-                            String::from("(++) expects its second argument to be a String"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(++)", "String", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("(++) expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(++)", "String", 1, t1, pos1))
                 }
             }
             BinaryOp::Assume() => {
@@ -1635,26 +1383,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             Ok(Closure { body, env: new_env })
                         }
-                        _ => Err(EvalError::TypeError(
-                            String::from("Function or Record"),
-                            String::from("assume expects its first argument to be a Contract"),
-                            fst_pos,
-                            RichTerm {
-                                term: t1,
-                                pos: pos1,
-                            },
-                        )),
+                        _ => Err(mk_type_error!("assuem", "Contract", 1, t1, pos1)),
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("assume expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
-                    ))
+                    Err(mk_type_error!("assume", "Label", 2, t2, pos2))
                 }
             }
             BinaryOp::Unseal() => {
@@ -1675,15 +1407,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Closure::atomic_closure(mk_term::id())
                     })
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from("unseal expects its first argument to be a SealingKey"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("unseal", "SealingKey", 1, t1, pos1))
                 }
             }
             BinaryOp::Eq() => {
@@ -1745,26 +1469,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(<) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(<)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(<) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(<)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::LessOrEq() => {
@@ -1775,26 +1483,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(<=) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(<=)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(<=) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(<=)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::GreaterThan() => {
@@ -1805,26 +1497,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Number"),
-                            String::from("(>) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(>)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(>) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(>)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::GreaterOrEq() => {
@@ -1835,26 +1511,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("Numer"),
-                            String::from("(>=) expects its second argument to be a Number"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("(>=)", "Number", 2, t2, pos2))
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("(>=) expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(>=)", "Number", 1, t1, pos1))
                 }
             }
             BinaryOp::GoField() => match_sharedterm! {t1, with {
@@ -1868,27 +1528,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 )))
                             }
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("Label"),
-                                String::from("go_field expects its second argument to be a Label"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
+                            Err(mk_type_error!("go_field", "Label", 2, t2, pos2))
                         }
                     },
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("go_field expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("go_field", "String", 1, t1, pos1))
                 }
             },
             BinaryOp::DynAccess() => match_sharedterm! {t1, with {
@@ -1919,6 +1563,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 )),
                             }
                         } else {
+                            // Not using mk_type_error! because of a non-uniform message
                             Err(EvalError::TypeError(
                                 String::from("Record"),
                                 String::from("field access only makes sense for records"),
@@ -1934,16 +1579,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // This error should be impossible to trigger. The parser
                     // prevents a dynamic field access where the field name is not syntactically
                     // a string.
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from(".$"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
-                }
+                    Err(mk_type_error!(".$", "String", 1, t1, pos1))
+               }
             },
             BinaryOp::DynExtend {
                 metadata,
@@ -1981,27 +1618,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 }
                             }
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from("record_insert expects its second argument to be a Record"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
+                            Err(mk_type_error!("record_insert", "Record", 2, t2, pos2))
                         }
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("record_insert expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("record_insert", "String", 1, t1, pos1))
                 }
             }
             BinaryOp::DynRemove() => match_sharedterm! {t1, with {
@@ -2038,27 +1659,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 }
                             }
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from("record_remove expects its second argument to be a Record"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
+                            Err(mk_type_error!("record_remove", "Record", 2, t2, pos2))
                         }
                     },
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("record_remove expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("record_remove", "String", 1, t1, pos1))
                 }
             },
             BinaryOp::HasField() => match_sharedterm! {t1, with {
@@ -2069,27 +1674,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 pos_op_inh,
                             )))
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("Record"),
-                                String::from("has_field expects its second argument to be a Record"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
+                            Err(mk_type_error!("has_field", "Record", 2, t2, pos2))
                         }
                     }
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("has_field expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("has_field", "String", 1, t1, pos1))
                 }
             },
             BinaryOp::ArrayConcat() => match_sharedterm! {t1,
@@ -2156,28 +1745,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 })
                             }
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("Array"),
-                                String::from("(@) expects its second argument to be an Array"),
-                                snd_pos,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                            ))
+                            Err(mk_type_error!("(@)", "Array", 2, t2, pos2))
 
                         }
                     },
                 } else {
-                    Err(EvalError::TypeError(
-                        String::from("Array"),
-                        String::from("(@) expects its first argument to be an Array"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    Err(mk_type_error!("(@)", "Array", 1, t1, pos1))
                 }
             },
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
@@ -2201,24 +1774,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: env1,
                     })
                 }
-                (Term::Array(..), _) => Err(EvalError::TypeError(
-                    String::from("Number"),
-                    String::from("elem_at expects its second argument to be a Number"),
-                    snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                )),
-                (_, _) => Err(EvalError::TypeError(
-                    String::from("Array"),
-                    String::from("elem_at expects its first argument to be an Array"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                )),
+                (Term::Array(..), _) => Err(mk_type_error!("elem_at", "Number", 2, t2, pos2)),
+                (_, _) => Err(mk_type_error!("elem_at", "Array", 1, t1, pos1)),
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
@@ -2238,14 +1795,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             ),
             BinaryOp::Hash() => {
                 let mk_err_fst = |t1| {
-                    Err(EvalError::TypeError(
-                        String::from("[| `Md5, `Sha1, `Sha256, `Sha512 |]"),
-                        String::from("hash expects its first argument to be an Enum representing a known hash algorithm"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
+                    Err(mk_type_error!(
+                        "hash",
+                        "[| `Md5, `Sha1, `Sha256, `Sha512 |]",
+                        1,
+                        t1,
+                        pos1
                     ))
                 };
 
@@ -2280,15 +1835,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("String"),
-                            String::from("hash expects its second argument to be a String"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("hash", "String", 2, t2, pos2))
                     }
                 } else {
                     mk_err_fst(t1)
@@ -2296,14 +1843,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::Serialize() => {
                 let mk_err_fst = |t1| {
-                    Err(EvalError::TypeError(
-                        String::from("[| `Json, `Yaml, `Toml |]"),
-                        String::from("serialize expects its first argument to be an Enum representing a known serialization format"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
+                    Err(mk_type_error!(
+                        "serialize",
+                        "[| `Json, `Yaml, `Toml |]",
+                        1,
+                        t1,
+                        pos1
                     ))
                 };
 
@@ -2338,14 +1883,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::Deserialize() => {
                 let mk_err_fst = |t1| {
-                    Err(EvalError::TypeError(
-                        String::from("[| `Json, `Yaml, `Toml |]"),
-                        String::from("deserialize expects its first argument to be an Enum representing a known serialization format"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
+                    Err(mk_type_error!(
+                        "deserialize",
+                        "[| `Json, `Yaml, `Toml |]",
+                        1,
+                        t1,
+                        pos1
                     ))
                 };
 
@@ -2378,15 +1921,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure::atomic_closure(rt.with_pos(pos_op_inh)))
                     } else {
-                        Err(EvalError::TypeError(
-                            String::from("String"),
-                            String::from("deserialize expects its second argument to be a String"),
-                            snd_pos,
-                            RichTerm {
-                                term: t2,
-                                pos: pos2,
-                            },
-                        ))
+                        Err(mk_type_error!("deserialize", "String", 2, t2, pos2))
                     }
                 } else {
                     mk_err_fst(t1)
@@ -2400,24 +1935,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), _) => Err(EvalError::TypeError(
-                    String::from("String"),
-                    String::from("str_split expects its second argument to be a String"),
-                    snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                )),
-                (_, _) => Err(EvalError::TypeError(
-                    String::from("String"),
-                    String::from("str_split expects its first argument to be a String"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                )),
+                (Term::Str(_), _) => Err(mk_type_error!("str_split", "String", 2, t2, pos2)),
+                (_, _) => Err(mk_type_error!("str_split", "String", 1, t1, pos1)),
             },
             BinaryOp::StrContains() => match (&*t1, &*t2) {
                 (Term::Str(s1), Term::Str(s2)) => {
@@ -2427,24 +1946,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         pos_op_inh,
                     )))
                 }
-                (Term::Str(_), _) => Err(EvalError::TypeError(
-                    String::from("String"),
-                    String::from("str_contains expects its second argument to be a String"),
-                    snd_pos,
-                    RichTerm {
-                        term: t2,
-                        pos: pos2,
-                    },
-                )),
-                (_, _) => Err(EvalError::TypeError(
-                    String::from("String"),
-                    String::from("str_contains expects its first argument to be a String"),
-                    fst_pos,
-                    RichTerm {
-                        term: t1,
-                        pos: pos1,
-                    },
-                )),
+                (Term::Str(_), _) => Err(mk_type_error!("str_contains", "String", 2, t2, pos2)),
+                (_, _) => Err(mk_type_error!("str_contains", "String", 1, t1, pos1)),
             },
             BinaryOp::ArrayLazyAssume() => {
                 let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
@@ -2459,15 +1962,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // FIXME: use match?
                 let lbl = match_sharedterm! {t1, with {
                         Term::Lbl(lbl) => lbl
-                    } else return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("array_lazy_assume expects its first argument to be a Label"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        },
-                    ))
+                    } else return Err(mk_type_error!("array_lazy_assume", "Label", 1, t1, pos1))
                 };
 
                 match_sharedterm! {t2,
@@ -2486,15 +1981,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             Ok(array_with_ctr)
                         }
-                    } else Err(EvalError::TypeError(
-                        String::from("Array"),
-                        String::from("array_lazy_assume expects its second argument to be an Array"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2,
-                        },
-                    ))
+                    } else Err(mk_type_error!("array_lazy_assume", "Array", 2, t2, pos2))
                 }
             }
             BinaryOp::RecordLazyAssume() => {
@@ -2512,15 +1999,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let label = match_sharedterm! {t1, with {
                         Term::Lbl(label) => label
-                    } else return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("record_lazy_assume expects its second argument to be a Label"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1,
-                            pos: pos1,
-                        }
-                    ))
+                    } else return Err(mk_type_error!("record_lazy_assume", "Label", 1, t1, pos1))
                 };
 
                 match_sharedterm! {t2,
@@ -2568,15 +2047,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 env,
                             })
                         }
-                    } else Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("record_lazy_assume expects its second argument to be a Record"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2,
-                            pos: pos2
-                        }
-                    ))
+                    } else Err(mk_type_error!("record_lazy_assume", "Record", 2, t2, pos2))
                 }
             }
             BinaryOp::LabelWithMessage() => {
@@ -2584,27 +2055,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(message) = t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("label_with_message expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1.into(),
-                            pos: pos1,
-                        },
-                    ))
+                    return Err(mk_type_error!("label_with_message", "String", 1, t1.into(), pos1))
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("label_with_message expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2.into(),
-                            pos: pos2,
-                        },
-                    ))
+                    return Err(mk_type_error!("label_with_message", "String", 2, t2.into(), pos2))
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2630,15 +2085,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t1 = t1_subst.term.into_owned();
 
                 let Term::Array(array, _) = t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Array String"),
-                        String::from("label_with_notes expects its first argument to be an Array of Strings"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1.into(),
-                            pos: pos1,
-                        },
-                    ));
+                    return Err(mk_type_error!("label_with_notes", "Array String", 1, t1.into(), pos1));
                 };
 
                 let notes = array
@@ -2649,29 +2096,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         if let Term::Str(s) = term {
                             Ok(s.into_inner())
                         } else {
-                            Err(EvalError::TypeError(
-                                String::from("String"),
-                                String::from("label_with_notes expects each element of its first argument to be a String"),
-                                TermPos::None,
-                                RichTerm {
-                                    term: term.into(),
-                                    pos: element.pos,
-                                },
+                            Err(mk_type_error!(
+                                "label_with_notes",
+                                "String",
+                                1,
+                                term.into(),
+                                element.pos
                             ))
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("label_with_notes expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2.into(),
-                            pos: pos2,
-                        },
-                    ))
+                    return Err(mk_type_error!("label_with_notes", "Label", 2, t2.into(), pos2))
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2684,27 +2121,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(note) = t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("label_append_note expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1.into(),
-                            pos: pos1,
-                        },
-                    ));
+                    return Err(mk_type_error!("label_append_note", "String", 1, t1.into(), pos1));
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("label_append_note expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2.into(),
-                            pos: pos2,
-                        },
-                    ))
+                    return Err(mk_type_error!("label_append_note", "Label", 2, t2.into(), pos2));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2717,27 +2138,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::SealingKey(key) = t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from("lookup_type_variable expects its first argument to be a SealingKey"),
-                        fst_pos,
-                        RichTerm {
-                            term: t1.into(),
-                            pos: pos1,
-                        }
-                    ));
+                    return Err(mk_type_error!("lookup_type_variable", "SealingKey", 1, t1.into(), pos1));
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("lookup_type_variable expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
-                            term: t2.into(),
-                            pos: pos2,
-                        }
-                    ));
+                    return Err(mk_type_error!("lookup_type_variable", "Label", 2, t2.into(), pos2));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2788,33 +2193,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         )))
                     }
-                    (Term::Str(_), Term::Str(_), _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        format!("{n_op} expects its third argument to be a String"),
-                        thd_pos,
-                        RichTerm {
+                    (Term::Str(_), Term::Str(_), _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: format!("{n_op}"),
+                        expected: String::from("String"),
+                        arg_number: 3,
+                        arg_pos: thd_pos,
+                        arg_evaluated: RichTerm {
                             term: thd,
                             pos: pos3,
                         },
-                    )),
-                    (Term::Str(_), _, _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        format!("{n_op} expects its second argument to be a String"),
-                        snd_pos,
-                        RichTerm {
+                    }),
+                    (Term::Str(_), _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: format!("{n_op}"),
+                        expected: String::from("String"),
+                        arg_number: 2,
+                        arg_pos: snd_pos,
+                        arg_evaluated: RichTerm {
                             term: snd,
                             pos: pos2,
                         },
-                    )),
-                    (_, _, _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        format!("{n_op} expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
+                    }),
+                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: format!("{n_op}"),
+                        expected: String::from("String"),
+                        arg_number: 1,
+                        arg_pos: fst_pos,
+                        arg_evaluated: RichTerm {
                             term: fst,
                             pos: pos1,
                         },
-                    )),
+                    }),
                 }
             }
             NAryOp::StrSubstr() => {
@@ -2833,33 +2241,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Closure::atomic_closure(RichTerm::new(Term::Str(substr), pos_op_inh))
                         })
                         .map_err(|e| EvalError::Other(format!("{}", e), pos_op)),
-                    (Term::Str(_), Term::Num(_), _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_substr expects its third argument to be a String"),
-                        thd_pos,
-                        RichTerm {
+                    (Term::Str(_), Term::Num(_), _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("str_subst"),
+                        expected: String::from("String"),
+                        arg_number: 3,
+                        arg_pos: thd_pos,
+                        arg_evaluated: RichTerm {
                             term: thd,
                             pos: pos3,
                         },
-                    )),
-                    (Term::Str(_), _, _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_substr expects its second argument to be a String"),
-                        snd_pos,
-                        RichTerm {
+                    }),
+                    (Term::Str(_), _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("str_subst"),
+                        expected: String::from("String"),
+                        arg_number: 2,
+                        arg_pos: snd_pos,
+                        arg_evaluated: RichTerm {
                             term: snd,
                             pos: pos2,
                         },
-                    )),
-                    (_, _, _) => Err(EvalError::TypeError(
-                        String::from("String"),
-                        String::from("str_substr expects its first argument to be a String"),
-                        fst_pos,
-                        RichTerm {
+                    }),
+                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("str_substr"),
+                        expected: String::from("String"),
+                        arg_number: 1,
+                        arg_pos: fst_pos,
+                        arg_evaluated: RichTerm {
                             term: fst,
                             pos: pos1,
                         },
-                    )),
+                    }),
                 }
             }
             NAryOp::MergeContract() => {
@@ -2989,47 +2400,49 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Ok(Closure { body, env })
                     }
                     (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
-                        Err(EvalError::TypeError(
-                            String::from("Record"),
-                            String::from(
-                                "record_seal_tail expects its fourth argument to be a Record",
-                            ),
-                            frth_pos,
-                            RichTerm {
+                        Err(EvalError::NAryPrimopTypeError {
+                            primop: String::from("record_seal_tail"),
+                            expected: String::from("Record"),
+                            arg_number: 4,
+                            arg_pos: frth_pos,
+                            arg_evaluated: RichTerm {
                                 term: a4,
                                 pos: pos4,
                             },
-                        ))
+                        })
                     }
-                    (Term::SealingKey(_), Term::Lbl(_), _, _) => Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("record_seal_tail expects its third argument to be a Record"),
-                        thd_pos,
-                        RichTerm {
-                            term: a3,
-                            pos: pos3,
-                        },
-                    )),
-                    (Term::SealingKey(_), _, _, _) => Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("record_seal_tail expects its second argument to be a Label"),
-                        snd_pos,
-                        RichTerm {
+                    (Term::SealingKey(_), Term::Lbl(_), _, _) => {
+                        Err(EvalError::NAryPrimopTypeError {
+                            primop: String::from("record_seal_tail"),
+                            expected: String::from("Record"),
+                            arg_number: 3,
+                            arg_pos: thd_pos,
+                            arg_evaluated: RichTerm {
+                                term: a3,
+                                pos: pos3,
+                            },
+                        })
+                    }
+                    (Term::SealingKey(_), _, _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("record_seal_tail"),
+                        expected: String::from("Label"),
+                        arg_number: 2,
+                        arg_pos: snd_pos,
+                        arg_evaluated: RichTerm {
                             term: a2,
                             pos: pos2,
                         },
-                    )),
-                    (_, _, _, _) => Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from(
-                            "record_seal_tail expects its first argument to be a SealingKey",
-                        ),
-                        fst_pos,
-                        RichTerm {
+                    }),
+                    (_, _, _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("record_seal_tail"),
+                        expected: String::from("SealingKey"),
+                        arg_number: 1,
+                        arg_pos: fst_pos,
+                        arg_evaluated: RichTerm {
                             term: a1,
                             pos: pos1,
                         },
-                    )),
+                    }),
                 }
             }
             NAryOp::RecordUnsealTail() => {
@@ -3080,39 +2493,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             call_stack: std::mem::take(&mut self.call_stack),
                         })
                         .map(|t| Closure { body: t, env: env3 }),
-                    (Term::SealingKey(_), Term::Lbl(_), _) => Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from(
-                            "record_unseal_tail expects its third argument to be a Record",
-                        ),
-                        thd_pos,
-                        RichTerm {
+                    (Term::SealingKey(_), Term::Lbl(_), _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("record_unseal_tail"),
+                        expected: String::from("Record"),
+                        arg_number: 3,
+                        arg_pos: thd_pos,
+                        arg_evaluated: RichTerm {
                             term: a3,
                             pos: pos3,
                         },
-                    )),
-                    (Term::SealingKey(_), _, _) => Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from(
-                            "record_unseal_tail expects its second argument to be a Label",
-                        ),
-                        snd_pos,
-                        RichTerm {
+                    }),
+                    (Term::SealingKey(_), _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("record_unseal_tail"),
+                        expected: String::from("Label"),
+                        arg_number: 2,
+                        arg_pos: snd_pos,
+                        arg_evaluated: RichTerm {
                             term: a2,
                             pos: pos2,
                         },
-                    )),
-                    (_, _, _) => Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from(
-                            "record_unseal_tail expects its first argument to be a SealingKey",
-                        ),
-                        fst_pos,
-                        RichTerm {
+                    }),
+                    (_, _, _) => Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("record_unseal_tail"),
+                        expected: String::from("SealingKey"),
+                        arg_number: 1,
+                        arg_pos: fst_pos,
+                        arg_evaluated: RichTerm {
                             term: a1,
                             pos: pos1,
                         },
-                    )),
+                    }),
                 }
             }
             NAryOp::InsertTypeVar() => {
@@ -3156,39 +2566,42 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Term::SealingKey(key) = *key else {
-                    return Err(EvalError::TypeError(
-                        String::from("SealingKey"),
-                        String::from("insert_type_variable expects its first argument to be a SealingKey"),
-                        key_pos,
-                        RichTerm {
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("insert_type_variable"),
+                        expected: String::from("SealingKey"),
+                        arg_number: 1,
+                        arg_pos: key_pos,
+                        arg_evaluated: RichTerm {
                             term: key,
                             pos: pos1,
-                        }
-                    ));
+                        },
+                    });
                 };
 
                 let Ok(polarity) = Polarity::try_from(polarity.as_ref()) else {
-                    return Err(EvalError::TypeError(
-                        String::from("Polarity"),
-                        String::from("insert_type_variable expects its second argument to be a type variable Polarity"),
-                        polarity_pos,
-                        RichTerm {
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("insert_type_variable"),
+                        expected: String::from("Polarity"),
+                        arg_number: 2,
+                        arg_pos: polarity_pos,
+                        arg_evaluated: RichTerm {
                             term: polarity,
                             pos: pos2,
                         },
-                    ))
+                    });
                 };
 
                 let Term::Lbl(label) = &*label else {
-                    return Err(EvalError::TypeError(
-                        String::from("Label"),
-                        String::from("insert_type_variable expects its third argument to be a Label"),
-                        label_pos,
-                        RichTerm {
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("insert_type_variable"),
+                        expected: String::from("Label"),
+                        arg_number: 3,
+                        arg_pos: label_pos,
+                        arg_evaluated: RichTerm {
                             term: label,
                             pos: pos3,
-                        }
-                    ));
+                        },
+                    });
                 };
 
                 let mut new_label = label.clone();
@@ -3242,38 +2655,41 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 debug_assert!(args.next().is_none());
 
                 let Term::Num(ref start) = &*t1 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("array_slice expects its first argument to be a Number"),
-                        fst_pos,
-                        RichTerm {
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("array_slice"),
+                        expected: String::from("Number"),
+                        arg_number: 1,
+                        arg_pos: fst_pos,
+                        arg_evaluated: RichTerm {
                             term: t1,
                             pos: pos1,
                         },
-                    ));
+                    });
                 };
 
                 let Term::Num(ref end) = &*t2 else {
-                    return Err(EvalError::TypeError(
-                        String::from("Number"),
-                        String::from("array_slice expects its second argument to be a Number"),
-                        snd_pos,
-                        RichTerm {
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("array_slice"),
+                        expected: String::from("Number"),
+                        arg_number: 2,
+                        arg_pos: snd_pos,
+                        arg_evaluated: RichTerm {
                             term: t2,
                             pos: pos2,
                         },
-                    ));
+                    });
                 };
 
                 let t3_owned = t3.into_owned();
 
                 let Term::Array(mut array, attrs) = t3_owned else {
-                    return Err(EvalError::TypeError(
-                        String::from("Array"),
-                        String::from("array_slice expects its third argument to be an Array"),
-                        third_pos,
-                        RichTerm::new(t3_owned, pos3),
-                    ));
+                    return Err(EvalError::NAryPrimopTypeError {
+                        primop: String::from("array_slice"),
+                        expected: String::from("Array"),
+                        arg_number: 3,
+                        arg_pos: third_pos,
+                        arg_evaluated: RichTerm::new(t3_owned, pos3),
+                    });
                 };
 
                 let Ok(start_as_usize) = usize::try_from(start) else {
