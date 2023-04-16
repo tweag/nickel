@@ -296,7 +296,7 @@ in
 } | Schema
 ```
 
-`Schema` is schema describing a configuration with:
+`Schema` is a schema describing a configuration with:
 
 - a field `path` that must be a string
 - a sub-record `connection`, which has a `server_port` and a `host` field that
@@ -349,7 +349,7 @@ representing valid port numbers.
 
 #### Metadata
 
-In addition to defining the contracts of fields, record contract can also
+In addition to defining the contracts of fields, record contracts can also
 attach metadata (see [merging](./merging.md)) to fields, such as a documentation
 or default value:
 
@@ -524,7 +524,7 @@ contract. Whenever `x` is a string, `add_semi` does return a string. Here, the
 **caller** (the user of the function) is to blame, and not the **callee** (the
 function). This is an important distinction. Say you wrote `add_semi` as a part
 of a library. A wrong call is a random user, somewhere, misusing `add_semi`.
-This is not your responsibility to fix it, assuming the contract error messages
+This is not your responsibility to fix, assuming the contract error messages
 are good enough to let users understand the issue quickly.
 
 The second example is the converse. The caller provides a string, as requested
@@ -532,7 +532,7 @@ by the contract, but the function returns a number. The blame is on the
 **callee**. If you are the library writer who shipped the `wrong` function, this
 is a bug you have to fix.
 
-The interpreter automatically performs bookkeeping for functions contracts in
+The interpreter automatically performs bookkeeping for function contracts in
 order to make this caller/callee distinction:
 
 ```text
@@ -676,7 +676,7 @@ is the rationale behind contracts returning a value. Let us see:
 
 There is a lot to unwrap here. Please refer to the [syntax](./syntax.md) section
 if you have trouble parsing the example. We first check that the value is a
-record on line 3. We then define `check_fields` one line 4, an expression that
+record on line 3. We then define `check_fields` on line 4, an expression that
 goes over the record field names and check that each one is a sequence of
 digits. We use a left fold with a dummy `null` accumulator as a way to just
 iterate through the array without building up anything interesting.
