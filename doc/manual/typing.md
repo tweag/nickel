@@ -84,7 +84,7 @@ This example illustrates how dynamic typing delays type errors, making them
 harder to diagnose. Here, `filter` is fine, but the error still points to inside
 its implementation. The actual issue is that the caller provided an argument of
 the wrong type: the filtering function should return a boolean, but the above
-one returns either the original element (a number) or `null`. This is a tiny
+one returns either the original element or `-1`, both numbers. This is a tiny
 example, so debugging is still doable here. In a real code base (where `filter`
 could come from an external library), you might have a harder time diagnosing
 the issue from the error report.
@@ -96,7 +96,7 @@ catch the error early, because the type expected by `filter` and the return type
 of the filtering function passed as the argument don't match.
 
 To call the typechecker to the rescue, use `:` to introduce a *type annotation*.
-This annotation switches the typechecker on inside the annotated expression. A
+This annotation turns on the typechecker inside the annotated expression. A
 type annotation can appear inline on any expression, or be attached to a
 let-binding or a record field. We will refer to the annotated expression as a
 *statically typed block*.
@@ -168,7 +168,7 @@ Nickel is gradually typed, meaning you can mix both static typing and dynamic
 typing. The default is dynamic typing. The static typechecker kicks in when
 using a type annotation `exp : Type`, which delimits a statically typed block.
 
-Nickel also has type inference, sparing you writing unnecessary type
+Nickel also has type inference, sparing you from writing unnecessary type
 annotations. You can use `_` anywhere in a type to ask the typechecker to
 infer this part for you.
 
@@ -210,8 +210,7 @@ The following type constructors are available:
   ```
 
 - **Dictionary**: `{_: T}`. A record whose field
-  names are statically unknown but are all of the type `T`. Typically used to
-  model dictionaries.
+  names are statically unknown but are all of the type `T`.
 
   Example:
 
@@ -273,7 +272,7 @@ type. Here is our polymorphic type annotation for `filter`:
 }
 ```
 
-Now, filter can be used on numbers as in the initial example, but on strings as
+Now, filter can be used not only on numbers as in the initial example, but on strings as
 well:
 
 ```nickel
@@ -370,7 +369,7 @@ various kinds. In a simple type system, you can hit the following issue:
 
 ```text
 error: type error: extra row `jan`
-  ┌─ /home/yago/Pro/Tweag/projects/nickel/nickel/doc/manual/foo.ncl:9:25
+  ┌─ src.ncl:9:25
   │
 9 │     partial1 = add_total r1 r2,
   │                         ^^ this expression
@@ -448,7 +447,7 @@ type.
 The type system of Nickel has the primitive types (`Dyn`, `Number`, `String`,
 and `Bool`) and type constructors for arrays, records and functions. Nickel
 features generics via polymorphism, introduced by the `forall` keyword. A type
-can not only be generic in other types, but records types can also be generic in
+can not only be generic in other types, but record types can also be generic in
 their tail. The tail is delimited by `;`.
 
 ## Interaction between statically typed and dynamically typed code
