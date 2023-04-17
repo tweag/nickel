@@ -45,17 +45,16 @@ example:
 configuration using `nickel export`, we get a reasonable error message:
 
 ```text
-error: Type error
-  ┌─ repl-input-3:8:16
+error: type error
+  ┌─ repl-input-0:8:16
   │
 3 │   version = "0.1.1",
   │             ------- evaluated to this
   ·
 8 │       "hello-%{version + 1}",
-  │                ^^^^^^^ This expression has type String, but Number was expected
+  │                ^^^^^^^ this expression has type String, but Number was expected
   │
   = +, 1st argument
-
 ```
 
 While dynamic typing is fine for configuration code, the trouble begins once we
@@ -64,19 +63,19 @@ are using functions. Say we want to filter over an array of elements:
 ```nickel
 let filter = fun pred l =>
   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
-filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
 ```
 
 Result:
 
 ```text
 error: type error
-  ┌─ repl-input-0:2:40
+  ┌─ repl-input-3:2:40
   │
 2 │   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
-  │                                        ^^^^^^ this expression has type Null, but Bool was expected
-3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │                                            ---- evaluated to this
+  │                                        ^^^^^^ this expression has type Number, but Bool was expected
+3 │ filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
+  │                                            -- evaluated to this
   │
   = if
 ```
@@ -84,23 +83,23 @@ error: type error
 This example illustrates how dynamic typing delays type errors, making them
 harder to diagnose. Here, `filter` is fine, but the error still points to inside
 its implementation. The actual issue is that the caller provided an argument of
-the wrong type: the filtering function should return a boolean but returns
-either the original element (a number) or `null`. This is a tiny example, so
-debugging is still doable here. In a real code base, the user (who probably
-wouldn't even be the author of `filter`) might have a harder time solving the
-issue from the error report.
+the wrong type: the filtering function should return a boolean, but the above
+one returns either the original element (a number) or `null`. This is a tiny
+example, so debugging is still doable here. In a real code base (where `filter`
+could come from an external library), you might have a harder time diagnosing
+the issue from the error report.
 
 ### Static typing
 
 The `filter` example is the poster child for static typing. The typechecker will
-catch the error early as the type expected by `filter` and the return type of
-the filtering function passed as the argument don't match .
+catch the error early, because the type expected by `filter` and the return type
+of the filtering function passed as the argument don't match.
 
 To call the typechecker to the rescue, use `:` to introduce a *type annotation*.
-This annotation switches the typechecker on inside the annotated expression, be
-it a variable definition, a record field or any expression using an inline
-annotation. We will refer to such an annotated expression as a *statically typed
-block*.
+This annotation switches the typechecker on inside the annotated expression. A
+type annotation can appear inline on any expression, or be attached to a
+let-binding or a record field. We will refer to the annotated expression as a
+*statically typed block*.
 
 Example:
 
@@ -123,18 +122,18 @@ a type annotation at the top-level:
 
 ```nickel
 (let filter = fun pred l =>
-     std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
-filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Number
+  std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
+filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]) : Array Number
 ```
 
 Result:
 
 ```text
-error: Incompatible types
-  ┌─ repl-input-12:3:37
+error: incompatible types
+  ┌─ repl-input-6:3:18
   │
-3 │ filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]) : Array Number
-  │                                     ^ this expression
+3 │ filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]) : Array Number
+  │                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
   │
   = The type of the expression was expected to be `Bool`
   = The type of the expression was inferred to be `Number`
@@ -147,6 +146,22 @@ number. Notice how we just had to give the top-level annotation `Array Number`.
 Nickel performs type inference, so that you don't have to write the type for
 `filter`, the filtering function nor the array.
 
+You can use a *type wildcard*, written `_`, when you want the typechecker to
+infer the part of a type for you:
+
+```nickel
+# will infer `Array String`
+let foo : Array _ = ["hello", "there"] in
+# will infer `{first: Number, second: Bool}`
+let r : {first: _, second: _} = {first = 0 + 1, second = 1 < 2} in
+
+# will infer String
+std.array.first foo : _
+```
+
+For debugging purpose, the quickest way to have the typechecker kick in is
+simply to slap a `: _` on a problematic expression.
+
 ### Take-away
 
 Nickel is gradually typed, meaning you can mix both static typing and dynamic
@@ -154,15 +169,16 @@ typing. The default is dynamic typing. The static typechecker kicks in when
 using a type annotation `exp : Type`, which delimits a statically typed block.
 
 Nickel also has type inference, sparing you writing unnecessary type
-annotations.
+annotations. You can use `_` anywhere in a type to ask the typechecker to
+infer this part for you.
 
 ## Type system
 
 Let us now have a quick tour of the type system. The basic types are:
 
-- `Dyn`: the dynamic type. This is the type given to most expressions outside of
+- `Dyn`: the dynamic type. This is the type given to most expressions outside
   a typed block. A value of type `Dyn` can be pretty much anything.
-- `Number`: the only number type. Currently implemented as arbitrary precision
+- `Number`: the only number type. Currently, implemented as arbitrary precision
     rationals. Common arithmetic operations are exact. The power function using
     a non-integer exponent is computed on floating point values, which
     might incur rounding errors.
@@ -194,8 +210,8 @@ The following type constructors are available:
   ```
 
 - **Dictionary**: `{_: T}`. A record whose field
-  names are statically unknown but are all of type `T`. Typically used to model
-  dictionaries.
+  names are statically unknown but are all of the type `T`. Typically used to
+  model dictionaries.
 
   Example:
 
@@ -229,8 +245,8 @@ The following type constructors are available:
 
   ```nickel
   {
-    incr : Number -> Number = fun x => x + 1,
-    mkPath : String -> String -> String -> String = fun basepath filename ext =>
+    increment : Number -> Number = fun x => x + 1,
+    make_path : String -> String -> String -> String = fun basepath filename ext =>
       "%{basepath}/%{filename}.%{ext}",
   }
   ```
@@ -257,13 +273,13 @@ type. Here is our polymorphic type annotation for `filter`:
 }
 ```
 
-Now, filter can be used on numbers as in our initial example, but on strings as
+Now, filter can be used on numbers as in the initial example, but on strings as
 well:
 
 ```nickel
 {
   foo : Array String = filter (fun s => std.string.length s > 2) ["a","ab","abcd"],
-  bar : Array Number = filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6],
+  bar : Array Number = filter (fun x => x % 2 == 0) [1,2,3,4,5,6],
 }
 ```
 
@@ -275,21 +291,23 @@ let snd : forall a b. a -> b -> b = fun x y => y in
 { n = fst 1 "a", s = snd 1 "a" } : {n: Number, s: String}
 ```
 
-Or even nest them:
-
-```nickel
-let higherRankId : forall a. (forall b. b -> b) -> a -> a
-  = fun id x => id x in
-let id : forall a. a -> a
-  = fun x => x in
-higherRankId id 0 : Number
-```
+<!-- Comment this part out for now, as we need to fix -->
+<!-- https://github.com/tweag/nickel/issues/584 before this typechecks. -->
+<!-- Or even nest them: -->
+<!--  -->
+<!-- ```nickel -->
+<!-- let higherRankId : forall a. (forall b. b -> b) -> a -> a -->
+<!--   = fun id x => id x in -->
+<!-- let id : forall a. a -> a -->
+<!--   = fun x => x in -->
+<!-- higherRankId id 0 : Number -->
+<!-- ``` -->
 
 #### Type inference and polymorphism
 
-If we go back to our first example of the statically typed `filter` without the
-polymorphic annotation and try to add a call to `filter` on an array of strings,
-the typechecker surprisingly rejects our code:
+Let's go back to our first statically typed `filter`, without the polymorphic
+annotation. If we try to add a call to `filter` on an array of strings, the
+typechecker surprisingly rejects our code:
 
 ```nickel
 (let filter = ... in
@@ -336,30 +354,34 @@ In a configuration language, you will often find yourself handling records of
 various kinds. In a simple type system, you can hit the following issue:
 
 ```nickel
-(let addTotal: {total: Number} -> {total: Number} -> Number
-  = fun r1 r2 => r1.total + r2.total in
-let r1 = {jan = 200, feb = 300, march = 10, total = jan + feb} in
-let r2 = {aug = 50, sept = 20, total = aug + sept} in
-let r3 = {may = 1300, june = 400, total = may + june} in
-{
-  partial1 = addTotal r1 r2,
-  partial2 = addTotal r2 r3,
-}) : {partial1: Number, partial2: Number}
+(
+  let add_total : { total : Number } -> { total : Number } -> Number
+    = fun r1 r2 => r1.total + r2.total
+    in
+  let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
+  let r2 = { aug = 50, sept = 20, total = aug + sept } in
+  let r3 = { may = 1300, june = 400, total = may + june } in
+  {
+    partial1 = add_total r1 r2,
+    partial2 = add_total r2 r3,
+  }
+) : { partial1 : Number, partial2 : Number }
 ```
 
 ```text
-error: Type error: extra row `sept`
-  ┌─ repl-input-40:8:23
+error: type error: extra row `jan`
+  ┌─ /home/yago/Pro/Tweag/projects/nickel/nickel/doc/manual/foo.ncl:9:25
   │
-8 │   partial2 = addTotal r2 r3,
-  │                       ^^ this expression
+9 │     partial1 = add_total r1 r2,
+  │                         ^^ this expression
   │
-  = The type of the expression was expected to be `{total: Number}`, which does not contain the field `sept`
-  = The type of the expression was inferred to be `{total: Number, sept: Number, aug: Number}`, which contains the extra field `sept`
+  = The type of the expression was expected to be `{total: Number}`, which does not contain the field `jan`
+  = The type of the expression was inferred to be `{jan: Number, march: Number, feb: Number, total: Number}`, which contai
+ns the extra field `jan`
 ```
 
 The problem here is that for this code to run fine, the requirement of
-`addTotal` should be that both arguments have a field `total: Number`, but could
+`add_total` should be that both arguments have a field `total: Number`, but could
 very well have other fields, for all we care. Unfortunately, we don't know right
 now how to express this constraint. The current annotation is too restrictive,
 because it imposes that arguments have exactly one field `total: Number`, and
@@ -371,31 +393,34 @@ we can substitute a parameter for a whole sequence of field declarations, also
 referred to as rows:
 
 ```nickel
-(let addTotal: forall a b. {total: Number ; a} -> {total: Number ; b} -> Number
-  = fun r1 r2 => r1.total + r2.total in
-let r1 = {jan = 200, feb = 300, march = 10, total = jan + feb} in
-let r2 = {aug = 50, sept = 20, total = aug + sept} in
-let r3 = {may = 1300, june = 400, total = may + june} in
-{
-  partial1 = addTotal r1 r2,
-  partial2 = addTotal r2 r3,
-}) : {partial1: Number, partial2: Number}
+(
+  let add_total : forall a b. { total : Number; a } -> { total : Number; b } -> Number
+    = fun r1 r2 => r1.total + r2.total
+    in
+  let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
+  let r2 = { aug = 50, sept = 20, total = aug + sept } in
+  let r3 = { may = 1300, june = 400, total = may + june } in
+  {
+    partial1 = add_total r1 r2,
+    partial2 = add_total r2 r3,
+  }
+) : { partial1 : Number, partial2 : Number }
 ```
 
 Result:
 
 ```nickel
-{partial1 = 570, partial2 = 1770}
+{ partial1 = 570, partial2 = 1770 }
 ```
 
-In the type of `addTotal`, the part `{total: Number ; a}` expresses exactly what
+In the type of `add_total`, the part `{total: Number ; a}` expresses exactly what
 we wanted: the argument must have a field `total: Number`, but the *tail* (the
 rest of the record type) is polymorphic, and `a` may be substituted for
 arbitrary fields (such as `jan: Number, feb: Number`). We used two different
 generic parameters `a` and `b`, to express that the tails of the arguments may
 differ.  If we used `a` in both places, as in `forall a. {total: Number ; a} ->
-{total: Number ; a} -> Number`, we could still write `addTotal {total = 1, foo =
-1} {total = 2, foo = 2}` but not `addTotal {total = 1, foo = 1} {total = 2, bar
+{total: Number ; a} -> Number`, we could still write `add_total {total = 1, foo =
+1} {total = 2, foo = 2}` but not `add_total {total = 1, foo = 1} {total = 2, bar
 = 2}`. Using distinct parameters `a` and `b` gives us maximum flexibility.
 
 What comes before the tail may include several fields, is in e.g. `forall a.
@@ -405,12 +430,13 @@ Note that row polymorphism also works with enums, with the same intuition of a
 tail that can be substituted for something else. For example:
 
 ```nickel
-let port_of : forall a. [| `http, `ftp; a |] -> Number =
-  match {
-    `http => 80,
-    `ftp => 21,
-    _ => 8000,
-  }
+{
+  port_of : forall a. [| `http, `ftp; a |] -> Number = match {
+      `http => 80,
+      `ftp => 21,
+      _ => 8000,
+    }
+}
 ```
 
 Because the `match` statement has a catch-all case `_`, this function is indeed
@@ -419,11 +445,11 @@ type.
 
 ### Take-away
 
-The type system of Nickel has usual basic types (`Dyn`, `Number`, `String`, and
-`Bool`) and type constructors for arrays, records and functions. Nickel
+The type system of Nickel has the primitive types (`Dyn`, `Number`, `String`,
+and `Bool`) and type constructors for arrays, records and functions. Nickel
 features generics via polymorphism, introduced by the `forall` keyword. A type
-can not only be generic in other types, but records types can also be
-generic in their tail. The tail is delimited by `|`.
+can not only be generic in other types, but records types can also be generic in
+their tail. The tail is delimited by `;`.
 
 ## Interaction between statically typed and dynamically typed code
 
@@ -457,15 +483,20 @@ Result:
 
 ```text
 error: contract broken by the caller
-    ┌─ <stdlib/std.ncl>:335:25
+    ┌─ <stdlib/std.ncl>:333:25
     │
-335 │       : forall a. (a -> Bool) -> Array a -> Array a
+333 │       : forall a. (a -> Bool) -> Array a -> Array a
     │                         ---- expected return type of a function provided by the caller
     │
-    ┌─ repl-input-1:1:54
+    ┌─ repl-input-24:1:54
     │
-  1 │ std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-    │                                                      ---- evaluated to this expression
+  1 │ std.array.filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
+    │                                                      -- evaluated to this expression
+    │
+    ┌─ <unknown> (generated by evaluation):1:1
+    │
+  1 │ -1
+    │ -- evaluated to this value
     │
     = This error may happen in the following situation:
           1. A function `f` is bound by a contract: e.g. `(Number -> Number) -> Number`.
@@ -475,21 +506,21 @@ error: contract broken by the caller
     = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
 
 note:
-  ┌─ repl-input-1:1:1
+  ┌─ repl-input-24:1:1
   │
-1 │ std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-  │ ------------------------------------------------------------------------ (1) calling filter
+1 │ std.array.filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
+  │ ---------------------------------------------------------------------- (1) calling filter
+
 ```
 
 We call `filter` from a dynamically typed location, but still get a spot-on
 error. To precisely avoid dynamically code injecting values of the wrong type
-inside statically typed blocks via function calls, the interpreter protects said
-blocks by a contract. Contracts form a principled runtime verification scheme.
-Please refer to the [dedicated manual section](./contracts.md) for more details,
-but for now, you can just remember that *any type annotation* (wherever it is)
-gives rise at runtime to a corresponding contract application. In other words,
-`foo: T` and `foo | T` (here `|` is contract application, not the row tail
-separator) behave exactly the same at *runtime*.
+inside statically typed functions, the interpreter protects said blocks by a
+contract. Contracts are a principled runtime verification scheme. Please refer
+to the [dedicated manual section](./contracts.md) for more details, but for now,
+you can just remember that *any type annotation* (wherever it is) gives rise at
+runtime to a corresponding contract application. In other words, `foo: T` and
+`foo | T` behave exactly the same at *runtime*.
 
 Thanks to this guard, you can statically type your library functions and use
 them from dynamically typed code while still enjoying good error messages.
@@ -520,9 +551,9 @@ error: Incompatible types
 ```
 
 We could add a type annotation to `x`. But sometimes we don't want to, or we
-can't. Maybe in a real use-case, `x` is an expression that we know correctly
-evaluates to a number but is rejected by the typechecker because it uses dynamic
-idioms. In this case, we can trade a type annotation for a contract application:
+can't. Maybe `x` is an expression that we know correctly evaluates to a number
+but is rejected by the typechecker because it uses dynamic idioms. In this case,
+we can trade a type annotation for a contract application:
 
 Example:
 
@@ -548,8 +579,8 @@ code that you know is correct but wouldn't typecheck:
 (1 + ((if true then 0 else "a" | Number)) : Number
 ```
 
-The code above is accepted, while a fully statically typed version is rejected
-because of the type mismatch between the if branches:
+The typechecker accepts the code above, while it rejects a fully statically
+typed version because of the type mismatch between the if branches:
 
 ```nickel
 (1 + (if true then 0 else "a")) : Number
@@ -583,16 +614,16 @@ use annotations, then the code shouldn't be typechecked, whatever the reason is.
 If you want `x` to be statically typed, you should annotate it.
 
 That being said, the typechecker still avoids being too rigid: it is obvious in
-the previous example case that `1` is of type `Number`. This information is cheap
-to gather. When encountering a binding outside of a typed block, the typechecker
-determines the *apparent type* of the definition. The rationale is that
-determining the apparent type shouldn't recurse arbitrarily inside the
+the previous example case that `1` is of type `Number`. This information is
+cheap to gather. When encountering a binding outside a typed block, the
+typechecker determines the *apparent type* of the definition. The rationale is
+that determining the apparent type shouldn't recurse arbitrarily inside the
 expression or do anything non-trivial. Typically, replacing `1` with a compound
 expression `0 + 1` changes the type of `x` type to `Dyn` and makes the example
 fail. For now, the typechecker determines an apparent type that is not `Dyn`
 only for literals (numbers, strings, booleans), arrays, variables, imports and
-annotated expressions. Otherwise, the typechecker falls back to `Dyn`. It may
-do more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
+annotated expressions. Otherwise, the typechecker falls back to `Dyn`. It may do
+more in the future (assign `Dyn -> Dyn` to functions, `{_: Dyn}` to records,
 etc).
 
 ### Take-away
@@ -606,16 +637,6 @@ there will be a contract error anyway". While a type annotation switches the
 typechecker on, a contract annotation switches it back off.
 
 ## Using contracts as types
-
-**Warning**: as of version 0.2.x, using contracts as types won't work in the
-majority of cases (typechecking will fail with a "can't compare contract types"
-error). This is temporary and will likely be fixed in the upcoming 0.3.x
-release. For more details, see issues
-[#701](https://github.com/tweag/nickel/issues/701) and
-[#724](https://github.com/tweag/nickel/issues/724).
-
-<!-- TODO: find a good name for this section. Will need rework after merging
-types and contracts syntax -->
 
 Type annotations and contracts share the same syntax. This means that you can
 technically use custom contracts as any other type inside a static type
@@ -648,12 +669,12 @@ error: Incompatible types
 ```
 
 It turns out statically ensuring that an arbitrary expression will eventually
-respects an arbitrary user-written predicate is a really hard problem even in
-simple cases (technically, it is even undecidable in the general case). The
-typechecker doesn't have a clue about the relation between numbers and ports.
-So, what can it do with annotations like `Port`? There is one situation when
-the typechecker can be sure that something will eventually be a port number, or
-will fail with the correct error message: when using a contract application.
+satisfy a user-written predicate is a really hard problem even in simple cases
+(technically, it is even undecidable in the general case). The typechecker
+doesn't have a clue about the relation between numbers and ports. So, what can
+it do with annotations like `Port`? There is one situation when the typechecker
+can be sure that something will eventually be a port number, or will fail with
+the correct error message: when using a contract application.
 
 ```nickel
 (let p | Port = 10 - 1 in
