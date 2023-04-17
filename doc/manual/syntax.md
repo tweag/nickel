@@ -240,10 +240,10 @@ That is precisely the use-case for symbolic strings:
 ```
 
 This example is an excerpt of a Nix configuration written in Nickel, emulating
-Nix string contexts. Lines 4 to 8 define a symbolic string. The values
-`inputs.gcc`, `inputs.hello`, etc. aren't actually strings, but arbitrary
-records, because they carry additional context. Yet, they can be interpolated as
-if they were strings.
+Nix string contexts. The region delimited by `nix-s%"` and `"%"` is a symbolic
+string. The values `inputs.gcc`, `inputs.hello`, etc. aren't actually strings,
+but arbitrary records, because they carry additional context. Yet, they can be
+interpolated as if they were strings.
 
 The idea behind symbolic strings is to offer a string-like syntax, but without
 evaluating the expression as a string. Instead, the expression is returned in a
