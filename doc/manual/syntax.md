@@ -21,23 +21,25 @@ There are four basic kinds of values in Nickel :
 
 ### Numeric values
 
-Nickel has a support for numbers, positive and negative, with or without
-decimals. Internally, those numbers are stored as arbitrary precision rational
-numbers, meaning that basic arithmetic operations (addition, subtraction,
-division and multiplication) don't incur rounding errors. Numbers are
-deserialized as 64-bits floating point numbers.
+Nickel has support for numbers, positive and negative, with or without
+decimals. Internally, those numbers are stored as arbitrary precision rationals,
+meaning that basic arithmetic operations (addition, subtraction, division and
+multiplication) don't incur rounding errors. Numbers are deserialized as 64-bit
+floating point numbers, in line with common JSON implementations.
 
-Raising to a non-integer power is one operation which can incur rounding errors:
-both operands need to be converted to the nearest 64-bits floating point
-numbers, the power is computed as a 64-bits floating point number as well,
-and converted back to an arbitrary precision rational number.
+Epxonentation is supported using the `std.number.pow` function. If the exponent
+is exactly representable as an integer between `-2^63` and `2^64 - 1`, the
+result is computed exactly. However, raising a number to a non-integral power
+can incur rounding errors: both operands will be converted to the nearest 64-bit
+floating point numbers, the power is computed as a 64-bit floating point number
+as well, and then converted back to an arbitrary precision rational number.
 
-Numbers are serialized as integers whenever possible (when they fit exactly into
-a 64-bits signed integer or a 64-bits unsigned integer), and as a 64 bits float
-otherwise. The latter conversion might lose precision as well, for example when
-serializing `1/3`.
+Numbers are serialized as integers whenever possible, that is, when they
+fit exactly into a 64-bit signed integer or a 64-bit unsigned integer. They
+are serialized as a 64-bit float otherwise. The latter conversion might lose
+precision as well, for example when serializing `1/3`.
 
-Examples:
+Here are some examples of `Number` literals in Nickel:
 
 ```nickel
 1
@@ -47,7 +49,7 @@ Examples:
 -6.8
 ```
 
-There are a some predefined operators for working with numbers :
+There are some predefined operators for working with numbers:
 | Operator | Description                                          | Example       |
 |:--------:|:----------------------------------------------------:|:-------------:|
 | +        | The addition operator                                | `1 + 2 = 3`   |
@@ -60,7 +62,7 @@ There are a some predefined operators for working with numbers :
 > the subtraction operators **needs** to be surrounded by spaces: write `a - b`,
 > not `a-b`. `1-2` works as expected, because `1` and `2` aren't identifiers.
 
-Numbers can be compared using the following operators :
+Numbers can be compared using the following operators:
 | Operator | Description      | Example   |
 |:--------:|:----------------:|:---------:|
 | ==       | Equal            | `5 == 5`  |
@@ -89,7 +91,7 @@ Nickel features the classical boolean operators *AND* (&&), *OR* (||) and *NOT*
 argument: for example, in `exp1 && exp2`, `exp2` is only evaluated if `exp1`
 evaluates to `false`.
 
-Examples:
+Here are some examples of boolean operators in Nickel:
 
 ```text
 > true && false
@@ -105,14 +107,15 @@ false
 ### Strings
 
 Nickel can work with sequences of characters, or strings. Strings are enclosed
-by `" ... "` for a single line string or by `m%" ... "%` for a multiline
-string. They can be concatenated with the operator `++`. Strings must be UTF-8
-valid.
+by `" ... "` for a single line string or by `m%" ... "%` for a multiline string.
+They can be concatenated with the operator `++`. Strings must be UTF-8 valid.
+In fact, as far as at all practicable, Nickel treats strings as sequences of
+Unicode extended grapheme clusters and refuses to break them apart.
 
 The string interpolation syntax is
 `"%{ < expression that evaluates to a string > }"`.
 
-Examples:
+Here are some examples of string handling in Nickel:
 
 ```text
 > "Hello, World!"
@@ -136,18 +139,18 @@ error: Type error
 "The number 5."
 ```
 
-Multiline strings are useful to write indented lines. The indentation is
-stripped from the beginning of the first line, and first and last lines are
-ignored if they are empty or contain only spaces.
-
-Example:
+Multiline strings are useful for writing indented lines. The first and last
+lines are ignored if they are empty or contain only spaces. Indentation that is
+present on all lines of the string is stripped. This way, multiline strings can
+be indented for nicer code formatting without producing unwanted whitespace in
+the output. For example"
 
 ```text
 > m%"
-This line has no indentation.
-  This line is indented.
-    This line is even more indented.
-This line has no more indentation.
+  This line has no indentation.
+    This line is indented.
+      This line is even more indented.
+  This line has no more indentation.
 "%
 "This line has no indentation.
   This line is indented.
@@ -155,9 +158,7 @@ This line has no more indentation.
 This line has no more indentation."
 ```
 
-The only special sequence in a multiline string is the string interpolation.
-
-Examples:
+The only special sequence in a multiline string is the string interpolation:
 
 ```text
 > m%"Multiline\nString?"%
@@ -168,11 +169,11 @@ Examples:
 String"
 ```
 
-A multiline string can be introduced and closed by multiple `%` signs, as long
-as this amount is equal. If you want to use string interpolation, you must use
-the same amount of `%` as in the delimiters.
-
-Examples:
+A multiline string can be introduced and closed with multiple `%` signs, as
+long as the number of `%` signs in the start delimiter equals the number in the
+closing delimiter. If you want to use string interpolation, you must use the
+same amount of `%` signs as in the delimiters. This can be useful for escaping
+`"%` or `%{` sequences in a string:
 
 ```text
 > m%%"Hello World"%%
@@ -188,21 +189,22 @@ Examples:
 "Hello World"
 ```
 
-Multiline strings are "indentation-aware". This means that one could use an
-indented string interpolation and the indentation would behave as expected:
+Multiline string interpolation is "indentation-aware". This means that you can
+interpolate a string containing multiple lines into another string with prefixed
+indentation and the result will be as expected:
 
 ```text
 > let log = m%"
-if log:
-  print("log:", s)
-"% in m%"
-def concat(str_array, log=false):
-  res = []
-  for s in str_array:
-    %{log}
-    res.append(s)
-  return res
-"%
+  if log:
+    print("log:", s)
+  "% in m%"
+  def concat(str_array, log=false):
+    res = []
+    for s in str_array:
+      %{log}
+      res.append(s)
+    return res
+  "%
 "def concat(str_array, log=false):
   res = []
   for s in str_array:
@@ -219,7 +221,7 @@ not yet known at the time of evaluation, such as Terraform's computed values.
 Others, like Nix, perform additional dependency tracking (see [Nix string
 context][nix-string-context]). In both cases, we have to build and combine
 string-like values which are more complex than bare strings, but for which using
-a string syntax would still be natural.
+a string syntax would still feel natural.
 
 That is precisely the use-case for symbolic strings:
 
@@ -238,10 +240,10 @@ That is precisely the use-case for symbolic strings:
 ```
 
 This example is an excerpt of a Nix configuration written in Nickel, emulating
-Nix string contexts. Lines 4 to 8 define a symbolic string. Values `inputs.gcc`,
-`inputs.hello`, etc. aren't actually strings, but arbitrary records, because
-they carry additional context. Yet, they can be interpolated as if they were
-strings.
+Nix string contexts. Lines 4 to 8 define a symbolic string. The values
+`inputs.gcc`, `inputs.hello`, etc. aren't actually strings, but arbitrary
+records, because they carry additional context. Yet, they can be interpolated as
+if they were strings.
 
 The idea behind symbolic strings is to offer a string-like syntax, but without
 evaluating the expression as a string. Instead, the expression is returned in a
@@ -251,11 +253,11 @@ lets the specific library (Terraform-Nickel, Nix-Nickel, etc.) handle it.
 
 The prefix of a symbolic string is any valid identifier that doesn't start with
 `_`, and ends with the suffix `-s`. Prefixes don't have any meaning for Nickel:
-they're a tag used by libraries consuming symbolic strings to distinguish
+they're just a tag used by libraries consuming symbolic strings to distinguish
 between several types of symbolic strings. Prefixes are also a visual marker for
 the programmer.
 
-Beside the custom prefix, symbolic strings otherwise follow the same syntactic
+Besides the custom prefix, symbolic strings otherwise follow the same syntactic
 rules as multiline strings: the prefix is followed by an arbitrary number of `%`
 followed by `"`, and must be closed by `"` followed by the same number of `%`.
 
@@ -302,33 +304,33 @@ The following examples show how symbolic strings are desugared:
 
 #### Enum tags
 
-Enumeration tags are used to express finite alternatives. They are formed by
-writing a backtick `` ` `` followed by any valid identifier. For example,
-`std.serialize` takes an export format as a first argument, which is an enum
-tag among `` `Json ``, `` `Toml `` or `` `Yaml `` (as of version 0.1):
+Enumeration tags are used to express a choice among finitely many alternatives.
+They are formed by writing a backtick `` ` `` followed by any valid identifier
+or by a quoted string. For example, `std.serialize` takes an export format as a
+first argument, which is an enum tag among `` `Json ``, `` `Toml `` or `` `Yaml
+``:
 
 ```nickel
-std.serialize `Json {foo = 1}
-# gives "{
-#          \"foo\": 1
-#        }"
-std.serialize `Toml {foo = 1}
-# gives "foo = 1
-#       "
+> std.serialize `Json {foo = 1}
+"{
+   \"foo\": 1
+ }"
+
+> std.serialize `Toml {foo = 1}
+"foo = 1
+"
 ```
 
 An enum tag `` `foo `` is serialized as the string `"foo"`:
 
 ```nickel
-let as_yaml_string = std.serialize `Yaml {foo = `bar}
-# gives "---
-#       foo: bar
-#       "
-
+> std.serialize `Yaml {foo = `bar}
+"foo: bar
+"
 ```
 
 While it's technically possible to just use strings in place of enum tags, using
-an enum tag insists on the fact that only a finite number of alternatives can be
+an enum tag encodes the intent that only a finite number of alternatives can be
 used for the corresponding value.
 
 Additionally, the typechecker is aware of enums and can for example statically
@@ -340,7 +342,7 @@ enforce that only valid tags are passed to a function within a typed block. See
 Operators `==` and `!=` are used to compare values. Two values of different
 types are never equal: that is, `==` doesn't perform implicit conversions.
 
-Examples:
+Here are some examples of equality comparisons in Nickel:
 
 ```text
 > 1 == 1
@@ -364,12 +366,12 @@ false
 
 ## Composite values
 
-### Array
+### Arrays
 
-An array is a sequence of values. They are delimited by `[` and `]`, and
+An array is a sequence of values. Arrays are delimited by `[` and `]`, and
 elements are separated with `,`.
 
-Examples:
+The following are valid Nickel arrays, for example:
 
 ```nickel
 [1, 2, 3]
@@ -385,17 +387,17 @@ Arrays can be concatenated with the operator `@`:
 [ 1, 2, 3 ]
 ```
 
-### Record
+### Records
 
-Records are key-value storage, or in Nickel terms, field-value storage. They are
-delimited by `{` and `}`, and elements are separated with `,`. Field-value
-elements are noted as `field = value`. The fields are strings, but can be
-written without quotes `"` if they respect identifiers syntax. Values can be of
+Records are key-value storage, or in Nickel terms, field-value storage. They
+are delimited by `{` and `}`, and elements are separated with `,`. A field
+definition is written as `field = value`. The fields are strings, but can be
+written without quotes `"` if they would be valid identifiers. Values can be of
 any type. Elements inside a record are unordered. Two records can be *merged*
 together using the operator `&`. The reader can find more information about
 merging in the [section on merging](./merging.md).
 
-Examples:
+Here are some valid Nickel records:
 
 ```nickel
 {}
@@ -404,7 +406,7 @@ Examples:
 {"5" = 5, six = 6}
 ```
 
-Accessing a record field can be done using the `.` operator :
+Record fields can be accessed using the `.` operator :
 
 ```text
 > { a = 1, b = 5 }.a
@@ -417,7 +419,7 @@ error: Missing field
 "one"
 ```
 
-It is possible to write records of records via the *piecewise syntax*, where we
+It is possible to write records of records via *piecewise syntax*, where we
 separate fields by dots:
 
 ```text
@@ -431,7 +433,7 @@ separate fields by dots:
 { a = { b = 1, c = 2 }, b = 3 }
 ```
 
-When fields are enclosed with double quotes (`"`), you can use string
+When fields are enclosed in double quotes (`"`), you can use string
 interpolation to create or access fields:
 
 ```text
@@ -446,10 +448,10 @@ interpolation to create or access fields:
 
 ### If-Then-Else
 
-This construct allows conditional branching in your code. You can use it as
+This construct allows conditional branching in your code. You can use it like
 `if <bool expr> then <expr> else <expr>`.
 
-Examples:
+Here are some valid conditional expressions in Nickel:
 
 ```text
 > if true then "TRUE :)" else "false :("
@@ -467,12 +469,13 @@ Examples:
 
 ### Let-In
 
-Let-in allows the binding of an expression. It is used as
-`let <rec?> <ident> = <expr> in <expr>`. The `rec` keyword in Let-in constructs
-allows the let binding to become recursive, enabling the use of the `<ident>`
-within the first `<expr>`.
+Let-in allows binding an expression to a variable. It is used like `let <rec?>
+<ident> = <expr> in <expr>`. The `rec` keyword in Let-in constructs allows the
+let binding to become recursive, enabling the use of `<ident>` within the bound
+expression `<expr>`.
+Currently, only a single variable can be bound per let binding.
 
-Examples:
+Here are some examples of let bindings in Nickel:
 
 ```text
 > let r = { a = "a", b = "b" } in r.a
@@ -491,7 +494,7 @@ true
 34
 
 > let rec repeat = fun n x => if n <= 0 then [] else repeat (n - 1) x @ [x] in
-repeat 3 "foo"
+    repeat 3 "foo"
 ["foo", "foo", "foo"]
 ```
 
@@ -499,18 +502,18 @@ repeat 3 "foo"
 
 A function is declared using the `fun` keyword, then arguments separated with
 spaces, and finally an arrow `=>` to add the body of the function. To call a
-function, just add the arguments after it separated with spaces. Functions in
-Nickel are curried, meaning that a function taking multiple arguments is
-actually a function that takes a single argument and returns a function taking
-the rest of the arguments, until it is applied.
+function, just write the arguments after it separated with spaces. Functions in
+Nickel are curried: A function taking multiple arguments is actually a function
+that takes a single argument and returns a function taking the rest of the
+arguments, and so on.
 
-Examples:
+Here are some examples of function definitions in Nickel:
 
 ```text
 > (fun a b => a + b) 1 2
 3
 
-let add = fun a b => a + b in add 1 2
+> let add = fun a b => a + b in add 1 2
 3
 
 > let add = fun a b => a + b in
@@ -520,9 +523,7 @@ let add = fun a b => a + b in add 1 2
 ```
 
 All existing infix operators in Nickel can be turned into functions by putting
-them inside parentheses.
-
-Examples:
+them inside parentheses, for example:
 
 ```text
 > 1 + 2
@@ -539,15 +540,14 @@ Examples:
     increment 41
 42
 
-> let flatten = std.array.fold_right (@) [] in flatten [[1, 2], [3], [4, 5]]
+> let flatten = std.array.fold_right (@) [] in
+    flatten [[1, 2], [3], [4, 5]]
 [ 1, 2, 3, 4, 5 ]
 ```
 
-Functions might be composed using the *pipe operator*. The pipe operator allows
+Functions may be composed using the *pipe operator*. The pipe operator allows
 for a function application `f x` to be written as `x |> f`. This operator is
-left-associative, so `x |> f |> g` will be interpreted as `g (f x)`.
-
-Examples:
+left-associative, so `x |> f |> g` will be interpreted as `g (f x)`. For example:
 
 ```text
 > "Hello World" |> std.string.split " "
@@ -567,25 +567,25 @@ Examples:
 
 ## Annotations
 
-Contract and type annotations help enforce additional properties for an
-expression. They can be attached to any Nickel expression. See [the corectness
+Contract and type annotations help enforce additional properties of an
+expression. They can be attached to any Nickel expression. See [the correctness
 section](./correctness.md) for more details.
 
 ### Type annotations
 
-A type annotation is introduced using `<expr> : <type>` and serves to delimit a
-statically typed block which will be statically checked by the typechecker. A
-type annotation can be directly attached to the variable of a let-binding `let <var>
-: <type> = <expr> in <body>` or to a record field declaration `{<field> : <type>
-= <value>}` as well.
+A type annotation is introduced using `<expr> : <type>` and serves to delimit
+a statically typed block which will be checked by the typechecker before
+evaluation. A type annotation can be directly attached to the variable of a let-
+binding `let <var> : <type> = <expr> in <body>` or to a record field declaration
+`{<field> : <type> = <value>}` as well.
 
-A type wildcard `_` indicates that part of a type is unknown to the user (or not
-worth spelling out). The typechecker will infer it. Slapping an `: _` on top of
-an existing expression is particulary useful for debugging, as it's the simplest
-way to have the typechecker run on an expression without having to come up with
-a type.
+A type wildcard `_` indicates that part of a type is unknown to the user (or
+is not worth spelling out). The typechecker will attempt to infer it. Adding a
+wildcard type annotaiton `: _` to an existing expression is particulary useful
+for debugging, as it's the simplest way to have the typechecker run on an
+expression without having to come up with a type.
 
-Examples:
+Here are some examples of type annotations in Nickel:
 
 ```text
 > 5 : Number
@@ -609,7 +609,7 @@ error: incompatible types
 [..]
 
 > let complex_argument : _ -> Number = fun {field1, field2, field3} => field1 in
-complex_argument {field1 = 5, field2 = null, field3 = false}
+    complex_argument {field1 = 5, field2 = null, field3 = false}
 5
 ```
 
@@ -619,9 +619,9 @@ A contract annotation is introduced by `<exp> | <contract>` and serves to apply
 a runtime check to an expression (among other things).
 
 As detailed in the next section, `<expr>`, `<type>` and `<contract>` are in fact
-all the same and can be arbitrary Nickel expressions in practice.
+syntactically all the same and can be arbitrary Nickel expressions in practice.
 
-Examples:
+Here are some examples of contract annotations in Nickel:
 
 ```text
 > 5 | Number
@@ -632,19 +632,19 @@ error: contract broken by a value.
 [..]
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
-1 | SmallNum
+1 | SmallNumber
 1
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
-10 | SmallNum
+10 | SmallNumber
 error: contract broken by a value.
 [..]
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
   let NotTooSmallNumber = std.contract.from_predicate (fun x => x >= 2) in
   3 | Number
-    | SmallNum
-    | NotTooSmallNum
+    | SmallNumber
+    | NotTooSmallNumber
 3
 ```
 
@@ -659,34 +659,34 @@ for a detailed account of this design.
 The documentation still makes a distinction between *types* and other
 expressions, the former being constructs which are handled specially by the
 typechecker and are listed below. However, any expression can be considered a
-type (in the generic case, it's considered as an opaque type), and type
+type (in the generic case, it will be considered as an opaque type), and type
 constructors can also appear inside an expression (where they are understood as
 their associated contract, which is indeed an expression, most often a
 function).
 
 Thus, placeholders such as `<source>`, `<target>` or `<type>` can actually be
-substituted for any valid Nickel expression (which includes the type
+substituted with any valid Nickel expression (which includes the type
 constructors we've just listed), and types can appear anywhere.
 
 Nickel features the following builtin types and type constructors:
 
 - Primitive types: `Number`, `String`, `Bool`, and `Dyn` (the dynamic type, wich
 represents any value)
-- Array: `Array <type>` is an array whose elements are of type `<type>`.
-- Dictionary: `{_ : <type>}` is a record whose fields are of type `<type>`.
-- Enum: ``[| `tag1, .., `tagn |]`` is an enumeration comprised of alternatives
+- Arrays: `Array <type>` is an array whose elements are of type `<type>`.
+- Dictionaries: `{_ : <type>}` is a record whose fields are of type `<type>`.
+- Enums: ``[| `tag1, .., `tagn |]`` is an enumeration comprised of the alternatives
   `` `tag1 ``, .., `` `tagn``. Tags have the same syntax as identifiers and must
-  be prefixed with a backtick `` ` ``. As for record fields, they can however be
+  be prefixed with a backtick `` ` ``. Like record fields, they can however be
   enclosed in double quotes if they contain special characters:
   `` `"tag with space" ``.
-- Arrow: `<source> -> <target>` is a function taking an argument of type
+- Arrows: `<source> -> <target>` is a function taking an argument of type
   `<source>` and returns values of type `<target>`.
-- Forall: `forall var1 .. varn. <type>` is a polymorphic type quantifying over type
+- Foralls: `forall var1 .. varn. <type>` is a polymorphic type quantifying over type
 variables `var1`, .., `varn`.
-- Record: see the next section [Record types](#record-types).
+- Records: see the next section [Record types](#record-types).
 
 Type variables bound by a `forall` are only visible inside types (any of the
-constructor listed above). As soon as a term expression arises under a `forall`
+constructor listed above). As soon as a term expression appears under a `forall`
 binder, the type variables aren't in scope anymore:
 
 ```test
@@ -701,7 +701,7 @@ error: unbound identifier
   │                                ^ this identifier is unbound
 ```
 
-Examples:
+Here are some examples of more complicated types in Nickel:
 
 ```text
 > let f : forall a. a -> a = fun x => x in (f 5 : Number)
@@ -746,20 +746,22 @@ handled differently than normal record literals with respect to typechecking.
 
 A record literal is a record type if:
 
-- No field has a defined value: there are only fields without a definition.
+- No field has a defined value: there are only fields without definition.
 - Each field has exactly one type annotation
 - Each field doesn't have any other metadata attached (see [Metadata](#metadata))
-- The record literal might have a record tail, written as
-  `{ <fields> ; <tail> }`. The tail appears at the end of the field declarations
-  and is preceded by `;`. `<tail>` must be a valid identifier.
 
-If the above properties are satisfied, a record literal is considered to be a
+If these properties are satisfied, a record literal is considered to be a
 record type by the typechecker.
+
+A record literal which is to be interpreted as a record type may have a *record
+tail*. A tail is written like `{ <fields> ; <tail> }`. It appears at the end of
+the field declarations and is preceded by `;`. The tail `<tail>` itself must be
+a valid identifier.
 
 Trying to attach a tail `; tail` to a record literal which isn't a record type
 is a parse error.
 
-Examples:
+Here are some examples of record types in Nickel:
 
 ```text
 > {foo = 1, bar = "foo" } : {foo : Number, bar: String}
@@ -768,9 +770,9 @@ Examples:
 > {foo.bar = 1, baz = 2} : {foo: {bar : Number}, baz : Number}
 { baz = 2, foo = { bar = 1 } }
 
-># the right-hand side is missing a type annotation for baz, so it isn't a
- # record type
- {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
+The right-hand side is missing a type annotation for baz, so it isn't a
+record type
+> {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
 error: incompatible types
   ┌─ repl-input-6:1:1
   │
@@ -781,69 +783,71 @@ error: incompatible types
   = The type of the expression was inferred to be `{bar: _a, foo: _b}`
   = Static types and contracts are not compatible
 
-> # the annotation has a metadata
- {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
+There's a metadata annotation apart from the type
+> {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: incompatible types
 [..]
 
-> # while MyDyn isn't a proper type, the right record respect all the
-  # requirements of a record type
-let MyDyn = fun label value => value in
-{foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
+While MyDyn isn't a proper type, the record literal respects all the
+requirements for a record type
+> let MyDyn = fun label value => value in
+    {foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
 { bar = "foo", foo = 1 }
 ```
 
 ## Metadata
 
-Metadata are used to attach type and contract annotations, documentation, a
-merge priority or other decorations to record fields (and record fields only).
-Multiple metadata annotations can be chained. Metadata is introduced with the syntax
-`<field_name> | <metadata1> | .. | <metadatan> [= value]`.
+Metadata annotations are used to attach type and contract annotations,
+documentation, a merge priority or other decorations to record fields (and
+record fields only). Multiple metadata annotations can be chained. Metadata
+is introduced with the syntax `<field_name> | <metadata1> | .. | <metadataN>
+[= value]`.
 
-Adding documentation can be done with `| doc <string>`. Examples:
+Documentation can be attached with `| doc <string>`. For example:
 
 ```text
 > let record = {
-  value
-    | doc "The number five"
-    | default = 5
-}
->:query record value
+    value
+      | doc "The number five"
+      | default = 5
+  }
+> :query record value
 • default: 5
 • documentation: The number five
 
 > {
-  truth
-    | Bool
-    | doc m%"
-        If something is true,
-        it is based on facts rather than being invented or imagined,
-        and is accurate and reliable.
-        (Collins dictionary)
-      "%
-    = true,
-}
+    truth
+      | Bool
+      | doc m%"
+          If something is true,
+          it is based on facts rather than being invented or imagined,
+          and is accurate and reliable.
+          (Collins dictionary)
+        "%
+      = true,
+  }
 { truth = true }
 ```
 
 Metadata can also set merge priorities using the following annotations:
 
-- `default` gives the lowest priority (default values)
-- `priority NN`, where `NN` is a number literal, gives a numeral priority
-- `force` gives the highest priority
+- `default` is the lowest priority, usually used for default values that are
+  expected to be overridden somewhere
+- `priority NN`, where `NN` is a number literal, is a numeral priority
+- `force` is the highest priority
 
-If there is no priority specified, `priority 0` is given by default. See more
-about this in the dedicated section on merging.
+If there is no priority specified, `priority 0` is the default. See more
+about this in the [dedicated section on merging](./merging.md).
 
-Examples:
+Here are some examples using merge priorities in Nickel:
 
 ```text
 > let Ais2ByDefault = { a | default = 2 } in
-  {} | Ais2ByDefault
+    {} | Ais2ByDefault
 { a = 2 }
 
 > let Ais2ByDefault = { a | default = 2 } in
-  { a = 1 } | Ais2ByDefault
+    { a = 1 } | Ais2ByDefault
 { a = 1 }
 
 > { foo | default = 1, bar = foo + 1 }
@@ -862,8 +866,8 @@ Examples:
 { foo = 2 }
 ```
 
-The `optional` metadata indicates that a field is not mandatory, and is mostly
-used inside record contracts:
+The `optional` annotation indicates that a field is not mandatory. It is usually
+found in record contracts.
 
 ```text
 > let Contract = {
@@ -880,8 +884,8 @@ error: missing definition for `foo`
 [..]
 ```
 
-The `not_exported` metadata indicates that a field shouldn't appear in the
-serialization (including the output of the `nickel export` command):
+The `not_exported` annotation indicates that a field should be skipped when a
+record is serialized. This includes the output of the `nickel export` command:
 
 ```text
 > let value = { foo = 1, bar | not_exported = 2}
