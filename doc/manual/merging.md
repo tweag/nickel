@@ -17,8 +17,8 @@ operator.
 Merge is a **symmetric** operation (or, pedantically, commutative). In practice,
 this means that order doesn't matter, and `left & right` is the same thing as
 `right & left`. When the operands need to be distinguished, as we will see for
-default values for example, the idea is to use metadata to do so (annotations),
-rather than relying on the left or right position.
+default values for example, the idea is to use special annotations (metadata)
+instead of relying on the side of the operands.
 
 **Warning**: At the time of writing, Nickel's version is 1.0. Custom merge
 functions are planned for a future version. They are not detailed here yet. See
@@ -44,8 +44,8 @@ following situations:
 ## Simple merge (no common fields)
 
 Merging two records with no common fields results in a record with the fields
-from both operands. That is, `{foo = 1, bar = "bar"} & {baz =false}` evaluates
-to `{foo = 1, bar = "bar", baz = false}`.
+from both operands. For example, `{foo = 1, bar = "bar"} & {baz =false}`
+evaluates to `{foo = 1, bar = "bar", baz = false}`.
 
 ### Specification
 
@@ -160,11 +160,11 @@ Evaluates to the record:
 When one or both of the common fields are not records, the merge will fail
 unless one of the following condition hold:
 
-- They are both of a primitive data type `Number`, `Bool`, `Enum`, `String` and
-  they are equal
-- They are both arrays and they are equal (checked by generating an application
+- They are both of the same primitive data type (`Number`, `Bool`, `Enum`, or
+  `String`) and they are equal
+- They are both arrays, and they are equal (checked by generating an application
   of the lazy contract `contract.Equal`)
-- They are both null
+- They are both equal to `null`
 
 ### Specification
 
@@ -243,9 +243,9 @@ udp & tcp
 ```
 
 In the above example, we merge two records, both with a field `firewall`. On
-both sides, the value is a record, which is therefore merged. The same process
-happens one layer below, on the common field `open_ports`, to result in the
-final record:
+both sides, the value of `firewall` is again a record, which is therefore
+merged. The same process happens one layer below, on the common field
+`open_ports`, to result in the final record:
 
 ```nickel
 {
@@ -261,16 +261,17 @@ final record:
 ## Merging records with metadata
 
 Metadata can be attached to values thanks to the `|` operator. Metadata
-currently include contract annotation, default value, merge priority, and
-documentation. We describe in this section how metadata interacts with merging.
+currently include contract annotation, default value, merge priority,
+optionality annotation, and documentation. We describe in this section how
+metadata interact with merging.
 
-Note that metadata can only be syntactically attached to record fields, with the
-exception of type and contract annotations, which can appear anywhere in a
-freestanding expression such as `(x | Num) + 1`. However, a contract annotation
-outside of a record field isn't considered metadata (it's a mere contract
-check) and doesn't behave the same with respect to merging. **In particular,
-`{foo | Num = 1}` can behave differently from `{foo = (1 | Num)}` when merged**.
-See [the contracts section](#contracts) for more details.
+Note that metadata can only be syntactically attached to record fields, except
+for type and contract annotations, which can appear anywhere in a freestanding
+expression such as `(x | Num) + 1`. However, a contract annotation outside a
+record field isn't considered metadata (it's a mere contract check) and doesn't
+behave the same with respect to merging. **In particular, `{foo | Num = 1}` can
+behave differently from `{foo = (1 | Num)}` when merged**. See [the contracts
+section](#contracts) for more details.
 
 ### Optional fields
 
@@ -298,43 +299,21 @@ contract to - or merging it with - a record which defines a value for this
 field:
 
 ```nickel
-let command | Command = {
+{
   command = "exit",
   arg_type = `String,
   alias = "e",
-}
-in
-
-command
+} | Command
 ```
 
 Once an optional field becomes defined, it just acts like a regular field. Any
-attached contract will be applied as well (here, `String` on `alias`).
-
-As long as an optional field doesn't have a value, it will be invisible to
-record operations. Optional fields without a value don't show up in
-`std.record.fields`, it won't make `std.record.values` throw a missing field definition
-error, etc.
-
-```nickel
-nickel> let Contract = {foo = 1, bar | optional}
-nickel> std.record.values Contract
-[ 1 ]
-
-nickel> std.record.has_field "bar" Contract
-false
-```
-
-Optional field can still be discovered through metadata queries (run `nickel
-help query` or type `:help query` in the REPL for more information) or generated
-documentation.
-
-An optional field becomes a regular field as soon as it is merged with the same
-field that doesn't have the `optional` annotation. This holds **even if the
+attached contract will be applied as well (here, `String` on `alias`). An
+optional field also becomes a regular field as soon as it is merged with the
+same field that doesn't have the `optional` annotation. This holds **even if the
 other field doesn't have a definition**:
 
 ```nickel
-nickel>  {foo = 1, bar | optional} & {bar | optional}
+nickel> {foo = 1, bar | optional} & {bar | optional}
 { foo = 1 }
 
 nickel> {foo = 1, bar | optional} & {bar}
@@ -352,6 +331,24 @@ In the second example, `bar` isn't optional on the right-hand side of the merge.
 Although the right-hand side `bar` doesn't have a definition, the resulting
 `bar` field isn't optional anymore.
 
+As long as an optional field doesn't have a value, it will be invisible to
+record operations. Optional fields without a value don't show up in
+`std.record.fields`, it won't make `std.record.values` throw a missing field
+definition error, etc.
+
+```nickel
+nickel> let Contract = {foo = 1, bar | optional}
+nickel> std.record.values Contract
+[ 1 ]
+
+nickel> std.record.has_field "bar" Contract
+false
+```
+
+Optional field can still be discovered through metadata queries (run `nickel
+help query` or type `:help query` in the REPL for more information) or generated
+documentation.
+
 [^optional-with-value]: You can actually provide a value (default or not) for an optional
   field, but this nullifies the effect of `optional`: what you get is just a
   regular field
@@ -359,14 +356,13 @@ Although the right-hand side `bar` doesn't have a definition, the resulting
 ### Merge priorities
 
 Priorities are specified using the `priority` annotation, followed by a number
-literal. There are also two other special priorities, the bottom priority, specified
-using the `default` annotation, and the top priority, specified using the
-`force` annotation.
+literal. There are also two other special priorities, the lowest priority
+`default`, and the higher priority `force` annotation.
 
 Priorities dictate which values take precedence over other values. By default,
 values are given the priority `0`. Values with the same priority are recursively
 merged as specified in this document, which can mean failure if the values can't
-be meaningfully merged:
+be meaningfully combined:
 
 ```text
 nickel> {foo = 1} & {foo = 2}
@@ -381,8 +377,8 @@ error: non mergeable terms
   = Both values have the same merge priority but they can't be combined
 ```
 
-On the other hand, if the priorities differ, the value with highest priority
-simply erases the other in the final result:
+If the priorities differ, the value with the highest priority simply erases the
+other:
 
 ```text
 nickel> {foo | priority 1 = 1} & {foo = 2}
@@ -394,17 +390,17 @@ nickel> {foo | priority -1 = 1} & {foo = 2}
 
 The priorities are ordered in the following way:
 
-- bottom is the lowest priority
+- `default` is the lowest priority
 - numeral priorities are ordered as usual numbers (priorities can be any valid Nickel
   number, including fractions and negative values)
-- top is the highest priority
+- `force` is the highest priority
 
 #### Default values
 
 A `default` annotation can be used to provide a base value, but let it be
 overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
 evaluates to `{foo = 2}`. A default value is just a special case of a priority,
-being the lowest possible one.
+being the lowest one.
 
 #### Forcing values
 
@@ -412,64 +408,12 @@ Dually, values with the `force` annotation are given the highest priority. Such
 a value can never be overridden, and will either take precedence over another
 value or be tentatively merged if the other value is forcing as well.
 
-#### Recursive priorities
-
-**Warning**: the syntax and semantics of recursive priorities are new as of
-version 0.3, and may evolve in the future.
-
-Using the `default` annotation on a record value means that the value is either
-picked as a block, or erased altogether:
-
-```text
-nickel> {server | default = {ip = "192.168.1.1", port = 80}} & {server.ip =
-"42.42.42.42"}
-{ server = { ip = "42.42.42.42" } }
-```
-
-This might not be what you want, for example because the server field should
-always define a `port`. It's useful to provide a set of default values that are
-individually overridable: in our example, we would like to be able to override
-`server` as we did while still keeping a default value for `port`. One solution
-is to simply annotate each value with a `default`:
-
-```nickel
-{server = {ip | default = "192.168.1.1", port | default = 80}}
-```
-
-However, doing so can quickly become cumbersome for larger sets of default
-values, where we end up duplicating `default` annotations. We can do better
-thanks to *recursive priorities*, written `rec default` and `rec force`. During
-evaluation, recursive priorities are dynamically pushed down until they reach
-values which are not records anymore, that is to the leaves of the record, so to
-speak:
-
-```text
-nickel> {server | rec default = {ip = "192.168.1.1", port = 80}} & {server.ip =
-"42.42.42.42"}
-{ server = { ip = "42.42.42.42", port = 80 } }
-```
-
-`rec force` implements the same idea for `force`. It makes overriding happen for
-individual fields of a record and not as a block.
-
-If a value already has a merge priority set, the rules are the following:
-
-- `rec default` doesn't apply on values with explicit priorities set. That is,
-  `{foo | rec default = {bar | priority 10 = 1, baz = 2}}` will evaluate to
-  `{foo = {bar | priority 10 = 1, baz | default = 2}}`.
-- `rec force` always overrides existing priorities. That is,
-  `{foo | rec force = {bar | priority 10 = 1, baz | default = 2}}` will evaluate
-  to `{foo = {bar | force = 1, baz | force = 2}}`.
-
-Put differently, when another priority is explicitly set, we take the maximum
-priority between the recursive priority and the existing one.
-
 #### Specification
 
-Each field definition `foo = val` is assigned a priority `p(val)`. When
-merging two common fields `value_left` and `value_right`, the result is either
-the one with the highest priority (that overrides the other), or the two are
-tentatively recursively merged if the priorities are the same. Without loss of
+Each field definition `foo = val` is assigned a priority `p(val)`. When merging
+two common fields `value_left` and `value_right`, the result is either the one
+with the highest priority (which overrides the other), or the two are
+tentatively recursively merged if the priorities are equal. Without loss of
 generality, we consider the simple case of two records with only one common
 field:
 
@@ -508,14 +452,18 @@ thus fail:
 
 ```text
 error: non mergeable terms
-  ┌─ repl-input-0:2:22
-  │
-2 │   firewall.enabled = true,
-  │                      ^^^^ cannot merge this expression
-  ·
-7 │   firewall.enabled = false,
-  │                      ^^^^^ with this expression
-
+   ┌─ repl-input-8:2:22
+   │
+ 2 │   firewall.enabled = true,
+   │                      ^^^^ cannot merge this expression
+   ·
+ 7 │   firewall.enabled = false,
+   │                      ^^^^^ with this expression
+   ·
+10 │ base & patch
+   │ ------------ originally merged here
+   │
+   = Both values have the same merge priority but they can't be combined
 ```
 
 We can use default values to give the priority to the right side:
@@ -569,7 +517,7 @@ value of `foo` is altered in a subsequent merge? For example:
   `foo`, and the final result would have an additional field `other_subfield` ?
 
 Nickel chooses to answer **no** to both. In general, when a contract is attached
-to a field `foo`, merging ensures that whatever is this field merged with,
+to a field `foo`, merging ensures that whatever this field is merged with,
 including being dropped in favor of another value, the final value for `foo` has
 to respect the contract as well or the evaluation will fail accordingly.
 
@@ -609,9 +557,9 @@ Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
 `Left0`.
 
 The accumulated contracts are applied lazily: as long as the field's value isn't
-requested, contracts are accumulated but not applied. This makes it possible to
-build a value piecewise, whereas the intermediate values don't necessarily
-respect the contract. For example:
+requested, contracts are accumulated but not yet applied. This makes it possible
+to build a value piecewise, whereas the intermediate values don't necessarily
+satisfy the contract. For example:
 
 ```nickel
 let FooContract = {
@@ -637,33 +585,32 @@ let FooContract = {
   required_field2,
 }
 in
-
 let intermediate =
-  { foo | FooContract}
+  { foo | FooContract }
   & { foo.required_field1 = "here" }
 in
 
-builtin.deep_seq intermediate (intermediate & { foo.required_field2 = "here" })
+intermediate
+& { foo.required_field2 = "here" }
+|> std.deep_seq intermediate
 ```
 
 Result:
 
 ```text
 error: missing definition for `required_field2`
-    ┌─ example.ncl:3:3
-    │
-  3 │   required_field2,
-    │   ^^^^^^^^^^^^^^^ defined here
-    ·
-  9 │   & { foo.required_field1 = "here" }
-    │           ^^^^^^^^^^^^^^^^^^^^^^^^ in this record
-    │
-    ┌─ <stdlib/builtin.ncl>:176:20
-    │
-176 │       = fun x y => %deep_seq% x y,
-    │                    ------------ accessed here
-
-
+     ┌─ /home/yago/Pro/Tweag/projects/nickel/nickel/doc/manual/foo.ncl:3:3
+     │
+   3 │   required_field2,
+     │   ^^^^^^^^^^^^^^^ defined here
+     ·
+   8 │   & { foo.required_field1 = "here" }
+     │           ^^^^^^^^^^^^^^^^^^^^^^^^ in this record
+     │
+     ┌─ <stdlib/std.ncl>:2448:18
+     │
+2448 │     = fun x y => %deep_seq% x y,
+     │                  ------------ accessed here
 ```
 
 #### Example
@@ -671,46 +618,54 @@ error: missing definition for `required_field2`
 ```nickel
 let Port
   | doc "A valid port number"
-  = std.contract.from_predicate (fun value =>
-    std.is_number value &&
-    value % 1 == 0 &&
-    value >= 0 &&
-    value <= 65535) in
+  =
+    std.contract.from_predicate
+      (
+        fun value =>
+          std.is_number value
+          && value
+          % 1 == 0
+          && value >= 0
+          && value <= 65535
+      )
+  in
+
 let GreaterThan
   | doc "A number greater than the parameter"
-  = fun x => std.contract.from_predicate (fun value => value > x) in
+  = fun x => std.contract.from_predicate (fun value => value > x)
+  in
 
 {
-    port | GreaterThan 1024
-         | default = 8080,
-} & {
-    port | Port = 80,
+  port
+    | GreaterThan 1024
+    | default
+    = 8080,
+}
+& {
+  port | Port = 80,
 }
 ```
 
 This fails at evaluation:
 
 ```text
-error: contract broken by a value.
-[..]
-   ┌─ repl-input-1:16:19
+error: contract broken by a value
+   ┌─ example.ncl:26:17
    │
-16 │     port | Port = 80,
-   │                   ^^ applied to this expression
-
-note:
-   ┌─ repl-input-1:13:12
-   │
-13 │     port | GreaterThan 1024
-   │            ^^^^^^^^^^^^^^^^ bound here
+21 │     | GreaterThan 1024
+   │       ---------------- expected type
+   ·
+26 │   port | Port = 80,
+   │                 ^^ applied to this expression
 ```
 
 ### Not exported
 
 A field can be marked as not exported, using the `not_exported` annotation. Such
-fields behave like regular fields during evaluation, but they are ignored during
-serialization: they won't appear in the output of `nickel export`, nor in the
-output of `serialize`.
+a field will behave like a regular field during evaluation, but it will be
+ignored during serialization: this field won't appear in the output of `nickel
+export` nor in the output of `serialize`. This field won't be evaluated upon
+serialization either.
 
 For example, say we want to add some high-level configuration field to a modular
 configuration, from which other fields are derived:
@@ -721,7 +676,8 @@ configuration, from which other fields are derived:
   greeter
     | String
     | not_exported
-    | default = "world",
+    | default
+    = "world",
 
   systemd.services.hello = {
     wantedBy = ["multi-user.target"],
@@ -752,9 +708,10 @@ $ nickel export <<< 'import "hello-service.ncl" & {greeter = "country"}'
 
 ### Documentation
 
-Documentation is attached via the `doc` keyword. Documentation is propagated
-during merging. For example, querying `foo` by using the command `nickel -f
-config.ncl query foo` on:
+Documentation is attached via the `doc` keyword. Merging propagates
+documentation. Documentation can be retrieved through `nickel query`, the
+`:query` command inside the REPL, or when using the LSP. For example, we can
+query `foo` by running `nickel -f config.ncl query foo` on:
 
 ```nickel
 # config.ncl
@@ -766,18 +723,28 @@ config.ncl query foo` on:
 }
 ```
 
-Will print `"Some documentation"` as expected. If both sides have documentation,
-the behavior is unspecified, as merging two distinct blobs of text doesn't make
-sense in general. Currently, Nickel will randomly keeps one of the two in
-practice.
+```console
+$ nickel -f config.ncl query foo 
+• documentation: Some documentation
+
+Available fields
+• field
+```
+
+If both sides have documentation, the behavior is unspecified, as merging two
+distinct blobs of text doesn't make sense in general. Currently, Nickel will
+randomly keep one of the two.
 
 ## Recursive overriding
 
-We've seen in the section on default values that they are useful to override
-(update) a single field with a different value. The combo of merging and
-priorities can do more. In Nickel, records are recursive by default, in order to
-express easily dependencies between the different fields of the configuration.
-Concretely, you can refer to other fields of a record from within this record:
+We've seen that default values are useful to override a single field with a
+different value. The combo of merging, recursive records and merge priorities
+together provides the capability of *recursive overriding*, which is a powerful
+tool, and the subject of this section.
+
+In Nickel, records are recursive by default, in order to easily express
+dependencies between the different fields of a configuration. Concretely, you
+can refer to other fields of a record from within the same record:
 
 ```nickel
 let base_config = {
@@ -787,8 +754,8 @@ let base_config = {
 base_config
 ```
 
-Here, we referred to `version` from the `input` field transparently. This
-configuration evaluates to:
+Here, `version` references the `input` field transparently. This configuration
+evaluates to:
 
 ```nickel
 {
@@ -797,10 +764,10 @@ configuration evaluates to:
 }
 ```
 
-Merging handles overriding on recursive record too. More precisely, when we
-override the default value of `version`, *the fields that depend on `version` --
-here, `input` -- will also be updated automatically*. For example, `base_config
-& {version = "unstable"}` will evaluate to:
+In this case, when we override the default value of `version`, *the fields that
+depend on `version` -- here, `input` -- will also be updated automatically*.
+This is what we mean by recursive overriding. For example, `base_config &
+{version = "unstable"}` will evaluate to:
 
 ```nickel
 {
@@ -811,22 +778,24 @@ here, `input` -- will also be updated automatically*. For example, `base_config
 
 ### Example
 
-Here is another variation of recursive overriding on our `firewall` example:
+Here is another variation of recursive overriding on the `firewall` example:
 
 ```nickel
 let security = {
-    firewall.open_proto.http | default = true,
-    firewall.open_proto.https | default = true,
-    firewall.open_proto.ftp | default = true,
-    firewall.open_ports = []
-        @ (if firewall.open_proto.ftp then [21] else [])
-        @ (if firewall.open_proto.http then [80] else [])
-        @ (if firewall.open_proto.https then [443] else []),
-} in # => security.firewall.open_ports = [21, 80, 443]
-security & {firewall.open_proto.ftp = false} # => firewall.open_ports = [80, 443]
+  firewall.open_proto.http | default = true,
+  firewall.open_proto.https | default = true,
+  firewall.open_proto.ftp | default = true,
+  firewall.open_ports =
+    []
+    @ (if firewall.open_proto.ftp then [21] else [])
+    @ (if firewall.open_proto.http then [80] else [])
+    @ (if firewall.open_proto.https then [443] else []),
+}
+in # => security.firewall.open_ports = [21, 80, 443]
+security & { firewall.open_proto.ftp = false } # => firewall.open_ports = [80, 443]
 ```
 
-Here, `security.firewall.open_ports` is `[21, 80, 443]`. But in the returned
-configuration (let's call it `result`), `result.firewall.open_ports = [80, 443]`.
+Here, `security.firewall.open_ports` is `[21, 80, 443]`. But in the final
+configuration, `firewall.open_ports` will be `[80, 443]`.
 
 [rfc001]: https://github.com/tweag/nickel/blob/c21cf280dc610821fceed4c2caafedb60ce7177c/rfcs/001-overriding.md
