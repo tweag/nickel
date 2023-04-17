@@ -27,8 +27,8 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, IndexMap, MergePriority, NAryOp, Number, PendingContract, RecordExtKind,
-        RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, PendingContract,
+        RecordExtKind, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -938,7 +938,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::StrIsMatchCompiled(regex) => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Bool(regex.is_match(s)),
+                        s.matches_regex(&regex),
                         pos_op_inh,
                     )))
                 } else {
@@ -950,37 +950,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::StrFindCompiled(regex) => {
                 if let Term::Str(s) = &*t {
-                    let capt = regex.captures(s);
-                    let result = if let Some(capt) = capt {
-                        let first_match = capt.get(0).unwrap();
-                        let groups = capt
-                            .iter()
-                            .skip(1)
-                            .filter_map(|s_opt| {
-                                s_opt.map(|s| RichTerm::from(Term::Str(s.as_str().into())))
-                            })
-                            .collect();
-
-                        mk_record!(
-                            ("matched", Term::Str(first_match.as_str().into())),
-                            ("index", Term::Num(first_match.start().into())),
+                    use crate::term::string::RegexFindResult;
+                    let result = match s.find_regex(&regex) {
+                        RegexFindResult::NoMatch => mk_record!(
+                            ("matched", RichTerm::from(Term::Str(NickelString::new()))),
+                            ("index", RichTerm::from(Term::Num(Number::from(-1)))),
                             (
                                 "groups",
-                                Term::Array(groups, ArrayAttrs::new().closurized())
+                                RichTerm::from(Term::Array(
+                                    Array::default(),
+                                    ArrayAttrs::default()
+                                ))
                             )
-                        )
-                    } else {
-                        //FIXME: what should we return when there's no match?
-                        mk_record!(
-                            ("matched", Term::Str(NickelString::new())),
-                            ("index", Term::Num(Number::from(-1))),
+                        ),
+                        RegexFindResult::Match {
+                            mtch,
+                            index,
+                            groups,
+                        } => mk_record!(
+                            ("matched", RichTerm::from(Term::Str(mtch))),
+                            ("index", RichTerm::from(Term::Num(index))),
                             (
                                 "groups",
-                                Term::Array(Array::default(), ArrayAttrs::default())
+                                RichTerm::from(Term::Array(
+                                    Array::from_iter(
+                                        groups.into_iter().map(|s| Term::Str(s).into())
+                                    ),
+                                    ArrayAttrs::new().closurized()
+                                ))
                             )
-                        )
+                        ),
                     };
-
                     Ok(Closure::atomic_closure(result))
                 } else {
                     Err(mk_type_error!(
@@ -2185,7 +2185,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let re = regex::Regex::new(from)
                                 .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                            re.replace_all(s, to.as_str()).into()
+                            s.replace_regex(&CompiledRegex(re), to)
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(

@@ -1157,7 +1157,7 @@ pub enum UnaryOp {
 // See: https://github.com/rust-lang/regex/issues/178
 /// [`regex::Regex`] which implements [`PartialEq`].
 #[derive(Debug, Clone)]
-pub struct CompiledRegex(regex::Regex);
+pub struct CompiledRegex(pub regex::Regex);
 
 impl PartialEq for CompiledRegex {
     fn eq(&self, other: &Self) -> bool {

@@ -25,14 +25,22 @@ let {string, ..} = std in
   string.replace_regex "\\d+" "_" "1,234,1 1" == "_,_,_ _",
   string.replace_regex "\\d" "_" "１２３" == "___",
   string.replace_regex "\\d" "_" "一二三" == "一二三",
+  # we don't want to replace codepoints inside extended grapheme clusters
+  string.replace_regex "❤️" "_" "👨‍❤️‍💋‍👨" == "👨‍❤️‍💋‍👨",
+  string.replace_regex "❤️" "_" "x❤️y❤️z" == "x_y_z",
 
   # string.is_match
   string.is_match "^___$" "___",
   string.is_match "___" "___)",
   !(string.is_match "^___$" "___)"),
+  # we don't want matches if they occur as part of an extended grapheme cluster
+  !(string.is_match "👨" "👨‍❤️‍💋‍👨"),
+  !(string.is_match "❤️" "👨‍❤️‍💋‍👨"),
 
   # string.find
   string.find "([0-9]{1,3}\\.){3}([0-9]{1,3})" "1.2.3.4" == { matched = "1.2.3.4", index = 0, groups = ["3.", "4"]},
   string.find "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})" "ip: 192.168.1.4, sorry, what's ipv6?" == { matched = "192.168.1.4", index = 4, groups = ["192", "168", "1", "4"]},
   string.find "\\d" "no numeral" == { matched = "", index = -1, groups = []},
-] |> check
+  string.find "❤️" "👨‍❤️‍💋‍👨" == { matched = "", index = -1, groups = []},
+  string.find "❤️" "👨‍❤️‍💋‍👨❤️" == { matched = "❤️", index = 1, groups = [] },
+  ] |> check

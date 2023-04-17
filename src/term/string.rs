@@ -4,7 +4,7 @@ use malachite::Rational;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{array::Array, Number, Term};
+use super::{array::Array, CompiledRegex, Number, Term};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which
@@ -231,13 +231,108 @@ impl NickelString {
         }
     }
 
+    /// Returns `true` if `self` matches `regex` and `false` otherwise.
+    ///
+    /// Note that this function returns `false` if a match occurs in the middle
+    /// of a Unicode extended grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
+    pub fn matches_regex(&self, regex: &CompiledRegex) -> Term {
+        use grapheme_cluster_preservation::regex;
+
+        Term::Bool(regex::find_iter(self, regex).next().is_some())
+    }
+
+    /// Returns a new string in which every occurence of `regex` in `self` is
+    /// replaced by `replacement`.
+    ///
+    /// Note that this function will not replace matches that begin or end
+    /// in the middle of a Unicode extended grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
+    pub fn replace_regex(&self, regex: &CompiledRegex, replacement: &NickelString) -> NickelString {
+        use grapheme_cluster_preservation::regex;
+
+        let mut result = String::new();
+        let mut prev_match_end = 0;
+        for m in regex::find_iter(self, regex) {
+            // Push everything between the last match and this one
+            result.push_str(&self[prev_match_end..m.start()]);
+            // Push the replacement
+            result.push_str(replacement);
+            // Skip to the end of the match
+            prev_match_end = m.end();
+        }
+        // Push whatever remains between the end of the match & the end of the
+        // string.
+        result.push_str(&self[prev_match_end..]);
+
+        result.into()
+    }
+
+    /// Find the first match in `self` for a given `regex`, and return the
+    /// match itself, the index in `self` where it appears, and any capture
+    /// groups specified.
+    ///
+    /// Note that matches will be ignored if either the match itself or any
+    /// of its capture groups begin or end in the middle of a Unicode extended
+    /// grapheme cluster.
+    ///
+    /// The time complexity of this method is `O(self.len())`.
+    pub fn find_regex(&self, regex: &CompiledRegex) -> RegexFindResult {
+        use grapheme_cluster_preservation::regex;
+
+        if let Some(capt) = regex::captures(self, regex) {
+            // If we found a capture group, we extract the whole match...
+            let first_match = capt.get(0).unwrap();
+            // and then convert each group into a `NickelString`
+            let groups = capt
+                .iter()
+                .skip(1)
+                .filter_map(|s_opt| s_opt.map(|s| s.as_str().into()))
+                .collect();
+
+            // The indices returned by the `regex` crate are byte offsets into
+            // the string, but we need to return the index into the Nickel string,
+            // i.e., the grapheme cluster index which starts at this byte offset.
+            let adjusted_index = self
+                .grapheme_indices(true)
+                .enumerate()
+                .find_map(|(grapheme_idx, (byte_offset, _))| {
+                    if byte_offset == first_match.start() {
+                        Some(grapheme_idx.into())
+                    } else {
+                        None
+                    }
+                })
+                .expect("We already know that `first_match.start()` occurs on a cluster boundary.");
+
+            RegexFindResult::Match {
+                mtch: first_match.as_str().into(),
+                index: adjusted_index,
+                groups,
+            }
+        } else {
+            RegexFindResult::NoMatch
+        }
+    }
+
     /// Consumes `self`, returning the Rust `String`.
     pub fn into_inner(self) -> String {
         self.0
     }
 }
 
-/// Errors returned by `NclString`'s `substring` method.
+pub enum RegexFindResult {
+    NoMatch,
+    Match {
+        mtch: NickelString,
+        index: Number,
+        groups: Vec<NickelString>,
+    },
+}
+
+/// Errors returned by `NickelString`'s `substring` method.
 pub enum SubstringError {
     /// The start index was not an int
     NonIntStart(Rational),
@@ -419,6 +514,49 @@ mod grapheme_cluster_preservation {
                     }
                 }
             }
+        }
+    }
+
+    /// Functions for working with regex without accidentally breaking up
+    /// Unicode extended grapheme clusters.
+    pub mod regex {
+        use regex::Regex;
+        use unicode_segmentation::GraphemeCursor;
+
+        /// An iterator which finds occurences of a given `Regex` pattern in
+        /// some source `str`, while filtering out any matches which either
+        /// begin or end in the middle of a Unicode extended grapheme cluster.
+        pub fn find_iter<'a>(
+            haystack: &'a str,
+            needle: &'a Regex,
+        ) -> impl Iterator<Item = regex::Match<'a>> {
+            needle
+                .find_iter(haystack)
+                .filter(|m| does_match_start_and_end_on_boundary(haystack, m))
+        }
+
+        /// Find the left-most match for `needle` in `haystack`, filtering out
+        /// any match where either the match itself, or any of its capture
+        /// groups, begin or end in the middle of a Unicode extended grapheme
+        /// cluster.
+        pub fn captures<'a>(haystack: &'a str, needle: &'a Regex) -> Option<regex::Captures<'a>> {
+            needle.captures_iter(haystack).find(|c| {
+                c.iter().all(|maybe_match| {
+                    maybe_match
+                        .map(|m| does_match_start_and_end_on_boundary(haystack, &m))
+                        .unwrap_or(false)
+                })
+            })
+        }
+
+        fn does_match_start_and_end_on_boundary(haystack: &str, m: &regex::Match<'_>) -> bool {
+            let mut cursor = GraphemeCursor::new(0, haystack.len(), true);
+            cursor.set_cursor(m.start());
+            let starts_on_boundary = cursor.is_boundary(haystack, 0).expect("bad start");
+            cursor.set_cursor(m.end());
+            let ends_on_boundary = cursor.is_boundary(haystack, 0).expect("bad end");
+
+            starts_on_boundary && ends_on_boundary
         }
     }
 }

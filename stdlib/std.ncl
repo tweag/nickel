@@ -2021,9 +2021,10 @@
       | doc m%"
         `replace_regex regex repl string` replaces every match of `regex` in `string` with `repl`.
 
-        **WARNING**: this function will currently break up Unicode extended
-        grapheme clusters if the regex matches a codepoint that exists within
-        one. This behaviour is expected to change in a future version.
+        **Note**: this function will only replace matches which start & end
+        on the boundary of Unicode extended grapheme clusters. For example,
+        `replace_regex "❤️" "_" "👨‍❤️‍💋‍👨"` will return `"👨‍❤️‍💋‍👨"`, since the
+        heart codepoint occurs within the larger emoji grapheme cluster.
 
         # Examples
 
@@ -2042,9 +2043,11 @@
       | doc m%"
         `is_match regex string` checks if `string` matches `regex`.
 
-        **WARNING**: this function will currently return `true` even if the
-        regex match overlaps, or happens entirely within, with a Unicode extended
-        grapheme cluster. This behaviour is expected to change in a future version.
+        **Note**: this function only returns `true` when the regex match does
+        not begin or end in the middle of a Unicode extended grapheme cluster.
+        For example, searching for `"❤️"` within the string `"👨‍❤️‍💋‍👨"` will
+        return `false`, as the heart codepoint is contained in the larger
+        extended grapheme cluster.
 
         # Examples
 
@@ -2093,10 +2096,9 @@
         was part of the match in `string`, and an array of all capture groups if
         there were any.
 
-        **WARNING**: this function will currently return incorrect indices if
-        `str` contains Unicode extended grapheme clusters. The indices returned
-        will be the location of the matching codepoints, rather than the
-        matching grapheme clusters.
+        **Note**: this function ignores any matches where either the match
+        itself, or one of its capture groups, begin or end in the middle of a
+        Unicode extended grapheme cluster.
 
         # Examples
 
