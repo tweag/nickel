@@ -272,8 +272,8 @@ type. Here is our polymorphic type annotation for `filter`:
 }
 ```
 
-Now, filter can be used not only on numbers as in the initial example, but on strings as
-well:
+Now, filter can be used not only on numbers as in the initial example, but on
+strings as well:
 
 ```nickel
 {
