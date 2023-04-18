@@ -24,7 +24,7 @@ What to do depends on the context:
 - *Anonymous function: nothing*. Short anonymous functions can
     usually live without an annotation. Inside a typed block, they will be
     typechecked anyway. Outside, anonymous function can't be reused elsewhere,
-    and are generally passed as arguments to an higher-order function, which
+    and are generally passed as arguments to a higher-order function, which
     should be typed and will apply a guarding contract.
 
     Example: `std.array.map (fun x => x + 1) [1,2,3]`
@@ -108,8 +108,8 @@ Usually, you should do **nothing**.
 ## Debugging
 
 At last, both type annotations and contracts come in handy for debugging. In
-this case, you don't have to follow the previous advices, and you can add type
-or contract annotation pretty much everywhere you see fit.
+this case, you don't have to follow the previous advice, and you can add type
+or contract annotation pretty much anywhere you see fit.
 
 One useful pattern is to use a type wildcard `_`, which lets the typechecker
 figure out the type of an expression for you. If a dynamically typed expression
