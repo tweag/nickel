@@ -22,6 +22,7 @@ pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
+use pretty::BoxAllocator;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
@@ -739,40 +740,6 @@ impl Term {
             | Term::OpN(..)
             | Term::Import(_)
             | Term::ResolvedImport(_) => String::from("<unevaluated>"),
-        }
-    }
-
-    /// Return a deep string representation of a term, used for printing in the REPL
-    pub fn deep_repr(&self) -> String {
-        match self {
-            Term::Record(r) | Term::RecRecord(r, ..) => {
-                let fields_str: Vec<String> = r
-                    .fields
-                    .iter()
-                    .map(|(ident, field)| {
-                        if let Some(ref value) = field.value {
-                            format!("{} = {}", ident, value.as_ref().deep_repr())
-                        } else {
-                            format!("{ident}")
-                        }
-                    })
-                    .collect();
-
-                let suffix = match self {
-                    Term::RecRecord(_, dyn_fields, ..) if !dyn_fields.is_empty() => ", ..",
-                    _ => "",
-                };
-
-                format!("{{ {}{} }}", fields_str.join(", "), suffix)
-            }
-            Term::Array(elements, _) => {
-                let elements_str: Vec<String> = elements
-                    .iter()
-                    .map(|term| term.as_ref().deep_repr())
-                    .collect();
-                format!("[ {} ]", elements_str.join(", "))
-            }
-            _ => self.shallow_repr(),
         }
     }
 
@@ -1734,7 +1701,6 @@ impl From<Term> for RichTerm {
 impl std::fmt::Display for RichTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use crate::pretty::*;
-        use pretty::BoxAllocator;
 
         let allocator = BoxAllocator;
 
