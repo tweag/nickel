@@ -39,7 +39,7 @@ fit exactly into a 64-bit signed integer or a 64-bit unsigned integer. They
 are serialized as a 64-bit float otherwise. The latter conversion might lose
 precision as well, for example when serializing `1/3`.
 
-Here are some examples of `Number` literals in Nickel:
+Here are some examples of number literals in Nickel:
 
 ```nickel
 1
@@ -190,8 +190,7 @@ same amount of `%` signs as in the delimiters. This can be useful for escaping
 ```
 
 Multiline string interpolation is "indentation-aware". This means that you can
-interpolate a string containing multiple lines into another string with prefixed
-indentation and the result will be as expected:
+interpolate a string with indentation and the result will be as expected:
 
 ```text
 > let log = m%"
@@ -240,10 +239,10 @@ That is precisely the use-case for symbolic strings:
 ```
 
 This example is an excerpt of a Nix configuration written in Nickel, emulating
-Nix string contexts. The region delimited by `nix-s%"` and `"%"` is a symbolic
-string. The values `inputs.gcc`, `inputs.hello`, etc. aren't actually strings,
-but arbitrary records, because they carry additional context. Yet, they can be
-interpolated as if they were strings.
+Nix string contexts. The region delimited by `nix-s%"` and `"%"` on lines 4 to
+8 is a symbolic string. The values `inputs.gcc`, `inputs.hello`, etc. aren't
+actually strings, but arbitrary records, because they carry additional context.
+Yet, they can be interpolated as if they were strings.
 
 The idea behind symbolic strings is to offer a string-like syntax, but without
 evaluating the expression as a string. Instead, the expression is returned in a
@@ -324,9 +323,10 @@ first argument, which is an enum tag among `` `Json ``, `` `Toml `` or `` `Yaml
 An enum tag `` `foo `` is serialized as the string `"foo"`:
 
 ```nickel
-> std.serialize `Yaml {foo = `bar}
-"foo: bar
-"
+> std.serialize `Json {foo = `bar}
+"{
+  \"foo\": \"bar\"
+}"
 ```
 
 While it's technically possible to just use strings in place of enum tags, using
