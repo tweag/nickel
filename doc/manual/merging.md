@@ -356,8 +356,9 @@ documentation.
 ### Merge priorities
 
 Priorities are specified using the `priority` annotation, followed by a number
-literal. There are also two other special priority annotations, the lowest priority
-`default`, and the highest priority `force`. Both are written without the `priority` keyword.
+literal. There are also two other special priority annotations, the lowest
+priority `default`, and the highest priority `force`. Both are written without
+the `priority` keyword.
 
 Priorities dictate which values take precedence over other values. By default,
 values are given the priority `0`. Values with the same priority are recursively
@@ -724,7 +725,7 @@ query `foo` by running `nickel -f config.ncl query foo` on:
 ```
 
 ```console
-$ nickel -f config.ncl query foo 
+$ nickel -f config.ncl query foo
 • documentation: Some documentation
 
 Available fields
