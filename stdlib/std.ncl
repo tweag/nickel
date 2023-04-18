@@ -730,16 +730,16 @@
         `Equal` is lazy over arrays and records. When checking such values,
         `Equal` doesn't test for equality of elements right away (it just tests
         that the size is the same for arrays and that fields are the same for
-        records), but returns a new value where an equality contract has been
-        pushed down each element.
+        records), but returns a new value where equality subcontracts have been
+        pushed inside each element.
 
         # Example
 
         ```nickel
-        1 + 4 | Equal 5
+        1 + 4 | std.contract.Equal 5
          => 5
-        4 | Equal 5
-         => ERROR (contract broken by a value)
+        4 | std.contract.Equal 5
+         => error: contract broken by a value
         ```
       "%
       =
@@ -909,8 +909,8 @@
 
     label
       | doc m%"
-          The label submodule gathers functions that manipulate the label of
-          a contract.
+          The label submodule provides functions that manipulate the label of a
+          contract.
 
           A label is a special opaque value automatically passed by the Nickel
           interpreter to contracts when performing a contract check.
@@ -922,9 +922,10 @@
           The setters (`with_XXX` functions) always operate on the current error
           diagnostic, which is the last diagnotic on the stack. If the stack is
           empty, a fresh diagnostic is silently created when using a setter.
-          The previous diagnostics are thus archived, and can't be modified
-          anymore. All diagnostics will be shown during error reporting, with
-          the most recent being used as the main one.
+
+          The previous diagnostics on the stack are considered archived, and
+          can't be modified anymore. All diagnostics will be shown during error
+          reporting, with the most recent being used as the main one.
 
           `std.contract.apply` is the operation that pushes a new fresh diagnostic on
           the stack, saving the previously current error diagnostic. The function
@@ -945,8 +946,8 @@
               If a custom error message was previously set, there are two
               possibilities:
                 - the label has gone through a `std.contract.apply` call in-between.
-                  In this case, the previous diagnostic has been stacked,
-                  and using `with_message` won't erase anything but rather modify
+                  In this case, the previous diagnostic has been stacked, and
+                  using `with_message` won't erase anything but rather modify
                   the fresh current diagnostic.
                 - no `std.contract.apply` has taken place since the last message
                   was set. In this case, the current diagnostic's error message
@@ -986,9 +987,9 @@
               If custom error notes were previously set, there are two
               possibilities:
                 - the label has gone through a `std.contract.apply` call in-between.
-                  In this case, the previous diagnostic has been stacked,
-                  and using `with_notes` won't erase anything but rather modify
-                  the fresh current diagnostic.
+                  In this case, the previous diagnostic has been stacked, and
+                  using `with_notes` won't erase anything but rather modify the
+                  fresh current diagnostic.
                 - no `std.contract.apply` has taken place since the last message was
                   set. In this case, the current diagnostic's error notes will
                   be replaced.
@@ -1027,6 +1028,17 @@
 
               Type: `String -> Label -> Label`
               (for technical reasons, this function isn't actually statically typed)
+
+              # Examples
+
+              ```nickel
+              let AlwaysFailWithNotes = fun label _value =>
+                label
+                |> std.contract.label.append_note "This is note 1"
+                |> std.contract.label.append_note "This is note 2"
+                |> std.contract.blame
+              in
+              null | AlwaysFailWithNotes
             "%
           = fun note label => %label_append_note% note label,
       },
