@@ -6,25 +6,26 @@ let GccFlag =
   # We only allow the following flags
   let available = ["W", "c", "S", "e", "o"] in
   fun label value =>
-  if std.is_string value then
-    if std.string.length value > 0 &&
-      std.array.any (fun x => x == std.string.substring 0 1 value) available then
-      value
-    else
-      std.contract.blame_with_message "unknown flag %{value}" label
-  else if std.is_record value then
-    if std.record.has_field "flag" value && std.record.has_field "arg" value then
-      if std.array.any (fun x => x == value.flag) available then
-        #Normalize the tag to a string
-        value.flag ++ value.arg
+    if std.is_string value then
+      if std.string.length value > 0
+      && std.array.any (fun x => x == std.string.substring 0 1 value) available then
+        value
       else
-        std.contract.blame_with_message "unknown flag %{value.flag}" label
+        std.contract.blame_with_message "unknown flag %{value}" label
+    else if std.is_record value then
+      if std.record.has_field "flag" value && std.record.has_field "arg" value then
+        if std.array.any (fun x => x == value.flag) available then
+          #Normalize the tag to a string
+          value.flag ++ value.arg
+        else
+          std.contract.blame_with_message "unknown flag %{value.flag}" label
+      else
+        std.contract.blame_with_message
+          "bad record structure: missing field `flag` or `arg`"
+          label
     else
-      std.contract.blame_with_message
-        "bad record structure: missing field `flag` or `arg`"
-        label
-  else
-    std.contract.blame_with_message "expected record or string" label in
+      std.contract.blame_with_message "expected record or string" label
+in
 
 let Path =
   let pattern = m%"^(.+)/([^/]+)$"% in
@@ -35,7 +36,8 @@ let Path =
       else
         std.contract.blame_with_message "invalid path" label
     else
-      std.contract.blame_with_message "not a string" label in
+      std.contract.blame_with_message "not a string" label
+in
 
 let SharedObjectFile = fun label value =>
   if std.is_string value then
@@ -44,39 +46,49 @@ let SharedObjectFile = fun label value =>
     else
       std.contract.blame_with_message "not an .so file" label
   else
-    std.contract.blame_with_message "not a string" label in
+    std.contract.blame_with_message "not a string" label
+in
 
 let OptLevel = fun label value =>
   if value == 0 || value == 1 || value == 2 then
     value
   else
-    std.contract.blame label in
+    std.contract.blame label
+in
 
 let Contract = {
-  path_libc | doc "Path to libc."
-            | Path
-            | SharedObjectFile
-            | default = "/lib/x86_64-linux-gnu/libc.so",
+  path_libc
+    | doc "Path to libc."
+    | Path
+    | SharedObjectFile
+    | default
+    = "/lib/x86_64-linux-gnu/libc.so",
 
-  flags | doc "
-            Additional flags to pass to GCC. Either provide a string without the
-            leading `-`, or a structured value `{flag : String, arg: String}`.
-          "
-        | Array GccFlag
-        | default = [],
+  flags
+    | doc m%"
+        Additional flags to pass to GCC. Either provide a string without the
+        leading `-`, or a structured value `{flag : String, arg: String}`.
+      "%
+    | Array GccFlag
+    | default
+    = [],
 
-  optimization_level | doc "
-                       Optimization level. Possible values:
+  optimization_level
+    | doc m%"
+        Optimization level. Possible values:
 
-                        - *0*: unoptimized
-                        - *1*: normal
-                        - *2*: use optimizations
-                      "
-                     | OptLevel
-                     | default = 1,
-} in
+         - *0*: unoptimized
+         - *1*: normal
+         - *2*: use optimizations
+      "% 
+    | OptLevel
+    | default
+    = 1,
+}
+in
 
 {
-  flags = ["Wextra", {flag = "o", arg = "stuff.o"}],
+  flags = ["Wextra", { flag = "o", arg = "stuff.o" }],
   optimization_level = 2,
 } | Contract
+

@@ -8,3 +8,4 @@
   firewall.type | default = "iptables",
   firewall.open_ports | priority 5 = [21, 80, 443],
 }
+
