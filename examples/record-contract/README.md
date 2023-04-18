@@ -5,8 +5,8 @@ Kubernetes configuration. It demonstrates how you can write contracts for simple
 elements (such as `Port`), and assemble them into a schema for your end
 configuration.
 
-Ideally, Kubernetes contract would be auto-generated from existing Kubernetes
-schema in a real world scenario.
+Ideally, Kubernetes contracts would be auto-generated from existing Kubernetes
+schemas in a real world scenario.
 
 ## Run
 

@@ -1,6 +1,6 @@
 # Simple contracts
 
-This directory contain two examples of simple contracts.
+This directory contains two examples of simple contracts.
 
 - `simple-contract-bool.ncl` defines simple contracts on booleans and
   illustrates the use of contracts as pre-conditions and post-conditions of a function.

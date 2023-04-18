@@ -20,7 +20,7 @@ data!
     ```
 
 - *Configurations*: some examples return records representing configuration. You
-  can run them directly as well, or use `export` subcommand to see the result
+  can run them directly as well, or use the `export` subcommand to see the result
   serialized as JSON, which might be more readable:
 
     ```console
@@ -31,7 +31,7 @@ data!
     }
     ```
 
-    Alternatively, you can query individual elements of configuration, showing
+    Alternatively, you can query individual elements of a configuration, showing
     documentation and other metadata:
 
     ```console
