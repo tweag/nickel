@@ -769,9 +769,13 @@ Here are some examples of record types in Nickel:
 
 > {foo.bar = 1, baz = 2} : {foo: {bar : Number}, baz : Number}
 { baz = 2, foo = { bar = 1 } }
+```
 
-The right-hand side is missing a type annotation for baz, so it isn't a
-record type
+Here, the right-hand side is missing a type annotation for `baz`, so it doesn't
+qualify as a record type and is parsed as a record contract. This throws an
+"incompatible types" error:
+
+```text
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
 error: incompatible types
   ┌─ repl-input-6:1:1
@@ -782,14 +786,23 @@ error: incompatible types
   = The type of the expression was expected to be `{ bar : String, baz, foo : Numb…` (a contract)
   = The type of the expression was inferred to be `{bar: _a, foo: _b}`
   = Static types and contracts are not compatible
+```
 
-There's a metadata annotation apart from the type
+If there's a metadata annotation apart from the type, the record cannot be
+parsed as a type. Consequently, it is considered a record contract and converted
+into an opaque type, yielding an error:
+
+```text
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: incompatible types
 [..]
+```
 
-While MyDyn isn't a proper type, the record literal respects all the
-requirements for a record type
+While in the following `MyDyn` isn't a proper type, the record literal `{foo :
+Number, bar : MyDyn}` respects all the requirements for a record type and is
+parsed as such:
+
+```text
 > let MyDyn = fun label value => value in
     {foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
 { bar = "foo", foo = 1 }
