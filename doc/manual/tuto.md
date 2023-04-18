@@ -4,8 +4,8 @@ slug: tutorial
 
 # Managing users
 
-In this tutorial, you will learn how to use Nickel to manage a list of
-users, and then export it as a YAML file.
+In this tutorial, you will learn how to use Nickel to manage a list of users and
+to export it as a YAML file.
 
 ## Step 1: Install nickel
 
@@ -15,8 +15,8 @@ to the different installation methods documented in
 
 ## Step 2: Think about the schema
 
-The YAML we want to produce has different fields with different types
-(lists, booleans, strings). Here is a sample of what we need:
+The YAML we want to produce has different fields with different types (lists,
+booleans and strings). Here is a sample of what we would like:
 
 ```yaml
 users:
@@ -32,46 +32,47 @@ users:
 We can spot fields such as `name`, `ssh-keys`, `is-admin` or
 `extra-groups`. To create a Nickel contract that correctly specifies
 the shape of this data, we need to think about the type needed for
-each attribute.
+each field.
 
-For example, the field `name` is a string, which translates to `String`
-in Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is a
-list of strings, written as `Array String` in Nickel. The field `is-admin`
-is a boolean, written as `Bool`. Finally, `extra-groups` is a list of
-group names, so we need `Array String`, the same type used for `ssh-keys`.
+For example, the field `name` is a string, which translates to `String` in
+Nickel. Meanwhile, `ssh-keys` must allow multiple keys, so this is a list of
+strings, written as `Array String`. The field `is-admin` is a boolean, written
+as `Bool`. Finally, `extra-groups` is a list of group names: we'll use `Array
+String` here as well.
 
-We can also mark fields as `optional` so you won't have to explicitly
-write them if they don't have any value. In the example,`extra-groups`
-and `ssh-keys` can be empty, so we will mark them as optional using the
-`optional` keyword.
+We can also mark fields as optional so we won't have to necessarily provide a
+value. In our working example, `extra-groups` and `ssh-keys` can be empty, so we
+will mark them as optional using the `optional` keyword.
 
-The field `is-admin` must always be present in the YAML file, but for
-most of our users it will be set to `false`. Fortunately, we can assign
-the default value `false` to this field , which means you only need
-to write `is-admin = true` when the user is actually
-an administrator.
+The field `is-admin` must always be present in the YAML file, but for most of
+our users it will be set to `false`. Fortunately, we can assign the default
+value `false` to this field, which means we only need to write `is-admin = true`
+when the user is actually an administrator.
 
 ## Step 3: Write a contract
 
 Create a text file named `users-schema.ncl`. We will write our contract
 defining fields and associated constraints such as a type, marking
-the attribute optional, and a default value if there is one.
+the field optional, and a default value if there is one.
 
-Please note that using a contract isn't mandatory per-se to use Nickel,
-but it will allow you to validate your input data
-(See [Step 6](#step-6-try-to-make-a-mistake) for an example).
+Please note that using a contract isn't mandatory per-se to use Nickel, but it
+will allow you to validate your configuration (See [Step
+6](#step-6-try-to-make-a-mistake) for an example), provide in-code information
+thanks to the LSP, and to document your code at the same time.
 
 ```nickel
 {
   UserSchema =
   {
-    name | String,
+    name
+      | String,
     ssh-keys
-        | Array String
-        | optional,
+      | Array String
+      | optional,
     is-admin
       | Bool
-      | default = false,
+      | default
+      = false,
     extra-groups
       | Array String
       | optional,
@@ -86,35 +87,31 @@ file created previously. This file will contain the actual data we need
 to use.
 
 ```nickel
-let {UserSchema, ..} = import "users-schema.ncl" in
+let { UserSchema, .. } = import "users-schema.ncl" in
 {
-  users | Array UserSchema =
-  [
+  users | Array UserSchema = [
     {
       name = "Alice",
       is-admin = true,
-      extra-groups = [ "support"],
+      extra-groups = ["support"],
       ssh-keys = [
         "AAAAAe4QAAAAAB5OLAo1...... alice@nixos",
         "AAAAA26vx+AqGIPZd/NT...... alice@android",
       ],
     },
-
     {
       name = "Bob",
-      extra-groups = [ "pentester"],
+      extra-groups = ["pentester"],
     },
-
     {
       name = "Mallory"
     },
-
     {
       name = "Grace",
       is-admin = true,
-      extra-groups = [ "administrative" ],
+      extra-groups = ["administrative"],
     },
- ]
+  ]
 }
 ```
 
@@ -159,30 +156,30 @@ Edit the file `users.ncl` and delete the line `name = "Alice",`. Now
 export the file again using `nickel -f users.ncl export --export yaml`.
 You should see the following error:
 
-```shell
+```console
+$ nickel export -f users.ncl --format yaml
 error: missing definition for `name`
-   ┌─ /tmp/example/users.ncl:6:5
+   ┌─ users-schemas.ncl:4:5
    │
- 6 │ ╭     {
- 7 │ │       is-admin = true,
- 8 │ │       extra-groups = [ "support"],
- 9 │ │       ssh-keys = [
+ 4 │     name
+   │     ^^^^ defined here
+   │
+   ┌─ users.ncl:4:5
+   │
+ 4 │ ╭     {
+ 5 │ │       is-admin = true,
+ 6 │ │       extra-groups = ["support"],
+ 7 │ │       ssh-keys = [
    · │
-12 │ │       ],
-13 │ │     },
+10 │ │       ],
+11 │ │     },
    │ ╰─────^ in this record
-
-note:
-  ┌─ /tmp/example/users-contract.ncl:5:12
-  │
-5 │     name | String,
-  │            ^^^ bound here
 ```
 
-The first part tells you that in the first record in the users list,
-the attribute `name` has no value while it should have one. This is to
-be expected as we removed it earlier.
+The first part tells us where `name` was defined as being a requirement. This
+points to the definition of name inside `UserSchema`. As there is no `optional`
+keyword, this field must be set in the final configuration.
 
-The second part shows the contract attribute that produced the error.
-In this case it's showing that `name` should be a `String`, and as there
-is no `optional` keyword, this attribute must be set.
+The second part tells us that in the first record in the users list, the field
+`name` has no value while it should have one. This is to be expected as we
+removed it earlier.
