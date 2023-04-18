@@ -7,10 +7,10 @@ slug: contracts
 **Note**: Most of the examples of this document are run in the Nickel REPL. To
 start a session, run `nickel repl` in your terminal.
 
-(For the motivation behind contracts and a high-level overview of contracts and
-types, first read the [correctness](./correctness.md) section.)
+For the motivation behind contracts and a high-level overview of contracts and
+types, first read the [correctness](./correctness.md) section.
 
-To first approximation, contracts are assertions. They check that a value
+To a first approximation, contracts are assertions. They check that a value
 satisfies some property at run-time. If the test passes, the execution can go on
 normally. Otherwise, an error is raised. In Nickel, you can apply a contract
 using the `|` operator:
@@ -19,7 +19,7 @@ using the `|` operator:
 let x = (1 + 1 | Number) in x
 ```
 
-Contract can also be attached to identifiers in a definition:
+Contracts can also be attached to identifiers in a definition:
 
 ```nickel
 # let-binding: equivalent to the previous example
@@ -57,7 +57,7 @@ are available. `Dyn` is a contract that never fails.
 
 ### By hand
 
-The ability to check for arbitrary properties is where run-time contracts really
+The ability to check arbitrary properties is where run-time contracts really
 shine. Let us see how to define our very own contract. Here is an example of a
 custom contract:
 
@@ -81,12 +81,12 @@ A custom contract is a function of two arguments:
   customize the error reporting as well.
 - The value being checked.
 
-Upon success, the contract must return the original value. We will see the
-reason why in the [laziness](#laziness) section. To signal failure, a custom
-contract uses `std.contract.blame`. Custom contracts can use the label to
-customize error reporting upon failure via the functions from
-`std.contract.label`, which set various attributes of the label.
-`std.contract.blame_with_message message label` is just a shorthand for:
+Upon success, the contract must return the original value. We will see
+the reason why in the [laziness](#laziness) section. To signal failure,
+a custom contract uses `std.contract.blame`. Custom contracts can use
+the label to customize error reporting upon failure using the functions
+from `std.contract.label`, which set various attributes of the label.
+`std.contract.blame_with_message message label` is just shorthand for:
 
 ```nickel
 label
@@ -129,11 +129,11 @@ contract more succinctly as:
 
 `std.contract.from_predicate` takes a predicate (a function of one argument
 which returns a boolean) and converts it to a contract. The syntax `(==)` turns
-the equality operator `==` into a function, and is a shorthand for `fun x y => x
-== y`. The partial application to `(==) "foo"` is then the function `fun y =>
-"foo" == y`, which is exactly the condition we want. `from_predicate` is useful
-to quickly define contracts based on a boolean condition, and when the contract
-is simple enough to not require a custom error message.
+the equality operator `==` into a function, and is shorthand for `fun x y => x
+== y`. The partial application `(==) "foo"` is then the function `fun y => "foo"
+== y`, which is exactly the condition we want. `from_predicate` is useful to
+quickly define contracts based on a boolean condition, and when the contract is
+simple enough to not require a custom error message.
 
 Here is an example of a port number contract:
 
@@ -153,7 +153,7 @@ Here is an example of a port number contract:
 
 ### Parametrized contracts
 
-Let us consider a contract for bound checking:
+Let us consider a contract for bounds checking:
 
 ```nickel
 let Between5And10 =
@@ -344,14 +344,14 @@ replace `"8080"` by `8080`, we finally obtain:
 ```
 
 If for a specific use-case port numbers can actually also be specified as
-strings, you can amend the `Port` contract to be more liberal and accept strings
+strings, you can amend the `Port` contract to be more permissive and accept strings
 representing valid port numbers.
 
 #### Metadata
 
 In addition to defining the contracts of fields, record contracts can also
-attach metadata (see [merging](./merging.md)) to fields, such as a documentation
-or default value:
+attach metadata (see [merging](./merging.md)) to fields, such as documentation
+or default values:
 
 ```text
 nickel>
@@ -444,7 +444,7 @@ but potentially surprising differences.
 
 One concerns open contracts. Merging never requires the presence of specific
 fields: thus, the contract `{bar | String}` attached to `foo` will actually
-behave as an open contract, even if you didn't use `..`. This might or might not
+behave like an open contract, even if you didn't use `..`. This might or might not
 be what you want:
 
 ```text
@@ -468,7 +468,7 @@ There are other discrepancies, e.g. when applying the contract to a record with
 a `default` annotation on `subfield`. Thus, unless you have a specific use-case
 in mind, **you should use `|` instead of `=` when attaching record contracts**.
 
-### Types constructors for contracts
+### Type constructors for contracts
 
 We've already seen that the primitive types `Number`, `String` and `Bool` can be
 used as contracts. In fact, any type constructor of the [static type
@@ -476,7 +476,7 @@ system](./typing.md) can be used to combine contracts.
 
 #### Array
 
-An array contract checks that the value is an array and applies the parameter
+An array contract checks that the value is an array and applies its parameter
 contract to each element:
 
 ```text
@@ -502,8 +502,8 @@ error: contract broken by a value
 A function contract `In -> Out` returns a wrapped function which, for each call,
 will check the parameter against the `In` contract and the return value against
 the `Out` contract. Put differently, `In` represents *pre-conditions* which must
-hold about the parameter, and `Out` represents *post-conditions* which must hold
-about the return value of the function.
+hold for the parameter, and `Out` represents *post-conditions* which must hold
+for the return value of the function.
 
 ##### Caller vs callee
 
@@ -522,10 +522,10 @@ Both of those examples will fail with a contract violation. But they are
 different in nature: in the first one, the function `add_semi` respects its
 contract. Whenever `x` is a string, `add_semi` does return a string. Here, the
 **caller** (the user of the function) is to blame, and not the **callee** (the
-function). This is an important distinction. Say you wrote `add_semi` as a part
-of a library. A wrong call is a random user, somewhere, misusing `add_semi`.
-This is not your responsibility to fix, assuming the contract error messages
-are good enough to let users understand the issue quickly.
+function). This is an important distinction. Say you wrote `add_semi` as part
+of a library. A wrong call is a random user of your library, somewhere, misusing
+`add_semi`. This is not your responsibility to fix, assuming the contract error
+messages are good enough to let users understand the issue quickly.
 
 The second example is the converse. The caller provides a string, as requested
 by the contract, but the function returns a number. The blame is on the
@@ -573,9 +573,9 @@ error: contract broken by the caller
 
 The type constructor `{_ : Contract}` represents a record whose field names are
 not constrained but whose field values must satisfy `Contract`. In practice,
-`Contract` is mapped onto each field. Such a contract is useful when using
+`Contract` is applied to each field. Such a contract is useful when using
 records as an extensible dictionary, that is a key/value store, where keys are
-strings and values satisfy `Contract`. Example:
+strings and values satisfy `Contract`, for example:
 
 ```nickel
 nickel>
@@ -586,7 +586,7 @@ occurrences."!"
 
 ## Laziness
 
-In the [writing a custom contract by hand](#by-hand) section, we noted the
+In the [section on writing a custom contract by hand](#by-hand), we noted the
 strange fact that a custom contract must return a value, instead of just
 returning e.g. a boolean to indicate success or failure. A contract could even
 always return `null`, as failure is handled separately by aborting. Moreover,
@@ -674,10 +674,10 @@ is the rationale behind contracts returning a value. Let us see:
 }
 ```
 
-There is a lot to unwrap here. Please refer to the [syntax](./syntax.md) section
+There is a lot to unwrap here. Please refer to the [syntax section](./syntax.md)
 if you have trouble parsing the example. We first check that the value is a
 record on line 3. We then define `check_fields` on line 4, an expression that
-goes over the record field names and check that each one is a sequence of
+goes over all the record field names and check that each one is a sequence of
 digits. We use a left fold with a dummy `null` accumulator as a way to just
 iterate through the array without building up anything interesting.
 
@@ -697,11 +697,11 @@ value
 ```
 
 This is the final return value of the contract (at least when `value` is a
-record). This code takes the original record, and maps a function which
-substitutes each fields for the same value but wrapped in a `Bool` contract on
-it. Because records (and record mapping) are lazy, *this doesn't actually
-execute the `Bool` contracts right away*. Each contract will only be run when
-the corresponding field will be requested.
+record). This code takes the original record, and maps a function over it which
+substitutes each field for the same value but wrapped in a `Bool` contract.
+Because records (and record mapping) are lazy, *this doesn't actually execute
+the `Bool` contracts right away*. Each contract will only be run when the
+corresponding field will be requested.
 
 Finally, we sequence the result with `check_fields`: if we remove this last line
 and return the mapped value directly, because Nickel is lazy and `check_fields`
