@@ -178,7 +178,7 @@ error: missing definition for `name`
 
 The first part tells us where `name` was defined as being a requirement. This
 points to the definition of name inside `UserSchema`. As there is no `optional`
-keyword, this field must be set.
+keyword, this field must be set in the final configuration.
 
 The second part tells us that in the first record in the users list, the field
 `name` has no value while it should have one. This is to be expected as we
