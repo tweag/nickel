@@ -18,7 +18,7 @@ Merge is a **symmetric** operation (or, pedantically, commutative). In practice,
 this means that order doesn't matter, and `left & right` is the same thing as
 `right & left`. When the operands need to be distinguished, as we will see for
 default values for example, the idea is to use special annotations (metadata)
-instead of relying on the side of the operands.
+instead of relying on the order of the operands.
 
 **Warning**: At the time of writing, Nickel's version is 1.0. Custom merge
 functions are planned for a future version. They are not detailed here yet. See
@@ -163,7 +163,7 @@ unless one of the following condition hold:
 - They are both of the same primitive data type (`Number`, `Bool`, `Enum`, or
   `String`) and they are equal
 - They are both arrays, and they are equal (checked by generating an application
-  of the lazy contract `contract.Equal`)
+  of the lazy contract `std.contract.Equal`)
 - They are both equal to `null`
 
 ### Specification
@@ -333,7 +333,7 @@ Although the right-hand side `bar` doesn't have a definition, the resulting
 
 As long as an optional field doesn't have a value, it will be invisible to
 record operations. Optional fields without a value don't show up in
-`std.record.fields`, it won't make `std.record.values` throw a missing field
+`std.record.fields`, they won't make `std.record.values` throw a missing field
 definition error, etc.
 
 ```nickel
@@ -345,7 +345,7 @@ nickel> std.record.has_field "bar" Contract
 false
 ```
 
-Optional field can still be discovered through metadata queries (run `nickel
+Optional fields can still be discovered through metadata queries (run `nickel
 help query` or type `:help query` in the REPL for more information) or generated
 documentation.
 
@@ -356,8 +356,8 @@ documentation.
 ### Merge priorities
 
 Priorities are specified using the `priority` annotation, followed by a number
-literal. There are also two other special priorities, the lowest priority
-`default`, and the higher priority `force` annotation.
+literal. There are also two other special priority annotations, the lowest priority
+`default`, and the highest priority `force`. Both are written without the `priority` keyword.
 
 Priorities dictate which values take precedence over other values. By default,
 values are given the priority `0`. Values with the same priority are recursively
