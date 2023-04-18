@@ -19,9 +19,9 @@ data!
     55
     ```
 
-- *Configurations*: some return records representing configuration. Nickel won't
-  currently print a very readable result as is. Please use the `export`
-  subcommand to see the result serialized as JSON:
+- *Configurations*: some examples return records representing configuration. You
+  can run them directly as well, or use the `export` subcommand to see the result
+  serialized as JSON, which might be more readable:
 
     ```console
     $ nickel -f merge-main.ncl export
@@ -31,13 +31,12 @@ data!
     }
     ```
 
-    Alternatively, you can query a configuration or a sub-element to get
-    a list of attributes or the documentation:
+    Alternatively, you can query individual elements of a configuration, showing
+    documentation and other metadata:
 
     ```console
     $ nickel -f record-contract.ncl query kind
-      • contract: <ReplicationController, ReplicaSet, Pod>
-      • value: `ReplicationController
+      • contract: [|`ReplicationController, `ReplicaSet, `Pod|]
       • documentation: The kind of the element being configured.
     ```
 
@@ -59,7 +58,7 @@ nickel>
     nickel>
     ```
 
-- Use `builtin.serialize` to have the same behavior as the `export` subcommand
+- Use `std.serialize` to have the same behavior as the `export` subcommand
   and print the result as JSON:
 
     ```text
@@ -77,8 +76,7 @@ nickel>
     ```text
     nickel>let config = import "record-contract.ncl"
     nickel>:query config.kind
-    • contract: <ReplicationController, ReplicaSet, Pod>
-    • value: `ReplicationController
+    • contract: [| `ReplicationController, `ReplicaSet, `Pod |]
     • documentation: The kind of the element being configured.
 
     nickel>

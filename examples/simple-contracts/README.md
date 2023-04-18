@@ -1,18 +1,18 @@
 # Simple contracts
 
-This directory contain two examples of simple contrtacts.
+This directory contains two examples of simple contracts.
 
-The first one, `simple-contract-bool.ncl`, defines simple contracts on booleans
-and illustrates their use as pre-conditions and post-conditions of a function.
-
-The second one, `simple-contract-div.ncl`, defines simple contracts on numbers
-and illustrates the application of several contracts to one value. It is
-expected to fail, to demonstrate basic error-reporting for contracts.
+- `simple-contract-bool.ncl` defines simple contracts on booleans and
+  illustrates the use of contracts as pre-conditions and post-conditions of a function.
+- `simple-contract-div.ncl`, defines simple contracts on numbers
+  and illustrates the application of several contracts to one value. It is
+  expected to fail, to demonstrate basic error-reporting for contracts.
 
 For illustrative purpose, those contracts are written as plain custom contracts:
-functions `Lbl -> Dyn -> Dyn`. However, they are just boolean predicates here.
-In this case, you should rather write them more succintly as predicates `Dyn ->
-Bool` and use `contract.fromPred` to obtain the corresponding contracts.
+functions `Label -> Dyn -> Dyn`. However, they are just boolean predicates here.
+In this case, you should rather write them more succinctly as predicates `Dyn ->
+Bool` and use `std.contract.from_predicate` to obtain the corresponding
+contracts.
 
 ## Run
 

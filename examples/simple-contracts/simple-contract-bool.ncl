@@ -7,7 +7,8 @@ let EqualsTo = fun reference_value label value =>
   if reference_value == value then
     value
   else
-    std.contract.blame label in
+    std.contract.blame label
+in
 
 let AlwaysTrue = EqualsTo true in
 let AlwaysFalse = EqualsTo false in
@@ -18,3 +19,4 @@ let AlwaysFalse = EqualsTo false in
 # by `x`) to see contract errors appear.
 let not | AlwaysTrue -> AlwaysFalse = fun x => !x in
 not true
+

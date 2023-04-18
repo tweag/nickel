@@ -5,10 +5,13 @@ Kubernetes configuration. It demonstrates how you can write contracts for simple
 elements (such as `Port`), and assemble them into a schema for your end
 configuration.
 
+Ideally, Kubernetes contracts would be auto-generated from existing Kubernetes
+schemas in a real world scenario.
+
 ## Run
 
 ```console
-nickel -f record-contract.ncl export
+nickel -f record-contract.ncl export --format yaml
 ```
 
 ## Playground
