@@ -8,17 +8,17 @@
 # about where to find those files).
 #
 # One possibility would be to assemble the std module from the files
-# programmatically, but then error reporting and the LSP would be impacted (in
-# particular, breaking the contract of a stdlib function would point to
-# generated code that is nowhere accessible to the user) in a bad way.
+# programmatically, but then error reporting and the LSP would be impacted in a
+# bad way (in particular, breaking the contract of a stdlib function would point
+# to generated code that is nowhere accessible to the user).
 #
-# Another possiblity is to have special imports, like `<std/array.ncl>`. This is
-# a possible avenue.
+# Another solution is to have special imports, like `<std/array.ncl>`. This is a
+# possible direction.
 #
 # In the meantime, we choose to have this one big monolithic `std` module. This
 # choice doesn't negatively impact Nickel users (the file can be browsed looking
 # for error locations, typechecking and the LSP are happy because no code is
-# progammatically generated). It's just harder to maintain.
+# progammatically generated). It's just less nice to maintain.
 #
 # Typing
 #
@@ -29,7 +29,7 @@
 # just harder, and the chances are this won't typecheck.
 #
 # On the other hand, the `std` module in the environment is properly typed, as
-# the interface is elaborated from individual annotations.
+# the typed interface is elaborated upfront.
 {
   array = {
     NonEmpty
@@ -39,9 +39,9 @@
           # Examples
 
           ```nickel
-          ([] | NonEmpty) =>
+          ([] | std.array.NonEmpty) =>
             error
-          ([ 1 ] | NonEmpty) =>
+          ([ 1 ] | std.array.NonEmpty) =>
             [ 1 ]
           ```
         "%
@@ -57,12 +57,12 @@
     first
       : forall a. Array a -> a
       | doc m%"
-          Returns the first element of the given array.
+          Returns the first element of an array.
 
           # Examples
 
           ```nickel
-          first [ "this is the head", "this is not" ] =>
+          std.array.first [ "this is the head", "this is not" ] =>
             "this is the head"
           ```
         "%
@@ -71,12 +71,12 @@
     last
       : forall a. Array a -> a
       | doc m%"
-          Returns the last element of the given array.
+          Returns the last element of an array.
 
           # Examples
 
           ```nickel
-          last [ "this is the head", "this is not" ] =>
+          std.array.last [ "this is the head", "this is not" ] =>
             "this is not"
           ```
         "%
@@ -90,7 +90,7 @@
           # Examples
 
           ```nickel
-          drop_first [ 1, 2, 3 ] =>
+          std.array.drop_first [ 1, 2, 3 ] =>
             [ 2, 3 ]
           ```
         "%
@@ -104,7 +104,7 @@
           # Examples
 
           ```nickel
-          drop_last [ 1, 2, 3 ] =>
+          std.array.drop_last [ 1, 2, 3 ] =>
             [ 1, 2 ]
           ```
         "%
@@ -113,12 +113,12 @@
     length
       : forall a. Array a -> Number
       | doc m%"
-          Returns the length of the given array.
+          Returns the length of an array.
 
           # Examples
 
           ```nickel
-          length [ "Hello,", " World!" ] =>
+          std.array.length [ "Hello,", " World!" ] =>
             2
           ```
         "%
@@ -128,15 +128,12 @@
       : forall a b. (a -> b) -> Array a -> Array b
       | doc m%"
           Applies a function to every element in the given array. That is,
-          ```nickel
-          map f [ x1, x2, ..., xn ] =>
-            [ f x1, f x2, ..., f xn ]
-          ```
+          `map f [ x1, x2, ..., xn ]` is `[ f x1, f x2, ..., f xn ]`.
 
           # Examples
 
           ```nickel
-          map (fun x => x + 1) [ 1, 2, 3 ] =>
+          std.array.map (fun x => x + 1) [ 1, 2, 3 ] =>
             [ 2, 3, 4 ]
           ```
         "%
@@ -150,7 +147,7 @@
           # Examples
 
           ```nickel
-          at 3 [ "zero" "one" "two" "three" "four" ] =>
+          std.array.at 3 [ "zero", "one", "two", "three", "four" ] =>
             "three"
           ```
         "%
@@ -164,7 +161,7 @@
           # Examples
 
           ```nickel
-            concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
+            std.array.concat [ 1, 2, 3 ] [ 4, 5, 6 ] =>
               [ 1, 2, 3, 4, 5, 6 ]
           ```
         "%
@@ -173,11 +170,11 @@
     fold_left
       : forall a b. (a -> b -> a) -> a -> Array b -> a
       | doc m%"
-          Folds a function over an array. Folds serve a similar purpose to loops or
-          iterators in a functional language like Nickel. `fold_left` iterates over
-          an array, by repeatedly applying a function over each element, threading
-          an additional arbitrary state (the accumulator, of type `a` in the
-          signature).
+          Folds a function over an array. In a functional language like Nickel,
+          folds serve a similar purpose to loops or iterators. `fold_left`
+          iterates over an array, by repeatedly applying a function over each
+          element, threading an additional arbitrary state (the accumulator, of
+          type `a` in the signature).
 
           `fold_left f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
@@ -258,7 +255,7 @@
       | doc m%"
           Folds a function over an array. Folds serve a similar purpose to loops or
           iterators in a functional language like Nickel. `fold_right` iterates
-          over an array, by repeatedly applying a function to each element and
+          over an array by repeatedly applying a function to each element and
           threading an additional arbitrary state (the accumulator of type `a` in
           the signature).
 
@@ -272,7 +269,7 @@
           # Examples
 
           ```nickel
-          fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
+          std.array.fold_right (fun e acc => acc @ [e]) [] [ 1, 2, 3 ] =>
             ((([] @ [3]) @ [2]) @ [1]) =>
             [ 3, 2, 1 ]
           ```
@@ -295,7 +292,7 @@
           # Examples
 
           ```nickel
-          prepend 1 [ 2, 3 ] =>
+          std.array.prepend 1 [ 2, 3 ] =>
             [ 1, 2, 3 ]
           ```
         "%
@@ -309,7 +306,7 @@
           # Examples
 
           ```nickel
-          append 3 [ 1, 2 ] =>
+          std.array.append 3 [ 1, 2 ] =>
             [ 1, 2, 3 ]
           ```
         "%
@@ -323,7 +320,7 @@
           # Examples
 
           ```nickel
-          reverse [ 1, 2, 3 ] =>
+          std.array.reverse [ 1, 2, 3 ] =>
             [ 3, 2, 1 ]
           ```
         "%
@@ -337,7 +334,7 @@
           # Examples
 
           ```nickel
-          filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
+          std.array.filter (fun x => x <= 3) [ 4, 3, 2, 5, 1 ] =>
             [ 3, 2, 1 ]
           ```
         "%
@@ -346,12 +343,12 @@
     flatten
       : forall a. Array (Array a) -> Array a
       | doc m%"
-          Concatenates all elements of a given array of arrays.
+          Concatenates all elements of a an array of arrays.
 
           # Examples
 
           ```nickel
-          flatten [[1, 2], [3, 4]] =>
+          std.array.flatten [[1, 2], [3, 4]] =>
             [1, 2, 3, 4]
           ```
         "%
@@ -360,14 +357,15 @@
     all
       : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
-          Returns true if all elements in the given array satisfy the predicate, false otherwise.
+          Returns `true` if all elements in the given array satisfy the predicate,
+          `false` otherwise.
 
           # Examples
 
           ```nickel
-          all (fun x => x < 3) [ 1, 2 ] =>
+          std.array.all (fun x => x < 3) [ 1, 2 ] =>
             true
-          all (fun x => x < 3) [ 1, 2 3 ] =>
+          std.array.all (fun x => x < 3) [ 1, 2, 3 ] =>
             false
           ```
         "%
@@ -376,14 +374,15 @@
     any
       : forall a. (a -> Bool) -> Array a -> Bool
       | doc m%"
-          Returns true if at least one element in the given array satisfies the predicate, false otherwise.
+          Returns `true` if at least one element in the given array satisfies
+          the predicate, `false` otherwise.
 
           # Examples
 
           ```nickel
-          any (fun x => x < 3) [ 1, 2, 3, 4 ] =>
+          std.array.any (fun x => x < 3) [ 1, 2, 3, 4 ] =>
             true
-          any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
+          std.array.any (fun x => x < 3) [ 5, 6, 7, 8 ] =>
             false
           ```
         "%
@@ -404,12 +403,12 @@
     elem
       : Dyn -> Array Dyn -> Bool
       | doc m%"
-          Returns true if the given value appears in the array, false otherwise.
+          Returns `true` if the given value appears in the array, `false` otherwise.
 
           # Examples
 
           ```nickel
-          elem 3 [ 1, 2, 3, 4, 5 ] =>
+          std.array.elem 3 [ 1, 2, 3, 4, 5 ] =>
             true
           ```
         "%
@@ -425,8 +424,8 @@
           # Examples
 
           ```nickel
-          partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
-            { right = [ 3, 4, 2 ], wrong = [ 6, 8, 7, 5 ] }
+          std.array.partition (fun x => x < 5) [ 2, 4, 5, 3, 7, 8, 6 ] =>
+            { right = [ 2, 4, 3 ], wrong = [ 5, 7, 8, 6 ] }
           ```
         "%
       = fun pred l =>
@@ -441,15 +440,14 @@
     generate
       : forall a. (Number -> a) -> Number -> Array a
       | doc m%"
-          `generate f n` returns an array of length `n` by applying `f` to the integers from 0 to n-1:
-          ```nickel
-          generate f n = [ f 0, f 1, ..., f (n - 1) ]
-          ```
+          `generate f n` returns an array of length `n` by applying `f` to the
+          integers from `0` to `n-1`. That is, `generate f n` is
+          `[ f 0, f 1, ..., f (n - 1)]`
 
           # Examples
 
           ```nickel
-          generate (fun x => x * x) 4 =>
+          std.array.generate (fun x => x * x) 4 =>
             [ 0, 1, 4, 9 ]
           ```
         "%
@@ -458,13 +456,20 @@
     sort
       : forall a. (a -> a -> [| `Lesser, `Equal, `Greater |]) -> Array a -> Array a
       | doc m%"
-          Sorts the given array based on the provided comparison operator.
+          Sorts an array based on the provided comparison operator.
 
           # Examples
 
           ```nickel
-          sort (fun x y => if x < y then `Lesser else if (x == y) then `Equal else `Greater) [ 4, 5, 1, 2 ] =>
-            [ 1, 2, 4, 5 ]
+          std.array.sort (fun x y =>
+            if x < y then
+              `Lesser
+            else if (x == y) then
+              `Equal
+            else
+              `Greater)
+            [ 4, 5, 1, 2 ]
+          => [ 1, 2, 4, 5 ]
           ```
         "%
       #TODO: maybe inline partition to avoid contract checks?
@@ -487,7 +492,7 @@
           # Examples
 
           ```nickel
-          flat_map (fun x => [x, x]) [1, 2, 3]
+          std.array.flat_map (fun x => [x, x]) [1, 2, 3]
             => [1, 1, 2, 2, 3, 3]
           ```
         "%
@@ -501,11 +506,11 @@
           # Examples
 
           ```nickel
-          intersperse ", " [ "Hello", "wonderful", "world!" ]
+          std.array.intersperse ", " [ "Hello", "wonderful", "world!" ]
             => [ "Hello", ", ", "wonderful", ", ", "world!" ]
-          intersperse ", " [ "Hello" ]
+          std.array.intersperse ", " [ "Hello" ]
             => [ "Hello" ]
-          intersperse ", " []
+          std.array.intersperse ", " []
             => []
           ```
         "%
@@ -532,11 +537,11 @@
           # Examples
 
           ```nickel
-          slice 1 3 [ 0, 1, 2, 3, 4, 5]
+          std.array.slice 1 3 [ 0, 1, 2, 3, 4, 5]
             => [ 1, 2 ]
-          slice 0 3 [ "Hello", "world", "!" ]
+          std.array.slice 0 3 [ "Hello", "world", "!" ]
             => [ "Hello", "world", "!" ]
-          slice 2 3 [ "Hello", "world", "!" ]
+          std.array.slice 2 3 [ "Hello", "world", "!" ]
             => [ "!" ]
            ```
         "%
@@ -545,7 +550,7 @@
     split_at
       : forall a. Number -> Array a -> { left : Array a, right : Array a }
       | doc m%"
-          Splits an array in two at a given index, and puts all the elements
+          Splits an array in two at a given index and puts all the elements
           to the left of the element at the given index (excluded) in the
           `left` field, and the rest of the array in the `right` field.
 
@@ -557,11 +562,11 @@
           # Examples
 
           ```nickel
-          split_at 2 [ 0, 1, 2, 3, 4, 5]
-            => { left = [ 2, 3, 4, 5 ], right = [ 0, 1 ] }
-          split_at 0 [ "Hello", "world", "!" ]
+          std.array.split_at 2 [ 0, 1, 2, 3, 4, 5]
+            => { left = [ 0, 1 ], right = [ 2, 3, 4, 5 ] }
+          std.array.split_at 0 [ "Hello", "world", "!" ]
             => { left = [  ], right = [ "Hello", "world", "!" ] }
-          split_at 3 [ "Hello", "world", "!" ]
+          std.array.split_at 3 [ "Hello", "world", "!" ]
             => { left = [ "Hello", "world", "!" ], right = [  ] }
           ```
         "%
@@ -583,9 +588,9 @@
           # Examples
 
           ```nickel
-          replicate 0 false
+          std.array.replicate 0 false
             => [ ]
-          replicate 5 "x"
+          std.array.replicate 5 "x"
             => [ "x", "x", "x", "x", "x" ]
           ```
         "%
@@ -606,7 +611,7 @@
           # Examples
 
           ```nickel
-          range_step (-1.5) 2 0.5
+          std.array.range_step (-1.5) 2 0.5
            => [ -1.5, -1, -0.5, 0, 0.5, 1, 1.5 ]
           ```
         "%
@@ -632,7 +637,7 @@
           # Examples
 
           ```nickel
-          range 0 5
+          std.array.range 0 5
            => [ 0, 1, 2, 3, 4 ]
           ```
         "%
@@ -641,14 +646,18 @@
     reduce_left
       : forall a. (a -> a -> a) -> Array a -> a
       | doc m%"
-          Reduces the elements to a single one, by repeatedly applying a reducing
-          operation. If the array is empty, returns an empty array.
+          Reduces the elements to a single one, by repeatedly applying a
+          reducing operation.
 
           `reduce_left` associates to the left, that is
           `reduce_left op [x1, x2, ..., xn]` results in `op (... (op (op x1 x2) x3) ...) xn`.
 
           `reduce_left` is the same as `fold_left`, but uses the first element as
           the initial accumulator.
+
+          # Preconditions
+
+          The provided array must be non-empty.
 
           # Left vs right
 
@@ -659,10 +668,10 @@
           # Examples
 
           ```nickel
-          reduce_left (@) [ [1, 2], [3], [4,5] ]
+          std.array.reduce_left (@) [ [1, 2], [3], [4,5] ]
             => (([1, 2] @ [3]) @ [4,5])
             => [ 1, 2, 4, 5 ]
-          reduce_left (-) [ 1, 2, 3, 4]
+          std.array.reduce_left (-) [ 1, 2, 3, 4]
             => ((1 - 2) - 3) - 4
             => -8
           ```
@@ -676,7 +685,7 @@
       : forall a. (a -> a -> a) -> Array a -> a
       | doc m%"
           Reduces the elements to a single one, by repeatedly applying a reducing
-          operation. If the array is empty, returns an empty array.
+          operation.
 
           `reduce_right` associates to the right, that is
           `reduce_right op [x1, x2, ..., xn]` results in
@@ -684,6 +693,10 @@
 
           `reduce_right` is the same as `fold_right`, but uses the last element as
           the initial element.
+
+          # Preconditions
+
+          The provided array must be non-empty.
 
           # Left vs right
 
@@ -694,10 +707,10 @@
           # Examples
 
           ```nickel
-          reduce_right (@) [ [1, 2], [3], [4,5] ]
+          std.array.reduce_right (@) [ [1, 2], [3], [4,5] ]
             => [1, 2] @ ([3] @ [4,5])
             => [ 1, 2, 4, 5 ]
-          reduce_right (-) [ 1, 2, 3, 4]
+          std.array.reduce_right (-) [ 1, 2, 3, 4]
             => 1 - (2 - (3 - 4))
             => -2
           ```
