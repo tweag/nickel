@@ -12,31 +12,34 @@ What is the nature of the expression you are considering?
 
 ## A function
 
-Most of the time, you should use **type annotations** for functions. For
-reusable code, typing is often more adapted than contracts. You can
-exceptionally use contracts when types are not expressive enough to encode the
-property you want (such as in `ValidUrl -> Port -> ValidUrl`) or if the type
-system is not powerful enough to see that your code is correct.
+Most of the time, you should use a **type annotation** for functions. For
+reusable code, typing is more adapted than contracts.
+
+You can exceptionally use contracts when types are not expressive enough to
+encode the property you want (such as in `ValidUrl -> Port -> ValidUrl`) or if
+the type system is not powerful enough to see that your code is well-typed.
 
 What to do depends on the context:
 
-- *Anonymous function: nothing*. Short, anonymous functions can
-    usually live without annotation. Inside a typed block, they will be
+- *Anonymous function: nothing*. Short anonymous functions can
+    usually live without an annotation. Inside a typed block, they will be
     typechecked anyway. Outside, anonymous function can't be reused elsewhere,
-    and are generally short functions passed as arguments to typed higher-order
-    functions, which will apply a guarding contract.
+    and are generally passed as arguments to a higher-order function, which
+    should be typed and will apply a guarding contract.
 
     Example: `std.array.map (fun x => x + 1) [1,2,3]`
-- *Let-bound function outside of typed block: use a type annotation.* Even if
+
+- *Let-bound function outside typed block: use a type annotation.* Even if
     local to a file, if your function is bound to a variable, it can be
     potentially reused in different places.
 
     Example: `let append_tm: String -> String = fun s => s ++ "(TM)" in ...`
-- *Let-bound function inside a typed block: nothing or type annotation*. Inside a
-    typed block, types are inferred, so it is OK for simple functions to not be
-    annotated. However, you are required to annotate it if it is polymorphic,
+
+- *Let-bound function inside a typed block: nothing or type annotation*. Inside
+    a typed block, types are inferred, so it is OK for simple functions to not
+    be annotated. However, you are required to annotate polymorphic functions,
     because the typechecker won't infer polymorphic types for you. When the
-    function type is non trivial, it can also be better to write an annotation
+    function type is non-trivial, it can also be better to write an annotation
     for the sake of clarity.
 
     Example:
@@ -54,9 +57,9 @@ What to do depends on the context:
     in ...
     ```
 
-## Data (record, array)
+## Data (records and arrays)
 
-Conversely, for data inside configuration code, you should use **contracts**.
+Conversely, you should use **contracts** for data inside configuration code.
 Types are not adding much for configuration data, while contracts are more
 flexible and expressive.
 
@@ -64,15 +67,21 @@ Example:
 
 ```nickel
 let Schema = {
-  name | String
-       | doc "Name of the package",
-  version | PkgVersion
-          | doc "The semantic version of the package",
-          | default = "1.0.0",
-  build | Array BuildSteps
-        | doc "The steps to perform in order to build the package",
-        | default = [],
-} in
+  name
+    | String
+    | doc "Name of the package",
+  version
+    | PkgVersion
+    | doc "The semantic version of the package"
+    | default
+    = "1.0.0",
+  build
+    | Array BuildSteps
+    | doc "The steps to perform in order to build the package"
+    | default
+    = [],
+}
+in
 {
   name = "hello",
   build = [
@@ -99,5 +108,10 @@ Usually, you should do **nothing**.
 ## Debugging
 
 At last, both type annotations and contracts come in handy for debugging. In
-this case, you don't have to follow the previous advices, and you can drop
-random annotations or contract applications pretty much everywhere you see fit.
+this case, you don't have to follow the previous advice, and you can add type
+or contract annotation pretty much anywhere you see fit.
+
+One useful pattern is to use a type wildcard `_`, which lets the typechecker
+figure out the type of an expression for you. If a dynamically typed expression
+is failing with an unhelpful error message, you can try to have it typechecked
+by simply appending `: _` to the expression.
