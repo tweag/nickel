@@ -143,7 +143,7 @@ Multiline strings are useful for writing indented lines. The first and last
 lines are ignored if they are empty or contain only spaces. Indentation that is
 present on all lines of the string is stripped. This way, multiline strings can
 be indented for nicer code formatting without producing unwanted whitespace in
-the output. For example"
+the output. For example:
 
 ```text
 > m%"
@@ -392,7 +392,7 @@ Arrays can be concatenated with the operator `@`:
 Records are key-value storage, or in Nickel terms, field-value storage. They
 are delimited by `{` and `}`, and elements are separated with `,`. A field
 definition is written as `field = value`. The fields are strings, but can be
-written without quotes `"` if they would be valid identifiers. Values can be of
+written without quotes `"` if they are valid identifiers. Values can be of
 any type. Elements inside a record are unordered. Two records can be *merged*
 together using the operator `&`. The reader can find more information about
 merging in the [section on merging](./merging.md).
@@ -469,9 +469,9 @@ Here are some valid conditional expressions in Nickel:
 
 ### Let-In
 
-Let-in allows binding an expression to a variable. It is used like `let <rec?>
-<ident> = <expr> in <expr>`. The `rec` keyword in Let-in constructs allows the
-let binding to become recursive, enabling the use of `<ident>` within the bound
+A `let` binds an expression to a variable. It is used like `let <rec?>
+<ident> = <expr> in <expr>`. The `rec` keyword makes the binding recursive,
+enabling the use of `<ident>` within the bound
 expression `<expr>`.
 Currently, only a single variable can be bound per let binding.
 
@@ -503,7 +503,7 @@ true
 A function is declared using the `fun` keyword, then arguments separated with
 spaces, and finally an arrow `=>` to add the body of the function. To call a
 function, just write the arguments after it separated with spaces. Functions in
-Nickel are curried: A function taking multiple arguments is actually a function
+Nickel are curried: a function taking multiple arguments is actually a function
 that takes a single argument and returns a function taking the rest of the
 arguments, and so on.
 
@@ -581,7 +581,7 @@ binding `let <var> : <type> = <expr> in <body>` or to a record field declaration
 
 A type wildcard `_` indicates that part of a type is unknown to the user (or
 is not worth spelling out). The typechecker will attempt to infer it. Adding a
-wildcard type annotaiton `: _` to an existing expression is particulary useful
+wildcard type annotation `: _` to an existing expression is particularly useful
 for debugging, as it's the simplest way to have the typechecker run on an
 expression without having to come up with a type.
 
@@ -753,7 +753,7 @@ A record literal is a record type if:
 If these properties are satisfied, a record literal is considered to be a
 record type by the typechecker.
 
-A record literal which is to be interpreted as a record type may have a *record
+A record literal which is interpreted as a record type may have a *record
 tail*. A tail is written like `{ <fields> ; <tail> }`. It appears at the end of
 the field declarations and is preceded by `;`. The tail `<tail>` itself must be
 a valid identifier.
