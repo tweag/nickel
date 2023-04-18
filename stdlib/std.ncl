@@ -172,9 +172,9 @@
       | doc m%"
           Folds a function over an array. In a functional language like Nickel,
           folds serve a similar purpose to loops or iterators. `fold_left`
-          iterates over an array, by repeatedly applying a function over each
+          iterates over an array, by repeatedly applying a function to each
           element, threading an additional arbitrary state (the accumulator, of
-          type `a` in the signature).
+          type `a` in the signature) through the chain of applications.
 
           `fold_left f init [x1, x2, ..., xn]` results in `f (... (f (f init x1) x2) ...) xn`.
 
@@ -257,7 +257,7 @@
           iterators in a functional language like Nickel. `fold_right` iterates
           over an array by repeatedly applying a function to each element and
           threading an additional arbitrary state (the accumulator of type `a` in
-          the signature).
+          the signature) through the chain of applications.
 
           `fold_right f init [x1, x2, ..., xn]` results in `f x1 (f x2 (... (f xn init) ...))`.
 
@@ -343,7 +343,7 @@
     flatten
       : forall a. Array (Array a) -> Array a
       | doc m%"
-          Concatenates all elements of a an array of arrays.
+          Concatenates all elements of an array of arrays.
 
           # Examples
 
