@@ -2471,7 +2471,7 @@
       std.typeof [ 1, 2 ]
         => `Array
       std.typeof (fun x => x)
-       => `Function
+        => `Function
       ```
     "%
     = fun x => %typeof% x,
@@ -2491,7 +2491,7 @@
        - a contract label
 
       Note that `seq` won't evaluate _the content_ of arrays and records
-      further. Please see `std.deep_seq` or `std.force` to recursively force the
+      further. Please see `std.deep_seq` to recursively force the
       evaluation of an expression.
 
       # Examples
