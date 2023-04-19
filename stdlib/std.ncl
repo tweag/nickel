@@ -1113,11 +1113,11 @@
         # Examples
 
         ```nickel
-        (`foo | Tag) =>
+        (`foo | std.enum.Tag) =>
           `foo
-        (`FooBar | Tag) =>
+        (`FooBar | std.enum.Tag) =>
           `FooBar
-        ("tag" | Tag) =>
+        ("tag" | std.enum.Tag) =>
           error
         ```
       "%
@@ -1129,20 +1129,25 @@
         converted to an enum tag.
 
         `TagOrString` is typically used in conjunction with an enum type, to
-        accept tags represented as strings (e.g. coming from a JSON
-        serialization) as well.
+        accept both actual enum tags and tags represented as strings (e.g. coming from a
+        JSON serialization).
+
+        **Warning**: contracts are applied in-order. The pattern described here
+        requires that `TagOrString` is applied before the corresponding enum
+        contract. Thus, `TagOrString` must appear before the enum  contract in
+        the annotations, as in the example below.
 
         # Examples
 
         ``` nickel
         let Schema = {
           protocol
-            | enum.TagOrString
+            | std.enum.TagOrString
             | [| `http, `ftp |],
           port
             | Number,
           method
-            | enum.TagOrString
+            | std.enum.TagOrString
             | [| `GET, `POST |]
         } in
         let serialized =
@@ -1171,36 +1176,33 @@
     id
       : forall a. a -> a
       | doc m%"
-        The identity function, that is
-
-        ```nickel
-        id x = x
-        ```
-
-        for any value `x`.
-      "%
-      = fun x => x,
-
-    const
-      : forall a b. a -> b -> a
-      | doc m%"
-        Always returns the first argument, ignoring the second.
+        The identity function, that is, `id x` is `x` for any value `x`.
 
         # Examples
 
         ```nickel
-        const 5 42 == 5
+        std.function.id null
+          => null
+        (std.function.id (fun x => x + 1)) 0
+          => 1
         ```
       "%
-      = fun x y => x,
+      = fun x => x,
 
     compose
       : forall a b c. (b -> c) -> (a -> b) -> (a -> c)
       | doc m%"
-        Function composition, from right to left. That is,
+        Function composition, from right to left. That is, `compose f g x` is
+        `f (g x)`.
+
+        # Examples
 
         ```nickel
-        compose f g x == f (g x)
+        let f = std.function.compose (fun x => x + 1) (fun x => x / 2)
+        in
+        f 10
+          => (10 / 2) + 1
+          => 6
         ```
       "%
       = fun g f x => x |> f |> g,
@@ -1213,24 +1215,42 @@
         # Examples
 
         ```nickel
-        flip (fun x y => "%{x} %{y}") "world!" "Hello,"
+        std.function.flip (fun x y => "%{x} %{y}") "world!" "Hello,"
           => "Hello, world!"
         ```
       "%%
       = fun f x y => f y x,
 
-    first
+    const
       : forall a b. a -> b -> a
       | doc m%"
-        Always returns the first argument, ignoring the second.
+        Takes a value and returns the constant function which always returns
+        this value. Same as `std.function.first`.
 
         # Examples
 
         ```nickel
-        first 5 7 => 5
+        let f = std.function.const 5 in
+        f 7
+          => 5
         ```
       "%
-      = const,
+      = fun x y => x,
+
+    first
+      : forall a b. a -> b -> a
+      | doc m%"
+        Always returns the first argument, ignoring the second. Same as
+        `std.function.const`.
+
+        # Examples
+
+        ```nickel
+        std.function.first 5 7
+          => 5
+        ```
+      "%
+      = fun x y => x,
 
     second
       : forall a b. a -> b -> b
@@ -1240,10 +1260,11 @@
         # Examples
 
         ```nickel
-        second 5 7 => 7
+        std.function.second 5 7
+          => 7
         ```
       "%
-      = flip const,
+      = fun x y => y,
 
     pipe
       : forall a. a -> Array (a -> a) -> a
