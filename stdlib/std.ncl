@@ -1132,9 +1132,9 @@
         accept both actual enum tags and tags represented as strings (e.g. coming from a
         JSON serialization).
 
-        **Warning**: contract are applied in-order. The pattern described here
+        **Warning**: contracts are applied in-order. The pattern described here
         requires that `TagOrString` is applied before the corresponding enum
-        contract. Thus, `TagOrString` must appears before the enum  contract in
+        contract. Thus, `TagOrString` must appear before the enum  contract in
         the annotations, as in the example below.
 
         # Examples
@@ -1195,7 +1195,7 @@
         Function composition, from right to left. That is, `compose f g x` is
         `f (g x)`.
 
-        # Example
+        # Examples
 
         ```nickel
         let f = std.function.compose (fun x => x + 1) (fun x => x / 2)
