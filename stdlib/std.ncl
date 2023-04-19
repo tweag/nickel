@@ -909,8 +909,8 @@
 
     label
       | doc m%"
-          The label submodule provides functions that manipulate the label of a
-          contract.
+          The label submodule provides functions that manipulate the label
+          associated with a contract application.
 
           A label is a special opaque value automatically passed by the Nickel
           interpreter to contracts when performing a contract check.
