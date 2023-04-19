@@ -1313,11 +1313,11 @@
         # Examples
 
         ```nickel
-        (42 | Nat) =>
+        (42 | std.number.Nat) =>
           42
-        (0 | Nat) =>
+        (0 | std.number.Nat) =>
           0
-        (-4 | Nat) =>
+        (-4 | std.number.Nat) =>
           error
         ```
       "%
@@ -1337,11 +1337,11 @@
         # Examples
 
         ```nickel
-        (42 | PosNat) =>
+        (42 | std.number.PosNat) =>
           42
-        (0 | PosNat) =>
+        (0 | std.number.PosNat) =>
           error
-        (-4 | PosNat) =>
+        (-4 | std.number.PosNat) =>
           error
         ```
       "%
@@ -1361,9 +1361,9 @@
         # Examples
 
         ```nickel
-        (1 | NonZero) =>
+        (1 | std.number.NonZero) =>
           1
-        (0.0 | NonZero) =>
+        (0.0 | std.number.NonZero) =>
           error
         ```
       "%
@@ -1384,9 +1384,9 @@
         # Examples
 
         ```nickel
-        is_int 42 =>
+        std.number.is_integer 42 =>
           true
-        is_int 1.5 =>
+        std.number.is_integer 1.5 =>
           false
         ```
       "%
@@ -1400,7 +1400,7 @@
         # Examples
 
         ```nickel
-        min (-1337) 42 =>
+        std.number.min (-1337) 42 =>
           -1337
         ```
       "%
@@ -1414,7 +1414,7 @@
         # Examples
 
         ```nickel
-        max (-1337) 42 =>
+        std.number.max (-1337) 42 =>
           42
         ```
       "%
@@ -1428,9 +1428,9 @@
         # Examples
 
         ```nickel
-        floor 42.5 =>
+        std.number.floor 42.5 =>
           42
-        floor (-42.5) =>
+        std.number.floor (-42.5) =>
           -43
         ```
       "%
@@ -1448,9 +1448,9 @@
         # Examples
 
         ```nickel
-        abs (-5) =>
+        std.number.abs (-5) =>
           5
-        abs 42 =>
+        std.number.abs 42 =>
           42
         ```
       "%
@@ -1464,9 +1464,9 @@
         # Examples
 
         ```nickel
-        fract 13.37 =>
+        std.number.fract 13.37 =>
           0.37
-        fract 42 =>
+        std.number.fract 42 =>
           0
         ```
       "%
@@ -1480,9 +1480,9 @@
         # Examples
 
         ```nickel
-        truncate (-13.37) =>
+        std.number.truncate (-13.37) =>
           -13
-        truncate 42.5 =>
+        std.number.truncate 42.5 =>
           42
         ```
       "%
@@ -1496,7 +1496,7 @@
         # Examples
 
         ```nickel
-        pow 2 8 =>
+        std.number.pow 2 8 =>
           256
         ```
 
@@ -1508,10 +1508,10 @@
         exactly.
 
         Otherwise, both operands `x` and `y` are converted to the nearest 64 bit
-        float (excluding `NaN` and infinity), and we compute the result as a 64
-        bit float. This result is then converted back to a rational. In this
-        case, **be aware that both the conversion from rationals to floats, and
-        the power operation, might incur rounding errors**.
+        float (excluding `NaN` and infinity) and the result is computed as a 64 bit
+        float. This result is then converted back to a rational. In this case,
+        **be aware that both the conversion from rationals to floats, and the
+        power operation, might incur rounding errors**.
       "%
       = fun x n => %pow% x n,
   },
