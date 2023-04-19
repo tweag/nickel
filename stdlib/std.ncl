@@ -2009,7 +2009,7 @@
       : String -> String
       | doc m%"
         Returns the uppercase version of a string. Unicode extended grapheme
-        clusters without an uppercase version are left the same.
+        clusters without an uppercase version are left untouched.
 
         # Examples
 
@@ -2028,7 +2028,7 @@
       : String -> String
       | doc m%"
         Returns the lowercase version of a string. Unicode extended grapheme
-        clusters without an uppercase version are left the same.
+        clusters without a lowercase version are left untouched.
 
 
         # Examples
