@@ -1526,9 +1526,9 @@
         # Examples
 
         ```nickel
-        map (fun s x => s) { hi = 2 } =>
+        std.record.map (fun s x => s) { hi = 2 } =>
           { hi = "hi" }
-        map (fun s x => x + 1) { hello = 1, world = 2 } =>
+        std.record.map (fun s x => x + 1) { hello = 1, world = 2 } =>
           { hello = 2, world = 3 }
         ```
       "%
@@ -1542,7 +1542,7 @@
         # Examples
 
         ```nickel
-        fields { one = 1, two = 2 } =>
+        std.record.fields { one = 1, two = 2 } =>
           [ "one", "two" ]
         ```
       "%
@@ -1556,7 +1556,7 @@
         # Examples
 
         ```nickel
-        values { one = 1, world = "world" }
+        std.record.values { one = 1, world = "world" }
           [ 1, "world" ]
         ```
       "%
@@ -1570,9 +1570,9 @@
         # Examples
 
         ```nickel
-        has_field "hello" { one = 1, two = 2 } =>
+        std.record.has_field "hello" { one = 1, two = 2 } =>
           false
-        has_field "one" { one = 1, two = 2 } =>
+        std.record.has_field "one" { one = 1, two = 2 } =>
           true
         ```
       "%
@@ -1584,15 +1584,23 @@
           Inserts a new field into a record. `insert` doesn't mutate the original
           record but returns a new one instead.
 
+          # Preconditions
+
+          The field must not exist in the initial record, otherwise `insert`
+          will fail. If the field might already exist, use `std.record.update`
+          instead.
+
           # Examples
 
           ```nickel
-          insert "foo" 5 { bar = "bar" } =>
-            { foo = 5, bar = "bar }
+          std.record.insert "foo" 5 { bar = "bar" }
+            => { foo = 5, bar = "bar }
           {}
-          |> insert "file.%{ext}" "data/text"
-          |> insert "length" 10*1000 =>
-            {"file.txt" = "data/text", "length" = 10000}
+          |> std.record.insert "file.txt" "data/text"
+          |> std.record.insert "length" (10*1000)
+            => {"file.txt" = "data/text", "length" = 10000}
+          std.record.insert "already_there" 0 {already_there = 1}
+            => error
           ```
         "%%
       = fun field content r => %record_insert% field r content,
@@ -1603,10 +1611,15 @@
           Removes a field from a record. `remove` doesn't mutate the original
           record but returns a new one instead.
 
+          # Preconditions
+
+          The field to remove must be present in the record, or `remove` will
+          fail.
+
           # Examples
 
           ```nickel
-          remove "foo" { foo = "foo", bar = "bar" } =>
+          std.record.remove "foo" { foo = "foo", bar = "bar" } =>
             { bar = "bar }
           ```
         "%
@@ -1622,9 +1635,9 @@
           # Examples
 
           ```nickel
-          update "foo" 5 { foo = "foo", bar = "bar" } =>
+          std.record.update "foo" 5 { foo = "foo", bar = "bar" } =>
             { foo = 5, bar = "bar" }
-          update "foo" 5 { bar = "bar" } =>
+          std.record.update "foo" 5 { bar = "bar" } =>
             { foo = 5, bar = "bar" }
           ```
 
@@ -1637,7 +1650,7 @@
           ```nickel
           { foo = bar + 1, bar | default = 0 } & { bar = 1 } =>
             { foo = 2, bar = 1 }
-          update "bar" 1 {foo = bar + 1, bar | default = 0 } =>
+          std.record.update "bar" 1 {foo = bar + 1, bar | default = 0 } =>
             { foo = 1, bar = 1 }
           ```
         "%
@@ -1654,17 +1667,18 @@
       : forall a b. (a -> b) -> { _ : a } -> { _ : b }
       | doc m%"
         Maps a function over the values of all the fields of a record.
+        `map_values f` is the same as `std.record.map (fun _field => f)`.
 
         # Examples
 
         ```nickel
-        map_values (fun x => x + 1) { hi = 2 } =>
-          { hi = 3 }
-        map (fun x => x + 1) { hello = 1, world = 2 } =>
-          { hello = 2, world = 3 }
+        std.record.map_values (fun x => x + 1) { hi = 2 }
+          => { hi = 3 }
+        std.record.map_values (fun x => x + 1) { hello = 1, world = 2 }
+          => { hello = 2, world = 3 }
         ```
       "%
-      = fun f => map (fun _field value => f value),
+      = fun f => map (fun _field => f),
 
     to_array
       : forall a. { _ : a } -> Array { field : String, value : a }
@@ -1674,9 +1688,10 @@
         # Examples
 
         ```nickel
-        to_array { hello = "world", foo = "bar" } =>
-          [ { field = "hello", value = "world" },
-            { field = "foo", value = "bar" }
+        std.record.to_array { hello = "world", foo = "bar" }
+          => [
+            { field = "hello", value = "world" },
+            { field = "foo", value = "bar" },
           ]
         ```
       "%
@@ -1693,9 +1708,10 @@
         # Examples
 
         ```nickel
-        from_array [ { field = "hello", value = "world" },
-                     { field = "foo", value = "bar" }
-                   ]
+        std.record.from_array [
+          { field = "hello", value = "world" },
+          { field = "foo", value = "bar" }
+        ]
           => { hello = "world", foo = "bar" }
         ```
       "%
@@ -1712,8 +1728,10 @@
         # Examples
 
         ```nickel
-        is_empty {} => true
-        is_empty { foo = 1 } => false
+        std.record.is_empty {}
+          => true
+        std.record.is_empty { foo = 1 }
+          => false
         ```
       "%
       = (==) {},
@@ -1726,7 +1744,7 @@
         # Examples
 
         ```nickel
-        merge_array [ { foo = 1 }, { bar = 2 } ]
+        std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
           => { foo = 1, bar = 2 }
         ```
       "%
@@ -1742,7 +1760,7 @@
         # Examples
 
         ```nickel
-        filter (fun name x => x % 2 == 0) { even = 2, odd = 3 }
+        std.record.filter (fun _name x => x % 2 == 0) { even = 2, odd = 3 }
           => { even = 2 }
         ```
       "%
