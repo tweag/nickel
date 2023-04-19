@@ -1788,27 +1788,25 @@
   string = {
     BoolLiteral
       | doc m%"
-        Enforces that the value is a string that represents a boolean
-        literal, namely
-        - "True" or "true", which will be normalized to "true"; or
-        - "False" or "false", which will be normalized to "false".
+        Contract for a string representation of a boolean, namely `true` or
+        `false`.
 
         # Examples
 
         ```nickel
-        ("True" | BoolLiteral) =>
+        ("true" | std.string.BoolLiteral) =>
           "true"
-        ("hello" | BoolLiteral) =>
+        ("hello" | std.string.BoolLiteral) =>
           error
-        (true | BoolLiteral) =>
+        (true | std.string.BoolLiteral) =>
           error
         ```
       "%
       = fun l s =>
         if %typeof% s == `String then
-          if s == "true" || s == "True" then
+          if s == "true" then
             "true"
-          else if s == "false" || s == "False" then
+          else if s == "false" then
             "false"
           else
             %blame% (%label_with_message% "expected \"true\" or \"false\", got %{s}" l)
@@ -1817,16 +1815,16 @@
 
     NumberLiteral
       | doc m%"
-        Enforces that the value is a string that represents a numerical value.
+        Contract for a string representation of a numerical value.
 
         # Examples
 
         ```nickel
-        ("+1.2" | NumberLiteral) =>
+        ("+1.2" | std.string.NumberLiteral) =>
           "+1.2"
-        ("5" | NumberLiteral) =>
+        ("5" | std.string.NumberLiteral) =>
           "5"
-        (42 | NumberLiteral) =>
+        (42 | std.string.NumberLiteral) =>
           error
         ```
       "%
@@ -1844,19 +1842,19 @@
 
     Character
       | doc m%"
-        Enforces that the value is a character, i.e. a string of length 1.
+        Contract for a character, i.e. a string of length 1.
 
         # Examples
 
         ```nickel
-        ("e" | Character) =>
-          "e"
-        ("#" | Character) =>
-          "#"
-        ("" | Character) =>
-          error
-        (1 | Character) =>
-          error
+        ("e" | std.string.Character)
+          => "e"
+        ("#" | std.string.Character)
+          => "#"
+        ("" | std.string.Character)
+          => error
+        (1 | std.string.Character)
+          => error
         ```
       "%
       = fun l s =>
@@ -1873,23 +1871,25 @@
         Enforces that the value is convertible to a string via
         `std.to_string` or `std.string.from`. Accepted values are:
 
-        - numbers
-        - booleans
-        - strings
-        - enum tags
-        - null
+        - Numbers
+        - Booleans
+        - Strings
+        - Enum tags
+        - `null`
+
+        For string representations of more complex values, see `std.serialize`.
 
         # Examples
 
         ```nickel
-        (`Foo | Stringable) =>
-          `Foo
-        (false | Stringable) =>
-          false
-        ("bar" ++ "foo" | Stringable) =>
-          "barfoo"
-        ({foo = "baz"} | Stringable) =>
-          error
+        (`Foo | std.string.Stringable)
+          => `Foo
+        (false | std.string.Stringable)
+          => false
+        ("bar" ++ "foo" | std.string.Stringable)
+          => "barfoo"
+        ({foo = "baz"} | std.string.Stringable)
+          => error
         ```
       "%
       =
@@ -1906,17 +1906,17 @@
 
     NonEmpty
       | doc m%"
-        Enforces that the value is a non-empty string.
+        Contract for a non-empty string.
 
         # Examples
 
         ```nickel
-        ("" | NonEmpty) =>
-          error
-        ("hi!" | NonEmpty) =>
-          "hi!"
-        (42 | NonEmpty) =>
-          error
+        ("" | std.string.NonEmpty)
+          => error
+        ("hi!" | std.string.NonEmpty)
+          => "hi!"
+        (42 | std.string.NonEmpty)
+          => error
         ```
       "%
       = fun l s =>
@@ -1936,8 +1936,12 @@
         # Examples
 
         ```nickel
-        join ", " [ "Hello", "World!" ] =>
-          "Hello, World!"
+        std.string.join ", " [ "Hello", "World!" ]
+          => "Hello, World!"
+        std.string.join ";" ["I'm alone"]
+          => "I'm alone"
+        std.string.join ", " []
+          => ""
         ```
       "%
       = fun sep fragments =>
@@ -1963,10 +1967,10 @@
         # Examples
 
         ```nickel
-        split "," "1,2,3" =>
-          [ "1", "2", "3" ]
-        split "." "1,2,3" =>
-          [ "1,2,3" ]
+        std.string.split "," "1,2,3"
+          => [ "1", "2", "3" ]
+        std.string.split "." "1,2,3"
+          => [ "1,2,3" ]
         ```
       "%
       = fun sep s => %str_split% s sep,
@@ -1979,10 +1983,10 @@
         # Examples
 
         ```nickel
-        trim " hi  " =>
-          "hi"
-        trim "1   2   3   " =>
-          "1   2   3"
+        std.string.trim " hi  "
+          => "hi"
+        std.string.trim "1   2   3   "
+          => "1   2   3"
         ```
       "%
       = fun s => %str_trim% s,
@@ -1995,8 +1999,8 @@
         # Examples
 
         ```nickel
-        chars "Hello" =>
-          [ "H", "e", "l", "l", "o" ]
+        std.string.characters "Hello"
+          => [ "H", "e", "l", "l", "o" ]
         ```
       "%
       = fun s => %str_chars% s,
@@ -2004,18 +2008,18 @@
     uppercase
       : String -> String
       | doc m%"
-        Returns the uppercase version of the given character (including non-ascii characters) if it exists, the same
-        character if not.
+        Returns the uppercase version of a string. Unicode extended grapheme
+        clusters without an uppercase version are left untouched.
 
         # Examples
 
         ```nickel
-        uppercase "a" =>
-          "A"
-        uppercase "æ" =>
-          "Æ"
-        uppercase "." =>
-          "."
+        std.string.uppercase "a"
+          => "A"
+        std.string.uppercase "æ"
+          => "Æ"
+        std.string.uppercase "hello.world"
+          => "HELLO.WORLD"
         ```
       "%
       = fun s => %str_uppercase% s,
@@ -2023,18 +2027,19 @@
     lowercase
       : String -> String
       | doc m%"
-        Returns the lowercase version of the given character (including non-ascii characters) if it exists, the same
-        character if not.
+        Returns the lowercase version of a string. Unicode extended grapheme
+        clusters without a lowercase version are left untouched.
+
 
         # Examples
 
         ```nickel
-        lowercase "A" =>
-          "a"
-        lowercase "Æ" =>
-          "æ"
-        lowercase "." =>
-          "."
+        std.string.lowercase "A"
+          => "a"
+        std.string.lowercase "Æ"
+          => "æ"
+        std.string.lowercase "HELLO.WORLD"
+          => "hello.world"
         ```
       "%
       = fun s => %str_lowercase% s,
@@ -2050,12 +2055,12 @@
         # Examples
 
         ```nickel
-        contains "cde" "abcdef" =>
-          true
-        contains "" "abcdef" =>
-          true
-        contains "ghj" "abcdef" =>
-          false
+        std.string.contains "cde" "abcdef"
+          => true
+        std.string.contains "" "abcdef"
+          => true
+        std.string.contains "ghj" "abcdef"
+          => false
         ```
       "%
       = fun subs s => %str_contains% s subs,
@@ -2071,10 +2076,10 @@
         # Examples
 
         ```nickel
-        replace "cd" "   " "abcdef" =>
-          "ab   ef"
-        replace "" "A" "abcdef" =>
-          "AaAbAcAdAeAfA"
+        std.string.replace "cd" "   " "abcdef"
+          => "ab   ef"
+        std.string.replace "" "A" "abcdef"
+          => "AaAbAcAdAeAfA"
         ```
       "%
       = fun pattern replace s =>
@@ -2093,9 +2098,9 @@
         # Examples
 
         ```nickel
-        replace_regex "l+." "j" "Hello!" =>
-          "Hej!"
-        replace_regex "\\d+" "\"a\" is not" "This 37 is a number." =>
+        std.string.replace_regex "l+." "j" "Hello!"
+          => "Hej!"
+        std.string.replace_regex "\\d+" "\"a\" is not" "This 37 is a number."
           "This \"a\" is not a number."
       ```
       "%
@@ -2116,10 +2121,10 @@
         # Examples
 
         ```nickel
-        is_match "^\\d+$" "123" =>
-          true
-        is_match "\\d{4}" "123" =>
-          false
+        std.string.is_match "^\\d+$" "123"
+          => true
+        std.string.is_match "\\d{4}" "123"
+          => false
         ```
 
         # Performance
@@ -2131,12 +2136,15 @@
 
         For example, in the following program, the whole call to
         `std.string.is_match "[0-9]*\\.?[0-9]+ x"` is re-evaluated at each invocation of
-        `is_number`. The regexp will be recompiled 3 times in total:
+        `is_number`. The regexp will be compiled 3 times in total:
 
         ```nickel
-        let is_number = fun x => std.string.is_match "[0-9]*\\.?[0-9]+" x in
-        ["0", "42", "0.5"] |> std.array.all is_number =>
-          true
+        let is_number = fun x =>
+          std.string.is_match "[0-9]*\\.?[0-9]+" x
+        in
+        ["0", "42", "0.5"]
+        |> std.array.all is_number
+          => true
         ```
 
         On the other hand, in the version below, the partial application of
@@ -2146,8 +2154,9 @@
 
         ```nickel
         let is_number' = std.string.is_match "[0-9]*\\.?[0-9]+" in
-        ["0", "42", "0.5"] |> std.array.all is_number' =>
-          true
+        ["0", "42", "0.5"]
+        |> std.array.all is_number'
+          => true
         ```
       "%
       = fun regex => %str_is_match% regex,
@@ -2160,24 +2169,28 @@
         was part of the match in `string`, and an array of all capture groups if
         there were any.
 
-        **Note**: this function ignores any matches where either the match
-        itself, or one of its capture groups, begin or end in the middle of a
-        Unicode extended grapheme cluster.
+        If there is no match, `find` returns
+        `{matched = "", index = -1, groups = []}`.
+
+        **Note**: this function ignores any match where either the match itself,
+        or one of its capture groups, begin or end in the middle of a Unicode
+        extended grapheme cluster.
 
         # Examples
 
         ```nickel
-        find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes" =>
-          { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
-        find "3" "01234" =>
-          { matched = "3", index = 3, groups = [ ] }
+        std.string.find "^(\\d).*(\\d).*(\\d).*$" "5 apples, 6 pears and 0 grapes"
+          => { matched = "5 apples, 6 pears and 0 grapes", index = 0, groups = [ "5", "6", "0" ] }
+        std.string.find "3" "01234"
+          => { matched = "3", index = 3, groups = [ ] }
         ```
 
         # Performance
 
-        Note that this function may perform better by sharing its partial application between multiple calls,
-        because in this case the underlying regular expression will only be compiled once (see the documentation
-        of `std.string.is_match` for more details).
+        Note that this function may perform better by sharing its partial
+        application between multiple calls, because in this case the underlying
+        regular expression will only be compiled once (see the documentation of
+        `std.string.is_match` for more details).
       "%
       = fun regex => %str_find% regex,
 
@@ -2189,17 +2202,22 @@
 
         Generally speaking, this gives the number of "visible" glyphs in the string.
 
+        **Warning**: because `length` works on Unicode grapheme clusters, some
+        seemingly intuitive invariants might not hold. In particular, it isn't
+        always true that `length (s1 ++ s2)` is equal to
+        `length s1 + length s2`.
+
         # Examples
 
         ```nickel
-        length "" =>
-          0
-        length "hi" =>
-          2
-        length "四字熟語" =>
-          4
-        length "👨🏾‍❤️‍💋‍👨🏻" =>
-          1
+        std.string.length "" =>
+          => 0
+        std.string.length "hi" =>
+          => 2
+        std.string.length "四字熟語" =>
+          => 4
+        std.string.length "👨🏾‍❤️‍💋‍👨🏻" =>
+          => 1
         ```
       "%
       = fun s => %str_length% s,
@@ -2220,11 +2238,11 @@
         # Examples
 
         ```nickel
-        substring 3 5 "abcdef" =>
+        std.string.substring 3 5 "abcdef" =>
           "de"
-        substring 3 10 "abcdef" =>
+        std.string.substring 3 10 "abcdef" =>
           error
-        substring (-3) 4 "abcdef" =>
+        std.string.substring (-3) 4 "abcdef" =>
           error
         ```
       "%
@@ -2239,12 +2257,14 @@
         # Examples
 
         ```nickel
-        from 42 =>
-          "42"
-        from `Foo =>
-          "Foo"
-        from null =>
-          "null"
+        std.string.from 42
+          => "42"
+        std.string.from `Foo
+          => "Foo"
+        std.string.from null
+          => "null"
+        std.string.from {value = 0}
+          => error
         ```
       "%
       = fun x => %to_str% x,
@@ -2257,8 +2277,8 @@
         # Examples
 
         ```nickel
-        from_number 42 =>
-          "42"
+        std.string.from_number 42
+          => "42"
         ```
       "%
       = from,
@@ -2271,8 +2291,8 @@
         # Examples
 
         ```nickel
-        from_enum `MyEnum =>
-          "MyEnum"
+        std.string.from_enum `MyEnum
+          => "MyEnum"
         ```
       "%
       = from,
@@ -2285,8 +2305,8 @@
         # Examples
 
         ```nickel
-        from_bool true =>
-          "true"
+        std.string.from_bool true
+          => "true"
         ```
       "%
       = from,
@@ -2299,8 +2319,8 @@
         # Examples
 
         ```nickel
-        to_number "123" =>
-          123
+        std.string.to_number "123"
+          => 123
         ```
       "%
       = fun s => %num_from_str% s,
@@ -2308,31 +2328,33 @@
     to_bool
       | BoolLiteral -> Bool
       | doc m%"
-        Converts a string that represents a bool to that bool.
+        Converts a representation of a boolean (either `true` or `false`) to that boolean.
 
         # Examples
 
         ```nickel
-        to_bool "true" =>
-          true
-        to_bool "True" =>
-          true
-        to_bool "false" =>
-          false
+        std.string.to_bool "true"
+          => true
+        std.string.to_bool "false"
+          => false
         ```
       "%
+      # because of the contract on the argument, `s` can only be `"true"` or
+      # `"false"`
       = fun s => s == "true",
 
     to_enum
       | String -> std.enum.Tag
       | doc m%"
-        Converts any string that represents an enum variant to that enum variant.
+        Converts a string to an enum tag.
 
         # Examples
 
         ```nickel
-        to_enum "Hello" =>
-          `Hello
+        std.string.to_enum "Hello"
+          => `Hello
+        std.string.to_enum "hey,there!"
+          => `"hey,there!"
         ```
       "%
       = fun s => %enum_from_str% s,
