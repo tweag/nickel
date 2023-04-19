@@ -25,10 +25,8 @@ let {string, ..} = std in
   string.to_number "-1.1" == (-1.1),
 
   # string.to_bool
-  string.to_bool "True",
   string.to_bool "true",
-  string.to_bool "false" == false,
-  string.to_bool "False" == false,
+  !(string.to_bool "false"),
 
   # string.to_enum
   string.to_enum "" == `"",

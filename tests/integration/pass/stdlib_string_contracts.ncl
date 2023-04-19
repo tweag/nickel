@@ -3,8 +3,6 @@ let {string, ..} = std in
 
 [
   # string.BoolLiteral
-  ("True" | string.BoolLiteral) == "true",
-  ("False" | string.BoolLiteral) == "false",
   ("true" | string.BoolLiteral) == "true",
   ("false" | string.BoolLiteral) == "false",
 
