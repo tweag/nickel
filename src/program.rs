@@ -501,17 +501,47 @@ mod doc {
                 .map_err(|e| Error::ExportError(ExportError::Other(e.to_string())))
         }
 
-        pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
-            let document = AstNode::from(NodeValue::Document);
-
-            // Our nodes in the Markdown document are owned by this arena
+        /// TODO: bikeshed
+        /// TODO: should we have a custom iterator, instead of copying all the examples somewhere
+        /// in memory?
+        pub fn extract_nickel_codeblocks(&self) -> Vec<String> {
+            use comrak::nodes::NodeCodeBlock;
             let arena = Arena::new();
+            let document = self.as_document(&arena);
+
+            let mut nickel_examples = Vec::new();
+            
+            fn extract_from_node<'a>(nickel_examples: &mut Vec<String>, node: &'a AstNode<'a>) {
+                match &node.data.borrow().value {
+                    NodeValue::CodeBlock(NodeCodeBlock {fenced: true, info, literal, ..}) if info == "nickel" => {
+                        nickel_examples.push(literal.clone())
+                    }
+                    _ => ()
+                }
+
+                for child in node.children() {
+                    extract_from_node(nickel_examples, child);
+                }
+            }
+
+            extract_from_node(&mut nickel_examples, &document);
+            nickel_examples
+        }
+
+        pub fn as_document<'nodes, 'arena: 'nodes>(&'arena self, arena: &'arena Arena<AstNode<'nodes>>) -> AstNode<'nodes> {
+            let document = AstNode::from(NodeValue::Document);
 
             // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
             let options = ComrakOptions::default();
 
             self.markdown_append(0, &arena, &document, &options);
-            format_commonmark(&document, &options, out)
+            document
+        }
+
+        pub fn write_markdown(&self, out: &mut dyn Write) -> Result<(), Error> {
+            let arena = Arena::new();
+            let document = self.as_document(&arena);
+            format_commonmark(&document, &ComrakOptions::default(), out)
                 .map_err(|e| Error::IOError(IOError(e.to_string())))?;
 
             Ok(())
@@ -519,11 +549,11 @@ mod doc {
 
         /// Recursively walk the given `DocOutput`, recursing into fields, looking for documentation.
         /// This documentation is then appended to the provided document.
-        fn markdown_append<'a>(
-            &'a self,
+        fn markdown_append<'nodes, 'arena: 'nodes>(
+            &'arena self,
             header_level: u8,
-            arena: &'a Arena<AstNode<'a>>,
-            document: &'a AstNode<'a>,
+            arena: &'arena Arena<AstNode<'nodes>>,
+            document: &AstNode<'nodes>,
             options: &ComrakOptions,
         ) {
             let mut entries: Vec<(_, _)> = self.fields.iter().collect();
@@ -555,12 +585,12 @@ mod doc {
 
     /// Parses a string into markdown and increases any headers in the markdown by the specified level.
     /// This allows having headers in documentation without clashing with the structure of the document.
-    fn parse_markdown_string<'a>(
+    fn parse_markdown_string<'nodes, 'arena: 'nodes>(
         header_level: u8,
-        arena: &'a Arena<AstNode<'a>>,
+        arena: &'arena Arena<AstNode<'nodes>>,
         md: &str,
         options: &ComrakOptions,
-    ) -> &'a AstNode<'a> {
+    ) -> &'arena AstNode<'nodes> {
         let node = parse_document(arena, md, options);
 
         // Increase header level of every header
@@ -584,11 +614,12 @@ mod doc {
     }
 
     /// Creates a codespan header of the provided string with the provided header level.
-    fn mk_header<'a>(
+    fn mk_header<'nodes, 'arena: 'nodes> (
         ident: &str,
         header_level: u8,
-        arena: &'a Arena<AstNode<'a>>,
-    ) -> &'a AstNode<'a> {
+        arena: &'arena Arena<AstNode<'nodes>>,
+    ) -> &'arena AstNode<'nodes>
+    {
         let res = arena.alloc(AstNode::from(NodeValue::Heading(NodeHeading {
             level: header_level,
             setext: false,
@@ -604,12 +635,12 @@ mod doc {
         res
     }
 
-    fn mk_types_and_contracts<'a>(
+    fn mk_types_and_contracts<'nodes, 'arena: 'nodes>(
         ident: &str,
-        arena: &'a Arena<AstNode<'a>>,
-        types: Option<&'a str>,
-        contracts: &'a [String],
-    ) -> &'a AstNode<'a> {
+        arena: &'arena Arena<AstNode<'nodes>>,
+        types: Option<&'arena str>,
+        contracts: &'arena [String],
+    ) -> &'arena AstNode<'nodes> {
         let list = arena.alloc(AstNode::from(NodeValue::List(NodeList {
             list_type: ListType::Bullet,
             marker_offset: 1,
