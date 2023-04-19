@@ -27,8 +27,8 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, PendingContract,
-        RecordExtKind, RichTerm, SharedTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, RecordExtKind, RichTerm,
+        RuntimeContract, SharedTerm, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -526,7 +526,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let ts = ts
                                 .into_iter()
                                 .map(|t| {
-                                    let t_with_ctrs = PendingContract::apply_all(
+                                    let t_with_ctrs = RuntimeContract::apply_all(
                                         t,
                                         attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
@@ -695,7 +695,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let terms =
                             seq_terms(
                                 ts.into_iter().map(|t| {
-                                    let t_with_ctr = PendingContract::apply_all(
+                                    let t_with_ctr = RuntimeContract::apply_all(
                                         t,
                                         attrs.pending_contracts.iter().cloned(),
                                         pos.into_inherited(),
@@ -1043,7 +1043,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map(|t| {
                                     mk_term::op1(
                                         UnaryOp::Force { ignore_not_exported },
-                                        PendingContract::apply_all(
+                                        RuntimeContract::apply_all(
                                             t,
                                             attrs.pending_contracts.iter().cloned(),
                                             pos.into_inherited(),
@@ -1725,12 +1725,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     .filter(|ctr| !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr));
 
                                 ts.extend(ts1.into_iter().map(|t|
-                                    PendingContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
+                                    RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
                                     .closurize(&mut self.cache, &mut env, env1.clone())
                                 ));
 
                                 ts.extend(ts2.into_iter().map(|t|
-                                    PendingContract::apply_all(t, ctrs_right.clone(), pos2)
+                                    RuntimeContract::apply_all(t, ctrs_right.clone(), pos2)
                                     .closurize(&mut self.cache, &mut env, env2.clone())
                                 ));
 
@@ -1763,7 +1763,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         return Err(EvalError::Other(format!("elem_at: index out of bounds. Expected an index between 0 and {}, got {}", ts.len(), n), pos_op));
                     }
 
-                    let elem_with_ctr = PendingContract::apply_all(
+                    let elem_with_ctr = RuntimeContract::apply_all(
                         ts.get(n_as_usize).unwrap().clone(),
                         attrs.pending_contracts.iter().cloned(),
                         pos1.into_inherited(),
@@ -1973,7 +1973,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             let array_with_ctr = Closure {
                                 body: RichTerm::new(
-                                    Term::Array(ts, attrs.with_extra_contracts([PendingContract::new(rt3, lbl)])),
+                                    Term::Array(ts, attrs.with_extra_contracts([RuntimeContract::new(rt3, lbl)])),
                                     pos2,
                                 ),
                                 env: env2,
@@ -2020,7 +2020,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             };
 
                             for (id, field) in record_data.fields.iter_mut() {
-                                field.pending_contracts.push(PendingContract {
+                                field.pending_contracts.push(RuntimeContract {
                                     contract: contract_at_field(*id),
                                     label: label.clone(),
                                 });
@@ -2989,12 +2989,12 @@ fn eq<C: Cache>(
                             let pos1 = value1.pos;
                             let pos2 = value2.pos;
 
-                            let value1_with_ctr = PendingContract::apply_all(
+                            let value1_with_ctr = RuntimeContract::apply_all(
                                 value1,
                                 pending_contracts1.into_iter(),
                                 pos1,
                             );
-                            let value2_with_ctr = PendingContract::apply_all(
+                            let value2_with_ctr = RuntimeContract::apply_all(
                                 value2,
                                 pending_contracts2.into_iter(),
                                 pos2,
@@ -3049,14 +3049,14 @@ fn eq<C: Cache>(
                 .into_iter()
                 .map(|t| {
                     let pos = t.pos.into_inherited();
-                    PendingContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
+                    RuntimeContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
                         .closurize(cache, &mut shared_env1, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
                 .zip(l2.into_iter().map(|t| {
                     let pos = t.pos.into_inherited();
-                    PendingContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
+                    RuntimeContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
                         .closurize(cache, &mut shared_env2, env2.clone())
                 }))
                 .collect::<Vec<_>>();
@@ -3140,7 +3140,7 @@ where
                     .value
                     .map(|value| {
                         let pos = value.pos;
-                        let value_with_ctrs = PendingContract::apply_all(
+                        let value_with_ctrs = RuntimeContract::apply_all(
                             value,
                             field.pending_contracts.iter().cloned(),
                             pos,

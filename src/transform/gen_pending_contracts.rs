@@ -1,26 +1,47 @@
 //! Generate contract applications from annotations.
 //!
-//! Since RFC005, contracts aren't "pre-applied" during the apply contract transformation, but lazy
-//! applied during evaluation. This phase still exists, just to generate the pending contracts (the
-//! only ones that the interpreter will care about at runtime) from the static annotations.
+//! Since RFC005, contracts aren't "pre-applied" during the apply contract transformation, but
+//! lazilyy applied during evaluation. This phase still exists, just to generate the pending
+//! contracts (the only ones that the interpreter will care about at runtime) from the static
+//! annotations.
 //!
-//! It must be run before `share_normal_form` so that newly generated pending contracts are
-//! transformed as well.
+//! However, contracts generated from a type annotation (see
+//! [#1228](https://github.com/tweag/nickel/issues/1228)) are an exception, because they shouldn't
+//! propagate. Such contracts are generated and applied once and for all during this phase.
+//!
+//! The `gen_pending_contracts` phase implemented by this module must be run before
+//! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
     identifier::Ident,
     match_sharedterm,
     term::{
         record::{Field, RecordData},
-        IndexMap, RichTerm, Term,
+        IndexMap, RichTerm, RuntimeContract, Term,
     },
     types::UnboundTypeVariableError,
 };
 
 pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
     fn attach_to_field(field: Field) -> Result<Field, UnboundTypeVariableError> {
-        let pending_contracts = field.metadata.annotation.as_pending_contracts()?;
+        // We simply add the contracts to the pending contract fields
+        let pending_contracts = field.metadata.annotation.pending_contracts()?;
+        // Type annotations are different: the contract is generated statically, because as opposed
+        // to contract annotations, type anntotations don't propagate.
+        let value = field
+            .value
+            .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
+                if let Some(labeled_ty) = &field.metadata.annotation.types {
+                    let pos = v.pos;
+                    let contract = RuntimeContract::try_from(labeled_ty.clone())?;
+                    Ok(contract.apply(v, pos))
+                } else {
+                    Ok(v)
+                }
+            })
+            .transpose()?;
 
         Ok(Field {
+            value,
             pending_contracts,
             ..field
         })
