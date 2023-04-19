@@ -2346,10 +2346,10 @@
       # Examples
 
       ```nickel
-      is_number 1 =>
-        true
-      is_number "Hello, World!" =>
-        false
+      std.is_number 1
+        => true
+      std.is_number "Hello, World!"
+        => false
       ```
     "%
     = fun x => %typeof% x == `Number,
@@ -2362,10 +2362,10 @@
       # Examples
 
       ```nickel
-      is_bool false =>
-        true
-      is_bool 42 =>
-        false
+      std.is_bool false
+        => true
+      std.is_bool 42
+        => false
       ```
     "%
     = fun x => %typeof% x == `Bool,
@@ -2378,10 +2378,10 @@
       # Examples
 
       ```nickel
-      is_string true =>
-        false
-      is_string "Hello, World!" =>
-        true
+      std.is_string true
+        => false
+      std.is_string "Hello, World!"
+        => true
       ```
     "%
     = fun x => %typeof% x == `String,
@@ -2394,10 +2394,10 @@
       # Examples
 
       ```nickel
-      is_enum true =>
-        false
-      is_enum `false =>
-        true
+      std.is_enum true
+        => false
+      std.is_enum `false
+        => true
       ```
     "%
     = fun x => %typeof% x == `Enum,
@@ -2410,10 +2410,10 @@
       # Examples
 
       ```nickel
-      is_function (fun x => x) =>
-        true
-      is_function 42 =>
-        false
+      std.is_function (fun x => x)
+        => true
+      std.is_function 42
+        => false
       ```
     "%
     = fun x => %typeof% x == `Function,
@@ -2426,10 +2426,10 @@
       # Examples
 
       ```nickel
-      is_array [ 1, 2 ] =>
-        true
-      is_array 42 =>
-        false
+      std.is_array [ 1, 2 ]
+        => true
+      std.is_array 42
+        => false
       ```
     "%
     = fun x => %typeof% x == `Array,
@@ -2437,16 +2437,15 @@
   is_record
     : Dyn -> Bool
     | doc m%"
-    Checks if the given value is a record.
       Checks if a value is a record.
 
       # Examples
 
       ```nickel
-      is_record [ 1, 2 ] =>
-        false
-      is_record { hello = "Hello", world = "World" } =>
-        true
+      std.is_record [ 1, 2 ]
+        => false
+      std.is_record { hello = "Hello", world = "World" }
+        => true
       ```
     "%
     = fun x => %typeof% x == `Record,
@@ -2469,10 +2468,10 @@
       # Examples
 
       ```nickel
-      typeof [ 1, 2 ] =>
-        `Array
-      typeof (fun x => x) =>
-        `Function
+      std.typeof [ 1, 2 ]
+        => `Array
+      std.typeof (fun x => x)
+       => `Function
       ```
     "%
     = fun x => %typeof% x,
@@ -2482,15 +2481,28 @@
     | doc m%"
       `seq x y` forces the evaluation of `x`, before returning `y`.
 
+      The evaluation of `x` stops as soon as a so-called weak head normal form
+      is reached, which is either:
+
+       - an array
+       - a record
+       - a function (or a match statement, which is function in disguise)
+       - a constant (a number, a boolean, a string literal or an enum tag)
+       - a contract label
+
+      Note that `seq` won't evaluate _the content_ of arrays and records
+      further. Please see `std.deep_seq` or `std.force` to recursively force the
+      evaluation of an expression.
+
       # Examples
 
       ```nickel
-      seq (42 / 0) 37 =>
-        error
-      seq (42 / 2) 37 =>
-        37
-      seq { tooFar = 42 / 0 } 37 =>
-        37
+      std.seq (42 / 0) 37
+        => error
+      std.seq (42 / 2) 37
+        => 37
+      std.seq { too_far = 42 / 0 } 37
+        => 37
       ```
     "%
     = fun x y => %seq% x y,
@@ -2498,17 +2510,19 @@
   deep_seq
     : forall a. Dyn -> a -> a
     | doc m%"
-      `deep_seq x y` forces a deep evaluation `x`, before returning `y`.
+      `deep_seq x y` forces a deep evaluation `x`, before returning `y`. Deep
+       evaluation means `deep_seq` recursively forces the evaluation of
+       the content of records and arrays, as opposed to `std.seq`.
 
       # Examples
 
       ```nickel
-      deep_seq (42 / 0) 37 =>
-        error
-      deep_seq (42 / 2) 37 =>
-        37
-      deep_seq { tooFar = 42 / 0 } 37 =>
-        error
+      std.deep_seq (42 / 0) 37
+        => error
+      std.deep_seq (42 / 2) 37
+        => 37
+      std.deep_seq [1+1, { not_too_far = [42 / 0] }] 37
+        => error
       ```
     "%
     = fun x y => %deep_seq% x y,
@@ -2521,8 +2535,8 @@
       # Examples
 
       ```nickel
-      hash `Md5 "hunter2" =>
-        "2ab96390c7dbe3439de74d0c9b0b1767"
+      std.hash `Md5 "hunter2"
+        => "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
     "%
     = fun type s => %hash% type s,
@@ -2567,11 +2581,11 @@
       # Examples
 
       ```nickel
-      from 42 =>
+      std.to_string 42 =>
         "42"
-      from `Foo =>
+      std.to_string `Foo =>
         "Foo"
-      from null =>
+      std.to_string null =>
         "null"
       ```
     "%
@@ -2586,9 +2600,9 @@
       # Examples
 
       ```nickel
-      std.trace "Hello, world!" true =>
+      std.trace "Hello, world!" true
         std.trace: Hello, world!
-        true
+        => true
       ```
     "%
     = fun msg x => %trace% msg x,
@@ -2600,8 +2614,8 @@
       # Examples
 
       ```nickel
-      1 | FailWith "message" =>
-        error: contract broken by a value: message
+      1 | std.FailWith "message"
+        => error: contract broken by a value: message
       ```
     "%
     = fun msg label value => std.contract.blame_with_message msg label,
@@ -2609,13 +2623,14 @@
   fail_with
     | String -> Dyn
     | doc m%"
-      Abort evaluation with the given message.
+      Abort the evaluation with the given message. The error will be reported as
+      a contract violation, as `fail_with` uses `std.FailWith` under the hood.
 
       # Examples
 
       ```nickel
-      fail_with "message" =>
-        error: contract broken by a value: message
+      std.fail_with "message"
+        => error: contract broken by a value: message
       ```
     "%
     = fun msg => null | FailWith msg,
