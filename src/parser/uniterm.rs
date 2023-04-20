@@ -1,7 +1,7 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
 use error::ParseError;
-use indexmap::{IndexMap, map::Entry};
+use indexmap::{map::Entry, IndexMap};
 use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
