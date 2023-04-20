@@ -62,10 +62,7 @@ use crate::{
         array::Array,
         make as mk_term,
     },
-    types::{
-        Types, TypeF, EnumRows, EnumRowsF, RecordRows, RecordRowsF,
-        VarKind
-    },
+    types::*,
     position::{TermPos, RawSpan},
     label::Label,
 };
@@ -912,7 +909,19 @@ TypeAtom: Types = {
             Types::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Types>> "}" => {
-        Types::from(TypeF::Dict(Box::new(t)))
+        Types::from(TypeF::Dict {
+            type_fields: Box::new(t),
+            attrs: DictAttrs::Eager
+        })
+    },
+    // Although dictionary contracts aren't really type, we treat them like
+    // types for the time being, at least syntactically, as they are represented
+    // using a `TypeF::Dict` constructor as well.
+    "{" "_" "|" <t: WithPos<Types>> "}" => {
+        Types::from(TypeF::Dict {
+            type_fields: Box::new(t),
+            attrs: DictAttrs::Lazy
+        })
     },
     "_" => {
         let id = *next_wildcard_id;

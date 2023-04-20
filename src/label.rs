@@ -212,8 +212,8 @@ but this field doesn't exist in {}",
                     ..path_span
                 })
             }
-            (TypeF::Dict(ty), next @ Some(Elem::Dict)) => {
-                let path_span = span(path_it, ty)?;
+            (TypeF::Dict { type_fields, .. }, next @ Some(Elem::Dict)) => {
+                let path_span = span(path_it, type_fields)?;
 
                 Some(PathSpan {
                     last: path_span.last.or_else(|| next.copied()),

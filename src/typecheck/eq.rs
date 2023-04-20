@@ -445,7 +445,17 @@ fn type_eq_bounded<E: TermEnvironment>(
             | (TypeF::Bool, TypeF::Bool)
             | (TypeF::Symbol, TypeF::Symbol)
             | (TypeF::String, TypeF::String) => true,
-            (TypeF::Dict(uty1), TypeF::Dict(uty2)) | (TypeF::Array(uty1), TypeF::Array(uty2)) => {
+            (
+                TypeF::Dict {
+                    type_fields: uty1,
+                    attrs: attrs1,
+                },
+                TypeF::Dict {
+                    type_fields: uty2,
+                    attrs: attrs2,
+                },
+            ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
+            (TypeF::Array(uty1), TypeF::Array(uty2)) => {
                 type_eq_bounded(state, uty1, env1, uty2, env2)
             }
             (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {

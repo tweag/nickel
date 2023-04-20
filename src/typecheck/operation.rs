@@ -104,8 +104,8 @@ pub fn get_uop_type(
 
             let f_type = mk_uty_arrow!(TypeF::String, a.clone(), b.clone());
             (
-                mk_uniftype::dyn_record(a),
-                mk_uty_arrow!(f_type, mk_uniftype::dyn_record(b)),
+                mk_uniftype::dict(a),
+                mk_uty_arrow!(f_type, mk_uniftype::dict(b)),
             )
         }
         // forall a b. a -> b -> b
@@ -127,7 +127,7 @@ pub fn get_uop_type(
             let ty_a = UnifType::UnifVar(state.table.fresh_type_var_id());
 
             (
-                mk_uniftype::dyn_record(ty_a),
+                mk_uniftype::dict(ty_a),
                 mk_uniftype::array(mk_uniftype::str()),
             )
         }
@@ -136,7 +136,7 @@ pub fn get_uop_type(
             let ty_a = UnifType::UnifVar(state.table.fresh_type_var_id());
 
             (
-                mk_uniftype::dyn_record(ty_a.clone()),
+                mk_uniftype::dict(ty_a.clone()),
                 mk_uniftype::array(ty_a),
             )
         }
@@ -271,7 +271,7 @@ pub fn get_bop_type(
 
             (
                 mk_uniftype::str(),
-                mk_uniftype::dyn_record(res.clone()),
+                mk_uniftype::dict(res.clone()),
                 res,
             )
         }
@@ -283,8 +283,8 @@ pub fn get_bop_type(
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),
-                mk_uniftype::dyn_record(res.clone()),
-                mk_uty_arrow!(res.clone(), mk_uniftype::dyn_record(res)),
+                mk_uniftype::dict(res.clone()),
+                mk_uty_arrow!(res.clone(), mk_uniftype::dict(res)),
             )
         }
         // forall a. Str -> {_ : a} -> {_ : a}
@@ -295,8 +295,8 @@ pub fn get_bop_type(
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),
-                mk_uniftype::dyn_record(res.clone()),
-                mk_uty_arrow!(res.clone(), mk_uniftype::dyn_record(res)),
+                mk_uniftype::dict(res.clone()),
+                mk_uty_arrow!(res.clone(), mk_uniftype::dict(res)),
             )
         }
         // forall a. Str -> { _ : a } -> { _ : a}
@@ -304,8 +304,8 @@ pub fn get_bop_type(
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),
-                mk_uniftype::dyn_record(res.clone()),
-                mk_uniftype::dyn_record(res),
+                mk_uniftype::dict(res.clone()),
+                mk_uniftype::dict(res),
             )
         }
         // forall a. Str -> {_: a} -> Bool
@@ -313,7 +313,7 @@ pub fn get_bop_type(
             let ty_elt = UnifType::UnifVar(state.table.fresh_type_var_id());
             (
                 mk_uniftype::str(),
-                mk_uniftype::dyn_record(ty_elt),
+                mk_uniftype::dict(ty_elt),
                 mk_uniftype::bool(),
             )
         }
@@ -384,7 +384,7 @@ pub fn get_bop_type(
         // forall a. Dyn -> {_: a} -> Dyn -> {_: a}
         BinaryOp::RecordLazyAssume() => {
             let ty_field = UnifType::UnifVar(state.table.fresh_type_var_id());
-            let ty_dict = mk_uniftype::dyn_record(ty_field);
+            let ty_dict = mk_uniftype::dict(ty_field);
             (
                 mk_uniftype::dynamic(),
                 ty_dict.clone(),
@@ -442,8 +442,8 @@ pub fn get_nop_type(
             vec![
                 mk_uniftype::dynamic(),
                 mk_uniftype::dynamic(),
-                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
-                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+                mk_uniftype::dict(mk_uniftype::dynamic()),
+                mk_uniftype::dict(mk_uniftype::dynamic()),
             ],
             mk_uniftype::dynamic(),
         ),
@@ -452,7 +452,7 @@ pub fn get_nop_type(
             vec![
                 mk_uniftype::dynamic(),
                 mk_uniftype::dynamic(),
-                mk_uniftype::dyn_record(mk_uniftype::dynamic()),
+                mk_uniftype::dict(mk_uniftype::dynamic()),
             ],
             mk_uniftype::dynamic(),
         ),

@@ -75,7 +75,8 @@ pub mod internals {
     generate_accessor!(enums);
     generate_accessor!(enum_fail);
     generate_accessor!(record);
-    generate_accessor!(dyn_record);
+    generate_accessor!(dict_type);
+    generate_accessor!(dict_contract);
     generate_accessor!(record_extend);
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);
