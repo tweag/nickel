@@ -1,7 +1,7 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
 use error::ParseError;
-use std::collections::{hash_map::Entry, HashMap};
+use indexmap::{IndexMap, map::Entry};
 use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
@@ -213,7 +213,8 @@ impl UniRecord {
         // ```
         // { foo = { bar = {baz : Num = 1 } } }
         // ```
-        let mut candidate_fields = HashMap::new();
+        // We're using an index map because this map impacts the determinism of error reporting.
+        let mut candidate_fields = IndexMap::new();
 
         let first_without_def = self.fields.iter().find_map(|field_def| {
             let path_as_ident = field_def.path_as_ident();
