@@ -104,7 +104,7 @@
     else
       %blame% (%label_with_message% "not a record" label),
 
-   # Lazy dictionary contract for `{_ | T}`
+  # Lazy dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
     if %typeof% value == `Record then
       %record_lazy_assume% (%go_dict% label) value (fun _field => contract)
@@ -114,7 +114,12 @@
   # Eager dictionary contract for `{_ : T}`
   "$dict_type" = fun contract label value =>
     if %typeof% value == `Record then
-      %record_map% value (fun _field field_value => %assume% contract label field_value)
+      %record_map%
+        value
+        (
+          fun _field field_value =>
+            %assume% contract (%go_dict% label) field_value
+        )
     else
       %blame% (%label_with_message% "not a record" label),
 

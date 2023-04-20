@@ -296,9 +296,11 @@ fn records_contracts_closed() {
 fn dictionary_contracts() {
     use nickel_lang::label::ty_path::Elem;
 
-    assert_raise_blame!("%force% (({foo} | {_: Number}) & {foo = \"string\"}) true");
+    // dictionary contracts propagate through merging, as opposed to contracts derived from
+    // dictionary types
+    assert_raise_blame!("%force% (({foo} | {_ | Number}) & {foo = \"string\"}) true");
 
-    let res = eval("%force% ({foo = 1} | {_: String}) false");
+    let res = eval("%force% ({foo = 1} | {_ | String}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
             evaluated_arg: _,

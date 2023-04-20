@@ -118,12 +118,12 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # recursive overriding with dictionaries
   # regression tests for [#892](https://github.com/tweag/nickel/issues/892)
-  (({a = 1, b = a} | {_: Number}) & { a | force = 2}).b == 2,
+  (({a = 1, b = a} | {_ | Number}) & { a | force = 2}).b == 2,
 
   ({
      b = { foo = c.foo },
      c = {}
-   } | {_: {
+   } | {_ | {
      foo | default = 0
    } }).b.foo == 0,
 
