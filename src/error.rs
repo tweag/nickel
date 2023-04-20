@@ -385,6 +385,26 @@ pub enum ParseError {
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
     TypeVariableKindMismatch { ty_var: Ident, span: RawSpan },
+    /// A record literal, which isn't a record type, has a field with a type annotation but without
+    /// a definition. While we could technically handle this situation, this is most probably an
+    /// error from the user, because this type annotation is useless and, maybe non-intuitively,
+    /// won't have any effect as part of a larger contract:
+    ///
+    /// ```nickel
+    /// let MixedContract = {foo : String, bar | Number} in
+    /// { foo = 1, bar = 2} | MixedContract
+    /// ```
+    ///
+    /// This example works, because the `foo : String` annotation doesn't propagate, and contract
+    /// application is mostly merging, which is probably not the intent. It might become a warning
+    /// in a future version, but we don't have warnings for now, so we rather forbid such
+    /// constructions.
+    TypedFieldWithoutDefinition {
+        /// The position of the field definition.
+        field_span: RawSpan,
+        /// The position of the type annotation.
+        annot_span: RawSpan,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -550,6 +570,13 @@ impl ParseError {
                 InternalParseError::TypeVariableKindMismatch { ty_var, span } => {
                     ParseError::TypeVariableKindMismatch { ty_var, span }
                 }
+                InternalParseError::TypedFieldWithoutDefinition {
+                    field_span,
+                    annot_span,
+                } => ParseError::TypedFieldWithoutDefinition {
+                    field_span,
+                    annot_span,
+                },
             },
         }
     }
@@ -1561,6 +1588,23 @@ impl IntoDiagnostics<FileId> for ParseError {
                     String::from("Type variables may be used either as types, polymorphic record tails, or polymorphic enum tails."),
                     String::from("Using the same variable as more than one of these is not permitted.")
                 ]),
+            ParseError::TypedFieldWithoutDefinition { field_span, annot_span } => {
+                Diagnostic::error()
+                    .with_message("statically typed field without definition")
+                    .with_labels(vec![
+                        primary(&field_span).with_message("this field doesn't have a definition"),
+                        secondary(&annot_span).with_message("but it has a type annotation"),
+                    ])
+                .with_notes(vec![
+                    String::from("A static type annotation must be attached to an expression but \
+                    this field doesn't have a definition."),
+                    String::from("Did you mean to use `|` instead of `:`, for example when defining a record contract?"),
+                    String::from("Typed fields without definitions are only allowed inside \
+                    record types, but the enclosing record literal doesn't qualify as a \
+                    record type. Please refer to the manual for the defining conditions of a \
+                    record type."),
+                ])
+            }
         };
 
         vec![diagnostic]

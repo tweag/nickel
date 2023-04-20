@@ -1,6 +1,7 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
 use super::*;
 use error::ParseError;
+use std::collections::{hash_map::Entry, HashMap};
 use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
@@ -169,11 +170,150 @@ pub struct UniRecord {
 /// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
 /// record type in a strict way. See [`UniRecord::into_type_strict`]. Hold the position of the
 /// illegal construct.
+#[derive(Debug, Copy, Clone)]
 pub struct InvalidRecordTypeError(pub TermPos);
 
 impl UniRecord {
-    /// Try to convert a `UniRecord` to a type. The strict part means that the `UniRecord` must be
-    /// a plain record type, uniquely containing fields of the form `fields: Type`. Currently, it
+    /// Check if a field definition has a type annotation but no definition. This is currently
+    /// forbidden for record literals that aren't record types. In that case, raise the
+    /// corresponding parse error.
+    pub fn check_typed_field_without_def(&self) -> Result<(), ParseError> {
+        enum FieldState {
+            // A field with a type annotation but without a definition was encountered. Still, we
+            // might find a definition later, because of piecewise definitions
+            Candidate((RawSpan, RawSpan)),
+            // Marker to indicate that a field has been defined before, and can no longer raise an
+            // error.
+            Defined,
+        }
+
+        // We have to be a bit careful because of piecewise definitions. That is, we still want to
+        // accept record literals such as:
+        //
+        // ```
+        // {
+        //   map : forall a b. (a -> b) -> Array a -> Array b,
+        //   map = fun f array => ...
+        // }
+        // ```
+        //
+        // On the other hand, it's a bit too complex to handle the case of piecewise definitions:
+        //
+        // ```
+        // {
+        //    foo.bar.baz : Num,
+        //    foo.bar.baz = 1,
+        // }
+        // ```
+        //
+        // This is arguably much less common and useful. In this case, we are more restrictive and
+        // reject such an example, although it would theoretically be acceptable as it's elaborated
+        // as a record literal that is accepted:
+        //
+        // ```
+        // { foo = { bar = {baz : Num = 1 } } }
+        // ```
+        let mut candidate_fields = HashMap::new();
+
+        let first_without_def = self.fields.iter().find_map(|field_def| {
+            let path_as_ident = field_def.path_as_ident();
+
+            match &field_def.field {
+                Field {
+                    value: None,
+                    metadata:
+                        FieldMetadata {
+                            annotation:
+                                TypeAnnotation {
+                                    types: Some(labeled_ty),
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => {
+                    // If the path is a single identifier, we don't error out right away, because
+                    // we might already have found a definition for this field, or might do later
+                    // in the loop.
+                    if let Some(ident) = path_as_ident {
+                        match candidate_fields.entry(ident) {
+                            // If the hashmap is occupied, we've met this field before. Either
+                            // there is another definition without annotation, in which case
+                            // there's no need to replace it, or there is a `Defined` element,
+                            // which means this is false positive that we can ignore. In both cases,
+                            // we don't have anytning more to do
+                            Entry::Occupied(_) => None,
+                            Entry::Vacant(vacant_entry) => {
+                                vacant_entry.insert(FieldState::Candidate((
+                                    ident.pos.unwrap(),
+                                    labeled_ty.label.span,
+                                )));
+                                None
+                            }
+                        }
+                    }
+                    // We don't do anything smart for composite paths: we raise an error right way
+                    else {
+                        Some((field_def.pos.unwrap(), labeled_ty.label.span))
+                    }
+                }
+                field => {
+                    if let (Some(ident), Some(_)) = (path_as_ident, &field.value) {
+                        candidate_fields.insert(ident, FieldState::Defined);
+                    }
+
+                    None
+                }
+            }
+        });
+
+        let first_without_def =
+            first_without_def.or(candidate_fields.into_iter().find_map(|(_, field_state)| {
+                if let FieldState::Candidate(spans) = field_state {
+                    Some(spans)
+                } else {
+                    None
+                }
+            }));
+
+        if let Some((ident_span, annot_span)) = first_without_def {
+            Err(ParseError::TypedFieldWithoutDefinition {
+                field_span: ident_span,
+                annot_span,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Checks if this record qualifies as a record type. If this function returns true, then
+    /// `into_type_strict()` must succeed.
+    pub fn is_record_type(&self) -> bool {
+        self.fields.iter().all(|field_def| {
+            // Warning: this pattern must stay in sync with the corresponding pattern in `into_type_strict`.
+            matches!(&field_def.field,
+                Field {
+                    value: None,
+                    metadata:
+                        FieldMetadata {
+                            doc: None,
+                            annotation:
+                                TypeAnnotation {
+                                    types: Some(_),
+                                    contracts,
+                                },
+                            opt: false,
+                            not_exported: false,
+                            priority: MergePriority::Neutral,
+                        },
+                    // At this stage, this field should always be empty. It's a run-time thing, and
+                    // is only filled during program transformation.
+                    pending_contracts: _,
+                } if contracts.is_empty())
+        })
+    }
+
+    /// a plain record type, uniquely containing fields of the form `fields: Type`. Currently, this
     /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
     /// `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
@@ -185,6 +325,8 @@ impl UniRecord {
             // At parsing stage, all `Rc`s must be 1-counted. We can thus call
             // `into_owned()` without risking to actually clone anything.
             match field_def.field {
+                // Warning: this pattern must stay in sync with the corresponding pattern in
+                // `is_record_type`.
                 Field {
                     value: None,
                     metadata:
@@ -289,29 +431,42 @@ impl UniRecord {
 impl TryFrom<UniRecord> for RichTerm {
     type Error = ParseError;
 
-    /// Convert a `UniRecord` to a term. If the `UniRecord` has a tail, it is first interpreted as
-    /// a type and then converted to a contract. Otherwise it is interpreted as a record directly.
-    /// Fail if the `UniRecord` has a tail but isn't syntactically a record type either. Elaborate
-    /// field paths `foo.bar = value` to the expanded form `{foo = {bar = value}}`.
+    /// Convert a `UniRecord` to a term. If the `UniRecord` is syntactically a record type or it
+    /// has a tail, it is first interpreted as a type and then converted to a contract. One
+    /// exception is the empty record, which behaves the same both as a type and a contract, and
+    /// turning an empty record literal to an opaque function would break everything.
+    ///
+    /// Otherwise it is interpreted as a record directly. Fail if the `UniRecord` has a tail but
+    /// isn't syntactically a record type either. Elaborate field paths `foo.bar = value` to the
+    /// expanded form `{foo = {bar = value}}`.
     ///
     /// We also fix the type variables of the type appearing inside annotations (see
     /// [`FixTypeVars::fix_type_vars`]).
     fn try_from(ur: UniRecord) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
-        let result = if let Some((_, tail_pos)) = ur.tail {
-            ur.into_type_strict()
+        // First try to interpret this record as a type.
+        let result = if ur.tail.is_some() || (ur.is_record_type() && !ur.fields.is_empty()) {
+            let mut ty = if let Some((_, tail_pos)) = ur.tail {
                 // We unwrap all positions: at this stage of the parsing, they must all be set
-                .map_err(|InvalidRecordTypeError(pos)| {
-                    ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
-                })
-                .and_then(|mut ty| {
-                    ty.fix_type_vars(pos.unwrap())?;
-                    ty.contract().map_err(|UnboundTypeVariableError(id)| {
-                        ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
-                    })
-                })
+                ur.into_type_strict()
+                    .map_err(|InvalidRecordTypeError(pos)| {
+                        ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
+                    })?
+            } else {
+                // As per the condition of the enclosing if-then-else, `ur.is_record_type()` must
+                // be `true` in this branch, and it is an invariant of this function that then
+                // `ur.into_type_strict()` must succeed
+                ur.into_type_strict().unwrap()
+            };
+
+            ty.fix_type_vars(pos.unwrap())?;
+            ty.contract().map_err(|UnboundTypeVariableError(id)| {
+                ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
+            })
         } else {
+            ur.check_typed_field_without_def()?;
+
             let UniRecord { fields, attrs, .. } = ur;
             let elaborated = fields
                 .into_iter()
@@ -321,13 +476,15 @@ impl TryFrom<UniRecord> for RichTerm {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(RichTerm::from(build_record(elaborated, attrs)))
+            let record_term = RichTerm::from(build_record(elaborated, attrs));
+            Ok(record_term)
         };
 
         result.map(|rt| rt.with_pos(pos))
     }
 }
 
+/// Try to convert a `UniRecord` to a type. The strict part means that the `UniRecord` must be
 impl TryFrom<UniRecord> for Types {
     type Error = ParseError;
 

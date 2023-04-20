@@ -44,4 +44,24 @@ pub enum ParseError {
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
     TypeVariableKindMismatch { ty_var: Ident, span: RawSpan },
+    /// A record literal, which isn't a record type, has a field with a type annotation but without
+    /// a definition. While we could technically handle this situation, this is most probably an
+    /// error from the user, because this type annotation is useless and, maybe non-intuitively,
+    /// won't have any effect as part of a larger contract:
+    ///
+    /// ```nickel
+    /// let MixedContract = {foo : String, bar | Number} in
+    /// { foo = 1, bar = 2} | MixedContract
+    /// ```
+    ///
+    /// This example works, because the `foo : String` annotation doesn't propagate, and contract
+    /// application is mostly merging, which is probably not the intent. It might become a warning
+    /// in a future version, but we don't have warnings for now, so we rather forbid such
+    /// constructions.
+    TypedFieldWithoutDefinition {
+        /// The position of the field definition (the identifier only).
+        field_span: RawSpan,
+        /// The position of the type annotation.
+        annot_span: RawSpan,
+    },
 }

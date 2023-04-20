@@ -183,6 +183,18 @@ impl FieldDef {
 
         (fst, content)
     }
+
+    /// Returns the identifier corresponding to this definition if the path is composed of exactly one element which is a static identifier. Returns `None` otherwise.
+    pub fn path_as_ident(&self) -> Option<Ident> {
+        if self.path.len() > 1 {
+            return None;
+        }
+
+        self.path.first().and_then(|path_elem| match path_elem {
+            FieldPathElem::Expr(_) => None,
+            FieldPathElem::Ident(ident) => Some(*ident),
+        })
+    }
 }
 
 /// The last field of a record, that can either be a normal field declaration or an ellipsis.
