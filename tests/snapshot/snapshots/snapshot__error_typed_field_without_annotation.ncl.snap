@@ -2,7 +2,7 @@
 source: tests/snapshot/main.rs
 expression: snapshot
 ---
-error: statically typed field without definition
+error: statically typed field without a definition
   ┌─ [INPUTS_PATH]/errors/typed_field_without_annotation.ncl:2:3
   │
 2 │   foo : Number
