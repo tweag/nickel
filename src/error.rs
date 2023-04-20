@@ -1590,7 +1590,7 @@ impl IntoDiagnostics<FileId> for ParseError {
                 ]),
             ParseError::TypedFieldWithoutDefinition { field_span, annot_span } => {
                 Diagnostic::error()
-                    .with_message("statically typed field without definition")
+                    .with_message("statically typed field without a definition")
                     .with_labels(vec![
                         primary(&field_span).with_message("this field doesn't have a definition"),
                         secondary(&annot_span).with_message("but it has a type annotation"),

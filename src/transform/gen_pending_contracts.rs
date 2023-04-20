@@ -1,7 +1,7 @@
 //! Generate contract applications from annotations.
 //!
 //! Since RFC005, contracts aren't "pre-applied" during the apply contract transformation, but
-//! lazilyy applied during evaluation. This phase still exists, just to generate the pending
+//! lazily applied during evaluation. This phase still exists, just to generate the pending
 //! contracts (the only ones that the interpreter will care about at runtime) from the static
 //! annotations.
 //!
