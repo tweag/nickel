@@ -132,5 +132,9 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # regression test for [#1224](https://github.com/tweag/nickel/issues/1224)
   std.record.fields ({} | { field | optional = "value" }) == [ "field" ],
+
+  # check that record type don't propagate through merging
+  ({foo = "a"} | {_ : String}) & {foo | force = 1} & {bar = false}
+  == {foo = 1, bar = false},
 ]
 |> check
