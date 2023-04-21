@@ -248,8 +248,8 @@ fn find_fields_from_type(
 ) -> Vec<IdentWithType> {
     match &ty.types {
         TypeF::Record(row) => find_fields_from_rrows(row, path, info),
-        TypeF::Dict(ty) => match path.pop() {
-            Some(..) => find_fields_from_type(ty, path, info),
+        TypeF::Dict { type_fields, .. } => match path.pop() {
+            Some(..) => find_fields_from_type(type_fields, path, info),
             _ => Vec::new(),
         },
         TypeF::Flat(term) => find_fields_from_term(term, path, info),
