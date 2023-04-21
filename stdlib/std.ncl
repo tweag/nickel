@@ -1736,6 +1736,20 @@
       "%
       = (==) {},
 
+    merge_all
+      : Array { _ : Dyn } -> { _ : Dyn }
+      | doc m%"
+        Merges an array of records.
+
+        # Examples
+
+        ```nickel
+        std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
+          => { foo = 1, bar = 2 }
+        ```
+      "%
+      = fun rs => std.array.reduce_left (&) (rs | Array Dyn) | { _ : Dyn },
+
     filter
       : forall a. (String -> a -> Bool) -> { _ : a } -> { _ : a }
       | doc m%"
@@ -2642,18 +2656,4 @@
       ```
     "%
     = fun msg => null | FailWith msg,
-
-  merge_all
-    : Array Dyn -> Dyn
-    | doc m%"
-      Merges an array of records.
-
-      # Examples
-
-      ```nickel
-      std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
-        => { foo = 1, bar = 2 }
-      ```
-    "%
-    = std.array.reduce_left (&),
 }
