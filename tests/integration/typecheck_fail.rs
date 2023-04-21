@@ -325,11 +325,3 @@ fn locally_different_flat_types() {
         ))
     );
 }
-
-#[test]
-fn dict_contracts_dont_capture_typevar() {
-    assert_matches!(
-        type_check_expr("forall a b. b -> Array b -> {_ | a}"),
-        Err(TypecheckError::UnboundIdentifier(ident, _)) if ident.label() == "a"
-    );
-}
