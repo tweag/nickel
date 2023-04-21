@@ -815,7 +815,8 @@
                     (
                       fun field =>
                         contract_map."%{field}"
-                    ),`Array =>
+                    ),
+            `Array =>
               fun ctr_label value =>
                 let value = check_typeof_eq ctr_label value in
                 let value_length = %length% value in
