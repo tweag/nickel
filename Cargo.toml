@@ -68,6 +68,7 @@ typed-arena = "2.0.2"
 malachite = {version = "0.3.2", features = ["enable_serde"] }
 malachite-q = "0.3.2"
 indexmap = {version = "1.9.3", features = ["serde"] }
+strip-ansi-escapes = "0.1.1"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

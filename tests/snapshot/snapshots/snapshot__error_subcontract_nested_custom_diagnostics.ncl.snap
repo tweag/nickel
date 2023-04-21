@@ -2,7 +2,7 @@
 source: tests/snapshot/main.rs
 expression: snapshot
 ---
-error: contract broken by a value: child\'s message
+error: contract broken by a value: child's message
    ┌─ [INPUTS_PATH]/errors/subcontract_nested_custom_diagnostics.ncl:17:8
    │
 17 │ null | ParentContract
@@ -15,7 +15,7 @@ error: contract broken by a value: child\'s message
    │
    = child's note
 
-note: from a parent contract violation: parent\'s message
+note: from a parent contract violation: parent's message
  = parent's note
 
 
