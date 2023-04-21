@@ -1703,7 +1703,8 @@
     from_array
       : forall a. Array { field : String, value : a } -> { _ : a }
       | doc m%"
-        Converts an array of key-value pairs into a record.
+        Converts an array of key-value pairs into a record. The field names in
+        the input array must be distinct.
 
         # Examples
 
@@ -1717,8 +1718,7 @@
       "%
       = fun bindings =>
         bindings
-        |> std.array.map (fun binding => { "%{binding.field}" = binding.value })
-        |> merge_all,
+        |> std.array.fold_left (fun accum { field, value } => %record_insert% "%{field}" accum value) {},
 
     is_empty
       : forall a. { _ : a } -> Bool
@@ -1735,20 +1735,6 @@
         ```
       "%
       = (==) {},
-
-    merge_all
-      | forall a. Array { _ : a } -> { _ : a }
-      | doc m%"
-        Merges an array of records.
-
-        # Examples
-
-        ```nickel
-        std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
-          => { foo = 1, bar = 2 }
-        ```
-      "%
-      = std.array.fold_left (&) {},
 
     filter
       : forall a. (String -> a -> Bool) -> { _ : a } -> { _ : a }
@@ -2656,4 +2642,18 @@
       ```
     "%
     = fun msg => null | FailWith msg,
+
+  merge_all
+    | Array Dyn -> Dyn
+    | doc m%"
+      Merges an array of records.
+
+      # Examples
+
+      ```nickel
+      std.record.merge_all [ { foo = 1 }, { bar = 2 } ]
+        => { foo = 1, bar = 2 }
+      ```
+    "%
+    = std.array.reduce_left (&),
 }
