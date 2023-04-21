@@ -104,9 +104,22 @@
     else
       %blame% (%label_with_message% "not a record" label),
 
-  "$dyn_record" = fun contract label value =>
+  # Lazy dictionary contract for `{_ | T}`
+  "$dict_contract" = fun contract label value =>
     if %typeof% value == `Record then
       %record_lazy_assume% (%go_dict% label) value (fun _field => contract)
+    else
+      %blame% (%label_with_message% "not a record" label),
+
+  # Eager dictionary contract for `{_ : T}`
+  "$dict_type" = fun contract label value =>
+    if %typeof% value == `Record then
+      %record_map%
+        value
+        (
+          fun _field field_value =>
+            %assume% contract (%go_dict% label) field_value
+        )
     else
       %blame% (%label_with_message% "not a record" label),
 
@@ -152,8 +165,7 @@
 
   # Recursive priorities operators
 
-  "$rec_force" = fun value => %rec_force% (%force% value),
-  "$rec_default" = fun value => %rec_default% (%force% value),
+  "$rec_force" = fun value => %rec_force% (%force% value),"$rec_default" = fun value => %rec_default% (%force% value),
 
   # Provide access to std.contract.Equal within the initial environement. Merging
   # makes use of `std.contract.Equal`, but it can't blindly substitute such an
@@ -162,3 +174,4 @@
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
 }
+

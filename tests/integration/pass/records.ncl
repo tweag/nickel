@@ -118,12 +118,12 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # recursive overriding with dictionaries
   # regression tests for [#892](https://github.com/tweag/nickel/issues/892)
-  (({a = 1, b = a} | {_: Number}) & { a | force = 2}).b == 2,
+  (({a = 1, b = a} | {_ | Number}) & { a | force = 2}).b == 2,
 
   ({
      b = { foo = c.foo },
      c = {}
-   } | {_: {
+   } | {_ | {
      foo | default = 0
    } }).b.foo == 0,
 
@@ -132,5 +132,9 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # regression test for [#1224](https://github.com/tweag/nickel/issues/1224)
   std.record.fields ({} | { field | optional = "value" }) == [ "field" ],
+
+  # check that record type don't propagate through merging
+  ({foo = "a"} | {_ : String}) & {foo | force = 1} & {bar = false}
+  == {foo = 1, bar = false},
 ]
 |> check

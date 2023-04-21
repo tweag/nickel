@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 use codespan::Files;
-use nickel_lang::error::{Error, EvalError, IntoDiagnostics};
+use nickel_lang::error::{Error, EvalError, IntoDiagnostics, TypecheckError};
 
 use nickel_lang_utilities::{eval, program_from_expr};
 
@@ -296,9 +296,11 @@ fn records_contracts_closed() {
 fn dictionary_contracts() {
     use nickel_lang::label::ty_path::Elem;
 
-    assert_raise_blame!("%force% (({foo} | {_: Number}) & {foo = \"string\"}) true");
+    // dictionary contracts propagate through merging, as opposed to contracts derived from
+    // dictionary types
+    assert_raise_blame!("%force% (({foo} | {_ | Number}) & {foo = \"string\"}) true");
 
-    let res = eval("%force% ({foo = 1} | {_: String}) false");
+    let res = eval("%force% ({foo = 1} | {_ | String}) false");
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
             evaluated_arg: _,
@@ -337,5 +339,18 @@ fn type_path_with_aliases() {
     assert_blame_dont_panic("let Foo = Number -> Number in ((fun x => x) | Foo) \"a\"");
     assert_blame_dont_panic(
         "let Foo = {foo: Number} in %force% (((fun x => {foo = \"a\"}) | Dyn -> Foo) null)",
+    );
+}
+
+#[test]
+fn contracts_dont_capture_typevar() {
+    assert_matches!(
+        eval("forall a b. b -> Array b -> {_ | a}"),
+        Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, _))) if ident.label() == "a"
+    );
+
+    assert_matches!(
+        eval("forall a b. b -> Array b -> {foo | a -> Num}"),
+        Err(Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, _))) if ident.label() == "a"
     );
 }

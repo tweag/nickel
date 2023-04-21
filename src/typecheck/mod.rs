@@ -35,7 +35,7 @@
 //!
 //! ```nickel
 //! # Rejected
-//! let id = fun x => x in seq (id "a") (id 5) : Number
+//! (let id = fun x => x in std.seq (id "a") (id 5)) : Number
 //! ```
 //!
 //! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
@@ -48,7 +48,7 @@
 //!
 //! ```nickel
 //! # Accepted
-//! let id : forall a. a -> a = fun x => x in seq (id "a") (id 5) : Num
+//! (let id : forall a. a -> a = fun x => x in std.seq (id "a") (id 5)) : Num
 //! ```
 //!
 //! In walk mode, the type of let-bound expressions is inferred in a shallow way (see
@@ -1015,7 +1015,7 @@ fn walk_type<L: Linearizer>(
        }
        TypeF::Record(rrows) => walk_rrows(state, ctxt, lin, linearizer, rrows),
        TypeF::Flat(t) => walk(state, ctxt, lin, linearizer, t),
-       TypeF::Dict(ty2)
+       TypeF::Dict { type_fields: ty2, .. }
        | TypeF::Array(ty2)
        | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, lin, linearizer, ty2),
     }
@@ -1397,7 +1397,7 @@ fn check<L: Linearizer>(
         // element type.
         Term::RecRecord(record, dynamic, ..) if !dynamic.is_empty() => {
             let ty_dict = state.table.fresh_type_uvar();
-            unify(state, &ctxt, ty, mk_uniftype::dyn_record(ty_dict.clone()))
+            unify(state, &ctxt, ty, mk_uniftype::dict(ty_dict.clone()))
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             //TODO: should we insert in the environment the checked type, or the actual type?
@@ -1439,7 +1439,11 @@ fn check<L: Linearizer>(
 
             let root_ty = ty.clone().into_root(state.table);
 
-            if let UnifType::Concrete(TypeF::Dict(rec_ty)) = root_ty {
+            if let UnifType::Concrete(TypeF::Dict {
+                type_fields: rec_ty,
+                ..
+            }) = root_ty
+            {
                 // Checking for a dictionary
                 record
                     .fields
@@ -2201,7 +2205,14 @@ pub fn unify(
                     err.into_unif_err(mk_uty_record!(; rrows1), mk_uty_record!(; rrows2))
                 })
             }
-            (TypeF::Dict(t1), TypeF::Dict(t2)) => unify(state, ctxt, *t1, *t2),
+            (
+                TypeF::Dict {
+                    type_fields: uty1, ..
+                },
+                TypeF::Dict {
+                    type_fields: uty2, ..
+                },
+            ) => unify(state, ctxt, *uty1, *uty2),
             (
                 TypeF::Forall {
                     var: var1,
@@ -2715,7 +2726,7 @@ impl ConstrainFreshRRowsVar for UnifType {
                     | TypeF::Wildcard(_) => (),
                     TypeF::Record(rrows) => rrows.constrain_fresh_rrows_var(state, var_id),
                     TypeF::Array(uty)
-                    | TypeF::Dict(uty) => uty.constrain_fresh_rrows_var(state, var_id),
+                    | TypeF::Dict { type_fields: uty, .. } => uty.constrain_fresh_rrows_var(state, var_id),
                 },
             UnifType::Constant(_) | UnifType::Contract(..) => (),
         }
@@ -2777,9 +2788,10 @@ impl ConstrainFreshERowsVar for UnifType {
                 | TypeF::Wildcard(_) => (),
                 TypeF::Enum(erows) => erows.constrain_fresh_erows_var(state, var_id),
                 TypeF::Record(rrows) => rrows.constrain_fresh_erows_var(state, var_id),
-                TypeF::Array(uty) | TypeF::Dict(uty) => {
-                    uty.constrain_fresh_erows_var(state, var_id)
-                }
+                TypeF::Array(uty)
+                | TypeF::Dict {
+                    type_fields: uty, ..
+                } => uty.constrain_fresh_erows_var(state, var_id),
             },
             UnifType::Constant(_) | UnifType::Contract(..) => (),
         }

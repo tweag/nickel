@@ -12,8 +12,8 @@ use crate::{
         LabeledType, MergePriority, RichTerm, Term, TypeAnnotation,
     },
     types::{
-        EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF, Types,
-        UnboundTypeVariableError, VarKind,
+        DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF,
+        Types, UnboundTypeVariableError, VarKind,
     },
 };
 
@@ -616,7 +616,7 @@ pub(super) trait FixTypeVars {
     ///
     /// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
     /// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-    /// once in total.
+    /// once in total (and most probably much less so).
     ///
     /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
     /// record type later. Take the following example:
@@ -678,6 +678,11 @@ impl FixTypeVars for Types {
             | TypeF::String
             | TypeF::Symbol
             | TypeF::Flat(_)
+            // We don't fix type variables inside a dictionary contract. A dictionary contract
+            // should not be considered as a static type, but instead work as a contract. In
+            // particular mustn't be allowed to capture type variables from the enclosing type: see
+            // https://github.com/tweag/nickel/issues/1228.
+            | TypeF::Dict { flavour: DictTypeFlavour::Contract, ..}
             | TypeF::Wildcard(_) => Ok(()),
             TypeF::Arrow(ref mut s, ref mut t) => {
                 (*s).fix_type_vars_env(bound_vars.clone(), span)?;
@@ -711,7 +716,7 @@ impl FixTypeVars for Types {
 
                 Ok(())
             }
-            TypeF::Dict(ref mut ty) | TypeF::Array(ref mut ty) => {
+            TypeF::Dict { type_fields: ref mut ty, flavour: DictTypeFlavour::Type} | TypeF::Array(ref mut ty) => {
                 (*ty).fix_type_vars_env(bound_vars, span)
             }
             TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars, span),

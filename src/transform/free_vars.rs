@@ -186,9 +186,11 @@ impl CollectFreeVars for Types {
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Wildcard(_) => (),
-            TypeF::Forall { body: ty, .. } | TypeF::Dict(ty) | TypeF::Array(ty) => {
-                ty.as_mut().collect_free_vars(set)
+            TypeF::Forall { body: ty, .. }
+            | TypeF::Dict {
+                type_fields: ty, ..
             }
+            | TypeF::Array(ty) => ty.as_mut().collect_free_vars(set),
             // No term can appear anywhere in a enum row type, hence we can stop here.
             TypeF::Enum(_) => (),
             TypeF::Record(rrows) => rrows.collect_free_vars(set),

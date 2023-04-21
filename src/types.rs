@@ -161,6 +161,28 @@ impl TryFrom<&Term> for VarKind {
     }
 }
 
+/// Flavour of a dictionary type. There are currently two way of writing a dictionary type-ish
+/// object: as a dictionary contract `{_ | T}` or as a dictionary type `{_ : T}`. Ideally, the
+/// former wouldn't even be a type but mostly syntactic sugar for a builtin contract application,
+/// or maybe a proper AST node.
+///
+/// However, the LSP needs to handle both dictionary types and contracts specifically in order to
+/// provide good completion. As we added dictionary contract just before 1.0 to fix a non trivial
+/// issue with respect to polymorphic contracts ([GitHub
+/// issue](https://github.com/tweag/nickel/issues/1228)), the solution to just tweak dictionary
+/// types to be able to hold both kinds - generating a different contract  - seemed to be the
+/// simplest to preserve the user experience (LSP, handling of dictionary when reporting a contract
+/// blame, etc.).
+///
+/// Dictionary contracts might get a proper AST node later on.
+#[derive(Clone, Debug, Copy, Eq, PartialEq)]
+pub enum DictTypeFlavour {
+    /// Dictionary type (`{_ : T}`)
+    Type,
+    /// Dictionary contract (`{_ | T}`)
+    Contract,
+}
+
 /// A Nickel type.
 ///
 /// # Generic representation (functor)
@@ -265,7 +287,10 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// A record type, composed of a sequence of record rows.
     Record(RRows),
     /// A dictionary type.
-    Dict(Ty),
+    Dict {
+        type_fields: Ty,
+        flavour: DictTypeFlavour,
+    },
     /// A parametrized array.
     Array(Ty),
     /// A type wildcard, wrapping an ID unique within a given file.
@@ -505,7 +530,13 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             }),
             TypeF::Enum(erows) => Ok(TypeF::Enum(f_erows(erows, state)?)),
             TypeF::Record(rrows) => Ok(TypeF::Record(f_rrows(rrows, state)?)),
-            TypeF::Dict(t) => Ok(TypeF::Dict(f(t, state)?)),
+            TypeF::Dict {
+                type_fields,
+                flavour: attrs,
+            } => Ok(TypeF::Dict {
+                type_fields: f(type_fields, state)?,
+                flavour: attrs,
+            }),
             TypeF::Array(t) => Ok(TypeF::Array(f(t, state)?)),
             TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
         }
@@ -946,8 +977,23 @@ impl Types {
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
-            TypeF::Dict(ref ty) => {
-                mk_app!(internals::dyn_record(), ty.subcontract(vars, pol, sy)?)
+            TypeF::Dict {
+                ref type_fields,
+                flavour: DictTypeFlavour::Contract,
+            } => {
+                mk_app!(
+                    internals::dict_contract(),
+                    type_fields.subcontract(vars, pol, sy)?
+                )
+            }
+            TypeF::Dict {
+                ref type_fields,
+                flavour: DictTypeFlavour::Type,
+            } => {
+                mk_app!(
+                    internals::dict_type(),
+                    type_fields.subcontract(vars, pol, sy)?
+                )
             }
             TypeF::Wildcard(_) => internals::dynamic(),
         };
@@ -1091,9 +1137,16 @@ impl Display for Types {
                 }
                 write!(f, ". {curr}")
             }
-            TypeF::Enum(row) => write!(f, "[|{row}|]"),
-            TypeF::Record(row) => write!(f, "{{{row}}}"),
-            TypeF::Dict(ty) => write!(f, "{{_: {ty}}}"),
+            TypeF::Enum(row) => write!(f, "[| {row} |]"),
+            TypeF::Record(row) => write!(f, "{{ {row} }}"),
+            TypeF::Dict {
+                type_fields,
+                flavour: DictTypeFlavour::Type,
+            } => write!(f, "{{ _ : {type_fields} }}"),
+            TypeF::Dict {
+                type_fields,
+                flavour: DictTypeFlavour::Contract,
+            } => write!(f, "{{ _ | {type_fields} }}"),
             TypeF::Arrow(dom, codom) => match dom.types {
                 TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
                 _ => write!(f, "{dom} -> {codom}"),
@@ -1125,6 +1178,7 @@ mod test {
     /// Note that there are infinitely many string representations of the same type since, for
     /// example, spaces are ignored: for the outcome of this function to be meaningful, the
     /// original type must be written in the same way as types are formatted.
+    #[track_caller]
     fn assert_format_eq(s: &str) {
         let ty = parse_type(s);
         assert_eq!(s, &format!("{ty}"));
@@ -1138,15 +1192,17 @@ mod test {
         assert_format_eq("((Number -> Number) -> Number) -> Number");
         assert_format_eq("Number -> (forall a. a -> String) -> String");
 
-        assert_format_eq("{_: String}");
-        assert_format_eq("{_: (String -> String) -> String}");
+        assert_format_eq("{ _ : String }");
+        assert_format_eq("{ _ : (String -> String) -> String }");
+        assert_format_eq("{ _ | String }");
+        assert_format_eq("{ _ | (String -> String) -> String }");
 
-        assert_format_eq("{x: (Bool -> Bool) -> Bool, y: Bool}");
-        assert_format_eq("forall r. {x: Bool, y: Bool, z: Bool ; r}");
-        assert_format_eq("{x: Bool, y: Bool, z: Bool}");
+        assert_format_eq("{ x: (Bool -> Bool) -> Bool, y: Bool }");
+        assert_format_eq("forall r. { x: Bool, y: Bool, z: Bool ; r }");
+        assert_format_eq("{ x: Bool, y: Bool, z: Bool }");
 
-        assert_format_eq("[|`a, `b, `c, `d|]");
-        assert_format_eq("forall r. [|`tag1, `tag2, `tag3 ; r|]");
+        assert_format_eq("[| `a, `b, `c, `d |]");
+        assert_format_eq("forall r. [| `tag1, `tag2, `tag3 ; r |]");
 
         assert_format_eq("Array Number");
         assert_format_eq("Array (Array Number)");
@@ -1156,7 +1212,7 @@ mod test {
 
         assert_format_eq("_");
         assert_format_eq("_ -> _");
-        assert_format_eq("{x: _, y: Bool}");
-        assert_format_eq("{_: _}");
+        assert_format_eq("{ x: _, y: Bool }");
+        assert_format_eq("{ _ : _ }");
     }
 }
