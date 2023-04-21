@@ -94,7 +94,7 @@ impl QueryPath {
                     let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
                         ParseError::InterpolationInQuery {
                             input: s.into(),
-                            path_elem_pos: expr.pos,
+                            pos_path_elem: expr.pos,
                         },
                     )?;
                     Ok(Ident::from(as_string))

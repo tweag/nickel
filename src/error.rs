@@ -409,7 +409,7 @@ pub enum ParseError {
     /// string interpolation.
     InterpolationInQuery {
         input: String,
-        path_elem_pos: TermPos,
+        pos_path_elem: TermPos,
     },
 }
 
@@ -1610,7 +1610,7 @@ impl IntoDiagnostics<FileId> for ParseError {
                     record type."),
                 ])
             }
-            ParseError::InterpolationInQuery { input, path_elem_pos } => {
+            ParseError::InterpolationInQuery { input, pos_path_elem: path_elem_pos } => {
                 Diagnostic::error()
                     .with_message("string interpolation is forbidden within a query")
                     .with_labels(vec![
