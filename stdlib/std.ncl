@@ -237,16 +237,17 @@
         if length == 0 then
           acc
         else
-          let rec go = fun acc n =>
-            if n == length then
-              acc
-            else
-              let next_acc =
-                %elem_at% array n
-                |> f acc
-              in
-              go next_acc (n + 1)
-              |> %seq% next_acc
+          let rec go =
+            fun acc n =>
+              if n == length then
+                acc
+              else
+                let next_acc =
+                  %elem_at% array n
+                  |> f acc
+                in
+                go next_acc (n + 1)
+                |> %seq% next_acc
           in
           go acc 0,
 
@@ -276,12 +277,13 @@
         "%
       = fun f fst l =>
         let length = %length% l in
-        let rec go = fun n =>
-          if n == length then
-            fst
-          else
-            go (n + 1)
-            |> f (%elem_at% l n)
+        let rec go =
+          fun n =>
+            if n == length then
+              fst
+            else
+              go (n + 1)
+              |> f (%elem_at% l n)
         in go 0,
 
     prepend
@@ -429,11 +431,12 @@
           ```
         "%
       = fun pred l =>
-        let aux = fun acc x =>
-          if (pred x) then
-            { right = acc.right @ [x], wrong = acc.wrong }
-          else
-            { right = acc.right, wrong = acc.wrong @ [x] }
+        let aux =
+          fun acc x =>
+            if (pred x) then
+              { right = acc.right @ [x], wrong = acc.wrong }
+            else
+              { right = acc.right, wrong = acc.wrong @ [x] }
         in
         fold_left aux { right = [], wrong = [] } l,
 
@@ -742,9 +745,8 @@
          => error: contract broken by a value
         ```
       "%
-      =
-        let fields_diff
-          | doc m%"
+      = let fields_diff
+        | doc m%"
             Compute the difference between the fields of two records.
             `fields_diff` isn't concerned with the actual values themselves, but
             just with field names.
@@ -753,7 +755,8 @@
             `{extra : Array String, missing: Array String}`, relative to the
             first argument `constant`.
           "%
-          = fun constant value =>
+        =
+          fun constant value =>
             let diff =
               value
               |> std.record.fields
@@ -774,17 +777,19 @@
                 { extra = [], rest = constant }
             in
             { extra = diff.extra, missing = std.record.fields diff.rest }
-          in
-        let blame_fields_differ = fun qualifier fields ctr_label =>
+        in
+      let blame_fields_differ =
+        fun qualifier fields ctr_label =>
           let plural = if %length% fields == 1 then "" else "s" in
           ctr_label
           |> label.with_message "%{qualifier} field%{plural} `%{std.string.join ", " fields}`"
           |> label.append_note "`std.contract.Equal some_record` requires that the checked value is equal to the record `some_record`, but the sets of their fields differ."
           |> blame
-        in
-        fun constant =>
-          let constant_type = %typeof% constant in
-          let check_typeof_eq = fun ctr_label value =>
+      in
+      fun constant =>
+        let constant_type = %typeof% constant in
+        let check_typeof_eq =
+          fun ctr_label value =>
             let value_type = %typeof% value in
             if value_type == constant_type then
               value
@@ -793,54 +798,55 @@
               |> label.with_message "expected `%{%to_str% constant_type}`, got `%{%to_str% value_type}`"
               |> label.append_note "`std.contract.Equal some_value` requires that the checked value is equal to `some_value`, but they don't have the same type."
               |> blame
-          in
-          constant_type
-          |> match {
-            `Record =>
-              # we map the constant from {field1 = val1, .., fieldn = valn} to
-              # {field1 = Equal val1, .., fieldn = Equal valn}, building a
-              # dictionary of equality contracts
-              let contract_map = %record_map% constant (fun _key => Equal) in
-              fun ctr_label value =>
-                let value = check_typeof_eq ctr_label value in
-                let diff = fields_diff constant value in
-                if %length% diff.extra != 0 then
-                  blame_fields_differ "extra" diff.extra ctr_label
-                else if %length% diff.missing != 0 then
-                  blame_fields_differ "missing" diff.missing ctr_label
-                else
-                  %record_lazy_assume%
-                    ctr_label
-                    value
-                    (
-                      fun field =>
-                        contract_map."%{field}"
-                    ),
-            `Array =>
-              fun ctr_label value =>
-                let value = check_typeof_eq ctr_label value in
-                let value_length = %length% value in
-                if value_length == %length% constant then
-                  %generate%
-                    value_length
-                    (
-                      fun i =>
-                        %elem_at% value i
-                        |> std.contract.apply (Equal (%elem_at% constant i)) ctr_label
-                    )
-                else
+        in
+        constant_type
+        |> match {
+          `Record =>
+            # we map the constant from {field1 = val1, .., fieldn = valn} to
+            # {field1 = Equal val1, .., fieldn = Equal valn}, building a
+            # dictionary of equality contracts
+            let contract_map = %record_map% constant (fun _key => Equal) in
+            fun ctr_label value =>
+              let value = check_typeof_eq ctr_label value in
+              let diff = fields_diff constant value in
+              if %length% diff.extra != 0 then
+                blame_fields_differ "extra" diff.extra ctr_label
+              else if %length% diff.missing != 0 then
+                blame_fields_differ "missing" diff.missing ctr_label
+              else
+                %record_lazy_assume%
                   ctr_label
-                  |> label.with_message "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length})`"
-                  |> label.append_note "`std.contract.Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
-                  |> blame,
+                  value
+                  (
+                    fun field =>
+                      contract_map."%{field}"
+                  ),
+          `Array =>
+            fun ctr_label value =>
+              let value = check_typeof_eq ctr_label value in
+              let value_length = %length% value in
+              if value_length == %length% constant then
+                %generate%
+                  value_length
+                  (
+                    fun i =>
+                      %elem_at% value i
+                      |> std.contract.apply (Equal (%elem_at% constant i)) ctr_label
+                  )
+              else
+                ctr_label
+                |> label.with_message  "array length mismatch (expected `%{%to_str% (%length% constant)}`, got `%{%to_str% value_length})`"
 
-            # Outside of lazy data structures, we just use (==)
-            _ =>
-              fun ctr_label value =>
-                value
-                |> check_typeof_eq ctr_label
-                |> from_predicate ((==) constant) ctr_label,
-          },
+                |> label.append_note "`std.contract.Equal some_array` requires that the checked value is equal to the array `some_array`, but their lengths differ."
+                |> blame,
+
+          # Outside of lazy data structures, we just use (==)
+          _ =>
+            fun ctr_label value =>
+              value
+              |> check_typeof_eq ctr_label
+              |> from_predicate ((==) constant) ctr_label,
+        },
 
     blame
       | doc m%"
@@ -1814,17 +1820,16 @@
           error
         ```
       "%
-      =
-        let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
-        let is_num_literal = %str_is_match% pattern in
-        fun l s =>
-          if %typeof% s == `String then
-            if is_num_literal s then
-              s
-            else
-              %blame% (%label_with_message% "invalid number literal" l)
+      = let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
+      let is_num_literal = %str_is_match% pattern in
+      fun l s =>
+        if %typeof% s == `String then
+          if is_num_literal s then
+            s
           else
-            %blame% (%label_with_message% "not a string" l),
+            %blame% (%label_with_message% "invalid number literal" l)
+        else
+          %blame% (%label_with_message% "not a string" l),
 
     Character
       | doc m%"
@@ -1878,17 +1883,16 @@
           => error
         ```
       "%
-      =
-        std.contract.from_predicate
-          (
-            fun value =>
-              let type = std.typeof value in
-              value == null
-              || type == `Number
-              || type == `Bool
-              || type == `String
-              || type == `Enum
-          ),
+      = std.contract.from_predicate
+        (
+          fun value =>
+            let type = std.typeof value in
+            value == null
+            || type == `Number
+            || type == `Bool
+            || type == `String
+            || type == `Enum
+        ),
 
     NonEmpty
       | doc m%"
@@ -2644,7 +2648,7 @@
     = fun msg => null | FailWith msg,
 
   merge_all
-    | Array Dyn -> Dyn
+    : Array Dyn -> Dyn
     | doc m%"
       Merges an array of records.
 
@@ -2657,3 +2661,4 @@
     "%
     = std.array.reduce_left (&),
 }
+
