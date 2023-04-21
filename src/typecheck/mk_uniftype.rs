@@ -1,6 +1,6 @@
 //! Helpers for building `TypeWrapper`s.
 use super::UnifType;
-use crate::types::{TypeF, DictAttrs};
+use crate::types::{DictAttrs, TypeF};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
@@ -99,7 +99,10 @@ pub fn dict<T>(ty: T) -> UnifType
 where
     T: Into<UnifType>,
 {
-    UnifType::Concrete(TypeF::Dict { type_fields: Box::new(ty.into()), attrs: DictAttrs::Eager})
+    UnifType::Concrete(TypeF::Dict {
+        type_fields: Box::new(ty.into()),
+        attrs: DictAttrs::Eager,
+    })
 }
 
 pub fn array<T>(ty: T) -> UnifType

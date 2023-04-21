@@ -135,10 +135,7 @@ pub fn get_uop_type(
         UnaryOp::ValuesOf() => {
             let ty_a = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            (
-                mk_uniftype::dict(ty_a.clone()),
-                mk_uniftype::array(ty_a),
-            )
+            (mk_uniftype::dict(ty_a.clone()), mk_uniftype::array(ty_a))
         }
         // Str -> Str
         UnaryOp::StrTrim() => (mk_uniftype::str(), mk_uniftype::str()),
@@ -269,11 +266,7 @@ pub fn get_bop_type(
         BinaryOp::DynAccess() => {
             let res = UnifType::UnifVar(state.table.fresh_type_var_id());
 
-            (
-                mk_uniftype::str(),
-                mk_uniftype::dict(res.clone()),
-                res,
-            )
+            (mk_uniftype::str(), mk_uniftype::dict(res.clone()), res)
         }
         // forall a. Str -> {_ : a} -> a -> {_ : a}
         BinaryOp::DynExtend {

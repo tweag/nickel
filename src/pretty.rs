@@ -836,7 +836,10 @@ where
             }
             Enum(erows) => erows.pretty(allocator).enclose("[|", "|]"),
             Record(rrows) => rrows.pretty(allocator).braces(),
-            Dict {type_fields: ty, attrs} => allocator
+            Dict {
+                type_fields: ty,
+                attrs,
+            } => allocator
                 .line()
                 .append(allocator.text("_"))
                 .append(allocator.space())
