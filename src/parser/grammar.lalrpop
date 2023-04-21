@@ -443,7 +443,7 @@ RecordLastField: RecordLastField = {
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
-FieldPath: Vec<FieldPathElem> = {
+pub FieldPath: FieldPath = {
     <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
         elems.push(last);
         elems

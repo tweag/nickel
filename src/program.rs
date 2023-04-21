@@ -26,10 +26,6 @@ use crate::eval;
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
-use crate::parser::{
-    lexer::{Lexer, NormalToken, StringToken, Token},
-    utils::mk_span,
-};
 use crate::term::{record::Field, RichTerm};
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
@@ -68,98 +64,45 @@ impl QueryPath {
 
     /// Parse a string as a query path. A query path is a sequence of dot-separated identifiers.
     /// Identifiers can be enclosed by double quotes when they contain characters that aren't
-    /// allowed inside bare identifiers.
+    /// allowed inside bare identifiers. The accepted grammar is the same as a sequence of record
+    /// accesses in Nickel, although string interpolation is forbidden.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
-        // The current state of the path parser. We're either expecting an ident (or a quoted
-        // ident: a string), a dot after an ident, or we are parsing a string.
-        enum State {
-            ExpectIdent,
-            ExpectDot,
-            ParsingStr { buffer: String },
-        }
+        use crate::parser::{
+            grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
+        };
 
-        let mut state = State::ExpectIdent;
         let format_name = "query-path";
         let input_id = cache.add_tmp(format_name, input);
-
         let s = cache.source(input_id);
-        // We piggy back on the Nickel lexer. That way, we always stay in sync with the syntax, we
-        // don't duplicate lexing logic, and spinning up a lexer should ideally be pretty fast.
-        let lexer = Lexer::new(s);
-        let mut idents = Vec::new();
 
-        for token_res in lexer {
-            let (left, token, right) = token_res.map_err(|err| {
-                ParseError::from_lalrpop::<()>(lalrpop_util::ParseError::from(err), input_id)
+        let parser = FieldPathParser::new();
+        let field_path = parser
+            .parse_strict(input_id, Lexer::new(s))
+            // We just need to report an error here
+            .map_err(|mut errs| {
+                errs.errors.pop().expect(
+                    "because parsing of the query path failed, the error \
+                                              list must be non-empty, put .pop() failed",
+                )
             })?;
 
-            match state {
-                State::ExpectIdent => match token {
-                    Token::Normal(NormalToken::Identifier(id_str)) => {
-                        idents.push(Ident::new(id_str));
-                        state = State::ExpectDot;
-                    }
-                    Token::Normal(NormalToken::DoubleQuote) => {
-                        state = State::ParsingStr {
-                            buffer: String::new(),
-                        };
-                    }
-                    _ => {
-                        return Err(ParseError::ExternalFormatError(
-                            String::from(format_name),
-                            String::from("unexpected token, expected an identifier"),
-                            Some(mk_span(input_id, left, right)),
-                        ))
-                    }
-                },
-                State::ExpectDot => match token {
-                    Token::Normal(NormalToken::Dot) => {
-                        state = State::ExpectIdent;
-                    }
-                    _ => {
-                        return Err(ParseError::ExternalFormatError(
-                            String::from(format_name),
-                            String::from("unexpected token, expected `.` or end of input"),
-                            Some(mk_span(input_id, left, right)),
-                        ))
-                    }
-                },
-                State::ParsingStr { mut buffer } => match token {
-                    Token::Str(StringToken::Literal(s))
-                    | Token::Str(StringToken::EscapedAscii(s)) => {
-                        buffer.push_str(s);
-                        state = State::ParsingStr { buffer }
-                    }
-                    Token::Str(StringToken::EscapedChar(c)) => {
-                        buffer.push(c);
-                        state = State::ParsingStr { buffer }
-                    }
-                    Token::Str(StringToken::DoubleQuote) => {
-                        idents.push(Ident::new(buffer));
-                        state = State::ExpectDot;
-                    }
-                    _ => {
-                        return Err(ParseError::ExternalFormatError(
-                            String::from(format_name),
-                            String::from("unexpected token while parsing a quoted identifier"),
-                            Some(mk_span(input_id, left, right)),
-                        ))
-                    }
-                },
-            }
-        }
+        let path_as_idents: Result<Vec<Ident>, ParseError> = field_path
+            .into_iter()
+            .map(|elem| match elem {
+                FieldPathElem::Ident(ident) => Ok(ident),
+                FieldPathElem::Expr(expr) => {
+                    let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
+                        ParseError::InterpolationInQuery {
+                            input: s.into(),
+                            path_elem_pos: expr.pos,
+                        },
+                    )?;
+                    Ok(Ident::from(as_string))
+                }
+            })
+            .collect();
 
-        match state {
-            State::ExpectDot => Ok(QueryPath(idents)),
-            State::ExpectIdent => Err(ParseError::UnexpectedEOF(
-                input_id,
-                vec![String::from("<identifier>")],
-            )),
-            State::ParsingStr { .. } => Err(ParseError::UnexpectedEOF(
-                input_id,
-                vec![String::from("\"")],
-            )),
-        }
+        path_as_idents.map(QueryPath)
     }
 
     /// As [`parse`], but accepts an `Option` to accomodate for the absence of path. If the input

@@ -405,6 +405,12 @@ pub enum ParseError {
         /// The position of the type annotation.
         annot_span: RawSpan,
     },
+    /// The user provided a field path to run a metadata query, but the parsed field path contains
+    /// string interpolation.
+    InterpolationInQuery {
+        input: String,
+        path_elem_pos: TermPos,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -1603,6 +1609,17 @@ impl IntoDiagnostics<FileId> for ParseError {
                     record type. Please refer to the manual for the defining conditions of a \
                     record type."),
                 ])
+            }
+            ParseError::InterpolationInQuery { input, path_elem_pos } => {
+                Diagnostic::error()
+                    .with_message("string interpolation is forbidden within a query")
+                    .with_labels(vec![
+                        primary_alt(path_elem_pos.into_opt(), input, files),
+                    ])
+                    .with_notes(vec![
+                        "Field paths don't support string interpolation when querying metadata. \
+                        Only identifiers and simple string literals are allowed".into()
+                    ])
             }
         };
 
