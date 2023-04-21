@@ -911,7 +911,7 @@ TypeAtom: Types = {
     "{" "_" ":" <t: WithPos<Types>> "}" => {
         Types::from(TypeF::Dict {
             type_fields: Box::new(t),
-            attrs: DictAttrs::Eager
+            flavour: DictTypeFlavour::Type
         })
     },
     // Although a dictionary contracts isn't really a type, we treat it like as
@@ -930,7 +930,7 @@ TypeAtom: Types = {
     "{" "_" "|" <t: WithPos<FixedType>> "}" => {
         Types::from(TypeF::Dict {
             type_fields: Box::new(t),
-            attrs: DictAttrs::Lazy
+            flavour: DictTypeFlavour::Contract
         })
     },
     "_" => {

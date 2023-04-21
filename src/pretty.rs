@@ -838,14 +838,14 @@ where
             Record(rrows) => rrows.pretty(allocator).braces(),
             Dict {
                 type_fields: ty,
-                attrs,
+                flavour: attrs,
             } => allocator
                 .line()
                 .append(allocator.text("_"))
                 .append(allocator.space())
                 .append(match attrs {
-                    DictAttrs::Eager => allocator.text(":"),
-                    DictAttrs::Lazy => allocator.text("|"),
+                    DictTypeFlavour::Type => allocator.text(":"),
+                    DictTypeFlavour::Contract => allocator.text("|"),
                 })
                 .append(allocator.space())
                 .append(ty.pretty(allocator))

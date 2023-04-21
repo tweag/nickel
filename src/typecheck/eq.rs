@@ -448,11 +448,11 @@ fn type_eq_bounded<E: TermEnvironment>(
             (
                 TypeF::Dict {
                     type_fields: uty1,
-                    attrs: attrs1,
+                    flavour: attrs1,
                 },
                 TypeF::Dict {
                     type_fields: uty2,
-                    attrs: attrs2,
+                    flavour: attrs2,
                 },
             ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
             (TypeF::Array(uty1), TypeF::Array(uty2)) => {

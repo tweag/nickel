@@ -12,7 +12,7 @@ use crate::{
         LabeledType, MergePriority, RichTerm, Term, TypeAnnotation,
     },
     types::{
-        DictAttrs, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF,
+        DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF,
         Types, UnboundTypeVariableError, VarKind,
     },
 };
@@ -682,7 +682,7 @@ impl FixTypeVars for Types {
             // should not be considered as a static type, but instead work as a contract. In
             // particular mustn't be allowed to capture type variables from the enclosing type: see
             // https://github.com/tweag/nickel/issues/1228.
-            | TypeF::Dict { attrs: DictAttrs::Lazy, ..}
+            | TypeF::Dict { flavour: DictTypeFlavour::Contract, ..}
             | TypeF::Wildcard(_) => Ok(()),
             TypeF::Arrow(ref mut s, ref mut t) => {
                 (*s).fix_type_vars_env(bound_vars.clone(), span)?;
@@ -716,7 +716,7 @@ impl FixTypeVars for Types {
 
                 Ok(())
             }
-            TypeF::Dict { type_fields: ref mut ty, attrs: DictAttrs::Eager} | TypeF::Array(ref mut ty) => {
+            TypeF::Dict { type_fields: ref mut ty, flavour: DictTypeFlavour::Type} | TypeF::Array(ref mut ty) => {
                 (*ty).fix_type_vars_env(bound_vars, span)
             }
             TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars, span),

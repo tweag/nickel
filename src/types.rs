@@ -161,24 +161,26 @@ impl TryFrom<&Term> for VarKind {
     }
 }
 
-/// Attributes of a dictionary type. There are currently two way of writing a dictionary type: as a
-/// dictionary contract `{_ | T}` or as a dictionary type `{_ : T}`. Ideally, the former wouldn't
-/// actually be a type but mostly syntactic sugar for a builtin contract application.
+/// Flavour of a dictionary type. There are currently two way of writing a dictionary type-ish
+/// object: as a dictionary contract `{_ | T}` or as a dictionary type `{_ : T}`. Ideally, the
+/// former wouldn't even be a type but mostly syntactic sugar for a builtin contract application,
+/// or maybe a proper AST node.
 ///
-/// However, the issue is that the LSP needs to handle dictionary types specifically in order to
+/// However, the LSP needs to handle both dictionary types and contracts specifically in order to
 /// provide good completion. As we added dictionary contract just before 1.0 to fix a non trivial
 /// issue with respect to polymorphic contracts ([GitHub
 /// issue](https://github.com/tweag/nickel/issues/1228)), the solution to just tweak dictionary
-/// types to generate a different contract depending on if `{_ | T}` or `{_ : T}` was used seemed
-/// to be the simplest and the one preserving all other features of the LSP, so we went with that.
+/// types to be able to hold both kinds - generating a different contract  - seemed to be the
+/// simplest to preserve the user experience (LSP, handling of dictionary when reporting a contract
+/// blame, etc.).
 ///
 /// Dictionary contracts might get a proper AST node later on.
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
-pub enum DictAttrs {
+pub enum DictTypeFlavour {
     /// Dictionary type (`{_ : T}`)
-    Eager,
+    Type,
     /// Dictionary contract (`{_ | T}`)
-    Lazy,
+    Contract,
 }
 
 /// A Nickel type.
@@ -285,7 +287,10 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// A record type, composed of a sequence of record rows.
     Record(RRows),
     /// A dictionary type.
-    Dict { type_fields: Ty, attrs: DictAttrs },
+    Dict {
+        type_fields: Ty,
+        flavour: DictTypeFlavour,
+    },
     /// A parametrized array.
     Array(Ty),
     /// A type wildcard, wrapping an ID unique within a given file.
@@ -525,9 +530,12 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             }),
             TypeF::Enum(erows) => Ok(TypeF::Enum(f_erows(erows, state)?)),
             TypeF::Record(rrows) => Ok(TypeF::Record(f_rrows(rrows, state)?)),
-            TypeF::Dict { type_fields, attrs } => Ok(TypeF::Dict {
+            TypeF::Dict {
+                type_fields,
+                flavour: attrs,
+            } => Ok(TypeF::Dict {
                 type_fields: f(type_fields, state)?,
-                attrs,
+                flavour: attrs,
             }),
             TypeF::Array(t) => Ok(TypeF::Array(f(t, state)?)),
             TypeF::Wildcard(i) => Ok(TypeF::Wildcard(i)),
@@ -971,7 +979,7 @@ impl Types {
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
             TypeF::Dict {
                 ref type_fields,
-                attrs: DictAttrs::Lazy,
+                flavour: DictTypeFlavour::Contract,
             } => {
                 mk_app!(
                     internals::dict_contract(),
@@ -980,7 +988,7 @@ impl Types {
             }
             TypeF::Dict {
                 ref type_fields,
-                attrs: DictAttrs::Eager,
+                flavour: DictTypeFlavour::Type,
             } => {
                 mk_app!(
                     internals::dict_type(),
@@ -1133,11 +1141,11 @@ impl Display for Types {
             TypeF::Record(row) => write!(f, "{{ {row} }}"),
             TypeF::Dict {
                 type_fields,
-                attrs: DictAttrs::Eager,
+                flavour: DictTypeFlavour::Type,
             } => write!(f, "{{ _ : {type_fields} }}"),
             TypeF::Dict {
                 type_fields,
-                attrs: DictAttrs::Lazy,
+                flavour: DictTypeFlavour::Contract,
             } => write!(f, "{{ _ | {type_fields} }}"),
             TypeF::Arrow(dom, codom) => match dom.types {
                 TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
