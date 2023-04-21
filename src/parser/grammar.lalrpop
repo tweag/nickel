@@ -914,10 +914,20 @@ TypeAtom: Types = {
             attrs: DictAttrs::Eager
         })
     },
-    // Although dictionary contracts aren't really type, we treat them like
-    // types for the time being, at least syntactically, as they are represented
-    // using a `TypeF::Dict` constructor as well.
-    "{" "_" "|" <t: WithPos<Types>> "}" => {
+    // Although a dictionary contracts isn't really a type, we treat it like as
+    // a type for now - at least syntactically - as they are represented using a
+    // `TypeF::Dict` constructor in the AST. This just simpler for many reasons
+    // (error reporting of contracts and in particular type paths, LSP, and so
+    // on.)
+    //
+    // However, note that we use a fixed type as an argument. This has the
+    // effect of preventing dictionary contracts from catpuring type variables
+    // that could be in scope. For example, we want `forall a. {_ | a}` to fail
+    // (see https://github.com/tweag/nickel/issues/1228). Fixing type variables
+    // right away inside the dictionary contract (before the enclosing `forall`
+    // is fixed) will indeed turn it into a term variable, and raise an unbound
+    // type variable error.
+    "{" "_" "|" <t: WithPos<FixedType>> "}" => {
         Types::from(TypeF::Dict {
             type_fields: Box::new(t),
             attrs: DictAttrs::Lazy

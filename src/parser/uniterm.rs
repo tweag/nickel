@@ -616,7 +616,7 @@ pub(super) trait FixTypeVars {
     ///
     /// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
     /// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-    /// once in total.
+    /// once in total (and most probably much less so).
     ///
     /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
     /// record type later. Take the following example:
@@ -679,8 +679,9 @@ impl FixTypeVars for Types {
             | TypeF::Symbol
             | TypeF::Flat(_)
             // We don't fix type variables inside a dictionary contract. A dictionary contract
-            // should not be considered as a static type, and in particular mustn't be allowed to
-            // capture type variables: see https://github.com/tweag/nickel/issues/1228.
+            // should not be considered as a static type, but instead work as a contract. In
+            // particular mustn't be allowed to capture type variables from the enclosing type: see
+            // https://github.com/tweag/nickel/issues/1228.
             | TypeF::Dict { attrs: DictAttrs::Lazy, ..}
             | TypeF::Wildcard(_) => Ok(()),
             TypeF::Arrow(ref mut s, ref mut t) => {
