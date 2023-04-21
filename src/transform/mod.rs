@@ -3,7 +3,7 @@ use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
-    term::{record::Field, BindingType, PendingContract, RichTerm, Term, Traverse, TraverseOrder},
+    term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
     typecheck::Wildcards,
     types::UnboundTypeVariableError,
 };
@@ -165,24 +165,24 @@ impl Closurizable for RichTerm {
     }
 }
 
-impl Closurizable for PendingContract {
+impl Closurizable for RuntimeContract {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> PendingContract {
+    ) -> RuntimeContract {
         self.map_contract(|ctr| ctr.closurize(cache, env, with_env))
     }
 }
 
-impl Closurizable for Vec<PendingContract> {
+impl Closurizable for Vec<RuntimeContract> {
     fn closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Vec<PendingContract> {
+    ) -> Vec<RuntimeContract> {
         self.into_iter()
             .map(|pending_contract| pending_contract.closurize(cache, env, with_env.clone()))
             .collect()

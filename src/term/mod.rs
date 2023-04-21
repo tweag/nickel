@@ -251,18 +251,19 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-/// A contract with its associated data.
+/// A runtime representation of a contract, as a term ready to be applied via `Assume()` together
+/// with its label.
 #[derive(Debug, PartialEq, Clone)]
-pub struct PendingContract {
+pub struct RuntimeContract {
     /// The pending contract, can be a function or a record.
     pub contract: RichTerm,
     /// The blame label.
     pub label: Label,
 }
 
-impl PendingContract {
+impl RuntimeContract {
     pub fn new(contract: RichTerm, label: Label) -> Self {
-        PendingContract { contract, label }
+        RuntimeContract { contract, label }
     }
 
     /// Map a function over the term representing the underlying contract.
@@ -270,44 +271,47 @@ impl PendingContract {
     where
         F: FnOnce(RichTerm) -> RichTerm,
     {
-        PendingContract {
+        RuntimeContract {
             contract: f(self.contract),
             ..self
         }
     }
 
-    /// Apply a series of pending contracts to a given term.
+    /// Apply this contract to a term.
+    pub fn apply(self, rt: RichTerm, pos: TermPos) -> RichTerm {
+        use crate::mk_app;
+
+        mk_app!(
+            make::op2(BinaryOp::Assume(), self.contract, Term::Lbl(self.label)).with_pos(pos),
+            rt
+        )
+        .with_pos(pos)
+    }
+
+    /// Apply a series of contracts to a term, in order.
     pub fn apply_all<I>(rt: RichTerm, contracts: I, pos: TermPos) -> RichTerm
     where
         I: Iterator<Item = Self>,
     {
-        use crate::mk_app;
-
-        contracts.fold(rt, |acc, ctr| {
-            mk_app!(
-                make::op2(BinaryOp::Assume(), ctr.contract, Term::Lbl(ctr.label)).with_pos(pos),
-                acc
-            )
-            .with_pos(pos)
-        })
+        contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
 }
 
-impl Traverse<RichTerm> for PendingContract {
+impl Traverse<RichTerm> for RuntimeContract {
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let contract = self.contract.traverse(f, state, order)?;
-        Ok(PendingContract { contract, ..self })
+        Ok(RuntimeContract { contract, ..self })
     }
 }
 
-impl std::convert::TryFrom<LabeledType> for PendingContract {
+impl std::convert::TryFrom<LabeledType> for RuntimeContract {
     type Error = UnboundTypeVariableError;
 
     fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
-        Ok(PendingContract::new(
+        Ok(RuntimeContract::new(
             labeled_ty.types.contract()?,
             labeled_ty.label,
         ))
@@ -454,7 +458,7 @@ impl TypeAnnotation {
     /// Return the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
     pub fn first(&self) -> Option<&LabeledType> {
-        self.iter().next()
+        self.types.iter().chain(self.contracts.iter()).next()
     }
 
     /// Iterate over the annotations, starting by the type and followed by the contracts.
@@ -479,11 +483,26 @@ impl TypeAnnotation {
         })
     }
 
-    /// Build a list of pending contracts from this type annotation.
-    pub fn as_pending_contracts(&self) -> Result<Vec<PendingContract>, UnboundTypeVariableError> {
-        self.iter()
+    /// Build a list of pending contracts from this annotation, to be stored alongside the metadata
+    /// of a field. Similar to [all_contracts], but including the contracts from `self.contracts`
+    /// only, while `types` is excluded. Contracts derived from type annotations aren't treated the
+    /// same since they don't propagate through merging.
+    pub fn pending_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
+        self.contracts
+            .iter()
             .cloned()
-            .map(PendingContract::try_from)
+            .map(RuntimeContract::try_from)
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    /// Convert all the contracts of this annotation, including the potential type annotation as
+    /// the first element, to a runtime representation.
+    pub fn all_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
+        self.types
+            .iter()
+            .chain(self.contracts.iter())
+            .cloned()
+            .map(RuntimeContract::try_from)
             .collect::<Result<Vec<_>, _>>()
     }
 }
@@ -1264,7 +1283,7 @@ pub enum BinaryOp {
     /// more principled primop.
     DynExtend {
         metadata: FieldMetadata,
-        pending_contracts: Vec<PendingContract>,
+        pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
     },
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.

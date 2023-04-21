@@ -146,7 +146,7 @@ pub struct Field {
     pub metadata: FieldMetadata,
     /// List of contracts yet to be applied.
     /// These are only observed when data enter or leave the record.
-    pub pending_contracts: Vec<PendingContract>,
+    pub pending_contracts: Vec<RuntimeContract>,
 }
 
 impl From<RichTerm> for Field {
@@ -348,7 +348,7 @@ impl RecordData {
                     let pos = v.pos;
                     Some(Ok((
                         id,
-                        PendingContract::apply_all(v, field.pending_contracts.into_iter(), pos),
+                        RuntimeContract::apply_all(v, field.pending_contracts.into_iter(), pos),
                     )))
                 }
                 None if !field.metadata.opt => Some(Err(MissingFieldDefError {
@@ -405,7 +405,7 @@ impl RecordData {
                 ..
             }) => {
                 let pos = value.pos;
-                Ok(Some(PendingContract::apply_all(
+                Ok(Some(RuntimeContract::apply_all(
                     value.clone(),
                     pending_contracts.iter().cloned(),
                     pos,

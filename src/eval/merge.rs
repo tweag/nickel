@@ -646,24 +646,24 @@ impl RevertClosurize for Field {
     }
 }
 
-impl RevertClosurize for PendingContract {
+impl RevertClosurize for RuntimeContract {
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> PendingContract {
+    ) -> RuntimeContract {
         self.map_contract(|ctr| ctr.revert_closurize(cache, env, with_env))
     }
 }
 
-impl RevertClosurize for Vec<PendingContract> {
+impl RevertClosurize for Vec<RuntimeContract> {
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
         with_env: Environment,
-    ) -> Vec<PendingContract> {
+    ) -> Vec<RuntimeContract> {
         self.into_iter()
             .map(|pending_contract| pending_contract.revert_closurize(cache, env, with_env.clone()))
             .collect()

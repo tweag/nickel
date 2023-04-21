@@ -85,7 +85,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 let id_value = Ident::fresh();
                 final_env.insert(id_value, idx);
 
-                let with_ctr_applied = PendingContract::apply_all(
+                let with_ctr_applied = RuntimeContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
                     field.pending_contracts.iter().cloned().flat_map(|ctr| {
                         // This operation is the heart of our preliminary fix for
@@ -112,7 +112,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                         } else {
                             vec![
                                 ctr.clone(),
-                                PendingContract {
+                                RuntimeContract {
                                     contract: ctr.contract,
                                     label: Label {
                                         polarity: ctr.label.polarity.flip(),

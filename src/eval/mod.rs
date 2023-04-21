@@ -87,7 +87,7 @@ use crate::{
         array::ArrayAttrs,
         make as mk_term,
         record::{Field, RecordData},
-        BinaryOp, BindingType, LetAttrs, PendingContract, RichTerm, StrChunk, Term, UnaryOp,
+        BinaryOp, BindingType, LetAttrs, RichTerm, RuntimeContract, StrChunk, Term, UnaryOp,
     },
     transform::Closurizable,
 };
@@ -253,7 +253,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         value_next = value_next
                             .map(|value| -> Result<RichTerm, EvalError> {
                                 let pos_value = value.pos;
-                                let value_with_ctr = PendingContract::apply_all(
+                                let value_with_ctr = RuntimeContract::apply_all(
                                     value,
                                     pending_contracts.into_iter(),
                                     pos_value,
@@ -649,7 +649,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .pending_contracts
                         .iter()
                         .map(|ctr| {
-                            PendingContract::new(
+                            RuntimeContract::new(
                                 ctr.contract.clone().closurize(
                                     &mut self.cache,
                                     &mut local_env,
@@ -688,10 +688,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
                 Term::Annotated(annot, inner) => {
-                    let contracts = annot.as_pending_contracts()?;
+                    let contracts = annot.pending_contracts()?;
                     let pos = inner.pos;
                     let inner_with_ctr =
-                        PendingContract::apply_all(inner.clone(), contracts.into_iter(), pos);
+                        RuntimeContract::apply_all(inner.clone(), contracts.into_iter(), pos);
 
                     Closure {
                         body: inner_with_ctr,

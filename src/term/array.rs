@@ -12,7 +12,7 @@ pub struct ArrayAttrs {
     pub closurized: bool,
     /// List of lazily-applied contracts.
     /// These are only observed when data enters or leaves the array.
-    pub pending_contracts: Vec<PendingContract>,
+    pub pending_contracts: Vec<RuntimeContract>,
 }
 
 impl ArrayAttrs {
@@ -41,7 +41,7 @@ impl ArrayAttrs {
     /// future
     pub fn with_extra_contracts<I>(mut self, iter: I) -> Self
     where
-        I: IntoIterator<Item = PendingContract>,
+        I: IntoIterator<Item = RuntimeContract>,
     {
         for ctr in iter {
             if !self.pending_contracts.contains(&ctr) {
