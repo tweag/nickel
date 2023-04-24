@@ -58,7 +58,7 @@ impl Ident {
     pub fn label_quoted(&self) -> String {
         let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
         let label = self.label();
-        if reg.is_match(label) && !KEYWORDS.contains(&&label) {
+        if reg.is_match(label) && !KEYWORDS.contains(&label) {
             String::from(label)
         } else {
             format!("\"{label}\"")
