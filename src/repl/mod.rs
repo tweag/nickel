@@ -428,7 +428,7 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;
                 print_aliases(out, c)?;
-                writeln!(out,"Evaluate the content of <file> to a record and add its fields to the environment.")?;
+                writeln!(out, "Evaluate the content of <file> to a record and add its fields to the environment.")?;
                 writeln!(
                     out,
                     "Fail if the content of <file> doesn't evaluate to a record."
