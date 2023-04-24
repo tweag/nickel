@@ -2,6 +2,7 @@
 
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
+use crate::eval::Closure;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
@@ -559,7 +560,7 @@ impl Cache {
     pub fn transform_inner(
         &mut self,
         file_id: FileId,
-    ) -> Result<CacheOp<()>, CacheError<ImportError>> {
+    ) -> Result<CacheOp<()>, CacheError<UnboundTypeVariableError>> {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(_) => {
@@ -571,8 +572,6 @@ impl Cache {
                 let wildcards = self.wildcards.get(&file_id);
 
                 if state < EntryState::Transforming {
-                    let pos = term.pos;
-
                     match SharedTerm::make_mut(&mut term.term) {
                         Term::Record(RecordData { ref mut fields, .. }) => {
                             let map_res: Result<_, UnboundTypeVariableError> =
@@ -587,9 +586,7 @@ impl Cache {
                                         ))
                                     })
                                     .collect();
-                            *fields = map_res.map_err(|err| {
-                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
-                            })?;
+                            *fields = map_res.map_err(CacheError::Error)?;
                         }
                         Term::RecRecord(ref mut record, ref mut dyn_fields, ..) => {
                             let map_res: Result<_, UnboundTypeVariableError> =
@@ -622,12 +619,8 @@ impl Cache {
                                     })
                                     .collect();
 
-                            record.fields = map_res.map_err(|err| {
-                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
-                            })?;
-                            *dyn_fields = dyn_fields_res.map_err(|err| {
-                                CacheError::Error(ImportError::ParseErrors(err.into(), pos))
-                            })?;
+                            record.fields = map_res.map_err(CacheError::Error)?;
+                            *dyn_fields = dyn_fields_res.map_err(CacheError::Error)?;
                         }
                         _ => panic!("cache::transform_inner(): not a record"),
                     }
@@ -1007,10 +1000,25 @@ impl Cache {
             .cloned()
             .expect("cache::prepare_stdlib(): stdlib has been loaded but stdlib_ids is None")
             .into_iter()
-            .try_for_each(|(_, file_id)| self.transform_inner(file_id).map(|_| ()))
-            .map_err(|cache_err| {
-                cache_err
-                    .unwrap_error("cache::prepare_stdlib(): expected standard library to be parsed")
+            // We need to handle the internals module separately. Each field
+            // is bound directly in the environment without evaluating it first, so we can't
+            // tolerate top-level let bindings that would be introduced by `transform`.
+            .try_for_each(|(module, file_id)| {
+                if let nickel_stdlib::StdlibModule::Internals = module {
+                    self.transform_inner(file_id)?;
+                } else {
+                    self.transform(file_id)?;
+                }
+                Ok(())
+            })
+            .map_err(|cache_err: CacheError<UnboundTypeVariableError>| {
+                Error::ParseErrors(
+                    cache_err
+                        .unwrap_error(
+                            "cache::prepare_stdlib(): expected standard library to be parsed",
+                        )
+                        .into(),
+                )
             })?;
         let eval_env = self.mk_eval_env(eval_cache).unwrap();
         Ok(Envs {
@@ -1050,12 +1058,12 @@ impl Cache {
                 // The internals module needs special treatment: it's required to be a record
                 // literal, and its bindings are added directly to the environment
                 if let nickel_stdlib::StdlibModule::Internals = module {
-                    let result = eval::env_add_term(
+                    let result = eval::env_add_record(
                         eval_cache,
                         &mut eval_env,
-                        self.get_owned(*file_id).expect(
+                        Closure::atomic_closure(self.get_owned(*file_id).expect(
                             "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                        ),
+                        )),
                     );
                     if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
                          panic!(
