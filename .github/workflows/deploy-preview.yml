@@ -1,6 +1,7 @@
 name: Deploy preview
 on:
   pull_request:
+  merge_group:
 
 jobs:
   deploy:
