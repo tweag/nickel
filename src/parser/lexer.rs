@@ -59,7 +59,7 @@ pub enum NormalToken<'input> {
     #[regex("[ \r\t\n]+", logos::skip)]
     // multiline strings cannot be used as enum tags, so we explicitly
     // disallow that pattern.
-    #[regex("`m(%)+\"")]
+    #[regex("'m(%)+\"")]
     #[error]
     Error,
 
@@ -74,9 +74,9 @@ pub enum NormalToken<'input> {
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.
-    #[regex("`_?[a-zA-Z][_a-zA-Z0-9-']*", |lex| lex.slice().split_at(1).1)]
+    #[regex("'_?[a-zA-Z][_a-zA-Z0-9-']*", |lex| lex.slice().split_at(1).1)]
     RawEnumTag(&'input str),
-    #[token("`\"")]
+    #[token("'\"")]
     StrEnumTagBegin,
 
     #[token("Dyn")]
