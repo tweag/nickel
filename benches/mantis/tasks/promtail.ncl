@@ -1,7 +1,7 @@
 let types = import "../schemas/nomad/types.ncl" in
 types.stanza.task
 & {
-  driver = `exec,
+  driver = 'exec,
 
   resources = {
     cpu = 100,
@@ -16,7 +16,7 @@ types.stanza.task
 
   template."local/config.yaml".data =
     std.serialize
-      `Yaml
+      'Yaml
       {
         server = {
           http_listen_port = 0,
