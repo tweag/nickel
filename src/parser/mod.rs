@@ -89,6 +89,7 @@ macro_rules! generate_lalrpop_parser_impl {
 generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm);
 generate_lalrpop_parser_impl!(grammar::TermParser, RichTerm);
 generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Types);
+generate_lalrpop_parser_impl!(grammar::FieldPathParser, utils::FieldPath);
 
 /// Generic interface of the various specialized Nickel parsers.
 ///

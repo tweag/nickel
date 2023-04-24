@@ -1,10 +1,11 @@
 //! Define the type of an identifier.
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
-use crate::{position::TermPos, term::string::NickelString};
+use crate::{parser::lexer::KEYWORDS, position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
@@ -39,12 +40,29 @@ impl Ident {
         Self::new_with_pos(label, TermPos::None)
     }
 
+    /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
+    /// with any identifier defined before. Generated identifiers start with a special prefix that
+    /// can't be used by normal, user-defined identifiers.
     pub fn fresh() -> Self {
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 
+    /// Return the string representation of this identifier.
     pub fn label(&self) -> &str {
         INTERNER.lookup(self.symbol)
+    }
+
+    /// Return the string representation of this identifier, and add enclosing double quotes if the
+    /// label isn't a valid identifier according to the parser, for example if it contains a
+    /// special character like a space.
+    pub fn label_quoted(&self) -> String {
+        let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
+        let label = self.label();
+        if reg.is_match(label) && !KEYWORDS.contains(&label) {
+            String::from(label)
+        } else {
+            format!("\"{label}\"")
+        }
     }
 
     pub fn into_label(self) -> String {

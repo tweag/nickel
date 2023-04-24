@@ -1,6 +1,5 @@
 use crate::destructuring::{self, RecordPattern};
 use crate::identifier::Ident;
-use crate::parser::lexer::KEYWORDS;
 
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -50,17 +49,6 @@ where
     Self::Doc: Clone,
     A: Clone,
 {
-    /// Add quote around an ident if it contains characters that aren't normally allowed inside
-    /// bare identifiers.
-    fn quote_if_needed(&'a self, id: &Ident) -> DocBuilder<'a, Self, A> {
-        let reg = Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap();
-        if reg.is_match(id.as_ref()) && !KEYWORDS.contains(&id.as_ref()) {
-            self.as_string(id)
-        } else {
-            self.as_string(id).double_quotes()
-        }
-    }
-
     /// Escape the special characters in a string, including the newline character, so that it can
     /// be enclosed by double quotes a be a valid Nickel string.
     fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
@@ -189,7 +177,7 @@ where
     }
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        self.quote_if_needed(id)
+        self.text(id.label_quoted())
             .append(self.field_body(field, with_doc))
     }
 
@@ -307,7 +295,9 @@ where
             BoolNot() => allocator.text("!"),
             BoolAnd() => allocator.space().append(allocator.text("&&")),
             BoolOr() => allocator.space().append(allocator.text("||")),
-            StaticAccess(id) => allocator.text(".").append(allocator.quote_if_needed(id)),
+            StaticAccess(id) => allocator
+                .text(".")
+                .append(allocator.text(id.label_quoted())),
             Embed(id) => allocator
                 .text("%embed%")
                 .append(allocator.space())
@@ -578,7 +568,9 @@ where
                     .group(),
             },
             Var(id) => allocator.as_string(id),
-            Enum(id) => allocator.text("`").append(allocator.quote_if_needed(id)),
+            Enum(id) => allocator
+                .text("`")
+                .append(allocator.text(id.label_quoted())),
             Record(record) => allocator
                 .line()
                 .append(allocator.fields(&record.fields, true))
@@ -610,7 +602,7 @@ where
                         sorted_map(cases).iter().map(|&(id, t)| {
                             allocator
                                 .text("`")
-                                .append(allocator.quote_if_needed(id))
+                                .append(allocator.text(id.label_quoted()))
                                 .append(allocator.space())
                                 .append(allocator.text("=>"))
                                 .append(allocator.space())
@@ -728,7 +720,9 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id)),
             EnumRowsF::Extend { row, tail } => {
-                let builder = allocator.text("`").append(allocator.quote_if_needed(&row));
+                let builder = allocator
+                    .text("`")
+                    .append(allocator.text(row.label_quoted()));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder
                         .append(allocator.text(","))
@@ -767,7 +761,7 @@ where
                 tail,
             } => {
                 let builder = allocator
-                    .quote_if_needed(&id)
+                    .text(id.label_quoted())
                     .append(allocator.text(":"))
                     .append(allocator.space())
                     .append(types.pretty(allocator));
