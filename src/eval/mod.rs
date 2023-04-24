@@ -870,19 +870,19 @@ pub enum EnvBuildError {
 
 /// Add the bindings of a record to an environment. Ignore the fields defined by interpolation as
 /// well as fields without definition.
-pub fn env_add_term<C: Cache>(
+pub fn env_add_record<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
-    rt: RichTerm,
+    closure: Closure,
 ) -> Result<(), EnvBuildError> {
-    match_sharedterm! {rt.term, with {
+    match_sharedterm! {closure.body.term, with {
             Term::Record(record) | Term::RecRecord(record, ..) => {
                 let ext = record.fields.into_iter().filter_map(|(id, field)| {
                     field.value.map(|value|
                     (
                         id,
                         cache.add(
-                            Closure::atomic_closure(value),
+                            Closure { body: value, env: closure.env.clone() },
                             IdentKind::Record,
                             BindingType::Normal
                         ),
@@ -892,7 +892,7 @@ pub fn env_add_term<C: Cache>(
                 env.extend(ext);
                 Ok(())
             },
-        } else Err(EnvBuildError::NotARecord(rt))
+        } else Err(EnvBuildError::NotARecord(closure.body))
     }
 }
 

@@ -9,7 +9,7 @@
 use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::eval::cache::Cache as EvalCache;
-use crate::eval::VirtualMachine;
+use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::Ident;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::QueryPath;
@@ -101,6 +101,60 @@ impl<EC: EvalCache> ReplImpl<EC> {
         Ok(())
     }
 
+    // Because we don't use the cache for input, we have to perform recursive import
+    // resolution/typechecking/transformation by ourselves.
+    //
+    // `id` must be set to `None` for normal expressions and to `Some(id_)` for top-level lets. In the
+    // latter case, we need to update the current type environment before doing program
+    // transformations in the case of a top-level let.
+    fn prepare(&mut self, id: Option<Ident>, t: RichTerm) -> Result<RichTerm, Error> {
+        let import_resolution::strict::ResolveResult {
+            transformed_term: t,
+            resolved_ids: pending,
+        } = import_resolution::strict::resolve_imports(t, self.vm.import_resolver_mut())?;
+        for id in &pending {
+            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
+        }
+
+        let wildcards =
+            typecheck::type_check(&t, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
+
+        if let Some(id) = id {
+            typecheck::env_add(
+                &mut self.env.type_ctxt.type_env,
+                id,
+                &t,
+                &self.env.type_ctxt.term_env,
+                self.vm.import_resolver(),
+            );
+            self.env
+                .type_ctxt
+                .term_env
+                .0
+                .insert(id, (t.clone(), self.env.type_ctxt.term_env.clone()));
+        }
+
+        for id in &pending {
+            self.vm
+                .import_resolver_mut()
+                .typecheck(*id, &self.initial_type_ctxt)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
+                })?;
+        }
+
+        let t = transform::transform(t, Some(&wildcards))
+            .map_err(|err| Error::ParseErrors(err.into()))?;
+        for id in &pending {
+            self.vm
+                .import_resolver_mut()
+                .transform(*id)
+                .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
+        }
+
+        Ok(t)
+    }
+
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
         self.vm.reset();
         let eval_function = if eval_full {
@@ -122,81 +176,13 @@ impl<EC: EvalCache> ReplImpl<EC> {
             return Err(parse_errs.into());
         }
 
-        // Because we don't use the cache for input, we have to perform recursive import
-        // resolution/typechecking/transformation by ourselves.
-        //
-        // `id` must be set to `None` for normal lets and to `Some(id_)` for top-level lets. In the
-        // latter case, we need to update the current type environment before doing program
-        // transformations in the case of a top-level let.
-        fn prepare<EC: EvalCache>(
-            repl_impl: &mut ReplImpl<EC>,
-            id: Option<Ident>,
-            t: RichTerm,
-        ) -> Result<RichTerm, Error> {
-            let import_resolution::strict::ResolveResult {
-                transformed_term: t,
-                resolved_ids: pending,
-            } = import_resolution::strict::resolve_imports(t, repl_impl.vm.import_resolver_mut())?;
-            for id in &pending {
-                repl_impl
-                    .vm
-                    .import_resolver_mut()
-                    .resolve_imports(*id)
-                    .unwrap();
-            }
-
-            let wildcards = typecheck::type_check(
-                &t,
-                repl_impl.env.type_ctxt.clone(),
-                repl_impl.vm.import_resolver(),
-            )?;
-
-            if let Some(id) = id {
-                typecheck::env_add(
-                    &mut repl_impl.env.type_ctxt.type_env,
-                    id,
-                    &t,
-                    &repl_impl.env.type_ctxt.term_env,
-                    repl_impl.vm.import_resolver(),
-                );
-                repl_impl
-                    .env
-                    .type_ctxt
-                    .term_env
-                    .0
-                    .insert(id, (t.clone(), repl_impl.env.type_ctxt.term_env.clone()));
-            }
-
-            for id in &pending {
-                repl_impl
-                    .vm
-                    .import_resolver_mut()
-                    .typecheck(*id, &repl_impl.initial_type_ctxt)
-                    .map_err(|cache_err| {
-                        cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
-                    })?;
-            }
-
-            let t = transform::transform(t, Some(&wildcards))
-                .map_err(|err| Error::ParseErrors(err.into()))?;
-            for id in &pending {
-                repl_impl
-                    .vm
-                    .import_resolver_mut()
-                    .transform(*id)
-                    .unwrap_or_else(|_| panic!("repl::eval_(): expected imports to be parsed"));
-            }
-
-            Ok(t)
-        }
-
         match term {
             ExtendedTerm::RichTerm(t) => {
-                let t = prepare(self, None, t)?;
+                let t = self.prepare(None, t)?;
                 Ok(eval_function(&mut self.vm, t, &self.env.eval_env)?.into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
-                let t = prepare(self, Some(id), t)?;
+                let t = self.prepare(Some(id), t)?;
                 let local_env = self.env.eval_env.clone();
                 eval::env_add(&mut self.vm.cache, &mut self.env.eval_env, id, t, local_env);
                 Ok(EvalResult::Bound(id))
@@ -221,33 +207,23 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .add_file(OsString::from(path.as_ref()))
             .map_err(IOError::from)?;
         self.vm.import_resolver_mut().parse(file_id)?;
-        let RichTerm { term, pos } = self.vm.import_resolver().get_ref(file_id).unwrap();
-
-        // Check that the entry is a record, which is a precondition of transform_inner
-        match term.as_ref() {
-            Term::Record(..) | Term::RecRecord(..) => (),
-            _ => {
-                return Err(Error::EvalError(EvalError::Other(
-                    String::from("load: expected a record"),
-                    *pos,
-                )))
-            }
-        };
-        self.vm
-            .import_resolver_mut()
-            .transform_inner(file_id)
-            .map_err(|err| {
-                err.unwrap_error("load(): expected term to be parsed before transformation")
-            })?;
 
         let term = self.vm.import_resolver().get_owned(file_id).unwrap();
-        let import_resolution::strict::ResolveResult {
-            transformed_term: term,
-            resolved_ids: pending,
-        } = import_resolution::strict::resolve_imports(term, self.vm.import_resolver_mut())?;
-        for id in &pending {
-            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
+        let pos = term.pos;
+
+        let term = self.prepare(None, term)?;
+
+        let (term, new_env) = self
+            .vm
+            .eval_closure(Closure::atomic_closure(term), &self.env.eval_env)?;
+
+        if !matches!(term.as_ref(), Term::Record(..) | Term::RecRecord(..)) {
+            return Err(Error::EvalError(EvalError::Other(
+                String::from("load: expected a record"),
+                pos,
+            )));
         }
+
         typecheck::env_add_term(
             &mut self.env.type_ctxt.type_env,
             &term,
@@ -255,7 +231,16 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             self.vm.import_resolver(),
         )
         .unwrap();
-        eval::env_add_term(&mut self.vm.cache, &mut self.env.eval_env, term.clone()).unwrap();
+
+        eval::env_add_record(
+            &mut self.vm.cache,
+            &mut self.env.eval_env,
+            Closure {
+                body: term.clone(),
+                env: new_env,
+            },
+        )
+        .unwrap();
 
         Ok(term)
     }
@@ -443,10 +428,10 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;
                 print_aliases(out, c)?;
-                write!(out,"Evaluate the content of <file> to a record and load its attributes in the environment.")?;
+                writeln!(out,"Evaluate the content of <file> to a record and add its fields to the environment.")?;
                 writeln!(
                     out,
-                    " Fail if the content of <file> doesn't evaluate to a record"
+                    "Fail if the content of <file> doesn't evaluate to a record."
                 )?;
             }
             Ok(c @ CommandType::Typecheck) => {
