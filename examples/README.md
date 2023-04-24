@@ -62,7 +62,7 @@ nickel>
   and print the result as JSON:
 
     ```text
-    nickel> builtin.serialize `Json (import "merge-main.ncl")
+    nickel> builtin.serialize 'Json (import "merge-main.ncl")
     "{
         \"firewall\": {
         ...

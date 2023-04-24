@@ -208,28 +208,28 @@ fn enum_terms() {
     let success_cases = [
         (
             "simple raw enum tag",
-            "`foo",
+            "'foo",
             Enum(Ident::from("foo")).into(),
         ),
         (
             "raw enum tag with keyword ident",
-            "`if",
+            "'if",
             Enum(Ident::from("if")).into(),
         ),
-        ("empty string tag", "`\"\"", Enum(Ident::from("")).into()),
+        ("empty string tag", "'\"\"", Enum(Ident::from("")).into()),
         (
             "string tag with non-ident chars",
-            "`\"foo:bar\"",
+            "'\"foo:bar\"",
             Enum(Ident::from("foo:bar")).into(),
         ),
         (
             "string with spaces",
-            "`\"this works!\"",
+            "'\"this works!\"",
             Enum(Ident::from("this works!")).into(),
         ),
         (
             "match with raw tags",
-            "match { `foo => true, `bar => false, _ => 456, } 123",
+            "match { 'foo => true, 'bar => false, _ => 456, } 123",
             mk_app!(
                 mk_match!(("foo", Bool(true)), ("bar", Bool(false)) ; mk_term::integer(456)),
                 mk_term::integer(123)
@@ -237,7 +237,7 @@ fn enum_terms() {
         ),
         (
             "match with string tags",
-            "match { `\"one:two\" => true, `\"three four\" => false, _ => 13 } 1",
+            "match { '\"one:two\" => true, '\"three four\" => false, _ => 13 } 1",
             mk_app!(
                 mk_match!(("one:two", Bool(true)), ("three four", Bool(false)) ; mk_term::integer(13)),
                 mk_term::integer(1)
@@ -251,11 +251,11 @@ fn enum_terms() {
     }
 
     let failure_cases = [
-        ("whitespace between backtick & identifier", "`     test"),
-        ("invalid identifier", "`$s"),
-        ("empty raw identifier", "`"),
-        ("multiline string", "`m%\"words\"%"),
-        ("interpolation", "`\"%{x}\""),
+        ("whitespace between backtick & identifier", "'     test"),
+        ("invalid identifier", "'$s"),
+        ("empty raw identifier", "'"),
+        ("multiline string", "'m%\"words\"%"),
+        ("interpolation", "'\"%{x}\""),
     ];
 
     for (name, input) in failure_cases {
@@ -558,7 +558,7 @@ fn ty_var_kind_mismatch() {
         (
             "row var in both enum and record",
             r#"
-                let f | forall r. { x : r; r } -> [| `a; r |] = fun x => x in
+                let f | forall r. { x : r; r } -> [| 'a; r |] = fun x => x in
                 f { x = 1 }
             "#,
         ),

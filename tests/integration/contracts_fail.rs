@@ -55,9 +55,9 @@ fn id_fail() {
 
 #[test]
 fn enum_simple() {
-    assert_raise_blame!("`far | [|`foo, `bar|]");
-    assert_raise_blame!("123 | [|`foo, `bar|]");
-    assert_raise_blame!("`foo | [| |]");
+    assert_raise_blame!("'far | [|'foo, 'bar|]");
+    assert_raise_blame!("123 | [|'foo, 'bar|]");
+    assert_raise_blame!("'foo | [| |]");
 }
 
 #[test]
@@ -316,8 +316,8 @@ fn dictionary_contracts() {
 #[test]
 fn enum_complex() {
     eval(
-        "let f : [| `foo, `bar |] -> Number = match { `foo => 1, `bar => 2, } in
-         f `boo",
+        "let f : [| 'foo, 'bar |] -> Number = match { 'foo => 1, 'bar => 2, } in
+         f 'boo",
     )
     .unwrap_err();
 }

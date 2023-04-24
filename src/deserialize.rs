@@ -623,7 +623,7 @@ mod tests {
             A::deserialize(
                 TestProgram::new_from_source(
                     Cursor::new(
-                        br#"{ a = 10, b = "test string", c = null, d = true, e = `foo, f = null, g = -10, h = { bar = "some other string" } }"#.to_vec()
+                        br#"{ a = 10, b = "test string", c = null, d = true, e = 'foo, f = null, g = -10, h = { bar = "some other string" } }"#.to_vec()
                     ),
                     "source"
                 )

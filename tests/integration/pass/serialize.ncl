@@ -3,17 +3,17 @@ let {check, ..} = import "lib/assert.ncl" in
 let assertSerInv = fun x =>
     let assertAux = fun format x =>
       %deserialize% format (%serialize% format (%force% x)) == x in
-    assertAux `Json x &&
-    assertAux `Yaml x &&
-    assertAux `Toml x in
+    assertAux 'Json x &&
+    assertAux 'Yaml x &&
+    assertAux 'Toml x in
 
 let assertDeserInv = fun x =>
     let assertAux = fun format x =>
       let s = %serialize% format (%force% x) in
       %serialize% format (%deserialize% format s) == s in
-    assertAux `Json x &&
-    assertAux `Yaml x &&
-    assertAux `Toml x in
+    assertAux 'Json x &&
+    assertAux 'Yaml x &&
+    assertAux 'Toml x in
 
 [
   assertSerInv {val = 1 + 1},

@@ -23,11 +23,11 @@ let {string, ..} = std in
   ("👩🏿‍❤️‍💋‍👩🏼" | string.Character) == "👩🏿‍❤️‍💋‍👩🏼",
 
   # string.EnumTag
-  (`Foo | std.enum.Tag) == `Foo,
-  (`Barr | std.enum.Tag) == `Barr,
+  ('Foo | std.enum.Tag) == 'Foo,
+  ('Barr | std.enum.Tag) == 'Barr,
 
   # string.Stringable
-  (`Foo | string.Stringable) == `Foo,
+  ('Foo | string.Stringable) == 'Foo,
   (true | string.Stringable) == true,
   (1 | string.Stringable) == 1,
   ("" | string.Stringable) == "",

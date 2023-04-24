@@ -1090,7 +1090,7 @@ impl Display for EnumRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             EnumRowsF::Extend { ref row, ref tail } => {
-                write!(f, "`{row}")?;
+                write!(f, "'{row}")?;
 
                 match tail.0 {
                     EnumRowsF::Extend { .. } => write!(f, ", {tail}"),
@@ -1199,8 +1199,8 @@ mod test {
         assert_format_eq("forall r. { x: Bool, y: Bool, z: Bool ; r }");
         assert_format_eq("{ x: Bool, y: Bool, z: Bool }");
 
-        assert_format_eq("[| `a, `b, `c, `d |]");
-        assert_format_eq("forall r. [| `tag1, `tag2, `tag3 ; r |]");
+        assert_format_eq("[| 'a, 'b, 'c, 'd |]");
+        assert_format_eq("forall r. [| 'tag1, 'tag2, 'tag3 ; r |]");
 
         assert_format_eq("Array Number");
         assert_format_eq("Array (Array Number)");

@@ -32,6 +32,6 @@ let {check, ..} = import "lib/assert.ncl" in
   1/4 + 1/4 - 1/4 + 1/4 < 1/2 == false,
 
   # This test checks that the terms of a match are closured
-  let x = 3 in ((3 + 2) |> match { `foo => 1, _ => x}) == 3,
+  let x = 3 in ((3 + 2) |> match { 'foo => 1, _ => x}) == 3,
 ]
 |> check

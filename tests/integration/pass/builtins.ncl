@@ -23,8 +23,8 @@ let {check, ..} = import "lib/assert.ncl" in
   [1,2,3]
    |> std.array.map (fun x => x + 1)
    |> std.array.filter (fun x => x > 2)
-   |> std.serialize `Json
-   |> std.deserialize `Json
+   |> std.serialize 'Json
+   |> std.deserialize 'Json
    == [3,4],
 ]
 |> check

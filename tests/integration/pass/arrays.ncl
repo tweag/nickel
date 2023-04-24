@@ -12,9 +12,9 @@ let {check, ..} = import "lib/assert.ncl" in
 
   # sort
   let cmp = fun x y =>
-    if x < y then `Lesser
-    else if x == y then `Equal
-    else `Greater
+    if x < y then 'Lesser
+    else if x == y then 'Equal
+    else 'Greater
   in std.array.sort cmp [3, 42, -1, -5] == [-5, -1, 3, 42],
 
   # Test case added after https://github.com/tweag/nickel/issues/154

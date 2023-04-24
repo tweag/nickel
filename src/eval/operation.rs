@@ -1797,7 +1797,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let mk_err_fst = |t1| {
                     Err(mk_type_error!(
                         "hash",
-                        "[| `Md5, `Sha1, `Sha256, `Sha512 |]",
+                        "[| 'Md5, 'Sha1, 'Sha256, 'Sha512 |]",
                         1,
                         t1,
                         pos1
@@ -1845,7 +1845,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let mk_err_fst = |t1| {
                     Err(mk_type_error!(
                         "serialize",
-                        "[| `Json, `Yaml, `Toml |]",
+                        "[| 'Json, 'Yaml, 'Toml |]",
                         1,
                         t1,
                         pos1
@@ -1885,7 +1885,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let mk_err_fst = |t1| {
                     Err(mk_type_error!(
                         "deserialize",
-                        "[| `Json, `Yaml, `Toml |]",
+                        "[| 'Json, 'Yaml, 'Toml |]",
                         1,
                         t1,
                         pos1

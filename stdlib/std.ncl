@@ -46,7 +46,7 @@
           ```
         "%
       = fun label value =>
-        if %typeof% value == `Array then
+        if %typeof% value == 'Array then
           if %length% value != 0 then
             value
           else
@@ -454,7 +454,7 @@
       = fun f n => %generate% n f,
 
     sort
-      : forall a. (a -> a -> [| `Lesser, `Equal, `Greater |]) -> Array a -> Array a
+      : forall a. (a -> a -> [| 'Lesser, 'Equal, 'Greater |]) -> Array a -> Array a
       | doc m%"
           Sorts an array based on the provided comparison operator.
 
@@ -463,11 +463,11 @@
           ```nickel
           std.array.sort (fun x y =>
             if x < y then
-              `Lesser
+              'Lesser
             else if (x == y) then
-              `Equal
+              'Equal
             else
-              `Greater)
+              'Greater)
             [ 4, 5, 1, 2 ]
           => [ 1, 2, 4, 5 ]
           ```
@@ -477,7 +477,7 @@
         let length = %length% array in
         let first = %elem_at% array 0 in
         let rest = %array_slice% 1 length array in
-        let parts = partition (fun x => (cmp x first == `Lesser)) rest in
+        let parts = partition (fun x => (cmp x first == 'Lesser)) rest in
         if length <= 1 then
           array
         else
@@ -796,7 +796,7 @@
           in
           constant_type
           |> match {
-            `Record =>
+            'Record =>
               # we map the constant from {field1 = val1, .., fieldn = valn} to
               # {field1 = Equal val1, .., fieldn = Equal valn}, building a
               # dictionary of equality contracts
@@ -816,7 +816,7 @@
                       fun field =>
                         contract_map."%{field}"
                     ),
-            `Array =>
+            'Array =>
               fun ctr_label value =>
                 let value = check_typeof_eq ctr_label value in
                 let value_length = %length% value in
@@ -1113,9 +1113,9 @@
         # Examples
 
         ```nickel
-        (`foo | std.enum.Tag) =>
+        ('foo | std.enum.Tag) =>
           `foo
-        (`FooBar | std.enum.Tag) =>
+        ('FooBar | std.enum.Tag) =>
           `FooBar
         ("tag" | std.enum.Tag) =>
           error
@@ -1143,18 +1143,18 @@
         let Schema = {
           protocol
             | std.enum.TagOrString
-            | [| `http, `ftp |],
+            | [| 'http, 'ftp |],
           port
             | Number,
           method
             | std.enum.TagOrString
-            | [| `GET, `POST |]
+            | [| 'GET, 'POST |]
         } in
         let serialized =
           m%"
             {"protocol": "http", "port": 80, "method": "GET"}
           "%
-          |> std.deserialize `Json
+          |> std.deserialize 'Json
         in
 
         serialized | Schema
@@ -1163,8 +1163,8 @@
       = fun label value =>
         %typeof% value
         |> match {
-          `String => %enum_from_str% value,
-          `Enum => value,
+          'String => %enum_from_str% value,
+          'Enum => value,
           _ =>
             std.contract.blame_with_message
               "expected either a string or an enum tag"
@@ -1276,7 +1276,7 @@
         ```nickel
         pipe 2 [ (+) 2, (+) 3 ]
           => 7
-        pipe `World [ std.string.from, fun s => "Hello, %{s}!" ]
+        pipe 'World [ std.string.from, fun s => "Hello, %{s}!" ]
           => "Hello, World!"
         ```
       "%%
@@ -1298,7 +1298,7 @@
         ```
       "%
       = fun label value =>
-        if %typeof% value == `Number then
+        if %typeof% value == 'Number then
           if value % 1 == 0 then
             value
           else
@@ -1322,7 +1322,7 @@
         ```
       "%
       = fun label value =>
-        if %typeof% value == `Number then
+        if %typeof% value == 'Number then
           if value % 1 == 0 && value >= 0 then
             value
           else
@@ -1346,7 +1346,7 @@
         ```
       "%
       = fun label value =>
-        if %typeof% value == `Number then
+        if %typeof% value == 'Number then
           if value % 1 == 0 && value > 0 then
             value
           else
@@ -1368,7 +1368,7 @@
         ```
       "%
       = fun label value =>
-        if %typeof% value == `Number then
+        if %typeof% value == 'Number then
           if value != 0 then
             value
           else
@@ -1803,7 +1803,7 @@
         ```
       "%
       = fun l s =>
-        if %typeof% s == `String then
+        if %typeof% s == 'String then
           if s == "true" then
             "true"
           else if s == "false" then
@@ -1832,7 +1832,7 @@
         let pattern = m%"^[+-]?(\d+(\.\d*)?(e[+-]?\d+)?|\.\d+(e[+-]?\d+)?)$"% in
         let is_num_literal = %str_is_match% pattern in
         fun l s =>
-          if %typeof% s == `String then
+          if %typeof% s == 'String then
             if is_num_literal s then
               s
             else
@@ -1858,7 +1858,7 @@
         ```
       "%
       = fun l s =>
-        if %typeof% s == `String then
+        if %typeof% s == 'String then
           if length s == 1 then
             s
           else
@@ -1882,8 +1882,8 @@
         # Examples
 
         ```nickel
-        (`Foo | std.string.Stringable)
-          => `Foo
+        ('Foo | std.string.Stringable)
+          => 'Foo
         (false | std.string.Stringable)
           => false
         ("bar" ++ "foo" | std.string.Stringable)
@@ -1898,10 +1898,10 @@
             fun value =>
               let type = std.typeof value in
               value == null
-              || type == `Number
-              || type == `Bool
-              || type == `String
-              || type == `Enum
+              || type == 'Number
+              || type == 'Bool
+              || type == 'String
+              || type == 'Enum
           ),
 
     NonEmpty
@@ -1920,7 +1920,7 @@
         ```
       "%
       = fun l s =>
-        if %typeof% s == `String then
+        if %typeof% s == 'String then
           if %str_length% s > 0 then
             s
           else
@@ -2259,7 +2259,7 @@
         ```nickel
         std.string.from 42
           => "42"
-        std.string.from `Foo
+        std.string.from 'Foo
           => "Foo"
         std.string.from null
           => "null"
@@ -2291,7 +2291,7 @@
         # Examples
 
         ```nickel
-        std.string.from_enum `MyEnum
+        std.string.from_enum 'MyEnum
           => "MyEnum"
         ```
       "%
@@ -2352,9 +2352,9 @@
 
         ```nickel
         std.string.to_enum "Hello"
-          => `Hello
+          => 'Hello
         std.string.to_enum "hey,there!"
-          => `"hey,there!"
+          => '"hey,there!"
         ```
       "%
       = fun s => %enum_from_str% s,
@@ -2374,7 +2374,7 @@
         => false
       ```
     "%
-    = fun x => %typeof% x == `Number,
+    = fun x => %typeof% x == 'Number,
 
   is_bool
     : Dyn -> Bool
@@ -2390,7 +2390,7 @@
         => false
       ```
     "%
-    = fun x => %typeof% x == `Bool,
+    = fun x => %typeof% x == 'Bool,
 
   is_string
     : Dyn -> Bool
@@ -2406,7 +2406,7 @@
         => true
       ```
     "%
-    = fun x => %typeof% x == `String,
+    = fun x => %typeof% x == 'String,
 
   is_enum
     : Dyn -> Bool
@@ -2422,7 +2422,7 @@
         => true
       ```
     "%
-    = fun x => %typeof% x == `Enum,
+    = fun x => %typeof% x == 'Enum,
 
   is_function
     : Dyn -> Bool
@@ -2438,7 +2438,7 @@
         => false
       ```
     "%
-    = fun x => %typeof% x == `Function,
+    = fun x => %typeof% x == 'Function,
 
   is_array
     : Dyn -> Bool
@@ -2454,7 +2454,7 @@
         => false
       ```
     "%
-    = fun x => %typeof% x == `Array,
+    = fun x => %typeof% x == 'Array,
 
   is_record
     : Dyn -> Bool
@@ -2470,19 +2470,19 @@
         => true
       ```
     "%
-    = fun x => %typeof% x == `Record,
+    = fun x => %typeof% x == 'Record,
 
   typeof
     : Dyn -> [|
-      `Number,
-      `Bool,
-      `String,
-      `Enum,
-      `Label,
-      `Function,
-      `Array,
-      `Record,
-      `Other
+      'Number,
+      'Bool,
+      'String,
+      'Enum,
+      'Label,
+      'Function,
+      'Array,
+      'Record,
+      'Other
     |]
     | doc m%"
       Returns the type of a value.
@@ -2491,9 +2491,9 @@
 
       ```nickel
       std.typeof [ 1, 2 ]
-        => `Array
+        => 'Array
       std.typeof (fun x => x)
-        => `Function
+        => 'Function
       ```
     "%
     = fun x => %typeof% x,
@@ -2550,28 +2550,28 @@
     = fun x y => %deep_seq% x y,
 
   hash
-    : [| `Md5, `Sha1, `Sha256, `Sha512 |] -> String -> String
+    : [| 'Md5, 'Sha1, 'Sha256, 'Sha512 |] -> String -> String
     | doc m%"
       Hashes the given string with the desired hashing algorithm.
 
       # Examples
 
       ```nickel
-      std.hash `Md5 "hunter2"
+      std.hash 'Md5 "hunter2"
         => "2ab96390c7dbe3439de74d0c9b0b1767"
       ```
     "%
     = fun type s => %hash% type s,
 
   serialize
-    : [| `Json, `Toml, `Yaml |] -> Dyn -> String
+    : [| 'Json, 'Toml, 'Yaml |] -> Dyn -> String
     | doc m%"
       Serializes a value into the desired representation.
 
       # Examples
 
       ```nickel
-      serialize `Json { hello = "Hello", world = "World" } =>
+      serialize 'Json { hello = "Hello", world = "World" } =>
         "{
           \"hello\": \"Hello\",
           \"world\": \"World\"
@@ -2581,14 +2581,14 @@
     = fun format x => %serialize% format (%force% x),
 
   deserialize
-    : [| `Json, `Toml, `Yaml |] -> String -> Dyn
+    : [| 'Json, 'Toml, 'Yaml |] -> String -> Dyn
     | doc m%"
       Deserializes a string into a Nickel value from the given representation.
 
       # Examples
 
       ```nickel
-      deserialize `Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
+      deserialize 'Json "{ \"hello\": \"Hello\", \"world\": \"World\" }"
         { hello = "Hello", world = "World" }
       ```
     "%
@@ -2605,7 +2605,7 @@
       ```nickel
       std.to_string 42 =>
         "42"
-      std.to_string `Foo =>
+      std.to_string 'Foo =>
         "Foo"
       std.to_string null =>
         "null"

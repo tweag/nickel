@@ -26,9 +26,9 @@ let Container = {
 } in
 
 let KubernetesConfig = {
-  kind | [| `ReplicationController, `ReplicaSet, `Pod |]
+  kind | [| 'ReplicationController, 'ReplicaSet, 'Pod |]
        | doc "The kind of the element being configured."
-       | default = `Pod,
+       | default = 'Pod,
 
   apiVersion | String,
 
@@ -58,7 +58,7 @@ let metadata_ = {
   } in
 
 {
-  kind = `ReplicationController,
+  kind = 'ReplicationController,
   apiVersion = "1.1.0",
   metadata = metadata_,
   spec = {

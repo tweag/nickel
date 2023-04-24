@@ -52,8 +52,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value | Contract = {foo = 1} in
   (
     (value == {foo = 1} | Assert) &&
-    (std.serialize `Json value
-      == std.serialize `Json {foo = 1}
+    (std.serialize 'Json value
+      == std.serialize 'Json {foo = 1}
       | Assert) &&
     (std.record.has_field "foo" value | Assert) &&
     (!(std.record.has_field "opt" value) | Assert) &&
@@ -71,8 +71,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value | Contract = with_ctr & {foo = 1, baz = false} in
   (
     (value == {foo = 1, baz = false} | Assert) &&
-    (std.serialize `Json value
-      == std.serialize `Json {foo = 1, baz = false}
+    (std.serialize 'Json value
+      == std.serialize 'Json {foo = 1, baz = false}
       | Assert) &&
     (std.record.has_field "foo" value | Assert) &&
     (std.record.has_field "baz" value | Assert) &&
@@ -85,8 +85,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value | Contract = {foo = 1 + 0, opt = "a" ++ "b"} in
   (
     (value == {foo = 1, opt = "ab"} | Assert) &&
-    (std.serialize `Json value
-      == std.serialize `Json {foo = 1, opt = "ab"}
+    (std.serialize 'Json value
+      == std.serialize 'Json {foo = 1, opt = "ab"}
       | Assert) &&
     (std.record.has_field "foo" value | Assert) &&
     (std.record.has_field "opt" value | Assert) &&
@@ -100,8 +100,8 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   let value = with_ctr & {foo = 1, opt = "a" ++ "b"} in
   (
     (value == {foo = 1, opt = "ab"} | Assert) &&
-    (std.serialize `Json value
-      == std.serialize `Json {foo = 1, opt = "ab"}
+    (std.serialize 'Json value
+      == std.serialize 'Json {foo = 1, opt = "ab"}
       | Assert) &&
     (std.record.has_field "foo" value | Assert) &&
     (std.record.has_field "opt" value | Assert) &&
@@ -117,7 +117,7 @@ let {check, Assert, ..} = import "lib/assert.ncl" in
   # fine
   let value = with_ctr & {foo = 1, opt} in
   (
-    # std.record.has_field/std.record.fields have a dictionnary contract `{_ : T}`
+    # std.record.has_field/std.record.fields have a dictionary contract `{_ : T}`
     # attached, which currently uses `std.record.map` under the hood, which will
     # throw an error for `opt` missing a defnition. They
     # probably shouldn't, but for the time being, we bypass them using the

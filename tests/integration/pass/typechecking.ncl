@@ -50,30 +50,30 @@ let typecheck = [
     ((if (f true) then (f 2) else 3) : Number),
 
   # enums_simple
-  (`bla : [|`bla |]),
-  (`blo : [|`bla, `blo |]),
-  (`bla : forall r. [|`bla ; r |]),
-  (`bla : forall r. [|`bla, `blo ; r |]),
-  ((`bla |> match {`bla => 3}) : Number),
-  ((`blo |> match {`bla => 3, _ => 2}) : Number),
+  ('bla : [|'bla |]),
+  ('blo : [|'bla, 'blo |]),
+  ('bla : forall r. [|'bla ; r |]),
+  ('bla : forall r. [|'bla, 'blo ; r |]),
+  (('bla |> match {'bla => 3}) : Number),
+  (('blo |> match {'bla => 3, _ => 2}) : Number),
 
   # enums_complex
-  ((fun x => x |> match {`bla => 1, `ble => 2}) : [|`bla, `ble |] -> Number),
-  ((fun x => %embed% bli x |> match {`bla => 1, `ble => 2, `bli => 4})
-    : [|`bla, `ble |] -> Number),
+  ((fun x => x |> match {'bla => 1, 'ble => 2}) : [|'bla, 'ble |] -> Number),
+  ((fun x => %embed% bli x |> match {'bla => 1, 'ble => 2, 'bli => 4})
+    : [|'bla, 'ble |] -> Number),
   ((fun x =>
-      (x |> match {`bla => 3, `bli => 2})
-      + (x |> match {`bli => 6, `bla => 20}))
-    `bla
+      (x |> match {'bla => 3, 'bli => 2})
+      + (x |> match {'bli => 6, 'bla => 20}))
+    'bla
     : Number),
 
-  let f : forall r. [|`blo, `ble ; r |] -> Number =
-    match {`blo => 1, `ble => 2, _ => 3} in
-    (f `bli : Number),
+  let f : forall r. [|'blo, 'ble ; r |] -> Number =
+    match {'blo => 1, 'ble => 2, _ => 3} in
+    (f 'bli : Number),
 
-  let f : forall r. (forall p. [|`blo, `ble ; r |] -> [|`bla, `bli ; p |]) =
-    match {`blo => `bla, `ble => `bli, _ => `bla} in
-    f `bli,
+  let f : forall r. (forall p. [|'blo, 'ble ; r |] -> [|'bla, 'bli ; p |]) =
+    match {'blo => 'bla, 'ble => 'bli, _ => 'bla} in
+    f 'bli,
 
   # recursive let bindings
   let rec f : forall a. a -> Number -> a = fun x n =>
@@ -98,9 +98,9 @@ let typecheck = [
   let f : forall a r. {bla : Bool, blo : a, ble : a ; r} -> a =
       fun r => if r.bla then r.blo else r.ble in
     (if (f {bla = true, blo = false, ble = true, blip = 1, }) then
-      (f {bla = true, blo = 1, ble = 2, blip = `blip, })
+      (f {bla = true, blo = 1, ble = 2, blip = 'blip, })
     else
-      (f {bla = true, blo = 3, ble = 4, bloppo = `bloppop, }) : Number),
+      (f {bla = true, blo = 3, ble = 4, bloppo = 'bloppop, }) : Number),
 
   ({ "%{if true then "foo" else "bar"}" = 2, } : {_ : Number}),
   ({ "%{if true then "foo" else "bar"}" = 2, }."%{"bl" ++ "a"}" : Number),
