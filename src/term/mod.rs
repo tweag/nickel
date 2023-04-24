@@ -697,9 +697,9 @@ impl Term {
                 let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
                 let s = id.to_string();
                 if re.is_match(&s) {
-                    format!("`{s}")
+                    format!("'{s}")
                 } else {
-                    format!("`\"{s}\"")
+                    format!("'\"{s}\"")
                 }
             }
             Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
