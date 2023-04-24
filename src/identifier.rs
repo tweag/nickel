@@ -41,7 +41,7 @@ impl Ident {
     }
 
     /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
-    /// with any identifier defined before. Generated identifier starts with a special prefix that
+    /// with any identifier defined before. Generated identifiers start with a special prefix that
     /// can't be used by normal, user-defined identifiers.
     pub fn fresh() -> Self {
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
