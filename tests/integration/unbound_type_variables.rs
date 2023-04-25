@@ -20,7 +20,7 @@ macro_rules! assert_unbound {
         match res {
             Err(Error::ParseErrors(ParseErrors {errors})) =>
                 assert_matches!(errors.as_slice(),
-                    [ParseError::UnboundTypeVariables(vars, _)]
+                    [ParseError::UnboundTypeVariables(vars)]
                     if vars.contains(&Ident::from($var)) && vars.len() == 1),
             Err(Error::TypecheckError(err)) =>
                 assert_matches!(err,
