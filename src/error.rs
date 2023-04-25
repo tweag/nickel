@@ -859,8 +859,7 @@ impl IntoDiagnostics<FileId> for EvalError {
 
                 let mut diags = vec![Diagnostic::error()
                     .with_message(format!("missing definition for `{id}`",))
-                    .with_labels(labels)
-                    .with_notes(vec![])];
+                    .with_labels(labels)];
 
                 // Is it really useful to include the label if we show the position of the ident?
                 // We have to see in practice if it can be the case that `id.pos` is
@@ -1004,7 +1003,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                         "Primitive values (Number, String, and Bool) or arrays can be merged \
                         only if they are equal."
                             .into(),
-                        "Functions can never be merged together".into(),
+                        "Functions can never be merged together.".into(),
                     ])]
             }
             EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
@@ -1611,7 +1610,8 @@ impl IntoDiagnostics<FileId> for ParseError {
                 .with_notes(vec![
                     "Type variables may be used either as types, polymorphic record tails, \
                     or polymorphic enum tails.".into(),
-                    "Using the same variable as more than one of these is not permitted.".into(),
+                    "Using the same type variable as more than one category at the same time \
+                    is forbidden.".into(),
                 ]),
             ParseError::TypedFieldWithoutDefinition { field_span, annot_span } => {
                 Diagnostic::error()
@@ -1640,7 +1640,7 @@ impl IntoDiagnostics<FileId> for ParseError {
                     .with_notes(vec![
                         "Field paths don't support string interpolation when querying \
                         metadata.".into(),
-                        "Only identifiers and simple string literals are allowed".into(),
+                        "Only identifiers and simple string literals are allowed.".into(),
                     ])
             }
         };
@@ -1663,11 +1663,11 @@ impl IntoDiagnostics<FileId> for TypecheckError {
         }
 
         fn mk_expected_msg<T: std::fmt::Display>(expected: &T) -> String {
-            format!("The type of the expression was expected to be {expected}")
+            format!("Expected an expression of type `{expected}`")
         }
 
-        fn mk_actual_msg<T: std::fmt::Display>(actual: &T) -> String {
-            format!("The type of the expression was inferred to be {actual}")
+        fn mk_inferred_msg<T: std::fmt::Display>(inferred: &T) -> String {
+            format!("Found an expression of type `{inferred}`")
         }
 
         match self {
@@ -1686,7 +1686,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     ),
                     format!(
                         "{}, which does not contain the field `{ident}`",
-                        mk_actual_msg(&actual)
+                        mk_inferred_msg(&actual)
                     ),
                 ])],
             TypecheckError::MissingDynTail(expd, actual, span_opt) => vec![Diagnostic::error()
@@ -1699,7 +1699,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     ),
                     format!(
                         "{}, which does not contain the tail `; Dyn`",
-                        mk_actual_msg(&actual)
+                        mk_inferred_msg(&actual)
                     ),
                 ])],
             TypecheckError::ExtraRow(ident, expd, actual, span_opt) => vec![Diagnostic::error()
@@ -1712,7 +1712,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     ),
                     format!(
                         "{}, which contains the extra field `{ident}`",
-                        mk_actual_msg(&actual)
+                        mk_inferred_msg(&actual)
                     ),
                 ])],
             TypecheckError::ExtraDynTail(expd, actual, span_opt) => vec![Diagnostic::error()
@@ -1725,7 +1725,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     ),
                     format!(
                         "{}, which contains the extra tail `; Dyn`",
-                        mk_actual_msg(&actual)
+                        mk_inferred_msg(&actual)
                     ),
                 ])],
             TypecheckError::UnboundTypeVariable(ident) => vec![Diagnostic::error()
@@ -1758,7 +1758,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         format!("{}{}", mk_expected_msg(&expd), addendum(&expd),),
-                        format!("{}{}", mk_actual_msg(&actual), addendum(&actual),),
+                        format!("{}{}", mk_inferred_msg(&actual), addendum(&actual),),
                         String::from(last_note),
                     ])]
             }
@@ -1784,28 +1784,29 @@ impl IntoDiagnostics<FileId> for TypecheckError {
 
                 //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
                 //than doing this match.
-                let row_msg = |word, field, ty| {
-                    format!("The type of the expression was {word} to have the row `{field}: {ty}`")
+                let mk_expected_row_msg = |field, ty| {
+                    format!("Expected an expression of a record type with the row `{field}: {ty}`")
                 };
-                let default_msg =
-                    |word, ty| format!("The type of the expression was {word} to be `{ty}`");
+                let mk_inferred_row_msg = |field, ty| {
+                    format!("Found an expression of a record type with the row `{field}: {ty}`")
+                };
 
                 let note1 = if let TypeF::Record(rrows) = &expd.types {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => row_msg("expected", &field, ty),
-                        None => default_msg("expected", &expd),
+                        Some(ty) => mk_expected_row_msg(&field, ty),
+                        None => mk_expected_msg(&expd),
                     }
                 } else {
-                    default_msg("expected", &expd)
+                    mk_expected_msg(&expd)
                 };
 
                 let note2 = if let TypeF::Record(rrows) = &actual.types {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => row_msg("inferred", &field, ty),
-                        None => default_msg("inferred", &expd),
+                        Some(ty) => mk_inferred_row_msg(&field, ty),
+                        None => mk_inferred_msg(&actual),
                     }
                 } else {
-                    default_msg("inferred", &expd)
+                    mk_inferred_msg(&actual)
                 };
 
                 let mut diags = vec![Diagnostic::error()
@@ -1814,15 +1815,15 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .with_notes(vec![
                         note1,
                         note2,
-                        format!("Could not match the two declaration of `{field}`"),
+                        format!("Could not match the two declarations of `{field}`"),
                     ])];
 
                 // We generate a diagnostic for the underlying error, but append a prefix to the
-                // error message to make it clear that this is not a separated error but a more
+                // error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
                 diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter().map(
                     |mut diag| {
-                        diag.message = format!("While typing field `{}`: {}", field, diag.message);
+                        diag.message = format!("while typing field `{}`: {}", field, diag.message);
                         diag
                     },
                 ));
@@ -1834,9 +1835,9 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         .with_message("multiple rows declaration")
                         .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
-                            format!("The type of the expression was inferred to have the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
+                            format!("Found an expression of a record type with the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
                             format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
-                            String::from("A type cannot have two conflicting declaration for the same row"),
+                            String::from("A type cannot have two conflicting declarations for the same row"),
                         ])]
             }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
@@ -1858,8 +1859,8 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .with_message("function types mismatch")
                     .with_labels(labels)
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{expd}`"),
-                        format!("The type of the expression was inferred to be `{actual}`"),
+                        mk_expected_msg(&expd),
+                        mk_inferred_msg(&actual),
                         String::from("Could not match the two function types"),
                     ])];
 
@@ -1885,20 +1886,19 @@ impl IntoDiagnostics<FileId> for TypecheckError {
             }
             TypecheckError::IncomparableFlatTypes(expd, actual, span_opt) => {
                 vec![Diagnostic::error()
-                    .with_message("can't compare contract types")
+                    .with_message("internal error: can't compare unconverted flat types")
                     .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
-                        format!("The type of the expression was expected to be `{}`", expd.as_ref().shallow_repr()),
-                        format!("The type of the expression was inferred to be `{}`", actual.as_ref().shallow_repr()),
-                        String::from("Nickel can't compare contracts during typechecking"),
-                    ]),
-                    Diagnostic::note()
-                    .with_notes(vec![
-                        String::from("Due to a temporary limitation, contracts don't mix well with static types (see https://github.com/tweag/nickel/issues/724). This error may happen when using a contract as a type annotation or when calling to a function whose type contain contracts."),
-                        String::from("As a temporary fix, please annotate the offending expression with its expected type using the pipe operator `|`. This disables static typing for the given expression."),
-                        String::from("For example: if `foo` has type `MyContract -> Number`, rewrite `foo value + 1` as `(foo value | Number) + 1`."),
-                    ])
-                ]
+                        format!(
+                            "{} (contract)",
+                            mk_expected_msg(&expd.as_ref().shallow_repr()),
+                        ),
+                        format!(
+                            "{} (contract)",
+                            mk_inferred_msg(&actual.as_ref().shallow_repr()),
+                        ),
+                        String::from(INTERNAL_ERROR_MSG),
+                    ])]
             }
         }
     }
@@ -1949,26 +1949,38 @@ impl IntoDiagnostics<FileId> for ExportError {
         match self {
             ExportError::NotAString(rt) => vec![Diagnostic::error()
                 .with_message(format!(
-                    "raw export only supports `String`, got {}",
+                    "raw export expects a String value, but got {}",
                     rt.as_ref()
                         .type_of()
                         .unwrap_or_else(|| String::from("<unevaluated>"))
                 ))
                 .with_labels(vec![primary_term(&rt, files)])],
             ExportError::UnsupportedNull(format, rt) => vec![Diagnostic::error()
-                .with_message(format!("{format} doesn't support null values"))
+                .with_message(format!("{format} format doesn't support null values"))
                 .with_labels(vec![primary_term(&rt, files)])],
             ExportError::NonSerializable(rt) => vec![Diagnostic::error()
                 .with_message("non serializable term")
-                .with_labels(vec![primary_term(&rt, files)])],
+                .with_labels(vec![primary_term(&rt, files)])
+                .with_notes(vec![
+                    "Nickel only support serlializing to and from strings, booleans, numbers, \
+                    enum tags, `null` (depending on the format), as well as records and arrays \
+                    of serializable values."
+                        .into(),
+                    "Functions and special values (such as contract labels) aren't \
+                    serializable."
+                        .into(),
+                    "If you want serialization to ignore a specific value, please use the \
+                    `not_exported` metadata."
+                        .into(),
+                ])],
             ExportError::NoDocumentation(rt) => vec![Diagnostic::error()
                 .with_message("no documentation found")
                 .with_labels(vec![primary_term(&rt, files)])
                 .with_notes(vec![
-                    "documentation can only be collected from records".to_owned()
+                    "documentation can only be collected from a record.".to_owned()
                 ])],
             ExportError::Other(msg) => vec![Diagnostic::error()
-                .with_message("error during serialization")
+                .with_message("serialization failed")
                 .with_notes(vec![msg])],
         }
     }
