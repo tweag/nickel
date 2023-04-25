@@ -105,9 +105,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Types(mut ty) => {
                 ty.fix_type_vars(pos.unwrap())?;
                 ty.contract().map_err(|UnboundTypeVariableError(id)| {
-                    // We unwrap the position of the identifier, which must be set at this stage of parsing
-                    let pos = id.pos;
-                    ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
+                    ParseError::UnboundTypeVariables(vec![id])
                 })?
             }
             UniTermNode::Term(rt) => rt,
@@ -462,9 +460,8 @@ impl TryFrom<UniRecord> for RichTerm {
             };
 
             ty.fix_type_vars(pos.unwrap())?;
-            ty.contract().map_err(|UnboundTypeVariableError(id)| {
-                ParseError::UnboundTypeVariables(vec![id], pos.unwrap())
-            })
+            ty.contract()
+                .map_err(|UnboundTypeVariableError(id)| ParseError::UnboundTypeVariables(vec![id]))
         } else {
             ur.check_typed_field_without_def()?;
 

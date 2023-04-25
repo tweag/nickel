@@ -8,6 +8,6 @@ error: no documentation found
 1 │ fun x => x
   │ ^^^^^^^^^^
   │
-  = documentation can only be collected from records
+  = documentation can only be collected from a record.
 
 
