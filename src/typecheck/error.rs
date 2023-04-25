@@ -189,9 +189,7 @@ impl UnifError {
                 reporting::to_type(state.table, state.names, names, right),
                 pos_opt,
             ),
-            UnifError::UnboundTypeVariable(ident) => {
-                TypecheckError::UnboundTypeVariable(ident, pos_opt)
-            }
+            UnifError::UnboundTypeVariable(ident) => TypecheckError::UnboundTypeVariable(ident),
             err @ UnifError::CodomainMismatch(_, _, _)
             | err @ UnifError::DomainMismatch(_, _, _) => {
                 let (expd, actual, path, err_final) = err.into_type_path().unwrap();

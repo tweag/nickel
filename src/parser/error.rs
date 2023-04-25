@@ -17,7 +17,7 @@ pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),
     /// Unbound type variable(s)
-    UnboundTypeVariables(Vec<Ident>, RawSpan),
+    UnboundTypeVariables(Vec<Ident>),
     /// Illegal record literal in the uniterm syntax. In practice, this is a record with a
     /// polymorphic tail that contains a construct that wasn't permitted inside a record type in
     /// the original syntax. Typically, a field assignment:

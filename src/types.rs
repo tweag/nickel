@@ -643,15 +643,13 @@ impl From<UnboundTypeVariableError> for EvalError {
 
 impl From<UnboundTypeVariableError> for TypecheckError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        let pos = err.0.pos;
-        TypecheckError::UnboundTypeVariable(err.0, pos)
+        TypecheckError::UnboundTypeVariable(err.0)
     }
 }
 
 impl From<UnboundTypeVariableError> for ParseError {
     fn from(err: UnboundTypeVariableError) -> Self {
-        let pos = err.0.pos;
-        ParseError::UnboundTypeVariables(vec![err.0], pos.unwrap())
+        ParseError::UnboundTypeVariables(vec![err.0])
     }
 }
 
