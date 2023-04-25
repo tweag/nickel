@@ -8,13 +8,13 @@ error: incompatible rows declaration
 2 │   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
   │             ^^^^^^^^^^^^^^ this expression
   │
-  = The type of the expression was expected to have the row `a: String`
-  = The type of the expression was inferred to have the row `a: Number`
-  = Could not match the two declaration of `a`
+  = Expected an expression of a record type with the row `a: String`
+  = Found an expression of a record type with the row `a: Number`
+  = Could not match the two declarations of `a`
 
-error: While typing field `a`: incompatible types
- = The type of the expression was expected to be `String`
- = The type of the expression was inferred to be `Number`
+error: while typing field `a`: incompatible types
+ = Expected an expression of type `String`
+ = Found an expression of type `Number`
  = These types are not compatible
 
 

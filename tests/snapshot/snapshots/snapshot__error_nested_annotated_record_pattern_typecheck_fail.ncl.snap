@@ -8,8 +8,8 @@ error: incompatible types
 2 │   let { x = { a : Number }} = { x = { a = "" }} in
   │                                           ^^ this expression
   │
-  = The type of the expression was expected to be `Number`
-  = The type of the expression was inferred to be `String`
+  = Expected an expression of type `Number`
+  = Found an expression of type `String`
   = These types are not compatible
 
 
