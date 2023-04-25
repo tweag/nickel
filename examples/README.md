@@ -36,7 +36,7 @@ data!
 
     ```console
     $ nickel -f record-contract.ncl query kind
-      • contract: [|`ReplicationController, `ReplicaSet, `Pod|]
+      • contract: [|'ReplicationController, 'ReplicaSet, 'Pod|]
       • documentation: The kind of the element being configured.
     ```
 
@@ -76,7 +76,7 @@ nickel>
     ```text
     nickel>let config = import "record-contract.ncl"
     nickel>:query config.kind
-    • contract: [| `ReplicationController, `ReplicaSet, `Pod |]
+    • contract: [| 'ReplicationController, 'ReplicaSet, 'Pod |]
     • documentation: The kind of the element being configured.
 
     nickel>

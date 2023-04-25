@@ -423,8 +423,8 @@ impl<ERows> EnumRowsF<ERows> {
     /// If we put aside the state and the error (see [EnumRowsF::map), this function makes
     /// `EnumRowsF` a functor. As hinted by the type signature, this function just maps on
     /// "one-level" of recursion, so to speak. Take the instantiated version `EnumRows`, and
-    /// enum rows of the form ``[| `foo, `bar, `baz |]``. Then, calling `try_map_state(f_erows,
-    /// state)` on these rows will map `f_erows` onto ``[| `bar, `baz |]``.
+    /// enum rows of the form ``[| 'foo, 'bar, 'baz |]``. Then, calling `try_map_state(f_erows,
+    /// state)` on these rows will map `f_erows` onto ``[| 'bar, 'baz |]``.
     ///
     /// Note that `f_erows` is just mapped once. Map isn't a recursive operation. It's however a
     /// building block to express recursive operations: as an example, see [RecordRows::traverse].
@@ -766,15 +766,15 @@ impl EnumRows {
         // Otherwise, we build a match with all the tags as cases, which just returns the
         // original argument, and a default case that blames.
         //
-        // For example, for an enum type [| `foo, `bar, `baz |], the `case` function looks
+        // For example, for an enum type [| 'foo, 'bar, 'baz |], the `case` function looks
         // like:
         //
         // ```
         // fun l x =>
         //   match {
-        //     `foo => x,
-        //     `bar => x,
-        //     `baz => x,
+        //     'foo => x,
+        //     'bar => x,
+        //     'baz => x,
         //     _ => $enum_fail l
         //   } x
         // ```

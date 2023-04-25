@@ -219,7 +219,7 @@ The following type constructors are available:
   std.record.map (fun char count => count + 1) occurrences : {_ : Number}
   ```
 
-- **Enum**: ``[| `tag1, .., `tagn |]``: an enumeration comprised of alternatives
+- **Enum**: ``[| 'tag1, .., 'tagn |]``: an enumeration comprised of alternatives
   `tag1`, .., `tagn`. An enumeration literal is prefixed with a backtick and
   serialized as a string. It is useful to encode finite alternatives. The
   advantage over strings is that the typechecker handles them more finely: it is
@@ -228,11 +228,11 @@ The following type constructors are available:
   Example:
 
   ```nickel
-  let protocol : [| `http, `ftp, `sftp |] = `http in
+  let protocol : [| 'http, 'ftp, 'sftp |] = 'http in
   (protocol |> match {
-    `http => 1,
-    `ftp => 2,
-    `sftp => 3
+    'http => 1,
+    'ftp => 2,
+    'sftp => 3
   }) : Number
   ```
 
@@ -430,9 +430,9 @@ tail that can be substituted for something else. For example:
 
 ```nickel
 {
-  port_of : forall a. [| `http, `ftp; a |] -> Number = match {
-      `http => 80,
-      `ftp => 21,
+  port_of : forall a. [| 'http, 'ftp; a |] -> Number = match {
+      'http => 80,
+      'ftp => 21,
       _ => 8000,
     }
 }

@@ -1830,7 +1830,7 @@ pub mod make {
     /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the
     /// body of each case. Cases are specified as tuple, and the default case (optional) is separated by a `;`:
     /// `mk_switch!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
-    /// ``switch { `Json => json_case, `Yaml => yaml_case, _ => def} format``.
+    /// ``match { 'Json => json_case, 'Yaml => yaml_case, _ => def} format``.
     #[macro_export]
     macro_rules! mk_match {
         ( $( ($id:expr, $body:expr) ),* ; $default:expr ) => {

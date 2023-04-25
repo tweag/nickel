@@ -646,7 +646,7 @@ pub(super) trait FixTypeVars {
     /// forall a. Num -> {foo: Str ; a} -> {bar: Str ; a}
     /// # occurs both in record rows and enum rows position
     /// # this is inconsistent and will raise a parse error
-    /// forall a. [| `foo, `bar; a |] -> {foo : Str, bar: Str; a}
+    /// forall a. [| 'foo, 'bar; a |] -> {foo : Str, bar: Str; a}
     /// ```
     fn fix_type_vars(&mut self, span: RawSpan) -> Result<(), ParseError> {
         self.fix_type_vars_env(BoundVarEnv::new(), span)
