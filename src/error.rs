@@ -200,13 +200,6 @@ pub enum TypecheckError {
         TermPos,
     ),
     /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
-    RowKindMismatch(
-        Ident,
-        /* the expected type */ Option<Types>,
-        /* the actual type */ Option<Types>,
-        TermPos,
-    ),
-    /// Two incompatible types have been deduced for the same identifier in a row type.
     RowMismatch(
         Ident,
         /* the expected row type (whole) */ Types,
@@ -1767,22 +1760,6 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         format!("{}{}", mk_expected_msg(&expd), addendum(&expd),),
                         format!("{}{}", mk_actual_msg(&actual), addendum(&actual),),
                         String::from(last_note),
-                    ])]
-            }
-            TypecheckError::RowKindMismatch(ident, expd, actual, span_opt) => {
-                let (expd_str, actual_str) = match (expd, actual) {
-                    (Some(_), None) => ("an enum type", "a record type"),
-                    (None, Some(_)) => ("a record type", "an enum type"),
-                    _ => panic!("error::to_diagnostic()::RowKindMismatch: unexpected configuration for `expd` and `actual`"),
-                };
-
-                vec![Diagnostic::error()
-                    .with_message("incompatible row kinds")
-                    .with_labels(mk_expr_label(&span_opt))
-                    .with_notes(vec![
-                        format!("The row type of `{ident}` was expected to be `{expd_str}`"),
-                        format!("The row type of `{ident}` was inferred to be `{actual_str}`"),
-                        String::from("Enum row types and record row types are not compatible"),
                     ])]
             }
             TypecheckError::RowMismatch(ident, expd, actual, mut err, span_opt) => {

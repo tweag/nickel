@@ -18,8 +18,6 @@ pub enum RowUnifError {
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, Box<UnifError>),
-    /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
     /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(Ident, Option<UnifType>),
     /// Tried to unify a type constant with another different type.
@@ -46,9 +44,6 @@ impl RowUnifError {
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
             RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
-            RowUnifError::RowKindMismatch(id, uty1, uty2) => {
-                UnifError::RowKindMismatch(id, uty1, uty2)
-            }
             RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
             RowUnifError::UnsatConstr(id, uty) => UnifError::RowConflict(id, uty, left, right),
             RowUnifError::WithConst(c, uty) => UnifError::WithConst(c, uty),
@@ -65,8 +60,6 @@ pub enum UnifError {
     TypeMismatch(UnifType, UnifType),
     /// There are two incompatible definitions for the same row.
     RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
-    /// Tried to unify an enum row and a record row.
-    RowKindMismatch(Ident, Option<UnifType>, Option<UnifType>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
@@ -136,12 +129,6 @@ impl UnifError {
                 reporting::to_type(state.table, state.names, names, uty1),
                 reporting::to_type(state.table, state.names, names, uty2),
                 Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
-                pos_opt,
-            ),
-            UnifError::RowKindMismatch(id, ty1, ty2) => TypecheckError::RowKindMismatch(
-                id,
-                ty1.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
-                ty2.map(|tw| reporting::to_type(state.table, state.names, names, tw)),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
