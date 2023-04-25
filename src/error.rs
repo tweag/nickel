@@ -1003,7 +1003,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                         "Primitive values (Number, String, and Bool) or arrays can be merged \
                         only if they are equal."
                             .into(),
-                        "Functions can never be merged together.".into(),
+                        "Functions can never be merged.".into(),
                     ])]
             }
             EvalError::UnboundIdentifier(ident, span_opt) => vec![Diagnostic::error()
@@ -1737,7 +1737,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 )
                 .with_message("this type variable is unbound")])
                 .with_notes(vec![format!(
-                    "Did you forget to put a `forall {ident}.` somewhere in the enclosing type ?"
+                    "Did you forget to put a `forall {ident}.` somewhere in the enclosing type?"
                 )])],
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
                 fn addendum(ty: &Types) -> &str {
@@ -1875,7 +1875,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         diags.extend(err.into_diagnostics(files, stdlib_ids).into_iter().map(
                             |mut diag| {
                                 diag.message =
-                                    format!("While matching function types: {}", diag.message);
+                                    format!("while matching function types: {}", diag.message);
                                 diag
                             },
                         ));
@@ -1962,7 +1962,7 @@ impl IntoDiagnostics<FileId> for ExportError {
                 .with_message("non serializable term")
                 .with_labels(vec![primary_term(&rt, files)])
                 .with_notes(vec![
-                    "Nickel only support serlializing to and from strings, booleans, numbers, \
+                    "Nickel only supports serlializing to and from strings, booleans, numbers, \
                     enum tags, `null` (depending on the format), as well as records and arrays \
                     of serializable values."
                         .into(),
