@@ -13,7 +13,7 @@ use crate::{
     eval::operation::RecPriority,
     identifier::Ident,
     label::{Label, MergeKind, MergeLabel},
-    mk_fun,
+    mk_app, mk_fun,
     position::{RawSpan, TermPos},
     term::{
         make as mk_term,
@@ -229,6 +229,13 @@ impl InfixOp {
     pub fn eta_expand(self, pos: TermPos) -> RichTerm {
         let pos = pos.into_inherited();
         match self {
+            InfixOp::Unary(op @ UnaryOp::BoolAnd()) | InfixOp::Unary(op @ UnaryOp::BoolOr()) => {
+                mk_fun!(
+                    "x1",
+                    "x2",
+                    mk_app!(mk_term::op1(op, mk_term::var("x1")), mk_term::var("x2")).with_pos(pos)
+                )
+            }
             InfixOp::Unary(op) => mk_fun!("x", mk_term::op1(op, mk_term::var("x")).with_pos(pos)),
             InfixOp::Binary(op) => mk_fun!(
                 "x1",
