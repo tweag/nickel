@@ -229,6 +229,9 @@ impl InfixOp {
     pub fn eta_expand(self, pos: TermPos) -> RichTerm {
         let pos = pos.into_inherited();
         match self {
+            // We treat `UnaryOp::BoolAnd` and `UnaryOp::BoolOr` separately.
+            // They should morally be binary operators, but we represent them as unary
+            // operators internally so that their second argument is evaluated lazily.
             InfixOp::Unary(op @ UnaryOp::BoolAnd()) | InfixOp::Unary(op @ UnaryOp::BoolOr()) => {
                 mk_fun!(
                     "x1",
