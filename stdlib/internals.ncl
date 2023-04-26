@@ -5,22 +5,22 @@
   # Contract implementations
   "$dyn" = fun _label value => value,
 
-  "$num" = fun label value => if %typeof% value == `Number then value else %blame% label,
+  "$num" = fun label value => if %typeof% value == 'Number then value else %blame% label,
 
-  "$bool" = fun label value => if %typeof% value == `Bool then value else %blame% label,
+  "$bool" = fun label value => if %typeof% value == 'Bool then value else %blame% label,
 
-  "$string" = fun label value => if %typeof% value == `String then value else %blame% label,
+  "$string" = fun label value => if %typeof% value == 'String then value else %blame% label,
 
   "$fail" = fun label _value => %blame% label,
 
   "$array" = fun element_contract label value =>
-    if %typeof% value == `Array then
+    if %typeof% value == 'Array then
       %array_lazy_assume% (%go_array% label) value element_contract
     else
       %blame% label,
 
   "$func" = fun domain codomain label value =>
-    if %typeof% value == `Function then
+    if %typeof% value == 'Function then
       (fun x => %assume% codomain (%go_codom% label) (value (%assume% domain (%chng_pol% (%go_dom% label)) x)))
     else
       %blame% label,
@@ -39,8 +39,8 @@
 
   "$forall" =
     let flip = match {
-      `Positive => `Negative,
-      `Negative => `Positive,
+      'Positive => 'Negative,
+      'Negative => 'Positive,
     }
     in
     fun sealing_key polarity contract label value =>
@@ -48,7 +48,7 @@
       contract (%insert_type_variable% sealing_key polarity label) value,
 
   "$enums" = fun case label value =>
-    if %typeof% value == `Enum then
+    if %typeof% value == 'Enum then
       %assume% case label value
     else
       %blame% (%label_with_message% "not an enum tag" label),
@@ -57,7 +57,7 @@
     %blame% (%label_with_message% "tag not included in the enum type" label),
 
   "$record" = fun field_contracts tail_contract label value =>
-    if %typeof% value == `Record then
+    if %typeof% value == 'Record then
       # Returns the sub-record of `left` containing only those fields which are not
       # present in `right`. If `left` has a sealed polymorphic tail then it will be
       # preserved.
@@ -106,14 +106,14 @@
 
   # Lazy dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
-    if %typeof% value == `Record then
+    if %typeof% value == 'Record then
       %record_lazy_assume% (%go_dict% label) value (fun _field => contract)
     else
       %blame% (%label_with_message% "not a record" label),
 
   # Eager dictionary contract for `{_ : T}`
   "$dict_type" = fun contract label value =>
-    if %typeof% value == `Record then
+    if %typeof% value == 'Record then
       %record_map%
         value
         (

@@ -284,7 +284,7 @@ A field can be marked as optional using the `optional` annotation:
     command
       | String,
     arg_type
-      | [| `String, `Number |],
+      | [| 'String, 'Number |],
     alias
       | String
       | optional,
@@ -301,7 +301,7 @@ field:
 ```nickel
 {
   command = "exit",
-  arg_type = `String,
+  arg_type = 'String,
   alias = "e",
 } | Command
 ```

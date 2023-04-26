@@ -8,13 +8,13 @@ ncl_bench_group! {
     {
         name = "mantis",
         path = "mantis/run",
-        args = (r#"{namespace = "mantis-staging", job="miner", role=`miner}"#),
+        args = (r#"{namespace = "mantis-staging", job="miner", role='miner}"#),
         eval_mode = EvalMode::DeepSeq,
     }, {
         name = "mantis serialize",
         path = "mantis/run",
         subtest = "serialize",
-        args = (r#"{namespace = "mantis-staging", job="miner", role=`miner}"#),
+        args = (r#"{namespace = "mantis-staging", job="miner", role='miner}"#),
     }
 }
 criterion_main!(benches);

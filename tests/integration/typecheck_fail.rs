@@ -79,32 +79,32 @@ fn simple_forall() {
 
 #[test]
 fn enum_simple() {
-    assert_typecheck_fails!("`foo : [| `bar |]");
-    assert_typecheck_fails!("match { `foo => 3} `bar : Number");
-    assert_typecheck_fails!("match { `foo => 3, `bar => true} `bar : Number");
+    assert_typecheck_fails!("'foo : [| 'bar |]");
+    assert_typecheck_fails!("match { 'foo => 3} 'bar : Number");
+    assert_typecheck_fails!("match { 'foo => 3, 'bar => true} 'bar : Number");
 }
 
 #[test]
 fn enum_complex() {
     assert_typecheck_fails!(
-        "(match {`bla => 1, `ble => 2, `bli => 4}) : [| `bla, `ble |] -> Number"
+        "(match {'bla => 1, 'ble => 2, 'bli => 4}) : [| 'bla, 'ble |] -> Number"
     );
     // TODO typecheck this, I'm not sure how to do it with row variables
     // LATER NOTE: this requires row subtyping, not easy
     assert_typecheck_fails!(
         "(fun x =>
-            (x |> match {`bla => 3, `bli => 2}) +
-            (x |> match {`bla => 6, `blo => 20})) `bla : Number"
+            (x |> match {'bla => 3, 'bli => 2}) +
+            (x |> match {'bla => 6, 'blo => 20})) 'bla : Number"
     );
     assert_typecheck_fails!(
-        "let f : forall r. [| `blo, `ble ; r |] -> Number =
-            match {`blo => 1, `ble => 2, `bli => 3} in
+        "let f : forall r. [| 'blo, 'ble ; r |] -> Number =
+            match {'blo => 1, 'ble => 2, 'bli => 3} in
         f"
     );
     assert_typecheck_fails!(
-        "let f : forall r. (forall p. [| `blo, `ble ; r |] -> [| `bla, `bli ; p |]) =
-            match {`blo => `bla, `ble => `bli, _ => `blo} in
-        f `bli"
+        "let f : forall r. (forall p. [| 'blo, 'ble ; r |] -> [| 'bla, 'bli ; p |]) =
+            match {'blo => 'bla, 'ble => 'bli, _ => 'blo} in
+        f 'bli"
     );
 }
 
@@ -118,12 +118,12 @@ fn static_record_simple() {
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a ; r} -> a) =
             fun r => if r.bla then r.blo else r.ble in
-         (f {bla = true, blo = 1, ble = true, blip = `blip} : Number)"
+         (f {bla = true, blo = 1, ble = true, blip = 'blip} : Number)"
     );
     assert_typecheck_fails!(
         "let f : forall a. (forall r. {bla : Bool, blo : a, ble : a ; r} -> a) =
             fun r => if r.bla then (r.blo + 1) else r.ble in
-         (f {bla = true, blo = 1, ble = 2, blip = `blip} : Number)"
+         (f {bla = true, blo = 1, ble = 2, blip = 'blip} : Number)"
     );
 }
 

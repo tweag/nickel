@@ -14,7 +14,7 @@ in
       Namespace | String,
       Id | Name,
       Name | String,
-      Type | [| `service, `system, `batch |],
+      Type | [| 'service, 'system, 'batch |],
       Priority | std.number.Nat,
       Datacenters | std.array.NonEmpty,
       TaskGroups
@@ -221,9 +221,9 @@ in
 
     Migrate = {
       HealthCheck
-        | [| `checks, `task_states |]
+        | [| 'checks, 'task_states |]
         | default
-        = `checks,
+        = 'checks,
       HealthyDeadline
         | std.number.Nat
         | default
@@ -260,9 +260,9 @@ in
       AutoRevert | Bool | default = false,
       Canary | std.number.Nat | default = 0,
       HealthCheck
-        | [| `checks, `task_states, `manual |]
+        | [| 'checks, 'task_states, 'manual |]
         | default
-        = `checks,
+        = 'checks,
       HealthyDeadline | lib.contracts.Nullable std.number.Nat | default = null,
       MaxParallel | std.number.Nat | default = 1,
       MinHealthyTime | lib.contracts.Nullable std.number.Nat | default = null,
@@ -344,7 +344,7 @@ in
     },
 
     Network = {
-      Mode | [| `host, `bridge |] | default = `host,
+      Mode | [| 'host, 'bridge |] | default = 'host,
       Device | String | default = "",
       CIDR | String | default = "",
       IP | String | default = "",
@@ -355,7 +355,7 @@ in
     },
 
     ServiceCheck = {
-      AddressMode | [| `alloc, `driver, `host |],
+      AddressMode | [| 'alloc, 'driver, 'host |],
       Args | lib.contracts.Nullable (Array String) | default = null,
       CheckRestart | json.CheckRestart,
       Command | String | default = "",
@@ -373,7 +373,7 @@ in
       TaskName | String | default = "",
       Timeout | std.number.Nat,
       TLSSkipVerify | Bool | default = false,
-      Type | [| `http, `tcp, `script, `grpc |],
+      Type | [| 'http, 'tcp, 'script, 'grpc |],
       Body | lib.contracts.Nullable String | default = null,
       # TODO  Header  [string]  [...string]
     },
@@ -387,7 +387,7 @@ in
         },
 
     Lifecycle = {
-      Hook | [| `prestart, `poststart, `poststop |],
+      Hook | [| 'prestart, 'poststart, 'poststop |],
       Sidecar | lib.contracts.Nullable Bool | default = null,
     },
 
@@ -414,7 +414,7 @@ in
         | default
         = false,
       PortLabel | String,
-      AddressMode | [| `alloc, `auto, `driver, `host |],
+      AddressMode | [| 'alloc, 'auto, 'driver, 'host |],
       Checks
         | Array ServiceCheck
         | default
@@ -427,7 +427,7 @@ in
 
     Task = {
       Name | String,
-      Driver | [| `exec, `docker, `nspawn |],
+      Driver | [| 'exec, 'docker, 'nspawn |],
       Config
         | stanza.taskConfig
         | { driver | Driver },
@@ -497,7 +497,7 @@ in
       GetterSource | String,
       # TODO GetterOptions: [string]: string
       # TODO GetterHeaders: [string]: string
-      GetterMode | [| `any, `file, `dir |] | default = `any,
+      GetterMode | [| 'any, 'file, 'dir |] | default = 'any,
       RelativeDest | String,
     },
 
@@ -505,7 +505,7 @@ in
       SourcePath | String | default = "",
       DestPath | String,
       EmbeddedTmpl | String,
-      ChangeMode | [| `restart, `noop, `signal |] | default = `restart,
+      ChangeMode | [| 'restart, 'noop, 'signal |] | default = 'restart,
       ChangeSignal | String | default = "",
       Splay | std.number.Nat | default = 5000000000,
       Perms | lib.contracts.MatchRegexp "^[0-7]{4}$" | default = "0644",
@@ -515,7 +515,7 @@ in
     },
 
     Vault = {
-      ChangeMode | [| `noop, `restart, `signal |] | default = `restart,
+      ChangeMode | [| 'noop, 'restart, 'signal |] | default = 'restart,
       ChangeSignal | String | default = "",
       Env | Bool | default = true,
       Namespace | String | default = "",
@@ -1063,14 +1063,14 @@ in
 
   stanza = {
     job =
-      let type_schema = [| `batch, `service, `system |] in
+      let type_schema = [| 'batch, 'service, 'system |] in
       {
         datacenters | std.array.NonEmpty,
         namespace | String,
         type
           | type_schema
           | default
-          = `service,
+          = 'service,
         affinities
           | Array stanza.affinity
           | default
@@ -1087,7 +1087,7 @@ in
           | {
             _ : stanza.group
             & {
-              type | type_schema | default = `service
+              type | type_schema | default = 'service
             }
           },
         update
@@ -1114,9 +1114,9 @@ in
 
     migrate = {
       health_check
-        | [| `checks, `task_states |]
+        | [| 'checks, 'task_states |]
         | default
-        = `checks,
+        = 'checks,
       healthy_deadline
         | std.number.Nat
         | default
@@ -1256,7 +1256,7 @@ in
         },
 
     group = {
-      type | [| `service, `batch, `system |],
+      type | [| 'service, 'batch, 'system |],
       affinities
         | Array stanza.affinity
         | default
@@ -1292,16 +1292,16 @@ in
         = null,
       reschedule
         | stanza.reschedule
-        & { type | [| `service, `batch, `system |] }
+        & { type | [| 'service, 'batch, 'system |] }
         | default
         = {},
     },
 
     reschedule = {
       type
-        | [| `batch, `service, `system |]
+        | [| 'batch, 'service, 'system |]
         | default
-        = `service,
+        = 'service,
 
       # TODO: convert with ifs or sth
       # if #type == "batch" {
@@ -1324,7 +1324,7 @@ in
     },
 
     network = {
-      mode | [| `host, `bridge |],
+      mode | [| 'host, 'bridge |],
       dns
         | lib.contracts.Nullable
           {
@@ -1370,9 +1370,9 @@ in
         = null,
       port | String,
       address_mode
-        | [| `alloc, `driver, `auto, `host |]
+        | [| 'alloc, 'driver, 'auto, 'host |]
         | default
-        = `auto,
+        = 'auto,
       tags
         | Array String
         | default
@@ -1387,10 +1387,10 @@ in
 
     check = {
       address_mode
-        | [| `alloc, `driver, `host |]
+        | [| 'alloc, 'driver, 'host |]
         | default
-        = `driver,
-      type | [| `http, `tcp, `script, `grpc |],
+        = 'driver,
+      type | [| 'http, 'tcp, 'script, 'grpc |],
       port | String,
       interval | Duration,
       timeout | Duration,
@@ -1486,7 +1486,7 @@ in
     },
 
     lifecycle = {
-      hook | [| `prestart, `poststart, `poststop |],
+      hook | [| 'prestart, 'poststart, 'poststop |],
       sidecar
         | lib.contracts.Nullable Bool
         | default
@@ -1517,9 +1517,9 @@ in
             # destination | Destination,
             headers | { _ : String },
             mode
-              | [| `any, `file, `dir |]
+              | [| 'any, 'file, 'dir |]
               | default
-              = `any,
+              = 'any,
             options | { _ : String },
             source | String,
           }
@@ -1539,7 +1539,7 @@ in
       # meantime, allow config field:
       config | { .. },
 
-      driver | [| `exec, `docker, `nspawn |],
+      driver | [| 'exec, 'docker, 'nspawn |],
 
       env
         | { _ : String }
@@ -1601,9 +1601,9 @@ in
               | default
               = false,
             change_mode
-              | [| `restart, `noop, `signal |]
+              | [| 'restart, 'noop, 'signal |]
               | default
-              = `restart,
+              = 'restart,
             change_signal
               | String
               | default
@@ -1652,7 +1652,7 @@ in
       interval | Duration,
       attempts | std.number.PosNat,
       delay | Duration,
-      mode | [| `delay, `fail |],
+      mode | [| 'delay, 'fail |],
     },
 
     update = {
@@ -1669,9 +1669,9 @@ in
         | default
         = 0,
       health_check
-        | [| `checks, `task_states, `manual |]
+        | [| 'checks, 'task_states, 'manual |]
         | default
-        = `checks,
+        = 'checks,
       healthy_deadline
         | Duration
         | default
@@ -1696,9 +1696,9 @@ in
 
     vault = {
       change_mode
-        | [| `noop, `restart, `signal |]
+        | [| 'noop, 'restart, 'signal |]
         | default
-        = `restart,
+        = 'restart,
       change_signal
         | String
         | default
@@ -1718,7 +1718,7 @@ in
     },
 
     volume = {
-      type | [| `host, `csi |],
+      type | [| 'host, 'csi |],
       source | String,
       read_only
         | Bool

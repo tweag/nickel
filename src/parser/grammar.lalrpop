@@ -624,7 +624,7 @@ StaticString : String = {
     MultilineStaticString,
 }
 
-StringEnumTag = DelimitedStaticString<"`\"", "\"">;
+StringEnumTag = DelimitedStaticString<"'\"", "\"">;
 
 EnumTag: Ident = {
   "raw enum tag" => <>.into(),
@@ -960,7 +960,7 @@ extern {
         "num literal" => Token::Normal(NormalToken::NumLiteral(<Number>)),
 
         "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),
-        "`\"" => Token::Normal(NormalToken::StrEnumTagBegin),
+        "'\"" => Token::Normal(NormalToken::StrEnumTagBegin),
 
         "if" => Token::Normal(NormalToken::If),
         "then" => Token::Normal(NormalToken::Then),

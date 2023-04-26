@@ -283,47 +283,46 @@ The following examples show how symbolic strings are desugared:
 ```text
 > mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
 {
-  tag = `SymbolicString,
-  prefix = `mytag
+  tag = 'SymbolicString,
+  prefix = 'mytag
   fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
 }
 
 > let terraform_computed_field = {
-    tag = `TfComputed,
+    tag = 'TfComputed,
     resource = "foo",
     field = "id",
   }
 > tf-s%"id: %{terraform_computed_field}, port: %{5}"%
 {
-  tag = `SymbolicString
-  prefix = `tf,
-  fragments = [ "id: ", { resource = "foo", field = "id", tag = `TfComputed }, ", port: ", 5 ],
+  tag = 'SymbolicString
+  prefix = 'tf,
+  fragments = [ "id: ", { resource = "foo", field = "id", tag = 'TfComputed }, ", port: ", 5 ],
 }
 ```
 
 #### Enum tags
 
 Enumeration tags are used to express a choice among finitely many alternatives.
-They are formed by writing a backtick `` ` `` followed by any valid identifier
+They are formed by writing a single quote `'` followed by any valid identifier
 or by a quoted string. For example, `std.serialize` takes an export format as a
-first argument, which is an enum tag among `` `Json ``, `` `Toml `` or `` `Yaml
-``:
+first argument, which is an enum tag among `'Json`, `'Toml` or `'Yaml`:
 
 ```nickel
-> std.serialize `Json {foo = 1}
+> std.serialize 'Json {foo = 1}
 "{
    \"foo\": 1
  }"
 
-> std.serialize `Toml {foo = 1}
+> std.serialize 'Toml {foo = 1}
 "foo = 1
 "
 ```
 
-An enum tag `` `foo `` is serialized as the string `"foo"`:
+An enum tag `'foo` is serialized as the string `"foo"`:
 
 ```nickel
-> std.serialize `Json {foo = `bar}
+> std.serialize 'Json {foo = 'bar}
 "{
   \"foo\": \"bar\"
 }"
@@ -674,11 +673,11 @@ Nickel features the following builtin types and type constructors:
 represents any value)
 - Arrays: `Array <type>` is an array whose elements are of type `<type>`.
 - Dictionaries: `{_ : <type>}` is a record whose fields are of type `<type>`.
-- Enums: ``[| `tag1, .., `tagn |]`` is an enumeration comprised of the alternatives
-  `` `tag1 ``, .., `` `tagn``. Tags have the same syntax as identifiers and must
-  be prefixed with a backtick `` ` ``. Like record fields, they can however be
+- Enums: `[| 'tag1, .., 'tagn |]` is an enumeration comprised of the alternatives
+  `'tag1`, .., `'tagn`. Tags have the same syntax as identifiers and must
+  be prefixed with a single quote `'`. Like record fields, they can however be
   enclosed in double quotes if they contain special characters:
-  `` `"tag with space" ``.
+  `'"tag with space"`.
 - Arrows: `<source> -> <target>` is a function taking an argument of type
   `<source>` and returns values of type `<target>`.
 - Foralls: `forall var1 .. varn. <type>` is a polymorphic type quantifying over type
@@ -711,14 +710,14 @@ Here are some examples of more complicated types in Nickel:
 { foo = [ [ 1 ] ] }
 
 > let select
-    : forall a. {left: a, right: a} -> [| `left, `right |] -> a
+    : forall a. {left: a, right: a} -> [| 'left, 'right |] -> a
     = fun {left, right} =>
        match {
-         `left => left,
-         `right => right,
+         'left => left,
+         'right => right,
        }
   in
-  (select {left = true, right = false} `left) : Bool
+  (select {left = true, right = false} 'left) : Bool
 true
 
 > let add_foo : forall a. {_: a} -> a -> {_: a} = fun dict value =>
@@ -905,7 +904,7 @@ record is serialized. This includes the output of the `nickel export` command:
 > value
 { foo = 1, bar = 2 }
 
-> std.serialize `Json value
+> std.serialize 'Json value
 "{
   "foo": 1
 }"

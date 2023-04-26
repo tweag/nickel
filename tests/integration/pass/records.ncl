@@ -29,7 +29,7 @@ let {check, ..} = import "lib/assert.ncl" in
     == 2,
 
   let r = std.record.map
-      (fun y x => if %typeof% x == `Number then x + 1 else 0)
+      (fun y x => if %typeof% x == 'Number then x + 1 else 0)
       {foo = 1, bar = "it's lazy"} in
     (r.foo) + (r.bar) == 2,
 
@@ -41,8 +41,8 @@ let {check, ..} = import "lib/assert.ncl" in
   {a = {b = 1}} & {a = {c = true}}
     == {a = {b = 1, c = true}},
 
-  {a = `A, b = `B} & {a = `A, c = `C}
-    == {a = `A, b = `B, c = `C},
+  {a = 'A, b = 'B} & {a = 'A, c = 'C}
+    == {a = 'A, b = 'B, c = 'C},
 
   # merge_complex
   let rec1 = {

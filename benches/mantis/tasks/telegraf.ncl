@@ -6,11 +6,11 @@ let types = import "../schemas/nomad/types.ncl" in
     | default
     = "{{ env \"NOMAD_JOB_NAME\" }}-{{ env \"NOMAD_ALLOC_INDEX\" }}",
 
-  driver = `exec,
+  driver = 'exec,
 
   vault = {
     policies = ["nomad-cluster"],
-    change_mode = `noop,
+    change_mode = 'noop,
   },
 
   resources = {

@@ -375,7 +375,7 @@ mod tests {
 
         assert_json_eq!("if true then false else true", false);
         assert_json_eq!(r##""Hello, %{"world"}!""##, "Hello, world!");
-        assert_json_eq!("`foo", "foo");
+        assert_json_eq!("'foo", "foo");
     }
 
     #[test]
@@ -383,14 +383,14 @@ mod tests {
         assert_json_eq!("[]", json!([]));
         assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
         assert_json_eq!(
-            r##"[`a, ("b" ++ "c"), "d%{"e"}f", "g"]"##,
+            r##"['a, ("b" ++ "c"), "d%{"e"}f", "g"]"##,
             json!(["a", "bc", "def", "g"])
         );
         assert_json_eq!(
             r#"std.array.fold_right (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
             json!([[1], [2], [3], [4]])
         );
-        assert_json_eq!("[\"a\", 1, false, `foo]", json!(["a", 1, false, "foo"]));
+        assert_json_eq!("[\"a\", 1, false, 'foo]", json!(["a", 1, false, "foo"]));
     }
 
     #[test]
@@ -401,7 +401,7 @@ mod tests {
         );
 
         assert_json_eq!(
-            "{a = {} & {b = {c = if true then `richtig else `falsche}}}",
+            "{a = {} & {b = {c = if true then 'richtig else 'falsch}}}",
             json!({"a": {"b": {"c": "richtig"}}})
         );
 
@@ -419,7 +419,7 @@ mod tests {
         );
 
         assert_json_eq!(
-            "{a = {b | default = {}} & {b.c | default = (if true then `faux else `vrai)}}",
+            "{a = {b | default = {}} & {b.c | default = (if true then 'faux else 'vrai)}}",
             json!({"a": {"b": {"c": "faux"}}})
         );
 

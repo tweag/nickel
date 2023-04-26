@@ -5,8 +5,8 @@ let {check, ..} = import "lib/assert.ncl" in
   0 == 0 + 0 + 0,
   true == (if true then true else false),
   "a" ++ "b" ++ "c" == "%{"a" ++ "b"}" ++ "c",
-  `Less == `Less,
-  `small == `small,
+  'Less == 'Less,
+  'small == 'small,
 
   1 + 1 != 0,
   true != (if true then false else true),
@@ -14,9 +14,9 @@ let {check, ..} = import "lib/assert.ncl" in
   1 != true,
   "1" != 1,
   "true" != true,
-  `Less != `small,
-  `Less != 0,
-  `Greater != false,
+  'Less != 'small,
+  'Less != 0,
+  'Greater != false,
 
   # arrays
   [] == [],

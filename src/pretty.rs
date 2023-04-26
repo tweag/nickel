@@ -569,7 +569,7 @@ where
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator
-                .text("`")
+                .text("'")
                 .append(allocator.text(id.label_quoted())),
             Record(record) => allocator
                 .line()
@@ -601,7 +601,7 @@ where
                     .intersperse(
                         sorted_map(cases).iter().map(|&(id, t)| {
                             allocator
-                                .text("`")
+                                .text("'")
                                 .append(allocator.text(id.label_quoted()))
                                 .append(allocator.space())
                                 .append(allocator.text("=>"))
@@ -721,7 +721,7 @@ where
                 .append(allocator.as_string(id)),
             EnumRowsF::Extend { row, tail } => {
                 let builder = allocator
-                    .text("`")
+                    .text("'")
                     .append(allocator.text(row.label_quoted()));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder

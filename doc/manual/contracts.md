@@ -364,7 +364,7 @@ let Schema = {
   bar | Number,
 }
 nickel> let config | Schema = {bar = 2}
-nickel> std.serialize `Json config
+nickel> std.serialize 'Json config
 "{
   "bar": 2,
   "foo": "foo"
@@ -410,7 +410,7 @@ let Secure = {
   must_be_very_secure | Bool = true,
   data | String,
 }
-nickel> std.serialize `Json ({data = ""} | Secure)
+nickel> std.serialize 'Json ({data = ""} | Secure)
 "{
   "data": "",
   "must_be_very_secure": true

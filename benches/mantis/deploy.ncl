@@ -62,7 +62,7 @@ fun vars =>
     logLevel | default = "INFO",
     loggers = defaultLoggers,
     job = vars.job,
-    role | [| `passive, `miner, `backup |] = vars.role,
+    role | [| 'passive, 'miner, 'backup |] = vars.role,
     reschedule = {},
   }
   in
@@ -79,7 +79,7 @@ fun vars =>
   let miner_ =
     jobDefs.Mantis
     & {
-      role = `miner,
+      role = 'miner,
       mantisRev = revisions.mantisRev
     }
   in

@@ -10,7 +10,7 @@ let Params = {
     | std.number.Nat
     | default
     = 5,
-  role | [| `passive, `miner, `backup |],
+  role | [| 'passive, 'miner, 'backup |],
   datacenters | Dyn,
   job | Dyn,
   namespace | String,
@@ -54,11 +54,11 @@ fun params =>
   & (
     if params.network == "etc" then
       {
-        type = `batch,
+        type = 'batch,
         periodic = {
           prohibit_overlap = true,
           cron = "@daily",
-          time_zone = `UTC,
+          time_zone = 'UTC,
         }
       }
     else
@@ -67,11 +67,11 @@ fun params =>
   & (
     if params.network != "etc" then
       {
-        type = `service,
+        type = 'service,
 
         update = {
           max_parallel = 1,
-          health_check = `checks,
+          health_check = 'checks,
           min_healthy_time = "1m",
           # Give enough time for the DAG generation
           healthy_deadline = "15m",
@@ -90,7 +90,7 @@ fun params =>
       {
         count = params.count,
         network = {
-          mode = `host,
+          mode = 'host,
           port = {
             discovery = {},
             metrics = {},
@@ -147,11 +147,11 @@ fun params =>
         # #baseTags: [namespace, #role, "mantis-${NOMAD_ALLOC_INDEX}"]
       }
       & (
-        if params.role == `passive then
+        if params.role == 'passive then
           {
             #TODO: dependent if
             service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc" = {
-              address_mode = `host,
+              address_mode = 'host,
               port = "rpc",
               tags =
                 [
@@ -175,11 +175,11 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
         service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc" = {
           check.rpc =
             {
-              address_mode = `host,
+              address_mode = 'host,
               interval = "10s",
               port = "rpc",
               timeout = "3s",
-              type = `http,
+              type = 'http,
               path = "/healthcheck",
             }
             & (
@@ -196,11 +196,11 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
         }
       }
       & (
-        if params.role == `miner then
+        if params.role == 'miner then
           {
             # TODO: dependent if
             service."%{params.namespace}-mantis-%{std.string.from_enum params.role}-rpc" = {
-              address_mode = `host,
+              address_mode = 'host,
               port = "rpc",
               tags = ["rpc"] @ baseTags,
             }
@@ -211,13 +211,13 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
       & {
         service = {
           "%{params.namespace}-mantis-%{std.string.from_enum params.role}-prometheus" = {
-            address_mode = `host,
+            address_mode = 'host,
             port = "metrics",
             tags = ["prometheus"] @ baseTags,
           },
 
           "%{params.namespace}-%{std.string.from_enum params.role}-${NOMAD_ALLOC_INDEX}" = {
-            address_mode = `host,
+            address_mode = 'host,
             port = "rpc",
             tags =
               [
@@ -236,7 +236,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
               port = "discovery",
             }
             & (
-              if params.role == `miner then
+              if params.role == 'miner then
                 {
                   tags =
                     [
@@ -253,7 +253,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
                 {}
             )
             & (
-              if params.role == `passive then
+              if params.role == 'passive then
                 {
                   tags = ["discovery"] @ baseTags
                 }
@@ -269,11 +269,11 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
 
           "%{params.namespace}-mantis-%{std.string.from_enum params.role}-server-${NOMAD_ALLOC_INDEX}" =
             {
-              address_mode = `host,
+              address_mode = 'host,
               port = "server",
             }
             & (
-              if params.role == `miner then
+              if params.role == 'miner then
                 {
                   tags =
                     [
@@ -289,7 +289,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
                 {}
             )
             & (
-              if params.role == `passive then
+              if params.role == 'passive then
                 {
                   tags = ["server"] @ baseTags,
                 }
@@ -304,11 +304,11 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
 
               check.server =
                 {
-                  address_mode = `host,
+                  address_mode = 'host,
                   interval = "10s",
                   port = "server",
                   timeout = "3s",
-                  type = `tcp,
+                  type = 'tcp,
                 }
                 & (
                   if params.network != "etc" then
@@ -324,7 +324,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
             },
 
           "%{params.namespace}-mantis-%{std.string.from_enum params.role}-server" = {
-            address_mode = `host,
+            address_mode = 'host,
             port = "server",
             tags = [ "ingress", "server" ] @ baseTags,
             meta = {
@@ -334,7 +334,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
           },
 
           "%{params.namespace}-mantis-%{std.string.from_enum params.role}" = {
-            address_mode = `host,
+            address_mode = 'host,
             port = "server",
             tags = ["server"] @ baseTags,
             meta = {
