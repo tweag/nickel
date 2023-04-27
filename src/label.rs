@@ -298,6 +298,10 @@ pub struct Label {
     /// Signal to a polymorphic contract that it should generate the dual
     /// contract. Part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
     pub dualize: bool,
+    /// The name of the record field to report in blame errors. This is set
+    /// while first transforming a record as part of the pending contract generation.
+    /// Contract applications outside of records will have this field set to `None`.
+    pub field_name: Option<Ident>,
 }
 
 /// Data about type variables that is needed for polymorphic contracts to decide which actions to take.
@@ -488,6 +492,10 @@ impl Label {
             self.diagnostics.push(ContractDiagnostic::new());
         }
     }
+
+    pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
+        Label { field_name, ..self }
+    }
 }
 
 impl Default for Label {
@@ -506,6 +514,7 @@ impl Default for Label {
             path: Default::default(),
             type_environment: Default::default(),
             dualize: false,
+            field_name: None,
         }
     }
 }

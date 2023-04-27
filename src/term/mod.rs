@@ -295,6 +295,14 @@ impl RuntimeContract {
     {
         contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
+
+    /// Modify the label's `field_name` field.
+    pub fn with_field_name(self, ident: Option<Ident>) -> Self {
+        RuntimeContract {
+            label: self.label.with_field_name(ident),
+            ..self
+        }
+    }
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
@@ -428,6 +436,16 @@ impl fmt::Display for MergePriority {
 pub struct LabeledType {
     pub types: Types,
     pub label: Label,
+}
+
+impl LabeledType {
+    /// Modify the label's `field_name` field.
+    pub fn with_field_name(self, ident: Option<Ident>) -> Self {
+        LabeledType {
+            label: self.label.with_field_name(ident),
+            ..self
+        }
+    }
 }
 
 impl Traverse<RichTerm> for LabeledType {
