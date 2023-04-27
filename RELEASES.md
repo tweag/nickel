@@ -6,25 +6,84 @@ This is WIP, registering breaking changes for the next major version.
 Breaking changes
 ----------------
 
-- The `Num` builtin type has been renamed to `Number`
-- The `Str` builtin type has been renamed to `String`
-- The `num` stdlib module has been remaned to `number`
+- Various functions from the stdlib have been renamed for better discoverability,
+    and the stdlib got a lot of new additions. Please refer to the documentation
+    of the stdlib.
+- String functions are now unicode-aware, and operate on the Unicode grapheme
+    cluster abstraction instead of the character abstraction (`string.length`,
+    `string.is_match`, etc.)
+- The `switch` keyword has been replaced by `match`, and can now be used as a
+    standalone function (doesn't need to be applied right away)
+- The `Num` and `Str` builtin types have been renamed to `Number` and `String` by @yannham in https://github.com/tweag/nickel/pull/1164
+- The `num` and `str` stdlib modules have been renamed to `number` and `string`
 - The `builtin.typeof` function now returns `'Number`, `'String`, `'Function`
   instead of respectively `'Num`, `'Str`, and `'Fun`
-- The `builtin.is_num`, `builtin.is_str` and `builtin.to_str` functions hav been
+- The `builtin.is_num`, `builtin.is_str` and `builtin.to_str` functions have been
   renamed to `is_number`, `is_string` and `to_string`
 - The `string.to_num` and `string.from_num` functions have been renamed to
   `to_number` and `from_number`
-- All the stdlib module, `array`, `string`, `record`, etc. have now been put
-    under a `std` namespace. They must be accessed as `std.array`, `std.string`
-    and so on.
+- All the stdlib modules `array`, `string`, `record`, etc. have been put
+    under a `std` namespace. They must now be accessed as `std.array`,
+    `std.string` and so on.
 - RFC005 was implemented, which changes the semantics of contract annotations
     and merging. See [the RFC
     content](https://github.com/tweag/nickel/blob/master/rfcs/005-metadata-rework.md)
     for more details. Most notably, metadata annotation (default values,
     `optional`, documentation, etc.) can only appear next to a record field.
     Contract and type annotations can still appear anywhere. Documentation can
-    still appear on let-binding as well.
+    still appear on let-bindings.
+- Use static dictionary types for `record.fields` and `record.values` by @matthew-healy in https://github.com/tweag/nickel/pull/1024
+- Make type annotations to not propagate through merging by @yannham in https://github.com/tweag/nickel/pull/1271
+- Change to dictionary contracts and introduction of a separate dictionary contract (in addition to dictionary type):
+  - Fix dictionary contract semantics by @vkleen in https://github.com/tweag/nickel/pull/1141
+  - Introduce dictionary contracts by @yannham in https://github.com/tweag/nickel/pull/1272
+- Stdlib `string.Stringingable` -> `string.Stringable` by @vkleen in https://github.com/tweag/nickel/pull/1180
+- Fix the type of `array.elem` by @yannham in https://github.com/tweag/nickel/pull/1223
+- Change the enum tag start delimiter from backtick to single-quote by @vkleen in https://github.com/tweag/nickel/pull/1279
+
+Language features
+-----------------
+
+- Symbolic strings by @matthew-healy in https://github.com/tweag/nickel/pull/994
+- [RFC005] Lazy propagation by @yannham in https://github.com/tweag/nickel/pull/1086
+- Non-exported record fields by @vkleen in https://github.com/tweag/nickel/pull/1132
+- Enrich label custom reporting data by @yannham in https://github.com/tweag/nickel/pull/1152
+- Use type annotations in record patterns during typechecking by @matthew-healy in https://github.com/tweag/nickel/pull/1176
+- Use arbitrary precision rationals as the underlying representation of numbers by @yannham in https://github.com/tweag/nickel/pull/1182
+- Allow equal arrays to be merged in order to make merge idempotent by @yannham in https://github.com/tweag/nickel/pull/1229
+- Use deterministic hashtables, making runtime errors and typechecking error deterministic by @yannham in https://github.com/tweag/nickel/pull/1235
+
+Stdlib
+------
+
+- Add a %trace% primop (and `std.trace` function) by @vkleen in https://github.com/tweag/nickel/pull/1055
+- Add `std.contract.Equal` contract to the stdlib by @yannham in https://github.com/tweag/nickel/pull/1203
+
+Tooling
+-------
+
+- Display meta information when providing completion in https://github.com/tweag/nickel/pull/966
+- LSP completion for import terms by @ebresafegaga in https://github.com/tweag/nickel/pull/993
+- Fix LSP server not giving completion when a non-contract meta-information is present in a declaration by @ebresafegaga in https://github.com/tweag/nickel/pull/991
+- Fix LSP not giving completion when an identifier is prefixed by a delimiting character by @ebresafegaga in https://github.com/tweag/nickel/pull/1043
+- Improve the "goto definition" feature of the LSP by making it work across multiple files by @ebresafegaga in https://github.com/tweag/nickel/pull/1029
+- Add --color option to the CLI by @matthew-healy in https://github.com/tweag/nickel/pull/1033
+- Make the "find references" feature of the LSP work across multiple files by @ebresafegaga in https://github.com/tweag/nickel/pull/1037
+- Add support for LSP completion using the surrounding context by @ebresafegaga (context completion) in https://github.com/tweag/nickel/pull/1057
+- Support completion for field names inside recursive records. by @ebresafegaga in https://github.com/tweag/nickel/pull/1088
+- Improve contract violation error reporting by @ebresafegaga in https://github.com/tweag/nickel/pull/1139
+- Add a JSON documentation export option by @vkleen in https://github.com/tweag/nickel/pull/1209
+- Add support for formatting capabilities to the LSP by @ebresafegaga in https://github.com/tweag/nickel/pull/1216
+
+Fixes
+-----
+
+- Do not panic on type path mismatch by @yannham in https://github.com/tweag/nickel/pull/1028
+- Fix multiline string interpolation when preceded by a `"` character by @matthew-healy in https://github.com/tweag/nickel/pull/1023
+- Improve the performance of `std.array.fold_left` and `std.array.fold_right` by @vkleen in https://github.com/tweag/nickel/pull/1075
+- Correctly type identifiers introduced in destructuring patterns by @matthew-healy in https://github.com/tweag/nickel/pull/1099
+- Always include fields with a value in `record.fields` by @vkleen in https://github.com/tweag/nickel/pull/1225
+- Make partially applied boolean operators work by @vkleen in https://github.com/tweag/nickel/pull/1282
 
 Version 0.3.1 (2022-12-15)
 ==========================
