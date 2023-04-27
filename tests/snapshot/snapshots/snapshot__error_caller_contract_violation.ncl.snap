@@ -2,7 +2,7 @@
 source: tests/snapshot/main.rs
 expression: snapshot
 ---
-error: contract broken by the caller of map
+error: contract broken by the caller of `map`
     ┌─ <stdlib/std.ncl>:128:33
     │
 128 │       : forall a b. (a -> b) -> Array a -> Array b
