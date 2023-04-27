@@ -30,40 +30,35 @@ crates and dependent repositories (such as the website) in a consistent state.
    Commit and push your changes.
 3. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
-4. The documentation will be pushed to `crates.io` after the release. Make sure
-   that the documentation builds correctly:
-    - run `cargo doc --no-deps --document-private-items`
-    - fix every warning you can (e.g. referencing private items may be fine, but
-        unresolved references must be dealt with).
-5. Add the changelog since the last release in RELEASES.md. GitHub is able to
+4. Add the changelog since the last release in RELEASES.md. GitHub is able to
    automatically generate release notes: refer to [this
    guide](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes).
    While the output needs to be reworked, it's a useful starting point. Commit
    and push your changes.
-6. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
+5. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
    `stable` branch usually contains specific fixes, or cherry-picked commits,
    we'll have to force push. We advise to first save the previous state in a
    local branch:
 
    ```console
-   $git checkout stable
-   $git branch stable-local-save
+   git checkout stable
+   git branch stable-local-save
    ```
 
    If anything goes wrong, you can reset `stable` to its previous state:
 
    ```console
-   $git checkout stable
-   $git reset --hard stable-local-save
-   $git push --force-with-lease
+   git checkout stable
+   git reset --hard stable-local-save
+   git push --force-with-lease
    ```
 
    Update the `stable` branch:
 
    ```console
-   $git checkout stable
-   $git reset --hard X.Y.Z-release`
-   $git push --force-with-lease
+   git checkout stable
+   git reset --hard X.Y.Z-release`
+   git push --force-with-lease
    ```
 
 ### Release on crates.io
@@ -89,8 +84,8 @@ crates and dependent repositories (such as the website) in a consistent state.
 1. Build the docker image and copy the output somewhere:
 
    ```console
-   $nix build .#dockerImage
-   $cp ./result nickel-X.Y.Z-docker-image.tar.gz
+   nix build .#dockerImage
+   cp ./result nickel-X.Y.Z-docker-image.tar.gz
    ```
 
 2. Do the [release on
@@ -105,11 +100,11 @@ crates and dependent repositories (such as the website) in a consistent state.
 2. Branch out from `master` and update the Nickel input:
 
    ```console
-   $git checkout -b release/X.Y.Z
-   $nix flake lock --update-input nickel
-   $git add flake.lock
-   $git commit -m "Update to Nickel vX.Y.Z"
-   $git push -u origin @
+   git checkout -b release/X.Y.Z
+   nix flake lock --update-input nickel
+   git add flake.lock
+   git commit -m "Update to Nickel vX.Y.Z"
+   git push -u origin @
    ```
 
    Open a pull request on the nickel-lang repository. Once the CI is green and
