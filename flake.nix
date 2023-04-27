@@ -234,6 +234,20 @@
             doInstallCargoArtifacts = false;
           };
 
+          # Check that documentation builds without warnings or errors
+          checkRustDoc = craneLib.mkCargoDerivation {
+            inherit src cargoArtifacts;
+            inherit (cargoArtifacts) buildInputs;
+
+            pnameSuffix = "-doc";
+
+            buildPhaseCargoCommand = ''
+              RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --workspace --all-features
+            '';
+
+            doInstallCargoArtifacts = false;
+          };
+
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
             inherit src;
@@ -439,6 +453,7 @@
         inherit (mkCraneArtifacts { noRunBench = true; })
           benchmarks
           clippy
+          checkRustDoc
           lsp-nls
           nickel
           rustfmt;
