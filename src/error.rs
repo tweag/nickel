@@ -1149,17 +1149,17 @@ mod blame_error {
             // a positive blame
             assert_eq!(l.polarity, Polarity::Positive);
             match l.field_name {
-                Some(ident) => format!("contract broken by the value of {ident}"),
+                Some(ident) => format!("contract broken by the value of `{ident}`"),
                 None => "contract broken by a value".to_owned(),
             }
         } else if l.polarity == Polarity::Positive {
             match l.field_name {
-                Some(ident) => format!("contract broken by the function {ident}"),
+                Some(ident) => format!("contract broken by the function `{ident}`"),
                 None => "contract broken by a function".to_owned(),
             }
         } else {
             match l.field_name {
-                Some(ident) => format!("contract broken by the caller of {ident}"),
+                Some(ident) => format!("contract broken by the caller of `{ident}`"),
                 None => "contract broken by the caller".to_owned(),
             }
         }
