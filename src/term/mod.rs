@@ -430,6 +430,16 @@ pub struct LabeledType {
     pub label: Label,
 }
 
+impl LabeledType {
+    /// Modify the label's `field_name` field.
+    pub fn with_field_name(self, ident: Option<Ident>) -> Self {
+        LabeledType {
+            label: self.label.with_field_name(ident),
+            ..self
+        }
+    }
+}
+
 impl Traverse<RichTerm> for LabeledType {
     // Note that this function doesn't traverse the label, which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
@@ -504,6 +514,17 @@ impl TypeAnnotation {
             .cloned()
             .map(RuntimeContract::try_from)
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
+        TypeAnnotation {
+            types: self.types.map(|t| t.with_field_name(field_name)),
+            contracts: self
+                .contracts
+                .into_iter()
+                .map(|t| t.with_field_name(field_name))
+                .collect(),
+        }
     }
 }
 

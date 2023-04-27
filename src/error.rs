@@ -1143,16 +1143,25 @@ mod blame_error {
 
     /// Returns a title to be used by blame errors based on the `path` and `polarity`
     /// of the label.
-    pub fn title(l: &label::Label) -> &str {
+    pub fn title(l: &label::Label) -> String {
         if ty_path::has_no_arrow(&l.path) {
             // An empty path or a path that contains only fields necessarily corresponds to
             // a positive blame
             assert_eq!(l.polarity, Polarity::Positive);
-            "contract broken by a value"
+            match l.field_name {
+                Some(ident) => format!("contract broken by the value of `{ident}`"),
+                None => "contract broken by a value".to_owned(),
+            }
         } else if l.polarity == Polarity::Positive {
-            "contract broken by a function"
+            match l.field_name {
+                Some(ident) => format!("contract broken by the function `{ident}`"),
+                None => "contract broken by a function".to_owned(),
+            }
         } else {
-            "contract broken by the caller"
+            match l.field_name {
+                Some(ident) => format!("contract broken by the caller of `{ident}`"),
+                None => "contract broken by the caller".to_owned(),
+            }
         }
     }
 
