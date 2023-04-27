@@ -39,7 +39,7 @@ use std::{cell::RefCell, convert::TryFrom};
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
 /// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety: see
-/// the in-code documentation of the private `FixTypeVars::fix_type_vars`, but let's ignore it
+/// the in-code documentation of the private symbol `FixTypeVars::fix_type_vars`, but let's ignore it
 /// here). If, on the other hand, we enter the rule for an infix operator as in `a + 1`, `a` will
 /// be converted to a `Term::Var` and the resulting uniterm will be
 /// `UniTermNode::Term(Term::Op2(..))`.
