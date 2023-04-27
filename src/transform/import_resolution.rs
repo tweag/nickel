@@ -69,7 +69,7 @@ pub mod strict {
     }
 
     /// Resolve the import if the term is an unresolved import, or return the term unchanged. As
-    /// [`super::share_normal_form::transform_one`], this function is not recursive.
+    /// [`crate::transform::share_normal_form::transform_one`], this function is not recursive.
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,

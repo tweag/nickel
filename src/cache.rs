@@ -852,7 +852,7 @@ impl Cache {
     }
 
     /// Get a mutable reference to the underlying files. Required by
-    /// [crate::error::ToDiagnostic::to_diagnostic].
+    /// [crate::error::IntoDiagnostics::into_diagnostics].
     pub fn files_mut(&mut self) -> &mut Files<String> {
         &mut self.files
     }

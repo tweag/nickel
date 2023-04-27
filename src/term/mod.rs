@@ -494,7 +494,7 @@ impl TypeAnnotation {
     }
 
     /// Build a list of pending contracts from this annotation, to be stored alongside the metadata
-    /// of a field. Similar to [all_contracts], but including the contracts from `self.contracts`
+    /// of a field. Similar to [Self::all_contracts], but including the contracts from `self.contracts`
     /// only, while `types` is excluded. Contracts derived from type annotations aren't treated the
     /// same since they don't propagate through merging.
     pub fn pending_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
@@ -1351,8 +1351,8 @@ pub enum BinaryOp {
     /// Append a note to the current diagnostic of a label.
     LabelAppendNote(),
 
-    /// Look up the [`TypeVarData`] associated with a [`SealingKey`] in the
-    /// type environment of a [label](Term::Lbl)
+    /// Look up the [`crate::label::TypeVarData`] associated with a [`SealingKey`] in the type
+    /// environment of a [label](Term::Lbl)
     LookupTypeVar(),
 }
 
@@ -1412,13 +1412,13 @@ pub enum NAryOp {
     ///     something goes wrong while unsealing,
     ///   - the [record](Term::Record) whose tail we wish to unseal.
     RecordUnsealTail(),
-    /// Insert type variable data into the [`type_environment`] of a [`Label`]
+    /// Insert type variable data into the `type_environment` of a [`crate::label::Label`]
     ///
     /// Takes four arguments:
     ///   - the [sealing key](Term::SealingKey) assigned to the type variable
-    ///   - the [introduction polarity](label::Polarity) of the type variable
-    ///   - the [kind](types::VarKind) of the type variable
-    ///   - a [label](Term::Label) on which to operate
+    ///   - the [introduction polarity](crate::label::Polarity) of the type variable
+    ///   - the [kind](crate::types::VarKind) of the type variable
+    ///   - a [label](Term::Lbl) on which to operate
     InsertTypeVar(),
     /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
     /// hood, as long as the array isn't modified later, this operation is constant in time and

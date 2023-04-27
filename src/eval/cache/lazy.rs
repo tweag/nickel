@@ -88,7 +88,7 @@ pub struct ThunkData {
 /// it reveals more static information about the record (such as the list of fields) without having
 /// to provide any argument first. Then, splitting `self` and removing the function altogether when
 /// the field doesn't depend on other fields is more precise with respect to dependency tracking
-/// (this has an important positive memory impact, see [crate::term::FieldDeps]).
+/// (this has an important positive memory impact, see [crate::term::record::FieldDeps]).
 ///
 /// In practice, Nickel uses the last representation. Fields that don't have any free variable
 /// intersecting with the name of the other fields are allocated as normal thunks that will only be

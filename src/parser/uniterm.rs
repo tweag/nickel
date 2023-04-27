@@ -38,10 +38,11 @@ use std::{cell::RefCell, convert::TryFrom};
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety:
-/// see [`FixTypeVars::fix_type_vars`], but let's ignore it here). If, on the other hand, we enter the rule for
-/// an infix operator as in `a + 1`, `a` will be converted to a `Term::Var` and the resulting
-/// uniterm will be `UniTermNode::Term(Term::Op2(..))`.
+/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety: see
+/// the in-code documentation of the private symbol `FixTypeVars::fix_type_vars`, but let's ignore it
+/// here). If, on the other hand, we enter the rule for an infix operator as in `a + 1`, `a` will
+/// be converted to a `Term::Var` and the resulting uniterm will be
+/// `UniTermNode::Term(Term::Op2(..))`.
 pub enum UniTermNode {
     /// A variable. Can refer both to a term variable or a type variable.
     Var(Ident),
@@ -439,8 +440,8 @@ impl TryFrom<UniRecord> for RichTerm {
     /// isn't syntactically a record type either. Elaborate field paths `foo.bar = value` to the
     /// expanded form `{foo = {bar = value}}`.
     ///
-    /// We also fix the type variables of the type appearing inside annotations (see
-    /// [`FixTypeVars::fix_type_vars`]).
+    /// We also fix the type variables of the type appearing inside annotations (see in-code
+    /// documentation of the private symbol `FixTypeVars::fix_type_vars`).
     fn try_from(ur: UniRecord) -> Result<Self, ParseError> {
         let pos = ur.pos;
 
@@ -781,8 +782,8 @@ impl FixTypeVars for EnumRows {
     }
 }
 
-/// Fix the type variables of types appearing as annotations of record fields. See
-/// [`Types::fix_type_vars`].
+/// Fix the type variables of types appearing as annotations of record fields. See the in-code
+/// documentation of the private symbol `Types::fix_type_vars`.
 pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<(), ParseError> {
     if let Some(LabeledType { ref mut types, .. }) = metadata.annotation.types {
         types.fix_type_vars(span)?;
