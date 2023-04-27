@@ -160,10 +160,8 @@ impl Default for Attributes {
     }
 }
 
-/// Print the result of a metadata query, which is a "weakly" evaluated term (see
-/// [`crate::eval::VirtualMachine::eval_meta`] and [`crate::program::query`]).
-///
-/// Wrapper around `write_query_result_` that selects an adapted query printer at compile time.
+/// Render the result of a metadata query, automatically selecting an adapted query printer at
+/// compile time.
 pub fn write_query_result(
     out: &mut impl Write,
     field: &Field,
@@ -175,11 +173,11 @@ pub fn write_query_result(
     #[cfg(not(feature = "markdown"))]
     let renderer = SimpleRenderer {};
 
-    write_query_result_(out, field, selected_attrs, &renderer)
+    render_query_result(out, field, selected_attrs, &renderer)
 }
 
-/// Print the result of a metadata query.
-fn write_query_result_<R: QueryPrinter>(
+/// Render the result of a metadata query.
+fn render_query_result<R: QueryPrinter>(
     out: &mut impl Write,
     field: &Field,
     selected_attrs: Attributes,

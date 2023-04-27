@@ -15,7 +15,7 @@
 //!   mode is implemented by [`type_check`] and variants.
 //! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
-//!   is implemented by the [`walk`] function.
+//!   is implemented by the `walk` function.
 //!
 //! The algorithm starts in walk mode. A typed block (an expression annotated with a type) switches
 //! to enforce mode, and is switched back to walk mode when entering an expression annotated with a

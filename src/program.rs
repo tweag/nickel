@@ -105,8 +105,8 @@ impl QueryPath {
         path_as_idents.map(QueryPath)
     }
 
-    /// As [`parse`], but accepts an `Option` to accomodate for the absence of path. If the input
-    /// is `None`, `Ok(QueryPath::default())` is returned (that is, an empty query path).
+    /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
+    /// input is `None`, `Ok(QueryPath::default())` is returned (that is, an empty query path).
     pub fn parse_opt(cache: &mut Cache, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
             .map(|path| Self::parse(cache, path))

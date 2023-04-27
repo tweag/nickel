@@ -163,8 +163,9 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
 }
 
 /// Update the environment of the content of a recursive record field by extending it with a
-/// recursive environment. When seeing revertible elements as a memoizing device for functions, this
-/// step correspond to function application (see documentation of [crate::eval::lazy::ThunkData]).
+/// recursive environment. When seeing revertible elements as a memoizing device for functions,
+/// this step correspond to function application (see documentation of
+/// [crate::eval::cache::lazy::ThunkData]).
 ///
 /// For each field, retrieve the set set of dependencies from the corresponding element in the
 /// environment, and only add those dependencies to the environment. This avoids retaining
