@@ -193,6 +193,16 @@ impl Field {
             RecordExtKind::WithoutValue
         }
     }
+
+    pub fn with_name(self, field_name: Option<Ident>) -> Self {
+        Field {
+            metadata: FieldMetadata {
+                annotation: self.metadata.annotation.with_field_name(field_name),
+                ..self.metadata
+            },
+            ..self
+        }
+    }
 }
 
 impl Traverse<RichTerm> for Field {

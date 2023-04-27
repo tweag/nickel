@@ -116,49 +116,41 @@ impl FieldDef {
     /// # Preconditions
     /// - /!\ path must be **non-empty**, otherwise this function panics
     pub fn elaborate(self) -> (FieldPathElem, Field) {
+        let last_ident = self.path.last().and_then(|elem| match elem {
+            FieldPathElem::Ident(id) => Some(*id),
+            FieldPathElem::Expr(_) => None,
+        });
+
         let mut it = self.path.into_iter();
         let fst = it.next().unwrap();
 
-        let content = it.rev().fold(self.field, |acc, path_elem| {
-            // We first compute a position for the intermediate generated records (it's useful in
-            // particular for the LSP). The position starts at the subpath corresponding to the
-            // intermediate record and ends at the final value.
-            //
-            // unwrap is safe here becuase the initial content has a position,
-            // and we make sure we assign a position for the next field.
-            let pos = match path_elem {
-                FieldPathElem::Ident(id) => id.pos,
-                FieldPathElem::Expr(ref expr) => expr.pos,
-            };
-            // unwrap is safe here because every id should have a non-`TermPos::None` position
-            let id_span = pos.unwrap();
-            let acc_span = acc
-                .value
-                .as_ref()
-                .map(|value| value.pos.unwrap())
-                .unwrap_or(id_span);
+        let content = it
+            .rev()
+            .fold(self.field.with_name(last_ident), |acc, path_elem| {
+                // We first compute a position for the intermediate generated records (it's useful in
+                // particular for the LSP). The position starts at the subpath corresponding to the
+                // intermediate record and ends at the final value.
+                //
+                // unwrap is safe here becuase the initial content has a position,
+                // and we make sure we assign a position for the next field.
+                let pos = match path_elem {
+                    FieldPathElem::Ident(id) => id.pos,
+                    FieldPathElem::Expr(ref expr) => expr.pos,
+                };
+                // unwrap is safe here because every id should have a non-`TermPos::None` position
+                let id_span = pos.unwrap();
+                let acc_span = acc
+                    .value
+                    .as_ref()
+                    .map(|value| value.pos.unwrap())
+                    .unwrap_or(id_span);
 
-            // `RawSpan::fuse` only returns `None` when the two spans are in different files.
-            // A record field and its value *must* be in the same file, so this is safe.
-            let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
+                // `RawSpan::fuse` only returns `None` when the two spans are in different files.
+                // A record field and its value *must* be in the same file, so this is safe.
+                let pos = TermPos::Original(RawSpan::fuse(id_span, acc_span).unwrap());
 
-            match path_elem {
-                FieldPathElem::Ident(id) => {
-                    let mut fields = IndexMap::new();
-                    fields.insert(id, acc);
-                    Field::from(RichTerm::new(
-                        Term::Record(RecordData {
-                            fields,
-                            ..Default::default()
-                        }),
-                        pos,
-                    ))
-                }
-                FieldPathElem::Expr(exp) => {
-                    let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
-
-                    if let Some(static_access) = static_access {
-                        let id = Ident::new_with_pos(static_access, exp.pos);
+                match path_elem {
+                    FieldPathElem::Ident(id) => {
                         let mut fields = IndexMap::new();
                         fields.insert(id, acc);
                         Field::from(RichTerm::new(
@@ -168,18 +160,33 @@ impl FieldDef {
                             }),
                             pos,
                         ))
-                    } else {
-                        // The record we create isn't recursive, because it is only comprised of one
-                        // dynamic field. It's just simpler to use the infrastructure of `RecRecord` to
-                        // handle dynamic fields at evaluation time rather than right here
-                        Field::from(RichTerm::new(
-                            Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
-                            pos,
-                        ))
+                    }
+                    FieldPathElem::Expr(exp) => {
+                        let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
+
+                        if let Some(static_access) = static_access {
+                            let id = Ident::new_with_pos(static_access, exp.pos);
+                            let mut fields = IndexMap::new();
+                            fields.insert(id, acc);
+                            Field::from(RichTerm::new(
+                                Term::Record(RecordData {
+                                    fields,
+                                    ..Default::default()
+                                }),
+                                pos,
+                            ))
+                        } else {
+                            // The record we create isn't recursive, because it is only comprised of one
+                            // dynamic field. It's just simpler to use the infrastructure of `RecRecord` to
+                            // handle dynamic fields at evaluation time rather than right here
+                            Field::from(RichTerm::new(
+                                Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
+                                pos,
+                            ))
+                        }
                     }
                 }
-            }
-        });
+            });
 
         (fst, content)
     }

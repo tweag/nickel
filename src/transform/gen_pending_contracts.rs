@@ -22,15 +22,9 @@ use crate::{
 };
 
 pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
-    fn attach_to_field(id: Option<Ident>, field: Field) -> Result<Field, UnboundTypeVariableError> {
+    fn attach_to_field(field: Field) -> Result<Field, UnboundTypeVariableError> {
         // We simply add the contracts to the pending contract fields
-        let pending_contracts = field
-            .metadata
-            .annotation
-            .pending_contracts()?
-            .into_iter()
-            .map(|ctr| ctr.with_field_name(id))
-            .collect();
+        let pending_contracts = field.metadata.annotation.pending_contracts()?;
         // Type annotations are different: the contract is generated statically, because as opposed
         // to contract annotations, type anntotations don't propagate.
         let value = field
@@ -38,8 +32,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
                 if let Some(labeled_ty) = &field.metadata.annotation.types {
                     let pos = v.pos;
-                    let contract =
-                        RuntimeContract::try_from(labeled_ty.clone().with_field_name(id))?;
+                    let contract = RuntimeContract::try_from(labeled_ty.clone())?;
                     Ok(contract.apply(v, pos))
                 } else {
                     Ok(v)
@@ -59,7 +52,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     ) -> Result<IndexMap<Ident, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
-            .map(|(id, field)| Ok((id, attach_to_field(Some(id), field)?)))
+            .map(|(id, field)| Ok((id, attach_to_field(field)?)))
             .collect()
     }
 
@@ -71,7 +64,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
 
                 let fields = attach_to_fields(fields)?;
                 let dyn_fields = dyn_fields.into_iter().map(|(id_term, field)| {
-                     Ok((id_term, attach_to_field(None, field)?))
+                     Ok((id_term, attach_to_field(field)?))
                 }).collect::<Result<_, _>>()?;
 
                 RichTerm::new(Term::RecRecord(RecordData {fields, attrs, sealed_tail}, dyn_fields, deps), pos)

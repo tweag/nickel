@@ -295,14 +295,6 @@ impl RuntimeContract {
     {
         contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
-
-    /// Modify the label's `field_name` field.
-    pub fn with_field_name(self, ident: Option<Ident>) -> Self {
-        RuntimeContract {
-            label: self.label.with_field_name(ident),
-            ..self
-        }
-    }
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
@@ -522,6 +514,17 @@ impl TypeAnnotation {
             .cloned()
             .map(RuntimeContract::try_from)
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
+        TypeAnnotation {
+            types: self.types.map(|t| t.with_field_name(field_name)),
+            contracts: self
+                .contracts
+                .into_iter()
+                .map(|t| t.with_field_name(field_name))
+                .collect(),
+        }
     }
 }
 
