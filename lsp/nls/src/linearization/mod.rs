@@ -62,7 +62,7 @@ pub struct AnalysisHost<'a> {
     meta: Option<FieldMetadata>,
     /// Indexing a record will store a reference to the record as
     /// well as its fields.
-    /// [Self::Scope] will produce a host with a single **`pop`ed**
+    /// `Self::scope` will produce a host with a single **`pop`ed**
     /// Ident. As fields are typechecked in the same order, each
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
@@ -70,9 +70,11 @@ pub struct AnalysisHost<'a> {
     record_fields: Option<(ItemId, Vec<(ItemId, Ident)>)>,
     bindings: Option<Vec<ItemId>>,
     /// Accesses to nested records are recorded recursively.
+    ///
     /// ```
     /// outer.middle.inner -> inner(middle(outer))
     /// ```
+    ///
     /// To resolve those inner fields, accessors (`inner`, `middle`)
     /// are recorded first until a variable (`outer`). is found.
     /// Then, access to all nested records are resolved at once.

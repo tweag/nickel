@@ -5,9 +5,8 @@ use nickel_lang::{identifier::Ident, typecheck::UnifType, types::Types};
 use super::ItemId;
 
 pub trait ResolutionState {}
-/// Types are available as [TypeWrapper] only during recording
-/// They are resolved after typechecking has collected all terms into concrete
-/// [Types]
+/// Types are available as [nickel_lang::typecheck::UnifType] only during recording. They are
+/// resolved after typechecking as [nickel_lang::types::Types]
 pub type Unresolved = UnifType;
 impl ResolutionState for Unresolved {}
 
