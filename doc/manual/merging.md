@@ -402,8 +402,8 @@ The priorities are ordered in the following way:
 
 A `default` annotation can be used to provide a base value, but have it be
 overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
-evaluates to `{foo = 2}`. A default value is just a special case of a priority,
-`default` being the lowest one.
+evaluates to `{foo = 2}`. A default value is just a special case of a priority:
+the lowest possible one.
 
 #### Forcing values
 
