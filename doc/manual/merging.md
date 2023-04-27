@@ -536,7 +536,7 @@ which is not propagated by merging.
 #### Specification
 
 Consider two operands with one field each, which is the same on both side, and
-respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached, say
+respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached
 
 ```nickel
 left = {
