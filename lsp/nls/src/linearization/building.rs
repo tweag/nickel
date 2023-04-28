@@ -229,8 +229,8 @@ impl<'b> Building<'b> {
         }
     }
 
-    /// [`resolve_record_references`] tries to resolve the references passed to it, and
-    /// returns the ids of the items it couldn't resolve.
+    /// `resolve_record_references` tries to resolve the references passed to it, and returns the
+    /// ids of the items it couldn't resolve.
     pub(super) fn resolve_record_references(
         &mut self,
         current_file: FileId,
