@@ -14,11 +14,11 @@ Merging is useful to compose small and logical blocks into a potentially complex
 final configuration, making it more manageable. A merge is performed by the `&`
 operator.
 
-Merge is a **symmetric** operation (or, pedantically, commutative). In practice,
-this means that order doesn't matter, and `left & right` is the same thing as
-`right & left`. When the operands need to be distinguished, as we will see for
-default values for example, the idea is to use special annotations (metadata)
-instead of relying on the order of the operands.
+Merge is a **symmetric** operation. More pedantically, it is commutative. In
+practice, this means that order doesn't matter, and `left & right` is the same
+thing as `right & left`. When the operands need to be distinguished, as we
+will see for default values for example, the idea is to use special annotations
+(metadata) instead of relying on the order of the operands.
 
 **Warning**: At the time of writing, Nickel's version is 1.0. Custom merge
 functions are planned for a future version. They are not detailed here yet. See
@@ -49,7 +49,7 @@ evaluates to `{foo = 1, bar = "bar", baz = false}`.
 
 ### Specification
 
-Formally, if we write the left operand as:
+Formally, if we write the left operand as
 
 ```text
 left = {
@@ -59,17 +59,17 @@ left = {
 }
 ```
 
-And the right operand as:
+and the right operand as
 
 ```text
-right {
+right = {
   field_right_1 = value_right_1,
   ..,
   field_right_k = value_right_k
 }
 ```
 
-Then the merge `left & right` evaluates to the record:
+then the merge `left & right` evaluates to the record:
 
 ```text
 {
@@ -82,7 +82,7 @@ Then the merge `left & right` evaluates to the record:
 }
 ```
 
-In other terms, `left & right` is the union of `left` and `right`.
+In other words, `left & right` is the union of `left` and `right`.
 
 ### Examples
 
@@ -168,7 +168,9 @@ unless one of the following condition hold:
 
 ### Specification
 
-```text
+Formally, let's write the left operand as
+
+```nickel
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -179,10 +181,10 @@ left = {
 }
 ```
 
-And the right operand as:
+and the right operand as
 
-```text
-right {
+```nickel
+right = {
   field_right_1 = value_right_1,
   ..,
   field_right_k = value_right_k
@@ -192,10 +194,10 @@ right {
 }
 ```
 
-Where the `field_left_i` and `field_right_j` are distinct for all `i` and `j`.
+where the `field_left_i` and `field_right_j` are distinct for all `i` and `j`.
 Then the merge `left & right` evaluates to the record:
 
-```text
+```nickel
 {
   field_left_1 = value_left_1,
   ..,
@@ -213,10 +215,10 @@ For two values `v1` and `v2`, if at least one value is not a record, then
 
 ```text
 v1 & v2 = v1               if (type_of(v1) is Number, Bool, String, Enum or
-                           v1 == null) AND v1 == v2
+                                v1 == null)
+                              AND v1 == v2
 
           v2 | Equal v1    if type_of(v1) is Array and type_of(v2) is Array
-
 
           _|_              otherwise (indicates failure)
 ```
@@ -306,7 +308,7 @@ field:
 } | Command
 ```
 
-Once an optional field becomes defined, it just acts like a regular field. Any
+Once an optional field becomes defined, it acts just like a regular field. Any
 attached contract will be applied as well (here, `String` on `alias`). An
 optional field also becomes a regular field as soon as it is merged with the
 same field that doesn't have the `optional` annotation. This holds **even if the
@@ -398,16 +400,16 @@ The priorities are ordered in the following way:
 
 #### Default values
 
-A `default` annotation can be used to provide a base value, but let it be
+A `default` annotation can be used to provide a base value, but have it be
 overridable through merging. For example, `{foo | default = 1} & {foo = 2}`
-evaluates to `{foo = 2}`. A default value is just a special case of a priority,
-being the lowest one.
+evaluates to `{foo = 2}`. A default value is just a special case of a priority:
+the lowest possible one.
 
 #### Forcing values
 
 Dually, values with the `force` annotation are given the highest priority. Such
 a value can never be overridden, and will either take precedence over another
-value or be tentatively merged if the other value is forcing as well.
+value or be tentatively merged if the other value has priority `force` as well.
 
 #### Specification
 
@@ -415,7 +417,7 @@ Each field definition `foo = val` is assigned a priority `p(val)`. When merging
 two common fields `value_left` and `value_right`, the result is either the one
 with the highest priority (which overrides the other), or the two are
 tentatively recursively merged if the priorities are equal. Without loss of
-generality, we consider the simple case of two records with only one common
+generality, consider the simple case of two records with only one common
 field:
 
 ```text
@@ -429,8 +431,8 @@ field:
 
 #### Example
 
-Let us stick to our firewall example. Thanks to default values, we set the most
-restrictive configuration by default, which can still be overridden if needed.
+Let us stick to our firewall example. Thanks to default values, we can set the most
+restrictive configuration by default, but have it still be overridden if needed.
 
 Let us first try without default values:
 
@@ -449,7 +451,7 @@ base & patch
 
 Because merging is meant to be symmetric, Nickel is unable to know which value
 to pick between `enabled = true` and `enabled = false` for the firewall, and
-thus fail:
+thus it will fail:
 
 ```text
 error: non mergeable terms
@@ -465,6 +467,8 @@ error: non mergeable terms
    │ ------------ originally merged here
    │
    = Both values have the same merge priority but they can't be combined
+   = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
+   = Functions can never be merged.
 ```
 
 We can use default values to give the priority to the right side:
@@ -531,8 +535,8 @@ which is not propagated by merging.
 
 #### Specification
 
-For two operands with one field each, which is the same on both side, and
-respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached:
+Consider two operands with one field each, which is the same on both side, and
+respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached
 
 ```nickel
 left = {
@@ -542,7 +546,7 @@ left = {
 }
 ```
 
-And
+and
 
 ```nickel
 right = {
@@ -553,9 +557,7 @@ right = {
 ```
 
 Then the `common` field of `left & right` will be checked against `Left1, ..,
-Leftn, Right1, .., Rightk`. Here, we ignore the case of type annotations such as
-`common: LeftType` that can just be considered as an additional contract
-`Left0`.
+Leftn, Right1, .., Rightk`.
 
 The accumulated contracts are applied lazily: as long as the field's value isn't
 requested, contracts are accumulated but not yet applied. This makes it possible
@@ -572,7 +574,7 @@ let FooContract = {
 & { foo.required_field2 = "here" }
 ```
 
-Running the above program succeeds, although the intermediate value
+Running the above program succeeds, even though the intermediate value
 `{foo.required_field1 = "here"}` doesn't respect `FooContract` (it misses the
 field `required_field2`).
 
@@ -616,6 +618,9 @@ error: missing definition for `required_field2`
 
 #### Example
 
+We might want to require that only non-privileged port numbers are used in a
+configuration. This could for example be done as follows:
+
 ```nickel
 let Port
   | doc "A valid port number"
@@ -647,7 +652,7 @@ let GreaterThan
 }
 ```
 
-This fails at evaluation:
+Because 80 would be less than 1024, this fails at evaluation:
 
 ```text
 error: contract broken by a value
@@ -662,10 +667,10 @@ error: contract broken by a value
 
 ### Not exported
 
-A field can be marked as not exported, using the `not_exported` annotation. Such
-a field will behave like a regular field during evaluation, but it will be
-ignored during serialization: this field won't appear in the output of `nickel
-export` nor in the output of `serialize`. This field won't be evaluated upon
+A field can be marked as not exported, using the `not_exported` annotation.
+Such a field will behave like a regular field during evaluation, but it will
+be ignored during serialization: such a field won't appear in the output of
+`nickel export` nor in the output of `std.serialize`. It won't be evaluated upon
 serialization either.
 
 For example, say we want to add some high-level configuration field to a modular
