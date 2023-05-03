@@ -244,6 +244,7 @@ UniTerm: UniTerm = {
     <err: Error> => {
         UniTerm::from(err)
     },
+    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
 };
 
 AnnotatedInfixExpr: UniTerm = {
@@ -276,7 +277,6 @@ Forall: Types =
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm = {
-    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
     AsUniTerm<WithPos<TypeArray>>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
         UniTerm::from(mk_app!(t1, t2)),

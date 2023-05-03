@@ -177,7 +177,7 @@ let typecheck = [
   (let x = {val : Number | doc "some" | default = 1}.val in x + 1) : Number,
 
   # Typed import
-  import "lib/typed-import.ncl" : Number,
+  (import "lib/typed-import.ncl") : Number,
 
   # Regression test for #430 (https://github.com/tweag/nickel/issues/430)
   let x = import "lib/typed-import.ncl"

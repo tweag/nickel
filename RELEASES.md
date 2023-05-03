@@ -40,6 +40,7 @@ Breaking changes
 - Stdlib `string.Stringingable` -> `string.Stringable` by @vkleen in https://github.com/tweag/nickel/pull/1180
 - Fix the type of `array.elem` by @yannham in https://github.com/tweag/nickel/pull/1223
 - Change the enum tag start delimiter from backtick to single-quote by @vkleen in https://github.com/tweag/nickel/pull/1279
+- `import` is now a statement, `import "foo.ncl" arg1 arg2` requires parenthesis now: `(import "foo.ncl") arg1 arg2`, see https://github.com/tweag/nickel/pull/1293
 
 Language features
 -----------------
