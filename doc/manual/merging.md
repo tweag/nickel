@@ -695,7 +695,7 @@ configuration, from which other fields are derived:
 `greeter` can then be customized without interfering with the final output:
 
 ```console
-$ nickel export <<< 'import "hello-service.ncl" & {greeter = "country"}'
+$ nickel export <<< '(import "hello-service.ncl") & {greeter = "country"}'
 {
   "systemd": {
     "services": {

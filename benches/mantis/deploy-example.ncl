@@ -1,4 +1,4 @@
-import "deploy.ncl"
+(import "deploy.ncl")
   {
     namespace = "mantis-staging",
     job = "miner",

@@ -67,7 +67,7 @@ fun vars =>
   }
   in
   let jobDefs = {
-    Mantis = import "jobs/mantis.ncl" params,
+    Mantis = (import "jobs/mantis.ncl") params,
   }
   in
   let revisions = {

@@ -571,3 +571,23 @@ fn ty_var_kind_mismatch() {
         )
     }
 }
+
+#[test]
+fn import() {
+    assert_eq!(
+        parse_without_pos("import \"file.ncl\""),
+        mk_term::import("file.ncl")
+    );
+    assert_matches!(
+        parse("import \"file.ncl\" some args"),
+        Err(ParseError::UnexpectedToken(_, _))
+    );
+    assert_eq!(
+        parse_without_pos("(import \"file.ncl\") some args"),
+        mk_app!(
+            mk_term::import("file.ncl"),
+            mk_term::var("some"),
+            mk_term::var("args")
+        )
+    );
+}
