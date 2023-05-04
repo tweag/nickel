@@ -79,9 +79,7 @@ Types and contracts are enforced similarly, via annotations.
 
 Type annotations are introduced with `:`. For example:
 
-```text
-$ nickel repl
-
+```nickel
 nickel> 1 + 1.5 : Number
 2.5
 
@@ -96,9 +94,7 @@ error: incompatible types
 
 Contract annotations are introduced with `|`. For example:
 
-```text
-$ nickel repl
-
+```nickel
 nickel> let GreaterThan = fun bound =>
   std.contract.from_predicate (fun val => val >= bound) in
 -1 | GreaterThan 10
@@ -123,7 +119,7 @@ practical differences between types and contracts.
 Suppose we need a function to convert an array of key-value pairs into an array
 of keys and an array of values. Let's call it `split`:
 
-```text
+```nickel
 nickel> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 {keys = ["foo", "bar"], values = [1, 2]}
 

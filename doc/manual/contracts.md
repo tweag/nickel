@@ -41,7 +41,7 @@ are performed:
 2. Check that the result is a number.
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
-```text
+```nickel
 nickel> 1 + 1 | Number
 2
 
@@ -100,7 +100,7 @@ In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
 appropriate error messages. Let us try:
 
-```text
+```nickel
 nickel> 1 | IsFoo
 error: contract broken by a value [not a string].
 [..]
@@ -353,7 +353,7 @@ In addition to defining the contracts of fields, record contracts can also
 attach metadata (see [merging](./merging.md)) to fields, such as documentation
 or default values:
 
-```text
+```nickel
 nickel>
 let Schema = {
   foo
@@ -370,7 +370,7 @@ nickel> std.serialize 'Json config
   "foo": "foo"
 }"
 
-nickel>:query config foo
+nickel> :query config foo
 * contract: String
 * default: "foo"
 * documentation: This documentation will propagate to the final value!
@@ -380,7 +380,7 @@ nickel>:query config foo
 
 By default, record contracts are closed, meaning that additional fields are forbidden:
 
-```text
+```nickel
 nickel> let Contract = {foo | String}
 nickel> {foo = "a", bar = 1} | Contract
 error: contract broken by a value [extra field `bar`].
@@ -390,7 +390,7 @@ error: contract broken by a value [extra field `bar`].
 If you want to allow additional fields, append `, ..` after the last field
 definition to define an open contract:
 
-```text
+```nickel
 nickel> let Contract = {foo | String, ..}
 nickel> {foo = "a", bar = 1} | Contract
 { bar = 1, foo = "a" }
@@ -404,7 +404,7 @@ contract or a normal value. If a field is defined both in the contract and the
 checked value, the two definitions will be merged in the final result. For
 example:
 
-```text
+```nickel
 nickel>
 let Secure = {
   must_be_very_secure | Bool = true,
@@ -447,7 +447,7 @@ fields: thus, the contract `{bar | String}` attached to `foo` will actually
 behave like an open contract, even if you didn't use `..`. This might or might not
 be what you want:
 
-```text
+```nickel
 nickel>
 let ContractPipe = {
   sub_field | {foo | String}
@@ -479,7 +479,7 @@ system](./typing.md) can be used to combine contracts.
 An array contract checks that the value is an array and applies its parameter
 contract to each element:
 
-```text
+```nickel
 nickel>
 let VeryBig =
   std.contract.from_predicate (
@@ -535,13 +535,13 @@ is a bug you have to fix.
 The interpreter automatically performs bookkeeping for function contracts in
 order to make this caller/callee distinction:
 
-```text
-nickel>let add_semi | String -> String = fun x => x ++ ";" in
+```nickel
+nickel> let add_semi | String -> String = fun x => x ++ ";" in
 add_semi 1
 error: contract broken by the caller.
 [..]
 
-nickel>let wrong | String -> String = fun x => 0 in
+nickel> let wrong | String -> String = fun x => 0 in
 wrong "a"
 error: contract broken by a function.
 [..]
@@ -553,7 +553,7 @@ The beauty of function contracts is that they gracefully scale to higher-order
 functions as well. Higher-order functions are functions that take other
 functions as parameters. Here is an example:
 
-```text
+```nickel
 nickel>
 let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
 apply_fun (fun x => "a")
@@ -603,13 +603,13 @@ laziness, you can for example query specific information on a large
 configuration without having to actually evaluate everything. We will use the
 always failing contract `std.FailWith` to observe where evaluation takes place:
 
-```text
+```nickel
 nickel>
 let config = {
   fail | std.FailWith "ooch" = null,
   data | doc "Some information" = 42
 }
-nickel>:query config data
+nickel> :query config data
 * documentation: Some information
 
 nickel> config.fail
@@ -711,7 +711,7 @@ value and continues with the second argument (here, our wrapped `value`).
 
 Let us see if we indeed preserved laziness:
 
-```text
+```nickel
 nickel>
 let config | NumberBoolDict = {
   "1" | std.FailWith "ooch" = null, # same as our previous "fail"
@@ -724,7 +724,7 @@ nickel>:query config "0"
 Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
-```text
+```nickel
 nickel>
 let config | NumberBoolDict = {
   not_a_number = false,

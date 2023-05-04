@@ -51,7 +51,7 @@ evaluates to `{foo = 1, bar = "bar", baz = false}`.
 
 Formally, if we write the left operand as
 
-```text
+```nickel
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -61,7 +61,7 @@ left = {
 
 and the right operand as
 
-```text
+```nickel
 right = {
   field_right_1 = value_right_1,
   ..,
@@ -71,7 +71,7 @@ right = {
 
 then the merge `left & right` evaluates to the record:
 
-```text
+```nickel
 {
   field_left_1 = value_left_1,
   ..,
@@ -367,7 +367,7 @@ values are given the priority `0`. Values with the same priority are recursively
 merged as specified in this document, which can mean failure if the values can't
 be meaningfully combined:
 
-```text
+```nickel
 nickel> {foo = 1} & {foo = 2}
 error: non mergeable terms
   ┌─ repl-input-1:1:8
@@ -383,7 +383,7 @@ error: non mergeable terms
 If the priorities differ, the value with the highest priority simply erases the
 other:
 
-```text
+```nickel
 nickel> {foo | priority 1 = 1} & {foo = 2}
 { foo = 1 }
 
