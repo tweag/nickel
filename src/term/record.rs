@@ -439,14 +439,24 @@ pub struct SealedTail {
     pub label: Label,
     /// The term which is sealed.
     term: RichTerm,
+    /// The field names of the sealed fields.
+    // You may find yourself wondering why this is a `Vec` rather than a
+    // `HashSet` given we only ever do containment checks against it.
+    // In brief: we'd need to use a `HashSet<String>`, which would mean
+    // allocating `fields.len()` `String`s in a fairly hot codepath.
+    // Since we only ever check whether the tail contains a specific field
+    // when we already know we're going to raise an error, it's not really
+    // an issue to have a linear lookup there, so we do that instead.
+    fields: Vec<Ident>,
 }
 
 impl SealedTail {
-    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm) -> Self {
+    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Ident>) -> Self {
         Self {
             sealing_key,
             label,
             term,
+            fields,
         }
     }
 
@@ -457,5 +467,13 @@ impl SealedTail {
         } else {
             None
         }
+    }
+
+    pub fn has_field(&self, field: &Ident) -> bool {
+        self.fields.contains(field)
+    }
+
+    pub fn has_dyn_field(&self, field: &str) -> bool {
+        self.fields.iter().any(|i| i.label() == field)
     }
 }
