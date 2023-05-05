@@ -211,9 +211,15 @@ fn records_contracts_poly() {
             "#,
         ),
         (
-            "accessing a sealed field violates parametricity",
+            "statically accessing a sealed field violates parametricity",
             r#"
             let f | forall a. { ; a } -> { ; a } = fun x => %seq% x.a x in f { a = 1 }
+            "#,
+        ),
+        (
+            "dynamically accessing a sealed field violates parametricity",
+            r#"
+            let f | forall a. { ; a } -> { ; a } = fun x => %seq% x."a" x in f { a = 1 }
             "#,
         ),
         (

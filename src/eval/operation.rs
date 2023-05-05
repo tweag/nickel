@@ -452,8 +452,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         None => match record.sealed_tail.as_ref() {
                             Some(t) if t.has_field(&id) => {
                                 Err(EvalError::IllegalPolymorphicTailAccess {
-                                    action: IllegalPolymorphicTailAction::StaticAccess {
-                                        field: id,
+                                    action: IllegalPolymorphicTailAction::FieldAccess {
+                                        field: id.to_string(),
                                     },
                                     evaluated_arg: t.label.get_evaluated_arg(&self.cache),
                                     label: t.label.clone(),
@@ -1564,15 +1564,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         env: env2,
                                     })
                                 }
-                                None => Err(EvalError::FieldMissing(
-                                    id.into_inner(),
-                                    String::from("(.$)"),
-                                    RichTerm {
-                                        term: t2,
-                                        pos: pos2,
-                                    },
-                                    pos_op,
-                                )),
+                                None => match record.sealed_tail.as_ref() {
+                                    Some(t) if t.has_dyn_field(&id) => Err(EvalError::IllegalPolymorphicTailAccess {
+                                        action: IllegalPolymorphicTailAction::FieldAccess { field: id.to_string() },
+                                        evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                        label: t.label.clone(),
+                                        call_stack: std::mem::take(&mut self.call_stack)
+                                    }),
+                                    _ => Err(EvalError::FieldMissing(
+                                        id.into_inner(),
+                                        String::from("(.$)"),
+                                        RichTerm {
+                                            term: t2,
+                                            pos: pos2,
+                                        },
+                                        pos_op,
+                                    )),
+                                }
+
                             }
                         } else {
                             // Not using mk_type_error! because of a non-uniform message

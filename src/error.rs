@@ -141,10 +141,10 @@ pub enum EvalError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IllegalPolymorphicTailAction {
+    FieldAccess { field: String },
     Map,
     Merge,
     RecordRemove { field: String },
-    StaticAccess { field: Ident },
 }
 
 impl IllegalPolymorphicTailAction {
@@ -152,13 +152,13 @@ impl IllegalPolymorphicTailAction {
         use IllegalPolymorphicTailAction::*;
 
         match self {
+            FieldAccess { field } => {
+                format!("cannot access field `{field}` sealed by a polymorphic contract")
+            }
             Map => "cannot map over a record sealed by a polymorphic contract".to_owned(),
             Merge => "cannot merge a record sealed by a polymorphic contract".to_owned(),
             RecordRemove { field } => {
                 format!("cannot remove field `{field}` sealed by a polymorphic contract")
-            }
-            StaticAccess { field } => {
-                format!("cannot access field `{field}` sealed by a polymorphic contract")
             }
         }
     }
