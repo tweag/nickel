@@ -2419,7 +2419,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().map(|f| f.to_string()).collect();
+                        let fields = tail.fields.keys().cloned().collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
