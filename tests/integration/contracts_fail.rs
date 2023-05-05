@@ -216,22 +216,16 @@ fn records_contracts_poly() {
             let f | forall a. { ; a } -> { ; a } = fun x => %seq% x.a x in f { a = 1 }
             "#,
         ),
+        (
+            "removing a sealed field violates parametricity",
+            r#"
+            let remove_x | forall r. { ; r } -> { ; r } = fun r => %record_remove% "x" r in
+            remove_x { x = 1 }
+            "#,
+        ),
     ] {
         assert_raise_tail_blame!(input, "failed on case: {}", name);
     }
-
-    // These are currently FieldMissing errors rather than BlameErrors as we
-    // don't yet inspect the sealed tail to see if the requested field is inside.
-    // Once we do, these tests will start failing, and if you're currently here
-    // for that reason, you can just move the examples into the array above.
-    let remove_sealed_field = r#"
-        let remove_x | forall r. { ; r } -> { ; r } = fun r => %record_remove% "x" r in
-        remove_x { x = 1 }
-    "#;
-    assert_matches!(
-        eval(remove_sealed_field),
-        Err(Error::EvalError(EvalError::FieldMissing(..)))
-    );
 }
 
 #[test]

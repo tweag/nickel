@@ -1648,9 +1648,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         value: None,
                                         metadata: FieldMetadata { opt: true, ..},
                                         ..
-                                      }) =>
-                                    {
-                                        Err(EvalError::FieldMissing(
+                                      }) => match record.sealed_tail.as_ref() {
+                                        Some(t) if t.has_dyn_field(&id) => Err(EvalError::IllegalPolymorphicTailAccess {
+                                            action: IllegalPolymorphicTailAction::RecordRemove { field: id.to_string() },
+                                            evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                            label: t.label.clone(),
+                                            call_stack: std::mem::take(&mut self.call_stack)
+                                        }),
+                                        _ => Err(EvalError::FieldMissing(
                                             id.into_inner(),
                                             String::from("record_remove"),
                                             RichTerm::new(
@@ -1658,7 +1663,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                                 pos2,
                                             ),
                                             pos_op,
-                                        ))
+                                        )),
                                     }
                                     _ => {
                                         Ok(Closure {
@@ -2405,7 +2410,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().cloned().collect();
+                        let fields = tail.fields.keys().map(|f| f.to_string()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),

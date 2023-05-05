@@ -440,7 +440,7 @@ pub struct SealedTail {
     /// The term which is sealed.
     term: RichTerm,
     /// The field names of the sealed fields.
-    fields: HashSet<Ident>,
+    fields: HashSet<String>,
 }
 
 impl SealedTail {
@@ -448,7 +448,7 @@ impl SealedTail {
         sealing_key: SealingKey,
         label: Label,
         term: RichTerm,
-        fields: HashSet<Ident>,
+        fields: HashSet<String>,
     ) -> Self {
         Self {
             sealing_key,
@@ -468,6 +468,10 @@ impl SealedTail {
     }
 
     pub fn has_field(&self, field: &Ident) -> bool {
+        self.fields.contains(field.label())
+    }
+
+    pub fn has_dyn_field(&self, field: &str) -> bool {
         self.fields.contains(field)
     }
 }
