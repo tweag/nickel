@@ -210,6 +210,12 @@ fn records_contracts_poly() {
             f { a | default = 100, b = 1 }
             "#,
         ),
+        (
+            "accessing a sealed field violates parametricity",
+            r#"
+            let f | forall a. { ; a } -> { ; a } = fun x => %seq% x.a x in f { a = 1 }
+            "#,
+        ),
     ] {
         assert_raise_tail_blame!(input, "failed on case: {}", name);
     }
@@ -218,12 +224,6 @@ fn records_contracts_poly() {
     // don't yet inspect the sealed tail to see if the requested field is inside.
     // Once we do, these tests will start failing, and if you're currently here
     // for that reason, you can just move the examples into the array above.
-    let bad_acc = "let f | forall a. { ; a} -> { ; a} = fun x => %seq% x.a x in f";
-    assert_matches!(
-        eval(format!("{bad_acc} {{a=1}}")),
-        Err(Error::EvalError(EvalError::FieldMissing(..)))
-    );
-
     let remove_sealed_field = r#"
         let remove_x | forall r. { ; r } -> { ; r } = fun r => %record_remove% "x" r in
         remove_x { x = 1 }

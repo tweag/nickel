@@ -449,12 +449,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             self.call_stack.enter_field(id, pos, value.pos, pos_op);
                             Ok(Closure { body: value, env })
                         }
-                        None => Err(EvalError::FieldMissing(
-                            id.into_label(),
-                            String::from("(.)"),
-                            RichTerm { term: t, pos },
-                            pos_op,
-                        )), //TODO include the position of operators on the stack
+                        None => match record.sealed_tail.as_ref() {
+                            Some(t) if t.has_field(&id) => {
+                                Err(EvalError::IllegalPolymorphicTailAccess {
+                                    action: IllegalPolymorphicTailAction::StaticAccess {
+                                        field: id,
+                                    },
+                                    evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                    label: t.label.clone(),
+                                    call_stack: std::mem::take(&mut self.call_stack),
+                                })
+                            }
+                            _ => Err(EvalError::FieldMissing(
+                                id.into_label(),
+                                String::from("(.)"),
+                                RichTerm { term: t, pos },
+                                pos_op,
+                            )),
+                        }, //TODO include the position of operators on the stack
                     }
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
@@ -2393,8 +2405,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        r.sealed_tail =
-                            Some(record::SealedTail::new(*s, label.clone(), tail_as_var));
+                        let fields = tail.fields.keys().cloned().collect();
+                        r.sealed_tail = Some(record::SealedTail::new(
+                            *s,
+                            label.clone(),
+                            tail_as_var,
+                            fields,
+                        ));
 
                         let body = RichTerm::from(Term::Record(r));
                         Ok(Closure { body, env })
