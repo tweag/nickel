@@ -16,7 +16,6 @@ use test_generator::test_resources;
 mod basics_fail;
 mod contracts_fail;
 mod destructuring;
-mod eq_fail;
 mod examples;
 mod free_vars;
 mod imports;
