@@ -100,34 +100,39 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
 
     let file = File::open(path).expect("Failed to open file");
     let reader = BufReader::new(file);
-    let mut annotation_lines = Vec::new();
-    let mut program_lines = Vec::new();
 
-    let mut was_annotation_encountered = false;
-    for line in reader.lines() {
-        let line = line.expect("Failed to read line");
-        if line == "---" {
-            was_annotation_encountered = true;
-            continue;
-        }
+    let mut lines = reader.lines();
 
-        if was_annotation_encountered {
-            program_lines.push(line);
+    let mut annotation = String::new();
+    let mut program = String::new();
+
+    loop {
+        let line = lines
+            .next()
+            .expect("Unexpected end of test file")
+            .expect("Error reading line");
+        if line.starts_with("#") {
+            let annot_line = if line.len() > 1 { &line[2..] } else { "" };
+            annotation.push_str(annot_line);
+            annotation.push_str("\n");
         } else {
-            annotation_lines.push(line);
+            // we've already consumed the line in order to check the first char
+            // so we need to add it to the program string.
+            program.push_str(&line);
+            program.push_str("\n");
+            break;
         }
     }
 
-    if !was_annotation_encountered {
-        std::mem::swap(&mut program_lines, &mut annotation_lines);
-    }
-
-    if annotation_lines.is_empty() {
+    if annotation.is_empty() {
         return Err(AnnotatedProgramReadError::MissingAnnotation);
     }
 
-    let annotation = annotation_lines.join("\n");
-    let program = program_lines.join("\n");
+    while let Some(line) = lines.next() {
+        let line = line.expect("Error reading line");
+        program.push_str(&line);
+        program.push_str("\n");
+    }
 
     Ok(AnnotatedProgram {
         annotation,
