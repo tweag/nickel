@@ -110,15 +110,15 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
             .next()
             .expect("Unexpected end of test file")
             .expect("Error reading line");
-        if line.starts_with("#") {
+        if line.starts_with('#') {
             let annot_line = if line.len() > 1 { &line[2..] } else { "" };
             annotation.push_str(annot_line);
-            annotation.push_str("\n");
+            annotation.push('\n');
         } else {
             // we've already consumed the line in order to check the first char
             // so we need to add it to the program string.
             program.push_str(&line);
-            program.push_str("\n");
+            program.push('\n');
             break;
         }
     }
@@ -127,10 +127,10 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
         return Err(AnnotatedProgramReadError::MissingAnnotation);
     }
 
-    while let Some(line) = lines.next() {
+    for line in lines {
         let line = line.expect("Error reading line");
         program.push_str(&line);
-        program.push_str("\n");
+        program.push('\n');
     }
 
     Ok(AnnotatedProgram {
