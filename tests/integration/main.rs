@@ -48,12 +48,11 @@ fn check_annotated_nickel_file(path: &str) {
     let path_for_err = path.to_string();
 
     thread::Builder::new()
-        .name(String::from("TODO: name thread"))
+        .name(path_for_err.clone())
         .stack_size(STACK_SIZE)
         .spawn(move || {
-            let mut p =
-                TestProgram::new_from_source(Cursor::new(program), "TODO: program name from file")
-                    .expect("");
+            let mut p = TestProgram::new_from_source(Cursor::new(program), path_for_err.as_str())
+                .expect("");
             let result = p.eval();
             match expectation {
                 Expectation::Error(expected_err) => {
