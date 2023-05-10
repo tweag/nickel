@@ -33,56 +33,47 @@ mod unbound_type_variables;
 
 #[test_resources("./tests/integration/fail/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
-    let AnnotatedProgram {
-        annotation,
-        program,
-    } = read_annotated_program(path).expect("Failed to parse annotated program");
-
-    let expectation: Expectation =
-        toml::from_str(annotation.as_str()).expect("Failed to parse annotation toml");
+    let test = read_test_case(path).expect("Failed to parse annotated program");
 
     // By default, cargo runs tests with a 2MB stack, which we can overflow in
     // debug mode. To avoid this we run the tests with an increased stack size.
     const STACK_SIZE: usize = 4 * 1024 * 1024;
-
-    let path_for_err = path.to_string();
+    let path = path.to_string();
 
     thread::Builder::new()
-        .name(path_for_err.clone())
+        .name(path.clone())
         .stack_size(STACK_SIZE)
-        .spawn(move || {
-            let mut p = TestProgram::new_from_source(Cursor::new(program), path_for_err.as_str())
-                .expect("");
-            let result = p.eval();
-            match expectation {
-                Expectation::Error(expected_err) => {
-                    let err = result.expect_err(
-                        format!(
-                            "Expected error: {}, but program evaluated successfully.",
-                            expected_err
-                        )
-                        .as_str(),
-                    );
-                    assert_eq!(
-                        expected_err, err,
-                        "wrong error evaluating file {path_for_err}"
-                    )
-                }
-                Expectation::Pass => assert_eq!(
-                    result.map(Term::from),
-                    Ok(Term::Bool(true)),
-                    "unexpected error evaluating file {path_for_err}",
-                ),
-                Expectation::Skip => (),
-            }
-        })
+        .spawn(move || run_test(test, path))
         .expect("Failed to spawn thread")
         .join()
         .expect("Failed to join thread")
 }
 
-struct AnnotatedProgram {
-    annotation: String,
+fn run_test(test: TestCase, path: String) {
+    let mut p = TestProgram::new_from_source(Cursor::new(test.program), path.as_str()).expect("");
+    let result = p.eval();
+    match test.expectation {
+        Expectation::Error(expected_err) => {
+            let err = result.expect_err(
+                format!(
+                    "Expected error: {}, but program evaluated successfully.",
+                    expected_err
+                )
+                .as_str(),
+            );
+            assert_eq!(expected_err, err, "wrong error evaluating file {path}")
+        }
+        Expectation::Pass => assert_eq!(
+            result.map(Term::from),
+            Ok(Term::Bool(true)),
+            "unexpected error evaluating file {path}",
+        ),
+        Expectation::Skip => (),
+    }
+}
+
+struct TestCase {
+    expectation: Expectation,
     program: String,
 }
 
@@ -91,7 +82,7 @@ enum AnnotatedProgramReadError {
     MissingAnnotation,
 }
 
-fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgramReadError> {
+fn read_test_case(path: &str) -> Result<TestCase, AnnotatedProgramReadError> {
     let path = {
         let proj_root = env!("CARGO_MANIFEST_DIR");
         PathBuf::from(proj_root).join(path)
@@ -102,7 +93,7 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
 
     let mut lines = reader.lines();
 
-    let mut annotation = String::new();
+    let mut expectation = String::new();
     let mut program = String::new();
 
     loop {
@@ -112,8 +103,8 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
             .expect("Error reading line");
         if line.starts_with('#') {
             let annot_line = if line.len() > 1 { &line[2..] } else { "" };
-            annotation.push_str(annot_line);
-            annotation.push('\n');
+            expectation.push_str(annot_line);
+            expectation.push('\n');
         } else {
             // we've already consumed the line in order to check the first char
             // so we need to add it to the program string.
@@ -123,7 +114,7 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
         }
     }
 
-    if annotation.is_empty() {
+    if expectation.is_empty() {
         return Err(AnnotatedProgramReadError::MissingAnnotation);
     }
 
@@ -133,8 +124,11 @@ fn read_annotated_program(path: &str) -> Result<AnnotatedProgram, AnnotatedProgr
         program.push('\n');
     }
 
-    Ok(AnnotatedProgram {
-        annotation,
+    let expectation: Expectation =
+        toml::from_str(expectation.as_str()).expect("Failed to parse expectation toml");
+
+    Ok(TestCase {
+        expectation,
         program,
     })
 }
