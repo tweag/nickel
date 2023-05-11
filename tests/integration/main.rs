@@ -11,7 +11,6 @@ use nickel_lang_utilities::{
 use serde::Deserialize;
 use test_generator::test_resources;
 
-mod basics_fail;
 mod contracts_fail;
 mod destructuring;
 mod examples;
@@ -88,12 +87,25 @@ enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
     #[serde(rename = "EvalError::EqError")]
     EvalEqError,
+    #[serde(rename = "EvalError::Other")]
+    EvalOther,
+    #[serde(rename = "EvalError::NAryPrimopTypeError")]
+    EvalNAryPrimopTypeError,
+    #[serde(rename = "EvalError::BlameError")]
+    EvalBlameError,
+    #[serde(rename = "EvalError::TypeError")]
+    EvalTypeError,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
     fn eq(&self, other: &Error) -> bool {
+        use ErrorExpectation::*;
         match (self, other) {
-            (ErrorExpectation::EvalEqError, Error::EvalError(EvalError::EqError { .. })) => true,
+            (EvalBlameError, Error::EvalError(EvalError::BlameError { .. }))
+            | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
+            | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
+            | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
+            | (EvalOther, Error::EvalError(EvalError::Other(..))) => true,
             (_, _) => false,
         }
     }
@@ -101,8 +113,13 @@ impl PartialEq<Error> for ErrorExpectation {
 
 impl std::fmt::Display for ErrorExpectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorExpectation::*;
         let name = match self {
-            ErrorExpectation::EvalEqError => "EvalError::EqError",
+            EvalBlameError => "EvalError::BlameError",
+            EvalTypeError => "EvalError::TypeError",
+            EvalEqError => "EvalError::EqError",
+            EvalOther => "EvalError::Other",
+            EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError",
         };
         write!(f, "{}", name)
     }
