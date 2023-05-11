@@ -133,7 +133,7 @@ fn read_test_case(path: &str) -> Result<TestCase, AnnotatedProgramReadError> {
     })
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(tag = "test", content = "metadata")]
 enum Expectation {
     #[serde(rename = "error")]
@@ -144,7 +144,7 @@ enum Expectation {
     Skip,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(tag = "error", content = "expectation")]
 enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
