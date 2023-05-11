@@ -38,11 +38,10 @@ Nickel's salient traits are:
     lets users add arbitrary assertions of their own and easily understand why
     when assertions fail.
 
-The motto guiding Nickel's design is:
-> Great defaults, design for extensibility
+The motto guiding Nickel's design is: **Great defaults, design for extensibility**
 
 There should be a standard, clear path for common things. There should be no
-arbitrary restrictions that limit what you can do you the one day you need to go
+arbitrary restrictions that limit what you can do the one day you need to go
 beyond.
 
 ## Use cases
@@ -76,7 +75,7 @@ website.
 ## Current state and roadmap
 
 Nickel is currently released in version `0.3.1`. This version should be
-functional and is intended to gather feedback and real-life testing. The next
+functional and intended to gather feedback and real-life testing. The next
 planned version is `1.0`. The next steps we plan to work on are:
 
 - Nix integration: being able to seamlessly use Nickel to write packages and
@@ -94,8 +93,10 @@ planned version is `1.0`. The next steps we plan to work on are:
 This document is a detailed documentation on the main aspects of the language.
 It is composed of the following sections:
 
+1. [Tutorial](./tuto.md)
 1. [Syntax](./syntax.md)
 1. [Merging](./merging.md)
 1. [Correctness](./correctness.md)
 1. [Contracts](./contracts.md)
 1. [Typing](./typing.md)
+1. [Types vs. Contracts](./types-vs-contracts.md)
