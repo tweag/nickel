@@ -227,19 +227,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let mut prev_pos = rt.pos;
         let mut field: Field = rt.into();
 
-        for id in path.0 {
-            match field.value.as_ref().map(|rt| (rt.as_ref(), rt.pos)) {
+        let mut path = path.0.into_iter().peekable();
+
+        let Some(mut prev_id) = path.peek().cloned() else {
+            return Ok(field)
+        };
+
+        for id in path {
+            match field.value.as_ref().map(|rt| rt.as_ref()) {
                 None => {
                     return Err(EvalError::MissingFieldDef {
-                        id,
+                        id: prev_id,
                         metadata: FieldMetadata::default(),
                         pos_record: prev_pos,
-                        pos_access: id.pos,
+                        pos_access: TermPos::None,
                     })
                 }
-                Some((Term::Record(record_data), pos_record)) => {
+                Some(Term::Record(record_data)) => {
                     let mut next_field = record_data.fields.get(&id).cloned();
-                    prev_pos = pos_record;
 
                     if let Some(Field {
                         metadata: metadata_next,
@@ -252,11 +257,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         value_next = value_next
                             .map(|value| -> Result<RichTerm, EvalError> {
-                                let pos_value = value.pos;
+                                prev_pos = value.pos;
                                 let value_with_ctr = RuntimeContract::apply_all(
                                     value,
                                     pending_contracts.into_iter(),
-                                    pos_value,
+                                    prev_pos,
                                 );
                                 let (new_value, new_env) = self.eval_closure(
                                     Closure {
@@ -280,7 +285,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         return Err(EvalError::FieldMissing(
                             id.to_string(),
                             String::from("query"),
-                            RichTerm::new(Term::Record(record_data.clone()), pos_record),
+                            RichTerm::new(Term::Record(record_data.clone()), prev_pos),
                             id.pos,
                         ));
                     }
@@ -295,6 +300,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 }
             }
+            prev_id = id;
         }
 
         Ok(field)
