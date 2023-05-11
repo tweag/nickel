@@ -13,3 +13,5 @@ bench = false
 nickel-lang = {path = "../", version = "0.3.1"}
 criterion = "0.3"
 codespan = "0.11"
+serde = { version = "1.0.154", features = ["derive"] }
+toml = { version = "0.7.2", features = ["parse"] }

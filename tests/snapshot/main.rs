@@ -1,8 +1,7 @@
+use nickel_lang_utilities::annotated_test::{read_annotated_test_case, TestCase};
 use serde::Deserialize;
 use std::{
     ffi::OsStr,
-    fs::File,
-    io::{BufRead, BufReader},
     path::PathBuf,
     process::{Command, Output},
 };
@@ -38,7 +37,8 @@ fn check_pretty_print_snapshots(file: &str) {
 fn check_export_snapshots(path: &str) {
     let file = TestFile::from_project_path(path);
 
-    let TestCase { annotation, .. } = read_test_case(path).expect("Failed to read test case");
+    let TestCase { annotation, .. }: TestCase<SnapshotAnnotation> =
+        read_annotated_test_case(path).expect("Failed to read test case");
 
     let invocation = NickelInvocation::new().args(annotation.command).file(&file);
 
@@ -174,11 +174,6 @@ impl NickelInvocation {
     }
 }
 
-pub struct TestCase<Annot> {
-    annotation: Annot,
-    program: String,
-}
-
 #[derive(Deserialize)]
 struct SnapshotAnnotation {
     capture: SnapshotCapture,
@@ -193,60 +188,4 @@ enum SnapshotCapture {
     Stdout,
     #[serde(rename = "all")]
     All,
-}
-
-#[derive(Debug)]
-enum AnnotatedProgramReadError {
-    MissingAnnotation,
-}
-
-fn read_test_case(path: &str) -> Result<TestCase<SnapshotAnnotation>, AnnotatedProgramReadError> {
-    let path = {
-        let proj_root = env!("CARGO_MANIFEST_DIR");
-        PathBuf::from(proj_root).join(path)
-    };
-
-    let file = File::open(path).expect("Failed to open file");
-    let reader = BufReader::new(file);
-
-    let mut lines = reader.lines();
-
-    let mut annotation = String::new();
-    let mut program = String::new();
-
-    loop {
-        let line = lines
-            .next()
-            .expect("Unexpected end of test file")
-            .expect("Error reading line");
-        if line.starts_with('#') {
-            let annot_line = if line.len() > 1 { &line[2..] } else { "" };
-            annotation.push_str(annot_line);
-            annotation.push('\n');
-        } else {
-            // we've already consumed the line in order to check the first char
-            // so we need to add it to the program string.
-            program.push_str(&line);
-            program.push('\n');
-            break;
-        }
-    }
-
-    if annotation.is_empty() {
-        return Err(AnnotatedProgramReadError::MissingAnnotation);
-    }
-
-    for line in lines {
-        let line = line.expect("Error reading line");
-        program.push_str(&line);
-        program.push('\n');
-    }
-
-    let annotation: SnapshotAnnotation =
-        toml::from_str(annotation.as_str()).expect("Failed to parse expectation toml");
-
-    Ok(TestCase {
-        annotation,
-        program,
-    })
 }

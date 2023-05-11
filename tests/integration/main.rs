@@ -1,15 +1,13 @@
-use std::{
-    fs::File,
-    io::{BufRead, BufReader, Cursor},
-    path::PathBuf,
-    thread,
-};
+use std::{io::Cursor, thread};
 
 use nickel_lang::{
     error::{Error, EvalError},
     term::Term,
 };
-use nickel_lang_utilities::test_program::TestProgram;
+use nickel_lang_utilities::{
+    annotated_test::{read_annotated_test_case, TestCase},
+    test_program::TestProgram,
+};
 use serde::Deserialize;
 use test_generator::test_resources;
 
@@ -33,7 +31,8 @@ mod unbound_type_variables;
 
 #[test_resources("./tests/integration/fail/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
-    let test = read_test_case(path).expect("Failed to parse annotated program");
+    let test: TestCase<Expectation> =
+        read_annotated_test_case(path).expect("Failed to parse annotated program");
 
     // By default, cargo runs tests with a 2MB stack, which we can overflow in
     // debug mode. To avoid this we run the tests with an increased stack size.
@@ -49,10 +48,10 @@ fn check_annotated_nickel_file(path: &str) {
         .expect("Failed to join thread")
 }
 
-fn run_test(test: TestCase, path: String) {
+fn run_test(test: TestCase<Expectation>, path: String) {
     let mut p = TestProgram::new_from_source(Cursor::new(test.program), path.as_str()).expect("");
     let result = p.eval();
-    match test.expectation {
+    match test.annotation {
         Expectation::Error(expected_err) => {
             let err = result.expect_err(
                 format!(
@@ -70,67 +69,6 @@ fn run_test(test: TestCase, path: String) {
         ),
         Expectation::Skip => (),
     }
-}
-
-struct TestCase {
-    expectation: Expectation,
-    program: String,
-}
-
-#[derive(Debug)]
-enum AnnotatedProgramReadError {
-    MissingAnnotation,
-}
-
-fn read_test_case(path: &str) -> Result<TestCase, AnnotatedProgramReadError> {
-    let path = {
-        let proj_root = env!("CARGO_MANIFEST_DIR");
-        PathBuf::from(proj_root).join(path)
-    };
-
-    let file = File::open(path).expect("Failed to open file");
-    let reader = BufReader::new(file);
-
-    let mut lines = reader.lines();
-
-    let mut expectation = String::new();
-    let mut program = String::new();
-
-    loop {
-        let line = lines
-            .next()
-            .expect("Unexpected end of test file")
-            .expect("Error reading line");
-        if line.starts_with('#') {
-            let annot_line = if line.len() > 1 { &line[2..] } else { "" };
-            expectation.push_str(annot_line);
-            expectation.push('\n');
-        } else {
-            // we've already consumed the line in order to check the first char
-            // so we need to add it to the program string.
-            program.push_str(&line);
-            program.push('\n');
-            break;
-        }
-    }
-
-    if expectation.is_empty() {
-        return Err(AnnotatedProgramReadError::MissingAnnotation);
-    }
-
-    for line in lines {
-        let line = line.expect("Error reading line");
-        program.push_str(&line);
-        program.push('\n');
-    }
-
-    let expectation: Expectation =
-        toml::from_str(expectation.as_str()).expect("Failed to parse expectation toml");
-
-    Ok(TestCase {
-        expectation,
-        program,
-    })
 }
 
 #[derive(Deserialize)]
