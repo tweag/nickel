@@ -1,5 +1,0 @@
----
-source: tests/snapshot/main.rs
-expression: snapshot.stderr
----
-

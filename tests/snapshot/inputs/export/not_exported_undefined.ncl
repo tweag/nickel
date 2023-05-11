@@ -1,4 +1,4 @@
-# capture = 'all'
+# capture = 'stdout'
 # command = ['export']
 {
   foo | not_exported,

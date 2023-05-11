@@ -21,76 +21,50 @@ macro_rules! assert_snapshot_filtered {
     }
 }
 
-#[test_resources("tests/snapshot/inputs/pretty/*.ncl")]
-fn check_pretty_print_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
-
-    let snapshot = NickelInvocation::new()
-        .subcommand("pprint-ast")
-        .file(&file)
-        .snapshot_stdout();
-
-    insta::assert_snapshot!(file.prefixed_test_name("pretty"), snapshot);
-}
-
-#[test_resources("tests/snapshot/inputs/export/*.ncl")]
-fn check_export_snapshots(path: &str) {
+#[test_resources("tests/snapshot/inputs/*/*.ncl")]
+fn check_snapshots(path: &str) {
     let file = TestFile::from_project_path(path);
 
     let TestCase { annotation, .. }: TestCase<SnapshotAnnotation> =
         read_annotated_test_case(path).expect("Failed to read test case");
+
+    let subcommand = annotation
+        .command
+        .first()
+        .map(|s| s.as_str())
+        // TODO: er, maybe?
+        .unwrap_or("error")
+        .to_string();
 
     let invocation = NickelInvocation::new().args(annotation.command).file(&file);
 
     match annotation.capture {
         SnapshotCapture::Stderr => {
             let err = invocation.snapshot_stderr();
-            assert_snapshot_filtered!(file.prefixed_test_name("export_stderr"), err);
+            assert_snapshot_filtered!(
+                file.prefixed_test_name(format!("{subcommand}_stderr").as_str()),
+                err
+            );
         }
         SnapshotCapture::Stdout => {
             let out = invocation.snapshot_stdout();
-            assert_snapshot_filtered!(file.prefixed_test_name("export_stdout"), out);
+            assert_snapshot_filtered!(
+                file.prefixed_test_name(format!("{subcommand}_stdout").as_str()),
+                out
+            );
         }
         SnapshotCapture::All => {
             let (out, err) = invocation.snapshot();
-            assert_snapshot_filtered!(file.prefixed_test_name("export_stdout"), out);
-            assert_snapshot_filtered!(file.prefixed_test_name("export_stderr"), err);
+            assert_snapshot_filtered!(
+                file.prefixed_test_name(format!("{subcommand}_stdout").as_str()),
+                out
+            );
+            assert_snapshot_filtered!(
+                file.prefixed_test_name(format!("{subcommand}_stderr").as_str()),
+                err
+            );
         }
     }
-}
-
-#[test_resources("tests/snapshot/inputs/errors/*.ncl")]
-fn check_error_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
-
-    let snapshot = NickelInvocation::new().file(&file).snapshot_stderr();
-    assert_snapshot_filtered!(file.prefixed_test_name("error"), snapshot);
-}
-
-#[test_resources("tests/snapshot/inputs/docs/*.ncl")]
-fn check_doc_stdout_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
-
-    let snapshot = NickelInvocation::new()
-        .subcommand("doc")
-        .file(&file)
-        .args(["--stdout"])
-        .snapshot_stdout();
-
-    insta::assert_snapshot!(file.prefixed_test_name("doc_stdout"), snapshot);
-}
-
-#[test_resources("tests/snapshot/inputs/docs/*.ncl")]
-fn check_doc_stderr_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
-
-    let snapshot = NickelInvocation::new()
-        .subcommand("doc")
-        .file(&file)
-        .args(["--stdout"])
-        .snapshot_stderr();
-
-    assert_snapshot_filtered!(file.prefixed_test_name("doc_stderr"), snapshot);
 }
 
 struct TestFile {
@@ -131,11 +105,6 @@ impl NickelInvocation {
         let mut cmd = Command::new(nickel_loc);
         cmd.args(["--color", "never"]);
         Self { cmd }
-    }
-
-    fn subcommand<S: AsRef<OsStr>>(mut self, s: S) -> Self {
-        self.cmd.arg(s);
-        self
     }
 
     fn file(mut self, f: &TestFile) -> Self {

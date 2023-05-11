@@ -1,12 +1,12 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 std.trace: too few arguments
 error: not enough arguments
-  ┌─ [INPUTS_PATH]/errors/trace_not_saturated.ncl:1:1
+  ┌─ [INPUTS_PATH]/errors/trace_not_saturated.ncl:3:1
   │
-1 │ %trace% "too few arguments"
+3 │ %trace% "too few arguments"
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^ trace expects 2 arguments, but not enough were provided
 
 

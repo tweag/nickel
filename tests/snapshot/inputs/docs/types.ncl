@@ -1,3 +1,5 @@
+# capture = 'stdout'
+# command = ['doc', '--stdout']
 {
   Hello
     : Number

@@ -1,3 +1,5 @@
+# capture = 'stdout'
+# command = ['pprint-ast']
 {
   field | doc m%%"
     Contract to enforce the value is a string that represents a boolean literal. Additionally casts "True" to "true"

@@ -1,3 +1,5 @@
+# capture = 'stderr'
+# command = []
 let ChildContract = fun label value =>
   label
   |> std.contract.label.with_message "child's message"

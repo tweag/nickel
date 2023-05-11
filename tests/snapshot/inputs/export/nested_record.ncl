@@ -1,4 +1,4 @@
-# capture = 'all'
+# capture = 'stdout'
 # command = ['export']
 { 
   a_num = 1,
