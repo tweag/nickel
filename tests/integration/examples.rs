@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError};
-use nickel_lang_utilities::TestProgram;
+use nickel_lang_utilities::test_program::TestProgram;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::PathBuf;

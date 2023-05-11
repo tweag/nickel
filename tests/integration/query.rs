@@ -3,7 +3,7 @@ use nickel_lang::term::{
     record::{Field, FieldMetadata},
     TypeAnnotation,
 };
-use nickel_lang_utilities::TestProgram;
+use nickel_lang_utilities::test_program::TestProgram;
 
 #[test]
 pub fn test_query_metadata_basic() {

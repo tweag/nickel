@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use codespan::Files;
 use nickel_lang::error::{Error, EvalError, IntoDiagnostics, TypecheckError};
 
-use nickel_lang_utilities::{eval, program_from_expr};
+use nickel_lang_utilities::test_program::{eval, program_from_expr};
 
 macro_rules! assert_raise_blame {
     ($term:expr) => {{

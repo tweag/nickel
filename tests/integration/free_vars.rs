@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::iter::IntoIterator;
 use std::rc::Rc;
 
-use nickel_lang_utilities::parse;
+use nickel_lang_utilities::test_program::parse;
 
 fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
     let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();

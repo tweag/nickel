@@ -1,5 +1,5 @@
 use nickel_lang::term::Term;
-use nickel_lang_utilities::TestProgram;
+use nickel_lang_utilities::test_program::TestProgram;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::thread;

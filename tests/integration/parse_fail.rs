@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::Error;
 
-use nickel_lang_utilities::eval;
+use nickel_lang_utilities::test_program::eval;
 
 #[test]
 fn unexpected_token() {

@@ -9,8 +9,8 @@ use nickel_lang::{
     error::{Error, EvalError},
     term::Term,
 };
-use nickel_lang_utilities::TestProgram;
-use serde::{Deserialize, Serialize};
+use nickel_lang_utilities::test_program::TestProgram;
+use serde::Deserialize;
 use test_generator::test_resources;
 
 mod basics_fail;

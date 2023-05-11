@@ -174,7 +174,7 @@ impl NickelInvocation {
     }
 }
 
-struct TestCase<Annot> {
+pub struct TestCase<Annot> {
     annotation: Annot,
     program: String,
 }

@@ -7,7 +7,7 @@ use nickel_lang::{
     identifier::Ident,
 };
 
-use nickel_lang_utilities::eval;
+use nickel_lang_utilities::test_program::eval;
 
 macro_rules! assert_unbound {
     ( $term:expr, $var:expr ) => {

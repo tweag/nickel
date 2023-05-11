@@ -584,7 +584,7 @@ impl serde::de::Error for RustDeserializationError {
 mod tests {
     use std::io::Cursor;
 
-    use nickel_lang_utilities::TestProgram;
+    use nickel_lang_utilities::test_program::TestProgram;
     use serde::Deserialize;
 
     use crate::{eval::cache::CacheImpl, program::Program};
