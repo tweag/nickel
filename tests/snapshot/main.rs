@@ -1,5 +1,8 @@
+use serde::Deserialize;
 use std::{
     ffi::OsStr,
+    fs::File,
+    io::{BufRead, BufReader},
     path::PathBuf,
     process::{Command, Output},
 };
@@ -32,27 +35,28 @@ fn check_pretty_print_snapshots(file: &str) {
 }
 
 #[test_resources("tests/snapshot/inputs/export/*.ncl")]
-fn check_export_stdout_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
+fn check_export_snapshots(path: &str) {
+    let file = TestFile::from_project_path(path);
 
-    let snapshot = NickelInvocation::new()
-        .subcommand("export")
-        .file(&file)
-        .snapshot_stdout();
+    let TestCase { annotation, .. } = read_test_case(path).expect("Failed to read test case");
 
-    insta::assert_snapshot!(file.prefixed_test_name("export_stdout"), snapshot);
-}
+    let invocation = NickelInvocation::new().args(annotation.command).file(&file);
 
-#[test_resources("tests/snapshot/inputs/export/*.ncl")]
-fn check_export_stderr_snapshots(file: &str) {
-    let file = TestFile::from_project_path(file);
-
-    let snapshot = NickelInvocation::new()
-        .subcommand("export")
-        .file(&file)
-        .snapshot_stderr();
-
-    insta::assert_snapshot!(file.prefixed_test_name("export_stderr"), snapshot);
+    match annotation.capture {
+        SnapshotCapture::Stderr => {
+            let err = invocation.snapshot_stderr();
+            assert_snapshot_filtered!(file.prefixed_test_name("export_stderr"), err);
+        }
+        SnapshotCapture::Stdout => {
+            let out = invocation.snapshot_stdout();
+            assert_snapshot_filtered!(file.prefixed_test_name("export_stdout"), out);
+        }
+        SnapshotCapture::All => {
+            let (out, err) = invocation.snapshot();
+            assert_snapshot_filtered!(file.prefixed_test_name("export_stdout"), out);
+            assert_snapshot_filtered!(file.prefixed_test_name("export_stderr"), err);
+        }
+    }
 }
 
 #[test_resources("tests/snapshot/inputs/errors/*.ncl")]
@@ -129,17 +133,17 @@ impl NickelInvocation {
         Self { cmd }
     }
 
-    fn subcommand<S: AsRef<OsStr>>(&mut self, s: S) -> &mut Self {
+    fn subcommand<S: AsRef<OsStr>>(mut self, s: S) -> Self {
         self.cmd.arg(s);
         self
     }
 
-    fn file(&mut self, f: &TestFile) -> &mut Self {
+    fn file(mut self, f: &TestFile) -> Self {
         self.cmd.args(["-f", f.as_nickel_argument()]);
         self
     }
 
-    fn args<I, S>(&mut self, args: I) -> &mut Self
+    fn args<I, S>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -148,15 +152,101 @@ impl NickelInvocation {
         self
     }
 
-    fn run(&mut self) -> Output {
+    fn run(mut self) -> Output {
         self.cmd.output().expect("Should be able to capture output")
     }
 
-    fn snapshot_stderr(&mut self) -> String {
+    // TODO: named struct > tuple
+    fn snapshot(self) -> (String, String) {
+        let output = self.run();
+        fn as_string(v: Vec<u8>) -> String {
+            String::from_utf8(v).expect("Output should be utf8")
+        }
+        (as_string(output.stdout), as_string(output.stderr))
+    }
+
+    fn snapshot_stderr(self) -> String {
         String::from_utf8(self.run().stderr).expect("Output should be utf8")
     }
 
-    fn snapshot_stdout(&mut self) -> String {
+    fn snapshot_stdout(self) -> String {
         String::from_utf8(self.run().stdout).expect("Output should be utf8")
     }
+}
+
+struct TestCase<Annot> {
+    annotation: Annot,
+    program: String,
+}
+
+#[derive(Deserialize)]
+struct SnapshotAnnotation {
+    capture: SnapshotCapture,
+    command: Vec<String>,
+}
+
+#[derive(Deserialize)]
+enum SnapshotCapture {
+    #[serde(rename = "stderr")]
+    Stderr,
+    #[serde(rename = "stdout")]
+    Stdout,
+    #[serde(rename = "all")]
+    All,
+}
+
+#[derive(Debug)]
+enum AnnotatedProgramReadError {
+    MissingAnnotation,
+}
+
+fn read_test_case(path: &str) -> Result<TestCase<SnapshotAnnotation>, AnnotatedProgramReadError> {
+    let path = {
+        let proj_root = env!("CARGO_MANIFEST_DIR");
+        PathBuf::from(proj_root).join(path)
+    };
+
+    let file = File::open(path).expect("Failed to open file");
+    let reader = BufReader::new(file);
+
+    let mut lines = reader.lines();
+
+    let mut annotation = String::new();
+    let mut program = String::new();
+
+    loop {
+        let line = lines
+            .next()
+            .expect("Unexpected end of test file")
+            .expect("Error reading line");
+        if line.starts_with('#') {
+            let annot_line = if line.len() > 1 { &line[2..] } else { "" };
+            annotation.push_str(annot_line);
+            annotation.push('\n');
+        } else {
+            // we've already consumed the line in order to check the first char
+            // so we need to add it to the program string.
+            program.push_str(&line);
+            program.push('\n');
+            break;
+        }
+    }
+
+    if annotation.is_empty() {
+        return Err(AnnotatedProgramReadError::MissingAnnotation);
+    }
+
+    for line in lines {
+        let line = line.expect("Error reading line");
+        program.push_str(&line);
+        program.push('\n');
+    }
+
+    let annotation: SnapshotAnnotation =
+        toml::from_str(annotation.as_str()).expect("Failed to parse expectation toml");
+
+    Ok(TestCase {
+        annotation,
+        program,
+    })
 }
