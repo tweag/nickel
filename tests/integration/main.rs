@@ -83,6 +83,7 @@ enum Expectation {
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "error", content = "expectation")]
+#[allow(clippy::enum_variant_names)]
 enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
     #[serde(rename = "EvalError::EqError")]
