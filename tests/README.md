@@ -3,7 +3,7 @@
 This directory has three subdirectories, each containing a different kind of
 test. Each directory contains a `main` module implementing a test runner
 for that particular type of test. The tests themselves are then written as
-Nickel sources files, annotated with toml headers which describe the expected
+Nickel source files, annotated with toml headers which describe the expected
 behaviour of the program.
 
 - `integration` contains general purpose integration tests,
