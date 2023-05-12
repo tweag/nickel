@@ -1,4 +1,4 @@
-# test: pass
+# test = 'pass'
 
 # Merge several blocks into one final configuration. In a real world case, one
 # would also want contracts to validate the shape of the data.

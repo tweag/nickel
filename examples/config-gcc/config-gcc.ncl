@@ -1,4 +1,4 @@
-# test: pass
+# test = 'pass'
 
 # Validate and normalize gcc flags. They can be either a string `-Wextra` or
 # a structured value `{flag = "W", arg = "extra"}`. Arguments are not checked.

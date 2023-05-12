@@ -13,7 +13,6 @@ use test_generator::test_resources;
 
 mod contracts_fail;
 mod destructuring;
-mod examples;
 mod free_vars;
 mod imports;
 mod infinite_rec;

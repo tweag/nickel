@@ -1,4 +1,4 @@
-# test: pass
+# test = 'pass'
 
 # An illustrative (thus incomplete and maybe incorrect) contract example for a
 # Kubernetes configuration.

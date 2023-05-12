@@ -1,4 +1,4 @@
-# test: blame
+# test = 'blame'
 
 # /!\ THIS EXAMPLE IS EXPECTED TO FAIL
 # Illustrates a basic contract violation.
