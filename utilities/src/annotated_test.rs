@@ -30,7 +30,6 @@ pub fn read_annotated_test_case<Annot: for<'de> Deserialize<'de>>(
         PathBuf::from(proj_root).join(path)
     };
 
-    println!("Trying to open {path:?}");
     let file = File::open(path).expect("Failed to open file");
     let reader = BufReader::new(file);
 
