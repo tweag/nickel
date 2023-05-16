@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: out
 ---
 {
   "bar": 42

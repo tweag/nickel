@@ -5,7 +5,7 @@ use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError, TypecheckError};
 use nickel_lang::term::Term;
 
-use nickel_lang_utilities::{eval_file, TestProgram};
+use nickel_lang_utilities::test_program::{eval_file, TestProgram};
 use test_generator::test_resources;
 
 #[test_resources("tests/integration/destructuring/pass/*.ncl")]

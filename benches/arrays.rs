@@ -5,7 +5,7 @@ use nickel_lang::term::{
     array::{Array, ArrayAttrs},
     Number, RichTerm, Term,
 };
-use nickel_lang_utilities::{ncl_bench_group, EvalMode};
+use nickel_lang_utilities::{bench::EvalMode, ncl_bench_group};
 use pprof::criterion::{Output, PProfProfiler};
 use pretty::{BoxAllocator, DocBuilder, Pretty};
 

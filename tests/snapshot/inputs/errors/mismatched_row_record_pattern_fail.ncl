@@ -1,3 +1,5 @@
+# capture = 'stderr'
+# command = []
 (
   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
   in a

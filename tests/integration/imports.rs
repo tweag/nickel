@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError, ImportError, TypecheckError};
 use nickel_lang::term::{make as mk_term, RichTerm, Term};
-use nickel_lang_utilities::TestProgram;
+use nickel_lang_utilities::test_program::TestProgram;
 use std::io::BufReader;
 use std::path::PathBuf;
 

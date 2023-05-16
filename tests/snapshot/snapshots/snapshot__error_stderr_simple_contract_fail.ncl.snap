@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: contract broken by a value
-  ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:1:1
+  ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:3:1
   │
-1 │ 1 | String
+3 │ 1 | String
   │ ^   ------ expected type
   │ │    
   │ applied to this expression

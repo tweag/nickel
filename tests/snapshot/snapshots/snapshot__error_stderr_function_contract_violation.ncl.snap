@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: contract broken by the function `f`
-  ┌─ [INPUTS_PATH]/errors/function_contract_violation.ncl:1:25
+  ┌─ [INPUTS_PATH]/errors/function_contract_violation.ncl:3:25
   │
-1 │ let r = { f | Number -> Number = fun x => 'not-a-number } in r.f 7
+3 │ let r = { f | Number -> Number = fun x => 'not-a-number } in r.f 7
   │                         ------            ------------- evaluated to this expression
   │                         │                  
   │                         expected return type

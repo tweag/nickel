@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: incompatible rows declaration
-  ┌─ [INPUTS_PATH]/errors/mismatched_row_record_pattern_fail.ncl:2:13
+  ┌─ [INPUTS_PATH]/errors/mismatched_row_record_pattern_fail.ncl:4:13
   │
-2 │   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
+4 │   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
   │             ^^^^^^^^^^^^^^ this expression
   │
   = Expected an expression of a record type with the row `a: String`

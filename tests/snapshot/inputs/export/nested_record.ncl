@@ -1,3 +1,5 @@
+# capture = 'stdout'
+# command = ['export']
 { 
   a_num = 1,
   some_str = "this is a string",

@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: incompatible types
-  ┌─ [INPUTS_PATH]/errors/nested_annotated_record_pattern_typecheck_fail.ncl:2:43
+  ┌─ [INPUTS_PATH]/errors/nested_annotated_record_pattern_typecheck_fail.ncl:4:43
   │
-2 │   let { x = { a : Number }} = { x = { a = "" }} in
+4 │   let { x = { a : Number }} = { x = { a = "" }} in
   │                                           ^^ this expression
   │
   = Expected an expression of type `Number`

@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: contract broken by the value of `foo`: no reason
-  ┌─ [INPUTS_PATH]/errors/value_contract_violation.ncl:1:36
+  ┌─ [INPUTS_PATH]/errors/value_contract_violation.ncl:3:36
   │
-1 │ { foo | std.FailWith "no reason" = 1 }.foo
+3 │ { foo | std.FailWith "no reason" = 1 }.foo
   │         ------------------------   ^ applied to this expression
   │         │                           
   │         expected type

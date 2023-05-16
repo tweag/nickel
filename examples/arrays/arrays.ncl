@@ -1,4 +1,4 @@
-# test: pass
+# test = 'pass'
 
 # Example array functions. This code is illustrative: prefer using the array
 # stdlib functions `std.array.map` and `std.array.fold_right` instead.

@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot.stdout
+expression: out
 ---
 {
   "a_num": 1,
@@ -26,3 +26,4 @@ expression: snapshot.stdout
   "booooool": false,
   "some_str": "this is a string"
 }
+

@@ -1,3 +1,5 @@
+# capture = 'stdout'
+# command = ['pprint-ast']
 { 
   a | Number | default = 1, 
   b : String | force = "some long string that goes past the 80 character line limit for pretty printing", 

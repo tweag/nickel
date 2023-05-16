@@ -6,7 +6,7 @@ use nickel_lang::parser::{grammar, lexer, ErrorTolerantParser};
 use nickel_lang::term::RichTerm;
 use nickel_lang::types::{TypeF, Types};
 use nickel_lang::{typecheck, typecheck::Context};
-use nickel_lang_utilities::typecheck_fixture;
+use nickel_lang_utilities::test_program::typecheck_fixture;
 
 fn type_check(rt: &RichTerm) -> Result<(), TypecheckError> {
     typecheck::type_check(rt, Context::new(), &DummyResolver {}).map(|_| ())

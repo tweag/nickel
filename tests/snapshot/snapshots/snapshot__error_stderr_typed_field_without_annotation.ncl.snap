@@ -1,11 +1,11 @@
 ---
 source: tests/snapshot/main.rs
-expression: snapshot
+expression: err
 ---
 error: statically typed field without a definition
-  ┌─ [INPUTS_PATH]/errors/typed_field_without_annotation.ncl:2:3
+  ┌─ [INPUTS_PATH]/errors/typed_field_without_annotation.ncl:4:3
   │
-2 │   foo : Number
+4 │   foo : Number
   │   ^^^   ------ but it has a type annotation
   │   │      
   │   this field doesn't have a definition
