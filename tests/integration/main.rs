@@ -80,7 +80,7 @@ enum Expectation {
     Skip,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(tag = "error", content = "expectation")]
 #[allow(clippy::enum_variant_names)]
 enum ErrorExpectation {
@@ -93,8 +93,12 @@ enum ErrorExpectation {
     EvalNAryPrimopTypeError,
     #[serde(rename = "EvalError::BlameError")]
     EvalBlameError,
+    #[serde(rename = "EvalError::IllegalPolymorphicTailAccess")]
+    EvalIllegalPolymorphicTailAccess,
     #[serde(rename = "EvalError::TypeError")]
     EvalTypeError,
+    #[serde(rename = "TypecheckError::UnboundIdentifier")]
+    TypecheckUnboundIdentifier { identifier: String },
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -102,10 +106,21 @@ impl PartialEq<Error> for ErrorExpectation {
         use ErrorExpectation::*;
         match (self, other) {
             (EvalBlameError, Error::EvalError(EvalError::BlameError { .. }))
+            | (
+                EvalIllegalPolymorphicTailAccess,
+                Error::EvalError(EvalError::IllegalPolymorphicTailAccess { .. }),
+            )
             | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
             | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
             | (EvalOther, Error::EvalError(EvalError::Other(..))) => true,
+            (
+                TypecheckUnboundIdentifier { identifier },
+                Error::TypecheckError(nickel_lang::error::TypecheckError::UnboundIdentifier(
+                    ident,
+                    ..,
+                )),
+            ) if ident.label() == identifier => true,
             (_, _) => false,
         }
     }
@@ -115,12 +130,24 @@ impl std::fmt::Display for ErrorExpectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ErrorExpectation::*;
         let name = match self {
-            EvalBlameError => "EvalError::BlameError",
-            EvalTypeError => "EvalError::TypeError",
-            EvalEqError => "EvalError::EqError",
-            EvalOther => "EvalError::Other",
-            EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError",
+            EvalBlameError => "EvalError::BlameError".to_owned(),
+            EvalTypeError => "EvalError::TypeError".to_owned(),
+            EvalEqError => "EvalError::EqError".to_owned(),
+            EvalOther => "EvalError::Other".to_owned(),
+            EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError".to_owned(),
+            EvalIllegalPolymorphicTailAccess => {
+                "EvalError::IllegalPolymorphicTailAccess".to_owned()
+            }
+            TypecheckUnboundIdentifier { identifier } => {
+                format!("TypecheckError::UnboundIdentifier({identifier})")
+            }
         };
         write!(f, "{}", name)
+    }
+}
+
+impl std::fmt::Debug for ErrorExpectation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }

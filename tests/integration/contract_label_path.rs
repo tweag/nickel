@@ -5,7 +5,7 @@ use nickel_lang::error::{Error, EvalError, IntoDiagnostics};
 use nickel_lang_utilities::test_program::eval;
 
 #[test]
-fn array() {
+fn array_contracts_label_path_is_set_correctly() {
     use nickel_lang::label::ty_path::Elem;
 
     let res = eval("%force% ([{a = [1]}] | Array {a: Array String}) false");
@@ -41,7 +41,7 @@ fn array() {
 }
 
 #[test]
-fn dictionary() {
+fn dictionary_contracts_label_path_is_set_correctly() {
     use nickel_lang::label::ty_path::Elem;
 
     let res = eval("%force% ({foo = 1} | {_ | String}) false");
