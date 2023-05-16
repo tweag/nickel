@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let {Assert, check, ..} =  import "lib/assert.ncl" in
 
 [

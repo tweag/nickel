@@ -1,3 +1,11 @@
+# test.type = 'error'
+#
+# [test.metadata]
+# error = 'TypecheckError::MissingRow'
+#
+# [test.metadata.expectation]
+# ident = 'a'
+
 # Note: currently repeated identifiers in patterns aren't caught unless
 #       we're in typechecking mode. there's an open issue for this (#1098)
 (

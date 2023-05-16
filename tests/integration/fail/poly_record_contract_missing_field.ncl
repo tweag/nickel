@@ -1,6 +1,6 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::BlameError'
 let f | forall r. { x : Number, y : Number; r } -> { x : Number, y : Number; r} =
   fun r => r

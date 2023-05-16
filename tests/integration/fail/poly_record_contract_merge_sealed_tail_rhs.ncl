@@ -1,6 +1,6 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::IllegalPolymorphicTailAccess'
 let f | forall r. { a : Number; r } -> { a : Number; r } =
   fun r => { a | force = 0 } & r

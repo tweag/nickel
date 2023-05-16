@@ -1,8 +1,8 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'TypecheckError::UnboundIdentifier'
 # 
-# [metadata.expectation]
+# [test.metadata.expectation]
 # identifier = 'a'
 forall a b. b -> Array b -> { _ | a }

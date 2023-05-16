@@ -1,6 +1,6 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::BlameError'
 let DivBy = fun n l x => if x % n == 0 then x else %blame% l in
 let Even = DivBy 2 in

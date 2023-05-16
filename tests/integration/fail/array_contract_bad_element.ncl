@@ -1,5 +1,5 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::BlameError'
 %force% ([1, "a"] | Array Number) 0

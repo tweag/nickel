@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let ctr = {
   Derivation 
     | doc m%"

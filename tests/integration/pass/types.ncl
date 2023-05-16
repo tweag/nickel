@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let {Assert, ..} = import "lib/assert.ncl" in
 
 (let plus : Number -> Number -> Number = fun x => fun y => x + y in

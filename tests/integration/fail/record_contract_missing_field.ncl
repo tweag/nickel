@@ -1,6 +1,6 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::BlameError'
 let x | { a : Number, s: String } = { s = "yes" } 
 in %deep_seq% x x 

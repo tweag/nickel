@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let test_cases : _ = {
   "destructuring let binding preserves types" =
     let some_record: { a : Number, b : String, c : Number -> Number } = { a = 1, b = "test", c = fun n => n } in

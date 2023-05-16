@@ -1,6 +1,6 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::BlameError'
 let 
   AlwaysTrue = fun l t => 
