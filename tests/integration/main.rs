@@ -14,7 +14,6 @@ use test_generator::test_resources;
 mod contract_label_path;
 mod free_vars;
 mod imports;
-mod parse_fail;
 mod pretty;
 mod query;
 mod records_fail;
@@ -137,6 +136,8 @@ enum ErrorExpectation {
     TypecheckMissingRow { ident: String },
     #[serde(rename = "TypecheckError::RowMismatch")]
     TypecheckRowMismatch,
+    #[serde(rename = "ParseError")]
+    ParseError,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -157,9 +158,8 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::EvalError(EvalError::MergeIncompatibleArgs { .. }),
             )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
-            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..))) => {
-                true
-            }
+            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..)))
+            | (ParseError, Error::ParseErrors(..)) => true,
             (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..)))
                 if field == ident =>
             {
@@ -209,6 +209,7 @@ impl std::fmt::Display for ErrorExpectation {
                 format!("TypecheckError::MissingRow({ident})")
             }
             TypecheckRowMismatch => "TypecheckError::RowMismatch".to_owned(),
+            ParseError => "ParseError".to_owned(),
         };
         write!(f, "{}", name)
     }
