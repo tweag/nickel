@@ -1,7 +1,16 @@
-Version 1.0 (pending)
-=====================
+Version 1.0
+===========
 
-This is WIP, registering breaking changes for the next major version.
+This is the 1.0 release! The syntax and the semantics of the core language have
+been stabilized and shouldn't evolve as much in the future.
+
+- The core semantics of the language have been reworked and stabilized, in
+  particular (but not limited to) merging, types and contracts with the
+  implementation of RFC005
+- The stdlib has been augmented with many new functions
+- Parts of the syntax and some builtin symobls (types, stdlib functions, and so
+  on) have been improved and made consistent
+- New features for the LSP, and in particular code completion
 
 Breaking changes
 ----------------
