@@ -1,6 +1,6 @@
 [package]
 name = "nickel-lang"
-version = "0.3.1"
+version = "1.0.0"
 authors = ["Nickel team"]
 license = "MIT"
 readme = "README.md"
@@ -75,7 +75,7 @@ pretty_assertions = "1.3.0"
 assert_matches = "1.5.0"
 criterion = "0.4"
 pprof = { version = "0.11.1", features = ["criterion", "flamegraph"] }
-nickel-lang-utilities = {path = "utilities", version = "0.3.1"}
+nickel-lang-utilities = {path = "utilities", version = "1.0.0"}
 similar = "2.2.1"
 test-generator = "0.3.1"
 insta = { version = "1.28.0", features = ["filters"] }
