@@ -14,7 +14,6 @@ use test_generator::test_resources;
 mod contract_label_path;
 mod free_vars;
 mod imports;
-mod infinite_rec;
 mod merge_fail;
 mod parse_fail;
 mod pretty;
@@ -96,7 +95,6 @@ enum Expectation {
 
 #[derive(Clone, Deserialize)]
 #[serde(tag = "error", content = "expectation")]
-#[allow(clippy::enum_variant_names)]
 enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
     #[serde(rename = "EvalError::EqError")]
@@ -111,6 +109,8 @@ enum ErrorExpectation {
     EvalIllegalPolymorphicTailAccess,
     #[serde(rename = "EvalError::TypeError")]
     EvalTypeError,
+    #[serde(rename = "EvalError::InfiniteRecursion")]
+    EvalInfiniteRecursion,
     #[serde(rename = "EvalError::FieldMissing")]
     EvalFieldMissing { field: String },
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
@@ -135,6 +135,7 @@ impl PartialEq<Error> for ErrorExpectation {
             | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
             | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
+            | (EvalInfiniteRecursion, Error::EvalError(EvalError::InfiniteRecursion(..)))
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
             | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..))) => {
                 true
@@ -170,6 +171,7 @@ impl std::fmt::Display for ErrorExpectation {
             EvalEqError => "EvalError::EqError".to_owned(),
             EvalOther => "EvalError::Other".to_owned(),
             EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError".to_owned(),
+            EvalInfiniteRecursion => "EvalError::InfiniteRecursion".to_owned(),
             EvalIllegalPolymorphicTailAccess => {
                 "EvalError::IllegalPolymorphicTailAccess".to_owned()
             }
