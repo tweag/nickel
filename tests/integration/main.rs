@@ -16,7 +16,6 @@ mod free_vars;
 mod imports;
 mod pretty;
 mod query;
-mod records_fail;
 mod stdlib_arrays_fail;
 mod stdlib_typecheck;
 mod typecheck_fail;
@@ -126,6 +125,8 @@ enum ErrorExpectation {
     EvalInfiniteRecursion,
     #[serde(rename = "EvalError::FieldMissing")]
     EvalFieldMissing { field: String },
+    #[serde(rename = "EvalError::MissingFieldDef")]
+    EvalMissingFieldDef { field: String },
     #[serde(rename = "EvalError::MergeIncompatibleArgs")]
     EvalMergeIncompatibleArgs,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
@@ -166,6 +167,10 @@ impl PartialEq<Error> for ErrorExpectation {
                 true
             }
             (
+                EvalMissingFieldDef { field },
+                Error::EvalError(EvalError::MissingFieldDef { id, .. }),
+            ) if field == id.label() => true,
+            (
                 TypecheckUnboundIdentifier { identifier },
                 Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, ..)),
             ) if ident.label() == identifier => true,
@@ -198,6 +203,9 @@ impl std::fmt::Display for ErrorExpectation {
             }
             EvalFieldMissing { field } => {
                 format!("EvalError::FieldMissing({field})")
+            }
+            EvalMissingFieldDef { field } => {
+                format!("EvalError::MissingFieldDef({field})")
             }
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
