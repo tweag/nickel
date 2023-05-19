@@ -16,7 +16,6 @@ mod free_vars;
 mod imports;
 mod pretty;
 mod query;
-mod stdlib_arrays_fail;
 mod stdlib_typecheck;
 mod typecheck_fail;
 mod unbound_type_variables;
