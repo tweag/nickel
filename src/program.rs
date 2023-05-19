@@ -27,13 +27,14 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::term::{record::Field, RichTerm};
+use clap::ValueEnum;
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
 use std::io::{self, Cursor, Read};
 use std::result::Result;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 pub enum ColorOpt {
     Auto,
     Always,
