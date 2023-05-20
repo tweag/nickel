@@ -15,11 +15,10 @@ use std::{
     process,
 };
 // use std::ffi::OsStr;
-use clap::{Parser, Subcommand, ValueEnum};
 use directories::BaseDirs;
 
 /// Command-line options and subcommands.
-#[derive(Parser, Debug)]
+#[derive(clap::Parser, Debug)]
 /// The interpreter of the Nickel language.
 struct Opt {
     /// The input file. Standard input by default
@@ -40,7 +39,7 @@ struct Opt {
 }
 
 /// Available subcommands.
-#[derive(Subcommand, Debug)]
+#[derive(clap::Subcommand, Debug)]
 enum Command {
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
@@ -96,7 +95,7 @@ enum Command {
     },
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum DocFormat {
     Json,
     #[default]
@@ -143,6 +142,8 @@ impl std::str::FromStr for DocFormat {
 }
 
 fn main() {
+    use clap::Parser;
+
     let opts = Opt::parse();
 
     if let Some(Command::Repl { history_file }) = opts.command {

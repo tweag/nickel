@@ -10,8 +10,6 @@ use crate::{
     },
 };
 
-use clap::ValueEnum;
-
 use serde::{
     de::{Deserialize, Deserializer},
     ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
@@ -23,7 +21,7 @@ use std::{fmt, io, rc::Rc, str::FromStr};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, ValueEnum)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum ExportFormat {
     Raw,
     #[default]

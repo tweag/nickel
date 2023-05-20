@@ -11,7 +11,6 @@ mod files;
 mod linearization;
 mod requests;
 mod server;
-use clap::Parser;
 use server::Server;
 
 use crate::trace::Trace;
@@ -19,7 +18,7 @@ use crate::trace::Trace;
 mod term;
 mod trace;
 
-#[derive(Parser, Debug)]
+#[derive(clap::Parser, Debug)]
 /// The LSP server of the Nickel language.
 struct Opt {
     /// The trace output file, disables tracing if not given
@@ -28,6 +27,8 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
+    use clap::Parser;
+
     env_logger::init();
 
     let options = Opt::parse();
