@@ -2,7 +2,7 @@
 use core::fmt;
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CacheImpl;
-use nickel_lang::program::{ColorOpt, Program};
+use nickel_lang::program::Program;
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel_lang::repl::rustyline_frontend;
@@ -31,8 +31,8 @@ struct Opt {
     nostdlib: bool,
 
     /// Coloring: auto, always, never.
-    #[arg(long, global = true, value_enum, default_value_t = ColorOpt::Auto)]
-    color: ColorOpt,
+    #[arg(long, global = true, value_enum, default_value_t = clap::ColorChoice::default())]
+    color: clap::ColorChoice,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -156,7 +156,7 @@ fn main() {
                 .join(".nickel_history")
         };
         #[cfg(feature = "repl")]
-        if rustyline_frontend::repl(histfile, opts.color).is_err() {
+        if rustyline_frontend::repl(histfile, opts.color.into()).is_err() {
             process::exit(1);
         }
 
@@ -178,7 +178,7 @@ fn main() {
             program.set_skip_stdlib();
         }
 
-        program.set_color(opts.color);
+        program.set_color(opts.color.into());
 
         let result = match opts.command {
             Some(Command::PprintAst { transform }) => program.pprint_ast(
