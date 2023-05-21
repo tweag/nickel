@@ -129,18 +129,6 @@ impl fmt::Display for ParseFormatError {
     }
 }
 
-impl std::str::FromStr for DocFormat {
-    type Err = ParseFormatError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_ref() {
-            "json" => Ok(DocFormat::Json),
-            "markdown" => Ok(DocFormat::Markdown),
-            _ => Err(ParseFormatError(String::from(s))),
-        }
-    }
-}
-
 fn main() {
     use clap::Parser;
 

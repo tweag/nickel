@@ -17,7 +17,7 @@ use serde::{
 
 use malachite::num::conversion::traits::IsInteger;
 
-use std::{fmt, io, rc::Rc, str::FromStr};
+use std::{fmt, io, rc::Rc};
 
 /// Available export formats.
 // If you add or remove variants, remember to update the CLI docs in `src/bin/nickel.rs'
@@ -47,20 +47,6 @@ pub struct ParseFormatError(String);
 impl fmt::Display for ParseFormatError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "unsupported export format {}", self.0)
-    }
-}
-
-impl FromStr for ExportFormat {
-    type Err = ParseFormatError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_ref() {
-            "raw" => Ok(ExportFormat::Raw),
-            "json" => Ok(ExportFormat::Json),
-            "yaml" => Ok(ExportFormat::Yaml),
-            "toml" => Ok(ExportFormat::Toml),
-            _ => Err(ParseFormatError(String::from(s))),
-        }
     }
 }
 
