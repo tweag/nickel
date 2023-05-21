@@ -31,7 +31,7 @@ struct Opt {
     nostdlib: bool,
 
     /// Coloring: auto, always, never.
-    #[arg(long, global = true, value_enum, default_value_t = clap::ColorChoice::default())]
+    #[arg(long, global = true, value_enum)]
     color: clap::ColorChoice,
 
     #[command(subcommand)]
@@ -50,7 +50,7 @@ enum Command {
     },
     /// Exports the result to a different format
     Export {
-        #[arg(long, default_value_t = ExportFormat::default(), value_enum)]
+        #[arg(long, value_enum)]
         format: ExportFormat,
 
         /// Output file. Standard output by default
@@ -90,7 +90,7 @@ enum Command {
         #[arg(long)]
         stdout: bool,
         /// The output format for the generated documentation.
-        #[arg(long, value_enum, default_value_t = DocFormat::default())]
+        #[arg(long, value_enum)]
         format: DocFormat,
     },
 }
