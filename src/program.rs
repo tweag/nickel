@@ -34,22 +34,11 @@ use std::io::{self, Cursor, Read};
 use std::result::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ColorOpt {
-    Auto,
-    Always,
-    Never,
-}
+pub struct ColorOpt(pub(crate) clap::ColorChoice);
 
-impl std::str::FromStr for ColorOpt {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "auto" => Ok(Self::Auto),
-            "always" => Ok(Self::Always),
-            "never" => Ok(Self::Never),
-            _ => Err("possible values are 'auto', 'always' or 'never'."),
-        }
+impl From<clap::ColorChoice> for ColorOpt {
+    fn from(color_choice: clap::ColorChoice) -> Self {
+        Self(color_choice)
     }
 }
 
@@ -142,7 +131,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: ColorOpt::Auto,
+            color_opt: clap::ColorChoice::Auto.into(),
         })
     }
 
@@ -159,7 +148,7 @@ impl<EC: EvalCache> Program<EC> {
         Ok(Self {
             main_id,
             vm,
-            color_opt: ColorOpt::Auto,
+            color_opt: clap::ColorChoice::Auto.into(),
         })
     }
 
@@ -356,10 +345,10 @@ where
 
 impl From<ColorOpt> for ColorChoice {
     fn from(c: ColorOpt) -> Self {
-        match c {
-            ColorOpt::Auto => ColorChoice::Auto,
-            ColorOpt::Always => ColorChoice::Always,
-            ColorOpt::Never => ColorChoice::Never,
+        match c.0 {
+            clap::ColorChoice::Auto => ColorChoice::Auto,
+            clap::ColorChoice::Always => ColorChoice::Always,
+            clap::ColorChoice::Never => ColorChoice::Never,
         }
     }
 }

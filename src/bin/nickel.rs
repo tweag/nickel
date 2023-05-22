@@ -2,7 +2,7 @@
 use core::fmt;
 use nickel_lang::error::{Error, IOError};
 use nickel_lang::eval::cache::CacheImpl;
-use nickel_lang::program::{ColorOpt, Program};
+use nickel_lang::program::Program;
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel_lang::repl::rustyline_frontend;
@@ -16,68 +16,66 @@ use std::{
 };
 // use std::ffi::OsStr;
 use directories::BaseDirs;
-use structopt::StructOpt;
 
 /// Command-line options and subcommands.
-#[derive(StructOpt, Debug)]
+#[derive(clap::Parser, Debug)]
 /// The interpreter of the Nickel language.
 struct Opt {
     /// The input file. Standard input by default
-    #[structopt(short = "f", long, global = true, parse(from_os_str))]
+    #[arg(short, long, global = true)]
     file: Option<PathBuf>,
 
     #[cfg(debug_assertions)]
     /// Skips the standard library import. For debugging only. This does not affect REPL
-    #[structopt(long)]
+    #[arg(long)]
     nostdlib: bool,
 
     /// Coloring: auto, always, never.
-    #[structopt(long, global = true, case_insensitive = true, default_value = "auto")]
-    color: ColorOpt,
+    #[arg(long, global = true, value_enum, default_value_t)]
+    color: clap::ColorChoice,
 
-    #[structopt(subcommand)]
+    #[command(subcommand)]
     command: Option<Command>,
 }
 
 /// Available subcommands.
-#[derive(StructOpt, Debug)]
+#[derive(clap::Subcommand, Debug)]
 enum Command {
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst {
         /// Performs code transformations before printing
-        #[structopt(long)]
+        #[arg(long)]
         transform: bool,
     },
     /// Exports the result to a different format
     Export {
-        /// Available formats: `raw, json, yaml, toml`. Default format: `json`.
-        #[structopt(long)]
-        format: Option<ExportFormat>,
+        #[arg(long, value_enum, default_value_t)]
+        format: ExportFormat,
+
         /// Output file. Standard output by default
-        #[structopt(short = "o", long)]
-        #[structopt(parse(from_os_str))]
+        #[arg(short, long)]
         output: Option<PathBuf>,
     },
     /// Prints the metadata attached to an attribute, given as a path
     Query {
         path: Option<String>,
-        #[structopt(long)]
+        #[arg(long)]
         doc: bool,
-        #[structopt(long)]
+        #[arg(long)]
         contract: bool,
-        #[structopt(long = "type")]
+        #[arg(long = "type")]
         types: bool,
-        #[structopt(long)]
+        #[arg(long)]
         default: bool,
-        #[structopt(long)]
+        #[arg(long)]
         value: bool,
     },
     /// Typechecks the program but do not run it
     Typecheck,
     /// Starts an REPL session
     Repl {
-        #[structopt(long)]
+        #[arg(long)]
         history_file: Option<PathBuf>,
     },
     /// Generates the documentation files for the specified nickel file
@@ -86,19 +84,18 @@ enum Command {
         /// The path of the generated documentation file. Default to
         /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
         /// `~/.nickel/doc/out.md` if the input is read from stdin.
-        #[structopt(short = "o", long, parse(from_os_str))]
+        #[arg(short, long)]
         output: Option<PathBuf>,
         /// Write documentation to stdout. Takes precedence over `output`
-        #[structopt(long)]
+        #[arg(long)]
         stdout: bool,
-        /// The output format for the generated documentation. Possible values:
-        /// markdown, json
-        #[structopt(long, default_value = "markdown")]
+        /// The output format for the generated documentation.
+        #[arg(long, value_enum, default_value_t)]
         format: DocFormat,
     },
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
 pub enum DocFormat {
     Json,
     #[default]
@@ -132,20 +129,10 @@ impl fmt::Display for ParseFormatError {
     }
 }
 
-impl std::str::FromStr for DocFormat {
-    type Err = ParseFormatError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_ref() {
-            "json" => Ok(DocFormat::Json),
-            "markdown" => Ok(DocFormat::Markdown),
-            _ => Err(ParseFormatError(String::from(s))),
-        }
-    }
-}
-
 fn main() {
-    let opts = Opt::from_args();
+    use clap::Parser;
+
+    let opts = Opt::parse();
 
     if let Some(Command::Repl { history_file }) = opts.command {
         let histfile = if let Some(h) = history_file {
@@ -157,7 +144,7 @@ fn main() {
                 .join(".nickel_history")
         };
         #[cfg(feature = "repl")]
-        if rustyline_frontend::repl(histfile, opts.color).is_err() {
+        if rustyline_frontend::repl(histfile, opts.color.into()).is_err() {
             process::exit(1);
         }
 
@@ -179,7 +166,7 @@ fn main() {
             program.set_skip_stdlib();
         }
 
-        program.set_color(opts.color);
+        program.set_color(opts.color.into());
 
         let result = match opts.command {
             Some(Command::PprintAst { transform }) => program.pprint_ast(
@@ -234,11 +221,10 @@ fn main() {
 
 fn export(
     program: &mut Program<CacheImpl>,
-    format: Option<ExportFormat>,
+    format: ExportFormat,
     output: Option<PathBuf>,
 ) -> Result<(), Error> {
     let rt = program.eval_full_for_export().map(RichTerm::from)?;
-    let format = format.unwrap_or_default();
 
     // We only add a trailing newline for JSON exports. Both YAML and TOML
     // exporters already append a trailing newline by default.

@@ -23,10 +23,10 @@ pub fn config(color_opt: ColorOpt) -> Config {
 impl From<ColorOpt> for rustyline::config::ColorMode {
     fn from(c: ColorOpt) -> Self {
         use rustyline::config::ColorMode;
-        match c {
-            ColorOpt::Always => ColorMode::Forced,
-            ColorOpt::Auto => ColorMode::Enabled,
-            ColorOpt::Never => ColorMode::Disabled,
+        match c.0 {
+            clap::ColorChoice::Always => ColorMode::Forced,
+            clap::ColorChoice::Auto => ColorMode::Enabled,
+            clap::ColorChoice::Never => ColorMode::Disabled,
         }
     }
 }
@@ -52,7 +52,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
 
     let prompt = {
         let style = Style::new();
-        let style = if color_opt != ColorOpt::Never {
+        let style = if color_opt.0 != clap::ColorChoice::Never {
             style.fg(Colour::Green)
         } else {
             style
