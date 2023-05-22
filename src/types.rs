@@ -131,7 +131,7 @@ pub enum EnumRowsF<ERows> {
 /// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
 /// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
 /// variables are introduced, that is, on forall quantifiers.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum VarKind {
     Type,
     EnumRows,
