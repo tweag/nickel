@@ -1,2 +1,7 @@
-# test.type = 'skip'
-import "nested_syntax_error1.ncl"
+# test.type = 'error'
+#
+# [test.metadata]
+# error = 'ImportError::ParseError'
+
+# Regression test for #1090
+import "imported/nested_syntax_error.ncl"

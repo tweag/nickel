@@ -1,7 +1,7 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang::{
-    error::{Error, EvalError, TypecheckError},
+    error::{Error, EvalError, ImportError, TypecheckError},
     term::Term,
 };
 use nickel_lang_utilities::{
@@ -13,7 +13,6 @@ use test_generator::test_resources;
 
 mod contract_label_path;
 mod free_vars;
-mod imports;
 mod pretty;
 mod query;
 mod stdlib_typecheck;
@@ -156,6 +155,8 @@ enum ErrorExpectation {
     TypecheckMissingDynTail,
     #[serde(rename = "ParseError")]
     ParseError,
+    #[serde(rename = "ImportError::ParseError")]
+    ImportParseError,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -182,6 +183,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::MissingDynTail(..)),
             )
             | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
+            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
             | (ParseError, Error::ParseErrors(..)) => true,
             (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..))) => {
                 field == ident
@@ -234,6 +236,7 @@ impl std::fmt::Display for ErrorExpectation {
         use ErrorExpectation::*;
         let name = match self {
             ParseError => "ParseError".to_owned(),
+            ImportParseError => "ImportError::ParseError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),
             EvalEqError => "EvalError::EqError".to_owned(),

@@ -2,4 +2,4 @@
 #
 # [test.metadata]
 # error = 'ImportError::ParseError'
-import "imported/unexpected_token_buried.ncl"
+import "imported/unexpected_token.ncl"
