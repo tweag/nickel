@@ -1,3 +1,4 @@
+# test.type = 'skip'
 {
   Assert | doc m%"
     A contract that checks if its argument is the boolean true.

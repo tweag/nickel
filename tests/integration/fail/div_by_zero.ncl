@@ -1,5 +1,5 @@
-# test = 'error' 
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::Other'
 1 + 1 / (1 - 1)

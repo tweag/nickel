@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let test_cases = {
   "matching type annotation in pattern" = 
     let { a : Number } = { a = 1 } in

@@ -1,3 +1,4 @@
+# test.type = 'pass'
 let {Assert, ..} = import "lib/assert.ncl" in
 
 let Y | ((Number -> Number) -> Number -> Number) -> Number -> Number = fun f => (fun x => f (x x)) (fun x => f (x x)) in

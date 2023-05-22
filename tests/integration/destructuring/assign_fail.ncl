@@ -1,2 +1,9 @@
-let {a=x, b=y} = {a=1, b=2} in
-a + b == 3
+# test.type = 'error'
+#
+# [test.metadata]
+# error = 'TypecheckError::UnboundIdentifier'
+#
+# [test.metadata.expectation]
+# identifier = 'a'
+let {a=x} = {a=1}
+in a == 1

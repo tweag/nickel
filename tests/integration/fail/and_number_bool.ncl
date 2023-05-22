@@ -1,5 +1,5 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::NAryPrimopTypeError'
 0 && true

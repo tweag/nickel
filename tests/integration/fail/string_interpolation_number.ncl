@@ -1,5 +1,5 @@
-# test = 'error'
+# test.type = 'error'
 #
-# [metadata]
+# [test.metadata]
 # error = 'EvalError::TypeError'
 "bad type %{1 + 1}"
