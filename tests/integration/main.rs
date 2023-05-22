@@ -17,7 +17,6 @@ mod imports;
 mod pretty;
 mod query;
 mod stdlib_typecheck;
-mod unbound_type_variables;
 
 #[test_resources("./tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
@@ -139,6 +138,8 @@ enum ErrorExpectation {
     EvalMergeIncompatibleArgs,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
     TypecheckUnboundIdentifier { identifier: String },
+    #[serde(rename = "TypecheckError::UnboundTypeVariable")]
+    TypecheckUnboundTypeVariable { identifier: String },
     #[serde(rename = "TypecheckError::TypeMismatch")]
     TypecheckTypeMismatch { expected: String, found: String },
     #[serde(rename = "TypecheckError::MissingRow")]
@@ -192,7 +193,11 @@ impl PartialEq<Error> for ErrorExpectation {
             (
                 TypecheckUnboundIdentifier { identifier },
                 Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, ..)),
-            ) if ident.label() == identifier => true,
+            ) => ident.label() == identifier,
+            (
+                TypecheckUnboundTypeVariable { identifier },
+                Error::TypecheckError(TypecheckError::UnboundTypeVariable(ident)),
+            ) => identifier == ident.label(),
             (
                 TypecheckTypeMismatch { expected, found },
                 Error::TypecheckError(
@@ -247,6 +252,9 @@ impl std::fmt::Display for ErrorExpectation {
             }
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
+            }
+            TypecheckUnboundTypeVariable { identifier } => {
+                format!("TypecheckError::UnboundTypeVariable({identifier})")
             }
             TypecheckTypeMismatch { expected, found } => {
                 format!("TypecheckError::TypeMismatch({expected}, {found})")
