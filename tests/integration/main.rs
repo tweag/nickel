@@ -14,12 +14,8 @@ use test_generator::test_resources;
 mod contract_label_path;
 mod free_vars;
 mod imports;
-mod infinite_rec;
-mod merge_fail;
-mod parse_fail;
 mod pretty;
 mod query;
-mod records_fail;
 mod stdlib_arrays_fail;
 mod stdlib_typecheck;
 mod typecheck_fail;
@@ -46,15 +42,21 @@ fn check_annotated_nickel_file(path: &str) {
 
 fn run_test(test_case: TestCase<Test>, path: String) {
     let repeat = test_case.annotation.repeat.unwrap_or(1);
+    let eval_strategy = test_case.annotation.eval.unwrap_or(EvalStrategy::Standard);
     let program = test_case.program;
     let test = test_case.annotation.test;
 
+    let eval = |mut p: TestProgram| match eval_strategy {
+        EvalStrategy::Full => p.eval_full(),
+        EvalStrategy::Standard => p.eval(),
+    };
+
     for _ in 0..repeat {
-        let mut p =
+        let p =
             TestProgram::new_from_source(Cursor::new(program.clone()), path.as_str()).expect("");
         match test.clone() {
             Expectation::Error(expected_err) => {
-                let result = p.eval();
+                let result = eval(p);
                 let err = result.expect_err(
                     format!(
                         "Expected error: {}, but program evaluated successfully.",
@@ -65,7 +67,7 @@ fn run_test(test_case: TestCase<Test>, path: String) {
                 assert_eq!(expected_err, err, "wrong error evaluating file {path}")
             }
             Expectation::Pass => {
-                let result = p.eval();
+                let result = eval(p);
                 assert_eq!(
                     result.map(Term::from),
                     Ok(Term::Bool(true)),
@@ -81,6 +83,15 @@ fn run_test(test_case: TestCase<Test>, path: String) {
 struct Test {
     test: Expectation,
     repeat: Option<usize>,
+    eval: Option<EvalStrategy>,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+enum EvalStrategy {
+    #[serde(rename = "full")]
+    Full,
+    #[serde(rename = "standard")]
+    Standard,
 }
 
 #[derive(Clone, Deserialize)]
@@ -96,7 +107,6 @@ enum Expectation {
 
 #[derive(Clone, Deserialize)]
 #[serde(tag = "error", content = "expectation")]
-#[allow(clippy::enum_variant_names)]
 enum ErrorExpectation {
     // TODO: can we somehow unify this with the `Display` impl below?
     #[serde(rename = "EvalError::EqError")]
@@ -111,8 +121,14 @@ enum ErrorExpectation {
     EvalIllegalPolymorphicTailAccess,
     #[serde(rename = "EvalError::TypeError")]
     EvalTypeError,
+    #[serde(rename = "EvalError::InfiniteRecursion")]
+    EvalInfiniteRecursion,
     #[serde(rename = "EvalError::FieldMissing")]
     EvalFieldMissing { field: String },
+    #[serde(rename = "EvalError::MissingFieldDef")]
+    EvalMissingFieldDef { field: String },
+    #[serde(rename = "EvalError::MergeIncompatibleArgs")]
+    EvalMergeIncompatibleArgs,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
     TypecheckUnboundIdentifier { identifier: String },
     #[serde(rename = "TypecheckError::TypeMismatch")]
@@ -121,6 +137,8 @@ enum ErrorExpectation {
     TypecheckMissingRow { ident: String },
     #[serde(rename = "TypecheckError::RowMismatch")]
     TypecheckRowMismatch,
+    #[serde(rename = "ParseError")]
+    ParseError,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -135,15 +153,23 @@ impl PartialEq<Error> for ErrorExpectation {
             | (EvalTypeError, Error::EvalError(EvalError::TypeError(..)))
             | (EvalEqError, Error::EvalError(EvalError::EqError { .. }))
             | (EvalNAryPrimopTypeError, Error::EvalError(EvalError::NAryPrimopTypeError { .. }))
+            | (EvalInfiniteRecursion, Error::EvalError(EvalError::InfiniteRecursion(..)))
+            | (
+                EvalMergeIncompatibleArgs,
+                Error::EvalError(EvalError::MergeIncompatibleArgs { .. }),
+            )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
-            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..))) => {
-                true
-            }
+            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..)))
+            | (ParseError, Error::ParseErrors(..)) => true,
             (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..)))
                 if field == ident =>
             {
                 true
             }
+            (
+                EvalMissingFieldDef { field },
+                Error::EvalError(EvalError::MissingFieldDef { id, .. }),
+            ) if field == id.label() => true,
             (
                 TypecheckUnboundIdentifier { identifier },
                 Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, ..)),
@@ -169,12 +195,17 @@ impl std::fmt::Display for ErrorExpectation {
             EvalTypeError => "EvalError::TypeError".to_owned(),
             EvalEqError => "EvalError::EqError".to_owned(),
             EvalOther => "EvalError::Other".to_owned(),
+            EvalMergeIncompatibleArgs => "EvalError::MergeIncompatibleArgs".to_owned(),
             EvalNAryPrimopTypeError => "EvalError::NAryPrimopTypeError".to_owned(),
+            EvalInfiniteRecursion => "EvalError::InfiniteRecursion".to_owned(),
             EvalIllegalPolymorphicTailAccess => {
                 "EvalError::IllegalPolymorphicTailAccess".to_owned()
             }
             EvalFieldMissing { field } => {
                 format!("EvalError::FieldMissing({field})")
+            }
+            EvalMissingFieldDef { field } => {
+                format!("EvalError::MissingFieldDef({field})")
             }
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
@@ -186,6 +217,7 @@ impl std::fmt::Display for ErrorExpectation {
                 format!("TypecheckError::MissingRow({ident})")
             }
             TypecheckRowMismatch => "TypecheckError::RowMismatch".to_owned(),
+            ParseError => "ParseError".to_owned(),
         };
         write!(f, "{}", name)
     }
