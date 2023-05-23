@@ -1,2 +1,2 @@
-# test.type = 'skip'
-import "root_path/import.ncl"
+# test.type = 'pass'
+(import "imported/root_path.ncl") == 44

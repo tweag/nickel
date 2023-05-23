@@ -1,7 +1,7 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang::{
-    error::{Error, EvalError, TypecheckError},
+    error::{Error, EvalError, ImportError, TypecheckError},
     term::Term,
 };
 use nickel_lang_utilities::{
@@ -13,13 +13,9 @@ use test_generator::test_resources;
 
 mod contract_label_path;
 mod free_vars;
-mod imports;
 mod pretty;
 mod query;
-mod stdlib_arrays_fail;
 mod stdlib_typecheck;
-mod typecheck_fail;
-mod unbound_type_variables;
 
 #[test_resources("./tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
@@ -46,31 +42,19 @@ fn run_test(test_case: TestCase<Test>, path: String) {
     let program = test_case.program;
     let test = test_case.annotation.test;
 
-    let eval = |mut p: TestProgram| match eval_strategy {
-        EvalStrategy::Full => p.eval_full(),
-        EvalStrategy::Standard => p.eval(),
-    };
-
     for _ in 0..repeat {
         let p =
             TestProgram::new_from_source(Cursor::new(program.clone()), path.as_str()).expect("");
         match test.clone() {
             Expectation::Error(expected_err) => {
-                let result = eval(p);
-                let err = result.expect_err(
-                    format!(
-                        "Expected error: {}, but program evaluated successfully.",
-                        expected_err
-                    )
-                    .as_str(),
-                );
+                let err = eval_strategy.eval_program_to_err(p);
                 assert_eq!(expected_err, err, "wrong error evaluating file {path}")
             }
             Expectation::Pass => {
-                let result = eval(p);
+                let result = eval_strategy.eval_program_to_term(p);
                 assert_eq!(
-                    result.map(Term::from),
-                    Ok(Term::Bool(true)),
+                    result,
+                    Term::Bool(true),
                     "unexpected error evaluating file {path}",
                 )
             }
@@ -92,6 +76,28 @@ enum EvalStrategy {
     Full,
     #[serde(rename = "standard")]
     Standard,
+    #[serde(rename = "typecheck")]
+    TypeCheck,
+}
+
+impl EvalStrategy {
+    fn eval_program_to_term(&self, mut p: TestProgram) -> Term {
+        match self {
+            EvalStrategy::Full => p.eval_full().map(Term::from),
+            EvalStrategy::Standard => p.eval().map(Term::from),
+            EvalStrategy::TypeCheck => p.typecheck().map(|_| Term::Bool(true)),
+        }
+        .expect("Expected evaluation to succeed but got an error")
+    }
+
+    fn eval_program_to_err(&self, mut p: TestProgram) -> Error {
+        match self {
+            EvalStrategy::Full => p.eval_full().map(|_| ()),
+            EvalStrategy::Standard => p.eval().map(|_| ()),
+            EvalStrategy::TypeCheck => p.typecheck(),
+        }
+        .expect_err("Expected an error but program evaluated successfully")
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -131,14 +137,26 @@ enum ErrorExpectation {
     EvalMergeIncompatibleArgs,
     #[serde(rename = "TypecheckError::UnboundIdentifier")]
     TypecheckUnboundIdentifier { identifier: String },
+    #[serde(rename = "TypecheckError::UnboundTypeVariable")]
+    TypecheckUnboundTypeVariable { identifier: String },
     #[serde(rename = "TypecheckError::TypeMismatch")]
     TypecheckTypeMismatch { expected: String, found: String },
     #[serde(rename = "TypecheckError::MissingRow")]
     TypecheckMissingRow { ident: String },
+    #[serde(rename = "TypecheckError::ExtraRow")]
+    TypecheckExtraRow { ident: String },
+    #[serde(rename = "TypecheckError::RowConflict")]
+    TypecheckRowConflict { row: String },
     #[serde(rename = "TypecheckError::RowMismatch")]
     TypecheckRowMismatch,
+    #[serde(rename = "TypecheckError::ExtraDynTail")]
+    TypecheckExtraDynTail,
+    #[serde(rename = "TypecheckError::MissingDynTail")]
+    TypecheckMissingDynTail,
     #[serde(rename = "ParseError")]
     ParseError,
+    #[serde(rename = "ImportError::ParseError")]
+    ImportParseError,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -160,28 +178,54 @@ impl PartialEq<Error> for ErrorExpectation {
             )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
             | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..)))
+            | (
+                TypecheckMissingDynTail,
+                Error::TypecheckError(TypecheckError::MissingDynTail(..)),
+            )
+            | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
+            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
             | (ParseError, Error::ParseErrors(..)) => true,
-            (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..)))
-                if field == ident =>
-            {
-                true
+            (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..))) => {
+                field == ident
             }
             (
                 EvalMissingFieldDef { field },
                 Error::EvalError(EvalError::MissingFieldDef { id, .. }),
-            ) if field == id.label() => true,
+            ) => field == id.label(),
             (
                 TypecheckUnboundIdentifier { identifier },
                 Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, ..)),
-            ) if ident.label() == identifier => true,
+            ) => ident.label() == identifier,
+            (
+                TypecheckUnboundTypeVariable { identifier },
+                Error::TypecheckError(TypecheckError::UnboundTypeVariable(ident)),
+            ) => identifier == ident.label(),
             (
                 TypecheckTypeMismatch { expected, found },
-                Error::TypecheckError(TypecheckError::TypeMismatch(expected1, found1, ..)),
+                Error::TypecheckError(
+                    TypecheckError::TypeMismatch(expected1, found1, ..)
+                    | TypecheckError::ArrowTypeMismatch(expected1, found1, ..),
+                ),
             ) if expected == &expected1.to_string() && found == &found1.to_string() => true,
             (
                 TypecheckMissingRow { ident },
                 Error::TypecheckError(TypecheckError::MissingRow(row, ..)),
             ) if ident == row.label() => true,
+            (
+                TypecheckExtraRow { ident },
+                Error::TypecheckError(TypecheckError::ExtraRow(ident1, ..)),
+            ) if ident == ident1.label() => true,
+            (
+                TypecheckRowConflict { row },
+                Error::TypecheckError(TypecheckError::RowConflict(ident, ..)),
+            ) => row == ident.label(),
+            (
+                TypecheckRowConflict { row },
+                Error::TypecheckError(TypecheckError::ArrowTypeMismatch(_, _, _, boxed_err, ..)),
+            ) => match boxed_err.as_ref() {
+                TypecheckError::RowConflict(ident, ..) => row == ident.label(),
+                _ => false,
+            },
             (_, _) => false,
         }
     }
@@ -191,6 +235,8 @@ impl std::fmt::Display for ErrorExpectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ErrorExpectation::*;
         let name = match self {
+            ParseError => "ParseError".to_owned(),
+            ImportParseError => "ImportError::ParseError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),
             EvalEqError => "EvalError::EqError".to_owned(),
@@ -210,14 +256,24 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckUnboundIdentifier { identifier } => {
                 format!("TypecheckError::UnboundIdentifier({identifier})")
             }
+            TypecheckUnboundTypeVariable { identifier } => {
+                format!("TypecheckError::UnboundTypeVariable({identifier})")
+            }
             TypecheckTypeMismatch { expected, found } => {
                 format!("TypecheckError::TypeMismatch({expected}, {found})")
             }
             TypecheckMissingRow { ident } => {
                 format!("TypecheckError::MissingRow({ident})")
             }
+            TypecheckExtraRow { ident } => {
+                format!("TypecheckError::ExtraRow({ident})")
+            }
             TypecheckRowMismatch => "TypecheckError::RowMismatch".to_owned(),
-            ParseError => "ParseError".to_owned(),
+            TypecheckRowConflict { row } => {
+                format!("TypecheckError::RowConflict({row})")
+            }
+            TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
+            TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
         };
         write!(f, "{}", name)
     }
