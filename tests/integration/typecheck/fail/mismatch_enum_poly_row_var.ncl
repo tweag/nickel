@@ -5,7 +5,7 @@
 # error = 'TypecheckError::TypeMismatch'
 #
 # [test.metadata.expectation]
-# expected = 'r'
+# expected = 'a'
 # found = "[| 'bli |]"
 let f : forall r. [| 'blo, 'ble; r |] -> Number =
   match { 'blo => 1, 'ble => 2, 'bli => 3 }
