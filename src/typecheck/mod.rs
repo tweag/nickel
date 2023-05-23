@@ -102,6 +102,9 @@ pub type Wildcards = Vec<Types>;
 /// Unification variable or type constants unique identifier.
 pub type VarId = usize;
 
+/// A table mapping variable IDs with their kind to names.
+pub type NameTable = HashMap<(VarId, VarKind), Ident>;
+
 /// A unifiable record row.
 pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
 
@@ -722,11 +725,12 @@ pub struct State<'a> {
     table: &'a mut UnifTable,
     /// Row constraints.
     constr: &'a mut RowConstr,
-    /// A mapping from unification variable or constants to the name of the corresponding type
-    /// variable which introduced it, if any.
+    /// A mapping from unification variables or constants together with their
+    /// kind to the name of the corresponding type variable which introduced it,
+    /// if any.
     ///
     /// Used for error reporting.
-    names: &'a mut HashMap<VarId, Ident>,
+    names: &'a mut NameTable,
     /// A mapping from wildcard ID to unification variable.
     wildcard_vars: &'a mut Vec<UnifType>,
 }
@@ -735,7 +739,7 @@ pub struct State<'a> {
 /// It is basically an owned-subset of the typechecking state.
 pub struct Extra {
     pub table: UnifTable,
-    pub names: HashMap<VarId, Ident>,
+    pub names: NameTable,
     pub wildcards: Vec<Types>,
 }
 
@@ -2450,7 +2454,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifType::Constant(fresh_uid),
                     ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var);
+                state.names.insert((fresh_uid, var_kind), var);
                 ty = body.subst_type(&var, &uvar);
             }
             VarKind::RecordRows => {
@@ -2459,7 +2463,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var);
+                state.names.insert((fresh_uid, var_kind), var);
                 ty = body.subst_rrows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
@@ -2472,7 +2476,7 @@ fn instantiate_foralls(state: &mut State, mut ty: UnifType, inst: ForallInst) ->
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
                     ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
                 };
-                state.names.insert(fresh_uid, var);
+                state.names.insert((fresh_uid, var_kind), var);
                 ty = body.subst_erows(&var, &uvar);
 
                 if inst == ForallInst::Ptr {

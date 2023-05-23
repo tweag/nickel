@@ -5,7 +5,7 @@
 # error = 'TypecheckError::TypeMismatch'
 #
 # [test.metadata.expectation]
-# expected = 'r'
+# expected = 'a'
 # found = 'Number'
 
 # TODO: the expected/found types above seem wrong here
