@@ -105,6 +105,10 @@
           [ ];
 
       mkRust =
+        let
+          inherit (pkgs.stdenv) hostPlatform;
+          inherit (pkgs.rust) toRustTarget;
+        in
         { rustProfile ? "minimal"
         , rustExtensions ? [
             "rust-src"
@@ -113,18 +117,19 @@
             "clippy"
           ]
         , channel ? "stable"
-        , target ? pkgs.rust.toRustTarget pkgs.stdenv.hostPlatform
+        , targets ? [ (toRustTarget hostPlatform) ]
+            ++ pkgs.lib.optional (!hostPlatform.isMacOS) (toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform)
         }:
         if channel == "nightly" then
           pkgs.rust-bin.selectLatestNightlyWith
             (toolchain: toolchain.${rustProfile}.override {
               extensions = rustExtensions;
-              targets = [ target ];
+              inherit targets;
             })
         else
           pkgs.rust-bin.${channel}.latest.${rustProfile}.override {
             extensions = rustExtensions;
-            targets = [ target ];
+            inherit targets;
           };
 
       # A note on check_format: the way we invoke rustfmt here works locally but fails on CI.
@@ -206,21 +211,31 @@
             buildInputs = [ pkgs.python3 ];
           };
 
-          buildPackage = pname:
-            craneLib.buildPackage {
+          buildPackage = { pname, extraArgs ? { } }:
+            craneLib.buildPackage ({
               inherit
                 pname
                 src
                 cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} --package ${pname}";
-            };
-
-
+            } // extraArgs);
         in
-        {
-          nickel = buildPackage "nickel-lang";
-          lsp-nls = buildPackage "nickel-lang-lsp";
+        rec {
+          nickel = buildPackage { pname = "nickel-lang"; };
+          lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
+
+          nickel-static =
+            if pkgs.stdenv.hostPlatform.isMacOS
+            then nickel
+            else
+              buildPackage {
+                pname = "nickel-lang";
+                extraArgs = {
+                  CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                  CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+                };
+              };
 
           benchmarks = craneLib.mkCargoDerivation {
             inherit src cargoArtifacts;
@@ -301,7 +316,7 @@
       #   - dev for checks, as the code isn't optimized, and WASM optimization
       #   takes time
       buildNickelWasm =
-        { rust ? mkRust { target = "wasm32-unknown-unknown"; }
+        { rust ? mkRust { targets = [ "wasm32-unknown-unknown" ]; }
         , profile ? "release"
         }:
         let
@@ -422,7 +437,8 @@
         inherit (mkCraneArtifacts { })
           nickel
           benchmarks
-          lsp-nls;
+          lsp-nls
+          nickel-static;
         default = pkgs.buildEnv {
           name = "nickel";
           paths = [ packages.nickel packages.lsp-nls ];
