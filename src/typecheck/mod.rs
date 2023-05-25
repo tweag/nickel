@@ -448,6 +448,14 @@ impl UnifType {
         }
     }
 
+    pub fn from_constant_of_kind(c: usize, k: VarKind) -> Self {
+        match k {
+            VarKind::Type => UnifType::Constant(c),
+            VarKind::EnumRows => UnifType::Concrete(TypeF::Enum(UnifEnumRows::Constant(c))),
+            VarKind::RecordRows => UnifType::Concrete(TypeF::Record(UnifRecordRows::Constant(c))),
+        }
+    }
+
     /// Extract the concrete type corresponding to a unifiable type. Free unification variables as well
     /// as type constants are replaced with the type `Dyn`.
     fn into_type(self, table: &UnifTable) -> Types {
@@ -2270,9 +2278,11 @@ pub fn unify(
             Ok(())
         }
         (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifType::Constant(i1), UnifType::Constant(i2)) => Err(UnifError::ConstMismatch(i1, i2)),
+        (UnifType::Constant(i1), UnifType::Constant(i2)) => {
+            Err(UnifError::ConstMismatch(VarKind::Type, i1, i2))
+        }
         (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
-            Err(UnifError::WithConst(i, ty))
+            Err(UnifError::WithConst(VarKind::Type, i, ty))
         }
         (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
             if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
@@ -2355,11 +2365,12 @@ pub fn unify_rrows(
         }
         (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
         (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
-            Err(RowUnifError::ConstMismatch(i1, i2))
+            Err(RowUnifError::ConstMismatch(VarKind::RecordRows, i1, i2))
         }
         (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
             //TODO ROWS: should we refactor RowUnifError as well?
             Err(RowUnifError::WithConst(
+                VarKind::RecordRows,
                 i,
                 UnifType::Concrete(TypeF::Record(urrows)),
             ))
@@ -2402,11 +2413,12 @@ pub fn unify_erows(
         }
         (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
         (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
-            Err(RowUnifError::ConstMismatch(i1, i2))
+            Err(RowUnifError::ConstMismatch(VarKind::EnumRows, i1, i2))
         }
         (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
             //TODO ROWS: should we refactor RowUnifError as well?
             Err(RowUnifError::WithConst(
+                VarKind::EnumRows,
                 i,
                 UnifType::Concrete(TypeF::Enum(uerows)),
             ))

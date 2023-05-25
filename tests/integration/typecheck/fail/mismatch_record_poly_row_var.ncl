@@ -5,8 +5,8 @@
 # error = 'TypecheckError::ForallParametricityViolation'
 #
 # [test.metadata.expectation]
-# tail = '[|  ; r |]'
-# violating_type = "[| 'bli |]"
-let f : forall r. [| 'blo, 'ble; r |] -> Number =
-  match { 'blo => 1, 'ble => 2, 'bli => 3 }
-in f
+# tail = '{  ; r }'
+# violating_type = '{ x: String }'
+let f : forall r. { x : String } -> { ; r } =
+  fun x => x
+in f { x  = 1, y = 2 } 

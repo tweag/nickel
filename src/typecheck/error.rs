@@ -1,8 +1,12 @@
 //! Internal error types for typechecking.
 use super::{reporting, State, UnifType};
 use crate::{
-    error::TypecheckError, identifier::Ident, label::ty_path, position::TermPos, term::RichTerm,
-    types::TypeF,
+    error::TypecheckError,
+    identifier::Ident,
+    label::ty_path,
+    position::TermPos,
+    term::RichTerm,
+    types::{TypeF, VarKind},
 };
 
 /// Error during the unification of two row types.
@@ -21,9 +25,9 @@ pub enum RowUnifError {
     /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(Ident, Option<UnifType>),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, UnifType),
+    WithConst(VarKind, usize, UnifType),
     /// Tried to unify two distinct type constants.
-    ConstMismatch(usize, usize),
+    ConstMismatch(VarKind, usize, usize),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
 }
@@ -46,8 +50,8 @@ impl RowUnifError {
             RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
             RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
             RowUnifError::UnsatConstr(id, uty) => UnifError::RowConflict(id, uty, left, right),
-            RowUnifError::WithConst(c, uty) => UnifError::WithConst(c, uty),
-            RowUnifError::ConstMismatch(c1, c2) => UnifError::ConstMismatch(c1, c2),
+            RowUnifError::WithConst(c, k, uty) => UnifError::WithConst(c, k, uty),
+            RowUnifError::ConstMismatch(k, c1, c2) => UnifError::ConstMismatch(k, c1, c2),
             RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
         }
     }
@@ -61,7 +65,7 @@ pub enum UnifError {
     /// There are two incompatible definitions for the same row.
     RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
     /// Tried to unify two distinct type constants.
-    ConstMismatch(usize, usize),
+    ConstMismatch(VarKind, usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
     MissingRow(Ident, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
@@ -74,7 +78,7 @@ pub enum UnifError {
     /// constraints][super::RowConstr] of the variable.
     RowConflict(Ident, Option<UnifType>, UnifType, UnifType),
     /// Tried to unify a type constant with another different type.
-    WithConst(usize, UnifType),
+    WithConst(VarKind, usize, UnifType),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IncomparableFlatTypes(RichTerm, RichTerm),
@@ -134,16 +138,37 @@ impl UnifError {
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
-            UnifError::ConstMismatch(c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, UnifType::Constant(c1)),
-                reporting::to_type(state.table, state.names, names, UnifType::Constant(c2)),
+            UnifError::ConstMismatch(k, c1, c2) => TypecheckError::TypeMismatch(
+                reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    UnifType::from_constant_of_kind(c1, k),
+                ),
+                reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    UnifType::from_constant_of_kind(c2, k),
+                ),
                 pos_opt,
             ),
-            UnifError::WithConst(c, ty) => TypecheckError::TypeMismatch(
+            UnifError::WithConst(VarKind::Type, c, ty) => TypecheckError::TypeMismatch(
                 reporting::to_type(state.table, state.names, names, UnifType::Constant(c)),
                 reporting::to_type(state.table, state.names, names, ty),
                 pos_opt,
             ),
+            UnifError::WithConst(kind, c, ty) => TypecheckError::ForallParametricityViolation {
+                kind,
+                tail: reporting::to_type(
+                    state.table,
+                    state.names,
+                    names,
+                    UnifType::from_constant_of_kind(c, kind),
+                ),
+                violating_type: reporting::to_type(state.table, state.names, names, ty),
+                pos: pos_opt,
+            },
             UnifError::IncomparableFlatTypes(rt1, rt2) => {
                 TypecheckError::IncomparableFlatTypes(rt1, rt2, pos_opt)
             }
