@@ -997,7 +997,7 @@ impl Types {
                             for ritem in rrows.iter() {
                                 match ritem {
                                     RecordRowsIteratorItem::Row(row) => {
-                                        to_be_checked.push(&row.types);
+                                        to_be_checked.push(row.types);
                                         maybe_constr.insert(row.id);
                                     }
                                     RecordRowsIteratorItem::TailDyn => (),
