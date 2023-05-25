@@ -55,12 +55,13 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse, TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse,
+        TraverseOrder,
     },
 };
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display},
 };
 
@@ -955,12 +956,113 @@ impl Types {
                 ref body,
                 var_kind,
             } => {
-                use VarKind::*;
+                fn get_constraints(
+                    body: &Types,
+                    var: &Ident,
+                    var_kind: VarKind,
+                    constr: &mut HashSet<Ident>,
+                ) {
+                    match &body.types {
+                        TypeF::Arrow(s, t) => {
+                            get_constraints(s, var, var_kind, constr);
+                            get_constraints(t, var, var_kind, constr);
+                        }
+                        TypeF::Forall {
+                            var: var_,
+                            body: body_,
+                            ..
+                        } => {
+                            if var_ != var {
+                                get_constraints(body_, var, var_kind, constr);
+                            }
+                        }
+                        TypeF::Enum(erows) => {
+                            fn get_enum_constr(
+                                e: &EnumRows,
+                                var: &Ident,
+                                local_constr: &mut HashSet<Ident>,
+                            ) {
+                                match &e.0 {
+                                    EnumRowsF::Empty => (),
+                                    EnumRowsF::Extend { row, tail } => {
+                                        local_constr.insert(*row);
+                                        get_enum_constr(&tail, var, local_constr);
+                                    }
+                                    EnumRowsF::TailVar(id) => {
+                                        if id != var {
+                                            local_constr.clear()
+                                        }
+                                    }
+                                }
+                            }
+                            // forall r. { x : { y : Foo ; r } ; r }
+                            if var_kind == VarKind::EnumRows {
+                                let mut local_constr = HashSet::new();
+                                get_enum_constr(erows, var, &mut local_constr);
+                                constr.extend(local_constr);
+                            }
+                        }
+                        TypeF::Record(rrows) => {
+                            fn get_record_constr(
+                                r: &RecordRows,
+                                var: &Ident,
+                                var_kind: VarKind,
+                                constr: &mut HashSet<Ident>,
+                                local_constr: &mut HashSet<Ident>,
+                            ) {
+                                match &r.0 {
+                                    RecordRowsF::Empty => (),
+                                    RecordRowsF::Extend { row, tail } => {
+                                        get_constraints(&row.types, var, var_kind, constr);
+                                        local_constr.insert(row.id);
+                                        get_record_constr(
+                                            &tail,
+                                            var,
+                                            var_kind,
+                                            constr,
+                                            local_constr,
+                                        );
+                                    }
+                                    RecordRowsF::TailVar(id) => {
+                                        if id != var {
+                                            local_constr.clear();
+                                        }
+                                    }
+                                    RecordRowsF::TailDyn => {
+                                        local_constr.clear();
+                                    }
+                                }
+                            }
+                            if var_kind == VarKind::RecordRows {
+                                let mut local_constr = HashSet::new();
+                                get_record_constr(rrows, var, var_kind, constr, &mut local_constr);
+                                constr.extend(local_constr);
+                            }
+                        }
+
+                        _ => (),
+                    }
+                }
+
+                let mut constr = HashSet::new();
+                get_constraints(body, var, var_kind, &mut constr);
+
+                let constr_ncl: RichTerm = Term::Array(
+                    Array::from_iter(
+                        constr
+                            .into_iter()
+                            .map(|id| Term::Str(id.label().to_owned().into()).into()),
+                    ),
+                    Default::default(),
+                )
+                .into();
 
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
-                    Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    EnumRows | RecordRows => mk_app!(internals::forall_tail(), sealing_key.clone()),
+                    VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
+                    VarKind::EnumRows | VarKind::RecordRows => {
+                        mk_app!(internals::forall_tail(), sealing_key.clone(), constr_ncl)
+                    }
                 };
                 vars.insert(*var, contract);
 

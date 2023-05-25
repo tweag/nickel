@@ -123,9 +123,10 @@
     else
       %blame% (%label_with_message% "not a record" label),
 
-  "$forall_tail" = fun sealing_key acc label value =>
+  "$forall_tail" = fun sealing_key constr acc label value =>
     let current_polarity = %polarity% label in
     let polarity = (%lookup_type_variable% sealing_key label).polarity in
+    let plural = fun list => if %length% list == 1 then "" else "s" in
     if polarity == current_polarity then
       if value == {} then
         let tagged_label = %label_with_message% "polymorphic tail mismatch" label in
@@ -133,14 +134,25 @@
         acc & tail
       else
         let extra_fields = %fields% value in
-        let plural = if %length% extra_fields == 1 then "" else "s" in
         %blame%
           (
             %label_with_message%
-              "extra field%{plural} `%{std.string.join ", " extra_fields}`"
+              "extra field%{plural extra_fields} `%{std.string.join ", " extra_fields}`"
               label
           )
     else
+      let conflicts = std.array.filter
+        (fun field => std.array.elem field constr)
+        (%fields% value)
+      in
+      if conflicts != [] then
+        %blame%
+          (
+            %label_with_message%
+            "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+            label
+          )
+      else
       # Note: in order to correctly attribute blame, the polarity of `l`
       # must match the polarity of the `forall` which introduced the
       # polymorphic contract (i.e. `pol`). Since we know in this branch
@@ -174,4 +186,3 @@
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
 }
-
