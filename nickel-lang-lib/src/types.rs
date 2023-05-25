@@ -956,96 +956,62 @@ impl Types {
                 ref body,
                 var_kind,
             } => {
-                fn get_constraints(
-                    body: &Types,
-                    var: &Ident,
-                    var_kind: VarKind,
-                    constr: &mut HashSet<Ident>,
-                ) {
-                    match &body.types {
+                let mut constr: HashSet<Ident> = HashSet::new();
+                // TODO: optimization: might be faster if maybe_constr is a Vec, and since it only
+                // ever gets merged into `constr`, this won't affect semantics.
+                let mut maybe_constr: HashSet<Ident> = HashSet::new();
+                let mut to_be_checked: Vec<&Types> = vec![body];
+                while let Some(tys) = to_be_checked.pop() {
+                    match &tys.types {
                         TypeF::Arrow(s, t) => {
-                            get_constraints(s, var, var_kind, constr);
-                            get_constraints(t, var, var_kind, constr);
+                            to_be_checked.push(s);
+                            to_be_checked.push(t);
                         }
                         TypeF::Forall {
                             var: var_,
                             body: body_,
                             ..
                         } => {
+                            // check for shadow (forall x. forall x. foo)
                             if var_ != var {
-                                get_constraints(body_, var, var_kind, constr);
+                                to_be_checked.push(body_);
                             }
                         }
-                        TypeF::Enum(erows) => {
-                            fn get_enum_constr(
-                                e: &EnumRows,
-                                var: &Ident,
-                                local_constr: &mut HashSet<Ident>,
-                            ) {
-                                match &e.0 {
-                                    EnumRowsF::Empty => (),
-                                    EnumRowsF::Extend { row, tail } => {
-                                        local_constr.insert(*row);
-                                        get_enum_constr(&tail, var, local_constr);
+                        TypeF::Enum(erows) if var_kind == VarKind::EnumRows => {
+                            maybe_constr.clear();
+                            for eitem in erows.iter() {
+                                match eitem {
+                                    EnumRowsIteratorItem::Row(row) => {
+                                        maybe_constr.insert(*row);
                                     }
-                                    EnumRowsF::TailVar(id) => {
-                                        if id != var {
-                                            local_constr.clear()
+                                    EnumRowsIteratorItem::TailVar(var_) => {
+                                        if var_ == var {
+                                            constr.extend(&maybe_constr);
                                         }
                                     }
                                 }
                             }
-                            // forall r. { x : { y : Foo ; r } ; r }
-                            if var_kind == VarKind::EnumRows {
-                                let mut local_constr = HashSet::new();
-                                get_enum_constr(erows, var, &mut local_constr);
-                                constr.extend(local_constr);
-                            }
                         }
-                        TypeF::Record(rrows) => {
-                            fn get_record_constr(
-                                r: &RecordRows,
-                                var: &Ident,
-                                var_kind: VarKind,
-                                constr: &mut HashSet<Ident>,
-                                local_constr: &mut HashSet<Ident>,
-                            ) {
-                                match &r.0 {
-                                    RecordRowsF::Empty => (),
-                                    RecordRowsF::Extend { row, tail } => {
-                                        get_constraints(&row.types, var, var_kind, constr);
-                                        local_constr.insert(row.id);
-                                        get_record_constr(
-                                            &tail,
-                                            var,
-                                            var_kind,
-                                            constr,
-                                            local_constr,
-                                        );
-                                    }
-                                    RecordRowsF::TailVar(id) => {
-                                        if id != var {
-                                            local_constr.clear();
+                        TypeF::Record(rrows) if var_kind == VarKind::RecordRows => {
+                            maybe_constr.clear();
+                            for ritem in rrows.iter() {
+                                match ritem {
+                                    RecordRowsIteratorItem::TailDyn => (),
+                                    RecordRowsIteratorItem::TailVar(var_) => {
+                                        if var_ == var {
+                                            constr.extend(&maybe_constr);
                                         }
                                     }
-                                    RecordRowsF::TailDyn => {
-                                        local_constr.clear();
+                                    RecordRowsIteratorItem::Row(row) => {
+                                        to_be_checked.push(&row.types);
+                                        maybe_constr.insert(row.id);
                                     }
                                 }
                             }
-                            if var_kind == VarKind::RecordRows {
-                                let mut local_constr = HashSet::new();
-                                get_record_constr(rrows, var, var_kind, constr, &mut local_constr);
-                                constr.extend(local_constr);
-                            }
                         }
-
                         _ => (),
                     }
                 }
-
-                let mut constr = HashSet::new();
-                get_constraints(body, var, var_kind, &mut constr);
 
                 let constr_ncl: RichTerm = Term::Array(
                     Array::from_iter(
