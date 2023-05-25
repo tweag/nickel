@@ -141,6 +141,11 @@ enum ErrorExpectation {
     TypecheckUnboundTypeVariable { identifier: String },
     #[serde(rename = "TypecheckError::TypeMismatch")]
     TypecheckTypeMismatch { expected: String, found: String },
+    #[serde(rename = "TypecheckError::ForallParametricityViolation")]
+    TypecheckForallParametricityViolation {
+        tail: String,
+        violating_type: String,
+    },
     #[serde(rename = "TypecheckError::MissingRow")]
     TypecheckMissingRow { ident: String },
     #[serde(rename = "TypecheckError::ExtraRow")]
@@ -208,6 +213,19 @@ impl PartialEq<Error> for ErrorExpectation {
                 ),
             ) if expected == &expected1.to_string() && found == &found1.to_string() => true,
             (
+                TypecheckForallParametricityViolation {
+                    tail,
+                    violating_type,
+                },
+                Error::TypecheckError(TypecheckError::ForallParametricityViolation {
+                    tail: tail1,
+                    violating_type: vtype1,
+                    ..
+                }),
+            ) => {
+                tail.as_str() == tail1.to_string() && violating_type.as_str() == vtype1.to_string()
+            }
+            (
                 TypecheckMissingRow { ident },
                 Error::TypecheckError(TypecheckError::MissingRow(row, ..)),
             ) if ident == row.label() => true,
@@ -261,6 +279,12 @@ impl std::fmt::Display for ErrorExpectation {
             }
             TypecheckTypeMismatch { expected, found } => {
                 format!("TypecheckError::TypeMismatch({expected}, {found})")
+            }
+            TypecheckForallParametricityViolation {
+                tail,
+                violating_type,
+            } => {
+                format!("TypecheckError::ForallParametricityViolation({tail}, {violating_type})")
             }
             TypecheckMissingRow { ident } => {
                 format!("TypecheckError::MissingRow({ident})")

@@ -24,7 +24,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, RichTerm},
-    types::{TypeF, Types},
+    types::{TypeF, Types, VarKind},
 };
 
 /// A general error occurring during either parsing or evaluation.
@@ -197,7 +197,24 @@ pub enum TypecheckError {
         /* the inferred/annotated type */ Types,
         TermPos,
     ),
-
+    /// A parametricity violation involving a row-kinded type variable.
+    ///
+    /// For example, in a function like this:
+    ///
+    /// ```ncl
+    /// let f : forall a. { x: String, y: String } -> { x: String; a } =
+    ///   fun r => r
+    /// in ...
+    /// ```
+    ///
+    /// this error would be raised with `{ ; a }` as the `tail` type and
+    /// `{ y : String }` as the `violating_type`.
+    ForallParametricityViolation {
+        kind: VarKind,
+        tail: Types,
+        violating_type: Types,
+        pos: TermPos,
+    },
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
@@ -1916,6 +1933,28 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         ),
                         String::from(INTERNAL_ERROR_MSG),
                     ])]
+            }
+            TypecheckError::ForallParametricityViolation {
+                kind,
+                tail,
+                violating_type,
+                pos,
+            } => {
+                let tail_kind = match kind {
+                    VarKind::Type => "type",
+                    VarKind::EnumRows => "enum tail",
+                    VarKind::RecordRows => "record tail",
+                };
+                vec![
+                    Diagnostic::error()
+                        .with_message(format!(
+                            "values of type `{violating_type}` are not guaranteed to be compatible with polymorphic {tail_kind} `{tail}`"
+                        ))
+                        .with_labels(mk_expr_label(&pos))
+                        .with_notes(vec![
+                            "Type variables introduced in a `forall` range over all possible types.".to_owned(),
+                        ]),
+                ]
             }
         }
     }
