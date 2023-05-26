@@ -162,6 +162,8 @@ enum ErrorExpectation {
     AnyParseError,
     #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
     ParseDuplicateIdentInRecordPattern { ident: String },
+    #[serde(rename = "ParseError::TypedFieldWithoutDefinition")]
+    ParseTypedFieldWithoutDefinition,
     #[serde(rename = "ImportError::ParseError")]
     ImportParseError,
 }
@@ -190,17 +192,24 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::MissingDynTail(..)),
             )
             | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
-            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
-            | (AnyParseError, Error::ParseErrors(..)) => true,
-            (ParseDuplicateIdentInRecordPattern { ident }, Error::ParseErrors(e)) => {
-                let first_error = e
+            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..))) => true,
+            (e, Error::ParseErrors(es)) => {
+                let first_error = es
                     .errors
                     .first()
                     .expect("Got ParserErrors without any errors");
-                matches!(
-                    first_error,
-                    ParseError::DuplicateIdentInRecordPattern { ident: id1, .. } if ident.as_str() == id1.label()
-                )
+                match (e, first_error) {
+                    (AnyParseError, _) => true,
+                    (
+                        ParseDuplicateIdentInRecordPattern { ident },
+                        ParseError::DuplicateIdentInRecordPattern { ident: ident1, .. },
+                    ) => ident.as_str() == ident1.label(),
+                    (
+                        ParseTypedFieldWithoutDefinition,
+                        ParseError::TypedFieldWithoutDefinition { .. },
+                    ) => true,
+                    _ => false,
+                }
             }
             (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..))) => {
                 field == ident
@@ -268,6 +277,9 @@ impl std::fmt::Display for ErrorExpectation {
             AnyParseError => "ParseError".to_owned(),
             ParseDuplicateIdentInRecordPattern { ident } => {
                 format!("ParseError::DuplicateIdentInRecordPattern({ident})")
+            }
+            ParseTypedFieldWithoutDefinition => {
+                "ParseError::TypedFieldWithoutDefinition".to_owned()
             }
             ImportParseError => "ImportError::ParseError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
