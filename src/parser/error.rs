@@ -36,6 +36,13 @@ pub enum ParseError {
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
+    /// A duplicate binding was encountered in a record destructuring pattern.
+    DuplicateIdentInRecordPattern {
+        /// The duplicate identifier.
+        ident: Ident,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: Ident,
+    },
     /// A type variable is used in ways that imply it has muiltiple different kinds.
     ///
     /// This can happen in several situations, for example:

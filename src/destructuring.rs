@@ -1,9 +1,12 @@
 //! In this module, you have the main structures used in the destructuring feature of nickel.
 //! Also, there are implementation managing the generation of a contract from a pattern.
 
+use std::collections::{hash_map::Entry, HashMap};
+
 use crate::{
     identifier::Ident,
     label::Label,
+    parser::error::ParseError,
     position::{RawSpan, TermPos},
     term::{
         record::{Field, RecordAttrs, RecordData},
@@ -37,6 +40,14 @@ pub enum Match {
     Simple(Ident, Field),
 }
 
+impl Match {
+    fn ident(&self) -> Ident {
+        match self {
+            Match::Assign(ident, ..) | Match::Simple(ident, ..) => *ident,
+        }
+    }
+}
+
 /// Last match field of a `Destruct`.
 #[derive(Debug, PartialEq, Clone)]
 pub enum LastMatch {
@@ -58,6 +69,48 @@ pub struct RecordPattern {
 }
 
 impl RecordPattern {
+    /// Check the matches for duplication, and raise an error if any occur.
+    ///
+    /// Note that for backwards-compatibility reasons this function _only_
+    /// checks top-level matches. In Nickel 1.0, this code panicked:
+    ///
+    /// ```text
+    /// let f = fun { x, x, .. } => x in f { x = 1 }
+    /// ```
+    ///
+    /// However this "works", even though the binding to `y` is duplicated.
+    ///
+    /// ```text
+    /// let f =
+    ///   fun { x = { y }, z = { y }, .. } => y
+    /// in f { x = { y = 1 }, z = { y = 2 } }
+    /// # evaluates to 1
+    /// ```
+    ///
+    /// This function aims to raise errors in the first case, but maintain the
+    /// behaviour in the second case.
+    pub fn check_matches(&self) -> Result<(), ParseError> {
+        let mut matches = HashMap::new();
+
+        for m in self.matches.iter() {
+            let binding = m.ident();
+            let label = binding.label().to_owned();
+            match matches.entry(label) {
+                Entry::Occupied(occupied_entry) => {
+                    return Err(ParseError::DuplicateIdentInRecordPattern {
+                        ident: binding,
+                        prev_ident: occupied_entry.remove_entry().1,
+                    })
+                }
+                Entry::Vacant(vacant_entry) => {
+                    vacant_entry.insert(binding);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Generate the contract elaborated from this pattern.
     pub fn into_contract(self) -> LabeledType {
         let label = self.label();
