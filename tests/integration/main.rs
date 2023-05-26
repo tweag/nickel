@@ -1,7 +1,7 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang::{
-    error::{Error, EvalError, ImportError, TypecheckError},
+    error::{Error, EvalError, ImportError, ParseError, TypecheckError},
     term::Term,
 };
 use nickel_lang_utilities::{
@@ -159,7 +159,9 @@ enum ErrorExpectation {
     #[serde(rename = "TypecheckError::MissingDynTail")]
     TypecheckMissingDynTail,
     #[serde(rename = "ParseError")]
-    ParseError,
+    AnyParseError,
+    #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
+    ParseDuplicateIdentInRecordPattern { ident: String },
     #[serde(rename = "ImportError::ParseError")]
     ImportParseError,
 }
@@ -189,7 +191,17 @@ impl PartialEq<Error> for ErrorExpectation {
             )
             | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
-            | (ParseError, Error::ParseErrors(..)) => true,
+            | (AnyParseError, Error::ParseErrors(..)) => true,
+            (ParseDuplicateIdentInRecordPattern { ident }, Error::ParseErrors(e)) => {
+                let first_error = e
+                    .errors
+                    .first()
+                    .expect("Got ParserErrors without any errors");
+                matches!(
+                    first_error,
+                    ParseError::DuplicateIdentInRecordPattern { ident: id1, .. } if ident.as_str() == id1.label()
+                )
+            }
             (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..))) => {
                 field == ident
             }
@@ -253,7 +265,10 @@ impl std::fmt::Display for ErrorExpectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ErrorExpectation::*;
         let name = match self {
-            ParseError => "ParseError".to_owned(),
+            AnyParseError => "ParseError".to_owned(),
+            ParseDuplicateIdentInRecordPattern { ident } => {
+                format!("ParseError::DuplicateIdentInRecordPattern({ident})")
+            }
             ImportParseError => "ImportError::ParseError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),

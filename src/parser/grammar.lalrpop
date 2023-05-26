@@ -476,7 +476,7 @@ Pattern: FieldPattern = {
 
 // A full pattern at the left-hand side of a destructuring let.
 RecordPattern: RecordPattern = {
-    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> => {
+    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> =>? {
         let (open, rest) = match last {
             Some(LastMatch::Match(m)) => {
                 matches.push(*m);
@@ -487,7 +487,9 @@ RecordPattern: RecordPattern = {
         };
 
         let span = mk_span(src_id, start, end);
-        RecordPattern{ matches, open, rest, span }
+        let pattern = RecordPattern{ matches, open, rest, span };
+        pattern.check_matches()?;
+        Ok(pattern)
     },
 };
 

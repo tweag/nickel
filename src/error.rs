@@ -429,6 +429,13 @@ pub enum ParseError {
         input: String,
         pos_path_elem: TermPos,
     },
+    /// A duplicate binding was encountered in a record destructuring pattern.
+    DuplicateIdentInRecordPattern {
+        /// The duplicate identifier.
+        ident: Ident,
+        /// The previous instance of the duplicated identifier.
+        prev_ident: Ident,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -600,6 +607,9 @@ impl ParseError {
                     field_span,
                     annot_span,
                 },
+                InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
+                    ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
+                }
             },
         }
     }
@@ -1677,6 +1687,13 @@ impl IntoDiagnostics<FileId> for ParseError {
                         "Only identifiers and simple string literals are allowed.".into(),
                     ])
             }
+            ParseError::DuplicateIdentInRecordPattern { ident, prev_ident } =>
+                Diagnostic::error()
+                    .with_message(format!("duplicated binding `{}` in record pattern", ident.label()))
+                    .with_labels(vec![
+                        secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
+                        primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
+                    ]),
         };
 
         vec![diagnostic]

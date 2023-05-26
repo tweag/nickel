@@ -4,6 +4,8 @@
 # error = 'ParseError::DuplicateIdentInRecordPattern'
 #
 # [test.metadata.expectation]
-# ident = 'duped'
-let f = fun { duped, duped, .. } => duped
-in f { duped = 1, other = "x" }
+# ident = 'a'
+(
+  let { a, a, .. } = { a = 1, b = 2 } in
+  a : Number
+): _
