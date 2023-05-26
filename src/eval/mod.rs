@@ -222,9 +222,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         path: QueryPath,
         initial_env: &Environment,
     ) -> Result<Field, EvalError> {
+        let mut prev_pos = t.pos;
         let (rt, mut env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
 
-        let mut prev_pos = rt.pos;
         let mut field: Field = rt.into();
 
         let mut path = path.0.into_iter().peekable();
