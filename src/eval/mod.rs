@@ -292,12 +292,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Some(_) => {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
-                    return Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("query"),
-                        prev_pos,
-                        field.value.unwrap(),
-                    ));
+                    return Err(EvalError::QueryNonRecord {
+                        pos: prev_pos,
+                        id,
+                        value: field.value.unwrap(),
+                    });
                 }
             }
             prev_id = id;
