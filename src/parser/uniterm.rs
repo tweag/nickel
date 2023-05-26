@@ -286,12 +286,15 @@ impl UniRecord {
         }
     }
 
-    /// Checks if this record qualifies as a record type. If this function returns true, then
-    /// `into_type_strict()` must succeed.
+    /// Checks if this record qualifies as a record type. If this function
+    /// returns true, then `into_type_strict()` must succeed.
     pub fn is_record_type(&self) -> bool {
         self.fields.iter().all(|field_def| {
-            // Warning: this pattern must stay in sync with the corresponding pattern in `into_type_strict`.
-            matches!(&field_def.field,
+            // Field paths with a depth > 1 are not supported in record types.
+            field_def.path.len() == 1
+                // Warning: this pattern must stay in sync with the
+                // corresponding pattern in `into_type_strict`.
+                && matches!(&field_def.field,
                 Field {
                     value: None,
                     metadata:
@@ -313,9 +316,9 @@ impl UniRecord {
         })
     }
 
-    /// a plain record type, uniquely containing fields of the form `fields: Type`. Currently, this
-    /// doesn't support the field path syntax: `{foo.bar.baz : Type}.into_type_strict()` returns an
-    /// `Err`.
+    /// A plain record type, uniquely containing fields of the form `fields:
+    /// Type`. Currently, this doesn't support the field path syntax:
+    /// `{foo.bar.baz : Type}.into_type_strict()` returns an `Err`.
     pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
         fn term_to_record_rows(
             id: Ident,
