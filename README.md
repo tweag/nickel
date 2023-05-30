@@ -209,9 +209,9 @@ You can find examples in the [`./examples`](./examples) directory.
 
 ## Current state and roadmap
 
-Nickel is currently released in version `0.3.1`. This version should be
-functional and is intended to gather feedback and real-life testing. The next
-planned version is `1.0`. The next steps we plan to work on are:
+Nickel is currently released in version `1.0`. We expect the core design of the
+language to be stable and the language to be useful for real-world applications.
+The next steps we plan to work on are:
 
 - Nix integration: being able to seamlessly use Nickel to write packages and
   shells ([nickel-nix](https://github.com/nickel-lang/nickel-nix))
