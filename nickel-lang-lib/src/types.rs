@@ -962,6 +962,8 @@ impl Types {
                 let mut maybe_constr: HashSet<Ident> = HashSet::new();
                 let mut to_be_checked: Vec<&Types> = vec![body];
                 while let Some(tys) = to_be_checked.pop() {
+                    // These match statements could be combined, but we separate the concerns of
+                    // recursing into subtypes and checking types for relevant row variables
                     match &tys.types {
                         TypeF::Arrow(s, t) => {
                             to_be_checked.push(s);
@@ -977,6 +979,29 @@ impl Types {
                                 to_be_checked.push(body_);
                             }
                         }
+                        TypeF::Record(rrows) => {
+                            for ritem in rrows.iter() {
+                                if let RecordRowsIteratorItem::Row(row) = ritem {
+                                    to_be_checked.push(row.types);
+                                }
+                            }
+                        }
+                        TypeF::Dict {
+                            type_fields,
+                            flavour,
+                        } => {
+                            // XXX: is this the right semantics? I'm not sure whether we should recurse
+                            // into contracts or not
+                            if flavour == &DictTypeFlavour::Type {
+                                to_be_checked.push(type_fields);
+                            }
+                        }
+                        TypeF::Array(t) => {
+                            to_be_checked.push(t);
+                        }
+                        _ => (),
+                    }
+                    match &tys.types {
                         TypeF::Enum(erows) if var_kind == VarKind::EnumRows => {
                             maybe_constr.clear();
                             for eitem in erows.iter() {
@@ -992,20 +1017,16 @@ impl Types {
                                 }
                             }
                         }
-                        TypeF::Record(rrows) => {
-                            let kind_match = var_kind == VarKind::RecordRows;
+                        TypeF::Record(rrows) if var_kind == VarKind::RecordRows => {
                             maybe_constr.clear();
                             for ritem in rrows.iter() {
                                 match ritem {
                                     RecordRowsIteratorItem::Row(row) => {
-                                        to_be_checked.push(row.types);
-                                        if kind_match {
-                                            maybe_constr.insert(row.id);
-                                        }
+                                        maybe_constr.insert(row.id);
                                     }
                                     RecordRowsIteratorItem::TailDyn => (),
                                     RecordRowsIteratorItem::TailVar(var_) => {
-                                        if kind_match && var_ == var {
+                                        if var_ == var {
                                             constr.extend(&maybe_constr);
                                         }
                                     }
