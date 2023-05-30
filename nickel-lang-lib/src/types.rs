@@ -992,17 +992,20 @@ impl Types {
                                 }
                             }
                         }
-                        TypeF::Record(rrows) if var_kind == VarKind::RecordRows => {
+                        TypeF::Record(rrows) => {
+                            let kind_match = var_kind == VarKind::RecordRows;
                             maybe_constr.clear();
                             for ritem in rrows.iter() {
                                 match ritem {
                                     RecordRowsIteratorItem::Row(row) => {
                                         to_be_checked.push(row.types);
-                                        maybe_constr.insert(row.id);
+                                        if kind_match {
+                                            maybe_constr.insert(row.id);
+                                        }
                                     }
                                     RecordRowsIteratorItem::TailDyn => (),
                                     RecordRowsIteratorItem::TailVar(var_) => {
-                                        if var_ == var {
+                                        if kind_match && var_ == var {
                                             constr.extend(&maybe_constr);
                                         }
                                     }
