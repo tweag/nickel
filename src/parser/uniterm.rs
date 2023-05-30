@@ -453,8 +453,12 @@ impl TryFrom<UniRecord> for RichTerm {
             let mut ty = if let Some((_, tail_pos)) = ur.tail {
                 // We unwrap all positions: at this stage of the parsing, they must all be set
                 ur.into_type_strict()
-                    .map_err(|InvalidRecordTypeError(pos)| {
-                        ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
+                    .map_err(|InvalidRecordTypeError(illegal_pos)| {
+                        ParseError::InvalidUniRecord(
+                            illegal_pos.unwrap(),
+                            tail_pos.unwrap(),
+                            pos.unwrap(),
+                        )
                     })?
             } else {
                 // As per the condition of the enclosing if-then-else, `ur.is_record_type()` must
