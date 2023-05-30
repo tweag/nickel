@@ -1017,11 +1017,7 @@ impl Types {
                 }
 
                 let constr_ncl: RichTerm = Term::Array(
-                    Array::from_iter(
-                        constr
-                            .into_iter()
-                            .map(|id| Term::Str(id.label().to_owned().into()).into()),
-                    ),
+                    Array::from_iter(constr.into_iter().map(|id| Term::Str(id.into()).into())),
                     Default::default(),
                 )
                 .into();
