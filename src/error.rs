@@ -401,6 +401,11 @@ pub enum ParseError {
         RawSpan, /* tail position */
         RawSpan, /* whole record position */
     ),
+    /// A record type using string interpolation as one of its fields.
+    RecordTypeWithInterpolation {
+        illegal_span: RawSpan,
+        span: RawSpan,
+    },
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
     RecursiveLetPattern(RawSpan),
@@ -602,6 +607,9 @@ impl ParseError {
                 }
                 InternalParseError::InvalidUniRecord(illegal_pos, tail_pos, pos) => {
                     ParseError::InvalidUniRecord(illegal_pos, tail_pos, pos)
+                }
+                InternalParseError::RecordTypeWithInterpolation { illegal_span, span } => {
+                    ParseError::RecordTypeWithInterpolation { illegal_span, span }
                 }
                 InternalParseError::RecursiveLetPattern(pos) => {
                     ParseError::RecursiveLetPattern(pos)
@@ -1663,6 +1671,12 @@ impl IntoDiagnostics<FileId> for ParseError {
                     form `<field>: <type>`.".into(),
                     "Value assignments such as `<field> = <expr>`, and metadata \
                     annotation (annotation, documentation, etc.) are forbidden.".into(),
+                ]),
+            ParseError::RecordTypeWithInterpolation { illegal_span, span } => Diagnostic::error()
+                .with_message("record type literals cannot have interpolated fields")
+                .with_labels(vec![
+                    primary(&span),
+                    secondary(&illegal_span).with_message("this field uses interpolation")
                 ]),
             ParseError::RecursiveLetPattern(span) => Diagnostic::error()
                 .with_message("recursive destructuring is not supported")

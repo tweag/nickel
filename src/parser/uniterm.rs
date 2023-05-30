@@ -457,10 +457,15 @@ impl TryFrom<UniRecord> for RichTerm {
                         ParseError::InvalidUniRecord(pos.unwrap(), tail_pos.unwrap(), pos.unwrap())
                     })?
             } else {
-                // As per the condition of the enclosing if-then-else, `ur.is_record_type()` must
-                // be `true` in this branch, and it is an invariant of this function that then
-                // `ur.into_type_strict()` must succeed
-                ur.into_type_strict().unwrap()
+                // If `is_record_type` succeeds, the only possible failure of `into_type_strict`
+                // is a field interpolation.
+                ur.into_type_strict()
+                    .map_err(|InvalidRecordTypeError(illegal_span)| {
+                        ParseError::RecordTypeWithInterpolation {
+                            span: pos.unwrap(),
+                            illegal_span: illegal_span.unwrap(),
+                        }
+                    })?
             };
 
             ty.fix_type_vars(pos.unwrap())?;
