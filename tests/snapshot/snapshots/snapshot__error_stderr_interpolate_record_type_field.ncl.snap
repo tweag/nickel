@@ -1,0 +1,13 @@
+---
+source: tests/snapshot/main.rs
+expression: err
+---
+error: record type literals cannot have interpolated fields
+  ┌─ [INPUTS_PATH]/errors/interpolate_record_type_field.ncl:4:18
+  │
+4 │ let a = "foo" in { "%{a}" : Number }
+  │                  ^^^^^^^^^^^^^^^^^^^
+  │                    │
+  │                    this field uses interpolation
+
+
