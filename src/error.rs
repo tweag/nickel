@@ -133,6 +133,15 @@ pub enum EvalError {
     },
     /// A non-equatable term was compared for equality.
     EqError { eq_pos: TermPos, term: RichTerm },
+    /// Tried to query a field of something that wasn't a record.
+    QueryNonRecord {
+        /// Position of the original unevaluated expression.
+        pos: TermPos,
+        /// The identifier that we tried to query.
+        id: Ident,
+        /// Evaluated expression
+        value: RichTerm,
+    },
     /// An unexpected internal error.
     InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -1153,6 +1162,26 @@ impl IntoDiagnostics<FileId> for EvalError {
                 arg_evaluated,
             )
             .into_diagnostics(files, stdlib_ids),
+            EvalError::QueryNonRecord { pos, id, value } => {
+                let label = format!(
+                    "tried to query field `{}`, but the expression has type {}",
+                    id,
+                    value
+                        .term
+                        .type_of()
+                        .unwrap_or_else(|| String::from("<unevaluated>")),
+                );
+
+                let label = if let Some(span) = pos.into_opt() {
+                    primary(&span).with_message(label)
+                } else {
+                    primary_term(&value, files).with_message(label)
+                };
+
+                vec![Diagnostic::error()
+                    .with_message("tried to query field of a non-record")
+                    .with_labels(vec![label])]
+            }
         }
     }
 }

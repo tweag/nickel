@@ -222,9 +222,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         path: QueryPath,
         initial_env: &Environment,
     ) -> Result<Field, EvalError> {
+        let mut prev_pos = t.pos;
         let (rt, mut env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
 
-        let mut prev_pos = rt.pos;
         let mut field: Field = rt.into();
 
         let mut path = path.0.into_iter().peekable();
@@ -292,12 +292,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Some(_) => {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
-                    return Err(EvalError::TypeError(
-                        String::from("Record"),
-                        String::from("query"),
-                        prev_pos,
-                        field.value.unwrap(),
-                    ));
+                    return Err(EvalError::QueryNonRecord {
+                        pos: prev_pos,
+                        id,
+                        value: field.value.unwrap(),
+                    });
                 }
             }
             prev_id = id;
