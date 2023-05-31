@@ -372,10 +372,9 @@
         tag = version;
         contents = [
           nickel
-          pkgs.bashInteractive
         ];
         config = {
-          Cmd = "bash";
+          Cmd = "${nickel}/bin/nickel";
         };
       };
 
@@ -444,7 +443,7 @@
           paths = [ packages.nickel packages.lsp-nls ];
         };
         nickelWasm = buildNickelWasm { };
-        dockerImage = buildDocker packages.nickel; # TODO: docker image should be a passthru
+        dockerImage = buildDocker packages.nickel-static; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
         stdlibMarkdown = stdlibDoc "markdown";
