@@ -121,7 +121,7 @@ By default, nickel exports data as JSON. But we can change that using
 the extra parameter `--format yaml` to export as YAML.
 
 ```shell
-nickel -f users.ncl export --export yaml
+nickel -f users.ncl export --format yaml
 ```
 
 gives this result:
@@ -153,7 +153,7 @@ In this extra step, we will make a mistake on purpose in the file
 when Nickel detects that a value doesn't satisfy a contract.
 
 Edit the file `users.ncl` and delete the line `name = "Alice",`. Now
-export the file again using `nickel -f users.ncl export --export yaml`.
+export the file again using `nickel -f users.ncl export --format yaml`.
 You should see the following error:
 
 ```console

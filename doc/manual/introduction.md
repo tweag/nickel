@@ -93,7 +93,7 @@ The next steps we plan to work on are:
 This document is a detailed documentation on the main aspects of the language.
 It is composed of the following sections:
 
-1. [Tutorial](./tuto.md)
+1. [Tutorial](./tutorial.md)
 1. [Syntax](./syntax.md)
 1. [Merging](./merging.md)
 1. [Correctness](./correctness.md)
