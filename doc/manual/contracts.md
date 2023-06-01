@@ -38,7 +38,7 @@ Here, `x` is bound to a `Number` contract. When evaluating `x`, the following st
 are performed:
 
 1. Evaluate `1 + 1`.
-2. Check that the result is a `Number`.
+2. Check that the result is a number.
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
 ```nickel
