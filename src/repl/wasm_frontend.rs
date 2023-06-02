@@ -274,20 +274,35 @@ impl TryInto<ExportFormat> for WasmExportFormat {
 /// A `Write` implementor that calls a callback whenever it gets written to.
 struct CallbackWriter {
     callback: Option<js_sys::Function>,
+    buf: Vec<u8>,
+}
+
+impl CallbackWriter {
+    fn new(callback: Option<js_sys::Function>) -> Self {
+        Self {
+            callback,
+            buf: Vec::new(),
+        }
+    }
 }
 
 impl std::io::Write for CallbackWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Some(callback) = &self.callback {
-            let js_string = JsValue::from_str(&String::from_utf8_lossy(buf));
-            callback
-                .call1(&JsValue::NULL, &js_string)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e:?}")))?;
+        self.buf.extend_from_slice(buf);
+        if buf.contains(&b'\n') {
+            self.flush()?;
         }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+        if let Some(callback) = &self.callback {
+            let js_string = JsValue::from_str(&String::from_utf8_lossy(&self.buf).trim());
+            callback
+                .call1(&JsValue::NULL, &js_string)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e:?}")))?;
+        }
+        self.buf.clear();
         Ok(())
     }
 }
@@ -322,9 +337,7 @@ pub fn err_to_string(cache: &mut Cache, error: InputError) -> String {
 /// Return a new instance of the WASM REPL, with the standard library loaded.
 #[wasm_bindgen]
 pub fn repl_init(trace_callback: Option<js_sys::Function>) -> WasmInitResult {
-    let trace = CallbackWriter {
-        callback: trace_callback,
-    };
+    let trace = CallbackWriter::new(trace_callback);
     let mut repl = ReplImpl::new(trace);
     match repl.load_stdlib() {
         Ok(()) => WasmInitResult {
