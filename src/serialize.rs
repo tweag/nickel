@@ -259,62 +259,55 @@ pub fn to_string(format: ExportFormat, rt: &RichTerm) -> Result<String, ExportEr
 mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
-    use crate::error::{Error, EvalError};
     use crate::eval::cache::CacheImpl;
     use crate::eval::{Environment, VirtualMachine};
-    use crate::position::TermPos;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
     use std::io::Cursor;
 
-    fn mk_program(s: &str) -> Result<Program<CacheImpl>, Error> {
+    fn eval(s: &str) -> RichTerm {
         let src = Cursor::new(s);
-
-        Program::new_from_source(src, "<test>").map_err(|io_err| {
-            Error::EvalError(EvalError::Other(
-                format!("IO error: {io_err}"),
-                TermPos::None,
-            ))
-        })
+        let mut prog =
+            Program::<CacheImpl>::new_from_source(src, "<test>", std::io::stderr()).unwrap();
+        prog.eval_full().expect("program eval should succeed")
     }
 
     macro_rules! assert_json_eq {
         ( $term:expr, $result:expr ) => {
             assert_eq!(
-                serde_json::to_string(&mk_program($term).and_then(|mut p| p.eval_full()).unwrap())
-                    .unwrap(),
+                serde_json::to_string(&eval($term)).unwrap(),
                 serde_json::to_string(&$result).unwrap()
+            )
+        };
+    }
+
+    macro_rules! assert_nickel_eq {
+        ( $term:expr, $result:expr ) => {
+            assert_eq!(
+                VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
+                    .eval(
+                        mk_term::op2(BinaryOp::Eq(), $term, $result),
+                        &Environment::new(),
+                    )
+                    .map(Term::from),
+                Ok(Term::Bool(true))
             )
         };
     }
 
     macro_rules! assert_pass_validation {
         ( $format:expr, $term:expr, true) => {
-            validate(
-                $format,
-                &mk_program($term)
-                    .and_then(|mut p| p.eval_full())
-                    .unwrap()
-                    .into(),
-            )
-            .unwrap();
+            validate($format, &eval($term)).unwrap();
         };
         ( $format:expr, $term:expr, false) => {
-            validate(
-                $format,
-                &mk_program($term)
-                    .and_then(|mut p| p.eval_full())
-                    .unwrap()
-                    .into(),
-            )
-            .unwrap_err();
+            validate($format, &eval($term)).unwrap_err();
         };
     }
 
     macro_rules! assert_involutory {
         ( $term:expr ) => {
-            let evaluated = mk_program($term).and_then(|mut p| p.eval_full()).unwrap();
+            let evaluated = eval($term);
             let from_json: RichTerm =
                 serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
             let from_yaml: RichTerm =
@@ -322,33 +315,9 @@ mod tests {
             let from_toml: RichTerm =
                 toml::from_str(&format!("{}", &toml::to_string(&evaluated).unwrap())).unwrap();
 
-            assert_eq!(
-                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
-                    .eval(
-                        mk_term::op2(BinaryOp::Eq(), from_json, evaluated.clone()),
-                        &Environment::new(),
-                    )
-                    .map(Term::from),
-                Ok(Term::Bool(true))
-            );
-            assert_eq!(
-                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
-                    .eval(
-                        mk_term::op2(BinaryOp::Eq(), from_yaml, evaluated.clone()),
-                        &Environment::new(),
-                    )
-                    .map(Term::from),
-                Ok(Term::Bool(true))
-            );
-            assert_eq!(
-                VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
-                    .eval(
-                        mk_term::op2(BinaryOp::Eq(), from_toml, evaluated),
-                        &Environment::new(),
-                    )
-                    .map(Term::from),
-                Ok(Term::Bool(true))
-            );
+            assert_nickel_eq!(from_json, evaluated.clone());
+            assert_nickel_eq!(from_yaml, evaluated.clone());
+            assert_nickel_eq!(from_toml, evaluated);
         };
     }
 

@@ -154,8 +154,8 @@ fn main() {
         let mut program = opts
             .file
             .clone()
-            .map(Program::new_from_file)
-            .unwrap_or_else(Program::new_from_stdin)
+            .map(|f| Program::new_from_file(f, std::io::stderr()))
+            .unwrap_or_else(|| Program::new_from_stdin(std::io::stderr()))
             .unwrap_or_else(|err| {
                 eprintln!("Error when reading input: {err}");
                 process::exit(1)

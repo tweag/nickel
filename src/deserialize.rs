@@ -584,12 +584,18 @@ impl serde::de::Error for RustDeserializationError {
 mod tests {
     use std::io::Cursor;
 
-    use nickel_lang_utilities::test_program::TestProgram;
+    use nickel_lang_utilities::{
+        nickel_lang::{deserialize::RustDeserializationError, term::RichTerm},
+        test_program::TestProgram,
+    };
     use serde::Deserialize;
 
-    use crate::{eval::cache::CacheImpl, program::Program};
-
-    use super::RustDeserializationError;
+    fn eval(source: &str) -> RichTerm {
+        TestProgram::new_from_source(Cursor::new(source), "source", std::io::stderr())
+            .expect("program shouldn't fail")
+            .eval_full()
+            .expect("evaluation shouldn't fail")
+    }
 
     #[test]
     fn rust_deserialize_struct_with_fields() {
@@ -621,15 +627,7 @@ mod tests {
 
         assert_eq!(
             A::deserialize(
-                TestProgram::new_from_source(
-                    Cursor::new(
-                        br#"{ a = 10, b = "test string", c = null, d = true, e = 'foo, f = null, g = -10, h = { bar = "some other string" } }"#.to_vec()
-                    ),
-                    "source"
-                )
-                .expect("program shouldn't fail")
-                .eval_full()
-                .expect("evaluation shouldn't fail")
+                eval(r#"{ a = 10, b = "test string", c = null, d = true, e = 'foo, f = null, g = -10, h = { bar = "some other string" } }"#)
             )
             .expect("deserialization shouldn't fail"),
             A {
@@ -648,13 +646,8 @@ mod tests {
     #[test]
     fn rust_deserialize_array_of_numbers() {
         assert_eq!(
-            Vec::<f64>::deserialize(
-                TestProgram::new_from_source(Cursor::new(br#"[1, 2, 3, 4]"#.to_vec()), "source")
-                    .expect("program shouldn't fail")
-                    .eval_full()
-                    .expect("evaluation shouldn't fail")
-            )
-            .expect("deserialization shouldn't fail"),
+            Vec::<f64>::deserialize(eval(r#"[1, 2, 3, 4]"#))
+                .expect("deserialization shouldn't fail"),
             vec![1.0, 2.0, 3.0, 4.0]
         )
     }
@@ -664,16 +657,8 @@ mod tests {
         #[derive(Debug, PartialEq, Deserialize)]
         struct A;
 
-        let mut p = Program::<CacheImpl>::new_from_source(
-            Cursor::new(br#"fun a b => a + b"#.to_vec()),
-            "source",
-        )
-        .expect("program shouldn't fail");
-
-        let q = p.eval_full().expect("evaluation shouldn't fail");
-
         assert_eq!(
-            A::deserialize(q),
+            A::deserialize(eval(r#"fun a b => a + b"#)),
             Err(RustDeserializationError::InvalidType {
                 expected: "Null".to_string(),
                 occurred: "Function".to_string()
@@ -689,16 +674,8 @@ mod tests {
         }
 
         assert_eq!(
-            A::deserialize(
-                TestProgram::new_from_source(
-                    Cursor::new(br#"{ a = (10 | Number) }"#.to_vec()),
-                    "source"
-                )
-                .expect("program shouldn't fail")
-                .eval_full()
-                .expect("evaluation shouldn't fail")
-            )
-            .expect("deserialization shouldn't fail"),
+            A::deserialize(eval(r#"{ a = (10 | Number) }"#))
+                .expect("deserialization shouldn't fail"),
             A { a: 10.0 }
         )
     }

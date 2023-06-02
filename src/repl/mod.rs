@@ -89,7 +89,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
-            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict)),
+            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), std::io::stderr()),
         }
     }
 

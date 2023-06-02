@@ -13,7 +13,7 @@ use codespan::Files;
 
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
-    VirtualMachine::<_, CacheImpl>::new(DummyResolver {})
+    VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
         .eval(t, &Environment::new())
         .map(Term::from)
 }
@@ -117,7 +117,7 @@ fn asking_for_various_types() {
 
 #[test]
 fn imports() {
-    let mut vm = VirtualMachine::new(SimpleResolver::new());
+    let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink());
     vm.import_resolver_mut()
         .add_source(String::from("two"), String::from("1 + 1"));
     vm.import_resolver_mut()
@@ -266,7 +266,7 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .eval(t, &initial_env)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
@@ -274,7 +274,7 @@ fn initial_env() {
 
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .eval(t, &initial_env)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
@@ -283,7 +283,7 @@ fn initial_env() {
     // Shadowing of the initial environment
     let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
-        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone())
+        VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
             .eval(t, &initial_env)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))

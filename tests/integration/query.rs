@@ -10,6 +10,7 @@ pub fn test_query_metadata_basic() {
     let mut program = TestProgram::new_from_source(
         "{val | doc \"Test basic\" = (1 + 1)}".as_bytes(),
         "regr_tests",
+        std::io::stderr(),
     )
     .unwrap();
     let result = program.query(Some(String::from("val"))).unwrap();
@@ -25,11 +26,11 @@ pub fn test_query_with_wildcard() {
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
     #[track_caller]
     fn assert_types_eq(lhs: &str, rhs: &str, path: Option<String>) {
-        let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests")
+        let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests", std::io::stderr())
             .unwrap()
             .query(path.clone())
             .unwrap();
-        let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests")
+        let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests", std::io::stderr())
             .unwrap()
             .query(path)
             .unwrap();
@@ -75,7 +76,8 @@ pub fn test_query_with_wildcard() {
 
     // Without wildcard, the result has no type annotation
     let mut program =
-        TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests").unwrap();
+        TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests", std::io::stderr())
+            .unwrap();
     let result = program.query(path.clone()).unwrap();
     assert!(matches!(
         result,

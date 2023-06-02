@@ -92,6 +92,8 @@ use crate::{
     transform::Closurizable,
 };
 
+use std::io::Write;
+
 pub mod cache;
 pub mod callstack;
 pub mod fixpoint;
@@ -122,24 +124,28 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     import_resolver: R,
     // The evaluation cache.
     pub cache: C,
+    // The stream for writing trace output.
+    trace: Box<dyn Write>,
 }
 
 impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
-    pub fn new(import_resolver: R) -> Self {
+    pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
         VirtualMachine {
             import_resolver,
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
+            trace: Box::new(trace),
         }
     }
 
-    pub fn new_with_cache(import_resolver: R, cache: C) -> Self {
+    pub fn new_with_cache(import_resolver: R, cache: C, trace: impl Write + 'static) -> Self {
         VirtualMachine {
             import_resolver,
             call_stack: Default::default(),
             stack: Stack::new(),
             cache,
+            trace: Box::new(trace),
         }
     }
 

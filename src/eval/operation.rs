@@ -1104,7 +1104,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             UnaryOp::Trace() => {
                 if let Term::Str(s) = &*t {
-                    eprintln!("std.trace: {s}");
+                    let _ = writeln!(self.trace, "std.trace: {s}");
                     Ok(())
                 } else {
                     Err(mk_type_error!("trace", "String"))
@@ -3207,7 +3207,7 @@ mod tests {
     fn ite_operation() {
         let cont: OperationCont = OperationCont::Op1(UnaryOp::Ite(), TermPos::None);
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {});
+            VirtualMachine::new(DummyResolver {}, std::io::sink());
 
         vm.stack
             .push_arg(Closure::atomic_closure(mk_term::integer(5)), TermPos::None);
@@ -3248,7 +3248,7 @@ mod tests {
             body: mk_term::integer(7),
             env: Environment::new(),
         };
-        let mut vm = VirtualMachine::new(DummyResolver {});
+        let mut vm = VirtualMachine::new(DummyResolver {}, std::io::sink());
         vm.stack.push_op_cont(cont, 0, TermPos::None);
 
         clos = vm.continuate_operation(clos).unwrap();
@@ -3293,7 +3293,7 @@ mod tests {
         );
 
         let mut vm: VirtualMachine<DummyResolver, CacheImpl> =
-            VirtualMachine::new(DummyResolver {});
+            VirtualMachine::new(DummyResolver {}, std::io::sink());
         let mut clos = Closure {
             body: mk_term::integer(6),
             env: Environment::new(),
