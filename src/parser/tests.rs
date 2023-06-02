@@ -333,12 +333,12 @@ fn record_terms() {
 fn invalid_record_types() {
     assert_matches!(
         parse("let x | forall r. { n | Num; r } = {} in x"),
-        Err(ParseError::InvalidUniRecord(..))
+        Err(ParseError::InvalidRecordType { .. })
     );
 
     assert_matches!(
         parse("let x : forall r. { n = fun i => i; r } = {} in x"),
-        Err(ParseError::InvalidUniRecord(..))
+        Err(ParseError::InvalidRecordType { .. })
     );
 }
 

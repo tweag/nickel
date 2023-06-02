@@ -1,5 +1,5 @@
 //! Additional AST nodes for the common UniTerm syntax (see RFC002 for more details).
-use super::*;
+use super::{error::InvalidRecordTypeError, *};
 use error::ParseError;
 use indexmap::{map::Entry, IndexMap};
 use utils::{build_record, FieldDef, FieldPathElem};
@@ -17,7 +17,7 @@ use crate::{
     },
 };
 
-use std::{cell::RefCell, convert::TryFrom};
+use std::{cell::RefCell, collections::HashMap, convert::TryFrom};
 
 /// A node of the uniterm AST. We only define new variants for those constructs that are common to
 /// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
@@ -165,12 +165,6 @@ pub struct UniRecord {
     /// must be different from `TermPos::None` if and only if `attrs.open` is `true`.
     pub pos_ellipsis: TermPos,
 }
-
-/// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
-/// record type in a strict way. See [`UniRecord::into_type_strict`]. Hold the position of the
-/// illegal construct.
-#[derive(Debug, Copy, Clone)]
-pub struct InvalidRecordTypeError(pub TermPos);
 
 impl UniRecord {
     /// Check if a field definition has a type annotation but no definition. This is currently
@@ -359,9 +353,9 @@ impl UniRecord {
                     // (parsing)
                     let span_id = id.pos.unwrap();
                     let term_pos = field_def.pos.into_opt().unwrap_or(span_id);
-                    Err(InvalidRecordTypeError(TermPos::Original(
+                    Err(InvalidRecordTypeError::InvalidField(
                         RawSpan::fuse(span_id, term_pos).unwrap(),
-                    )))
+                    ))
                 }
             }
         }
@@ -371,8 +365,11 @@ impl UniRecord {
         debug_assert!((self.pos_ellipsis == TermPos::None) != self.attrs.open);
 
         if let Some(raw_span) = self.pos_ellipsis.into_opt() {
-            return Err(InvalidRecordTypeError(TermPos::Original(raw_span)));
+            return Err(InvalidRecordTypeError::IsOpen(raw_span));
         }
+
+        // Track the field names we've seen, to check for duplicates.
+        let mut fields_seen = HashMap::new();
 
         let rrows = self
             .fields
@@ -387,35 +384,42 @@ impl UniRecord {
                     .unwrap_or(RecordRows(RecordRowsF::Empty)),
                 |acc: RecordRows, mut field_def| {
                     // We don't support compound paths for types, yet.
+                    // All positions can be unwrapped because we're still parsing.
                     if field_def.path.len() > 1 {
                         let span = field_def
                             .path
                             .into_iter()
                             .map(|path_elem| match path_elem {
-                                FieldPathElem::Ident(id) => id.pos.into_opt(),
-                                FieldPathElem::Expr(rt) => rt.pos.into_opt(),
+                                FieldPathElem::Ident(id) => id.pos.unwrap(),
+                                FieldPathElem::Expr(rt) => rt.pos.unwrap(),
                             })
-                            .reduce(|acc, pos| {
-                                acc.zip(pos)
-                                    .and_then(|(acc, span)| RawSpan::fuse(acc, span))
-                            })
-                            .flatten();
+                            .reduce(|acc, span| RawSpan::fuse(acc, span).unwrap_or(acc))
+                            // We already checked that the path is non-empty.
+                            .unwrap();
 
-                        Err(InvalidRecordTypeError(
-                            span.map_or(TermPos::None, TermPos::Original),
-                        ))
+                        Err(InvalidRecordTypeError::InvalidField(span))
                     } else {
                         let elem = field_def.path.pop().unwrap();
-                        match elem {
-                            FieldPathElem::Ident(id) => term_to_record_rows(id, field_def, acc),
+                        let id = match elem {
+                            FieldPathElem::Ident(id) => id,
                             FieldPathElem::Expr(expr) => {
-                                let Some(id) = expr.term.as_ref().try_str_chunk_as_static_str() else {
-                                        return Err(InvalidRecordTypeError(field_def.pos))
-                                };
-                                let id = Ident::new_with_pos(id, expr.pos);
-                                term_to_record_rows(id, field_def, acc)
+                                let name = expr.term.as_ref().try_str_chunk_as_static_str().ok_or(
+                                    InvalidRecordTypeError::InterpolatedField(
+                                        field_def.pos.unwrap(),
+                                    ),
+                                )?;
+                                Ident::new_with_pos(name, expr.pos)
                             }
+                        };
+                        if let Some(prev_id) = fields_seen.insert(id, id) {
+                            return Err(InvalidRecordTypeError::RepeatedField {
+                                // Because we're iterating backwards, `id` came first.
+                                orig: id.pos.unwrap(),
+                                dup: prev_id.pos.unwrap(),
+                            });
                         }
+
+                        term_to_record_rows(id, field_def, acc)
                     }
                 },
             )?;
@@ -450,27 +454,15 @@ impl TryFrom<UniRecord> for RichTerm {
 
         // First try to interpret this record as a type.
         let result = if ur.tail.is_some() || (ur.is_record_type() && !ur.fields.is_empty()) {
-            let mut ty = if let Some((_, tail_pos)) = ur.tail {
-                // We unwrap all positions: at this stage of the parsing, they must all be set
-                ur.into_type_strict()
-                    .map_err(|InvalidRecordTypeError(illegal_pos)| {
-                        ParseError::InvalidUniRecord(
-                            illegal_pos.unwrap(),
-                            tail_pos.unwrap(),
-                            pos.unwrap(),
-                        )
-                    })?
-            } else {
-                // If `is_record_type` succeeds, the only possible failure of `into_type_strict`
-                // is a field interpolation.
-                ur.into_type_strict()
-                    .map_err(|InvalidRecordTypeError(illegal_span)| {
-                        ParseError::RecordTypeWithInterpolation {
-                            span: pos.unwrap(),
-                            illegal_span: illegal_span.unwrap(),
-                        }
-                    })?
-            };
+            let tail_span = ur.tail.as_ref().and_then(|t| t.1.into_opt());
+            // We unwrap all positions: at this stage of the parsing, they must all be set
+            let mut ty = ur
+                .into_type_strict()
+                .map_err(|cause| ParseError::InvalidRecordType {
+                    tail_span,
+                    record_span: pos.unwrap(),
+                    cause,
+                })?;
 
             ty.fix_type_vars(pos.unwrap())?;
             ty.contract()
@@ -508,12 +500,10 @@ impl TryFrom<UniRecord> for Types {
 
         if let Some((_, tail_pos)) = ur.tail {
             ur.into_type_strict()
-                .map_err(|InvalidRecordTypeError(illegal_pos)| {
-                    ParseError::InvalidUniRecord(
-                        illegal_pos.unwrap(),
-                        tail_pos.unwrap(),
-                        pos.unwrap(),
-                    )
+                .map_err(|cause| ParseError::InvalidRecordType {
+                    tail_span: tail_pos.into_opt(),
+                    record_span: pos.unwrap(),
+                    cause,
                 })
         } else {
             let pos = ur.pos;

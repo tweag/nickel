@@ -16,7 +16,7 @@ use crate::{
     },
     parser::{
         self,
-        error::{LexicalError, ParseError as InternalParseError},
+        error::{InvalidRecordTypeError, LexicalError, ParseError as InternalParseError},
         lexer::Token,
         utils::mk_span,
     },
@@ -386,25 +386,17 @@ pub enum ParseError {
     ),
     /// Unbound type variable
     UnboundTypeVariables(Vec<Ident>),
-    /// Illegal record literal in the uniterm syntax. In practice, this is a record with a
-    /// polymorphic tail that contains a construct that wasn't permitted inside a record type in
-    /// the original syntax. Typically, a field assignment:
+    /// Illegal record type literal.
     ///
-    /// ```nickel
-    /// forall a. {foo : Number; a} # allowed
-    /// forall a. {foo : Number = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
-    /// ```
-    ///
+    /// This occurs when failing to convert from the uniterm syntax to a record type literal.
     /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
-    InvalidUniRecord(
-        RawSpan, /* illegal (in conjunction with a tail) construct position */
-        RawSpan, /* tail position */
-        RawSpan, /* whole record position */
-    ),
-    /// A record type using string interpolation as one of its fields.
-    RecordTypeWithInterpolation {
-        illegal_span: RawSpan,
-        span: RawSpan,
+    InvalidRecordType {
+        /// The position of the invalid record.
+        record_span: RawSpan,
+        /// Position of the tail, if there was one.
+        tail_span: Option<RawSpan>,
+        /// The reason that interpretation as a record type failed.
+        cause: InvalidRecordTypeError,
     },
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
@@ -605,12 +597,15 @@ impl ParseError {
                 InternalParseError::UnboundTypeVariables(idents) => {
                     ParseError::UnboundTypeVariables(idents)
                 }
-                InternalParseError::InvalidUniRecord(illegal_pos, tail_pos, pos) => {
-                    ParseError::InvalidUniRecord(illegal_pos, tail_pos, pos)
-                }
-                InternalParseError::RecordTypeWithInterpolation { illegal_span, span } => {
-                    ParseError::RecordTypeWithInterpolation { illegal_span, span }
-                }
+                InternalParseError::InvalidRecordType {
+                    record_span,
+                    tail_span,
+                    cause,
+                } => ParseError::InvalidRecordType {
+                    record_span,
+                    tail_span,
+                    cause,
+                },
                 InternalParseError::RecursiveLetPattern(pos) => {
                     ParseError::RecursiveLetPattern(pos)
                 }
@@ -1657,27 +1652,33 @@ impl IntoDiagnostics<FileId> for ParseError {
                 .with_labels(
                     idents.into_iter().filter_map(|id| id.pos.into_opt()).map(|span| primary(&span).with_message("this identifier is unbound")).collect()
                  ),
-            ParseError::InvalidUniRecord(illegal_span, tail_span, span) => Diagnostic::error()
-                .with_message("invalid record literal")
-                .with_labels(vec![
-                    primary(&span),
-                    secondary(&illegal_span).with_message("can't use this record construct"),
-                    secondary(&tail_span).with_message("in presence of a tail"),
-                ])
-                .with_notes(vec![
-                    "Using a polymorphic tail in a record literal `{ ..; a}` requires the rest \
-                    of the literal to be a record type.".into(),
-                    "A record type is a literal composed only of type annotations, of the \
-                    form `<field>: <type>`.".into(),
-                    "Value assignments such as `<field> = <expr>`, and metadata \
-                    annotation (annotation, documentation, etc.) are forbidden.".into(),
-                ]),
-            ParseError::RecordTypeWithInterpolation { illegal_span, span } => Diagnostic::error()
-                .with_message("record type literals cannot have interpolated fields")
-                .with_labels(vec![
-                    primary(&span),
-                    secondary(&illegal_span).with_message("this field uses interpolation")
-                ]),
+            ParseError::InvalidRecordType { record_span, tail_span, cause } => {
+                let mut labels: Vec<_> = std::iter::once(primary(&record_span))
+                    .chain(cause.labels())
+                    .collect();
+                let mut notes: Vec<_> = std::iter::once(
+                        "A record type is a literal composed only of type annotations, of the \
+                        form `<field>: <type>`.".into()
+                    ).chain(cause.notes()).collect();
+
+                if let Some(tail_span) = tail_span {
+                    labels.push(secondary(&tail_span).with_message("tail"));
+                    notes.push(
+                        "This literal was interpreted as a record type because it has a \
+                        polymorphic tail; record values cannot have tails.".into()
+                    );
+                } else {
+                    notes.push(
+                        "This literal was interpreted as a record type because it has \
+                        fields with type annotations but no value definitions; to make \
+                        this a record value, assign values to its fields.".into()
+                    );
+                };
+                Diagnostic::error()
+                    .with_message("invalid record literal")
+                    .with_labels(labels)
+                    .with_notes(notes)
+            }
             ParseError::RecursiveLetPattern(span) => Diagnostic::error()
                 .with_message("recursive destructuring is not supported")
                 .with_labels(vec![

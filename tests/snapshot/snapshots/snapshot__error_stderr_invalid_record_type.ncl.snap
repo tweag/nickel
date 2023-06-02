@@ -8,11 +8,11 @@ error: invalid record literal
 4 │ {a: Number, b = 1; r}
   │ ^^^^^^^^^^^^^^^^^^^^^
   │             │    │
-  │             │    in presence of a tail
-  │             can't use this record construct
+  │             │    tail
+  │             invalid field for a record type literal
   │
-  = Using a polymorphic tail in a record literal `{ ..; a}` requires the rest of the literal to be a record type.
   = A record type is a literal composed only of type annotations, of the form `<field>: <type>`.
   = Value assignments such as `<field> = <expr>`, and metadata annotation (annotation, documentation, etc.) are forbidden.
+  = This literal was interpreted as a record type because it has a polymorphic tail; record values cannot have tails.
 
 

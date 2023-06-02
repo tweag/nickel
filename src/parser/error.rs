@@ -1,3 +1,6 @@
+use codespan::FileId;
+use codespan_reporting::diagnostic::Label;
+
 use crate::{identifier::Ident, position::RawSpan};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -12,31 +15,79 @@ pub enum LexicalError {
     Generic(usize, usize),
 }
 
+/// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
+/// record type in a strict way.
+///
+/// See [`UniRecord::into_type_strict`](crate::parser::uniterm::UniRecord::into_type_strict).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum InvalidRecordTypeError {
+    /// The record type had an invalid field, for example because it had a contract,
+    /// an assigned value, or lacked a type annotation.
+    InvalidField(RawSpan),
+    /// The record had an ellipsis.
+    IsOpen(RawSpan),
+    /// The record type had a field whose name used string interpolation.
+    InterpolatedField(RawSpan),
+    /// A field name was repeated.
+    RepeatedField { orig: RawSpan, dup: RawSpan },
+}
+
+impl InvalidRecordTypeError {
+    pub fn labels(&self) -> Vec<Label<FileId>> {
+        let label = |span: &RawSpan| {
+            Label::secondary(span.src_id, span.start.to_usize()..span.end.to_usize())
+        };
+        match self {
+            InvalidRecordTypeError::InvalidField(pos) => {
+                vec![label(pos).with_message("invalid field for a record type literal")]
+            }
+            InvalidRecordTypeError::IsOpen(pos) => {
+                vec![label(pos).with_message("cannot have ellipsis in a record type literal")]
+            }
+            InvalidRecordTypeError::InterpolatedField(pos) => {
+                vec![label(pos).with_message("this field uses interpolation")]
+            }
+            InvalidRecordTypeError::RepeatedField { orig, dup } => {
+                vec![
+                    label(orig).with_message("first occurrence"),
+                    label(dup).with_message("second occurrence"),
+                ]
+            }
+        }
+    }
+
+    pub fn notes(&self) -> Option<String> {
+        match self {
+            InvalidRecordTypeError::InvalidField(_) => Some(
+                "Value assignments such as `<field> = <expr>`, and metadata \
+                    annotation (annotation, documentation, etc.) are forbidden."
+                    .into(),
+            ),
+            InvalidRecordTypeError::InterpolatedField(_) => {
+                Some("String interpolation in field names is forbidden in record types".into())
+            }
+            InvalidRecordTypeError::RepeatedField { .. } => {
+                Some("Repeated field names are forbidden".into())
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),
     /// Unbound type variable(s)
     UnboundTypeVariables(Vec<Ident>),
-    /// Illegal record literal in the uniterm syntax. In practice, this is a record with a
-    /// polymorphic tail that contains a construct that wasn't permitted inside a record type in
-    /// the original syntax. Typically, a field assignment:
+    /// Illegal record type literal.
     ///
-    /// ```nickel
-    /// forall a. {foo : Num; a} # allowed
-    /// forall a. {foo : Num = 1; a} # InvalidUniRecord error: giving a value to foo is forbidden
-    /// ```
-    ///
+    /// This occurs when failing to convert from the uniterm syntax to a record type literal.
     /// See [RFC002](../../rfcs/002-merge-types-terms-syntax.md) for more details.
-    InvalidUniRecord(
-        RawSpan, /* illegal (in conjunction with a tail) construct position */
-        RawSpan, /* tail position */
-        RawSpan, /* whole record position */
-    ),
-    /// A record type using string interpolation as one of its fields.
-    RecordTypeWithInterpolation {
-        illegal_span: RawSpan,
-        span: RawSpan,
+    InvalidRecordType {
+        record_span: RawSpan,
+        tail_span: Option<RawSpan>,
+        cause: InvalidRecordTypeError,
     },
     /// A recursive let pattern was encountered. They are not currently supported because we
     /// decided it was too involved to implement them.
