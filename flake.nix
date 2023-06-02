@@ -374,7 +374,7 @@
           nickel
         ];
         config = {
-          Cmd = "${nickel}/bin/nickel";
+          Entrypoint = "${nickel}/bin/nickel";
         };
       };
 
