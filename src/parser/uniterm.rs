@@ -501,7 +501,7 @@ impl TryFrom<UniRecord> for Types {
         if let Some((_, tail_pos)) = ur.tail {
             ur.into_type_strict()
                 .map_err(|cause| ParseError::InvalidRecordType {
-                    tail_span: Some(tail_pos.unwrap()),
+                    tail_span: tail_pos.into_opt(),
                     record_span: pos.unwrap(),
                     cause,
                 })

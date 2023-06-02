@@ -13,6 +13,6 @@ error: invalid record literal
   │
   = A record type is a literal composed only of type annotations, of the form `<field>: <type>`.
   = Value assignments such as `<field> = <expr>`, and metadata annotation (annotation, documentation, etc.) are forbidden.
-  = This literal was interpreted as a record type because it has a polymorphic tail
+  = This literal was interpreted as a record type because it has a polymorphic tail; record values cannot have tails.
 
 

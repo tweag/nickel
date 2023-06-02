@@ -1665,7 +1665,13 @@ impl IntoDiagnostics<FileId> for ParseError {
                     labels.push(secondary(&tail_span).with_message("tail"));
                     notes.push(
                         "This literal was interpreted as a record type because it has a \
-                        polymorphic tail".into()
+                        polymorphic tail; record values cannot have tails.".into()
+                    );
+                } else {
+                    notes.push(
+                        "This literal was interpreted as a record type because it has \
+                        fields with type annotations but no value definitions; to make \
+                        this a record value, assign values to its fields.".into()
                     );
                 };
                 Diagnostic::error()
