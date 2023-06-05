@@ -459,7 +459,7 @@
 
       devShells = (forEachRustChannel (channel: {
         name = channel;
-        value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; }; };
+        value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
       })) // {
         default = devShells.stable;
       };

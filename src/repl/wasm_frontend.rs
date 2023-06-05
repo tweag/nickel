@@ -297,7 +297,7 @@ impl std::io::Write for CallbackWriter {
 
     fn flush(&mut self) -> std::io::Result<()> {
         if let Some(callback) = &self.callback {
-            let js_string = JsValue::from_str(&String::from_utf8_lossy(&self.buf).trim());
+            let js_string = JsValue::from_str(String::from_utf8_lossy(&self.buf).trim());
             callback
                 .call1(&JsValue::NULL, &js_string)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e:?}")))?;
