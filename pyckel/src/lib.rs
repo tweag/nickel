@@ -20,7 +20,7 @@ fn error_to_exception<E: Into<Error>, EC: Cache>(error: E, program: &mut Program
 #[pyfunction]
 pub fn run(s: String) -> PyResult<String> {
     let mut program: Program<CacheImpl> =
-        Program::new_from_source(Cursor::new(s), "python", std::io::stderr())?;
+        Program::new_from_source(Cursor::new(s), "python", std::io::sink())?;
 
     let term = program
         .eval_full()
