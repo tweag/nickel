@@ -83,8 +83,8 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 1. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
-   and include the docker image built in 1. Please look at previous releases
-   for the naming convention of git tags.
+   and include the docker image built in 1. Make sure that you set `X.Y.Z-release`
+   as the target branch and have GitHub create the `X.Y.Z` tag on release.
 
 2. Verify that the "Upload release artifacts" GitHub action is getting triggered
    and completes successfully, uploading a static Nickel binary for x86_64 Linux
