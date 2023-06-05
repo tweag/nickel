@@ -1,4 +1,4 @@
-name: Uplaod release artifacts
+name: Upload release artifacts
 on:
   release:
     types: [published]
@@ -42,7 +42,7 @@ jobs:
         with:
           extra_nix_config: "experimental-features = nix-command flakes"
           nix_path: "nixpkgs=channel:nixos-unstable"
-      - name: "Build docker image"
+      - name: "Build x86_64 static binary"
         run: |
           nix build --print-build-logs .#nickel-static
           cp ./result nickel-x86_64-linux
