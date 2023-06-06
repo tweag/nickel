@@ -55,8 +55,8 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        array::Array, make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse,
-        TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
+        RichTerm, Term, Traverse, TraverseOrder,
     },
 };
 
@@ -131,32 +131,30 @@ pub enum EnumRowsF<ERows> {
 /// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
 /// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
 /// variables are introduced, that is, on forall quantifiers.
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum VarKind {
+    Type,
+    EnumRows,
+    RecordRows { excluded: HashSet<Ident> },
+}
+
+/// Equivalent to `std::mem::Discriminant<VarKind>`, but we can do things like match on it
+// TODO: this seems overly complicated, and it's anyways more space-efficient to store the
+// `excluded` information separately like we do in the `State` field constr. Probably we can store
+// it that way during parsing too.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum VarKindDiscriminant {
     Type,
     EnumRows,
     RecordRows,
 }
 
-impl From<VarKind> for Term {
-    fn from(value: VarKind) -> Self {
-        match value {
-            VarKind::Type => Term::Enum(Ident::new("Type")),
-            VarKind::EnumRows => Term::Enum(Ident::new("EnumRows")),
-            VarKind::RecordRows => Term::Enum(Ident::new("RecordRows")),
-        }
-    }
-}
-
-impl TryFrom<&Term> for VarKind {
-    type Error = ();
-
-    fn try_from(value: &Term) -> Result<Self, Self::Error> {
-        match value {
-            Term::Enum(type_) if type_.label() == "Type" => Ok(Self::Type),
-            Term::Enum(enum_rows) if enum_rows.label() == "EnumRows" => Ok(Self::EnumRows),
-            Term::Enum(record_rows) if record_rows.label() == "RecordRows" => Ok(Self::RecordRows),
-            _ => Err(()),
+impl From<&VarKind> for VarKindDiscriminant {
+    fn from(vk: &VarKind) -> Self {
+        match vk {
+            VarKind::Type => VarKindDiscriminant::Type,
+            VarKind::EnumRows => VarKindDiscriminant::EnumRows,
+            VarKind::RecordRows { .. } => VarKindDiscriminant::RecordRows,
         }
     }
 }
@@ -954,100 +952,27 @@ impl Types {
             TypeF::Forall {
                 ref var,
                 ref body,
-                var_kind,
+                ref var_kind,
             } => {
-                let mut constr: HashSet<Ident> = HashSet::new();
-                // TODO: optimization: might be faster if maybe_constr is a Vec, and since it only
-                // ever gets merged into `constr`, this won't affect semantics.
-                let mut maybe_constr: HashSet<Ident> = HashSet::new();
-                let mut to_be_checked: Vec<&Types> = vec![body];
-                while let Some(tys) = to_be_checked.pop() {
-                    // These match statements could be combined, but we separate the concerns of
-                    // recursing into subtypes and checking types for relevant row variables
-                    match &tys.types {
-                        TypeF::Arrow(s, t) => {
-                            to_be_checked.push(s);
-                            to_be_checked.push(t);
-                        }
-                        TypeF::Forall {
-                            var: var_,
-                            body: body_,
-                            ..
-                        } => {
-                            // check for shadow (forall x. forall x. foo)
-                            if var_ != var {
-                                to_be_checked.push(body_);
-                            }
-                        }
-                        TypeF::Record(rrows) => {
-                            for ritem in rrows.iter() {
-                                if let RecordRowsIteratorItem::Row(row) = ritem {
-                                    to_be_checked.push(row.types);
-                                }
-                            }
-                        }
-                        TypeF::Dict {
-                            type_fields,
-                            flavour,
-                        } => {
-                            // XXX: is this the right semantics? I'm not sure whether we should recurse
-                            // into contracts or not
-                            if flavour == &DictTypeFlavour::Type {
-                                to_be_checked.push(type_fields);
-                            }
-                        }
-                        TypeF::Array(t) => {
-                            to_be_checked.push(t);
-                        }
-                        _ => (),
-                    }
-                    match &tys.types {
-                        TypeF::Enum(erows) if var_kind == VarKind::EnumRows => {
-                            maybe_constr.clear();
-                            for eitem in erows.iter() {
-                                match eitem {
-                                    EnumRowsIteratorItem::Row(row) => {
-                                        maybe_constr.insert(*row);
-                                    }
-                                    EnumRowsIteratorItem::TailVar(var_) => {
-                                        if var_ == var {
-                                            constr.extend(&maybe_constr);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        TypeF::Record(rrows) if var_kind == VarKind::RecordRows => {
-                            maybe_constr.clear();
-                            for ritem in rrows.iter() {
-                                match ritem {
-                                    RecordRowsIteratorItem::Row(row) => {
-                                        maybe_constr.insert(row.id);
-                                    }
-                                    RecordRowsIteratorItem::TailDyn => (),
-                                    RecordRowsIteratorItem::TailVar(var_) => {
-                                        if var_ == var {
-                                            constr.extend(&maybe_constr);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-
-                let constr_ncl: RichTerm = Term::Array(
-                    Array::from_iter(constr.into_iter().map(|id| Term::Str(id.into()).into())),
-                    Default::default(),
-                )
-                .into();
-
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    VarKind::EnumRows | VarKind::RecordRows => {
-                        mk_app!(internals::forall_tail(), sealing_key.clone(), constr_ncl)
+                    VarKind::EnumRows => {
+                        let excluded_ncl: RichTerm =
+                            Term::Array(Default::default(), Default::default()).into();
+                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
+                    }
+                    VarKind::RecordRows { excluded } => {
+                        let excluded_ncl: RichTerm = Term::Array(
+                            Array::from_iter(
+                                excluded
+                                    .iter()
+                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
+                            ),
+                            Default::default(),
+                        )
+                        .into();
+                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
                     }
                 };
                 vars.insert(*var, contract);

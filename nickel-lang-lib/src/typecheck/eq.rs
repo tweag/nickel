@@ -512,7 +512,7 @@ fn type_eq_bounded<E: TermEnvironment>(
                         body1.subst_type(var1, &GenericUnifType::Constant(cst_id)),
                         body2.subst_type(var2, &GenericUnifType::Constant(cst_id)),
                     ),
-                    VarKind::RecordRows => (
+                    VarKind::RecordRows { .. } => (
                         body1.subst_rrows(var1, &GenericUnifRecordRows::Constant(cst_id)),
                         body2.subst_rrows(var2, &GenericUnifRecordRows::Constant(cst_id)),
                     ),

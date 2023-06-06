@@ -44,7 +44,7 @@ pub fn get_uop_type(
         }
         // Dyn -> Polarity
         UnaryOp::Pol() => (mk_uniftype::dynamic(), mk_uty_enum!("Positive", "Negative")),
-        // forall rows. < | rows> -> <id | rows>
+        // forall rows. [| ; rows |] -> [| id ; rows |]
         UnaryOp::Embed(id) => {
             let row_var_id = state.table.fresh_erows_var_id();
             let row = UnifEnumRows::UnifVar(row_var_id);
@@ -52,9 +52,6 @@ pub fn get_uop_type(
             let domain = mk_uty_enum!(; row.clone());
             let codomain = mk_uty_enum!(*id; row);
 
-            // The codomain is the only type which can impose a constraint on the fresh row
-            // unification variable, namely that it can't contain `id`.
-            codomain.constrain_fresh_erows_var(state, row_var_id);
             (domain, codomain)
         }
         // This should not happen, as a match primop is only produced during evaluation.

@@ -17,7 +17,11 @@ use crate::{
     },
 };
 
-use std::{cell::RefCell, collections::HashMap, convert::TryFrom};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+};
 
 /// A node of the uniterm AST. We only define new variants for those constructs that are common to
 /// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
@@ -569,7 +573,7 @@ impl VarKindCell {
     /// Set the variable kind of the inner mutable reference if not set yet. If the variable kind
     /// is already set, check that the variable kind of the cell and the one provided as an
     /// argument are equals, or return `Err(_)` otherwise.
-    pub(super) fn set_or_check_equal(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
+    pub(super) fn try_set(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
         match &mut *self.0.borrow_mut() {
             VarKindCellData {
                 var_kind: data,
@@ -579,17 +583,40 @@ impl VarKindCell {
                 *state = VarKindCellState::Set;
                 Ok(())
             }
+
             VarKindCellData {
                 var_kind: data,
                 state: VarKindCellState::Set,
             } if *data == var_kind => Ok(()),
+
+            VarKindCellData {
+                var_kind: ref mut data,
+                state: VarKindCellState::Set,
+            } => {
+                // TODO: make this an if let guard when they're stabilized
+                if let (
+                    VarKind::RecordRows {
+                        excluded: ref mut ex1,
+                    },
+                    VarKind::RecordRows { excluded: ex2 },
+                ) = (data, var_kind)
+                {
+                    ex1.extend(ex2);
+                    Ok(())
+                } else {
+                    Err(VarKindMismatch)
+                }
+            }
+
             _ => Err(VarKindMismatch),
         }
     }
 
     /// Return the current var_kind.
+    // TODO: optimization: when var_kind is called, there are actually no other references to this
+    // VarKind. We should be able to architect this so there's no clone here.
     pub fn var_kind(&self) -> VarKind {
-        self.0.borrow().var_kind
+        self.0.borrow().var_kind.clone()
     }
 }
 
@@ -691,7 +718,7 @@ impl FixTypeVars for Types {
             }
             TypeF::Var(ref mut id) => {
                 if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::Type)
+                    cell.try_set(VarKind::Type)
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 } else {
                     let id = *id;
@@ -731,26 +758,37 @@ impl FixTypeVars for RecordRows {
         bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        match self.0 {
-            RecordRowsF::Empty => Ok(()),
-            RecordRowsF::TailDyn => Ok(()),
-            // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
-            // have to set the correct kind for the corresponding forall binder.
-            RecordRowsF::TailVar(ref id) => {
-                if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::RecordRows)
+        fn helper(
+            rr: &mut RecordRows,
+            bound_vars: BoundVarEnv,
+            span: RawSpan,
+            mut maybe_excluded: HashSet<Ident>,
+        ) -> Result<(), ParseError> {
+            match rr.0 {
+                RecordRowsF::Empty => Ok(()),
+                RecordRowsF::TailDyn => Ok(()),
+                // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
+                // have to set the correct kind for the corresponding forall binder.
+                RecordRowsF::TailVar(ref id) => {
+                    if let Some(cell) = bound_vars.get(id) {
+                        cell.try_set(VarKind::RecordRows {
+                            excluded: maybe_excluded,
+                        })
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
+                    }
+                    Ok(())
                 }
-                Ok(())
-            }
-            RecordRowsF::Extend {
-                ref mut row,
-                ref mut tail,
-            } => {
-                row.types.fix_type_vars_env(bound_vars.clone(), span)?;
-                tail.fix_type_vars_env(bound_vars, span)
+                RecordRowsF::Extend {
+                    ref mut row,
+                    ref mut tail,
+                } => {
+                    maybe_excluded.insert(row.id);
+                    row.types.fix_type_vars_env(bound_vars.clone(), span)?;
+                    helper(tail, bound_vars, span, maybe_excluded)
+                }
             }
         }
+        helper(self, bound_vars, span, HashSet::new())
     }
 }
 
@@ -764,7 +802,7 @@ impl FixTypeVars for EnumRows {
         // appear in it, so we don't have to traverse for fixing type variables properly.
         //
         // However, the second task of the fix_type_vars phase is to determine the variable kind of
-        // forall binders: here, we do need to check if the fail of this enum is an enum row type
+        // forall binders: here, we do need to check if the tail of this enum is an enum row type
         // variable.
         let mut iter = self
             .iter()
@@ -772,12 +810,12 @@ impl FixTypeVars for EnumRows {
         match iter.next() {
             Some(EnumRowsIteratorItem::TailVar(id)) => {
                 if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::EnumRows)
+                    cell.try_set(VarKind::EnumRows)
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 }
                 Ok(())
             }
-            // unreachable(): we consumed all the rows item via the `take_while()` call above
+            // unreachable(): we consumed all the rows item via the `skip_while()` call above
             Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
             None => Ok(()),
         }
