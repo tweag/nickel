@@ -521,25 +521,6 @@ impl TryFrom<UniRecord> for Types {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
-pub(super) enum VarKindCellState {
-    /// The variable kind is yet to be determined.
-    Unset,
-    /// The variable kind that has been determined by an usage of the bound variable.
-    Set,
-}
-
-/// Data stored in a `VarKindCell`.
-///
-/// We could have a simpler implementation using `std::cell::once_cell` (which [`VarKindCell`] is
-/// somehow emulating), but the latter is not stabilized yet. Used during the
-/// [FixTypeVars::fix_type_vars] phase.
-#[derive(PartialEq, Eq)]
-pub(super) struct VarKindCellData {
-    var_kind: VarKind,
-    state: VarKindCellState,
-}
-
 /// Cell providing shared mutable access to a var_kind. This is used to decide the kind of a
 /// variable associated to a forall in the `fix_type_vars` phase.
 ///
@@ -547,7 +528,7 @@ pub(super) struct VarKindCellData {
 /// the inner data when put in an environment, which only provides immutable references to its
 /// values.
 #[derive(PartialEq, Eq)]
-pub(super) struct VarKindCell(RefCell<VarKindCellData>);
+pub(super) struct VarKindCell(RefCell<Option<VarKind>>);
 
 /// Error raised by [`VarKindCell`] when trying to set a variable kind which is different from the
 /// one already set.
@@ -564,10 +545,7 @@ impl VarKindCell {
     /// Create a new `VarKindCell` with the `Unset` state. The kind is set to `VarKind::Type`,
     /// meaning that unused type variables are given this kind by default.
     pub(super) fn new() -> Self {
-        VarKindCell(RefCell::new(VarKindCellData {
-            var_kind: VarKind::Type,
-            state: VarKindCellState::Unset,
-        }))
+        VarKindCell(RefCell::new(None))
     }
 
     /// Set the variable kind of the inner mutable reference if not set yet. If the variable kind
@@ -575,24 +553,14 @@ impl VarKindCell {
     /// argument are equals, or return `Err(_)` otherwise.
     pub(super) fn try_set(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
         match &mut *self.0.borrow_mut() {
-            VarKindCellData {
-                var_kind: data,
-                ref mut state,
-            } if *state == VarKindCellState::Unset => {
-                *data = var_kind;
-                *state = VarKindCellState::Set;
+            s @ None => {
+                *s = Some(var_kind);
                 Ok(())
             }
 
-            VarKindCellData {
-                var_kind: data,
-                state: VarKindCellState::Set,
-            } if *data == var_kind => Ok(()),
+            Some(data) if *data == var_kind => Ok(()),
 
-            VarKindCellData {
-                var_kind: ref mut data,
-                state: VarKindCellState::Set,
-            } => {
+            Some(data) => {
                 // TODO: make this an if let guard when they're stabilized
                 if let (
                     VarKind::RecordRows {
@@ -607,8 +575,6 @@ impl VarKindCell {
                     Err(VarKindMismatch)
                 }
             }
-
-            _ => Err(VarKindMismatch),
         }
     }
 
@@ -616,7 +582,7 @@ impl VarKindCell {
     // TODO: optimization: when var_kind is called, there are actually no other references to this
     // VarKind. We should be able to architect this so there's no clone here.
     pub fn var_kind(&self) -> VarKind {
-        self.0.borrow().var_kind.clone()
+        self.0.borrow().clone().unwrap_or(VarKind::Type)
     }
 }
 
