@@ -52,6 +52,7 @@
       forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
 
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
 
       version = "${cargoTOML.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
 
@@ -62,9 +63,8 @@
         # See https://discourse.nixos.org/t/is-it-possible-to-override-cargosha256-in-buildrustpackage/4393
         wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (oldAttrs:
           let
-            wasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
-            # Remove the pinning `=` prefix of the version
-            wasmBindgenVersion = builtins.substring 1 (builtins.stringLength wasmBindgenCargoVersion) wasmBindgenCargoVersion;
+            wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
+            wasmBindgenVersion = assert builtins.length wasmBindgenCargoVersions == 1; builtins.elemAt wasmBindgenCargoVersions 0;
           in
           rec {
             pname = "wasm-bindgen-cli";
