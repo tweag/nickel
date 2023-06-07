@@ -81,12 +81,23 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ### Release on GitHub
 
-1. Do the [release on
+1. Build a Docker image and a static binary for ARM64 manually, using
+
+   ```console
+   nix build --out-link nickel-arm64-docker-image.tar.gz .#packages.aarch64-linux.dockerImage
+   nix build --out-link nickel-arm64-linux .#packages.aarch64-linux.dockerImage
+   ```
+
+   on an ARM64 Linux machine.
+
+2. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
    and include the docker image built in 1. Make sure that you set `X.Y.Z-release`
    as the target branch and have GitHub create the `X.Y.Z` tag on release.
+   Upload `nickel-arm64-docker-image.tar.gz` and `nickel-arm64-linux` as release
+   assets from the last step.
 
-2. Verify that the "Upload release artifacts" GitHub action is getting triggered
+3. Verify that the "Upload release artifacts" GitHub action is getting triggered
    and completes successfully, uploading a static Nickel binary for x86_64 Linux
    and a Docker image.
 
