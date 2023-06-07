@@ -348,7 +348,7 @@
           inherit cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
-            wasm-pack build nickel-wasm-repl ${wasmPackExtraArgs}
+            WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build nickel-wasm-repl ${wasmPackExtraArgs}
           '';
 
           # nickel-lang.org expects an interface `nickel-repl.wasm`, hence the
