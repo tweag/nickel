@@ -12,7 +12,8 @@ fn check_example_file(path: &str) {
     let test: TestCase<Expectation> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");
 
-    let mut p = TestProgram::new_from_file(path).expect("Failed to load program from file");
+    let mut p = TestProgram::new_from_file(path, std::io::stderr())
+        .expect("Failed to load program from file");
 
     match test.annotation {
         Expectation::Pass => {

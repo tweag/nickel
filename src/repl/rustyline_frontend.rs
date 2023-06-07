@@ -33,7 +33,7 @@ impl From<ColorOpt> for rustyline::config::ColorMode {
 
 /// Main loop of the REPL.
 pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
-    let mut repl = ReplImpl::<CacheImpl>::new();
+    let mut repl = ReplImpl::<CacheImpl>::new(std::io::stderr());
 
     match repl.load_stdlib() {
         Ok(()) => (),

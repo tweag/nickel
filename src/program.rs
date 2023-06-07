@@ -30,7 +30,7 @@ use crate::term::{record::Field, RichTerm};
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
-use std::io::{self, Cursor, Read};
+use std::io::{self, Cursor, Read, Write};
 use std::result::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -119,14 +119,17 @@ pub struct Program<EC: EvalCache> {
 
 impl<EC: EvalCache> Program<EC> {
     /// Create a program by reading it from the standard input.
-    pub fn new_from_stdin() -> std::io::Result<Self> {
-        Program::new_from_source(io::stdin(), "<stdin>")
+    pub fn new_from_stdin(trace: impl Write + 'static) -> std::io::Result<Self> {
+        Program::new_from_source(io::stdin(), "<stdin>", trace)
     }
 
-    pub fn new_from_file(path: impl Into<OsString>) -> std::io::Result<Self> {
+    pub fn new_from_file(
+        path: impl Into<OsString>,
+        trace: impl Write + 'static,
+    ) -> std::io::Result<Self> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
-        let vm = VirtualMachine::new(cache);
+        let vm = VirtualMachine::new(cache, trace);
 
         Ok(Self {
             main_id,
@@ -136,14 +139,18 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Create a program by reading it from a generic source.
-    pub fn new_from_source<T, S>(source: T, source_name: S) -> std::io::Result<Self>
+    pub fn new_from_source<T, S>(
+        source: T,
+        source_name: S,
+        trace: impl Write + 'static,
+    ) -> std::io::Result<Self>
     where
         T: Read,
         S: Into<OsString> + Clone,
     {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_source(source_name, source)?;
-        let vm = VirtualMachine::new(cache);
+        let vm = VirtualMachine::new(cache, trace);
 
         Ok(Self {
             main_id,
@@ -601,8 +608,8 @@ mod tests {
     fn eval_full(s: &str) -> Result<RichTerm, Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> =
-            Program::new_from_source(src, "<test>").map_err(|io_err| {
+        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
+            .map_err(|io_err| {
                 Error::EvalError(EvalError::Other(
                     format!("IO error: {io_err}"),
                     TermPos::None,
@@ -614,8 +621,8 @@ mod tests {
     fn typecheck(s: &str) -> Result<(), Error> {
         let src = Cursor::new(s);
 
-        let mut p: Program<CacheImpl> =
-            Program::new_from_source(src, "<test>").map_err(|io_err| {
+        let mut p: Program<CacheImpl> = Program::new_from_source(src, "<test>", std::io::sink())
+            .map_err(|io_err| {
                 Error::EvalError(EvalError::Other(
                     format!("IO error: {io_err}"),
                     TermPos::None,

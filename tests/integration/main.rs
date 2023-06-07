@@ -43,8 +43,12 @@ fn run_test(test_case: TestCase<Test>, path: String) {
     let test = test_case.annotation.test;
 
     for _ in 0..repeat {
-        let p =
-            TestProgram::new_from_source(Cursor::new(program.clone()), path.as_str()).expect("");
+        let p = TestProgram::new_from_source(
+            Cursor::new(program.clone()),
+            path.as_str(),
+            std::io::stderr(),
+        )
+        .expect("");
         match test.clone() {
             Expectation::Error(expected_err) => {
                 let err = eval_strategy.eval_program_to_err(p);

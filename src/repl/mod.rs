@@ -84,12 +84,12 @@ pub struct ReplImpl<EC: EvalCache> {
 
 impl<EC: EvalCache> ReplImpl<EC> {
     /// Create a new empty REPL.
-    pub fn new() -> Self {
+    pub fn new(trace: impl Write + 'static) -> Self {
         ReplImpl {
             parser: grammar::ExtendedTermParser::new(),
             env: Envs::new(),
             initial_type_ctxt: typecheck::Context::new(),
-            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict)),
+            vm: VirtualMachine::new(Cache::new(ErrorTolerance::Strict), trace),
         }
     }
 
