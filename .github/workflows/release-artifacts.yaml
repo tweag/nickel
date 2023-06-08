@@ -19,7 +19,9 @@ jobs:
       - uses: cachix/install-nix-action@v22
         name: "Installing Nix"
         with:
-          extra_nix_config: "experimental-features = nix-command flakes"
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
           nix_path: "nixpkgs=channel:nixos-unstable"
       - name: "Build docker image"
         run: |
@@ -40,7 +42,9 @@ jobs:
       - uses: cachix/install-nix-action@v22
         name: "Installing Nix"
         with:
-          extra_nix_config: "experimental-features = nix-command flakes"
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
           nix_path: "nixpkgs=channel:nixos-unstable"
       - name: "Build x86_64 static binary"
         run: |
