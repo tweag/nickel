@@ -7,16 +7,8 @@
 //! - Data structures: arrays and records
 //! - Binders: functions and let bindings
 //!
-//! It also features type annotations (promise and assume), and other typechecking related
+//! It also features types and type annotations, and other typechecking or contracts-related
 //! constructs (label, symbols, etc.).
-//!
-//! # Enriched values
-//!
-//! Enriched values are special terms used to represent metadata about record fields: types or
-//! contracts, default values, documentation, etc. They bring such usually external object down to
-//! the term level, and together with [crate::eval::merge], they allow for flexible and modular
-//! definitions of contracts, record and metadata all together.
-
 pub mod array;
 pub mod record;
 pub mod string;

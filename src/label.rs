@@ -235,8 +235,9 @@ but this field doesn't exist in {}",
 
 /// A blame label.
 ///
-/// A label is associated to a contract check (an assume, a promise or a contract as an enriched
-/// value) and contains information to report to the user when a contract fails and a blame occurs.
+/// A label is associated to a contract check (introduced by an explicit contract annotation, or
+/// implicitly by a merge expression) and contains information to report to the user when a
+/// contract fails and a blame occurs.
 /// It includes in particular a [type path][ty_path::Path] and a **polarity**.
 ///
 /// # Polarity
