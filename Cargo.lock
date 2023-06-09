@@ -1554,10 +1554,8 @@ dependencies = [
  "codespan-reporting",
  "comrak",
  "criterion 0.4.0",
- "directories",
  "indexmap",
  "indoc 2.0.1",
- "insta",
  "js-sys",
  "lalrpop",
  "lalrpop-util",
@@ -1590,6 +1588,19 @@ dependencies = [
  "unicode-segmentation",
  "void",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "nickel-lang-cli"
+version = "1.0.0"
+dependencies = [
+ "clap 4.3.0",
+ "directories",
+ "insta",
+ "nickel-lang",
+ "nickel-lang-utilities",
+ "serde",
+ "test-generator",
 ]
 
 [[package]]

@@ -10,11 +10,6 @@ repository = "https://github.com/tweag/nickel"
 keywords = ["configuration", "language", "nix"]
 edition = "2021"
 
-[[bin]]
-name = "nickel"
-path = "src/bin/nickel.rs"
-bench = false
-
 [lib]
 bench = false
 
@@ -44,7 +39,6 @@ void = "1"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 md-5 = "0.10.5"
-directories = "4.0.1"
 unicode-segmentation = "1.10.1"
 indoc = "2"
 
@@ -78,11 +72,11 @@ pprof = { version = "0.11.1", features = ["criterion", "flamegraph"] }
 nickel-lang-utilities = {path = "utilities", version = "1.0.0"}
 similar = "2.2.1"
 test-generator = "0.3.1"
-insta = { version = "1.28.0", features = ["filters"] }
 
 [workspace]
 members = [
     ".",
+    "cli",
     "lsp/nls",
     "lsp/lsp-harness",
     "utilities",

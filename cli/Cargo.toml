@@ -1,0 +1,31 @@
+[package]
+name = "nickel-lang-cli"
+version = "1.0.0"
+authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
+description = "The Nickel interpreter CLI"
+edition = "2021"
+
+[[bin]]
+name = "nickel"
+path = "bin/nickel.rs"
+bench = false
+
+[lib]
+bench = false
+
+[features]
+default = ["repl", "doc"]
+repl = ["nickel-lang/repl"]
+doc = ["nickel-lang/doc"]
+
+[dependencies]
+nickel-lang = { version = "1.0.0", path = "../", features = [ "markdown" ], default-features = false }
+clap = { version = "4.3", features = ["derive"] }
+serde = { version = "1.0.154", features = ["derive"] }
+
+directories = "4.0.1"
+
+[dev-dependencies]
+nickel-lang-utilities = { version = "1.0.0", path = "../utilities" }
+test-generator = "0.3.1"
+insta = { version = "1.28.0", features = ["filters"] }

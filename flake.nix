@@ -222,7 +222,8 @@
             } // extraArgs);
         in
         rec {
-          nickel = buildPackage { pname = "nickel-lang"; };
+          nickel-lang = buildPackage { pname = "nickel-lang"; };
+          nickel = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
@@ -230,7 +231,7 @@
             then nickel
             else
               buildPackage {
-                pname = "nickel-lang";
+                pname = "nickel-lang-cli";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
@@ -471,6 +472,7 @@
           checkRustDoc
           lsp-nls
           nickel
+          nickel-lang
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile

@@ -21,7 +21,7 @@ macro_rules! assert_snapshot_filtered {
     }
 }
 
-#[test_resources("tests/snapshot/inputs/*/*.ncl")]
+#[test_resources("cli/tests/snapshot/inputs/*/*.ncl")]
 fn check_snapshots(path: &str) {
     let file = TestFile::from_project_path(path);
 
@@ -73,7 +73,11 @@ struct TestFile {
 
 impl TestFile {
     fn from_project_path(file: &str) -> Self {
-        let mut path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // `test_resources` uses paths relative to the workspace manifest; CARGO_MANIFEST_DIR is the package directory
+        let mut path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_owned();
         path_buf.push(file);
         Self { path_buf }
     }
