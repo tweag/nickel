@@ -223,12 +223,12 @@
         in
         rec {
           nickel-lang = buildPackage { pname = "nickel-lang"; };
-          nickel = buildPackage { pname = "nickel-lang-cli"; };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
             if pkgs.stdenv.hostPlatform.isMacOS
-            then nickel
+            then nickel-lang-cli
             else
               buildPackage {
                 pname = "nickel-lang-cli";
@@ -435,13 +435,13 @@
     rec {
       packages = {
         inherit (mkCraneArtifacts { })
-          nickel
+          nickel-lang-cli
           benchmarks
           lsp-nls
           nickel-static;
         default = pkgs.buildEnv {
           name = "nickel";
-          paths = [ packages.nickel packages.lsp-nls ];
+          paths = [ packages.nickel-lang-cli packages.lsp-nls ];
         };
         nickelWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.nickel-static; # TODO: docker image should be a passthru
@@ -454,7 +454,7 @@
       apps = {
         default = {
           type = "app";
-          program = "${packages.nickel}/bin/nickel";
+          program = "${packages.nickel-lang-cli}/bin/nickel";
         };
       };
 
@@ -471,7 +471,7 @@
           clippy
           checkRustDoc
           lsp-nls
-          nickel
+          nickel-lang-cli
           nickel-lang
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
