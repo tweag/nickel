@@ -88,7 +88,8 @@ crates and dependent repositories (such as the website) in a consistent state.
    nix build --out-link nickel-arm64-linux .#packages.aarch64-linux.dockerImage
    ```
 
-   on an ARM64 Linux machine (x86_64 assets are automatically handled by a workflow, see 3).
+   on an ARM64 Linux machine (x86_64 assets are automatically handled by a
+   workflow, see 3).
 
 2. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
