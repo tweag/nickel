@@ -6,7 +6,7 @@ use nickel_lang::program::Program;
 use nickel_lang::repl::query_print;
 #[cfg(feature = "repl")]
 use nickel_lang::repl::rustyline_frontend;
-use nickel_lang::term::{RichTerm, Term};
+use nickel_lang::term::RichTerm;
 use nickel_lang::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
@@ -207,9 +207,7 @@ fn main() {
                 stdout,
                 format,
             }) => export_doc(&mut program, opts.file.as_ref(), output, stdout, format),
-            None => program
-                .eval_full()
-                .map(|t| println!("{}", Term::from(t).deep_repr())),
+            None => program.eval_full().map(|t| println!("{t}")),
         };
 
         if let Err(err) = result {

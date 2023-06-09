@@ -95,7 +95,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                     }),
                     Ok(Command::Print(exp)) => {
                         match repl.eval_full(&exp) {
-                            Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
+                            Ok(EvalResult::Evaluated(rt)) => println!("{rt}"),
                             Ok(EvalResult::Bound(_)) => (),
                             Err(err) => program::report(repl.cache_mut(), err, color_opt),
                         };
@@ -120,7 +120,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
             }
             Ok(line) => {
                 match repl.eval_full(&line) {
-                    Ok(EvalResult::Evaluated(rt)) => println!("{}\n", rt.as_ref().deep_repr()),
+                    Ok(EvalResult::Evaluated(rt)) => println!("{rt}\n"),
                     Ok(EvalResult::Bound(_)) => (),
                     Err(err) => program::report(repl.cache_mut(), err, color_opt),
                 };

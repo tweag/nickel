@@ -416,9 +416,20 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        self.as_ref().pretty(allocator)
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &Term
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use Term::*;
 
-        match self.as_ref() {
+        match self {
             Null => allocator.text("null"),
             Bool(v) => allocator.as_string(v),
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
@@ -453,8 +464,8 @@ where
             // TODO Pattern destructuring to implement.
             FunPattern(..) => {
                 let mut params = vec![];
-                let mut rt = &self;
-                while let FunPattern(id, dst, t) = rt.as_ref() {
+                let mut rt = self;
+                while let FunPattern(id, dst, t) = rt {
                     params.push(if let Some(id) = id {
                         allocator
                             .as_string(id)
@@ -462,7 +473,7 @@ where
                     } else {
                         dst.pretty(allocator)
                     });
-                    rt = t;
+                    rt = t.as_ref();
                 }
                 allocator
                     .text("fun")
