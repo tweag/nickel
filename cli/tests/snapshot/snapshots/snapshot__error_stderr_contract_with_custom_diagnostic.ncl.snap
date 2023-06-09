@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: contract broken by a value: main error message

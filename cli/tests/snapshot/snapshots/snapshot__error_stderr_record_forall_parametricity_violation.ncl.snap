@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: values of type `{  }` are not guaranteed to be compatible with polymorphic record tail `{  ; r }`

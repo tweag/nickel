@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: contract broken by the caller of `range`: invalid range

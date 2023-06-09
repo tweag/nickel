@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: out
 ---
 { a = true, b | Number = 42, }
