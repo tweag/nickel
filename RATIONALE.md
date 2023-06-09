@@ -135,14 +135,14 @@ the program itself or later in the pipeline ?  Using types, the generating
 language is no more oblivious to these external schemas and can model them
 internally, enabling early and precise error reporting.
 
-In Nickel, such schemas are specified using *enriched values*. Enriched values
-are meta-data about record fields like `id` or `baseURL`: they can provide
-documentation, a default value, or even a type. Types so specified are called
-*contracts*: they are not part of the static type system, but rather offer a
-principled approach to dynamic type checking. They enforce types (or more
-complex, user-defined) assertions at runtime. Equipped with enriched values, one
-can for example ensure that `baseURL` is not only a string but a valid URL, and
-document that it should be the Github homepage of a project.
+In Nickel, such schemas are specified using metadata. Metadata can provide
+documentation, a default value, or even a runtime type. Runtime types so
+specified are called *contracts*: they are not part of the static type system,
+but rather offer a principled approach to dynamic type checking. They enforce
+types (or more complex, user-defined assertions) at runtime. Equipped with
+metadata, one can for example enforce that `baseURL` is not only a string but a
+valid URL, and attach documentation to specify that it should be the Github
+homepage of a project.
 
 ### Turing completeness
 
@@ -323,7 +323,7 @@ This provides:
 - Querying: synthesize values inhabiting a type
 - Trimming: Automatically simplify code
 
-Nickel's merge system and enriched values are inspired by CUE's type lattice,
+Nickel's merge system and metadata are inspired by CUE's type lattice,
 although the flexibility of Nickel necessarily makes the two system behave
 differently.
 
@@ -344,8 +344,8 @@ functionalities to Nickel's merge system.
 ### Jsonnet vs Nickel
 
 The main difference between Jsonnet and Nickel are types. Jsonnet does not
-feature static types, contracts or enriched values, and thus can't type library
-code and has no principled approach to data validation.
+feature static types, contracts or metadata, and thus can't type library code
+and has no principled approach to data validation.
 
 ### Comparison with other configuration languages
 <!-- Intentionally duplicated in `README.md`, please update the other one for

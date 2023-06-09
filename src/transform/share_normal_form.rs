@@ -48,8 +48,8 @@ struct Binding {
 /// This function is not recursive: it just tries to apply one step of the transformation to
 /// the top-level node of the AST. For example, it transforms `[1 + 1, [1 + 2]]` to `let %0 = 1
 /// + 1 in [%0, [1 + 2]]`: the nested subterm `[1 + 2]` is left as it was. If the term is
-/// neither a record, an array nor an enriched value, it is returned the same.  In other words,
-/// the transformation is implemented as rewrite rules, and must be used in conjunction a
+/// neither a record, an array nor an annotated value, it is returned the same.  In other words,
+/// the transformation is implemented as rewrite rules, and must be used in conjunction with a
 /// traversal to obtain a full transformation.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;

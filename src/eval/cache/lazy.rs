@@ -547,8 +547,8 @@ impl Thunk {
 
     /// Determine if a thunk is worth being put on the stack for future update.
     ///
-    /// Typically, WHNFs and enriched values will not be evaluated to a simpler expression and are not
-    /// worth updating.
+    /// Typically, WHNFs and annotated values will not be evaluated to a simpler expression and are
+    /// not worth updating.
     pub fn should_update(&self) -> bool {
         let term = &self.borrow().body.term;
         !term.is_whnf() && !term.is_annotated()

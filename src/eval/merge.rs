@@ -1,7 +1,7 @@
 //! Evaluation of the merge operator.
 //!
 //! Merge is a primitive operation of Nickel, which recursively combines records. Together with
-//! enriched values, it allows to write and mix contracts with standard records.
+//! field metadata, it allows to write and mix contracts with standard records.
 //!
 //! # Operational semantics
 //!
@@ -13,44 +13,17 @@
 //! - Fields that are both in `r1` and `r2` are recursively merged: for a field `f`, the result
 //! contains the binding `f = r1.f & r2.f`
 //!
-//! As fields are recursively merged, merge needs to operate on any value, not only on records.
+//! As fields are recursively merged, merge needs to operate on any value, not only on records:
 //!
-//! ## On simple values
+//! - *function*: merging a function with anything else fails
+//! - *values*: merging any other values succeeds if and only if these two values are equals, in
+//! which case it evaluates to this common value.
 //!
-//! Simple values are terms which are not enriched values.
+//! ## Metadata
 //!
-//! - *Function*: merging a function with anything else fails
-//! - *Values*: merging any other values succeeds if and only if these two values are equals, in which case it evaluates to
-//! this common value.
-//!
-//! Note that merging of arrays is not yet implemented.
-//!
-//! ## On enriched values
-//!
-//! Enriched values (currently `Contract`, `Default`, `ContractDefault` or `Docstring`) get their
-//! special powers from their interaction with the merge operator.
-//!
-//! ### Enriched/Enriched
-//!
-//! - *Contract/contract*: merging two contracts evaluates to a contract which is the composition
-//! of the two
-//! - *Default/default*: merging two default values evaluates to a default which value is the merge
-//! of the two
-//! - *Contract/default*: merging a `Default` with a `Contract` evaluates to a `ContractDefault`
-//! - *ContractDefault/_*: Merging `ContractDefault` is done component-wise: with another
-//! `ContractDefault`, it evaluates to a `ContractDefault` where the two contracts as well as the
-//! two default values are respectively merged together. With either just a `Contract` or a
-//! `Default`, it simply merges the corresponding component and let the other unchanged.
-//!
-//! ### Enriched/Simple
-//!
-//! - *Docstring*: merging a docstring (with inner term `inner`) with another term `t` recursively merges
-//! `inner` and `t`, and evaluates to this result wrapped in the original docstring (`t` may be a simple value or an
-//! enriched one here)
-//! - *Default erasure*: merging a `Default` with a simple value drops the default value and
-//! evaluates to the simple value
-//! - *Contract check*: merging a `Contract` or a `ContractDefault` with a simple value `t`
-//! evaluates to a contract check, that is an `Assume(..., t)`
+//! One can think of merge to be defined on metadata as well. When merging two fields, the
+//! resulting metadata is the result of merging the two original field's metadata. The semantics
+//! depend on each metadata.
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};

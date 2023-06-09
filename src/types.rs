@@ -46,9 +46,8 @@
 //!
 //! To each type corresponds a contract, which is a Nickel function which checks at runtime that
 //! its argument is of the given type and either returns it if it passes or raise a blame
-//! otherwise.  Contract checks are introduced by `Promise` and `Assume` blocks or alternatively by
-//! enriched values `Contract` or `ContractDefault`. They ensure sane interaction between typed and
-//! untyped parts.
+//! otherwise.  Contract checks are introduced by a contract annotation or propagated via merging.
+//! They ensure sane interaction between typed and untyped parts.
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
