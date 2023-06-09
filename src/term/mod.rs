@@ -22,7 +22,6 @@ pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
-use pretty::BoxAllocator;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
@@ -1702,7 +1701,7 @@ impl std::fmt::Display for RichTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         use crate::pretty::*;
 
-        let allocator = BoxAllocator;
+        let allocator = pretty::BoxAllocator;
 
         let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
         doc.render_fmt(80, f)
