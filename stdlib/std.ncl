@@ -143,18 +143,9 @@
         "%
       = fun f l => %map% l f,
 
-    DependentFunction = fun FirstArgContract SecondArgContract label function =>
-      fun arg1 arg2 =>
-        let arg1_with_ctr = std.contract.apply FirstArgContract label arg1 in
-        let arg2_with_ctr = std.contract.apply (SecondArgContract arg1_with_ctr) label arg2 in
-        function arg1_with_ctr arg2_with_ctr,
-
-    ArrayLargerThan = fun min_size =>
-      contract.from_predicate (fun arr => %length% arr > min_size), 
-
     at
       : forall a. Number -> Array a -> a
-      | DependentFunction Dyn ArrayLargerThan
+      | contract.unstable.IndexedArray
       | doc m%"
           Retrieves the n-th element from an array, with indices starting at 0.
 
@@ -540,6 +531,7 @@
 
     slice
       : forall a. Number -> Number -> Array a -> Array a
+      | std.contract.unstable.ArraySlice
       | doc m%"
           `slice start end array` returns the slice of `array` between `start` (included) and
           `end` (excluded).
@@ -564,6 +556,7 @@
 
     split_at
       : forall a. Number -> Array a -> { left : Array a, right : Array a }
+      | contract.unstable.IndexedArray
       | doc m%"
           Splits an array in two at a given index and puts all the elements
           to the left of the element at the given index (excluded) in the
@@ -1121,6 +1114,173 @@
         "%
       = fun contract label value =>
         %assume% contract (%label_push_diag% label) value,
+
+    unstable
+      | doc m%"
+          The unstable module gather contracts that are used right now in the
+          standard library because they solve an existing problem, but aren't
+          planned to be a long-term solution to this problem.
+
+          Unstable contracts are useful as validators and temporary solution,
+          but they shouldn't be used outside of the standard library. They
+          aren't part of the backward compatibility policy, and are subject to
+          change at any point in time.
+        "%
+      = {
+        DependentFunction
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A dependent function contract, where the argument is also passed
+              to the contract of the returned value.
+
+              That is, `some_function | DependentFunction Foo Bar` performs the same checks as
+
+              ```nickel
+              fun arg =>
+                let arg' = (arg | Foo) in
+                some_function arg') | (Bar arg')
+              ```
+            "%
+          = fun Domain Codomain label function =>
+            fun arg =>
+              let arg_with_ctr = std.contract.apply Domain label arg in
+              function arg_with_ctr
+              |> contract.apply (Codomain arg_with_ctr) label,
+
+        IndexedArray
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A function contract which checks that the two first argument are a
+              number and an array such that the number is a valid index for that
+              array, that is a natural number such that
+              `0 <= index <= length array`.
+            "%
+          =
+            let ArrayIndexFirst = fun label value =>
+              if %typeof% value == 'Number then
+                let label = (
+                  %label_with_message%
+                    "expected array index to be a positive integer, got %{%to_str% value} "
+                    label
+                )
+                in
+                std.contract.apply std.number.Nat label value
+              else
+                %blame%
+                  (
+                    %label_with_message%
+                      "expected array index to be a number, got %{%to_str% (%typeof% value)}"
+                      label
+                  )
+            in
+
+            let ArrayIndexSecond = fun min_size label value =>
+              if %typeof% value == 'Array then
+                if min_size >= %length% value then
+                  let index_as_str = %to_str% min_size in
+                  let size_as_str = %to_str% (%length% value) in
+                  %blame%
+                    (
+                      %label_with_message%
+                        "expected an index between 0 and %{size_as_str}, got %{index_as_str}"
+                        label
+                    )
+                else
+                  value
+              else
+                %blame% (%label_with_message% "the second argument isn't an array" label)
+            in
+            DependentFunction
+              ArrayIndexFirst
+              (fun index => ArrayIndexSecond index -> Dyn),
+
+        ArraySlice
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A function contract which checks that the three first argument are
+              two numbers and an array such that the two numbers are a valid
+              slice of that array, that is:
+              `0 <= n1 <= n2 <= length array`
+            "%
+          =
+            let SliceIndexFirst = fun label value =>
+              if %typeof% value == 'Number then
+                let label = (
+                  %label_with_message%
+                    "expected the array slice start index to be a positive integer"
+                    label
+                )
+                in
+                std.contract.apply std.number.Nat label value
+              else
+                %blame%
+                  (
+                    %label_with_message%
+                      "expected the array slice start index to be a number, got %{%to_str% (%typeof% value)}"
+                      label
+                  )
+            in
+
+            let SliceIndexSecond = fun start label value =>
+              if %typeof% value == 'Number then
+                if value < start then
+                  %blame%
+                    (
+                      %label_with_message%
+                        "expected the array slice indices to satisfy `start <= end`, but got %{%to_str% start} (start) and %{%to_str% value} (end)"
+                        label
+                    )
+                else
+                  let label = (
+                    %label_with_message%
+                      "expected the array slice end index to be a positive integer"
+                      label
+                  )
+                  in
+                  std.contract.apply std.number.Nat label value
+              else
+                %blame%
+                  (
+                    %label_with_message%
+                      "expected the slice array end index to be a number, got %{%to_str% (%typeof% value)}"
+                      label
+                  )
+            in
+
+            let ArraySliceArray = fun end_index label value =>
+              if %typeof% value == 'Array then
+                if end_index >= %length% value then
+                  let index_as_str = %to_str% end_index in
+                  let size_as_str = %to_str% (%length% value) in
+                  %blame%
+                    (
+                      %label_with_message%
+                        "expected the array slice end index between 0 and %{size_as_str} (array's length), got %{index_as_str}"
+                        label
+                    )
+                else
+                  value
+              else
+                %blame% (%label_with_message% "expected the 3rd argument to be an array" label)
+            in
+            DependentFunction
+              SliceIndexFirst
+              (
+                fun start_index =>
+                  DependentFunction
+                    (SliceIndexSecond start_index)
+                    (
+                      fun end_index =>
+                        ArraySliceArray end_index -> Dyn
+                    )
+              )
+      }
   },
 
   enum = {
@@ -2302,7 +2462,7 @@
       = from,
 
     from_enum
-      | forall a. [| ; a |] -> String
+      | forall a. [|; a |] -> String
       | std.enum.Tag -> Dyn
       | doc m%"
         Converts an enum variant to its string representation.
@@ -2346,7 +2506,7 @@
       = fun s => %num_from_str% s,
 
     to_bool
-      | String -> Bool 
+      | String -> Bool
       | BoolLiteral -> Dyn
       | doc m%"
         Converts a representation of a boolean (either `true` or `false`) to that boolean.
@@ -2678,3 +2838,4 @@
     "%
     = fun msg => null | FailWith msg,
 }
+
