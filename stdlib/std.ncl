@@ -143,8 +143,18 @@
         "%
       = fun f l => %map% l f,
 
+    DependentFunction = fun FirstArgContract SecondArgContract label function =>
+      fun arg1 arg2 =>
+        let arg1_with_ctr = std.contract.apply FirstArgContract label arg1 in
+        let arg2_with_ctr = std.contract.apply (SecondArgContract arg1_with_ctr) label arg2 in
+        function arg1_with_ctr arg2_with_ctr,
+
+    ArrayLargerThan = fun min_size =>
+      contract.from_predicate (fun arr => %length% arr > min_size), 
+
     at
       : forall a. Number -> Array a -> a
+      | DependentFunction Dyn ArrayLargerThan
       | doc m%"
           Retrieves the n-th element from an array, with indices starting at 0.
 
@@ -2292,7 +2302,7 @@
       = from,
 
     from_enum
-      | forall a. [|; a |] -> String
+      | forall a. [| ; a |] -> String
       | std.enum.Tag -> Dyn
       | doc m%"
         Converts an enum variant to its string representation.
@@ -2336,7 +2346,7 @@
       = fun s => %num_from_str% s,
 
     to_bool
-      | String -> Bool
+      | String -> Bool 
       | BoolLiteral -> Dyn
       | doc m%"
         Converts a representation of a boolean (either `true` or `false`) to that boolean.
