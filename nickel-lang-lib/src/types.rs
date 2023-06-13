@@ -135,7 +135,12 @@ pub enum EnumRowsF<ERows> {
 pub enum VarKind {
     Type,
     EnumRows,
-    RecordRows { excluded: HashSet<Ident> },
+    /// `excluded` keeps track of which rows appear somewhere alongside the tail, and therefore
+    /// cannot appear in the tail. For instance `forall r. { ; r } -> { x : Number ; r }` assumes
+    /// `r` does not already contain an `x` field.
+    RecordRows {
+        excluded: HashSet<Ident>,
+    },
 }
 
 /// Equivalent to `std::mem::Discriminant<VarKind>`, but we can do things like match on it
@@ -958,6 +963,7 @@ impl Types {
                 let contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
                     VarKind::EnumRows => {
+                        // Enums do not need to exclude any rows, so we pass the empty array
                         let excluded_ncl: RichTerm =
                             Term::Array(Default::default(), Default::default()).into();
                         mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)

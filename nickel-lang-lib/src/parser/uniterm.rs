@@ -524,9 +524,8 @@ impl TryFrom<UniRecord> for Types {
 /// Cell providing shared mutable access to a var_kind. This is used to decide the kind of a
 /// variable associated to a forall in the `fix_type_vars` phase.
 ///
-/// This cell provides interior mutability for [`VarKindCellData`]. It makes it possible to mutate
-/// the inner data when put in an environment, which only provides immutable references to its
-/// values.
+/// This cell provides interior mutability for [`VarKind`]. It makes it possible to mutate the
+/// inner data when put in an environment, which only provides immutable references to its values.
 #[derive(PartialEq, Eq)]
 pub(super) struct VarKindCell(RefCell<Option<VarKind>>);
 
@@ -542,15 +541,15 @@ pub(super) struct VarKindMismatch;
 pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
 
 impl VarKindCell {
-    /// Create a new `VarKindCell` with the `Unset` state. The kind is set to `VarKind::Type`,
-    /// meaning that unused type variables are given this kind by default.
+    /// Create a new unset `VarKindCell` at resolution time, this will default to `VarKind::Type`,
     pub(super) fn new() -> Self {
         VarKindCell(RefCell::new(None))
     }
 
-    /// Set the variable kind of the inner mutable reference if not set yet. If the variable kind
-    /// is already set, check that the variable kind of the cell and the one provided as an
-    /// argument are equals, or return `Err(_)` otherwise.
+    /// Everywhere a forall variable is used it must be of the same type. If this is the first time
+    /// we encounter the variable, we can set it freely. If it has been set, and is of the same
+    /// type, we only need to combine `excluded` record row variables. If it has been set to a
+    /// different `VarKind`, we return `Err(_)`.
     pub(super) fn try_set(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
         match &mut *self.0.borrow_mut() {
             s @ None => {
@@ -578,7 +577,8 @@ impl VarKindCell {
         }
     }
 
-    /// Return the current var_kind.
+    /// Return the current var_kind. Default to `VarKind::Type` if it's unused as in
+    /// `forall a. Number`
     // TODO: optimization: when var_kind is called, there are actually no other references to this
     // VarKind. We should be able to architect this so there's no clone here.
     pub fn var_kind(&self) -> VarKind {
