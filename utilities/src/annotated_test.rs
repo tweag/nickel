@@ -1,10 +1,11 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
-    path::PathBuf,
 };
 
 use serde::Deserialize;
+
+use crate::project_root::project_root;
 
 pub struct TestCase<Annot> {
     pub annotation: Annot,
@@ -19,18 +20,7 @@ pub enum AnnotatedProgramReadError {
 pub fn read_annotated_test_case<Annot: for<'de> Deserialize<'de>>(
     path: &str,
 ) -> Result<TestCase<Annot>, AnnotatedProgramReadError> {
-    let path = {
-        // NOTE: this is a workaround for the lack of a CARGO_WORKSPACE_DIR
-        //       environment variable, as suggested [here](https://github.com/rust-lang/cargo/issues/3946#issuecomment-1433384192).
-        //       A better workaround might be to set this in the `[env]` section
-        //       of `.cargo/config.toml`, as suggested[here](https://github.com/rust-lang/cargo/issues/3946#issuecomment-973132993)
-        //       but we currently don't check that file in, and I'm not sure
-        //       whether doing so is a good idea.
-        let proj_root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
-        PathBuf::from(proj_root).join(path)
-    };
-
-    let file = File::open(path).expect("Failed to open file");
+    let file = File::open(project_root().join(path)).expect("Failed to open file");
     let reader = BufReader::new(file);
 
     let mut lines = reader.lines();

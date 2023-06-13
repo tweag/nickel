@@ -6,6 +6,7 @@ use nickel_lang::{
 };
 use nickel_lang_utilities::{
     annotated_test::{read_annotated_test_case, TestCase},
+    project_root::project_root,
     test_program::TestProgram,
 };
 use serde::Deserialize;
@@ -17,7 +18,7 @@ mod pretty;
 mod query;
 mod stdlib_typecheck;
 
-#[test_resources("./tests/integration/**/*.ncl")]
+#[test_resources("nickel-lang/tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");
@@ -25,7 +26,7 @@ fn check_annotated_nickel_file(path: &str) {
     // By default, cargo runs tests with a 2MB stack, which we can overflow in
     // debug mode. To avoid this we run the tests with an increased stack size.
     const STACK_SIZE: usize = 4 * 1024 * 1024;
-    let path = path.to_string();
+    let path = String::from(project_root().join(path).to_string_lossy());
 
     thread::Builder::new()
         .name(path.clone())

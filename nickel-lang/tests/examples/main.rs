@@ -2,6 +2,7 @@ use assert_matches::assert_matches;
 use nickel_lang::error::{Error, EvalError};
 use nickel_lang_utilities::{
     annotated_test::{read_annotated_test_case, TestCase},
+    project_root::project_root,
     test_program::TestProgram,
 };
 use serde::Deserialize;
@@ -12,7 +13,8 @@ fn check_example_file(path: &str) {
     let test: TestCase<Expectation> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");
 
-    let mut p = TestProgram::new_from_file(path, std::io::stderr())
+    // `test_resources` uses paths relative to the workspace manifesty
+    let mut p = TestProgram::new_from_file(project_root().join(path), std::io::stderr())
         .expect("Failed to load program from file");
 
     match test.annotation {

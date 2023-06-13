@@ -54,7 +54,7 @@
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
 
-      version = "${cargoTOML.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
+      version = "${cargoTOML.workspace.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
 
       customOverlay = final: prev: {
         # The version of `wasm-bindgen` CLI *must* be the same as the `wasm-bindgen` Rust dependency in `Cargo.toml`.
@@ -204,7 +204,8 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            inherit src;
+            pname = "nickel-lang";
+            inherit src version;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
@@ -216,12 +217,14 @@
               inherit
                 pname
                 src
+                version
                 cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} --package ${pname}";
             } // extraArgs);
         in
         rec {
+          inherit cargoArtifacts;
           nickel-lang = buildPackage { pname = "nickel-lang"; };
           nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
@@ -239,12 +242,12 @@
               };
 
           benchmarks = craneLib.mkCargoDerivation {
-            inherit src cargoArtifacts;
+            inherit src version cargoArtifacts;
 
-            pnameSuffix = "-bench";
+            pname = "nickel-lang-bench";
 
             buildPhaseCargoCommand = ''
-              cargo bench ${pkgs.lib.optionalString noRunBench "--no-run"}
+              cargo bench -p nickel-lang ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
 
             doInstallCargoArtifacts = false;
@@ -252,10 +255,10 @@
 
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.mkCargoDerivation {
-            inherit src cargoArtifacts;
+            inherit src version cargoArtifacts;
             inherit (cargoArtifacts) buildInputs;
 
-            pnameSuffix = "-doc";
+            pname = "nickel-lang-doc";
 
             buildPhaseCargoCommand = ''
               RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --workspace --all-features
@@ -267,6 +270,7 @@
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
             inherit src;
+            pname = "nickel-lang-rustfmt";
 
             cargoExtraArgs = "--all";
 
@@ -278,6 +282,7 @@
             inherit
               src
               cargoArtifacts;
+            pname = "nickel-lang-clippy";
 
             inherit (cargoArtifacts) buildInputs;
 
@@ -338,14 +343,17 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
+            pname = "nickel-lang-wasm";
             inherit
               src
+              version
               cargoExtraArgs;
             doCheck = false;
           };
 
         in
         craneLib.mkCargoDerivation {
+          pname = "nickel-lang-wasm";
           inherit cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
@@ -419,7 +427,7 @@
         in
         pkgs.stdenv.mkDerivation {
           name = "nickel-stdlib-doc-${format}-${version}";
-          src = ./stdlib;
+          src = ./nickel-lang/stdlib;
           installPhase = ''
             mkdir -p $out
             for file in $(ls *.ncl | grep -v 'internals.ncl')
@@ -438,6 +446,7 @@
           nickel-lang-cli
           benchmarks
           lsp-nls
+          cargoArtifacts
           nickel-static;
         default = pkgs.buildEnv {
           name = "nickel";

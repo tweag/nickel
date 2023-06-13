@@ -1,9 +1,13 @@
 [package]
 name = "nickel-lang-cli"
-version = "1.0.0"
-authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 description = "The Nickel interpreter CLI"
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [[bin]]
 name = "nickel"
@@ -19,7 +23,7 @@ repl = ["nickel-lang/repl"]
 doc = ["nickel-lang/doc"]
 
 [dependencies]
-nickel-lang = { version = "1.0.0", path = "../", features = [ "markdown" ], default-features = false }
+nickel-lang = { version = "1.0.0", path = "../nickel-lang", features = [ "markdown" ], default-features = false }
 clap = { version = "4.3", features = ["derive"] }
 serde = { version = "1.0.154", features = ["derive"] }
 
