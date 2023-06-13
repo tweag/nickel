@@ -1,0 +1,12 @@
+[package]
+name = "lsp-harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.71"
+env_logger = "0.10.0"
+log = "0.4.19"
+lsp-types = "0.94.0"
+serde = { version = "1.0.164", features = ["derive"] }
+serde_json = "1.0.96"
