@@ -56,6 +56,7 @@
 
     first
       : forall a. Array a -> a
+      | NonEmpty -> Dyn
       | doc m%"
           Returns the first element of an array.
 
@@ -70,6 +71,7 @@
 
     last
       : forall a. Array a -> a
+      | NonEmpty -> Dyn
       | doc m%"
           Returns the last element of an array.
 
@@ -84,6 +86,7 @@
 
     drop_first
       : forall a. Array a -> Array a
+      | NonEmpty -> Dyn
       | doc m%"
           Returns the given array without its first element.
 
@@ -98,6 +101,7 @@
 
     drop_last
       : forall a. Array a -> Array a
+      | NonEmpty -> Dyn
       | doc m%"
           Returns the given array without its last element.
 
@@ -439,6 +443,7 @@
 
     generate
       : forall a. (Number -> a) -> Number -> Array a
+      | Dyn -> std.number.Nat -> Dyn
       | doc m%"
           `generate f n` returns an array of length `n` by applying `f` to the
           integers from `0` to `n-1`. That is, `generate f n` is
@@ -578,6 +583,7 @@
 
     replicate
       : forall a. Number -> a -> Array a
+      | std.number.Nat -> Dyn
       | doc m%"
           `replicate n x` creates an array containing `x` exactly `n` times.
 
@@ -645,6 +651,7 @@
 
     reduce_left
       : forall a. (a -> a -> a) -> Array a -> a
+      | Dyn -> NonEmpty -> Dyn
       | doc m%"
           Reduces the elements to a single one, by repeatedly applying a
           reducing operation.
@@ -683,6 +690,7 @@
 
     reduce_right
       : forall a. (a -> a -> a) -> Array a -> a
+      | Dyn -> NonEmpty -> Dyn
       | doc m%"
           Reduces the elements to a single one, by repeatedly applying a reducing
           operation.
@@ -1748,7 +1756,7 @@
           => { foo = 1, bar = 2 }
         ```
       "%
-      = fun rs => std.array.reduce_left (&) (rs | Array Dyn) | { _ : Dyn },
+      = fun rs => (std.array.fold_left (&) {} (rs | Array Dyn)) | { _ : Dyn },
 
     filter
       : forall a. (String -> a -> Bool) -> { _ : a } -> { _ : a }
@@ -2284,7 +2292,8 @@
       = from,
 
     from_enum
-      | std.enum.Tag -> String
+      | forall a. [|; a |] -> String
+      | std.enum.Tag -> Dyn
       | doc m%"
         Converts an enum variant to its string representation.
 
@@ -2312,7 +2321,8 @@
       = from,
 
     to_number
-      | NumberLiteral -> Number
+      | String -> Number
+      | NumberLiteral -> Dyn
       | doc m%"
         Converts a string that represents a number to that number.
 
@@ -2326,7 +2336,8 @@
       = fun s => %num_from_str% s,
 
     to_bool
-      | BoolLiteral -> Bool
+      | String -> Bool
+      | BoolLiteral -> Dyn
       | doc m%"
         Converts a representation of a boolean (either `true` or `false`) to that boolean.
 
