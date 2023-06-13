@@ -29,7 +29,7 @@ please read [this section](#without-cargo-insta).
   `inputs` subdirectories. Give it a descriptive name, as the name of the file
   is used when printing test failures, and is also used to name the snapshot
   file.
-2. Run the snapshot tests with `cargo test -p nickel-lang-cli`.
+2. Run the snapshot tests with `cargo test snapshot`.
 3. You'll see a failure message, noting that the test was a new snapshot.
 4. Run `cargo insta review`.
 5. If you're happy with the output, accept it.

@@ -7,7 +7,6 @@ Nickel source files, annotated with toml headers which describe the expected
 behaviour of the program.
 
 - `integration` contains general purpose integration tests,
-- `snapshot` contains snapshot tests for command-line output,
 - `examples` contains a runner for samples in the repository's top-level
   `examples` directory.
 
@@ -27,3 +26,10 @@ to a greater degree.
 
 See [this blog post](https://matklad.github.io/2021/02/27/delete-cargo-integration-tests.html)
 for more information.
+
+## Where are the snapshot tests?
+
+Our current implementation of snapshot tests relies on the Nickel interpreter
+binary. Because of this they were moved to the `nickel-lang-cli` crate when it
+was split out from the core `nickel-lang` crate. Eventually, it would be nice to
+reintegrate snapshot tests for error messages into `nickel-lang`.
