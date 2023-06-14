@@ -451,8 +451,12 @@ impl UnifType {
     pub fn from_constant_of_kind(c: usize, k: VarKindDiscriminant) -> Self {
         match k {
             VarKindDiscriminant::Type => UnifType::Constant(c),
-            VarKindDiscriminant::EnumRows => UnifType::Concrete(TypeF::Enum(UnifEnumRows::Constant(c))),
-            VarKindDiscriminant::RecordRows => UnifType::Concrete(TypeF::Record(UnifRecordRows::Constant(c))),
+            VarKindDiscriminant::EnumRows => {
+                UnifType::Concrete(TypeF::Enum(UnifEnumRows::Constant(c)))
+            }
+            VarKindDiscriminant::RecordRows => {
+                UnifType::Concrete(TypeF::Record(UnifRecordRows::Constant(c)))
+            }
         }
     }
 
@@ -2352,9 +2356,9 @@ pub fn unify_rrows(
             Ok(())
         }
         (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
-            Err(RowUnifError::ConstMismatch(VarKindDiscriminant::RecordRows, i1, i2))
-        }
+        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => Err(
+            RowUnifError::ConstMismatch(VarKindDiscriminant::RecordRows, i1, i2),
+        ),
         (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
             //TODO ROWS: should we refactor RowUnifError as well?
             Err(RowUnifError::WithConst(
@@ -2399,9 +2403,9 @@ pub fn unify_erows(
             Ok(())
         }
         (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
-            Err(RowUnifError::ConstMismatch(VarKindDiscriminant::EnumRows, i1, i2))
-        }
+        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => Err(
+            RowUnifError::ConstMismatch(VarKindDiscriminant::EnumRows, i1, i2),
+        ),
         (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
             //TODO ROWS: should we refactor RowUnifError as well?
             Err(RowUnifError::WithConst(

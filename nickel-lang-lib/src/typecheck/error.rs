@@ -6,7 +6,7 @@ use crate::{
     label::ty_path,
     position::TermPos,
     term::RichTerm,
-    types::{TypeF, VarKind, VarKindDiscriminant},
+    types::{TypeF, VarKindDiscriminant},
 };
 
 /// Error during the unification of two row types.
