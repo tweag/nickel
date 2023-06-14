@@ -34,7 +34,7 @@
 # ## Both a type annotation and a contract annotation
 #
 # [^type-and-contract]: Some functions have both a static type annotation and
-# additional contract. The additional contract annotation is ignored by
+# an additional contract. The additional contract annotation is ignored by
 # typechecking, and with respect to static typing, only the static type
 # annotation matters.
 #
