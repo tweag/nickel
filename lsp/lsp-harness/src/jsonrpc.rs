@@ -113,7 +113,7 @@ impl<'a, T: LspRequest> ResponseHandle<'a, T> {
 impl Server {
     /// Launch a language server by running the given command.
     ///
-    /// The command's stdin and stdout will be override to "piped" (because
+    /// The command's stdin and stdout will be overridden to "piped" (because
     /// that's what LSes do).
     pub fn new(mut cmd: std::process::Command) -> Result<Server> {
         let lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
