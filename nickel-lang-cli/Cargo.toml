@@ -14,9 +14,6 @@ name = "nickel"
 path = "bin/nickel.rs"
 bench = false
 
-[lib]
-bench = false
-
 [features]
 default = ["repl", "doc"]
 repl = ["nickel-lang/repl"]
