@@ -10,3 +10,8 @@ log = "0.4.19"
 lsp-types = "0.94.0"
 serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.96"
+
+[dev-dependencies]
+assert_cmd = "2.0.11"
+insta = "1.29.0"
+test-generator = "0.3.1"

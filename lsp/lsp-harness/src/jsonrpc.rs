@@ -46,6 +46,7 @@ pub struct Server {
 }
 
 /// A dynamically typed message from the LSP server.
+#[derive(Debug)]
 pub enum ServerMessage {
     Notification(Notification),
     Response(Response),
@@ -194,6 +195,11 @@ impl Server {
     pub fn next_msg(&self) -> Result<ServerMessage> {
         self.state.borrow_mut().next_msg()
     }
+
+    /// If we've already stashed some messages from the language server, return one.
+    pub fn try_next_msg(&self) -> Option<ServerMessage> {
+        self.state.borrow_mut().try_next_msg()
+    }
 }
 
 impl ServerState {
@@ -299,14 +305,25 @@ impl ServerState {
     }
 
     fn next_msg(&mut self) -> Result<ServerMessage> {
-        if let Some(note) = self.pending_notifications.pop_front() {
-            Ok(ServerMessage::Notification(note))
-        } else if let Some(resp_id) = self.pending_responses.keys().next().copied() {
-            Ok(ServerMessage::Response(
-                self.pending_responses.remove(&resp_id).unwrap(),
-            ))
+        if let Some(msg) = self.try_next_msg() {
+            Ok(msg)
         } else {
             self.recv()
         }
+    }
+
+    fn try_next_msg(&mut self) -> Option<ServerMessage> {
+        self.pending_notifications
+            .pop_front()
+            .map(ServerMessage::Notification)
+            .or_else(|| {
+                if let Some(resp_id) = self.pending_responses.keys().next().copied() {
+                    self.pending_responses
+                        .remove(&resp_id)
+                        .map(ServerMessage::Response)
+                } else {
+                    None
+                }
+            })
     }
 }
