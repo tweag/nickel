@@ -585,7 +585,7 @@ mod tests {
     use std::io::Cursor;
 
     use nickel_lang_utilities::{
-        nickel_lang::{deserialize::RustDeserializationError, term::RichTerm},
+        nickel_lang_lib::{deserialize::RustDeserializationError, term::RichTerm},
         test_program::TestProgram,
     };
     use serde::Deserialize;

@@ -1,5 +1,5 @@
-use nickel_lang::pretty::*;
-use nickel_lang::term::{RichTerm, StrChunk, Term};
+use nickel_lang_lib::pretty::*;
+use nickel_lang_lib::term::{RichTerm, StrChunk, Term};
 use nickel_lang_utilities::test_program::parse;
 use pretty::BoxAllocator;
 

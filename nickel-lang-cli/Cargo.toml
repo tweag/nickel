@@ -1,5 +1,5 @@
 [package]
-name = "nickel-lang-cli"
+name = "nickel-lang"
 description = "The Nickel interpreter CLI"
 authors.workspace = true
 edition.workspace = true
@@ -16,11 +16,11 @@ bench = false
 
 [features]
 default = ["repl", "doc"]
-repl = ["nickel-lang/repl"]
-doc = ["nickel-lang/doc"]
+repl = ["nickel-lang-lib/repl"]
+doc = ["nickel-lang-lib/doc"]
 
 [dependencies]
-nickel-lang = { version = "1.0.0", path = "../nickel-lang", features = [ "markdown" ], default-features = false }
+nickel-lang-lib = { version = "1.0.0", path = "../nickel-lang-lib", features = [ "markdown" ], default-features = false }
 clap = { version = "4.3", features = ["derive"] }
 serde = { version = "1.0.154", features = ["derive"] }
 

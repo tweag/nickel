@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use nickel_lang::{
+use nickel_lang_lib::{
     error::Error,
     eval::cache::{Cache, CacheImpl},
     program::Program,

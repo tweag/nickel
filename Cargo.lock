@@ -1548,6 +1548,19 @@ dependencies = [
 name = "nickel-lang"
 version = "1.0.0"
 dependencies = [
+ "clap 4.3.0",
+ "directories",
+ "insta",
+ "nickel-lang-lib",
+ "nickel-lang-utilities",
+ "serde",
+ "test-generator",
+]
+
+[[package]]
+name = "nickel-lang-lib"
+version = "1.0.0"
+dependencies = [
  "ansi_term",
  "assert_matches",
  "clap 4.3.0",
@@ -1592,19 +1605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nickel-lang-cli"
-version = "1.0.0"
-dependencies = [
- "clap 4.3.0",
- "directories",
- "insta",
- "nickel-lang",
- "nickel-lang-utilities",
- "serde",
- "test-generator",
-]
-
-[[package]]
 name = "nickel-lang-lsp"
 version = "1.0.0"
 dependencies = [
@@ -1623,7 +1623,7 @@ dependencies = [
  "log",
  "lsp-server",
  "lsp-types 0.88.0",
- "nickel-lang",
+ "nickel-lang-lib",
  "pretty_assertions",
  "regex",
  "serde",
@@ -1636,7 +1636,7 @@ version = "1.0.0"
 dependencies = [
  "codespan",
  "criterion 0.3.6",
- "nickel-lang",
+ "nickel-lang-lib",
  "serde",
  "toml",
 ]
@@ -1645,7 +1645,7 @@ dependencies = [
 name = "nickel-repl"
 version = "1.0.0"
 dependencies = [
- "nickel-lang",
+ "nickel-lang-lib",
 ]
 
 [[package]]
@@ -1964,7 +1964,7 @@ name = "pyckel"
 version = "1.0.0"
 dependencies = [
  "codespan-reporting",
- "nickel-lang",
+ "nickel-lang-lib",
  "pyo3",
 ]
 

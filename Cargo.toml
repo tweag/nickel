@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "nickel-lang",
+    "nickel-lang-lib",
     "nickel-lang-cli",
     "lsp/nls",
     "lsp/lsp-harness",

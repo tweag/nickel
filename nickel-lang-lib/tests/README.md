@@ -30,6 +30,6 @@ for more information.
 ## Where are the snapshot tests?
 
 Our current implementation of snapshot tests relies on the Nickel interpreter
-binary. Because of this they were moved to the `nickel-lang-cli` crate when it
-was split out from the core `nickel-lang` crate. Eventually, it would be nice to
-reintegrate snapshot tests for error messages into `nickel-lang`.
+binary. Because of this they were moved to the `nickel-lang` CLI crate when it
+was split out from the core `nickel-lang-lib` crate. Eventually, it would be
+nice to reintegrate snapshot tests for error messages into `nickel-lang`.

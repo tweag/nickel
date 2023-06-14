@@ -1,4 +1,4 @@
-use nickel_lang::term::{
+use nickel_lang_lib::term::{
     make as mk_term,
     record::{Field, FieldMetadata},
     TypeAnnotation,

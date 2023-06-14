@@ -1,5 +1,5 @@
 [package]
-name = "nickel-lang"
+name = "nickel-lang-lib"
 readme = "README.md"
 description = "Programmable configuration files."
 authors.workspace = true

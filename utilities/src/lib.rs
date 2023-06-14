@@ -3,4 +3,4 @@ pub mod bench;
 pub mod project_root;
 pub mod test_program;
 
-pub use nickel_lang;
+pub use nickel_lang_lib;

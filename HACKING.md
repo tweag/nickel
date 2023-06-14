@@ -15,9 +15,9 @@ long.
 
 The Nickel repository consist of 3 crates:
 
-- `nickel-lang` (path: `nickel-lang`). The main crate containing the interpreter
+- `nickel-lang-lib` (path: `nickel-lang-lib`). The main crate containing the interpreter
   as a library.
-- `nickel-lang-cli` (path: `.`). The `nickel` binary.
+- `nickel-lang` (path: `nickel-lang-cli`). The `nickel` binary.
 - `nickel-lang-lsp` (path: `lsp/nls/`). The Nickel Language Server (NLS), an LSP
   server for Nickel.
 - `nickel-lang-utilities`: (path: `utilities/`). An auxiliary crate regrouping
@@ -58,16 +58,16 @@ nickel-lang-lsp 0.1.0
 
 ### Nickel
 
-To only build the main crate `nickel-lang`, run:
+To only build the main crate `nickel-lang-lib`, run:
 
 ```console
-cargo build -p nickel-lang
+cargo build -p nickel-lang-lib
 ```
 
 To build the interpreter CLI, run:
 
 ```shell
-$ cargo build -p nickel-lang-cli
+$ cargo build -p nickel-lang
 $ ./target/debug/nickel --version
 nickel-lang 0.1.0
 ```
@@ -89,7 +89,7 @@ nickel-lang-lsp 0.1.0
 There is a WebAssembly (WASM) version of the REPL, which is used for the online
 playground on [nickel-lang.org][nickel-lang.org]. To ease the build, we use the
 `nickel-repl` located in `nickel-wasm-repl`, which just wraps and re-export
-the `nickel-lang` with the right settings for building to WebAssembly.
+the `nickel-lang-lib` with the right settings for building to WebAssembly.
 
 The Nix flake has also an output to do the whole build, but incremental
 compilation is not as good as with direct usage of `cargo`.
@@ -124,7 +124,7 @@ LICENSE  package.json nickel_lang_bg.js  nickel_lang_bg.wasm [..]
 Tests are run via `cargo test`. They are two types of tests:
 
 - Unit tests, located directly in the corresponding module.
-- Integration tests, located in the dedicated crate `nickel-lang/tests/integration`.
+- Integration tests, located in the dedicated crate `nickel-lang-lib/tests/integration`.
 - Snapshot tests, located in `nickel-lang-cli/tests/smapshot`.
 
 ### Test annotations
@@ -136,23 +136,23 @@ to mark examples, in the top-level subdirectory `examples`, with an expected
 failure condition if necessary.
 
 Tests for the happy path - i.e., valid Nickel programs which do not raise errors
-are generally written in standalone Nickel files in the `nickel-lang/tests/integration/pass`
+are generally written in standalone Nickel files in the `nickel-lang-lib/tests/integration/pass`
 directory. All `.ncl` files in this directory are automatically converted into
 Rust integration tests, which run the file and assert that no errors were
 raised during evaluation.
 
 Each of these `.ncl` files is structured as an array of `Bool` expressions, which
 is ultimately passed to a `check` function defined in
-`nickel-lang/tests/integration/pass/lib/assert.ncl`.
+`nickel-lang-lib/tests/integration/pass/lib/assert.ncl`.
 This function applies an `Assert` contract to each value in the array, which
 checks that the value it is applied to evaluates to `true`. The benefit of using
 a contract for this is that if a test fails we can simply run the file directly
 using Nickel, which gives better error messages than the ones we get by default
 from `cargo test`.
 
-Tests which are expected to fail may be written in Rust in `nickel-lang/tests/integration`.
+Tests which are expected to fail may be written in Rust in `nickel-lang-lib/tests/integration`.
 However, simple failure test cases can make use of the test annotation support
-and are located in `nickel-lang/tests/integration/fail`.
+and are located in `nickel-lang-lib/tests/integration/fail`.
 
 ### Snapshot testing
 

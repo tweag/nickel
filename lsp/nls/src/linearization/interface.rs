@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use nickel_lang::{identifier::Ident, typecheck::UnifType, types::Types};
+use nickel_lang_lib::{identifier::Ident, typecheck::UnifType, types::Types};
 
 use super::ItemId;
 
 pub trait ResolutionState {}
-/// Types are available as [nickel_lang::typecheck::UnifType] only during recording. They are
-/// resolved after typechecking as [nickel_lang::types::Types]
+/// Types are available as [nickel_lang_lib::typecheck::UnifType] only during recording. They are
+/// resolved after typechecking as [nickel_lang_lib::types::Types]
 pub type Unresolved = UnifType;
 impl ResolutionState for Unresolved {}
 

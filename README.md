@@ -77,7 +77,7 @@ Please follow the getting started guide for Nickel users on the [nickel-lang
 website](https://nickel-lang.org/getting-started). The instructions below are
 either reproduced for this document to be self-contained or because
 they are aimed toward hacking on the Nickel interpreter itself (e.g. building
-the `nickel-lang` crate documentation).
+the `nickel-lang-lib` crate documentation).
 
 ### Run
 
@@ -91,7 +91,7 @@ the `nickel-lang` crate documentation).
      `nix profile add github:tweag/nickel`. The `nickel` command is then in your
      `$PATH` and is available anywhere.
    - Without Nix, you can use `cargo run` after [building](#build), passing
-     arguments with an extra `--` as in `cargo run -- -f program.ncl`.
+     arguments with an extra `--` as in `cargo run --bin nickel -- -f program.ncl`.
 
 2. Run your first program:
 

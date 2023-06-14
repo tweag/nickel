@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang::error::{Error, EvalError};
+use nickel_lang_lib::error::{Error, EvalError};
 
 use nickel_lang_utilities::test_program::eval;
 

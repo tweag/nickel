@@ -11,7 +11,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-nickel-lang = {default-features = false, path = "../nickel-lang", version = "1.0.0", features=["repl-wasm"]}
+nickel-lang-lib = {default-features = false, path = "../nickel-lang-lib", version = "1.0.0", features=["repl-wasm"]}
 
 [lib]
 crate-type = ["cdylib", "rlib"]

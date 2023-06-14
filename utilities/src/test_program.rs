@@ -1,6 +1,6 @@
 use codespan::Files;
 
-use nickel_lang::{
+use nickel_lang_lib::{
     error::{Error, ParseError},
     eval::cache::CacheImpl,
     parser::{grammar, lexer, ErrorTolerantParser},

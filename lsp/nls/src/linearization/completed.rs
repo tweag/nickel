@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use codespan::{ByteIndex, FileId};
-use nickel_lang::{
+use nickel_lang_lib::{
     position::TermPos, term::record::FieldMetadata, typecheck::linearization::LinearizationState,
 };
 

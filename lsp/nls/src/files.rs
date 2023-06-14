@@ -7,7 +7,7 @@ use lsp_types::{
     notification::{DidOpenTextDocument, Notification},
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, PublishDiagnosticsParams, Url,
 };
-use nickel_lang::{
+use nickel_lang_lib::{
     cache::{CacheError, CacheOp},
     error::IntoDiagnostics,
 };

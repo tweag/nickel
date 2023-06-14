@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang::cache::{Cache, ErrorTolerance};
+use nickel_lang_lib::cache::{Cache, ErrorTolerance};
 
 #[test]
 fn stdlib_typecheck() {

@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use nickel_lang::error::{Error, EvalError};
+use nickel_lang_lib::error::{Error, EvalError};
 use nickel_lang_utilities::{
     annotated_test::{read_annotated_test_case, TestCase},
     project_root::project_root,

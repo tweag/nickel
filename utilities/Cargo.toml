@@ -14,7 +14,7 @@ bench = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nickel-lang = {path = "../nickel-lang", version = "1.0.0"}
+nickel-lang-lib = {path = "../nickel-lang-lib", version = "1.0.0"}
 criterion = "0.3"
 codespan = "0.11"
 serde = { version = "1.0.154", features = ["derive"] }

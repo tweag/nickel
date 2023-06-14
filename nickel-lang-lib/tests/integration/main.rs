@@ -1,6 +1,6 @@
 use std::{io::Cursor, thread};
 
-use nickel_lang::{
+use nickel_lang_lib::{
     error::{Error, EvalError, ImportError, ParseError, TypecheckError},
     term::Term,
 };
@@ -18,7 +18,7 @@ mod pretty;
 mod query;
 mod stdlib_typecheck;
 
-#[test_resources("nickel-lang/tests/integration/**/*.ncl")]
+#[test_resources("nickel-lang-lib/tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");

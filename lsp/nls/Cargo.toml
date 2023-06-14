@@ -32,7 +32,7 @@ lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
-nickel-lang = {path = "../../nickel-lang", version = "1.0.0"}
+nickel-lang-lib = {path = "../../nickel-lang-lib", version = "1.0.0"}
 derive_more = "0.99"
 lazy_static = "1"
 csv = "1"

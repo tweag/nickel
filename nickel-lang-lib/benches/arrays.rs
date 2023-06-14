@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use criterion::{criterion_main, Criterion};
-use nickel_lang::term::{
+use nickel_lang_lib::term::{
     array::{Array, ArrayAttrs},
     Number, RichTerm, Term,
 };

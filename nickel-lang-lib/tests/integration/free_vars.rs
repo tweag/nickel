@@ -1,5 +1,5 @@
-use nickel_lang::term::{record::FieldDeps, IndexMap};
-use nickel_lang::{identifier::Ident, term::Term, transform::free_vars};
+use nickel_lang_lib::term::{record::FieldDeps, IndexMap};
+use nickel_lang_lib::{identifier::Ident, term::Term, transform::free_vars};
 
 use std::collections::HashSet;
 use std::iter::IntoIterator;
