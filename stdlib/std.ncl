@@ -1134,7 +1134,7 @@
     unstable
       | doc m%"
           The unstable module gathers contracts that are used right now in the
-          standard library to check additiona pre-condition, but aren't yet
+          standard library to check additional pre-condition, but aren't yet
           stabilized.
 
           Unstable contracts are useful as a temporary solution for argument
