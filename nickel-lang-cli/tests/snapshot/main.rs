@@ -1,4 +1,7 @@
-use nickel_lang_utilities::annotated_test::{read_annotated_test_case, TestCase};
+use nickel_lang_utilities::{
+    annotated_test::{read_annotated_test_case, TestCase},
+    project_root::project_root,
+};
 use serde::Deserialize;
 use std::{
     ffi::OsStr,
@@ -73,13 +76,9 @@ struct TestFile {
 
 impl TestFile {
     fn from_project_path(file: &str) -> Self {
-        // `test_resources` uses paths relative to the workspace manifest; CARGO_MANIFEST_DIR is the package directory
-        let mut path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .to_owned();
-        path_buf.push(file);
-        Self { path_buf }
+        Self {
+            path_buf: project_root().join(file),
+        }
     }
 
     fn prefixed_test_name(&self, prefix: &str) -> String {

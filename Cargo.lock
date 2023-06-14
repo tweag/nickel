@@ -1365,6 +1365,7 @@ dependencies = [
  "insta",
  "log",
  "lsp-types 0.94.0",
+ "nickel-lang-utilities",
  "serde",
  "serde_json",
  "test-generator",
