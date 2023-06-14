@@ -18,9 +18,9 @@
 # In the meantime, we choose to have this one big monolithic `std` module. This
 # choice doesn't negatively impact Nickel users (the file can be browsed looking
 # for error locations, typechecking and the LSP are happy because no code is
-# progammatically generated). It's just less nice to maintain.
+# programmatically generated). It's just less nice to maintain.
 #
-# Typing
+# ## Typing
 #
 # Stdlib modules shouldn't recursively refer to other modules directly, they
 # should use the stdlib provided in the environment instead. This means using
@@ -30,6 +30,20 @@
 #
 # On the other hand, the `std` module in the environment is properly typed, as
 # the typed interface is elaborated upfront.
+#
+# ## Both a type annotation and a contract annotation
+#
+# [^type-and-contract]: Some functions have both a static type annotation and
+# additional contract. The additional contract annotation is ignored by
+# typechecking, and with respect to static typing, only the static type
+# annotation matters.
+#
+# However, static types are often not enough to check more advanced
+# preconditions (e.g. that the argument of `array.drop_first` is a non-empty
+# array). In this case, a second contract is used to only check those additional
+# properties at runtime, while preserving the static typechecking behavior.
+#
+# cf https://github.com/tweag/nickel/issues/1354
 {
   array = {
     NonEmpty
@@ -145,7 +159,7 @@
 
     at
       : forall a. Number -> Array a -> a
-      | contract.unstable.IndexedArray
+      | std.contract.unstable.IndexedArrayFun
       | doc m%"
           Retrieves the n-th element from an array, with indices starting at 0.
 
@@ -531,7 +545,7 @@
 
     slice
       : forall a. Number -> Number -> Array a -> Array a
-      | std.contract.unstable.ArraySlice
+      | std.contract.unstable.ArraySliceFun
       | doc m%"
           `slice start end array` returns the slice of `array` between `start` (included) and
           `end` (excluded).
@@ -556,7 +570,7 @@
 
     split_at
       : forall a. Number -> Array a -> { left : Array a, right : Array a }
-      | contract.unstable.IndexedArray
+      | std.contract.unstable.IndexedArrayFun
       | doc m%"
           Splits an array in two at a given index and puts all the elements
           to the left of the element at the given index (excluded) in the
@@ -607,6 +621,7 @@
 
     range_step
       : Number -> Number -> Number -> Array Number
+      | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)
       | doc m%"
           `range_step start end step` generates the array of numbers
           `[start, start + step, start + 2*step, ..]` up to the first element
@@ -631,6 +646,7 @@
 
     range
       : Number -> Number -> Array Number
+      | std.contract.unstable.RangeFun Dyn
       | doc m%"
           `range start end` generates the array of numbers
           `[start, start + 1, start + 2, ..]` up to the first element
@@ -1117,17 +1133,17 @@
 
     unstable
       | doc m%"
-          The unstable module gather contracts that are used right now in the
-          standard library because they solve an existing problem, but aren't
-          planned to be a long-term solution to this problem.
+          The unstable module gathers contracts that are used right now in the
+          standard library to check additiona pre-condition, but aren't yet
+          stabilized.
 
-          Unstable contracts are useful as validators and temporary solution,
-          but they shouldn't be used outside of the standard library. They
-          aren't part of the backward compatibility policy, and are subject to
-          change at any point in time.
+          Unstable contracts are useful as a temporary solution for argument
+          validation, but they shouldn't be used outside of the standard
+          library. They aren't part of the backward compatibility policy, and
+          are subject to change at any point in time.
         "%
       = {
-        DependentFunction
+        DependentFun
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
@@ -1135,12 +1151,13 @@
               A dependent function contract, where the argument is also passed
               to the contract of the returned value.
 
-              That is, `some_function | DependentFunction Foo Bar` performs the same checks as
+              That is, `some_function | DependentFun Foo Bar` performs the
+              same checks as
 
               ```nickel
               fun arg =>
-                let arg' = (arg | Foo) in
-                some_function arg') | (Bar arg')
+                let arg_checked = (arg | Foo) in
+                (some_function arg_checked | (Bar arg_checked))
               ```
             "%
           = fun Domain Codomain label function =>
@@ -1149,131 +1166,211 @@
               function arg_with_ctr
               |> contract.apply (Codomain arg_with_ctr) label,
 
-        IndexedArray
+        PosNumber
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A contract for a positive number.
+
+              This contract blames only if the value is a number but is not
+              positive: the fact that the value is a number is assumed to be
+              checked by an associated static type annotation.
+            "%
+          = fun label value =>
+            if %typeof% value == 'Number then
+              if value >= 0 then
+                value
+              else
+                %blame% (%label_append_note% "Expected a positive number, got %{%to_str% value}" label)
+            else
+              value,
+
+        RangeStep
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A contract for a range step, which must be a positive number.
+              Mostly a wrapper around `std.contract.unstable.PosNumber` with a
+              custom error message.
+
+              This contract blames only if the value is a number but is not
+              positive: the fact that the value is a number is assumed to be
+              checked by an associated static type annotation.
+            "%
+          = fun label =>
+            PosNumber (%label_with_message% "invalid range step" label),
+
+        RangeFun
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
 
               A function contract which checks that the two first argument are a
-              number and an array such that the number is a valid index for that
-              array, that is a natural number such that
-              `0 <= index <= length array`.
+              valid range, that is two numbers `start` and `end` such that
+              `start <= end`.
+
+              This contract blames only if the arguments are of the right type
+              but don't satisfy the tested condition. The type of arguments is
+              assumed to be checked by an associated static type annotation. For
+              example, if the first argument is a string, this contract silently
+              passes.
             "%
           =
-            let ArrayIndexFirst = fun label value =>
-              if %typeof% value == 'Number then
-                let label = (
-                  %label_with_message%
-                    "expected array index to be a positive integer, got %{%to_str% value} "
-                    label
-                )
-                in
-                std.contract.apply std.number.Nat label value
-              else
-                %blame%
-                  (
-                    %label_with_message%
-                      "expected array index to be a number, got %{%to_str% (%typeof% value)}"
-                      label
-                  )
-            in
+            # capture the `contract.label` module to avoid name collisions with
+            # local contract argument `label`
+            let label_module = label in
+            let attach_message = label_module.with_message "invalid range" in
 
-            let ArrayIndexSecond = fun min_size label value =>
-              if %typeof% value == 'Array then
-                if min_size >= %length% value then
-                  let index_as_str = %to_str% min_size in
-                  let size_as_str = %to_str% (%length% value) in
-                  %blame%
-                    (
-                      %label_with_message%
-                        "expected an index between 0 and %{size_as_str}, got %{index_as_str}"
-                        label
-                    )
+            fun Codomain =>
+              let RangeSecond = fun start label value =>
+                if %typeof% start == 'Number && %typeof% value == 'Number then
+                  if start > value then
+                    let start_as_str = %to_str% start in
+                    let end_as_str = %to_str% value in
+                    label
+                    |> attach_message
+                    |> label_module.append_note "Expected a range end greater than (%{start_as_str}) (range start), got %{end_as_str}"
+                    |> blame
+                  else
+                    value
                 else
                   value
-              else
-                %blame% (%label_with_message% "the second argument isn't an array" label)
-            in
-            DependentFunction
-              ArrayIndexFirst
-              (fun index => ArrayIndexSecond index -> Dyn),
+              in
 
-        ArraySlice
+              DependentFun
+                Dyn
+                (fun start => RangeSecond start -> Codomain),
+
+        IndexedArrayFun
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
 
-              A function contract which checks that the three first argument are
-              two numbers and an array such that the two numbers are a valid
-              slice of that array, that is:
-              `0 <= n1 <= n2 <= length array`
+              A function contract which checks that the two first argument are,
+              in order, a number and an array such that the number is a valid
+              index for that array, that is a natural number such that
+              `0 <= index <= length array`.
+
+              This contract blames only if the arguments are of the right type
+              but don't satisfy the tested condition. The type of arguments is
+              assumed to be checked by an associated static type annotation. For
+              example, if the first argument is a string, this contract silently
+              passes.
             "%
           =
-            let SliceIndexFirst = fun label value =>
+            # capture the `contract.label` module to avoid name collisions with
+            # local contract argument `label`
+            let label_module = label in
+            let attach_message = label_module.with_message "invalid array indexing" in
+
+            let ArrayIndexFirst = fun label value =>
               if %typeof% value == 'Number then
-                let label = (
-                  %label_with_message%
-                    "expected the array slice start index to be a positive integer"
-                    label
-                )
+                let label =
+                  label
+                  |> attach_message
+                  |> label_module.append_note "Expected array index to be a positive integer, got %{%to_str% value} "
                 in
                 std.contract.apply std.number.Nat label value
               else
-                %blame%
-                  (
-                    %label_with_message%
-                      "expected the array slice start index to be a number, got %{%to_str% (%typeof% value)}"
-                      label
-                  )
+                value
             in
 
-            let SliceIndexSecond = fun start label value =>
-              if %typeof% value == 'Number then
-                if value < start then
-                  %blame%
-                    (
-                      %label_with_message%
-                        "expected the array slice indices to satisfy `start <= end`, but got %{%to_str% start} (start) and %{%to_str% value} (end)"
-                        label
-                    )
-                else
-                  let label = (
-                    %label_with_message%
-                      "expected the array slice end index to be a positive integer"
-                      label
-                  )
+            let ArrayIndexSecond = fun min_size label value =>
+              if %typeof% min_size == 'Number && %typeof% value == 'Array then
+                if min_size >= %length% value then
+                  let index_as_str = %to_str% min_size in
+                  let max_as_str = %to_str% (%length% value - 1) in
+                  let note = if %length% value == 0 then
+                    "Can't index into an empty array"
+                  else
+                    "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
                   in
-                  std.contract.apply std.number.Nat label value
-              else
-                %blame%
-                  (
-                    %label_with_message%
-                      "expected the slice array end index to be a number, got %{%to_str% (%typeof% value)}"
-                      label
-                  )
-            in
-
-            let ArraySliceArray = fun end_index label value =>
-              if %typeof% value == 'Array then
-                if end_index >= %length% value then
-                  let index_as_str = %to_str% end_index in
-                  let size_as_str = %to_str% (%length% value) in
-                  %blame%
-                    (
-                      %label_with_message%
-                        "expected the array slice end index between 0 and %{size_as_str} (array's length), got %{index_as_str}"
-                        label
-                    )
+                  label
+                  |> attach_message
+                  |> label_module.append_note note
+                  |> blame
                 else
                   value
               else
-                %blame% (%label_with_message% "expected the 3rd argument to be an array" label)
+                value
             in
-            DependentFunction
+            DependentFun
+              ArrayIndexFirst
+              (fun index => ArrayIndexSecond index -> Dyn),
+
+        ArraySliceFun
+          | doc m%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A function contract which checks that the three first arguments
+              are, in order, two numbers and an array such that the two numbers
+              are a valid slice of that array, that is they are natural numbers
+              such that: `0 <= n1 <= n2 <= length array`
+
+              This contract blames only if the arguments are of the right type
+              but don't satisfy the tested condition. The type of arguments is
+              assumed to be checked by an associated static type annotation. For
+              example, if the first argument is a string, this contract silently
+              passes.
+            "%
+          =
+            # capture the `contract.label` module to avoid name collisions with
+            # local contract argument `label`
+            let label_module = label in
+            let attach_message = label_module.with_message "invalid array slice indexing" in
+
+            let SliceIndexFirst = fun label value =>
+              if %typeof% value == 'Number then
+                let label =
+                  label
+                  |> attach_message
+                  |> label_module.append_note "Expected the array slice start index to be a positive integer, got %{%to_str% value}"
+                in
+                std.contract.apply std.number.Nat label value
+              else
+                value
+            in
+
+            let SliceIndexSecond = fun start label value =>
+              if %typeof% start == 'Number && %typeof% value == 'Number then
+                if value < start then
+                  label
+                  |> attach_message
+                  |> label_module.append_note "Expected the array slice indices to satisfy `start <= end`, but got %{%to_str% start} (start) and %{%to_str% value} (end)"
+                  |> blame
+                else
+                  let label =
+                    label
+                    |> attach_message
+                    |> label_module.append_note "Expected the array slice end index to be a positive integer, got %{%to_str% value}"
+                  in
+                  std.contract.apply std.number.Nat label value
+              else
+                value
+            in
+
+            let ArraySliceArray = fun end_index label value =>
+              if %typeof% end_index == 'Number && %typeof% value == 'Array then
+                if end_index >= %length% value then
+                  let index_as_str = %to_str% end_index in
+                  let size_as_str = %to_str% (%length% value) in
+                  label
+                  |> attach_message
+                  |> label_module.append_note "Expected the slice end index to be between 0 and %{size_as_str} (array's length), got %{index_as_str}"
+                  |> blame
+                else
+                  value
+              else
+                value
+            in
+            DependentFun
               SliceIndexFirst
               (
                 fun start_index =>
-                  DependentFunction
+                  DependentFun
                     (SliceIndexSecond start_index)
                     (
                       fun end_index =>
