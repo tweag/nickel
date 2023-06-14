@@ -1231,7 +1231,7 @@
                     let end_as_str = %to_str% value in
                     label
                     |> attach_message
-                    |> label_module.append_note "Expected a range end greater than (%{start_as_str}) (range start), got %{end_as_str}"
+                    |> label_module.append_note "Expected a range end greater than %{start_as_str} (range start), got %{end_as_str}"
                     |> blame
                   else
                     value
