@@ -156,5 +156,15 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
     = fun r x => std.record.map_values (fun f => f x) r
   in nonsense { foo = fun _x y => y, bar = fun _x y => y } 5 |> std.record.map_values (fun f => f 7))
   == { foo = 7, bar = 7 },
+
+  # forall constraints
+  # this tests that shadowing forall variables is treated correctly
+
+  let g | forall r. { ; r } -> { z : Number ; r }
+        = fun r => %record_insert% "z" r 1 in
+  let f | forall r. { ; r } -> { g : forall r. { ; r } -> { z : Number ; r }; r }
+        = fun r => %record_insert% "g" r g in
+  let res = f { z = 3 }
+  in true,
 ]
 |> check

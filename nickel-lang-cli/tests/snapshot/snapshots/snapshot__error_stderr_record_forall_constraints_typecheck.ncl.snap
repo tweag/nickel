@@ -1,0 +1,15 @@
+---
+source: tests/snapshot/main.rs
+expression: err
+---
+error: multiple rows declaration
+  ┌─ [INPUTS_PATH]/errors/record_forall_constraints_typecheck.ncl:3:88
+  │
+3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in (f { x = 0 } : _)
+  │                                                                                        ^^^^^^^^^ this expression
+  │
+  = Found an expression of a record type `{ x: _a }` with the row `x`
+  = But this type appears inside another row type, which already has a declaration for the field `x`
+  = A type cannot have two conflicting declarations for the same row
+
+
