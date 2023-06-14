@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use lsp_harness::Server;
+use lsp_harness::{LspDebug, Server};
 use lsp_types::{Position, Url};
 
 pub fn main() -> Result<()> {
@@ -9,13 +9,15 @@ pub fn main() -> Result<()> {
     let s = Server::new(cmd)?;
     let uri = Url::parse("file:///test.ncl").unwrap();
     s.send_file(uri.clone(), "let var = 5 in { val = var }")?;
-    dbg!(s.goto_def(
-        uri,
-        Position {
-            line: 0,
-            character: 23,
-        },
-    )?);
+    dbg!(s
+        .goto_def(
+            uri,
+            Position {
+                line: 0,
+                character: 23,
+            },
+        )?
+        .debug_str());
     s.shutdown()?;
     Ok(())
 }
