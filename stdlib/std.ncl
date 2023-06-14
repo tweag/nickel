@@ -2588,7 +2588,7 @@
       = from,
 
     to_number
-      | String -> Number
+      : String -> Number
       | NumberLiteral -> Dyn
       | doc m%"
         Converts a string that represents a number to that number.
@@ -2603,7 +2603,7 @@
       = fun s => %num_from_str% s,
 
     to_bool
-      | String -> Bool
+      : String -> Bool
       | BoolLiteral -> Dyn
       | doc m%"
         Converts a representation of a boolean (either `true` or `false`) to that boolean.
