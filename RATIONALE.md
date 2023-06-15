@@ -23,7 +23,13 @@ alternatives.
     - [Typing](#typing)
     - [Turing completeness](#turing-completeness)
     - [Side-effects](#side-effects)
-2. [Comparison with alternatives](#comparison-with-alternatives)
+2. [Why Nickel is not a DSL embedded in an existing language](#why-nickel-is-not-a-dsl-embedded-in-an-existing-language)
+    - [Error messages](#error-messages)
+    - [LSP integration](#lsp-integration)
+    - [Haskell is heavy](#haskell-is-heavy)
+    - [Haskell is not familiar](#haskell-is-not-familiar)
+    - [Is it really less work?](#is-it-really-less-work)
+3. [Comparison with alternatives](#comparison-with-alternatives)
     - [Starlark](#starlark-the-standard-package)
     - [Nix](#nix-json-and-functions)
     - [Dhall](#dhall-powerful-type-system)
@@ -185,6 +191,85 @@ commutative, a property which makes them not hurting parallelizability. They are
 extensible, meaning that third-party may define new effects and implement
 externally the associated effect handlers in order to customize Nickel for
 specific use-cases.
+
+## Why Nickel is not a DSL embedded in an existing language
+
+Using an existing language to embed configuration is a common approach. In this
+section, we'll try to answer the question why Nickel isn't a DSL embedded in,
+say, Haskell.
+
+On the front of Infrastructure-as-Code, Pulumi adopted a similar approach:
+instead of creating their own new deployment language, they chose to leverage
+known, mature and well-equipped programming languages to write deployments.
+
+While embedding brings obvious advantages, it also comes with its lot of issues.
+
+### Error messages
+
+The end result of Nickel being a useful tool is, all in all, error messages
+(not only, but it's the user-facing consequence of the majority of correctness
+features such as typechecking and contracts). It doesn't help to have a very
+fancy types and contracts system if you're unable to diagnose when something
+goes wrong.
+
+Embedding Nickel in Haskell would probably make error messages unusable. They
+can already be suboptimal for normal Haskell, but adding for example row
+polymorphism encoded in the Haskell type system would be worse. Encoding
+Nickel's gradual type system in a usable way in Haskell might prove challenging
+as well.
+
+The contract system alone could be easily implemented in any functional language
+without much native support (including Nix). Once again, the big difference
+Nickel hopes to make is error messages (beside naturality of the syntax, LSP
+support and so on). Being built-in, contract error reporting has special support
+in the interpreter with access to source positions, the call stack, and so on.
+This is much harder to replicate in a host language.
+
+### LSP integration
+
+The same arguments apply to the LSP. The Nickel LSP currently features record
+completion based on both type information, contract information, and bare record
+structures. This is the kind of feature that makes using Nickel for e.g.
+Kubernetes appealing: even without functions and types, getting completion with
+documentation in-code is already valuable. This is not possible for a generic
+Haskell LSP, with no knowledge of DSLs such as Nickel.
+
+### Haskell is heavy
+
+One of the possible use-case of Nickel would be to embed Nickel, either as a
+binary or linked to it as a C library, into another tool to use (think a cloud
+orchestrator like Terraform). Pulling all of the GHC toolchain to evaluate a few
+hundred lines of configuration sounds overkill. Garbage collection and
+Haskell runtime makes it also harder to interface it with other languages and
+binaries (hence the choice of Rust to implement Nickel).
+
+### Haskell is not familiar
+
+Another goal of Nickel is to be understandable by DevOps, not only by functional
+programmers. In particular, as long as you don't write library code yourself,
+the syntax is JSON-like and doesn't use very fancy constructions (custom
+contracts are often implemented externally to the configuration itself, and
+basic contracts look like JSON schemas). Changing some configuration option
+should be trivial to do for non-developers. This is also harder to achieve in a
+Haskell DSL.
+
+### Is it really less work
+
+A big part of the work of developing Nickel is language design and
+experimentation. I think implementing the core language from scratch, now that
+we have a good idea of what it looks like, wouldn't be a daunting task.
+
+Another aspect is developing the tooling, and indeed we could get some for free
+if we piggy-backed on Haskell. But the Haskell tooling would be close to useless
+for such an advanced DSL anyway, as mentioned in the previous paragraphs.
+
+Finally, embedding Nickel in Haskell would also involve constraints and work
+that we don't have for a stand-alone language (such as encoding the type system
+of Nickel inside the one of Haskell).
+
+In conclusion, it's hard to tell, but it doesn't seem totally obvious that
+embedding Nickel in Haskell from the beginning would have been much less work
+than starting a language from scratch.
 
 ## Comparison with alternatives
 
