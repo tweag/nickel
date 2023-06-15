@@ -84,6 +84,7 @@ insta = { version = "1.28.0", features = ["filters"] }
 members = [
     ".",
     "lsp/nls",
+    "lsp/lsp-harness",
     "utilities",
     "nickel-wasm-repl",
     "pyckel",
