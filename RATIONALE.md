@@ -198,10 +198,6 @@ Using an existing language to embed configuration is a common approach. In this
 section, we'll try to answer the question why Nickel isn't a DSL embedded in,
 say, Haskell.
 
-Beside typechecking, the Nix language itself could also be the host of a
-configuration DSL. This is in fact exactly what Nixpkgs and NixOS modules are, a
-DSL embedded into the Nix language.
-
 On the front of Infrastructure-as-Code, Pulumi adopted a similar approach:
 instead of creating their own new deployment language, they chose to leverage
 known, mature and well-equipped programming languages to write deployments.
