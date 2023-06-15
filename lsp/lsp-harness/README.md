@@ -3,7 +3,7 @@
 This is a testing harness for language servers, together with some snapshot
 tests for `nls`.
 
-# The snapshot format
+## The snapshot format
 
 Each snapshot test loads one or more files into `nls`, then runs one or
 more requests and checks that the responses are as expected. The input files
@@ -18,7 +18,8 @@ The format of these requests is ad-hoc and will be expanded as more requests are
 supported. See the implementation of `Parse` for `lsp_harness::Request`.
 
 For example, a test file might look like:
-```
+
+```text
 ### /absolute/path.ncl
 <contents of /absolute/path.ncl>
 ### /another/absolute/path.ncl
