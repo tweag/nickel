@@ -203,7 +203,7 @@ configuration DSL. This is in fact exactly what Nixpkgs and NixOS modules are, a
 DSL embedded into the Nix language.
 
 On the front of Infrastructure-as-Code, Pulumi adopted a similar approach:
-instead of creating their new own deployment language, they chose to leverage
+instead of creating their own new deployment language, they chose to leverage
 known, mature and well-equipped programming languages to write deployments.
 
 While embedding brings obvious advantages, it also comes with its lot of issues.
@@ -233,17 +233,17 @@ This is much harder to replicate in a host language.
 
 The same arguments apply to the LSP. The Nickel LSP currently features record
 completion based on both type information, contract information, and bare record
-structures. This is the kind of feature that make using Nickel for e.g.
+structures. This is the kind of feature that makes using Nickel for e.g.
 Kubernetes appealing: even without functions and types, getting completion with
 documentation in-code is already valuable. This is not possible for a generic
 Haskell LSP, with no knowledge of DSLs such as Nickel.
 
 ### Haskell is heavy
 
-One of the possible use-case of Nickel would be to embed Nickel, either as
+One of the possible use-case of Nickel would be to embed Nickel, either as a
 binary or linked to it as a C library, into another tool to use (think a cloud
 orchestrator like Terraform). Pulling all of the GHC toolchain to evaluate a few
-hundred lines of lines of configuration sounds overkill. Garbage collection and
+hundred lines of configuration sounds overkill. Garbage collection and
 Haskell runtime makes it also harder to interface it with other languages and
 binaries (hence the choice of Rust to implement Nickel).
 
