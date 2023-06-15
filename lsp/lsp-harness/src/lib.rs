@@ -1,7 +1,7 @@
 mod jsonrpc;
 mod output;
 
-pub use jsonrpc::{ResponseHandle, Server};
+pub use jsonrpc::Server;
 use log::error;
 use lsp_types::{
     GotoDefinitionParams, Location, Position, Range, TextDocumentIdentifier,

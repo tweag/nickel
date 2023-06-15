@@ -11,37 +11,22 @@ use lsp_types::{
     InitializedParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
 };
 use std::{
-    cell::RefCell,
-    collections::{HashMap, VecDeque},
     io::{BufRead, BufReader, Read, Write},
     process::Stdio,
 };
 
 use serde::{Deserialize, Serialize};
 
-struct ServerState {
-    tx: Box<dyn Write>,
-    rx: Box<dyn BufRead>,
+pub struct Server {
+    /// For sending messages to the language server.
+    write: Box<dyn Write>,
+    /// For reading messages from the language server.
+    read: Box<dyn BufRead>,
     /// A source of unique ids for requests.
     id: u32,
     /// A buffer for notifications that have been received from the lsp but not
     /// yet delivered to the client.
-    pending_notifications: VecDeque<Notification>,
-    /// Request reponses that have been received from the lsp but not yet delivered
-    /// to the client.
-    ///
-    /// The main mechanism for retrieving a response is to call `result` on a
-    /// [`ResponseHandle`], which will read messages from the server until it
-    /// gets a response with the correct id. Since responses can arrive out of
-    /// order, any other responses we encounter while looking for a specific
-    /// one get stashed here. (And any notifications we encounter get stashed in
-    /// `pending_notifications`.) If you don't call `result` on your `ResponseHandle`,
-    /// the response will just live here forever.
-    pending_responses: HashMap<u32, Response>,
-}
-
-pub struct Server {
-    state: RefCell<ServerState>,
+    pending_notifications: Vec<Notification>,
 }
 
 /// A dynamically typed message from the LSP server.
@@ -94,22 +79,6 @@ pub struct Response {
     result: serde_json::Value,
 }
 
-/// A statically typed handle for waiting for the response to a request.
-pub struct ResponseHandle<'a, T: LspRequest> {
-    id: u32,
-    server: &'a Server,
-    marker: std::marker::PhantomData<T>,
-}
-
-impl<'a, T: LspRequest> ResponseHandle<'a, T> {
-    /// Wait for the response to a request, and validate the response according
-    /// to the LSP spec.
-    pub fn result(self) -> Result<T::Result> {
-        let resp = self.server.state.borrow_mut().recv_until(self.id)?;
-        Ok(serde_json::value::from_value(resp.result)?)
-    }
-}
-
 impl Server {
     /// Launch a language server by running the given command.
     ///
@@ -118,14 +87,11 @@ impl Server {
     pub fn new(mut cmd: std::process::Command) -> Result<Server> {
         let lsp = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).spawn()?;
 
-        let lsp = Server {
-            state: RefCell::new(ServerState {
-                tx: Box::new(lsp.stdin.unwrap()),
-                rx: Box::new(BufReader::new(lsp.stdout.unwrap())),
-                pending_notifications: VecDeque::new(),
-                pending_responses: HashMap::new(),
-                id: 0,
-            }),
+        let mut lsp = Server {
+            write: Box::new(lsp.stdin.unwrap()),
+            read: Box::new(BufReader::new(lsp.stdout.unwrap())),
+            pending_notifications: Vec::new(),
+            id: 0,
         };
 
         lsp.initialize()?;
@@ -134,7 +100,7 @@ impl Server {
     }
 
     /// Make the language server aware of a file.
-    pub fn send_file(&self, uri: Url, contents: &str) -> Result<()> {
+    pub fn send_file(&mut self, uri: Url, contents: &str) -> Result<()> {
         self.send_notification::<DidOpenTextDocument>(DidOpenTextDocumentParams {
             text_document: lsp_types::TextDocumentItem {
                 uri,
@@ -146,64 +112,30 @@ impl Server {
     }
 
     /// Send a GotoDefinition request to the language server.
-    pub fn goto_def(&self, uri: Url, pos: Position) -> Result<Option<GotoDefinitionResponse>> {
-        let res = self
-            .send_request::<GotoDefinition>(GotoDefinitionParams {
-                text_document_position_params: TextDocumentPositionParams {
-                    text_document: TextDocumentIdentifier { uri },
-                    position: pos,
-                },
-                work_done_progress_params: Default::default(),
-                partial_result_params: Default::default(),
-            })?
-            .result()?;
-        Ok(res)
-    }
-
-    /// Shut down the language server gracefully.
-    pub fn shutdown(&self) -> Result<()> {
-        self.send_request::<Shutdown>(())?.result()?;
-        self.send_notification::<Exit>(())
-    }
-
-    fn initialize(&self) -> Result<()> {
-        self.send_request::<Initialize>(InitializeParams::default())?
-            .result()?;
-        self.send_notification::<Initialized>(InitializedParams {})?;
-        Ok(())
-    }
-
-    /// Send a request to the language server, returning a handle that can be used
-    /// to wait for the response.
-    pub fn send_request<T: LspRequest>(&self, params: T::Params) -> Result<ResponseHandle<'_, T>> {
-        let id = self.state.borrow_mut().send_request::<T>(params)?;
-        Ok(ResponseHandle {
-            id,
-            server: self,
-            marker: std::marker::PhantomData,
+    pub fn goto_def(&mut self, uri: Url, pos: Position) -> Result<Option<GotoDefinitionResponse>> {
+        self.send_request::<GotoDefinition>(GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position: pos,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
         })
     }
 
-    /// Send a notification to the language server.
-    pub fn send_notification<T: LspNotification>(&self, params: T::Params) -> Result<()> {
-        self.state.borrow_mut().send_notification::<T>(params)
+    /// Shut down the language server gracefully.
+    pub fn shutdown(&mut self) -> Result<()> {
+        self.send_request::<Shutdown>(())?;
+        self.send_notification::<Exit>(())
     }
 
-    /// Wait for a message from the language server (or return one that we've already
-    /// got saved up).
-    pub fn next_msg(&self) -> Result<ServerMessage> {
-        self.state.borrow_mut().next_msg()
+    fn initialize(&mut self) -> Result<()> {
+        self.send_request::<Initialize>(InitializeParams::default())?;
+        self.send_notification::<Initialized>(InitializedParams {})
     }
 
-    /// If we've already stashed some messages from the language server, return one.
-    pub fn try_next_msg(&self) -> Option<ServerMessage> {
-        self.state.borrow_mut().try_next_msg()
-    }
-}
-
-impl ServerState {
-    /// Send a request to the language server, returning its id.
-    fn send_request<T: LspRequest>(&mut self, params: T::Params) -> Result<u32> {
+    /// Send a request to the language server and wait for the response.
+    pub fn send_request<T: LspRequest>(&mut self, params: T::Params) -> Result<T::Result> {
         self.id += 1;
         let req = SendRequest::<T> {
             jsonrpc: "2.0",
@@ -212,17 +144,29 @@ impl ServerState {
             id: self.id,
         };
         self.send(&req)?;
-        Ok(self.id)
+        let resp = self.recv_response()?;
+        if resp.id != self.id {
+            // In general, LSP responses can come out of order. But because we always
+            // wait for a response after sending a request, there's only one outstanding
+            // response.
+            bail!("expected id {}, got {}", self.id, resp.id);
+        }
+        Ok(serde_json::value::from_value(resp.result)?)
     }
 
     /// Send a notification to the language server.
-    fn send_notification<T: LspNotification>(&mut self, params: T::Params) -> Result<()> {
+    pub fn send_notification<T: LspNotification>(&mut self, params: T::Params) -> Result<()> {
         let req = SendNotification::<T> {
             jsonrpc: "2.0",
             method: T::METHOD,
             params,
         };
         self.send(&req)
+    }
+
+    /// Return all notifications sent by the server.
+    pub fn pending_notifications(&mut self) -> Vec<Notification> {
+        std::mem::take(&mut self.pending_notifications)
     }
 
     /// Send something serializable to the language server.
@@ -234,38 +178,23 @@ impl ServerState {
         let msg = serde_json::to_string(msg)?;
         debug!("sending {msg}");
 
-        self.tx
+        self.write
             .write_all(format!("Content-Length: {}\r\n\r\n", msg.len()).as_bytes())?;
-        self.tx.write_all(msg.as_bytes())?;
-        self.tx.flush()?;
+        self.write.write_all(msg.as_bytes())?;
+        self.write.flush()?;
 
         Ok(())
     }
 
-    /// Receive messages from the language server until we see the requested id.
+    /// Receive messages from the language server until we get a request's response.
     ///
-    /// All messages until the one we're after will get stashed.
-    fn recv_until(&mut self, id: u32) -> Result<Response> {
-        // Maybe we already received it.
-        if let Some(resp) = self.pending_responses.remove(&id) {
-            return Ok(resp);
-        }
-
+    /// Any notifications we encounter will get stashed.
+    fn recv_response(&mut self) -> Result<Response> {
         loop {
             match self.recv()? {
-                ServerMessage::Notification(note) => self.pending_notifications.push_back(note),
+                ServerMessage::Notification(note) => self.pending_notifications.push(note),
                 ServerMessage::Response(resp) => {
-                    if resp.id == id {
-                        return Ok(resp);
-                    } else {
-                        let id = resp.id;
-                        if let Some(old) = self.pending_responses.insert(id, resp) {
-                            bail!(
-                                "duplicate response for id {id}: {old:?} and {:?}",
-                                self.pending_responses[&id]
-                            );
-                        }
-                    }
+                    return Ok(resp);
                 }
             }
         }
@@ -278,7 +207,7 @@ impl ServerState {
 
         loop {
             buf.clear();
-            if self.rx.read_line(&mut buf)? == 0 {
+            if self.read.read_line(&mut buf)? == 0 {
                 break;
             }
             if buf == "\r\n" {
@@ -293,7 +222,7 @@ impl ServerState {
 
         let content_length = content_length.context("no Content-Length header")?;
         let mut content = vec![0; content_length];
-        self.rx.read_exact(&mut content)?;
+        self.read.read_exact(&mut content)?;
         let text = String::from_utf8(content).context("invalid utf8 in message")?;
         debug!("server response: {text}");
         if let Ok(note) = serde_json::from_str(&text) {
@@ -301,28 +230,5 @@ impl ServerState {
         } else {
             Ok(ServerMessage::Response(serde_json::from_str(&text)?))
         }
-    }
-
-    fn next_msg(&mut self) -> Result<ServerMessage> {
-        if let Some(msg) = self.try_next_msg() {
-            Ok(msg)
-        } else {
-            self.recv()
-        }
-    }
-
-    fn try_next_msg(&mut self) -> Option<ServerMessage> {
-        self.pending_notifications
-            .pop_front()
-            .map(ServerMessage::Notification)
-            .or_else(|| {
-                if let Some(resp_id) = self.pending_responses.keys().next().copied() {
-                    self.pending_responses
-                        .remove(&resp_id)
-                        .map(ServerMessage::Response)
-                } else {
-                    None
-                }
-            })
     }
 }

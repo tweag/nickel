@@ -1,6 +1,6 @@
 use assert_cmd::cargo::CommandCargoExt;
 use lsp_types::request::{GotoDefinition, Request as LspRequest};
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use test_generator::test_resources;
 
 use lsp_harness::{LspDebug, Request, Server, TestFixture};
@@ -24,12 +24,7 @@ impl TestHarness {
     where
         T::Result: LspDebug,
     {
-        let result = self
-            .srv
-            .send_request::<T>(params)
-            .unwrap()
-            .result()
-            .unwrap();
+        let result = self.srv.send_request::<T>(params).unwrap();
         result.debug(&mut self.out).unwrap();
         self.out.push(b'\n');
     }
@@ -42,12 +37,12 @@ impl TestHarness {
 
     // For debug purposes, drain and print notifications.
     fn drain_notifications(&mut self) {
-        // FIXME: nls doesn't report progress, so the only way to test diagnostics
-        // is to wait a while and see if they've been sent.
+        // FIXME: nls doesn't report progress, so we have no way to check whether
+        // it's finished sending notifications. We just retrieve any that we've already
+        // received.
         // We should also have a better format for printing diagnostics and other
         // notifications.
-        std::thread::sleep(Duration::from_secs(1));
-        while let Some(msg) = self.srv.try_next_msg() {
+        for msg in self.srv.pending_notifications() {
             eprintln!("{msg:?}");
         }
     }
