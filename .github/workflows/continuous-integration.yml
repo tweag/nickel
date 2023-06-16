@@ -17,13 +17,14 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
+          # MacOS 13 because of https://github.com/cachix/install-nix-action/issues/183
+          - macos-13
         rust_channel:
           - stable
         include:
           - os: ubuntu-latest
             system: x86_64-linux
-          - os: macos-latest
+          - os: macos-13
             system: x86_64-darwin
             continue-on-error: true
 
