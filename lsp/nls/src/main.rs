@@ -36,7 +36,10 @@ fn main() -> Result<()> {
     if let Some(file) = options.trace {
         debug!("Writing trace to {:?}", file.canonicalize()?);
         Trace::set_writer(csv::Writer::from_writer(io::BufWriter::new(
-            fs::OpenOptions::new().append(true).open(file)?,
+            fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(file)?,
         )))?;
     }
 

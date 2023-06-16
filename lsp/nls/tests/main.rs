@@ -48,7 +48,7 @@ impl TestHarness {
     }
 }
 
-#[test_resources("lsp/lsp-harness/tests/inputs/*.ncl")]
+#[test_resources("lsp/nls/tests/inputs/*.ncl")]
 fn check_snapshots(path: &str) {
     let full_path = project_root().join(path);
     dbg!(path, &full_path);

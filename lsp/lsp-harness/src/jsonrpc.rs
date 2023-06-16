@@ -130,7 +130,18 @@ impl Server {
     }
 
     fn initialize(&mut self) -> Result<()> {
-        self.send_request::<Initialize>(InitializeParams::default())?;
+        #[allow(deprecated)]
+        self.send_request::<Initialize>(InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: None,
+            capabilities: Default::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+        })?;
         self.send_notification::<Initialized>(InitializedParams {})
     }
 
