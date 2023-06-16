@@ -438,7 +438,10 @@ fn type_eq_bounded<E: TermEnvironment>(
     env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
+        (
+            GenericUnifType::Concrete { types: s1, .. },
+            GenericUnifType::Concrete { types: s2, .. },
+        ) => match (s1, s2) {
             (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
             (TypeF::Dyn, TypeF::Dyn)
             | (TypeF::Number, TypeF::Number)

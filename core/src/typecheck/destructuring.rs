@@ -101,7 +101,8 @@ fn build_pattern_type(
             | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
         ) => {
             let row_tys = build_pattern_type(state, ctxt, r_pat, mode)?;
-            let ty = UnifType::Concrete(TypeF::Record(row_tys));
+            //TODO: var_level, is it correct?
+            let ty = UnifType::concrete(TypeF::Record(row_tys));
 
             // If there are type annotations within nested record patterns
             // then we need to unify them with the pattern type we've built
@@ -163,12 +164,13 @@ pub fn inject_pattern_variables(
             // binding like:
             //
             // ```
-            //   let { foo = { bar = baz } } = { foo.bar = 1 } in ...
+            // let { foo = { bar = baz } } = { foo.bar = 1 } in ...
             // ```
             //
             // As such, we don't need to add it to the environment.
 
-            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+            //TODO: var_level, is it correct?
+            let UnifType::Concrete { types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -180,7 +182,8 @@ pub fn inject_pattern_variables(
 
             env.insert(*alias, ty.clone());
 
-            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+            //TODO: var_level, is it correct?
+            let UnifType::Concrete{ types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -261,6 +264,7 @@ impl RecordTypes {
                 tail: Box::new(tail),
             })
         });
-        UnifType::Concrete(TypeF::Record(rrows))
+        // TODO: var_levels, is it correct?
+        UnifType::concrete(TypeF::Record(rrows))
     }
 }

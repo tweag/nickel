@@ -6,12 +6,13 @@ use crate::types::{DictTypeFlavour, TypeF};
 #[macro_export]
 macro_rules! mk_uty_arrow {
     ($left:expr, $right:expr) => {
-        $crate::typecheck::UnifType::Concrete(
-            $crate::types::TypeF::Arrow(
+        $crate::typecheck::UnifType::Concrete {
+            types: $crate::types::TypeF::Arrow(
                 Box::new($crate::typecheck::UnifType::from($left)),
                 Box::new($crate::typecheck::UnifType::from($right))
-            )
-        )
+                ),
+                var_levels_data: Default::default(),
+        }
     };
     ( $fst:expr, $snd:expr , $( $types:expr ),+ ) => {
         $crate::mk_uty_arrow!($fst, $crate::mk_uty_arrow!($snd, $( $types ),+))
@@ -66,11 +67,12 @@ macro_rules! mk_uty_row {
 #[macro_export]
 macro_rules! mk_uty_enum {
     ($( $ids:expr ),* $(; $tail:expr)?) => {
-        $crate::typecheck::UnifType::Concrete(
-            $crate::types::TypeF::Enum(
+        $crate::typecheck::UnifType::Concrete{
+            types: $crate::types::TypeF::Enum(
                 $crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?)
-            )
-        )
+            ),
+            var_levels_data: Default::default(),
+        }
     };
 }
 
@@ -78,11 +80,12 @@ macro_rules! mk_uty_enum {
 #[macro_export]
 macro_rules! mk_uty_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
-        $crate::typecheck::UnifType::Concrete(
-            $crate::types::TypeF::Record(
+        $crate::typecheck::UnifType::Concrete{
+            types: $crate::types::TypeF::Record(
                 $crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
-            )
-        )
+            ),
+            var_levels_data: Default::default()
+        }
     };
 }
 
@@ -90,7 +93,10 @@ macro_rules! mk_uty_record {
 macro_rules! generate_builder {
     ($fun:ident, $var:ident) => {
         pub fn $fun() -> UnifType {
-            UnifType::Concrete(TypeF::$var)
+            UnifType::Concrete {
+                types: TypeF::$var,
+                var_levels_data: Default::default(),
+            }
         }
     };
 }
@@ -99,17 +105,23 @@ pub fn dict<T>(ty: T) -> UnifType
 where
     T: Into<UnifType>,
 {
-    UnifType::Concrete(TypeF::Dict {
-        type_fields: Box::new(ty.into()),
-        flavour: DictTypeFlavour::Type,
-    })
+    UnifType::Concrete {
+        types: TypeF::Dict {
+            type_fields: Box::new(ty.into()),
+            flavour: DictTypeFlavour::Type,
+        },
+        var_levels_data: Default::default(),
+    }
 }
 
 pub fn array<T>(ty: T) -> UnifType
 where
     T: Into<UnifType>,
 {
-    UnifType::Concrete(TypeF::Array(Box::new(ty.into())))
+    UnifType::Concrete {
+        types: TypeF::Array(Box::new(ty.into())),
+        var_levels_data: Default::default(),
+    }
 }
 
 // dyn is a reserved keyword

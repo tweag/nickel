@@ -245,8 +245,14 @@ impl UnifError {
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
+                    uty2 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
                     err,
                 ) => {
                     utys = utys.or(Some((uty1, uty2)));
@@ -257,8 +263,14 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
+                    uty2 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
                     err,
                 ) => {
                     utys = utys.or(Some((uty1, uty2)));
