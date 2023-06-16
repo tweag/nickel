@@ -1,0 +1,18 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid record literal
+  ┌─ [INPUTS_PATH]/errors/invalid_record_type.ncl:4:1
+  │
+4 │ {a: Number, b = 1; r}
+  │ ^^^^^^^^^^^^^^^^^^^^^
+  │             │    │
+  │             │    tail
+  │             invalid field for a record type literal
+  │
+  = A record type is a literal composed only of type annotations, of the form `<field>: <type>`.
+  = Value assignments such as `<field> = <expr>`, and metadata annotation (annotation, documentation, etc.) are forbidden.
+  = This literal was interpreted as a record type because it has a polymorphic tail; record values cannot have tails.
+
+

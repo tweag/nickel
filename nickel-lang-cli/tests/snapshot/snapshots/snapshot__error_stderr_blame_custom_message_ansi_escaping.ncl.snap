@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value:  strike through with background "and" "quotes"
+  ┌─ [INPUTS_PATH]/errors/blame_custom_message_ansi_escaping.ncl:3:1
+  │
+3 │ null | std.FailWith "\x1B[9;33;47m strike through with background \"and\" \"quotes\""
+  │ ^^^^   ------------------------------------------------------------------------------ expected type
+  │ │       
+  │ applied to this expression
+
+

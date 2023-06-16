@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: values of type `{  }` are not guaranteed to be compatible with polymorphic record tail `{  ; r }`
+  ┌─ [INPUTS_PATH]/errors/record_forall_parametricity_violation.ncl:4:12
+  │
+4 │   fun x => x
+  │            ^ this expression
+  │
+  = Type variables introduced in a `forall` range over all possible types.
+
+

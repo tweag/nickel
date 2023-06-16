@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: values of type `[| 'z ; _erows_a |]` are not guaranteed to be compatible with polymorphic enum tail `[|  ; r |]`
+  ┌─ [INPUTS_PATH]/errors/enum_forall_parametricity_violation.ncl:4:26
+  │
+4 │   match { 'x => 'y, _ => 'z }
+  │                          ^^ this expression
+  │
+  = Type variables introduced in a `forall` range over all possible types.
+
+

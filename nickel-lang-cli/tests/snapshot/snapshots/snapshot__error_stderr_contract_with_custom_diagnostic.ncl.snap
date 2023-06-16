@@ -1,0 +1,16 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value: main error message
+   ┌─ [INPUTS_PATH]/errors/contract_with_custom_diagnostic.ncl:13:1
+   │
+13 │ null | Contract
+   │ ^^^^   -------- expected type
+   │ │       
+   │ applied to this expression
+   │
+   = This is the first note
+   = This is the second note
+
+

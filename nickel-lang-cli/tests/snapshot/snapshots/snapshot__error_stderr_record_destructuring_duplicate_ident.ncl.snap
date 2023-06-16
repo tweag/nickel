@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: duplicated binding `one` in record pattern
+  ┌─ [INPUTS_PATH]/errors/record_destructuring_duplicate_ident.ncl:3:25
+  │
+3 │ let f = fun { one, two, one } => { one, two }
+  │               ---       ^^^ duplicated binding here
+  │               │          
+  │               previous binding here
+
+

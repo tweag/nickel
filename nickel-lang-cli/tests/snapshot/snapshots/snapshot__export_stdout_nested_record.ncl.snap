@@ -1,0 +1,29 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  "a_num": 1,
+  "a_record": {
+    "even": {
+      "more": {
+        "nested": "record"
+      }
+    }
+  },
+  "an_array": [
+    2,
+    "other string",
+    true,
+    [
+      "nested",
+      "array"
+    ],
+    {
+      "nested": "record"
+    }
+  ],
+  "booooool": false,
+  "some_str": "this is a string"
+}
+

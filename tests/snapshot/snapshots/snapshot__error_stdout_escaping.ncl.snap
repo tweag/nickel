@@ -1,6 +1,0 @@
----
-source: tests/snapshot/main.rs
-expression: out
----
-"a\"bcd\""
-

@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: incompatible types
+  ┌─ [INPUTS_PATH]/errors/annotated_record_pattern_typecheck_fail.ncl:4:28
+  │
+4 │   let { x : Bool } = { x = 5 } in
+  │                            ^ this expression
+  │
+  = Expected an expression of type `Bool`
+  = Found an expression of type `Number`
+  = These types are not compatible
+
+

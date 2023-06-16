@@ -1,0 +1,17 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: statically typed field without a definition
+  ┌─ [INPUTS_PATH]/errors/typed_field_without_annotation.ncl:4:3
+  │
+4 │   foo : Number
+  │   ^^^   ------ but it has a type annotation
+  │   │      
+  │   this field doesn't have a definition
+  │
+  = A static type annotation must be attached to an expression but this field doesn't have a definition.
+  = Did you mean to use `|` instead of `:`, for example when defining a record contract?
+  = Typed fields without definitions are only allowed inside record types, but the enclosing record literal doesn't qualify as a record type. Please refer to the manual for the defining conditions of a record type.
+
+

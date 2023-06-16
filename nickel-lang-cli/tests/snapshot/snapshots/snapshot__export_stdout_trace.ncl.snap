@@ -1,0 +1,6 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+true
+

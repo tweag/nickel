@@ -1,0 +1,28 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by the caller of `map`
+    ┌─ <stdlib/std.ncl>:146:33
+    │
+146 │       : forall a b. (a -> b) -> Array a -> Array b
+    │                                 ------- expected type of the argument provided by the caller
+    │
+    ┌─ [INPUTS_PATH]/errors/caller_contract_violation.ncl:3:31
+    │
+  3 │ std.array.map std.function.id 'not-an-array
+    │                               ------------- evaluated to this expression
+    │
+    = This error may happen in the following situation:
+          1. A function `f` is bound by a contract: e.g. `Number -> Number`.
+          2. `f` is called with an argument of the wrong type: e.g. `f false`.
+    = Either change the contract accordingly, or call `f` with an argument of the right type.
+    = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
+
+note: 
+  ┌─ [INPUTS_PATH]/errors/caller_contract_violation.ncl:3:1
+  │
+3 │ std.array.map std.function.id 'not-an-array
+  │ ------------------------------------------- (1) calling map
+
+

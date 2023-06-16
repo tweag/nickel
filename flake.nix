@@ -52,8 +52,9 @@
       forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
 
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
 
-      version = "${cargoTOML.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
+      version = "${cargoTOML.workspace.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
 
       customOverlay = final: prev: {
         # The version of `wasm-bindgen` CLI *must* be the same as the `wasm-bindgen` Rust dependency in `Cargo.toml`.
@@ -62,9 +63,8 @@
         # See https://discourse.nixos.org/t/is-it-possible-to-override-cargosha256-in-buildrustpackage/4393
         wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (oldAttrs:
           let
-            wasmBindgenCargoVersion = cargoTOML.dependencies.wasm-bindgen.version;
-            # Remove the pinning `=` prefix of the version
-            wasmBindgenVersion = builtins.substring 1 (builtins.stringLength wasmBindgenCargoVersion) wasmBindgenCargoVersion;
+            wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
+            wasmBindgenVersion = assert builtins.length wasmBindgenCargoVersions == 1; builtins.elemAt wasmBindgenCargoVersions 0;
           in
           rec {
             pname = "wasm-bindgen-cli";
@@ -204,7 +204,8 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            inherit src;
+            pname = "nickel-lang";
+            inherit src version;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
@@ -216,18 +217,21 @@
               inherit
                 pname
                 src
+                version
                 cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} --package ${pname}";
             } // extraArgs);
         in
         rec {
-          nickel = buildPackage { pname = "nickel-lang"; };
+          inherit cargoArtifacts;
+          nickel-lang-lib = buildPackage { pname = "nickel-lang-lib"; };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
             if pkgs.stdenv.hostPlatform.isMacOS
-            then nickel
+            then nickel-lang-cli
             else
               buildPackage {
                 pname = "nickel-lang";
@@ -238,12 +242,12 @@
               };
 
           benchmarks = craneLib.mkCargoDerivation {
-            inherit src cargoArtifacts;
+            inherit src version cargoArtifacts;
 
-            pnameSuffix = "-bench";
+            pname = "nickel-lang-bench";
 
             buildPhaseCargoCommand = ''
-              cargo bench ${pkgs.lib.optionalString noRunBench "--no-run"}
+              cargo bench -p nickel-lang-lib ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
 
             doInstallCargoArtifacts = false;
@@ -251,10 +255,10 @@
 
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.mkCargoDerivation {
-            inherit src cargoArtifacts;
+            inherit src version cargoArtifacts;
             inherit (cargoArtifacts) buildInputs;
 
-            pnameSuffix = "-doc";
+            pname = "nickel-lang-doc";
 
             buildPhaseCargoCommand = ''
               RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --workspace --all-features
@@ -266,6 +270,7 @@
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
             inherit src;
+            pname = "nickel-lang-rustfmt";
 
             cargoExtraArgs = "--all";
 
@@ -277,6 +282,7 @@
             inherit
               src
               cargoArtifacts;
+            pname = "nickel-lang-clippy";
 
             inherit (cargoArtifacts) buildInputs;
 
@@ -337,14 +343,17 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
+            pname = "nickel-lang-wasm";
             inherit
               src
+              version
               cargoExtraArgs;
             doCheck = false;
           };
 
         in
         craneLib.mkCargoDerivation {
+          pname = "nickel-lang-wasm";
           inherit cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
@@ -418,7 +427,7 @@
         in
         pkgs.stdenv.mkDerivation {
           name = "nickel-stdlib-doc-${format}-${version}";
-          src = ./stdlib;
+          src = ./nickel-lang-lib/stdlib;
           installPhase = ''
             mkdir -p $out
             for file in $(ls *.ncl | grep -v 'internals.ncl')
@@ -434,13 +443,14 @@
     rec {
       packages = {
         inherit (mkCraneArtifacts { })
-          nickel
+          nickel-lang-cli
           benchmarks
           lsp-nls
+          cargoArtifacts
           nickel-static;
         default = pkgs.buildEnv {
           name = "nickel";
-          paths = [ packages.nickel packages.lsp-nls ];
+          paths = [ packages.nickel-lang-cli packages.lsp-nls ];
         };
         nickelWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.nickel-static; # TODO: docker image should be a passthru
@@ -453,7 +463,7 @@
       apps = {
         default = {
           type = "app";
-          program = "${packages.nickel}/bin/nickel";
+          program = "${packages.nickel-lang-cli}/bin/nickel";
         };
       };
 
@@ -470,7 +480,8 @@
           clippy
           checkRustDoc
           lsp-nls
-          nickel
+          nickel-lang-cli
+          nickel-lang-lib
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile

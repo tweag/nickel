@@ -1,5 +1,5 @@
 use criterion::Criterion;
-use nickel_lang::{
+use nickel_lang_lib::{
     cache::{Cache, Envs, ErrorTolerance},
     eval::{
         cache::{Cache as EvalCache, CacheImpl},
@@ -168,7 +168,7 @@ macro_rules! ncl_bench {
 macro_rules! ncl_bench_group {
     (name = $group_name:ident; config = $config:expr; $($b:tt),+ $(,)*) => {
         pub fn $group_name() {
-            use nickel_lang::{
+            use nickel_lang_lib::{
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,

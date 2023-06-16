@@ -1,0 +1,18 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by the function `f`
+  ┌─ [INPUTS_PATH]/errors/function_contract_violation.ncl:3:25
+  │
+3 │ let r = { f | Number -> Number = fun x => 'not-a-number } in r.f 7
+  │                         ------            ------------- evaluated to this expression
+  │                         │                  
+  │                         expected return type
+  │
+  = This error may happen in the following situation:
+        1. A function `f` is bound by a contract: e.g. `Bool -> Number`.
+        2. `f` returns a value of the wrong type: e.g. `f = fun c => "string"` while `Number` is expected.
+  = Either change the contract accordingly, or change the return value of `f`
+
+

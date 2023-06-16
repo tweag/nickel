@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+  ┌─ [INPUTS_PATH]/errors/simple_contract_fail.ncl:3:1
+  │
+3 │ 1 | String
+  │ ^   ------ expected type
+  │ │    
+  │ applied to this expression
+
+

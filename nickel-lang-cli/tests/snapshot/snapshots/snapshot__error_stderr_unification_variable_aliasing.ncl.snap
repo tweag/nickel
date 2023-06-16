@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: incompatible types
+  ┌─ [INPUTS_PATH]/errors/unification_variable_aliasing.ncl:5:98
+  │
+5 │ let f : forall a. (forall r. { bla : Bool, blo : a, ble : a; r } -> a) = fun r => if r.bla then (r.blo + 1) else r.ble
+  │                                                                                                  ^^^^^ this expression
+  │
+  = Expected an expression of type `a`
+  = Found an expression of type `Number`
+  = These types are not compatible
+
+

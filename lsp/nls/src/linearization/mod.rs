@@ -2,7 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use codespan::FileId;
 use log::debug;
-use nickel_lang::{
+use nickel_lang_lib::{
     cache::ImportResolver,
     identifier::Ident,
     position::TermPos,
@@ -28,7 +28,7 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang::environment::Environment<Ident, ItemId>;
+pub type Environment = nickel_lang_lib::environment::Environment<Ident, ItemId>;
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
 pub struct ItemId {
@@ -95,8 +95,8 @@ impl<'a> AnalysisHost<'a> {
     }
 }
 
-use nickel_lang::typecheck::Extra;
-use nickel_lang::types::Types;
+use nickel_lang_lib::typecheck::Extra;
+use nickel_lang_lib::types::Types;
 impl<'a> Linearizer for AnalysisHost<'a> {
     type Building = Building<'a>;
     type Completed = Completed;

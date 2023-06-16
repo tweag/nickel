@@ -12,19 +12,19 @@ crates and dependent repositories (such as the website) in a consistent state.
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
    `git checkout -b X.Y.Z-release`
 2. Bump the version number of all the crates of the workspace to `X.Y.Z`:
-   - Bump the `version` attribute to `X.Y.Z` in files `./Cargo.toml`,
+   - Bump the `version` attribute to `X.Y.Z` in `./Cargo.toml`,
      `./utilities/Cargo.toml`, `lsp/nls/Cargo.toml` and
      `./nickel-wasm-repl/Cargo.toml`.
-   - Bump the version of the interdependencies of the above crates. For example,
-     `nickel-lang` has the following line in `./Cargo.toml` under
-     `[dev-dependencies]`:
+   - Bump the version of the interdependencies of the crates in `nickel-lang-cli`,
+     `nickel-lang-lib`, `lsp/nls` and `nickel-wasm-repl`. For example, `nickel-lang-lib`
+      has the following line in `./nickel-lang-lib/Cargo.toml` under `[dev-dependencies]`:
 
      ```toml
-     nickel-lang-utilities = {path = "utilities", version = "0.3.0"}
+     nickel-lang-utilities = {path = "../utilities", version = "0.3.0"}
      ```
 
      You have to bump the `version` number to `X.Y.Z` of such dependencies on
-     `nickel-lang`, `nickel-lang-utilities`, or any other crate of the
+     `nickel-lang-lib`, `nickel-lang-utilities`, or any other crate of the
      workspace as well.
 
    Commit and push your changes.
@@ -64,8 +64,9 @@ crates and dependent repositories (such as the website) in a consistent state.
 ### Release on crates.io
 
 1. Remove references to `nickel-lang-utilities` from the `[dev-dependencies]`
-   sections of the crates to be published: `./Cargo.toml` for `nickel-lang`
-   and `./lsp/nls/Cargo.toml` for `nickel-lang-lsp` (work-around for
+   sections of the crates to be published: `./nickel-lang-lib/Cargo.toml` for
+   `nickel-lang-lib`, `./nickel-lang-cli/Cargo.toml` for `nickel-lang-cli` and
+   `./lsp/nls/Cargo.toml` for `nickel-lang-lsp` (work-around for
    [cargo:#4242](https://github.com/rust-lang/cargo/issues/4242).
 
    **Commit those changes temporarily to please cargo, but they will be

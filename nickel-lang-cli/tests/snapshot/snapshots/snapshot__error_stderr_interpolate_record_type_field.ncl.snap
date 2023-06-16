@@ -1,0 +1,17 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid record literal
+  ┌─ [INPUTS_PATH]/errors/interpolate_record_type_field.ncl:4:18
+  │
+4 │ let a = "foo" in { "%{a}" : Number }
+  │                  ^^^^^^^^^^^^^^^^^^^
+  │                    │
+  │                    this field uses interpolation
+  │
+  = A record type is a literal composed only of type annotations, of the form `<field>: <type>`.
+  = String interpolation in field names is forbidden in record types
+  = This literal was interpreted as a record type because it has fields with type annotations but no value definitions; to make this a record value, assign values to its fields.
+
+

@@ -1,6 +1,0 @@
----
-source: tests/snapshot/main.rs
-expression: err
----
-std.trace: Hello, world!
-

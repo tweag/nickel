@@ -1,13 +1,14 @@
 [package]
 name = "nickel-lang-lsp"
-version = "1.0.0"
-authors = ["Nickel team"]
-license = "MIT"
 readme = "README.md"
 description = "NLS: A language server for the Nickel configuration language."
-repository = "https://github.com/tweag/nickel"
-keywords = ["nickel", "configuration", "language", "lsp"]
-edition = "2018"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [[bin]]
 name = "nls"
@@ -31,7 +32,7 @@ lsp-types = "0.88"
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1.0"
-nickel-lang = {path = "../../", version = "1.0.0"}
+nickel-lang-lib = {path = "../../nickel-lang-lib", version = "1.0.0"}
 derive_more = "0.99"
 lazy_static = "1"
 csv = "1"

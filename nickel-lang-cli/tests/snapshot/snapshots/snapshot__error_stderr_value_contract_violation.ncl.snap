@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by the value of `foo`: no reason
+  ┌─ [INPUTS_PATH]/errors/value_contract_violation.ncl:3:36
+  │
+3 │ { foo | std.FailWith "no reason" = 1 }.foo
+  │         ------------------------   ^ applied to this expression
+  │         │                           
+  │         expected type
+
+

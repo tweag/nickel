@@ -1,0 +1,18 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid record literal
+  ┌─ [INPUTS_PATH]/errors/record_type_repeated_field.ncl:3:24
+  │
+3 │ ({foo.bar.baz = "a"} : {foo : String, foo : Number})
+  │                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  │                         │             │
+  │                         │             second occurrence
+  │                         first occurrence
+  │
+  = A record type is a literal composed only of type annotations, of the form `<field>: <type>`.
+  = Repeated field names are forbidden
+  = This literal was interpreted as a record type because it has fields with type annotations but no value definitions; to make this a record value, assign values to its fields.
+
+

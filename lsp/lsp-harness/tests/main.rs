@@ -1,6 +1,6 @@
 use assert_cmd::cargo::CommandCargoExt;
 use lsp_types::request::{GotoDefinition, Request as LspRequest};
-use std::path::PathBuf;
+use nickel_lang_utilities::project_root::project_root;
 use test_generator::test_resources;
 
 use lsp_harness::{LspDebug, Request, Server, TestFixture};
@@ -50,9 +50,7 @@ impl TestHarness {
 
 #[test_resources("lsp/lsp-harness/tests/inputs/*.ncl")]
 fn check_snapshots(path: &str) {
-    let mut full_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    full_path.push("../..");
-    full_path.push(path);
+    let full_path = project_root().join(path);
     dbg!(path, &full_path);
 
     let contents = std::fs::read_to_string(&full_path).unwrap();
