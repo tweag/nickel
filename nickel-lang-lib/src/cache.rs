@@ -115,6 +115,19 @@ pub struct TermEntry {
     pub parse_errs: ParseErrors,
 }
 
+/// Inputs can be read from the filesystem or from in-memory buffers (which come, e.g., from
+/// the REPL, the standard library, or the language server).
+///
+/// Inputs read from the filesystem get auto-refreshed: if we try to access them again and
+/// the on-disk file has changed, we read it again. Inputs read from in-memory buffers
+/// are not auto-refreshed. If an in-memory buffer has a path that also exists in the
+/// filesystem, we will not even check that file to see if it has changed.
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
+enum Source {
+    Filesystem(SystemTime),
+    Memory,
+}
+
 /// Cache keys for sources.
 ///
 /// A source can be either a snippet input by the user, in which case it is only identified by its
@@ -131,7 +144,7 @@ pub struct TermEntry {
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub struct NameIdEntry {
     id: FileId,
-    timestamp: Option<SystemTime>,
+    source: Source,
 }
 
 /// The state of an entry of the term cache.
@@ -211,7 +224,7 @@ pub enum ResolvedTerm {
     FromFile {
         path: PathBuf, /* the loaded path */
     },
-    FromCache(),
+    FromCache,
 }
 
 impl Cache {
@@ -252,47 +265,34 @@ impl Cache {
             path,
             NameIdEntry {
                 id: file_id,
-                timestamp: Some(timestamp),
+                source: Source::Filesystem(timestamp),
             },
         );
         Ok(file_id)
     }
 
-    /// Load a file and add it to the name-id table.
+    /// Load a file from the filesystem and add it to the name-id table.
     ///
-    /// Use the normalized path and the *modified at* timestamp as the name-id table entry. Do not
-    /// check if a source with the same name as the normalized path of the file and the same
-    /// *modified at* timestamp already exists: if it is the case, this one will override the old
-    /// entry in the name-id table.
+    /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.
+    /// Overrides any existing entry with the same name.
     pub fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
-        let normalized = normalize_path(PathBuf::from(&path).as_path())?;
+        let normalized = normalize_path(PathBuf::from(&path).as_path());
         self.add_file_(normalized, timestamp)
     }
 
-    /// Same as [Self::add_file], but assume that the path is already normalized, and take the timestamp
-    /// as a parameter.
-    fn get_or_add_file_(
-        &mut self,
-        path: impl Into<OsString>,
-        timestamp: SystemTime,
-    ) -> io::Result<CacheOp<FileId>> {
-        let path = path.into();
-        if let Some(file_id) = self.id_of_file_(&path, timestamp) {
-            Ok(CacheOp::Cached(file_id))
-        } else {
-            self.add_file_(path, timestamp).map(CacheOp::Done)
-        }
-    }
-
-    /// Try to retrieve the id of a file from the cache, using the normalized path and comparing
-    /// timestamps. If it was not in cache, add it as a new entry.
+    /// Try to retrieve the id of a file from the cache.
+    ///
+    /// If it was not in cache, try to read it from the filesystem and add it as a new entry.
     pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
-        let timestamp = timestamp(&path)?;
-        let normalized = normalize_path(PathBuf::from(&path).as_path())?;
-        self.get_or_add_file_(normalized, timestamp)
+        let normalized = normalize_path(PathBuf::from(&path).as_path());
+        match self.id_or_new_timestamp_of(&path) {
+            Ok(id) => Ok(CacheOp::Cached(id)),
+            Err(Ok(timestamp)) => self.add_file_(normalized, timestamp).map(CacheOp::Done),
+            Err(Err(e)) => Err(e),
+        }
     }
 
     /// Load a source and add it to the name-id table.
@@ -324,7 +324,7 @@ impl Cache {
             source_name,
             NameIdEntry {
                 id,
-                timestamp: None,
+                source: Source::Memory,
             },
         );
         id
@@ -348,7 +348,7 @@ impl Cache {
                 source_name,
                 NameIdEntry {
                     id: file_id,
-                    timestamp: None,
+                    source: Source::Memory,
                 },
             );
             file_id
@@ -826,32 +826,42 @@ impl Cache {
     /// Retrieve the id of a source given a name.
     ///
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
-    /// [normalize_path]). When querying file, rather use [Self::id_of_file].
+    /// [normalize_path]).
     pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
-        self.file_ids.get(name.as_ref()).map(|entry| entry.id)
+        self.id_or_new_timestamp_of(name).ok()
     }
 
-    /// Retrieve the id of a file given a path.
+    /// Try to retrieve the id of a cached source.
     ///
-    /// This function normalizes the given path, search it in the name-id table, and check that the
-    /// stored timestamp is the same as the current timestamp of the file. If normalization or
-    /// metadata retrieval fails, or if the stored entry has no timestamps (it was added as a
-    /// stand-alone source), `None` is returned.
-    pub fn id_of_file(&self, path: impl AsRef<OsStr>) -> io::Result<Option<FileId>> {
-        let normalized = normalize_path(PathBuf::from(path.as_ref()).as_path())?;
-        let timestamp = timestamp(path)?;
-        Ok(self.id_of_file_(normalized, timestamp))
-    }
-
-    /// Retrieve the id of a file given a path. Same as [Self::id_of_file], but assume that the
-    /// given path is already normalized and take the timestamp as a parameter.
-    fn id_of_file_(&self, path: impl AsRef<OsStr>, timestamp: SystemTime) -> Option<FileId> {
-        self.file_ids
-            .get(path.as_ref())
-            .and_then(|entry| match entry.timestamp {
-                Some(ts) if ts == timestamp => Some(entry.id),
-                _ => None,
-            })
+    /// Only returns `Ok` if the source is up-to-date; if the source is stale, returns
+    /// either the new timestamp of the up-to-date file or the error we encountered when
+    /// trying to read it (which most likely means there was no such file).
+    ///
+    /// The main point of this awkward signature is to minimize I/O operations: if we accessed
+    /// the timestamp, keep it around.
+    fn id_or_new_timestamp_of(
+        &self,
+        name: impl AsRef<OsStr>,
+    ) -> Result<FileId, io::Result<SystemTime>> {
+        let name = name.as_ref();
+        match self.file_ids.get(name) {
+            None => Err(timestamp(name)),
+            Some(NameIdEntry {
+                id,
+                source: Source::Filesystem(ts),
+            }) => {
+                let new_timestamp = timestamp(name).map_err(Err)?;
+                if ts == &new_timestamp {
+                    Ok(*id)
+                } else {
+                    Err(Ok(new_timestamp))
+                }
+            }
+            Some(NameIdEntry {
+                id,
+                source: Source::Memory,
+            }) => Ok(*id),
+        }
     }
 
     /// Get a reference to the underlying files. Required by
@@ -864,12 +874,6 @@ impl Cache {
     /// [crate::error::IntoDiagnostics::into_diagnostics].
     pub fn files_mut(&mut self) -> &mut Files<String> {
         &mut self.files
-    }
-
-    /// Get a mutable reference to the cached term roots
-    /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, TermEntry> {
-        &mut self.terms
     }
 
     /// Get an immutable reference to the cached term roots
@@ -1149,7 +1153,7 @@ impl ImportResolver for Cache {
             )
         })?;
         let (result, file_id) = match id_op {
-            CacheOp::Cached(id) => (ResolvedTerm::FromCache(), id),
+            CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
             CacheOp::Done(id) => {
                 if let Some(parent) = parent {
                     let parent_id = self.id_of(parent).unwrap();
@@ -1195,9 +1199,41 @@ fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
 
 /// Normalize the path of a file for unique identification in the cache.
 ///
-/// If an IO error occurs here, `None` is returned.
-pub fn normalize_path(path: &Path) -> io::Result<OsString> {
-    path.canonicalize().map(|p_| p_.as_os_str().to_os_string())
+/// This implementation (including the commend below) was taken from cargo-util.
+///
+/// CAUTION: This does not resolve symlinks (unlike
+/// [`std::fs::canonicalize`]). This may cause incorrect or surprising
+/// behavior at times. This should be used carefully. Unfortunately,
+/// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
+/// fail, or on Windows returns annoying device paths. This is a problem Cargo
+/// needs to improve on.
+pub fn normalize_path(path: &Path) -> OsString {
+    use std::path::Component;
+
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret.into_os_string()
 }
 
 /// Return the timestamp of a file. Return `None` if an IO error occurred.
@@ -1235,7 +1271,7 @@ pub mod resolvers {
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
     /// file system. File name are stored as strings, and silently converted from/to `OsString`
     /// when needed: don't use this resolver with source code that import non UTF-8 paths.
-    #[derive(Clone)]
+    #[derive(Clone, Default)]
     pub struct SimpleResolver {
         files: Files<String>,
         file_cache: HashMap<String, FileId>,
@@ -1244,11 +1280,7 @@ pub mod resolvers {
 
     impl SimpleResolver {
         pub fn new() -> SimpleResolver {
-            SimpleResolver {
-                files: Files::new(),
-                file_cache: HashMap::new(),
-                term_cache: HashMap::new(),
-            }
+            SimpleResolver::default()
         }
 
         /// Add a mockup file to available imports.
@@ -1290,7 +1322,7 @@ pub mod resolvers {
                     file_id,
                 ))
             } else {
-                Ok((ResolvedTerm::FromCache(), file_id))
+                Ok((ResolvedTerm::FromCache, file_id))
             }
         }
 
