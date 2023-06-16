@@ -1473,6 +1473,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nickel-lang-builder"
+version = "0.1.0"
+dependencies = [
+ "codespan",
+ "nickel-lang-core",
+ "nickel-lang-utils",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "nickel-lang-cli"
 version = "1.0.0"
 dependencies = [

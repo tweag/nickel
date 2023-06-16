@@ -1,12 +1,13 @@
 [workspace]
 members = [
-    "core",
+    "builder",
     "cli",
-    "lsp/nls",
+    "core",
     "lsp/lsp-harness",
+    "lsp/nls",
+    "pyckel",
     "utils",
     "wasm-repl",
-    "pyckel",
 ]
 
 [workspace.package]

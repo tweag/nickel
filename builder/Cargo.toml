@@ -1,0 +1,21 @@
+[package]
+name = "nickel-lang-builder"
+description = "A builder interface for facilitating Nickel code generation"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+bench = false
+
+[dependencies]
+nickel-lang-core.workspace = true
+codespan.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+nickel-lang-utils.workspace = true
