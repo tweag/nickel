@@ -90,6 +90,8 @@ the `nickel-lang-lib` crate documentation).
    - Again with flake-enabled Nix, you can install Nickel in your profile with
      `nix profile add github:tweag/nickel`. The `nickel` command is then in your
      `$PATH` and is available anywhere.
+   - If you're running macOS you can use Homebrew to install the Nickel binary
+     with `brew install nickel`.
    - Without Nix, you can use `cargo run` after [building](#build), passing
      arguments with an extra `--` as in `cargo run --bin nickel -- -f program.ncl`.
 
