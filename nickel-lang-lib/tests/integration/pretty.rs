@@ -1,24 +1,21 @@
 use nickel_lang_lib::pretty::*;
 use nickel_lang_lib::term::{RichTerm, StrChunk, Term};
-use nickel_lang_utilities::{
-    project_root::project_root,
-    test_program::parse,
-};
+use nickel_lang_utilities::{project_root::project_root, test_program::parse};
 
 use pretty::BoxAllocator;
-use test_generator::test_resources;
 use std::io::{Cursor, Read};
+use test_generator::test_resources;
 
 // Exclude list for tests that aren't yet handled correctly by the pretty printer. The pretty
 // printer should ideally be fixed to make them pass, but since we automatically try the pretty
 // printer on each and every passing test, we need an escape hatch to make the CI pass in the
 // meantime (also, the pretty printer isn't a critical part of the interpreter).
-const EXCLUDE_LIST : &[&str] = &[
+const EXCLUDE_LIST: &[&str] = &[
     "pass/merging/multiple_overrides.ncl",
     "pass/merging/priorities.ncl",
     "pass/contracts/contracts.ncl",
     "pass/merging/metavalues.ncl",
-    "pass/contracts/types_dont_propagate.ncl"
+    "pass/contracts/types_dont_propagate.ncl",
 ];
 
 #[track_caller]
