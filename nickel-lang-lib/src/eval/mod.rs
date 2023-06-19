@@ -699,7 +699,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
                 Term::Annotated(annot, inner) => {
-                    let contracts = annot.pending_contracts()?;
+                    let contracts = annot.all_contracts()?;
                     let pos = inner.pos;
                     let inner_with_ctr =
                         RuntimeContract::apply_all(inner.clone(), contracts.into_iter(), pos);
