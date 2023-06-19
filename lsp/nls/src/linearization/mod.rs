@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_lib::{
-    cache::ImportResolver,
+    cache::{ImportResolver, InputFormat},
     identifier::Ident,
     position::TermPos,
     term::{
@@ -460,14 +460,31 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let Some(linearization) = lin.lin_cache.get(file) else {
                     return
                 };
-                // This is safe because the import file is resolved, before we linearize
-                // the containing file, therefore the cache MUST have the term stored.
+
+                // If the import is an external format (such as JSON or YAML), no position will be
+                // set. We could in fact set at least the position of the root term, but since this
+                // isn't the case currently, an unwrap() below would fail. For now, we simply bail
+                // out. This just means we can't "go to definition" on an external import for the
+                // time being.
+                if lin
+                    .cache
+                    .input_format(file)
+                    .map(|fmt| !matches!(fmt, InputFormat::Nickel))
+                    .unwrap_or(false)
+                {
+                    return;
+                }
+
+                // This is safe because the import file is resolved before we linearize the
+                // containing file, therefore the cache MUST have the term stored.
                 let term = lin.cache.get(*file).unwrap();
                 let position = final_term_pos(&term);
 
-                // This unwrap fails only when position is a `TermPos::None`, which only happens
-                // if the `RichTerm`, has been transformed or evaluated. None of these happen before
-                // linearization, so this is safe.
+                // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only
+                // happens if the `RichTerm` has been transformed or evaluated. None of these
+                // happen before linearization. At this point, we also ensured that we are only
+                // considering a Nickel source (and not a term deserialized from e.g. JSON), and
+                // terms parsed from Nickel must have a position set. So
                 let start = position.unwrap().start;
                 let locator = (*file, start);
 

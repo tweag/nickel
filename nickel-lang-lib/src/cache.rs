@@ -110,6 +110,10 @@ impl Envs {
 pub struct CachedTerm {
     pub term: RichTerm,
     pub state: EntryState,
+    /// Remembers the format of the original input. Some treatments might not apply to value
+    /// serialized from an external format (JSON, YAML, etc.) such as typechecking or some of the
+    /// LSP code analysis.
+    pub input_format: InputFormat,
     /// Any non fatal parse errors.
     pub parse_errs: ParseErrors,
 }
@@ -158,6 +162,8 @@ pub enum EntryState {
     /// The entry and its transitive imports have been transformed.
     Transformed,
 }
+
+pub enum EntryOrigin {}
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
 /// performed actual work, or have done nothing if the corresponding entry was already at a later
@@ -367,6 +373,7 @@ impl Cache {
                 file_id,
                 CachedTerm {
                     term,
+                    input_format: InputFormat::Nickel,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -378,7 +385,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. This function is error
-    /// tolerant if self.error_tolerant = true.
+    /// tolerant if `self.error_tolerant` is `true`.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
         let result = self.parse_lax(file_id);
 
@@ -394,7 +401,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is error tolerant.
+    /// This function is always error tolerant, independently from `self.error_tolerant`.
     fn parse_multi_lax(
         &mut self,
         file_id: FileId,
@@ -408,6 +415,7 @@ impl Cache {
                 file_id,
                 CachedTerm {
                     term,
+                    input_format: format,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -515,16 +523,15 @@ impl Cache {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
-                    let CachedTerm {
-                        term, parse_errs, ..
-                    } = self.terms.remove(&file_id).unwrap();
-                    let term = transform::transform(term, self.wildcards.get(&file_id))?;
+                    let cached_term = self.terms.remove(&file_id).unwrap();
+                    let term =
+                        transform::transform(cached_term.term, self.wildcards.get(&file_id))?;
                     self.terms.insert(
                         file_id,
                         CachedTerm {
                             term,
                             state: EntryState::Transforming,
-                            parse_errs,
+                            ..cached_term
                         },
                     );
                 }
@@ -566,6 +573,7 @@ impl Cache {
             Some(_) => {
                 let CachedTerm {
                     mut term,
+                    input_format,
                     state,
                     parse_errs,
                 } = self.terms.remove(&file_id).unwrap();
@@ -629,6 +637,7 @@ impl Cache {
                         file_id,
                         CachedTerm {
                             term,
+                            input_format,
                             state: EntryState::Transforming,
                             parse_errs,
                         },
@@ -920,6 +929,15 @@ impl Cache {
     pub fn get_all_stdlib_modules_file_id(&self) -> Option<Vec<FileId>> {
         let ids = self.stdlib_ids.as_ref()?;
         Some(ids.values().copied().collect())
+    }
+
+    /// Return the input format of the source corresponding to a given `FileId`. Return `None` if
+    /// the entry is not in the term cache, meaning that the content of the source has been loaded
+    /// but has not been parsed yet.
+    pub fn input_format(&self, file: &FileId) -> Option<InputFormat> {
+        self.terms
+            .get(file)
+            .map(|cached_term| cached_term.input_format)
     }
 
     /// Load and parse the standard library in the cache.
