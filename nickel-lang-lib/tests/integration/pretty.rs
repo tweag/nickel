@@ -1,10 +1,25 @@
 use nickel_lang_lib::pretty::*;
 use nickel_lang_lib::term::{RichTerm, StrChunk, Term};
-use nickel_lang_utilities::test_program::parse;
-use pretty::BoxAllocator;
+use nickel_lang_utilities::{
+    project_root::project_root,
+    test_program::parse,
+};
 
+use pretty::BoxAllocator;
+use test_generator::test_resources;
 use std::io::{Cursor, Read};
-use std::path::PathBuf;
+
+// Exclude list for tests that aren't yet handled correctly by the pretty printer. The pretty
+// printer should ideally be fixed to make them pass, but since we automatically try the pretty
+// printer on each and every passing test, we need an escape hatch to make the CI pass in the
+// meantime (also, the pretty printer isn't a critical part of the interpreter).
+const EXCLUDE_LIST : &[&str] = &[
+    "pass/merging/multiple_overrides.ncl",
+    "pass/merging/priorities.ncl",
+    "pass/contracts/contracts.ncl",
+    "pass/merging/metavalues.ncl",
+    "pass/contracts/types_dont_propagate.ncl"
+];
 
 #[track_caller]
 fn diff(s1: &str, s2: &str) {
@@ -22,24 +37,17 @@ fn diff(s1: &str, s2: &str) {
     assert!(nb_diff == 0);
 }
 
-fn pretty(rt: &RichTerm) -> String {
-    let allocator = BoxAllocator;
-    let mut ret = Vec::new();
-    let mut rt_pretty = Cursor::new(&mut ret);
+#[test_resources("nickel-lang-lib/tests/integration/pass/**/*.ncl")]
+fn check_idempotent(path: &str) {
+    if EXCLUDE_LIST.iter().any(|suffix| path.ends_with(suffix)) {
+        return;
+    }
 
-    let doc: DocBuilder<_, ()> = rt.clone().pretty(&allocator);
-    doc.render(80, &mut rt_pretty).unwrap();
-    String::from_utf8_lossy(&ret).into_owned()
-}
-
-#[track_caller]
-fn check_file(file: &str) {
     let mut buffer = String::new();
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push(format!("tests/integration/pass/{file}"));
-    std::fs::File::open(&path)
-        .and_then(|mut file| file.read_to_string(&mut buffer))
-        .unwrap();
+    let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
+
+    file.read_to_string(&mut buffer)
+        .expect("Fail to read content of test file");
 
     let rt = parse(&buffer).unwrap();
     let pretty_rt = pretty(&rt);
@@ -48,106 +56,14 @@ fn check_file(file: &str) {
     diff(&pretty_rt, &double_pretty);
 }
 
-#[test]
-fn basics() {
-    check_file("basics.ncl");
-}
+fn pretty(rt: &RichTerm) -> String {
+    let allocator = BoxAllocator;
+    let mut ret = Vec::new();
+    let mut rt_pretty = Cursor::new(&mut ret);
 
-#[test]
-fn builtins() {
-    check_file("builtins.ncl");
-}
-
-#[test]
-fn complete() {
-    check_file("complete.ncl");
-}
-
-#[test]
-fn eq() {
-    check_file("eq.ncl")
-}
-
-#[test]
-fn functions() {
-    check_file("functions.ncl");
-}
-
-#[test]
-fn arrays() {
-    check_file("arrays.ncl");
-}
-// TODO: Maybe fix the issue with transformation of `let A = Number` form
-// in `let A = $num` which is not parsable.
-//#[test]
-//fn metavalues() {
-//    check_file("metavalues.ncl");
-//}
-//
-//#[test]
-//fn contracts() {
-//    check_file("contracts.ncl");
-//}
-
-#[test]
-fn records() {
-    check_file("records.ncl");
-}
-
-#[test]
-fn record_defs() {
-    check_file("record-defs.ncl");
-}
-
-#[test]
-fn string_interpolation() {
-    check_file("string_interpolation.ncl");
-}
-
-#[test]
-fn stdlib_string() {
-    for f in [
-        "contains_find_replace",
-        "contracts",
-        "conversions",
-        "primitives",
-        "split_join",
-        "trim",
-        "uppercase_lowercase",
-    ] {
-        check_file(format!("stdlib_string_{}.ncl", f).as_str())
-    }
-}
-
-#[test]
-fn typechecking() {
-    check_file("typechecking.ncl");
-}
-
-#[test]
-fn types() {
-    check_file("types.ncl");
-}
-
-#[test]
-fn serialize() {
-    check_file("serialize.ncl");
-    check_file("serialize-package.ncl");
-}
-
-#[test]
-fn annot_parsing() {
-    check_file("annotations.ncl");
-}
-
-#[test]
-fn importing() {
-    check_file("import.ncl");
-}
-
-#[test]
-fn overriding() {
-    check_file("overriding.ncl");
+    let doc: DocBuilder<_, ()> = rt.clone().pretty(&allocator);
+    doc.render(80, &mut rt_pretty).unwrap();
+    String::from_utf8_lossy(&ret).into_owned()
 }
 
 #[test]
