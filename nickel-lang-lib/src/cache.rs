@@ -455,6 +455,13 @@ impl Cache {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<(RichTerm, ParseErrors), ParseError> {
+        let attach_pos = |t: RichTerm| -> RichTerm {
+            let pos: TermPos =
+                crate::position::RawSpan::from_codespan(file_id, self.files.source_span(file_id))
+                    .into();
+            t.with_pos(pos)
+        };
+
         let buf = self.files.source(file_id);
 
         match format {
@@ -466,13 +473,13 @@ impl Cache {
                 Ok((t, parse_errs))
             }
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_serde_yaml(err, file_id))),
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
         }
     }
