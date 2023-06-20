@@ -2228,7 +2228,6 @@ pub fn unify(
                     body: body2,
                 },
             ) if var_kind1 == var_kind2 => {
-                // XXX: ^^ do we want to compare std::mem::discriminant() or also check equality of `excluded`s above?
                 // Very stupid (slow) implementation
                 let (substd1, substd2) = match var_kind1 {
                     VarKind::Type => {

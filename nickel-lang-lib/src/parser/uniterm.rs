@@ -551,38 +551,34 @@ impl VarKindCell {
     /// type, we only need to combine `excluded` record row variables. If it has been set to a
     /// different `VarKind`, we return `Err(_)`.
     pub(super) fn try_set(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
-        match &mut *self.0.borrow_mut() {
-            s @ None => {
+        match (&mut *self.0.borrow_mut(), var_kind) {
+            (s @ None, var_kind) => {
                 *s = Some(var_kind);
                 Ok(())
             }
-
-            Some(data) if *data == var_kind => Ok(()),
-
-            Some(data) => {
-                // TODO: make this an if let guard when they're stabilized
-                if let (
-                    VarKind::RecordRows {
-                        excluded: ref mut ex1,
-                    },
-                    VarKind::RecordRows { excluded: ex2 },
-                ) = (data, var_kind)
-                {
-                    ex1.extend(ex2);
-                    Ok(())
-                } else {
-                    Err(VarKindMismatch)
-                }
+            (Some(data), var_kind) if data == &var_kind => Ok(()),
+            (
+                Some(VarKind::RecordRows {
+                    excluded: ref mut ex1,
+                }),
+                VarKind::RecordRows { excluded: ex2 },
+            ) => {
+                ex1.extend(ex2);
+                Ok(())
             }
+            _ => Err(VarKindMismatch),
         }
     }
 
-    /// Return the current var_kind. Default to `VarKind::Type` if it's unused as in
-    /// `forall a. Number`
-    // TODO: optimization: when var_kind is called, there are actually no other references to this
-    // VarKind. We should be able to architect this so there's no clone here.
-    pub fn var_kind(&self) -> VarKind {
-        self.0.borrow().clone().unwrap_or(VarKind::Type)
+    /// Return a clone of the current var_kind.
+    #[allow(dead_code)]
+    pub fn var_kind(&self) -> Option<VarKind> {
+        self.0.borrow().clone()
+    }
+
+    /// Return the inner var_kind, leaving `Nothing` behind in the `VarKindCell`.
+    pub fn take_var_kind(&self) -> Option<VarKind> {
+        self.0.borrow_mut().take()
     }
 }
 
@@ -702,10 +698,15 @@ impl FixTypeVars for Types {
                 // fix_type_vars will fill this cell with the correct kind, which we get afterwards
                 // to set the right value for `var_kind`.
                 bound_vars.insert(*var, VarKindCell::new());
+// let x : forall a. { _foo: forall a. a, bar: { ; a } }
                 (*body).fix_type_vars_env(bound_vars.clone(), span)?;
-                // unwrap(): we just inserted a value for `var` above, and environment can never
+                // unwrap(): We just inserted a value for `var` above, and environment can never
                 // delete values.
-                *var_kind = bound_vars.get(var).unwrap().var_kind();
+                // take_var_kind(): Once we leave the body of this forall, we no longer need
+                // access to this VarKindCell in bound_vars. We can avoid a clone by taking
+                // the var_kind out. We could also take the whole key value pair out of the
+                // `Environment`, but ownership there is trickier.
+                *var_kind = bound_vars.get(var).unwrap().take_var_kind().unwrap_or_default();
 
                 Ok(())
             }
@@ -725,12 +726,12 @@ impl FixTypeVars for RecordRows {
         span: RawSpan,
     ) -> Result<(), ParseError> {
         fn helper(
-            rr: &mut RecordRows,
+            rrows: &mut RecordRows,
             bound_vars: BoundVarEnv,
             span: RawSpan,
             mut maybe_excluded: HashSet<Ident>,
         ) -> Result<(), ParseError> {
-            match rr.0 {
+            match rrows.0 {
                 RecordRowsF::Empty => Ok(()),
                 RecordRowsF::TailDyn => Ok(()),
                 // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
