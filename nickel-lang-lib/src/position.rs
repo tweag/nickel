@@ -37,6 +37,15 @@ impl RawSpan {
             None
         }
     }
+
+    /// Create a `RawSpan` from a span as represented by the codespan library.
+    pub fn from_codespan(src_id: FileId, span: codespan::Span) -> Self {
+        RawSpan {
+            src_id,
+            start: span.start(),
+            end: span.end(),
+        }
+    }
 }
 
 /// The position span of a term.

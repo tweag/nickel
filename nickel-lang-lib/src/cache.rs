@@ -67,7 +67,7 @@ pub struct Cache {
     /// Map containing for each FileIDs a list of files they import (directly).
     imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
-    terms: HashMap<FileId, CachedTerm>,
+    terms: HashMap<FileId, TermEntry>,
     /// The list of ids corresponding to the stdlib modules
     stdlib_ids: Option<HashMap<StdlibModule, FileId>>,
     /// The inferred type of wildcards for each `FileId`.
@@ -106,10 +106,15 @@ impl Envs {
     }
 }
 
+/// An entry in the term cache. Stores the parsed term together with some metadata and state.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CachedTerm {
+pub struct TermEntry {
     pub term: RichTerm,
     pub state: EntryState,
+    /// Remembers the format of the original input. Some treatments might not apply to value
+    /// serialized from an external format (JSON, YAML, etc.) such as typechecking or some of the
+    /// LSP code analysis.
+    pub input_format: InputFormat,
     /// Any non fatal parse errors.
     pub parse_errs: ParseErrors,
 }
@@ -158,6 +163,8 @@ pub enum EntryState {
     /// The entry and its transitive imports have been transformed.
     Transformed,
 }
+
+pub enum EntryOrigin {}
 
 /// The result of a cache operation, such as parsing, typechecking, etc. which can either have
 /// performed actual work, or have done nothing if the corresponding entry was already at a later
@@ -359,14 +366,15 @@ impl Cache {
     ///
     /// The `Err` part of the result corresponds to non-recoverable errors.
     fn parse_lax(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+        if let Some(TermEntry { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
             let (term, parse_errs) = self.parse_nocache(file_id)?;
             self.terms.insert(
                 file_id,
-                CachedTerm {
+                TermEntry {
                     term,
+                    input_format: InputFormat::Nickel,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -378,7 +386,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. This function is error
-    /// tolerant if self.error_tolerant = true.
+    /// tolerant if `self.error_tolerant` is `true`.
     pub fn parse(&mut self, file_id: FileId) -> Result<CacheOp<ParseErrors>, ParseErrors> {
         let result = self.parse_lax(file_id);
 
@@ -394,20 +402,21 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is error tolerant.
+    /// This function is always error tolerant, independently from `self.error_tolerant`.
     fn parse_multi_lax(
         &mut self,
         file_id: FileId,
         format: InputFormat,
     ) -> Result<CacheOp<ParseErrors>, ParseError> {
-        if let Some(CachedTerm { parse_errs, .. }) = self.terms.get(&file_id) {
+        if let Some(TermEntry { parse_errs, .. }) = self.terms.get(&file_id) {
             Ok(CacheOp::Cached(parse_errs.clone()))
         } else {
             let (term, parse_errs) = self.parse_nocache_multi(file_id, format)?;
             self.terms.insert(
                 file_id,
-                CachedTerm {
+                TermEntry {
                     term,
+                    input_format: format,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -447,6 +456,13 @@ impl Cache {
         file_id: FileId,
         format: InputFormat,
     ) -> Result<(RichTerm, ParseErrors), ParseError> {
+        let attach_pos = |t: RichTerm| -> RichTerm {
+            let pos: TermPos =
+                crate::position::RawSpan::from_codespan(file_id, self.files.source_span(file_id))
+                    .into();
+            t.with_pos(pos)
+        };
+
         let buf = self.files.source(file_id);
 
         match format {
@@ -458,13 +474,13 @@ impl Cache {
                 Ok((t, parse_errs))
             }
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
             InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_serde_yaml(err, file_id))),
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
-                .map(|t| (t, ParseErrors::default()))
+                .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
         }
     }
@@ -478,10 +494,10 @@ impl Cache {
         initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, CacheError<TypecheckError>> {
         match self.terms.get(&file_id) {
-            Some(CachedTerm { state, .. }) if *state >= EntryState::Typechecked => {
+            Some(TermEntry { state, .. }) if *state >= EntryState::Typechecked => {
                 Ok(CacheOp::Cached(()))
             }
-            Some(CachedTerm { term, state, .. }) if *state >= EntryState::Parsed => {
+            Some(TermEntry { term, state, .. }) if *state >= EntryState::Parsed => {
                 if *state < EntryState::Typechecking {
                     let wildcards = type_check(term, initial_ctxt.clone(), self)?;
                     self.update_state(file_id, EntryState::Typechecking);
@@ -515,16 +531,15 @@ impl Cache {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(state) if state >= EntryState::Parsed => {
                 if state < EntryState::Transforming {
-                    let CachedTerm {
-                        term, parse_errs, ..
-                    } = self.terms.remove(&file_id).unwrap();
-                    let term = transform::transform(term, self.wildcards.get(&file_id))?;
+                    let cached_term = self.terms.remove(&file_id).unwrap();
+                    let term =
+                        transform::transform(cached_term.term, self.wildcards.get(&file_id))?;
                     self.terms.insert(
                         file_id,
-                        CachedTerm {
+                        TermEntry {
                             term,
                             state: EntryState::Transforming,
-                            parse_errs,
+                            ..cached_term
                         },
                     );
                 }
@@ -564,8 +579,9 @@ impl Cache {
         match self.entry_state(file_id) {
             Some(state) if state >= EntryState::Transformed => Ok(CacheOp::Cached(())),
             Some(_) => {
-                let CachedTerm {
+                let TermEntry {
                     mut term,
+                    input_format,
                     state,
                     parse_errs,
                 } = self.terms.remove(&file_id).unwrap();
@@ -627,8 +643,9 @@ impl Cache {
 
                     self.terms.insert(
                         file_id,
-                        CachedTerm {
+                        TermEntry {
                             term,
+                            input_format,
                             state: EntryState::Transforming,
                             parse_errs,
                         },
@@ -672,7 +689,7 @@ impl Cache {
             }
             Some(state) if state >= EntryState::Parsed => {
                 let (pending, errors) = if state < EntryState::ImportsResolving {
-                    let CachedTerm { term, .. } = self.terms.get(&file_id).unwrap();
+                    let TermEntry { term, .. } = self.terms.get(&file_id).unwrap();
                     let term = term.clone();
 
                     let import_resolution::tolerant::ResolveResult {
@@ -859,13 +876,13 @@ impl Cache {
 
     /// Get a mutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, CachedTerm> {
+    pub fn terms_mut(&mut self) -> &mut HashMap<FileId, TermEntry> {
         &mut self.terms
     }
 
     /// Get an immutable reference to the cached term roots
     /// (used by the language server to invalidate previously parsed entries)
-    pub fn terms(&self) -> &HashMap<FileId, CachedTerm> {
+    pub fn terms(&self) -> &HashMap<FileId, TermEntry> {
         &self.terms
     }
 
@@ -873,7 +890,7 @@ impl Cache {
     pub fn update_state(&mut self, file_id: FileId, new: EntryState) -> Option<EntryState> {
         self.terms
             .get_mut(&file_id)
-            .map(|CachedTerm { state, .. }| std::mem::replace(state, new))
+            .map(|TermEntry { state, .. }| std::mem::replace(state, new))
     }
 
     /// Retrieve the state of an entry. Return `None` if the entry is not in the term cache,
@@ -881,7 +898,7 @@ impl Cache {
     pub fn entry_state(&self, file_id: FileId) -> Option<EntryState> {
         self.terms
             .get(&file_id)
-            .map(|CachedTerm { state, .. }| state)
+            .map(|TermEntry { state, .. }| state)
             .copied()
     }
 
@@ -889,12 +906,22 @@ impl Cache {
     pub fn get_owned(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms
             .get(&file_id)
-            .map(|CachedTerm { term, .. }| term.clone())
+            .map(|TermEntry { term, .. }| term.clone())
     }
 
     /// Retrieve a reference to a cached term.
     pub fn get_ref(&self, file_id: FileId) -> Option<&RichTerm> {
-        self.terms.get(&file_id).map(|CachedTerm { term, .. }| term)
+        self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
+    }
+
+    /// Retrieve a cached term together with its input format. This is equivalent
+    /// `Some((self.get()?, self.input_format()?)`, but with only one hashmap access.
+    pub fn get_with_input_format(&self, file_id: &FileId) -> Option<(RichTerm, InputFormat)> {
+        self.terms.get(file_id).map(
+            |TermEntry {
+                 term, input_format, ..
+             }| (term.clone(), *input_format),
+        )
     }
 
     /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
@@ -920,6 +947,15 @@ impl Cache {
     pub fn get_all_stdlib_modules_file_id(&self) -> Option<Vec<FileId>> {
         let ids = self.stdlib_ids.as_ref()?;
         Some(ids.values().copied().collect())
+    }
+
+    /// Return the input format of the source corresponding to a given `FileId`. Return `None` if
+    /// the entry is not in the term cache, meaning that the content of the source has been loaded
+    /// but has not been parsed yet.
+    pub fn input_format(&self, file: &FileId) -> Option<InputFormat> {
+        self.terms
+            .get(file)
+            .map(|cached_term| cached_term.input_format)
     }
 
     /// Load and parse the standard library in the cache.
@@ -1119,7 +1155,7 @@ pub trait ImportResolver {
 
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
-
+    /// Return the (potentially normalized) file path corresponding to the ID of a resolved import.
     fn get_path(&self, file_id: FileId) -> &OsStr;
 }
 
@@ -1165,7 +1201,7 @@ impl ImportResolver for Cache {
     fn get(&self, file_id: FileId) -> Option<RichTerm> {
         self.terms
             .get(&file_id)
-            .map(|CachedTerm { term, state, .. }| {
+            .map(|TermEntry { term, state, .. }| {
                 debug_assert!(*state >= EntryState::ImportsResolved);
                 term.clone()
             })

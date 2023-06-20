@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_lib::{
-    cache::ImportResolver,
+    cache::InputFormat,
     identifier::Ident,
     position::TermPos,
     term::{
@@ -460,14 +460,26 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let Some(linearization) = lin.lin_cache.get(file) else {
                     return
                 };
-                // This is safe because the import file is resolved, before we linearize
-                // the containing file, therefore the cache MUST have the term stored.
-                let term = lin.cache.get(*file).unwrap();
+
+                // This is safe because the import file is resolved before we linearize the
+                // containing file, therefore the cache MUST have the term stored.
+                let (term, input_format) = lin.cache.get_with_input_format(file).unwrap();
+
+                // If the import is an external format (such as JSON or YAML), no position will be
+                // set (except the root position). It seems that it should work, but completion
+                // causes the LSP to crash with a stack overflow, probably because external imports
+                // break some invariant or expectation. For now, we simply bail out. This means we
+                // can't "go to definition" or get completion on an external import for the time
+                // being.
+                if !matches!(input_format, InputFormat::Nickel) {
+                    return;
+                }
+
                 let position = final_term_pos(&term);
 
-                // This unwrap fails only when position is a `TermPos::None`, which only happens
-                // if the `RichTerm`, has been transformed or evaluated. None of these happen before
-                // linearization, so this is safe.
+                // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only
+                // happens if the `RichTerm` has been transformed or evaluated. None of these
+                // happen before linearization.
                 let start = position.unwrap().start;
                 let locator = (*file, start);
 
