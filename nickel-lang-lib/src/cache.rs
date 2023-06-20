@@ -914,6 +914,16 @@ impl Cache {
         self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
     }
 
+    /// Retrieve a cached term together with its input format. This is equivalent
+    /// `Some((self.get()?, self.input_format()?)`, but with only one hashmap access.
+    pub fn get_with_input_format(&self, file_id: &FileId) -> Option<(RichTerm, InputFormat)> {
+        self.terms.get(file_id).map(
+            |TermEntry {
+                 term, input_format, ..
+             }| (term.clone(), *input_format),
+        )
+    }
+
     /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {
         let Some(table) = &self.stdlib_ids else {
