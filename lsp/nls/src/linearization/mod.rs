@@ -109,8 +109,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         pos: TermPos,
         ty: UnifType,
     ) {
-        debug!("adding term: {:?} @ {:?}", term, pos);
         let mut id_gen = lin.id_gen();
+        debug!("adding term: {:?} @ {:?} ({:?})", term, pos, id_gen);
 
         // Register record field if appropriate
         // `record` is the id [LinearizatonItem] of the enclosing record
@@ -471,9 +471,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // break some invariant or expectation. For now, we simply bail out. This means we
                 // can't "go to definition" or get completion on an external import for the time
                 // being.
-                if !matches!(input_format, InputFormat::Nickel) {
-                    return;
-                }
+                // if !matches!(input_format, InputFormat::Nickel) {
+                //     return;
+                // }
 
                 let position = final_term_pos(&term);
 
@@ -661,6 +661,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     }
 }
 
+#[derive(Debug)]
 struct IdGen(usize);
 
 impl IdGen {

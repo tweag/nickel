@@ -128,6 +128,7 @@ fn find_fields_from_term_kind(
         lin_cache,
     }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_term_kind entered");
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
@@ -202,6 +203,7 @@ fn find_fields_from_contract(
         lin_cache,
     }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_contract entered");
     let Some(item) = linearization.get_item(id, lin_cache) else {
         return Vec::new()
     };
@@ -217,6 +219,8 @@ fn find_fields_from_contract(
                 ..
             }
             | TermKind::Usage(UsageState::Resolved(new_id)) => {
+                debug!("Jump to resolved usage {:?} -> {:?}", id, new_id);
+                debug_assert!(new_id != id);
                 find_fields_from_contract(new_id, path, info)
             }
             _ => Vec::new(),
@@ -231,6 +235,7 @@ fn find_fields_from_contracts(
     path: &[Ident],
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_contracts entered");
     annot
         .iter()
         .flat_map(|contract| {
@@ -246,6 +251,7 @@ fn find_fields_from_type(
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_type entered");
     match &ty.types {
         TypeF::Record(row) => find_fields_from_rrows(row, path, info),
         TypeF::Dict { type_fields, .. } => match path.pop() {
@@ -263,6 +269,7 @@ fn find_fields_from_rrows(
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_rrows entered");
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
             RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.types.clone()),
@@ -301,6 +308,7 @@ fn find_fields_from_field(
     path: &mut Vec<Ident>,
     info: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_field entered");
     find_fields_from_term_with_annot(&field.metadata.annotation, field.value.as_ref(), path, info)
 }
 
@@ -311,6 +319,7 @@ fn find_fields_from_term_with_annot(
     path: &mut Vec<Ident>,
     info: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_term_with_annot entered");
     let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
 
     if let Some(value) = value {
@@ -326,6 +335,7 @@ fn find_fields_from_term(
     path: &mut Vec<Ident>,
     info @ ComplCtx { lin_cache, .. }: &'_ ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
+    debug!("find_fields_from_term entered");
     match term.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => match path.pop() {
             None => data
@@ -445,6 +455,8 @@ fn collect_record_info(
     path: &mut Vec<Ident>,
     lin_cache: &HashMap<FileId, Completed>,
 ) -> Vec<IdentWithType> {
+    debug!("collect_record_info entered");
+
     let info = ComplCtx {
         linearization,
         lin_cache,
@@ -563,11 +575,15 @@ fn get_completion_identifiers(
         info: &'_ ComplCtx<'_>,
         path: Vec<Ident>,
     ) -> Vec<IdentWithType> {
+        debug!("context_complete entered");
+
         if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
             (&item.kind, item.id)
         {
             let mut result = Vec::new();
+            debug!("before accumulate_record_meta_data");
             accumulate_record_meta_data(record, info, path, &mut result);
+            debug!("after accumulate_record_meta_data");
 
             result
                 .into_iter()
@@ -589,13 +605,17 @@ fn get_completion_identifiers(
         lin_cache: &server.lin_cache,
     };
 
+    debug!("trigger: `{:?}`", trigger);
     let in_scope: Vec<_> = match trigger {
         Some(server::DOT_COMPL_TRIGGER) => {
+            debug!("DOT_COMPL_TRIGGER case");
             // Record completion
             let Some(path) = get_identifier_path(source) else {
                 return Ok(Vec::new())
             };
             let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+
+            debug!("identifier path got");
 
             let context_path = path.clone();
             let contextual_result = context_complete(item, &info, context_path);
@@ -609,7 +629,9 @@ fn get_completion_identifiers(
                 .collect()
         }
         Some(..) | None => {
+            debug!("OTHER case");
             if let Some(path) = get_identifiers_before_field(source) {
+                debug!("get_identifiers_before_field succeeds. Path: {}", path.join("."));
                 // This is also record completion, but it is in the form
                 // <record path>.<partially-typed-field>
                 // we also want to give completion based on <record path> in this case.
@@ -621,6 +643,7 @@ fn get_completion_identifiers(
                 // What we *really* want as the item is the `config` field name.
                 let context_path = path.clone();
                 let contextual_result = context_complete(item, &info, context_path);
+                debug!("context_complete exited");
 
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
@@ -630,6 +653,7 @@ fn get_completion_identifiers(
                     .chain(contextual_result)
                     .collect()
             } else {
+                debug!("no identifier before field");
                 let contextual_result = context_complete(item, &info, Vec::new());
                 // Global name completion
                 let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
@@ -699,8 +723,12 @@ pub fn handle_completion(
                 .as_ref()
                 .and_then(|context| context.trigger_character.as_deref());
 
+            debug!("before get_completion_identifiers");
+
             let in_scope =
                 get_completion_identifiers(&text[..start], trigger, linearization, item, server)?;
+
+            debug!("after get_completion_identifiers");
 
             Some(in_scope)
         }
