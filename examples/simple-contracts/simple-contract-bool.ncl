@@ -19,4 +19,3 @@ let AlwaysFalse = EqualsTo false in
 # by `x`) to see contract errors appear.
 let not | AlwaysTrue -> AlwaysFalse = fun x => !x in
 not true
-
