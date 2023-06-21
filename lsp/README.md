@@ -157,7 +157,8 @@ edit `coc-settings.json`) and add:
         ".git"
       ],
       "filetypes": [
-        "ncl"
+        "ncl",
+        "nickel"
       ]
     }
   }
