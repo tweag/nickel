@@ -177,7 +177,8 @@
 
   # Recursive priorities operators
 
-  "$rec_force" = fun value => %rec_force% (%force% value),"$rec_default" = fun value => %rec_default% (%force% value),
+  "$rec_force" = fun value => %rec_force% (%force% value),
+  "$rec_default" = fun value => %rec_default% (%force% value),
 
   # Provide access to std.contract.Equal within the initial environement. Merging
   # makes use of `std.contract.Equal`, but it can't blindly substitute such an

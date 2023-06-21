@@ -1282,10 +1282,11 @@
                 if min_size >= %length% value then
                   let index_as_str = %to_str% min_size in
                   let max_as_str = %to_str% (%length% value - 1) in
-                  let note = if %length% value == 0 then
-                    "Can't index into an empty array"
-                  else
-                    "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
+                  let note =
+                    if %length% value == 0 then
+                      "Can't index into an empty array"
+                    else
+                      "Expected an array index between 0 and %{max_as_str} (included), got %{index_as_str}"
                   in
                   label
                   |> attach_message
@@ -2935,4 +2936,3 @@
     "%
     = fun msg => null | FailWith msg,
 }
-
