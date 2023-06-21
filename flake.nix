@@ -162,6 +162,13 @@
             ];
           };
 
+          # we could use pre-commit-hook's built-in topiary, be for now, Topiary
+          # is evolving quickly and we prefer to have the latest version.
+          # This might change once the Nickel support is stabilized.
+          topiary-latest = topiary.lib.${system}.pre-commit-hook // {
+            enable = true;
+            files = "\\.ncl$";
+          };
         };
       };
 
