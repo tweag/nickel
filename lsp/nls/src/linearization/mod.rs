@@ -3,7 +3,6 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_lib::{
-    cache::InputFormat,
     identifier::Ident,
     position::TermPos,
     term::{
@@ -463,18 +462,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                 // This is safe because the import file is resolved before we linearize the
                 // containing file, therefore the cache MUST have the term stored.
-                let (term, input_format) = lin.cache.get_with_input_format(file).unwrap();
-
-                // If the import is an external format (such as JSON or YAML), no position will be
-                // set (except the root position). It seems that it should work, but completion
-                // causes the LSP to crash with a stack overflow, probably because external imports
-                // break some invariant or expectation. For now, we simply bail out. This means we
-                // can't "go to definition" or get completion on an external import for the time
-                // being.
-                if !matches!(input_format, InputFormat::Nickel) {
-                    return;
-                }
-
+                let term = lin.cache.get_owned(*file).unwrap();
                 let position = final_term_pos(&term);
 
                 // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only

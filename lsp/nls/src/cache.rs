@@ -98,8 +98,8 @@ impl CacheExt for Cache {
             .into_iter()
             .map(|id| {
                 let message = "This import could not be resolved because its content has failed to typecheck correctly.";
-                // The unwrap is safe here because (1) we have linearized `file_id` and it must be 
-                // in the `lin_cache` and (2) every resolved import has a corresponding position in 
+                // The unwrap is safe here because (1) we have linearized `file_id` and it must be
+                // in the `lin_cache` and (2) every resolved import has a corresponding position in
                 // the linearization of the file that imports it.
                 let pos = lin_cache.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
                 let name: String = self.name(id).to_str().unwrap().into();

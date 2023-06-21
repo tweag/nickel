@@ -111,10 +111,6 @@ impl Envs {
 pub struct TermEntry {
     pub term: RichTerm,
     pub state: EntryState,
-    /// Remembers the format of the original input. Some treatments might not apply to value
-    /// serialized from an external format (JSON, YAML, etc.) such as typechecking or some of the
-    /// LSP code analysis.
-    pub input_format: InputFormat,
     /// Any non fatal parse errors.
     pub parse_errs: ParseErrors,
 }
@@ -374,7 +370,6 @@ impl Cache {
                 file_id,
                 TermEntry {
                     term,
-                    input_format: InputFormat::Nickel,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -416,7 +411,6 @@ impl Cache {
                 file_id,
                 TermEntry {
                     term,
-                    input_format: format,
                     state: EntryState::Parsed,
                     parse_errs: parse_errs.clone(),
                 },
@@ -427,7 +421,7 @@ impl Cache {
 
     /// Parse a source and populate the corresponding entry in the cache, or do
     /// nothing if the entry has already been parsed. Support multiple formats.
-    /// This function is error tolerant if self.error_tolerant = true.
+    /// This function is error tolerant if `self.error_tolerant` is `true`.
     pub fn parse_multi(
         &mut self,
         file_id: FileId,
@@ -581,7 +575,6 @@ impl Cache {
             Some(_) => {
                 let TermEntry {
                     mut term,
-                    input_format,
                     state,
                     parse_errs,
                 } = self.terms.remove(&file_id).unwrap();
@@ -645,7 +638,6 @@ impl Cache {
                         file_id,
                         TermEntry {
                             term,
-                            input_format,
                             state: EntryState::Transforming,
                             parse_errs,
                         },
@@ -914,16 +906,6 @@ impl Cache {
         self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
     }
 
-    /// Retrieve a cached term together with its input format. This is equivalent
-    /// `Some((self.get()?, self.input_format()?)`, but with only one hashmap access.
-    pub fn get_with_input_format(&self, file_id: &FileId) -> Option<(RichTerm, InputFormat)> {
-        self.terms.get(file_id).map(
-            |TermEntry {
-                 term, input_format, ..
-             }| (term.clone(), *input_format),
-        )
-    }
-
     /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {
         let Some(table) = &self.stdlib_ids else {
@@ -947,15 +929,6 @@ impl Cache {
     pub fn get_all_stdlib_modules_file_id(&self) -> Option<Vec<FileId>> {
         let ids = self.stdlib_ids.as_ref()?;
         Some(ids.values().copied().collect())
-    }
-
-    /// Return the input format of the source corresponding to a given `FileId`. Return `None` if
-    /// the entry is not in the term cache, meaning that the content of the source has been loaded
-    /// but has not been parsed yet.
-    pub fn input_format(&self, file: &FileId) -> Option<InputFormat> {
-        self.terms
-            .get(file)
-            .map(|cached_term| cached_term.input_format)
     }
 
     /// Load and parse the standard library in the cache.
