@@ -20,7 +20,7 @@ use nickel_lang_lib::{
 use self::{
     building::Building,
     completed::Completed,
-    interface::{ResolutionState, TermKind, UsageState, ValueState},
+    interface::{ResolutionState, Resolved, TermKind, UsageState, ValueState},
 };
 
 pub mod building;
@@ -28,6 +28,41 @@ pub mod completed;
 pub mod interface;
 
 pub type Environment = nickel_lang_lib::environment::Environment<Ident, ItemId>;
+
+/// A registry mapping file ids to their corresponding linearization. The registry stores the
+/// linearization of every file that has been imported and analyzed, including the main open
+/// document.
+///
+/// `LinRegistry` wraps some methods of [completed::Completed] by first selecting the linearization
+/// with a matching file id and then calling to the corresponding method on it.
+#[derive(Clone, Default, Debug)]
+pub struct LinRegistry {
+    pub map: HashMap<FileId, Completed>,
+}
+
+impl LinRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Look for the linearization corresponding to an item's id, and return the corresponding item
+    /// from the linearization, if any.
+    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
+        let lin = self.map.get(&id.file_id).unwrap();
+        lin.get_item(id)
+    }
+
+    /// Retrieve the type and the metadata of a linearization item, by finding the matching
+    /// linearization from the registry and calling the corresponding method on
+    /// [completed::Completed].
+    pub fn get_type_and_metadata(
+        &self,
+        item: &LinearizationItem<Resolved>,
+    ) -> (Resolved, Vec<String>) {
+        let lin = self.map.get(&item.id.file_id).unwrap();
+        lin.get_type_and_metadata(item, self)
+    }
+}
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
 pub struct ItemId {
@@ -440,7 +475,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                let Some(linearization) = lin.lin_cache.get(file) else {
+                let Some(linearization) = lin.lin_registry.map.get(file) else {
                     return
                 };
 

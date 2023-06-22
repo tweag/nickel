@@ -53,7 +53,9 @@ pub fn handle_to_definition(
 
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
-            let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
+            let definition = linearization
+                .get_item_with_reg(usage_id, &server.lin_registry)
+                .unwrap();
             if server.cache.is_stdlib_module(definition.id.file_id) {
                 // The standard library files are embedded in the executable,
                 // so we can't possibly go to their definition on disk.
@@ -128,7 +130,7 @@ pub fn handle_to_usages(
                 .iter()
                 .filter_map(|reference_id| {
                     linearization
-                        .get_item(*reference_id, &server.lin_cache)
+                        .get_item_with_reg(*reference_id, &server.lin_registry)
                         .unwrap()
                         .pos
                         .as_opt_ref()

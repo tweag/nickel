@@ -14,9 +14,8 @@ use nickel_lang_lib::{
 use crate::linearization::interface::{TermKind, UsageState};
 
 use super::{
-    completed::Completed,
     interface::{Unresolved, ValueState},
-    Environment, IdGen, ItemId, LinearizationItem,
+    Environment, IdGen, ItemId, LinRegistry, LinearizationItem,
 };
 
 /// A concrete [LinearizationState]
@@ -25,7 +24,7 @@ use super::{
 pub struct Building<'a> {
     pub linearization: Vec<LinearizationItem<Unresolved>>,
     pub import_locations: HashMap<FileId, TermPos>,
-    pub lin_cache: &'a mut HashMap<FileId, Completed>,
+    pub lin_registry: &'a mut LinRegistry,
     pub cache: &'a Cache,
 }
 
@@ -53,10 +52,7 @@ impl<'b> Building<'b> {
             Some((&item.id, &item.kind))
         } else {
             // This usage references an item in another file (that has already been linearized)
-            let item = self
-                .lin_cache
-                .get(&id.file_id)?
-                .get_item(id, self.lin_cache)?;
+            let item = self.lin_registry.get_item(id)?;
             Some((&item.id, &item.kind))
         }
     }
@@ -73,7 +69,11 @@ impl<'b> Building<'b> {
             Some(&mut item.kind)
         } else {
             // This usage references an item in another file (that has already been linearized)
-            let item = self.lin_cache.get_mut(&id.file_id)?.get_item_mut(id)?;
+            let item = self
+                .lin_registry
+                .map
+                .get_mut(&id.file_id)?
+                .get_item_mut(id)?;
             Some(&mut item.kind)
         }
     }

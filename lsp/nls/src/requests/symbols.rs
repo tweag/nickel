@@ -19,7 +19,7 @@ pub fn handle_document_symbols(
         .id_of(params.text_document.uri.to_file_path().unwrap())
         .unwrap();
 
-    if let Some(completed) = server.lin_cache.get(&file_id) {
+    if let Some(completed) = server.lin_registry.map.get(&file_id) {
         Trace::enrich(&id, completed);
         let symbols = completed
             .linearization

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 use codespan::FileId;
 use log::{debug, trace, warn};
@@ -26,7 +24,7 @@ use nickel_lang_lib::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
-    linearization::{completed::Completed, Environment, ItemId},
+    linearization::{completed::Completed, Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
@@ -37,7 +35,7 @@ pub const FORMATTING_COMMAND: [&str; 3] = ["topiary", "--language", "nickel"];
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
-    pub lin_cache: HashMap<FileId, Completed>,
+    pub lin_registry: LinRegistry,
     pub initial_ctxt: Context,
     pub initial_env: Environment,
 }
@@ -71,13 +69,13 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new(ErrorTolerance::Tolerant);
+        // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
         let initial_ctxt = cache.mk_type_ctxt().unwrap();
-        let lin_cache = HashMap::new();
         Server {
             connection,
             cache,
-            lin_cache,
+            lin_registry: LinRegistry::new(),
             initial_ctxt,
             initial_env: Environment::new(),
         }
@@ -146,7 +144,7 @@ impl Server {
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_env,
-                    &mut self.lin_cache,
+                    &mut self.lin_registry,
                 )
                 .unwrap();
         }
@@ -258,10 +256,13 @@ impl Server {
     }
 
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
-        self.lin_cache.get(file_id).ok_or_else(|| ResponseError {
-            data: None,
-            message: "File has not yet been parsed or cached.".to_owned(),
-            code: ErrorCode::ParseError as i32,
-        })
+        self.lin_registry
+            .map
+            .get(file_id)
+            .ok_or_else(|| ResponseError {
+                data: None,
+                message: "File has not yet been parsed or cached.".to_owned(),
+                code: ErrorCode::ParseError as i32,
+            })
     }
 }

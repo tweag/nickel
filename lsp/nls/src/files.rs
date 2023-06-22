@@ -77,7 +77,7 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
             file_id,
             &server.initial_ctxt,
             &server.initial_env,
-            &mut server.lin_cache,
+            &mut server.lin_registry,
         )
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error
