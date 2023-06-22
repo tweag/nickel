@@ -1354,7 +1354,7 @@
 
             let ArraySliceArray = fun end_index label value =>
               if %typeof% end_index == 'Number && %typeof% value == 'Array then
-                if end_index >= %length% value then
+                if end_index > %length% value then
                   let index_as_str = %to_str% end_index in
                   let size_as_str = %to_str% (%length% value) in
                   label
