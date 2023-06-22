@@ -6,7 +6,7 @@ use crate::{
     label::ty_path,
     position::TermPos,
     term::RichTerm,
-    types::{TypeF, VarKind},
+    types::{TypeF, VarKindDiscriminant},
 };
 
 /// Error during the unification of two row types.
@@ -25,9 +25,9 @@ pub enum RowUnifError {
     /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(Ident, Option<UnifType>),
     /// Tried to unify a type constant with another different type.
-    WithConst(VarKind, usize, UnifType),
+    WithConst(VarKindDiscriminant, usize, UnifType),
     /// Tried to unify two distinct type constants.
-    ConstMismatch(VarKind, usize, usize),
+    ConstMismatch(VarKindDiscriminant, usize, usize),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
 }
@@ -65,7 +65,7 @@ pub enum UnifError {
     /// There are two incompatible definitions for the same row.
     RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
     /// Tried to unify two distinct type constants.
-    ConstMismatch(VarKind, usize, usize),
+    ConstMismatch(VarKindDiscriminant, usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
     MissingRow(Ident, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
@@ -78,7 +78,7 @@ pub enum UnifError {
     /// constraints][super::RowConstr] of the variable.
     RowConflict(Ident, Option<UnifType>, UnifType, UnifType),
     /// Tried to unify a type constant with another different type.
-    WithConst(VarKind, usize, UnifType),
+    WithConst(VarKindDiscriminant, usize, UnifType),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IncomparableFlatTypes(RichTerm, RichTerm),
@@ -153,7 +153,7 @@ impl UnifError {
                 ),
                 pos_opt,
             ),
-            UnifError::WithConst(VarKind::Type, c, ty) => TypecheckError::TypeMismatch(
+            UnifError::WithConst(VarKindDiscriminant::Type, c, ty) => TypecheckError::TypeMismatch(
                 reporting::to_type(state.table, state.names, names, UnifType::Constant(c)),
                 reporting::to_type(state.table, state.names, names, ty),
                 pos_opt,

@@ -55,12 +55,13 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        make as mk_term, record::RecordData, IndexMap, RichTerm, Term, Traverse, TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
+        RichTerm, Term, Traverse, TraverseOrder,
     },
 };
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display},
 };
 
@@ -130,32 +131,36 @@ pub enum EnumRowsF<ERows> {
 /// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
 /// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
 /// variables are introduced, that is, on forall quantifiers.
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum VarKind {
+    #[default]
+    Type,
+    EnumRows,
+    /// `excluded` keeps track of which rows appear somewhere alongside the tail, and therefore
+    /// cannot appear in the tail. For instance `forall r. { ; r } -> { x : Number ; r }` assumes
+    /// `r` does not already contain an `x` field.
+    RecordRows {
+        excluded: HashSet<Ident>,
+    },
+}
+
+/// Equivalent to `std::mem::Discriminant<VarKind>`, but we can do things like match on it
+// TODO: this seems overly complicated, and it's anyways more space-efficient to store the
+// `excluded` information separately like we do in the `State` field constr. Probably we can store
+// it that way during parsing too.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum VarKindDiscriminant {
     Type,
     EnumRows,
     RecordRows,
 }
 
-impl From<VarKind> for Term {
-    fn from(value: VarKind) -> Self {
-        match value {
-            VarKind::Type => Term::Enum(Ident::new("Type")),
-            VarKind::EnumRows => Term::Enum(Ident::new("EnumRows")),
-            VarKind::RecordRows => Term::Enum(Ident::new("RecordRows")),
-        }
-    }
-}
-
-impl TryFrom<&Term> for VarKind {
-    type Error = ();
-
-    fn try_from(value: &Term) -> Result<Self, Self::Error> {
-        match value {
-            Term::Enum(type_) if type_.label() == "Type" => Ok(Self::Type),
-            Term::Enum(enum_rows) if enum_rows.label() == "EnumRows" => Ok(Self::EnumRows),
-            Term::Enum(record_rows) if record_rows.label() == "RecordRows" => Ok(Self::RecordRows),
-            _ => Err(()),
+impl From<&VarKind> for VarKindDiscriminant {
+    fn from(vk: &VarKind) -> Self {
+        match vk {
+            VarKind::Type => VarKindDiscriminant::Type,
+            VarKind::EnumRows => VarKindDiscriminant::EnumRows,
+            VarKind::RecordRows { .. } => VarKindDiscriminant::RecordRows,
         }
     }
 }
@@ -953,14 +958,29 @@ impl Types {
             TypeF::Forall {
                 ref var,
                 ref body,
-                var_kind,
+                ref var_kind,
             } => {
-                use VarKind::*;
-
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
-                    Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    EnumRows | RecordRows => mk_app!(internals::forall_tail(), sealing_key.clone()),
+                    VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
+                    VarKind::EnumRows => {
+                        // Enums do not need to exclude any rows, so we pass the empty array
+                        let excluded_ncl: RichTerm =
+                            Term::Array(Default::default(), Default::default()).into();
+                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
+                    }
+                    VarKind::RecordRows { excluded } => {
+                        let excluded_ncl: RichTerm = Term::Array(
+                            Array::from_iter(
+                                excluded
+                                    .iter()
+                                    .map(|id| Term::Str(NickelString::from(*id)).into()),
+                            ),
+                            Default::default(),
+                        )
+                        .into();
+                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
+                    }
                 };
                 vars.insert(*var, contract);
 

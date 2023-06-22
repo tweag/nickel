@@ -24,7 +24,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, RichTerm},
-    types::{TypeF, Types, VarKind},
+    types::{TypeF, Types, VarKindDiscriminant},
 };
 
 /// A general error occurring during either parsing or evaluation.
@@ -219,7 +219,7 @@ pub enum TypecheckError {
     /// this error would be raised with `{ ; a }` as the `tail` type and
     /// `{ y : String }` as the `violating_type`.
     ForallParametricityViolation {
-        kind: VarKind,
+        kind: VarKindDiscriminant,
         tail: Types,
         violating_type: Types,
         pos: TermPos,
@@ -1930,7 +1930,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         .with_message("multiple rows declaration")
                         .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
-                            format!("Found an expression of a record type with the row `{}: {}`", ident, conflict.as_ref().cloned().unwrap()),
+                            format!("Found an expression of a record type `{}` with the row `{}`", conflict.as_ref().cloned().unwrap(), ident),
                             format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
                             String::from("A type cannot have two conflicting declarations for the same row"),
                         ])]
@@ -2002,9 +2002,9 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 pos,
             } => {
                 let tail_kind = match kind {
-                    VarKind::Type => "type",
-                    VarKind::EnumRows => "enum tail",
-                    VarKind::RecordRows => "record tail",
+                    VarKindDiscriminant::Type => "type",
+                    VarKindDiscriminant::EnumRows => "enum tail",
+                    VarKindDiscriminant::RecordRows => "record tail",
                 };
                 vec![
                     Diagnostic::error()

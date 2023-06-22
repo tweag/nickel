@@ -6,6 +6,9 @@
 /result*
 /scripts/tmp.toml
 
+# direnv generated
+.direnv/
+
 # wasm-pack
 /pkg/
 

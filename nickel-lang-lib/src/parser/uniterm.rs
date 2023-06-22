@@ -17,7 +17,11 @@ use crate::{
     },
 };
 
-use std::{cell::RefCell, collections::HashMap, convert::TryFrom};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+};
 
 /// A node of the uniterm AST. We only define new variants for those constructs that are common to
 /// types and terms. Otherwise, we piggyback on the existing ASTs to avoid duplicating methods and
@@ -517,33 +521,13 @@ impl TryFrom<UniRecord> for Types {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
-pub(super) enum VarKindCellState {
-    /// The variable kind is yet to be determined.
-    Unset,
-    /// The variable kind that has been determined by an usage of the bound variable.
-    Set,
-}
-
-/// Data stored in a `VarKindCell`.
-///
-/// We could have a simpler implementation using `std::cell::once_cell` (which [`VarKindCell`] is
-/// somehow emulating), but the latter is not stabilized yet. Used during the
-/// [FixTypeVars::fix_type_vars] phase.
-#[derive(PartialEq, Eq)]
-pub(super) struct VarKindCellData {
-    var_kind: VarKind,
-    state: VarKindCellState,
-}
-
 /// Cell providing shared mutable access to a var_kind. This is used to decide the kind of a
 /// variable associated to a forall in the `fix_type_vars` phase.
 ///
-/// This cell provides interior mutability for [`VarKindCellData`]. It makes it possible to mutate
-/// the inner data when put in an environment, which only provides immutable references to its
-/// values.
+/// This cell provides interior mutability for [`VarKind`]. It makes it possible to mutate the
+/// inner data when put in an environment, which only provides immutable references to its values.
 #[derive(PartialEq, Eq)]
-pub(super) struct VarKindCell(RefCell<VarKindCellData>);
+pub(super) struct VarKindCell(RefCell<Option<VarKind>>);
 
 /// Error raised by [`VarKindCell`] when trying to set a variable kind which is different from the
 /// one already set.
@@ -557,39 +541,44 @@ pub(super) struct VarKindMismatch;
 pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
 
 impl VarKindCell {
-    /// Create a new `VarKindCell` with the `Unset` state. The kind is set to `VarKind::Type`,
-    /// meaning that unused type variables are given this kind by default.
+    /// Create a new unset `VarKindCell` at resolution time, this will default to `VarKind::Type`,
     pub(super) fn new() -> Self {
-        VarKindCell(RefCell::new(VarKindCellData {
-            var_kind: VarKind::Type,
-            state: VarKindCellState::Unset,
-        }))
+        VarKindCell(RefCell::new(None))
     }
 
-    /// Set the variable kind of the inner mutable reference if not set yet. If the variable kind
-    /// is already set, check that the variable kind of the cell and the one provided as an
-    /// argument are equals, or return `Err(_)` otherwise.
-    pub(super) fn set_or_check_equal(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
-        match &mut *self.0.borrow_mut() {
-            VarKindCellData {
-                var_kind: data,
-                ref mut state,
-            } if *state == VarKindCellState::Unset => {
-                *data = var_kind;
-                *state = VarKindCellState::Set;
+    /// Everywhere a forall variable is used it must be of the same type. If this is the first time
+    /// we encounter the variable, we can set it freely. If it has been set, and is of the same
+    /// type, we only need to combine `excluded` record row variables. If it has been set to a
+    /// different `VarKind`, we return `Err(_)`.
+    pub(super) fn try_set(&self, var_kind: VarKind) -> Result<(), VarKindMismatch> {
+        match (&mut *self.0.borrow_mut(), var_kind) {
+            (s @ None, var_kind) => {
+                *s = Some(var_kind);
                 Ok(())
             }
-            VarKindCellData {
-                var_kind: data,
-                state: VarKindCellState::Set,
-            } if *data == var_kind => Ok(()),
+            (Some(data), var_kind) if data == &var_kind => Ok(()),
+            (
+                Some(VarKind::RecordRows {
+                    excluded: ref mut ex1,
+                }),
+                VarKind::RecordRows { excluded: ex2 },
+            ) => {
+                ex1.extend(ex2);
+                Ok(())
+            }
             _ => Err(VarKindMismatch),
         }
     }
 
-    /// Return the current var_kind.
-    pub fn var_kind(&self) -> VarKind {
-        self.0.borrow().var_kind
+    /// Return a clone of the current var_kind.
+    #[allow(dead_code)]
+    pub fn var_kind(&self) -> Option<VarKind> {
+        self.0.borrow().clone()
+    }
+
+    /// Return the inner var_kind, leaving `Nothing` behind in the `VarKindCell`.
+    pub fn take_var_kind(&self) -> Option<VarKind> {
+        self.0.borrow_mut().take()
     }
 }
 
@@ -691,7 +680,7 @@ impl FixTypeVars for Types {
             }
             TypeF::Var(ref mut id) => {
                 if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::Type)
+                    cell.try_set(VarKind::Type)
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 } else {
                     let id = *id;
@@ -709,10 +698,15 @@ impl FixTypeVars for Types {
                 // fix_type_vars will fill this cell with the correct kind, which we get afterwards
                 // to set the right value for `var_kind`.
                 bound_vars.insert(*var, VarKindCell::new());
+// let x : forall a. { _foo: forall a. a, bar: { ; a } }
                 (*body).fix_type_vars_env(bound_vars.clone(), span)?;
-                // unwrap(): we just inserted a value for `var` above, and environment can never
+                // unwrap(): We just inserted a value for `var` above, and environment can never
                 // delete values.
-                *var_kind = bound_vars.get(var).unwrap().var_kind();
+                // take_var_kind(): Once we leave the body of this forall, we no longer need
+                // access to this VarKindCell in bound_vars. We can avoid a clone by taking
+                // the var_kind out. We could also take the whole key value pair out of the
+                // `Environment`, but ownership there is trickier.
+                *var_kind = bound_vars.get(var).unwrap().take_var_kind().unwrap_or_default();
 
                 Ok(())
             }
@@ -731,26 +725,37 @@ impl FixTypeVars for RecordRows {
         bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        match self.0 {
-            RecordRowsF::Empty => Ok(()),
-            RecordRowsF::TailDyn => Ok(()),
-            // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
-            // have to set the correct kind for the corresponding forall binder.
-            RecordRowsF::TailVar(ref id) => {
-                if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::RecordRows)
+        fn helper(
+            rrows: &mut RecordRows,
+            bound_vars: BoundVarEnv,
+            span: RawSpan,
+            mut maybe_excluded: HashSet<Ident>,
+        ) -> Result<(), ParseError> {
+            match rrows.0 {
+                RecordRowsF::Empty => Ok(()),
+                RecordRowsF::TailDyn => Ok(()),
+                // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
+                // have to set the correct kind for the corresponding forall binder.
+                RecordRowsF::TailVar(ref id) => {
+                    if let Some(cell) = bound_vars.get(id) {
+                        cell.try_set(VarKind::RecordRows {
+                            excluded: maybe_excluded,
+                        })
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
+                    }
+                    Ok(())
                 }
-                Ok(())
-            }
-            RecordRowsF::Extend {
-                ref mut row,
-                ref mut tail,
-            } => {
-                row.types.fix_type_vars_env(bound_vars.clone(), span)?;
-                tail.fix_type_vars_env(bound_vars, span)
+                RecordRowsF::Extend {
+                    ref mut row,
+                    ref mut tail,
+                } => {
+                    maybe_excluded.insert(row.id);
+                    row.types.fix_type_vars_env(bound_vars.clone(), span)?;
+                    helper(tail, bound_vars, span, maybe_excluded)
+                }
             }
         }
+        helper(self, bound_vars, span, HashSet::new())
     }
 }
 
@@ -764,7 +769,7 @@ impl FixTypeVars for EnumRows {
         // appear in it, so we don't have to traverse for fixing type variables properly.
         //
         // However, the second task of the fix_type_vars phase is to determine the variable kind of
-        // forall binders: here, we do need to check if the fail of this enum is an enum row type
+        // forall binders: here, we do need to check if the tail of this enum is an enum row type
         // variable.
         let mut iter = self
             .iter()
@@ -772,12 +777,12 @@ impl FixTypeVars for EnumRows {
         match iter.next() {
             Some(EnumRowsIteratorItem::TailVar(id)) => {
                 if let Some(cell) = bound_vars.get(id) {
-                    cell.set_or_check_equal(VarKind::EnumRows)
+                    cell.try_set(VarKind::EnumRows)
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 }
                 Ok(())
             }
-            // unreachable(): we consumed all the rows item via the `take_while()` call above
+            // unreachable(): we consumed all the rows item via the `skip_while()` call above
             Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
             None => Ok(()),
         }
