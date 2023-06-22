@@ -80,7 +80,7 @@ let Contract = {
          - *0*: unoptimized
          - *1*: normal
          - *2*: use optimizations
-      "% 
+      "%
     | OptLevel
     | default
     = 1,
@@ -91,4 +91,3 @@ in
   flags = ["Wextra", { flag = "o", arg = "stuff.o" }],
   optimization_level = 2,
 } | Contract
-
