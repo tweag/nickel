@@ -213,20 +213,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get_and_advance(),
                     };
                     self.env.insert(ident.to_owned(), id);
-                    let kind = match term {
-                        Term::LetPattern(..) => TermKind::Declaration {
-                            id: ident.to_owned(),
-                            usages: Vec::new(),
-                            value: value_ptr,
-                            path: None,
-                        },
-                        Term::FunPattern(..) => TermKind::Declaration {
-                            id: ident.to_owned(),
-                            usages: Vec::new(),
-                            value: ValueState::Unknown,
-                            path: None,
-                        },
-                        _ => unreachable!(),
+
+                    let kind = TermKind::Declaration {
+                        id: ident.to_owned(),
+                        usages: Vec::new(),
+                        value: value_ptr,
+                        path: None,
                     };
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -315,20 +307,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                 );
-                let kind = match term {
-                    Term::Let(..) => TermKind::Declaration {
-                        id: ident.to_owned(),
-                        usages: Vec::new(),
-                        value: value_ptr,
-                        path: None,
-                    },
-                    Term::Fun(..) => TermKind::Declaration {
-                        id: ident.to_owned(),
-                        usages: Vec::new(),
-                        value: ValueState::Unknown,
-                        path: None,
-                    },
-                    _ => unreachable!(),
+
+                let kind = TermKind::Declaration {
+                    id: ident.to_owned(),
+                    usages: Vec::new(),
+                    value: value_ptr,
+                    path: None,
                 };
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
