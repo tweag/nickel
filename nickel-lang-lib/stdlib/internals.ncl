@@ -141,24 +141,25 @@
               label
           )
     else
-      let conflicts = std.array.filter
-        (fun field => std.array.elem field constr)
-        (%fields% value)
+      let conflicts =
+        std.array.filter
+          (fun field => std.array.elem field constr)
+          (%fields% value)
       in
       if conflicts != [] then
         %blame%
           (
             %label_with_message%
-            "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
-            label
+              "field%{plural conflicts} not allowed in tail: `%{std.string.join ", " conflicts}`"
+              label
           )
       else
-      # Note: in order to correctly attribute blame, the polarity of `l`
-      # must match the polarity of the `forall` which introduced the
-      # polymorphic contract (i.e. `pol`). Since we know in this branch
-      # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
-      # we continue.
-      %record_seal_tail% sealing_key (%chng_pol% label) acc value,
+        # Note: in order to correctly attribute blame, the polarity of `l`
+        # must match the polarity of the `forall` which introduced the
+        # polymorphic contract (i.e. `pol`). Since we know in this branch
+        # that `pol` and `%polarity% l` differ, we swap `l`'s polarity before
+        # we continue.
+        %record_seal_tail% sealing_key (%chng_pol% label) acc value,
 
   "$dyn_tail" = fun acc label value => acc & value,
 
