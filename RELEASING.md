@@ -13,7 +13,7 @@ crates and dependent repositories (such as the website) in a consistent state.
    `git checkout -b X.Y.Z-release`
 2. Bump the overall version number in `Cargo.toml` to `X.Y.Z`. This will be
    automatically propagated to the CLI, the Nickel language server and Pyckel.
-3. Bump the version number of the other crates inthe workspace:
+3. Bump the version number of the other crates in the workspace:
    - `core/Cargo.toml`
    - `lsp/lsp-harness/Cargo.toml`
    - `utils/Cargo.toml`
