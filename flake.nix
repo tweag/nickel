@@ -239,8 +239,8 @@
         in
         rec {
           inherit cargoArtifacts;
-          nickel-lang-lib = buildPackage { pname = "nickel-lang-lib"; };
-          nickel-lang-cli = buildPackage { pname = "nickel-lang"; };
+          nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
@@ -248,7 +248,7 @@
             then nickel-lang-cli
             else
               buildPackage {
-                pname = "nickel-lang";
+                pname = "nickel-lang-cli";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
@@ -441,7 +441,7 @@
         in
         pkgs.stdenv.mkDerivation {
           name = "nickel-stdlib-doc-${format}-${version}";
-          src = ./nickel-lang-lib/stdlib;
+          src = ./core/stdlib;
           installPhase = ''
             mkdir -p $out
             for file in $(ls *.ncl | grep -v 'internals.ncl')
@@ -495,7 +495,7 @@
           checkRustDoc
           lsp-nls
           nickel-lang-cli
-          nickel-lang-lib
+          nickel-lang-core
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile

@@ -34,7 +34,7 @@ fn diff(s1: &str, s2: &str) {
     assert!(nb_diff == 0);
 }
 
-#[test_resources("nickel-lang-lib/tests/integration/pass/**/*.ncl")]
+#[test_resources("core/tests/integration/pass/**/*.ncl")]
 fn check_idempotent(path: &str) {
     if EXCLUDE_LIST.iter().any(|suffix| path.ends_with(suffix)) {
         return;

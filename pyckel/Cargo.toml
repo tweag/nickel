@@ -11,7 +11,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-nickel-lang-lib = {default-features = false, path = "../nickel-lang-lib", version = "1.0.0" }
+nickel-lang-core = {default-features = false, path = "../core", version = "0.1" }
 pyo3 = { version = "0.17.3", features = ["extension-module"] }
 codespan-reporting = "0.11"
 

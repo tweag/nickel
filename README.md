@@ -77,7 +77,7 @@ Please follow the getting started guide for Nickel users on the [nickel-lang
 website](https://nickel-lang.org/getting-started). The instructions below are
 either reproduced for this document to be self-contained or because
 they are aimed toward hacking on the Nickel interpreter itself (e.g. building
-the `nickel-lang-lib` crate documentation).
+the `nickel-lang-core` crate documentation).
 
 ### Run
 

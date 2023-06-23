@@ -1360,12 +1360,16 @@ name = "lsp-harness"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "env_logger 0.10.0",
+ "insta",
  "log",
  "lsp-server",
  "lsp-types",
+ "nickel-lang-utils",
  "serde",
  "serde_json",
+ "test-generator",
 ]
 
 [[package]]
@@ -1529,21 +1533,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "nickel-lang"
+name = "nickel-lang-cli"
 version = "1.0.0"
 dependencies = [
  "clap 4.3.0",
  "directories",
  "insta",
- "nickel-lang-lib",
- "nickel-lang-utilities",
+ "nickel-lang-core",
+ "nickel-lang-utils",
  "serde",
  "test-generator",
 ]
 
 [[package]]
-name = "nickel-lang-lib"
-version = "1.0.0"
+name = "nickel-lang-core"
+version = "0.1.0"
 dependencies = [
  "ansi_term",
  "assert_matches",
@@ -1561,7 +1565,7 @@ dependencies = [
  "malachite",
  "malachite-q",
  "md-5",
- "nickel-lang-utilities",
+ "nickel-lang-utils",
  "once_cell",
  "pprof",
  "pretty",
@@ -1610,8 +1614,8 @@ dependencies = [
  "lsp-harness",
  "lsp-server",
  "lsp-types",
- "nickel-lang-lib",
- "nickel-lang-utilities",
+ "nickel-lang-core",
+ "nickel-lang-utils",
  "pretty_assertions",
  "regex",
  "serde",
@@ -1620,12 +1624,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "nickel-lang-utilities"
-version = "1.0.0"
+name = "nickel-lang-utils"
+version = "0.1.0"
 dependencies = [
  "codespan",
  "criterion 0.3.6",
- "nickel-lang-lib",
+ "nickel-lang-core",
  "serde",
  "toml",
 ]
@@ -1634,7 +1638,7 @@ dependencies = [
 name = "nickel-repl"
 version = "1.0.0"
 dependencies = [
- "nickel-lang-lib",
+ "nickel-lang-core",
 ]
 
 [[package]]
@@ -1953,7 +1957,7 @@ name = "pyckel"
 version = "1.0.0"
 dependencies = [
  "codespan-reporting",
- "nickel-lang-lib",
+ "nickel-lang-core",
  "pyo3",
 ]
 

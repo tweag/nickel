@@ -18,7 +18,7 @@ mod pretty;
 mod query;
 mod stdlib_typecheck;
 
-#[test_resources("nickel-lang-lib/tests/integration/**/*.ncl")]
+#[test_resources("core/tests/integration/**/*.ncl")]
 fn check_annotated_nickel_file(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");

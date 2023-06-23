@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "nickel-lang-lib",
-    "nickel-lang-cli",
+    "core",
+    "cli",
     "lsp/nls",
     "lsp/lsp-harness",
-    "utilities",
-    "nickel-wasm-repl",
+    "utils",
+    "wasm-repl",
     "pyckel",
 ]
 
@@ -17,3 +17,4 @@ edition = "2021"
 keywords = ["configuration", "language", "nix", "nickel"]
 repository = "https://github.com/tweag/nickel"
 homepage = "https://nickel-lang.org"
+readme = "README.md"
