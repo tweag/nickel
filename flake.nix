@@ -346,7 +346,7 @@
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
           src = filterNickelSrc craneLib.filterCargoSources;
 
-          cargoExtraArgs = "-p nickel-repl --target wasm32-unknown-unknown --frozen --offline";
+          cargoExtraArgs = "-p nickel-wasm-repl --target wasm32-unknown-unknown --frozen --offline";
           # *  --mode no-install prevents wasm-pack from trying to download and
           #   vendor tools like wasm-bindgen, wasm-opt, etc. but use the one
           #   provided by Nix
@@ -379,7 +379,7 @@
           installPhaseCommand = ''
             mkdir -p $out
             cp -r wasm-repl/pkg $out/nickel-repl
-            ln -s $out/nickel-repl/nickel_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
+            ln -s $out/nickel-repl/nickel_wasm_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
           '';
 
           nativeBuildInputs = [

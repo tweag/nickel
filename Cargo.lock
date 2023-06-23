@@ -1575,7 +1575,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nickel-repl"
+name = "nickel-wasm-repl"
 version = "0.1.0"
 dependencies = [
  "nickel-lang-core",
