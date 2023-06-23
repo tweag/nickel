@@ -1,6 +1,6 @@
-use nickel_lang_lib::pretty::*;
-use nickel_lang_lib::term::{RichTerm, StrChunk, Term};
-use nickel_lang_utilities::{project_root::project_root, test_program::parse};
+use nickel_lang_core::pretty::*;
+use nickel_lang_core::term::{RichTerm, StrChunk, Term};
+use nickel_lang_utils::{project_root::project_root, test_program::parse};
 
 use pretty::BoxAllocator;
 use std::io::{Cursor, Read};

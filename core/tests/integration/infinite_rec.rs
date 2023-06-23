@@ -1,7 +1,7 @@
 use assert_matches::assert_matches;
-use nickel_lang_lib::error::{Error, EvalError};
+use nickel_lang_core::error::{Error, EvalError};
 
-use nickel_lang_utilities::test_program::eval;
+use nickel_lang_utils::test_program::eval;
 
 #[test]
 fn infinite_loops() {

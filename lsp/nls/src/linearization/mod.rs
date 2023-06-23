@@ -2,7 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use codespan::FileId;
 use log::debug;
-use nickel_lang_lib::{
+use nickel_lang_core::{
     identifier::Ident,
     position::TermPos,
     term::{
@@ -27,7 +27,7 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang_lib::environment::Environment<Ident, ItemId>;
+pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>;
 
 /// A registry mapping file ids to their corresponding linearization. The registry stores the
 /// linearization of every file that has been imported and analyzed, including the main open
@@ -118,8 +118,8 @@ impl<'a> AnalysisHost<'a> {
     }
 }
 
-use nickel_lang_lib::typecheck::Extra;
-use nickel_lang_lib::types::Types;
+use nickel_lang_core::typecheck::Extra;
+use nickel_lang_core::types::Types;
 impl<'a> Linearizer for AnalysisHost<'a> {
     type Building = Building<'a>;
     type Completed = Completed;

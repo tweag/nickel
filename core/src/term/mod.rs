@@ -1705,7 +1705,7 @@ impl std::fmt::Display for RichTerm {
 ///
 /// It is used somehow as a match statement, going from
 /// ```
-/// # use nickel_lang_lib::term::{RichTerm, Term};
+/// # use nickel_lang_core::term::{RichTerm, Term};
 /// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match rt.term.into_owned() {
@@ -1716,8 +1716,8 @@ impl std::fmt::Display for RichTerm {
 /// ```
 /// to
 /// ```
-/// # use nickel_lang_lib::term::{RichTerm, Term};
-/// # use nickel_lang_lib::match_sharedterm;
+/// # use nickel_lang_core::term::{RichTerm, Term};
+/// # use nickel_lang_core::match_sharedterm;
 /// let rt = RichTerm::from(Term::Bool(true));
 ///
 /// match_sharedterm!{rt.term, with {

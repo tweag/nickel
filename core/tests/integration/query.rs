@@ -1,9 +1,9 @@
-use nickel_lang_lib::term::{
+use nickel_lang_core::term::{
     make as mk_term,
     record::{Field, FieldMetadata},
     TypeAnnotation,
 };
-use nickel_lang_utilities::test_program::TestProgram;
+use nickel_lang_utils::test_program::TestProgram;
 
 #[test]
 pub fn test_query_metadata_basic() {

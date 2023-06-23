@@ -1,11 +1,11 @@
 use std::rc::Rc;
 
 use criterion::{criterion_main, Criterion};
-use nickel_lang_lib::term::{
+use nickel_lang_core::term::{
     array::{Array, ArrayAttrs},
     Number, RichTerm, Term,
 };
-use nickel_lang_utilities::{bench::EvalMode, ncl_bench_group};
+use nickel_lang_utils::{bench::EvalMode, ncl_bench_group};
 use pprof::criterion::{Output, PProfProfiler};
 use pretty::{BoxAllocator, DocBuilder, Pretty};
 

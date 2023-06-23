@@ -1,1 +1,1 @@
-pub use nickel_lang_lib::*;
+pub use nickel_lang_core::*;

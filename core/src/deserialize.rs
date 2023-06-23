@@ -584,8 +584,8 @@ impl serde::de::Error for RustDeserializationError {
 mod tests {
     use std::io::Cursor;
 
-    use nickel_lang_utilities::{
-        nickel_lang_lib::{deserialize::RustDeserializationError, term::RichTerm},
+    use nickel_lang_utils::{
+        nickel_lang_core::{deserialize::RustDeserializationError, term::RichTerm},
         test_program::TestProgram,
     };
     use serde::Deserialize;

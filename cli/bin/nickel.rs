@@ -1,13 +1,13 @@
 //! Entry point of the program.
 use core::fmt;
-use nickel_lang_lib::error::{Error, IOError};
-use nickel_lang_lib::eval::cache::CacheImpl;
-use nickel_lang_lib::program::Program;
-use nickel_lang_lib::repl::query_print;
+use nickel_lang_core::error::{Error, IOError};
+use nickel_lang_core::eval::cache::CacheImpl;
+use nickel_lang_core::program::Program;
+use nickel_lang_core::repl::query_print;
 #[cfg(feature = "repl")]
-use nickel_lang_lib::repl::rustyline_frontend;
-use nickel_lang_lib::term::RichTerm;
-use nickel_lang_lib::{serialize, serialize::ExportFormat};
+use nickel_lang_core::repl::rustyline_frontend;
+use nickel_lang_core::term::RichTerm;
+use nickel_lang_core::{serialize, serialize::ExportFormat};
 use std::path::{Path, PathBuf};
 use std::{
     fs::{self, File},

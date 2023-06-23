@@ -6,7 +6,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
-use nickel_lang_lib::{
+use nickel_lang_core::{
     identifier::Ident,
     term::{
         record::{Field, FieldMetadata},
@@ -364,7 +364,7 @@ fn find_fields_from_term(
 
 lazy_static! {
     // unwraps are safe here because we know these are correct regexes.
-    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang_lib::parser::lexer)
+    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang_core::parser::lexer)
     static ref RE_IDENTIFIER: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
@@ -724,7 +724,7 @@ mod tests {
     use super::*;
     use crate::linearization::Environment;
     use codespan::Files;
-    use nickel_lang_lib::{position::TermPos, term::MergePriority};
+    use nickel_lang_core::{position::TermPos, term::MergePriority};
     use std::collections::{HashMap, HashSet};
 
     fn make_lin_item(
@@ -826,7 +826,7 @@ mod tests {
 
     #[test]
     fn test_extract_ident_with_path() {
-        use nickel_lang_lib::{mk_uty_record, mk_uty_row};
+        use nickel_lang_core::{mk_uty_record, mk_uty_row};
         use std::convert::TryInto;
 
         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}

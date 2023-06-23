@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 /// Return a [`PathBuf`] pointing to the workspace root of Nickel repository. For example, use
 /// ```rust
-/// # use nickel_lang_utilities::project_root::project_root;
+/// # use nickel_lang_utils::project_root::project_root;
 /// # use std::path::PathBuf;
 /// let readme = project_root().join("README.md");
 /// # assert_eq!(readme, PathBuf::from(&concat!(env!("CARGO_MANIFEST_DIR"), "/../README.md")))

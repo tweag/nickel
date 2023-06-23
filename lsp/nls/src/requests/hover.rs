@@ -3,7 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
-use nickel_lang_lib::position::TermPos;
+use nickel_lang_core::position::TermPos;
 use serde_json::Value;
 
 use crate::{

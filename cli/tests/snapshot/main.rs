@@ -1,4 +1,4 @@
-use nickel_lang_utilities::{
+use nickel_lang_utils::{
     annotated_test::{read_annotated_test_case, TestCase},
     project_root::project_root,
 };

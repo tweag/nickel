@@ -1,10 +1,10 @@
 use std::{io::Cursor, thread};
 
-use nickel_lang_lib::{
+use nickel_lang_core::{
     error::{Error, EvalError, ImportError, ParseError, TypecheckError},
     term::Term,
 };
-use nickel_lang_utilities::{
+use nickel_lang_utils::{
     annotated_test::{read_annotated_test_case, TestCase},
     project_root::project_root,
     test_program::TestProgram,

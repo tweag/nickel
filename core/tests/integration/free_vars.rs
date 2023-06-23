@@ -1,11 +1,11 @@
-use nickel_lang_lib::term::{record::FieldDeps, IndexMap};
-use nickel_lang_lib::{identifier::Ident, term::Term, transform::free_vars};
+use nickel_lang_core::term::{record::FieldDeps, IndexMap};
+use nickel_lang_core::{identifier::Ident, term::Term, transform::free_vars};
 
 use std::collections::HashSet;
 use std::iter::IntoIterator;
 use std::rc::Rc;
 
-use nickel_lang_utilities::test_program::parse;
+use nickel_lang_utils::test_program::parse;
 
 fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
     let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
