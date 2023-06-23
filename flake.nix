@@ -261,7 +261,7 @@
             pname = "nickel-lang-bench";
 
             buildPhaseCargoCommand = ''
-              cargo bench -p nickel-lang-lib ${pkgs.lib.optionalString noRunBench "--no-run"}
+              cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
 
             doInstallCargoArtifacts = false;
@@ -371,14 +371,14 @@
           inherit cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
-            WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build nickel-wasm-repl ${wasmPackExtraArgs}
+            WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build wasm-repl ${wasmPackExtraArgs}
           '';
 
           # nickel-lang.org expects an interface `nickel-repl.wasm`, hence the
           # `ln`
           installPhaseCommand = ''
             mkdir -p $out
-            cp -r nickel-wasm-repl/pkg $out/nickel-repl
+            cp -r wasm-repl/pkg $out/nickel-repl
             ln -s $out/nickel-repl/nickel_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
           '';
 
