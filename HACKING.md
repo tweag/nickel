@@ -13,7 +13,7 @@ long.
 
 ## Content
 
-The Nickel repository consist of 4 crates:
+The Nickel repository consist of various crates:
 
 - `nickel-lang-core` (path: `core`). The main crate containing the interpreter
    as a library.

@@ -18,26 +18,14 @@ crates and dependent repositories (such as the website) in a consistent state.
    - `lsp/lsp-harness/Cargo.toml`
    - `utils/Cargo.toml`
    - `wasm-repl/Cargo.toml`
-4. Bump the version of the interdependencies of the crates in the workspace. For
-    example, `nickel-lang-core` has the following line in
-   `./nickel-lang-core/Cargo.toml` under `[dev-dependencies]`:
-
-   ```toml
-   nickel-lang-utils = {path = "../utils", version = "0.1"}
-   ```
-
-   You have to bump the `version` number of such dependencies on `nickel-lang-
-   core`, `nickel-lang-utils`, or any other crate of the workspace as well.
-
-   Commit and push your changes.
-5. Make sure that everything builds: run `nix flake check` at the root of the
+4. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
-6. Add the changelog since the last release in RELEASES.md. GitHub is able to
+5. Add the changelog since the last release in RELEASES.md. GitHub is able to
    automatically generate release notes: refer to [this
    guide](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes).
    While the output needs to be reworked, it's a useful starting point. Commit
    and push your changes.
-7. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
+6. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
    `stable` branch usually contains specific fixes, or cherry-picked commits,
    we'll have to force push. We advise to first save the previous state in a
    local branch:
