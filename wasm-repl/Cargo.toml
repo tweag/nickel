@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-nickel-lang-core = {default-features = false, path = "../core", version = "0.1", features=["repl-wasm"]}
+nickel-lang-core = { workspace = true, default-features = false, features=["repl-wasm"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

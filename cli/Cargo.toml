@@ -20,13 +20,13 @@ repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
 
 [dependencies]
-nickel-lang-core = { version = "0.1", path = "../core", features = [ "markdown" ], default-features = false }
-clap = { version = "4.3", features = ["derive"] }
-serde = { version = "1.0.154", features = ["derive"] }
+nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
 
-directories = "4.0.1"
+clap = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+directories.workspace = true
 
 [dev-dependencies]
-nickel-lang-utils = { version = "0.1", path = "../utils" }
-test-generator = "0.3.1"
-insta = { version = "1.28.0", features = ["filters"] }
+nickel-lang-utils.workspace = true
+test-generator.workspace = true
+insta = { workspace = true, features = ["filters"] }

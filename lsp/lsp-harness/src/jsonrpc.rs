@@ -8,8 +8,9 @@ use lsp_server::ResponseError;
 use lsp_types::{
     notification::{DidOpenTextDocument, Exit, Initialized, Notification as LspNotification},
     request::{GotoDefinition, Initialize, Request as LspRequest, Shutdown},
-    DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
-    InitializedParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    ClientCapabilities, DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse,
+    InitializeParams, InitializedParams, Position, TextDocumentIdentifier,
+    TextDocumentPositionParams, Url,
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -135,13 +136,16 @@ impl Server {
     }
 
     fn initialize(&mut self) -> Result<()> {
+        // `root_path` is deprecated, but we need ot initialize the struct
+        // somehow. There is no `Default` implementation for `InitilizeParams`
+        // in versions of `lsp-types` compatible with `codespan-lsp`
         #[allow(deprecated)]
         self.send_request::<Initialize>(InitializeParams {
             process_id: None,
             root_path: None,
             root_uri: None,
             initialization_options: None,
-            capabilities: Default::default(),
+            capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,
             client_info: None,
