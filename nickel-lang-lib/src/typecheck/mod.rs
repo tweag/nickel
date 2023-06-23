@@ -2263,7 +2263,6 @@ pub fn unify(
                 UnifType::Concrete(ty2),
             )),
         },
-        (UnifType::UnifVar(p1), UnifType::UnifVar(p2)) if p1 == p2 => Ok(()),
         (UnifType::UnifVar(p), uty) | (uty, UnifType::UnifVar(p)) => {
             state.table.assign_type(p, uty);
             Ok(())
@@ -2510,18 +2509,33 @@ impl UnifTable {
 
     /// Assign a type to a type unification variable.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
+        // Unifying a free variable with itself is a no-op.
+        if matches!(uty, UnifType::UnifVar(x) if x == var) {
+            return;
+        }
+
         debug_assert!(self.types[var].is_none());
         self.types[var] = Some(uty);
     }
 
     /// Assign record rows to a record rows unification variable.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
+        // Unifying a free variable with itself is a no-op.
+        if matches!(rrows, UnifRecordRows::UnifVar(x) if x == var) {
+            return;
+        }
+
         debug_assert!(self.rrows[var].is_none());
         self.rrows[var] = Some(rrows);
     }
 
     /// Assign enum rows to an enum rows unification variable.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
+        // Unifying a free variable with itself is a no-op.
+        if matches!(erows, UnifEnumRows::UnifVar(x) if x == var) {
+            return;
+        }
+
         debug_assert!(self.erows[var].is_none());
         self.erows[var] = Some(erows);
     }
