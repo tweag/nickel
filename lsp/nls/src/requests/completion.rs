@@ -142,7 +142,7 @@ fn find_fields_from_term_kind(
                         // we're currently analyzing. We're sure that the linearization
                         // phase doesn't produce wrong or invalid ids.
                         let item = linearization.get_item_with_reg(id, lin_registry).unwrap();
-                        let (ty, _) = lin_registry.get_type_and_metadata(item);
+                        let (ty, _) = linearization.get_type_and_metadata(item, lin_registry);
                         IdentWithType {
                             ident,
                             ty,

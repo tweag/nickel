@@ -62,7 +62,7 @@ impl Completed {
         id: ItemId,
         lin_registry: &'a LinRegistry,
     ) -> Option<&'a LinearizationItem<Resolved>> {
-        self.get_item(id).or(lin_registry.get_item(id))
+        self.get_item(id).or_else(|| lin_registry.get_item(id))
     }
 
     pub fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Resolved>> {

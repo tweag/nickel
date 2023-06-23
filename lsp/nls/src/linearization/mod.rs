@@ -51,17 +51,6 @@ impl LinRegistry {
         let lin = self.map.get(&id.file_id).unwrap();
         lin.get_item(id)
     }
-
-    /// Retrieve the type and the metadata of a linearization item, by finding the matching
-    /// linearization from the registry and calling the corresponding method on
-    /// [completed::Completed].
-    pub fn get_type_and_metadata(
-        &self,
-        item: &LinearizationItem<Resolved>,
-    ) -> (Resolved, Vec<String>) {
-        let lin = self.map.get(&item.id.file_id).unwrap();
-        lin.get_type_and_metadata(item, self)
-    }
 }
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
