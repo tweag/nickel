@@ -95,7 +95,7 @@ nickel-lang-lsp 0.1.0
 There is a WebAssembly (WASM) version of the REPL, which is used for the online
 playground on [nickel-lang.org][nickel-lang.org]. To ease the build, we use the
 `nickel-repl` located in `wasm-repl`, which just wraps and re-export
-the `nickel-lang-core` with the right settings for building to WebAssembly.
+the `nickel-lang-core` crate with the right settings for building to WebAssembly.
 
 The Nix flake has also an output to do the whole build, but incremental
 compilation is not as good as with direct usage of `cargo`.
