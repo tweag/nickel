@@ -52,9 +52,9 @@ pub fn handle(
 
     let item = item.unwrap().to_owned();
 
-    debug!("{:?}", item);
+    debug!("Found item {:?}", item);
 
-    let (ty, meta) = linearization.resolve_item_type_meta(&item, &server.lin_cache);
+    let (ty, meta) = linearization.get_type_and_metadata(&item, &server.lin_registry);
 
     if item.pos == TermPos::None {
         server.reply(Response::new_ok(id, Value::Null));

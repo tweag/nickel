@@ -7,7 +7,7 @@ use nickel_lang_lib::{
 
 use super::{
     interface::{Resolved, TermKind, UsageState, ValueState},
-    ItemId, LinearizationItem,
+    ItemId, LinRegistry, LinearizationItem,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -49,34 +49,25 @@ impl Completed {
         (left, right)
     }
 
-    pub fn get_item<'a>(
-        &'a self,
-        id: ItemId,
-        lin_cache: &'a HashMap<FileId, Completed>,
-    ) -> Option<&'a LinearizationItem<Resolved>> {
-        let ItemId { file_id, .. } = id;
+    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
         self.id_to_index
             .get(&id)
             .and_then(|index| self.linearization.get(*index))
-            .or_else(|| {
-                let lin = lin_cache.get(&file_id).unwrap();
-                lin.get_item(id, lin_cache)
-            })
+    }
+
+    /// Try to retrieve the item from the current linearization first, and if that fails, look into
+    /// the registry if there is a linearization corresponding to the item's file id.
+    pub fn get_item_with_reg<'a>(
+        &'a self,
+        id: ItemId,
+        lin_registry: &'a LinRegistry,
+    ) -> Option<&'a LinearizationItem<Resolved>> {
+        self.get_item(id).or_else(|| lin_registry.get_item(id))
     }
 
     pub fn get_item_mut(&mut self, id: ItemId) -> Option<&mut LinearizationItem<Resolved>> {
         let index = self.id_to_index.get(&id)?;
         self.linearization.get_mut(*index)
-    }
-
-    pub fn get_in_scope<'a>(
-        &'a self,
-        LinearizationItem { env, .. }: &'a LinearizationItem<Resolved>,
-        lin_cache: &'a HashMap<FileId, Completed>,
-    ) -> Vec<&LinearizationItem<Resolved>> {
-        env.iter()
-            .filter_map(|(_, id)| self.get_item(*id, lin_cache))
-            .collect()
     }
 
     /// Finds the index of a linearization item for a given location
@@ -136,17 +127,30 @@ impl Completed {
         item
     }
 
-    /// Resolve type and meta information for a given item
-    pub fn resolve_item_type_meta(
+    /// Return all the items in the scope of the given linearization item.
+    pub fn get_in_scope<'a>(
+        &'a self,
+        LinearizationItem { env, .. }: &'a LinearizationItem<Resolved>,
+        lin_registry: &'a LinRegistry,
+    ) -> Vec<&'a LinearizationItem<Resolved>> {
+        env.iter()
+            .filter_map(|(_, id)| self.get_item_with_reg(*id, lin_registry))
+            .collect()
+    }
+
+    /// Retrive the type and the metadata of a linearization item. Requires a registry as this code
+    /// tries to jump to the definitions of objects to find the relevant data, which might lie in a
+    /// different file (and thus in a different linearization within the registry).
+    pub fn get_type_and_metadata(
         &self,
         item: &LinearizationItem<Resolved>,
-        lin_cache: &HashMap<FileId, Completed>,
+        lin_registry: &LinRegistry,
     ) -> (Resolved, Vec<String>) {
         let mut extra = Vec::new();
 
         let item = match item.kind {
             TermKind::Usage(UsageState::Resolved(declaration)) => self
-                .get_item(declaration, lin_cache)
+                .get_item_with_reg(declaration, lin_registry)
                 .and_then(|decl| match decl.kind {
                     TermKind::Declaration {
                         value: ValueState::Known(value),
@@ -155,14 +159,14 @@ impl Completed {
                     | TermKind::RecordField {
                         value: ValueState::Known(value),
                         ..
-                    } => self.get_item(value, lin_cache),
+                    } => self.get_item_with_reg(value, lin_registry),
                     _ => None,
                 })
                 .unwrap_or(item),
             TermKind::Declaration {
                 value: ValueState::Known(value),
                 ..
-            } => self.get_item(value, lin_cache).unwrap_or(item),
+            } => self.get_item_with_reg(value, lin_registry).unwrap_or(item),
             _ => item,
         };
 
