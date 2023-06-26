@@ -1,6 +1,6 @@
 {
-  "name": "nls",
-  "description": "Nickel Language Server",
+  "name": "vscode-nickel",
+  "description": "Nickel Language",
   "author": "",
   "license": "MIT",
   "version": "1.0.0",
@@ -14,11 +14,30 @@
     "multi-root ready"
   ],
   "activationEvents": [
-    "onLanguage:plain",
     "onLanguage:nickel"
   ],
   "main": "./out/extension",
   "contributes": {
+    "languages": [
+      {
+        "id": "nickel",
+        "aliases": [
+          "Nickel",
+          "nickel"
+        ],
+        "extensions": [
+          ".ncl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nickel",
+        "scopeName": "source.nickel",
+        "path": "./syntaxes/nickel.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "Nickel Language Server Configuration",
@@ -44,8 +63,9 @@
     }
   },
   "scripts": {
-    "compile": "tsc --build",
-    "watch": "tsc --build --watch",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "compile": "yarn esbuild-base --sourcemap",
+    "watch": "yarn esbuild-base --sourcemap --watch",
     "lint": "eslint ./src --ext .ts,.tsx",
     "test": "sh ./scripts/e2e.sh"
   },
@@ -62,9 +82,10 @@
     "@typescript-eslint/eslint-plugin": "^4.33.0",
     "@typescript-eslint/parser": "^4.33.0",
     "@vscode/test-electron": "^1.6.2",
+    "@vscode/vsce": "^2.15.0",
+    "esbuild": "^0.18.9",
     "eslint": "^7.26.0",
     "mocha": "^10.1.0",
-    "typescript": "^4.5.3",
-    "vsce": "^2.14.0"
+    "typescript": "^4.5.3"
   }
 }

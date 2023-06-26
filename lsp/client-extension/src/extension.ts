@@ -1,61 +1,54 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
-
 import { PathLike } from 'fs';
-import * as path from 'path';
 import { workspace, ExtensionContext } from 'vscode';
+import { lookupInPath } from './toolchain';
 
 import {
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
-	TransportKind
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient;
 
-export function activate(context: ExtensionContext) {
-	// The server is implemented in node
-	const debugServerModule = context.asAbsolutePath(
-		path.join('..','..','target', 'debug', 'nls')
-	);
+export async function activate(context: ExtensionContext) {
+	const serverConfiguration = workspace.getConfiguration("nls.server");
+	const enableDebug: boolean = serverConfiguration.get("debugLog");
+	const traceFile: PathLike = serverConfiguration.get("trace");
+	let serverPath: string = serverConfiguration.get("path") || "nls";
 
-	const serverConfigutration = workspace.getConfiguration("nls.server")
-	const enableDebug: Boolean = serverConfigutration.get("debugLog")
-	const traceFile: PathLike = serverConfigutration.get("trace")
-	const serverModule: string = serverConfigutration.get("path")
+	// Lookup nls in PATH. This fixes direnv integration
+	if (!serverPath.startsWith("/") && !serverPath.startsWith("./")) {
+		serverPath = await lookupInPath(serverPath) || serverPath;
+	}
 
+	console.log(serverPath);
 
-	console.error(debugServerModule)
-	console.error(serverModule)
-
-	// The debug options for the server
-	const debugOptions = { env: { "RUST_LOG": "trace" } };
+	// Pass the process.env to nls. Fixes direnv integration
+	const options = { env: process.env };
+	const debugOptions = { env: Object.assign(options.env, { "RUST_LOG": "trace" }) };
 
 	// If the extension is launched in debug mode then the debug server options are used
 	// Otherwise the run options are used
 	const serverOptions: ServerOptions = {
 		run: {
-			command: serverModule, transport: TransportKind.stdio, options: (enableDebug ? debugOptions : {}),
+			command: serverPath,
 			args: traceFile ? ["--trace", traceFile.toString()] : [],
+			options: (enableDebug ? debugOptions : options),
 		},
 		debug: {
-			command: debugServerModule,
+			command: serverPath,
 			args: traceFile ? ["--trace", traceFile.toString()] : [],
-			transport: TransportKind.stdio,
 			options: debugOptions
 		}
 	};
 
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
-		// Register the server for plain text documents
+		// Register the server for nickel files
 		documentSelector: [{ scheme: 'file', language: 'nickel' }],
 		synchronize: {
-			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/.ncl')
+			// Notify the server about file changes to .ncl files contained in the workspace
+			fileEvents: workspace.createFileSystemWatcher('**/*.ncl')
 		}
 	};
 
@@ -68,12 +61,12 @@ export function activate(context: ExtensionContext) {
 	);
 
 	// Start the client. This will also launch the server
-	client.start()
+	client.start();
 }
 
-export function deactivate(): Thenable<void> | undefined {
+export async function deactivate() {
 	if (!client) {
 		return undefined;
 	}
-	return client.stop();
+	return await client.stop();
 }

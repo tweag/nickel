@@ -1,6 +1,18 @@
-# Nickel Language Server Protocol VS Code extension
+# Nickel Language VS Code extension
 
-This directory contains the Visual Studio Code Nickel LSP extension code.
+## Features
+
+* Syntax highlighting
+* Language server
+* Code formatting using [Topiary](https://github.com/tweag/topiary)
+
+## Prerequsites
+
+### Install `nickel`, `nls` and `topiary`
+
+```shell
+nix profile install nixpkgs#{nickel,nls,topiary}
+```
 
 ## Build
 
@@ -12,29 +24,27 @@ From the root of the Nickel project:
 nix build .\#vscodeExtension
 ```
 
-The VSIX extension will be at `./result-vsix/nls-client.vsix`.
+The VSIX extension will be at `./result/vscode-nickel.vsix`.
 
-### With NPM
+### With Yarn
 
 From this directory:
 
 ```shell
-npm install && npm run compile && echo y | npx vsce package
+yarn install && yarn compile && yarn vsce package --yarn
 ```
 
-The VSIX extension will be at `./nls-[version].vsix`.
+The VSIX extension will be at `./vscode-nickel-[version].vsix`.
 
 ## Updating `package.json`
 
 Whenever you change `package.json`, you must run the following command:
 
 ```shell
-npm install --package-lock-only && node2nix --development --lock
+yarn install && yarn2nix > yarn.nix
 ```
 
 This will update:
 
-* `package-lock.json`
-* `default.nix`
-* `node-env.nix`
-* `node-packages.nix`
+* `yarn.lock`
+* `yarn.nix`

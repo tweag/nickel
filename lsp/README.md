@@ -90,10 +90,10 @@ NLS is currently not available through the vscode marketplace, but this
 repository includes an extension that can be built locally via Nix (see the
 section about the Nix setup).
 
-- One-liner (using the [jq](https://stedolan.github.io/jq/) command):
+- One-liner:
 
   ```console
-  code --install-extension $(nix build ./\#vscodeExtension --no-link --json | jq ".[0].outputs.vsix")
+  code --install-extension $(nix build ./\#vscodeExtension --no-link --print-out-paths)/vscode-nickel.vsix
   ```
 
 - In two steps, going via VSCode:
@@ -104,7 +104,7 @@ section about the Nix setup).
       ```
 
   - Then, in VSCode, use "Extension: Install from VSIX" in the vscode command
-    palette and choose `./result-vsix/nls-client.vsix`.
+    palette and choose `./result/vscode-nickel.vsix`.
 
 #### Configuration
 
