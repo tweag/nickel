@@ -4,6 +4,7 @@
 
 use anyhow::{bail, Context, Result};
 use log::debug;
+use lsp_server::ResponseError;
 use lsp_types::{
     notification::{DidOpenTextDocument, Exit, Initialized, Notification as LspNotification},
     request::{GotoDefinition, Initialize, Request as LspRequest, Shutdown},
@@ -76,7 +77,11 @@ pub struct Response {
     id: u32,
     /// The result. The structure of this should be determined by whatever
     /// request method this is a response to. But it hasn't been checked yet.
+    #[serde(default)]
     result: serde_json::Value,
+    /// Populated if the request generated an error.
+    #[serde(default)]
+    error: Option<ResponseError>,
 }
 
 impl Server {
@@ -130,7 +135,18 @@ impl Server {
     }
 
     fn initialize(&mut self) -> Result<()> {
-        self.send_request::<Initialize>(InitializeParams::default())?;
+        #[allow(deprecated)]
+        self.send_request::<Initialize>(InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: None,
+            capabilities: Default::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+        })?;
         self.send_notification::<Initialized>(InitializedParams {})
     }
 
@@ -150,6 +166,9 @@ impl Server {
             // wait for a response after sending a request, there's only one outstanding
             // response.
             bail!("expected id {}, got {}", self.id, resp.id);
+        }
+        if let Some(err) = resp.error {
+            bail!(err.message);
         }
         Ok(serde_json::value::from_value(resp.result)?)
     }

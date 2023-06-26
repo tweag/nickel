@@ -61,7 +61,7 @@ impl QueryPath {
         };
 
         let format_name = "query-path";
-        let input_id = cache.add_tmp(format_name, input);
+        let input_id = cache.replace_string(format_name, input);
         let s = cache.source(input_id);
 
         let parser = FieldPathParser::new();

@@ -426,7 +426,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc4159b76af02757139baf42c0c971c6dc155330999fbfd8eddb29b97fb2db68"
 dependencies = [
  "codespan-reporting",
- "lsp-types 0.88.0",
+ "lsp-types",
  "url",
 ]
 
@@ -1360,15 +1360,12 @@ name = "lsp-harness"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "assert_cmd",
  "env_logger 0.10.0",
- "insta",
  "log",
- "lsp-types 0.94.0",
- "nickel-lang-utilities",
+ "lsp-server",
+ "lsp-types",
  "serde",
  "serde_json",
- "test-generator",
 ]
 
 [[package]]
@@ -1388,19 +1385,6 @@ name = "lsp-types"
 version = "0.88.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8e8e042772e4e10b3785822f63c82399d0dd233825de44d2596f7fa86e023e0"
-dependencies = [
- "bitflags",
- "serde",
- "serde_json",
- "serde_repr",
- "url",
-]
-
-[[package]]
-name = "lsp-types"
-version = "0.94.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b63735a13a1f9cd4f4835223d828ed9c2e35c8c5e61837774399f558b6a1237"
 dependencies = [
  "bitflags",
  "serde",
@@ -1609,6 +1593,7 @@ name = "nickel-lang-lsp"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "assert_matches",
  "clap 4.3.0",
  "codespan",
@@ -1617,17 +1602,21 @@ dependencies = [
  "csv",
  "derive_more",
  "env_logger 0.9.3",
+ "insta",
  "lalrpop",
  "lalrpop-util",
  "lazy_static",
  "log",
+ "lsp-harness",
  "lsp-server",
- "lsp-types 0.88.0",
+ "lsp-types",
  "nickel-lang-lib",
+ "nickel-lang-utilities",
  "pretty_assertions",
  "regex",
  "serde",
  "serde_json",
+ "test-generator",
 ]
 
 [[package]]

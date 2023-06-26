@@ -1,7 +1,7 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{RequestId, Response, ResponseError};
+use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
@@ -15,22 +15,35 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
+fn resp_error(message: String) -> ResponseError {
+    ResponseError {
+        code: ErrorCode::InternalError as i32,
+        message,
+        data: None,
+    }
+}
+
+macro_rules! resp_error {
+    ($($args:tt)*) => {
+        resp_error(format!($($args)*))
+    };
+}
+
 pub fn handle_to_definition(
     params: GotoDefinitionParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    let path = params
+        .text_document_position_params
+        .text_document
+        .uri
+        .to_file_path()
+        .unwrap();
     let file_id = server
         .cache
-        .id_of(
-            params
-                .text_document_position_params
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
-        )
-        .unwrap();
+        .id_of(&path)
+        .ok_or_else(|| resp_error!("file {} not found", path.as_os_str().to_string_lossy()))?;
 
     let start = position_to_byte_index(
         server.cache.files(),
