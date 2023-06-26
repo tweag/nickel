@@ -7,6 +7,26 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ## Steps to make a release
 
+### About the version numbers
+
+Some of the crates in the Nickel workspace are libraries and not versioned
+according to the version number of the language itself. These are
+
+- `nickel-lang-core`
+- `nickel-lang-utils`
+- `lsp-harness`
+- `nickel-wasm-repl`
+
+Their version numbers take the form `0.W.U` and their public APIs are not
+considered stable. Consequently we bump their versions to `0.(W+1).0` on every
+release.
+
+Other crates carry the version number of the Nickel language. These are
+
+- `nickel-lang-cli`
+- `nickel-lang-lsp`
+- `pyckel`
+
 ### Prepare
 
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
@@ -18,6 +38,14 @@ crates and dependent repositories (such as the website) in a consistent state.
    - `lsp/lsp-harness/Cargo.toml`
    - `utils/Cargo.toml`
    - `wasm-repl/Cargo.toml`
+   Afterwards, also adjust the version numbers in `Cargo.toml`. For example, in
+
+   ```toml
+      nickel-lang-core = { version = "0.1", path = "./core", default-features = false }
+   ```
+
+   adjust the version `0.1` to reflect the new version number.
+
 4. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
 5. Add the changelog since the last release in RELEASES.md. GitHub is able to
