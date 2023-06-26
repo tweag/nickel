@@ -4,10 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.71"
-env_logger = "0.10.0"
-log = "0.4.19"
-lsp-server = "0.6"
-lsp-types = "0.88.0"
-serde = { version = "1.0.164", features = ["derive"] }
-serde_json = "1.0.96"
+anyhow.workspace = true
+env_logger.workspace = true
+log.workspace = true
+lsp-types.workspace = true
+lsp-server.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+insta.workspace = true
+test-generator.workspace = true
+nickel-lang-utils.workspace = true

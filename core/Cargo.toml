@@ -1,0 +1,108 @@
+[package]
+name = "nickel-lang-core"
+version = "0.1.0"
+description = "Programmable configuration files."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[lib]
+bench = false
+
+[features]
+default = ["markdown", "repl", "doc"]
+markdown = ["termimad"]
+repl = ["rustyline", "rustyline-derive", "ansi_term"]
+repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
+doc = ["comrak"]
+
+[build-dependencies]
+lalrpop.workspace = true
+
+[dependencies]
+lalrpop-util.workspace = true
+regex.workspace = true
+simple-counter.workspace = true
+clap = { workspace = true, features = ["derive"] }
+codespan.workspace = true
+codespan-reporting.workspace = true
+logos.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml = { workspace = true, features = ["parse"] }
+void.workspace = true
+sha-1.workspace = true
+sha2.workspace = true
+md-5.workspace = true
+unicode-segmentation.workspace = true
+indoc.workspace = true
+
+termimad = { workspace = true, optional = true }
+ansi_term = { workspace = true, optional = true }
+
+rustyline = { workspace = true, optional = true}
+rustyline-derive = { workspace = true, optional = true }
+
+wasm-bindgen = { workspace = true, optional = true, features = ["serde-serialize"] }
+serde-wasm-bindgen.workspace = true
+js-sys = { workspace = true, optional = true }
+serde_repr = { workspace = true, optional = true }
+pretty.workspace = true
+
+comrak = { workspace = true, optional = true, features = [] }
+once_cell.workspace = true
+typed-arena.workspace = true
+malachite = { workspace = true, features = ["enable_serde"] }
+malachite-q.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
+strip-ansi-escapes.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+assert_matches.workspace = true
+criterion.workspace = true
+pprof = { workspace = true, features = ["criterion", "flamegraph"] }
+nickel-lang-utils.workspace = true
+similar.workspace = true
+test-generator.workspace = true
+
+# Enable this to use flamegraphs
+# [profile.release]
+# debug = true
+
+[[bench]]
+name = "numeric"
+harness = false
+
+[[bench]]
+name = "functions"
+harness = false
+
+[[bench]]
+name = "arrays"
+harness = false
+
+# [[bench]]
+# name = "records"
+# harness = false
+
+[[bench]]
+name = "serialization"
+harness = false
+
+[[bench]]
+name = "mantis"
+harness = false
+
+[[bench]]
+name = "stdlib"
+harness = false
+
+[[bench]]
+name = "typecheck-nixpkgs-lib"
+harness = false

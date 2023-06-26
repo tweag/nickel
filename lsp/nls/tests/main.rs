@@ -1,6 +1,6 @@
 use assert_cmd::cargo::CommandCargoExt;
 use lsp_types::request::{GotoDefinition, Request as LspRequest};
-use nickel_lang_utilities::project_root::project_root;
+use nickel_lang_utils::project_root::project_root;
 use test_generator::test_resources;
 
 use lsp_harness::{LspDebug, Request, Server, TestFixture};

@@ -11,9 +11,9 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-nickel-lang-lib = {default-features = false, path = "../nickel-lang-lib", version = "1.0.0" }
-pyo3 = { version = "0.17.3", features = ["extension-module"] }
-codespan-reporting = "0.11"
+nickel-lang-core = { workspace = true, default-features = false }
+pyo3 = { workspace = true, features = ["extension-module"] }
+codespan-reporting.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

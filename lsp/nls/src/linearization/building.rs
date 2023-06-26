@@ -2,7 +2,7 @@ use std::{collections::HashMap, mem};
 
 use codespan::FileId;
 use log::debug;
-use nickel_lang_lib::{
+use nickel_lang_core::{
     cache::Cache,
     identifier::Ident,
     position::TermPos,

@@ -1,0 +1,21 @@
+[package]
+name = "nickel-lang-utils"
+version = "0.1.0"
+description = "Common helper functions for the tests and benchmarks of the nickel-lang crate."
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+bench = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nickel-lang-core.workspace = true
+criterion.workspace = true
+codespan.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true, features = ["parse"] }

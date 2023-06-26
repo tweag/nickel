@@ -15,12 +15,12 @@ use lsp_types::{
     WorkDoneProgressOptions,
 };
 
-use nickel_lang_lib::{
+use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
     identifier::Ident,
     stdlib::StdlibModule,
 };
-use nickel_lang_lib::{stdlib, typecheck::Context};
+use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,

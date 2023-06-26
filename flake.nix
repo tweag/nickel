@@ -239,8 +239,8 @@
         in
         rec {
           inherit cargoArtifacts;
-          nickel-lang-lib = buildPackage { pname = "nickel-lang-lib"; };
-          nickel-lang-cli = buildPackage { pname = "nickel-lang"; };
+          nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
@@ -248,7 +248,7 @@
             then nickel-lang-cli
             else
               buildPackage {
-                pname = "nickel-lang";
+                pname = "nickel-lang-cli";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
@@ -261,7 +261,7 @@
             pname = "nickel-lang-bench";
 
             buildPhaseCargoCommand = ''
-              cargo bench -p nickel-lang-lib ${pkgs.lib.optionalString noRunBench "--no-run"}
+              cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
             '';
 
             doInstallCargoArtifacts = false;
@@ -346,7 +346,7 @@
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
           src = filterNickelSrc craneLib.filterCargoSources;
 
-          cargoExtraArgs = "-p nickel-repl --target wasm32-unknown-unknown --frozen --offline";
+          cargoExtraArgs = "-p nickel-wasm-repl --target wasm32-unknown-unknown --frozen --offline";
           # *  --mode no-install prevents wasm-pack from trying to download and
           #   vendor tools like wasm-bindgen, wasm-opt, etc. but use the one
           #   provided by Nix
@@ -371,15 +371,15 @@
           inherit cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
-            WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build nickel-wasm-repl ${wasmPackExtraArgs}
+            WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build wasm-repl ${wasmPackExtraArgs}
           '';
 
           # nickel-lang.org expects an interface `nickel-repl.wasm`, hence the
           # `ln`
           installPhaseCommand = ''
             mkdir -p $out
-            cp -r nickel-wasm-repl/pkg $out/nickel-repl
-            ln -s $out/nickel-repl/nickel_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
+            cp -r wasm-repl/pkg $out/nickel-repl
+            ln -s $out/nickel-repl/nickel_wasm_repl_bg.wasm $out/nickel-repl/nickel_repl.wasm
           '';
 
           nativeBuildInputs = [
@@ -441,7 +441,7 @@
         in
         pkgs.stdenv.mkDerivation {
           name = "nickel-stdlib-doc-${format}-${version}";
-          src = ./nickel-lang-lib/stdlib;
+          src = ./core/stdlib;
           installPhase = ''
             mkdir -p $out
             for file in $(ls *.ncl | grep -v 'internals.ncl')
@@ -495,7 +495,7 @@
           checkRustDoc
           lsp-nls
           nickel-lang-cli
-          nickel-lang-lib
+          nickel-lang-core
           rustfmt;
         # An optimizing release build is long: eschew optimizations in checks by
         # building a dev profile

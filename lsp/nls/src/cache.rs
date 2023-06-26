@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use codespan::FileId;
-use nickel_lang_lib::{
+use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, TermEntry},
     error::{Error, ImportError},
     typecheck::{self, linearization::Linearization},
