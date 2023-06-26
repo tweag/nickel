@@ -1362,6 +1362,7 @@ dependencies = [
  "anyhow",
  "env_logger 0.10.0",
  "log",
+ "lsp-server",
  "lsp-types",
  "serde",
  "serde_json",
