@@ -42,5 +42,6 @@ assert_cmd = "2.0.11"
 assert_matches = "1.5.0"
 insta = "1.29.0"
 lsp-harness = { path = "../lsp-harness" }
+nickel-lang-utilities = {path = "../../utilities"}
 pretty_assertions = "1.3.0"
 test-generator = "0.3.1"

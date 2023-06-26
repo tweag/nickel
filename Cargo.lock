@@ -1610,6 +1610,7 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "nickel-lang-lib",
+ "nickel-lang-utilities",
  "pretty_assertions",
  "regex",
  "serde",

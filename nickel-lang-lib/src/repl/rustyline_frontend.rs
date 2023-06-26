@@ -43,7 +43,10 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
         }
     }
 
-    let validator = InputParser::new(repl.cache_mut().add_tmp("<repl-input>", String::new()));
+    let validator = InputParser::new(
+        repl.cache_mut()
+            .replace_string("<repl-input>", String::new()),
+    );
 
     let mut editor = Editor::with_config(config(color_opt))
         .map_err(|readline_err| InitError::ReadlineError(format!("{readline_err}")))?;

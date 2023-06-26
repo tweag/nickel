@@ -227,6 +227,14 @@ pub enum ResolvedTerm {
     FromCache,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SourceState {
+    UpToDate(FileId),
+    /// The source is stale because it came from a file on disk that has since been updated.
+    /// The data is the timestamp of the new version of the file.
+    Stale(SystemTime),
+}
+
 impl Cache {
     pub fn new(error_tolerance: ErrorTolerance) -> Self {
         Cache {
@@ -288,10 +296,11 @@ impl Cache {
     pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(PathBuf::from(&path).as_path());
-        match self.id_or_new_timestamp_of(&path) {
-            Ok(id) => Ok(CacheOp::Cached(id)),
-            Err(Ok(timestamp)) => self.add_file_(normalized, timestamp).map(CacheOp::Done),
-            Err(Err(e)) => Err(e),
+        match self.id_or_new_timestamp_of(&path)? {
+            SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
+            SourceState::Stale(timestamp) => {
+                self.add_file_(normalized, timestamp).map(CacheOp::Done)
+            }
         }
     }
 
@@ -316,7 +325,7 @@ impl Cache {
     /// Load a new source as a string and add it to the name-id table.
     ///
     /// Do not check if a source with the same name already exists: if it is the case, this one
-    /// will override the old entry in the name-id table.
+    /// will override the old entry in the name-id table but the old `FileId` will remain valid.
     pub fn add_string(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
         let source_name = source_name.into();
         let id = self.files.add(source_name.clone(), s);
@@ -330,13 +339,14 @@ impl Cache {
         id
     }
 
-    /// Load a temporary source. If a source with the same name exists, clear the corresponding
-    /// term cache entry, and destructively update not only the name-id table entry, but also the
-    /// content of the source itself.
+    /// Load a new source as a string, replacing any existing source with the same name.
+    ///
+    /// If there was a previous source with the same name, its `FileId` is reused and the
+    /// cached term is deleted.
     ///
     /// Used to store intermediate short-lived generated snippets that needs to have a
     /// corresponding `FileId`, such as when querying or reporting errors.
-    pub fn add_tmp(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
+    pub fn replace_string(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
         let source_name = source_name.into();
         if let Some(file_id) = self.id_of(&source_name) {
             self.files.update(file_id, s);
@@ -828,7 +838,10 @@ impl Cache {
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
     /// [normalize_path]).
     pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
-        self.id_or_new_timestamp_of(name).ok()
+        match self.id_or_new_timestamp_of(name).ok()? {
+            SourceState::UpToDate(id) => Some(id),
+            SourceState::Stale(_) => None,
+        }
     }
 
     /// Try to retrieve the id of a cached source.
@@ -839,28 +852,25 @@ impl Cache {
     ///
     /// The main point of this awkward signature is to minimize I/O operations: if we accessed
     /// the timestamp, keep it around.
-    fn id_or_new_timestamp_of(
-        &self,
-        name: impl AsRef<OsStr>,
-    ) -> Result<FileId, io::Result<SystemTime>> {
+    fn id_or_new_timestamp_of(&self, name: impl AsRef<OsStr>) -> io::Result<SourceState> {
         let name = name.as_ref();
         match self.file_ids.get(name) {
-            None => Err(timestamp(name)),
+            None => Ok(SourceState::Stale(timestamp(name)?)),
             Some(NameIdEntry {
                 id,
                 source: Source::Filesystem(ts),
             }) => {
-                let new_timestamp = timestamp(name).map_err(Err)?;
+                let new_timestamp = timestamp(name)?;
                 if ts == &new_timestamp {
-                    Ok(*id)
+                    Ok(SourceState::UpToDate(*id))
                 } else {
-                    Err(Ok(new_timestamp))
+                    Ok(SourceState::Stale(new_timestamp))
                 }
             }
             Some(NameIdEntry {
                 id,
                 source: Source::Memory,
-            }) => Ok(*id),
+            }) => Ok(SourceState::UpToDate(*id)),
         }
     }
 

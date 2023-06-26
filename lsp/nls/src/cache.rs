@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString, io};
+use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_lib::{
@@ -10,7 +10,6 @@ use nickel_lang_lib::{
 use crate::linearization::{building::Building, completed::Completed, AnalysisHost, Environment};
 
 pub trait CacheExt {
-    fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
@@ -21,10 +20,6 @@ pub trait CacheExt {
 }
 
 impl CacheExt for Cache {
-    fn update_content(&mut self, path: impl Into<OsString>, source: String) -> io::Result<FileId> {
-        Ok(self.add_tmp(path, source))
-    }
-
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,

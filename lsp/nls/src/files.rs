@@ -57,10 +57,10 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
         },
     );
 
-    let file_id = server.cache.update_content(
+    let file_id = server.cache.replace_string(
         params.text_document.uri.to_file_path().unwrap(),
         params.content_changes[0].text.to_owned(),
-    )?;
+    );
 
     // TODO: make this part more abstracted
     //       implement typecheck (at least) as part of a persistent AST representation

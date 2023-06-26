@@ -249,7 +249,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
-            .add_tmp("<repl-typecheck>", String::from(exp));
+            .replace_string("<repl-typecheck>", String::from(exp));
         // We ignore non fatal errors while type checking.
         let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
         let import_resolution::strict::ResolveResult {
@@ -291,7 +291,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
-            .add_tmp("<repl-query>", target);
+            .replace_string("<repl-query>", target);
 
         let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
         program::query(&mut self.vm, file_id, &self.env, query_path)
