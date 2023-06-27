@@ -1,8 +1,5 @@
 use assert_cmd::cargo::CommandCargoExt;
-use lsp_types::{
-    request::{Completion, GotoDefinition, Request as LspRequest},
-    CompletionList,
-};
+use lsp_types::request::{Completion, GotoDefinition, Request as LspRequest};
 use nickel_lang_utils::project_root::project_root;
 use test_generator::test_resources;
 
