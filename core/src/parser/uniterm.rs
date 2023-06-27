@@ -80,22 +80,22 @@ impl UniTerm {
     }
 }
 
+// For nodes such as `Types` or `Record`, the following implementation has to choose between two positions to
+// use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or the `Type`.
+// This implementation assumes that the latest set is the one of `UniTerm`, which is the single
+// source of truth.
 impl TryFrom<UniTerm> for Types {
     type Error = ParseError;
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
-        match ut.node {
-            UniTermNode::Var(id) => Ok(Types {
-                types: TypeF::Var(id),
-                pos: ut.pos,
-            }),
-            UniTermNode::Record(r) => Types::try_from(r),
-            UniTermNode::Types(ty) => Ok(ty),
-            UniTermNode::Term(rt) => Ok(Types {
-                types: TypeF::Flat(rt),
-                pos: ut.pos,
-            }),
-        }
+        let ty_without_pos = match ut.node {
+            UniTermNode::Var(id) => Types::from(TypeF::Var(id)),
+            UniTermNode::Record(r) => Types::try_from(r)?,
+            UniTermNode::Types(ty) => ty,
+            UniTermNode::Term(rt) => Types::from(TypeF::Flat(rt)),
+        };
+
+        Ok(ty_without_pos.with_pos(ut.pos))
     }
 }
 
