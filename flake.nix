@@ -398,6 +398,13 @@
         ];
         config = {
           Entrypoint = "${nickel}/bin/nickel";
+          # Labels that are recognized by GHCR
+          # See https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#labelling-container-images
+          Labels = {
+            "org.opencontainers.image.source" = "https://github.com/tweag/nickel";
+            "org.opencontainers.image.description" = "Nickel: better configuration for less";
+            "org.opencontainers.image.licenses" = "MIT";
+          };
         };
       };
 
