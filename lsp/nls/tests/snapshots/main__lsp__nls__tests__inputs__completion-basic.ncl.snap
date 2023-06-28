@@ -2,10 +2,10 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[b, a, config]
-[version, verified, foo]
-[version, verified, foo]
-[version, verified, foo]
+[a, b, config]
+[foo, verified, version]
+[foo, verified, version]
+[foo, verified, version]
 [really]
 [really]
 
