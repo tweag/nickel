@@ -283,7 +283,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         env: self.env.clone(),
                         id,
                         // TODO: get type from pattern
-                        ty: UnifType::Concrete(TypeF::Dyn),
+                        ty: UnifType::concrete(TypeF::Dyn),
                         pos: new_ident.pos,
                         kind: TermKind::Declaration {
                             id: new_ident.to_owned(),
@@ -367,7 +367,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     env: self.env.clone(),
                     id: root_id,
                     pos: ident.pos,
-                    ty: UnifType::Concrete(TypeF::Dyn),
+                    ty: UnifType::concrete(TypeF::Dyn),
                     kind: TermKind::Usage(UsageState::from(pointed)),
                     metadata: self.meta.take(),
                 });
@@ -389,7 +389,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             env: self.env.clone(),
                             id,
                             pos: accessor.pos,
-                            ty: UnifType::Concrete(TypeF::Dyn),
+                            ty: UnifType::concrete(TypeF::Dyn),
                             kind: TermKind::Usage(UsageState::Deferred {
                                 parent: ItemId {
                                     file_id: self.file,
