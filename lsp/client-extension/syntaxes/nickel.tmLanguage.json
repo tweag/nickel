@@ -115,7 +115,7 @@
       ]
     },
     "bools": {
-      "name": "constant",
+      "name": "constant.boolean",
       "patterns": [
         {
           "name": "constant.boolean",
