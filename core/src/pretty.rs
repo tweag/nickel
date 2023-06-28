@@ -485,9 +485,14 @@ where
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
             Lbl(_lbl) => allocator.text("# <label>").append(allocator.hardline()),
-            Let(id, rt, body, _ty) => allocator
+            Let(id, rt, body, attrs) => allocator
                 .text("let")
                 .append(allocator.space())
+                .append(if attrs.rec {
+                    allocator.text("rec").append(allocator.space())
+                } else {
+                    allocator.nil()
+                })
                 .append(allocator.as_string(id))
                 .append(if let Annotated(ref annot, _) = rt.as_ref() {
                     allocator.space().append(allocator.annot(annot))
