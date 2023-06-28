@@ -1,17 +1,13 @@
 //! Define the type of an identifier.
 use once_cell::sync::Lazy;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
-use crate::{
-    parser::lexer::KEYWORDS, position::TermPos, pretty::escape, term::string::NickelString,
-};
+use crate::{position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
-static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
@@ -53,18 +49,6 @@ impl Ident {
     /// Return the string representation of this identifier.
     pub fn label(&self) -> &str {
         INTERNER.lookup(self.symbol)
-    }
-
-    /// Return the string representation of this identifier, and add enclosing double quotes if the
-    /// label isn't a valid identifier according to the parser, for example if it contains a
-    /// special character like a space.
-    pub fn label_quoted(&self) -> String {
-        let label = self.label();
-        if QUOTING_REGEX.is_match(label) && !KEYWORDS.contains(&label) {
-            String::from(label)
-        } else {
-            format!("\"{}\"", escape(label))
-        }
     }
 
     pub fn into_label(self) -> String {
