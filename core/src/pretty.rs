@@ -42,6 +42,13 @@ fn sorted_map<K: Ord, V>(m: &'_ IndexMap<K, V>) -> Vec<(&'_ K, &'_ V)> {
     ret
 }
 
+pub fn escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace("%{", "\\%{")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+}
+
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
 
 trait NickelAllocatorExt<'a, A: 'a>: DocAllocator<'a, A> + Sized
@@ -52,12 +59,7 @@ where
     /// Escape the special characters in a string, including the newline character, so that it can
     /// be enclosed by double quotes a be a valid Nickel string.
     fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        let s = s
-            .replace('\\', "\\\\")
-            .replace("%{", "\\%{")
-            .replace('\"', "\\\"")
-            .replace('\n', "\\n");
-        self.text(s)
+        self.text(escape(s))
     }
 
     /// Print string chunks, either in the single line or multiline style.
