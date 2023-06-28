@@ -315,7 +315,8 @@
           pkgs.cargo-insta
           pkgs.nixpkgs-fmt
           pkgs.nodejs
-          pkgs.node2nix
+          pkgs.yarn
+          pkgs.yarn2nix
           pkgs.nodePackages.markdownlint-cli
           pkgs.python3
           topiary.packages.${system}.default
@@ -408,25 +409,27 @@
         };
       };
 
-      # Build the Nickel VSCode extension. The extension seems to be required
-      # for the LSP to work.
-      vscodeExtension =
-        let node-package = (pkgs.callPackage ./lsp/client-extension { }).package;
-        in
-        (node-package.override rec {
-          pname = "nls-client";
-          outputs = [ "vsix" "out" ];
-          nativeBuildInputs = with pkgs; [
-            # `vsce` depends on `keytar`, which depends on `pkg-config` and `libsecret`
-            pkg-config
-            libsecret
-          ];
-          postInstall = ''
-            npm run compile
-            mkdir -p $vsix
-            echo y | npx vsce package -o $vsix/${pname}.vsix
-          '';
-        }).vsix;
+      # Build the Nickel VSCode extension
+      vscodeExtension = pkgs.mkYarnPackage {
+        pname = "vscode-nickel";
+        src = pkgs.lib.cleanSource ./lsp/client-extension;
+
+        buildPhase = ''
+          # yarn tries to create a .yarn file in $HOME. There's probably a
+          # better way to fix this but setting HOME to TMPDIR works for now.
+          export HOME="$TMPDIR"
+          cd deps/vscode-nickel
+          yarn --offline compile
+          yarn --offline vsce package --yarn -o $pname.vsix
+        '';
+
+        installPhase = ''
+          mkdir $out
+          mv $pname.vsix $out
+        '';
+
+        distPhase = "true";
+      };
 
       # Copy the markdown user manual to $out.
       userManual = pkgs.stdenv.mkDerivation {
