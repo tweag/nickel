@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug};
 use std::hash::Hash;
 
-use crate::{parser::lexer::KEYWORDS, position::TermPos, term::string::NickelString};
+use crate::{
+    parser::lexer::KEYWORDS, position::TermPos, pretty::escape, term::string::NickelString,
+};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
@@ -61,7 +63,7 @@ impl Ident {
         if reg.is_match(label) && !KEYWORDS.contains(&label) {
             String::from(label)
         } else {
-            format!("\"{label}\"")
+            format!("\"{}\"", escape(label))
         }
     }
 
