@@ -150,19 +150,86 @@ pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this
     /// type. This bound is used to delay costly type traversals related to variable level
     /// update, see [^variable-level-update].
-    old_level: VarLevel,
+    upper_bound: VarLevel,
     /// Pending variable level update, which must always satisfy `new_level <= old_level`. This
     /// value is used to delay costly type traversals related to variable level update, see
     /// [^variable-level-update].
-    new_level: VarLevel,
+    pending: Option<VarLevel>,
 }
 
 impl Default for VarLevelsData {
     fn default() -> Self {
+        VarLevelsData::new_from_bound(VarLevel::MAX)
+    }
+}
+
+impl VarLevelsData {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn new_from_bound(upper_bound: VarLevel) -> Self {
         VarLevelsData {
-            old_level: VarLevel::MAX,
-            new_level: VarLevel::MAX,
+            upper_bound,
+            pending: None,
         }
+    }
+
+    pub fn new_no_uvars() -> Self {
+        Self::new_from_bound(VarLevel::MIN)
+    }
+}
+
+//TODO: doc
+trait VarLevelUpperBound {
+    fn var_level_max(&self) -> VarLevel;
+}
+
+impl VarLevelUpperBound for UnifType {
+    fn var_level_max(&self) -> VarLevel {
+        match self {
+            UnifType::Concrete {
+                var_levels_data, ..
+            } => var_levels_data.upper_bound,
+            UnifType::UnifVar { init_level, .. } => *init_level,
+            UnifType::Contract(..) | UnifType::Constant(_) => {
+                VarLevelsData::new_no_uvars().upper_bound
+            }
+        }
+    }
+}
+
+impl VarLevelUpperBound for UnifTypeUnrolling {
+    fn var_level_max(&self) -> VarLevel {
+        use std::cmp::max;
+
+        match self {
+            TypeF::Dyn | TypeF::Bool | TypeF::Number | TypeF::String | TypeF::Symbol => {
+                VarLevelsData::new_no_uvars().upper_bound
+            }
+            TypeF::Arrow(domain, codomain) => max(domain.var_level_max(), codomain.var_level_max()),
+            TypeF::Forall { body, .. } => body.var_level_max(),
+            TypeF::Enum(erows) => erows.var_level_max(),
+            TypeF::Record(rrows) => rrows.var_level_max(),
+            TypeF::Dict { type_fields, .. } => type_fields.var_level_max(),
+            TypeF::Array(ty_elts) => ty_elts.var_level_max(),
+            TypeF::Wildcard(_)
+            | TypeF::Var(_)
+            // This should be unreachable, but let's not panic in release mode nonetheless
+            | TypeF::Flat(_) => VarLevelsData::new_no_uvars().upper_bound,
+        }
+    }
+}
+
+impl VarLevelUpperBound for UnifEnumRows {
+    fn var_level_max(&self) -> VarLevel {
+        todo!()
+    }
+}
+
+impl VarLevelUpperBound for UnifRecordRows {
+    fn var_level_max(&self) -> VarLevel {
+        todo!()
     }
 }
 
@@ -186,7 +253,7 @@ impl Default for VarLevelsData {
 pub enum GenericUnifType<E: TermEnvironment> {
     /// A concrete type (like `Number` or `String -> String`).
     Concrete {
-        types: TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>,
+        types: GenericUnifTypeUnrolling<E>,
         /// Additional metadata related to unification variable levels update. See [VarLevelData].
         var_levels_data: VarLevelsData,
     },
@@ -197,17 +264,43 @@ pub enum GenericUnifType<E: TermEnvironment> {
     /// A rigid type constant which cannot be unified with anything but itself.
     Constant(VarId),
     /// A unification variable.
-    UnifVar(VarId),
+    UnifVar {
+        /// The unique identifier of this variable in the unification table.
+        id: VarId,
+        /// The initial variable level at which the variable was created. This information is
+        /// useful to compute upper bounds, see [VarLevelsData]. Note that the actual level of this
+        /// variable is stored in the unification table, and must satisfy `current_level <=
+        /// init_level` (the level of a variable can only decrease with time).
+        init_level: VarLevel,
+    },
 }
+
+type GenericUnifTypeUnrolling<E> =
+    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>;
 
 impl<E: TermEnvironment> GenericUnifType<E> {
     /// Create a concrete generic unification type with default values for variable levels.
-    pub fn concrete(
-        types: TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>,
-    ) -> Self {
+    pub fn concrete(types: GenericUnifTypeUnrolling<E>) -> Self {
         GenericUnifType::Concrete {
             types,
             var_levels_data: Default::default(),
+        }
+    }
+
+    /// Doc: todo. Return the var levels data of a general unification type: either it's concrete
+    /// and thus this is just a getter, or the level is determined for other cases.
+    pub fn var_levels_data(&self) -> VarLevelsData {
+        match self {
+            GenericUnifType::Concrete {
+                var_levels_data, ..
+            } => var_levels_data.clone(),
+            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => {
+                VarLevelsData::new_no_uvars()
+            }
+            GenericUnifType::UnifVar { init_level, .. } => VarLevelsData {
+                upper_bound: *init_level,
+                pending: None,
+            },
         }
     }
 }
@@ -455,6 +548,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     }
 }
 
+type UnifTypeUnrolling = GenericUnifTypeUnrolling<SimpleTermEnvironment>;
 pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
 pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
 pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
@@ -534,12 +628,14 @@ impl UnifType {
     pub fn from_constant_of_kind(c: usize, k: VarKindDiscriminant) -> Self {
         match k {
             VarKindDiscriminant::Type => UnifType::Constant(c),
-            VarKindDiscriminant::EnumRows => {
-                UnifType::Concrete { types: TypeF::Enum(UnifEnumRows::Constant(c)), var_levels_data: Default::default() }
-            }
-            VarKindDiscriminant::RecordRows => {
-                UnifType::Concrete { types: TypeF::Record(UnifRecordRows::Constant(c)), var_levels_data: Default::default() }
-            }
+            VarKindDiscriminant::EnumRows => UnifType::Concrete {
+                types: TypeF::Enum(UnifEnumRows::Constant(c)),
+                var_levels_data: Default::default(),
+            },
+            VarKindDiscriminant::RecordRows => UnifType::Concrete {
+                types: TypeF::Record(UnifRecordRows::Constant(c)),
+                var_levels_data: Default::default(),
+            },
         }
     }
 
@@ -547,7 +643,7 @@ impl UnifType {
     /// as type constants are replaced with the type `Dyn`.
     fn into_type(self, table: &UnifTable) -> Types {
         match self {
-            UnifType::UnifVar(p) => match table.root_type(p) {
+            UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
                 t @ UnifType::Concrete { .. } => t.into_type(table),
                 _ => Types::from(TypeF::Dyn),
             },
@@ -568,7 +664,7 @@ impl UnifType {
     /// return the result of `table.root_type`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
-            UnifType::UnifVar(var_id) => table.root_type(var_id),
+            UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
             uty => uty,
         }
     }
@@ -576,11 +672,19 @@ impl UnifType {
 
 // This implementation assumes that `TypeF::Flat` is not possible. If a [`UnifType`] has been
 // correctly created from a type using `from_type`, this must be the case.
-impl From<TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>> for UnifType {
-    fn from(ty: TypeF<Box<UnifType>, UnifRecordRows, UnifEnumRows>) -> Self {
-        //TODO: var_levels, is it sound?
-        debug_assert!(!matches!(ty, TypeF::Flat(_)));
-        UnifType::concrete(ty)
+impl From<UnifTypeUnrolling> for UnifType {
+    fn from(types: UnifTypeUnrolling) -> Self {
+        debug_assert!(!matches!(types, TypeF::Flat(_)));
+
+        let var_level_max = types.var_level_max();
+
+        UnifType::Concrete {
+            types,
+            var_levels_data: VarLevelsData {
+                upper_bound: var_level_max,
+                pending: None,
+            },
+        }
     }
 }
 
@@ -2394,8 +2498,8 @@ pub fn unify(
                 UnifType::concrete(ty2),
             )),
         },
-        (UnifType::UnifVar(p), uty) | (uty, UnifType::UnifVar(p)) => {
-            state.table.assign_type(p, uty);
+        (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
+            state.table.assign_type(id, uty);
             Ok(())
         }
         (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
@@ -2605,7 +2709,10 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_type_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifType::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifType::UnifVar(fresh_uid),
+                    ForallInst::Ptr => UnifType::UnifVar {
+                        id: fresh_uid,
+                        init_level: ctxt.var_level,
+                    },
                 };
                 state.names.insert((fresh_uid, kind), var);
                 ty = body.subst_type(&var, &uvar);
@@ -2678,7 +2785,7 @@ impl UnifTable {
     /// doing, you should probably use `unify` instead.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         // Unifying a free variable with itself is a no-op.
-        if matches!(uty, UnifType::UnifVar(x) if x == var) {
+        if matches!(uty, UnifType::UnifVar { id, ..} if id == var) {
             return;
         }
 
@@ -2774,7 +2881,10 @@ impl UnifTable {
 
     /// Create a fresh type unification variable and allocate a corresponding slot in the table.
     pub fn fresh_type_uvar(&mut self, var_level: VarLevel) -> UnifType {
-        UnifType::UnifVar(self.fresh_type_var_id(var_level))
+        UnifType::UnifVar {
+            id: self.fresh_type_var_id(var_level),
+            init_level: var_level,
+        }
     }
 
     /// Create a fresh record rows unification variable and allocate a corresponding slot in the
@@ -2809,13 +2919,16 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_type(&self, var_id: VarId) -> UnifType {
+    pub fn root_type(&self, var_id: VarId, init_level: VarLevel) -> UnifType {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
         match self.types[var_id].value.as_ref() {
-            None => UnifType::UnifVar(var_id),
-            Some(UnifType::UnifVar(y)) => self.root_type(*y),
+            None => UnifType::UnifVar {
+                id: var_id,
+                init_level,
+            },
+            Some(UnifType::UnifVar { id, init_level }) => self.root_type(*id, *init_level),
             Some(ty) => ty.clone(),
         }
     }

@@ -2,6 +2,11 @@
 use super::UnifType;
 use crate::types::{DictTypeFlavour, TypeF};
 
+macro_rules! compute_combined_level {
+    ($uty: expr) => ($uty);
+    ($x: expr, $($z: expr),+) => (::std::cmp::min($x, min!($($z),*)));
+}
+
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
 macro_rules! mk_uty_arrow {
@@ -120,6 +125,13 @@ where
 {
     UnifType::Concrete {
         types: TypeF::Array(Box::new(ty.into())),
+        var_levels_data: Default::default(),
+    }
+}
+
+pub fn arrow(domain: impl Into<UnifType>, codomain: impl Into<UnifType>) -> UnifType {
+    UnifType::Concrete {
+        types: TypeF::Arrow(Box::new(domain.into()), Box::new(codomain.into())),
         var_levels_data: Default::default(),
     }
 }

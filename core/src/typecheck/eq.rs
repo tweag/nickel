@@ -531,12 +531,12 @@ fn type_eq_bounded<E: TermEnvironment>(
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (GenericUnifType::UnifVar(p1), GenericUnifType::UnifVar(p2)) => {
+        (GenericUnifType::UnifVar { id: id1, ..}, GenericUnifType::UnifVar { id: id2, ..}) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"
             );
-            p1 == p2
+            id1 == id2
         }
         (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
         _ => false,
