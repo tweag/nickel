@@ -695,13 +695,14 @@ where
                     op.pretty(allocator)
                         .append(allocator.space())
                         .append(allocator.atom(rtl))
+                        .append(allocator.line())
                 } else {
                     allocator
                         .atom(rtl)
                         .append(allocator.space())
                         .append(op.pretty(allocator))
+                        .append(allocator.line())
                 }
-                .append(allocator.line())
                 .append(allocator.atom(rtr))
                 .nest(2)
             }

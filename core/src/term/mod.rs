@@ -814,7 +814,6 @@ impl Term {
         match self {
             Term::Null
             | Term::Bool(..)
-            | Term::Num(..)
             | Term::Str(..)
             | Term::StrChunks(..)
             | Term::Lbl(..)
@@ -834,7 +833,9 @@ impl Term {
             // We might want a more robust mechanism for pretty printing such operators.
             | Term::Op1(UnaryOp::BoolAnd(), _)
             | Term::Op1(UnaryOp::BoolOr(), _) => true,
+            Term::Num(n) if *n >= 0 => true,
             Term::Let(..)
+            | Term::Num(..)
             | Term::Match { .. }
             | Term::LetPattern(..)
             | Term::Fun(..)
