@@ -163,6 +163,5 @@ pub mod term {
 
 ## Prior art
 
-
-Trees that grow: https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf
-Someone else translated it to rust (without macros, or simple enums): https://github.com/guygastineau/rust-trees-that-grow/tree/main
+- Trees that grow: https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf
+- Someone else translated it to rust (without macros, or simple enums): https://github.com/guygastineau/rust-trees-that-grow/tree/main
