@@ -5,6 +5,6 @@ expression: out
 # `Hello`
 
 - `Hello : Number`
-- `Hello | (std.string).Stringable`
+- `Hello | std.string.Stringable`
 World\!
 
