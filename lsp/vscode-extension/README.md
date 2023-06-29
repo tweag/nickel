@@ -10,11 +10,24 @@
 
 ### Install `nickel`, `nls` and `topiary`
 
+#### Using Nix
+
 ```shell
 nix profile install nixpkgs#{nickel,nls,topiary}
 ```
 
-## Build
+#### Using Cargo
+
+```shell
+cargo install nickel-lang-cli nickel-lang-lsp
+```
+
+#### Other installation methods
+
+See [the Nickel README](https://github.com/tweag/nickel/) and [The LSP
+README](https://github.com/tweag/nickel/tree/master/lsp).
+
+## Build from source
 
 ### With Nix
 

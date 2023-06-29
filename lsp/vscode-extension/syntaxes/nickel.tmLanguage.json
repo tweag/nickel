@@ -1,12 +1,22 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Nickel",
+  "scopeName": "source.nickel",
   "patterns": [
     {
       "include": "#keywords"
     },
     {
+      "include": "#multiline_strings"
+    },
+    {
       "include": "#strings"
+    },
+    {
+      "include": "#records"
+    },
+    {
+      "include": "#arrays"
     },
     {
       "include": "#comments"
@@ -27,7 +37,7 @@
       "include": "#types"
     },
     {
-      "include": "#strings_interpolation"
+      "include": "#identifiers"
     }
   ],
   "repository": {
@@ -44,28 +54,22 @@
       ]
     },
     "strings_interpolation": {
-      "name": "string.interpolated",
-      "begin": "m%(%*)\"$",
-      "end": "\"%\\1$",
+      "name": "meta.embedded",
+      "begin": "%\\{",
+      "end": "\\}",
       "patterns": [
         {
-          "name": "constant.character.escape.interpolation.nickel",
-          "match": "''%$\\{"
-        },
+          "include": "$self"
+        }
+      ]
+    },
+    "records": {
+      "name": "meta.embedded",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
         {
-          "name": "constant.other.placeholder.nickel",
-          "begin": "%\\{",
-          "beginCaptures": {
-            "0": {
-              "name": "punctuation.section.curly.begin.nickel"
-            }
-          },
-          "end": "\\}",
-          "endCaptures": {
-            "0": {
-              "name": "punctuation.section.curly.end.nickel"
-            }
-          }
+          "include": "$self"
         }
       ]
     },
@@ -80,21 +84,44 @@
     "keywords": {
       "patterns": [
         {
-          "name": "keyword.control.nickel",
+          "name": "keyword.control",
           "match": "\\b(if|else|then|match)\\b"
         }
       ]
     },
+    "multiline_strings": {
+      "name": "string.quoted.double",
+      "begin": "m(%+)\"",
+      "end": "\"\\1",
+      "patterns": [
+        {
+          "name": "constant.character.escape",
+          "match": "\\\\."
+        },
+        {
+          "include": "#strings_interpolation"
+        }
+      ]
+    },
     "strings": {
-      "name": "string.quoted.double.nickel",
+      "name": "string.quoted.double",
       "begin": "\"",
       "end": "\"",
       "patterns": [
         {
-          "name": "constant.character.escape.nickel",
+          "name": "constant.character.escape",
           "match": "\\\\."
+        },
+        {
+          "include": "#strings_interpolation"
         }
       ]
+    },
+    "arrays": {
+      "comment": "array",
+      "begin": "\\[",
+      "end": "\\]",
+      "patterns": [{ "include": "$self" }]
     },
     "comments": {
       "name": "comment.line.number-sign",
@@ -140,7 +167,37 @@
           "match": "(=>|==|=|\\|\\||\\||->|<|>|>=|<=|\\+\\+|\\+|\\-\\$|\\-|\\*|\\/|&&|&|\\.|\\:|@)"
         }
       ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "comment": "capital identifier for type and contracts",
+          "name": "variable.uppercase-identifier",
+          "match": "\\b[[:upper:]][[:word:]'-]*\\b"
+        },
+        {
+          "comment": "lowercase identifier",
+          "name": "variable.lowercase-identifier",
+          "match": "\\b[[:lower:]_][[:word:]'-]*\\b"
+        },
+        {
+          "comment": "enum tag",
+          "name": "constant.other.enum-tag",
+          "match": "\\b'[[:alpha:]][[:word:]-]*\\b"
+        },
+        {
+          "comment": "quoted enum tag",
+          "name": "constant.other.enum-tag",
+          "begin": "\\b'\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
     }
-  },
-  "scopeName": "source.nickel"
+  }
 }

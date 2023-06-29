@@ -1,6 +1,5 @@
 # Cargo generated
 /target/
-/utilities/target
 
 # Nix generated
 /result*
@@ -16,8 +15,8 @@
 **/*.rs.bk
 
 /node_modules
-/lsp/client-extension/node_modules
-/lsp/client-extension/out
+/lsp/vscode-extension/node_modules
+/lsp/vscode-extension/out
 
 # Ctags output
 /tags
