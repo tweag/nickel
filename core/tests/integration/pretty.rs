@@ -1,6 +1,9 @@
-use nickel_lang_core::pretty::*;
-use nickel_lang_core::term::{RichTerm, StrChunk, Term};
-use nickel_lang_utils::{project_root::project_root, test_program::parse};
+use nickel_lang_core::term::{make, RichTerm, StrChunk, Term, UnaryOp};
+use nickel_lang_core::{mk_app, pretty::*};
+use nickel_lang_utils::{
+    project_root::project_root,
+    test_program::{eval, parse},
+};
 
 use pretty::BoxAllocator;
 use std::io::{Cursor, Read};
@@ -69,4 +72,13 @@ fn str_vs_strchunks() {
         pretty(&Term::Str("string".into()).into()),
         pretty(&Term::StrChunks(vec![StrChunk::Literal("string".to_string())]).into())
     );
+}
+
+#[test]
+fn negative_numbers() {
+    eval(pretty(&mk_app!(
+        Term::Op1(UnaryOp::StaticAccess("is_number".into()), make::var("std")),
+        Term::Num((-5).into())
+    )))
+    .unwrap();
 }
