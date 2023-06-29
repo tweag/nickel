@@ -26,8 +26,11 @@ pub fn handle_document_symbols(
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Declaration { id: name, .. } => {
-                    // TODO: can `unwrap` fail here?
-                    let (file_id, span) = item.pos.unwrap().to_range();
+                    // Although the position maybe shouldn't be `None`, opening the std library
+                    // source inside VSCode made the LSP panic on the previous `item.pos.unwrap()`.
+                    // Before investigating further, let's not make the VSCode extension panic in
+                    // the meantime.
+                    let (file_id, span) = item.pos.into_opt()?.to_range();
 
                     let range =
                         codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)
