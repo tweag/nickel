@@ -1,6 +1,7 @@
 use crate::destructuring::{self, RecordPattern};
 use crate::identifier::Ident;
 
+use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
     *,
@@ -8,6 +9,7 @@ use crate::term::{
 use crate::types::*;
 
 use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
+use once_cell::sync::Lazy;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 
@@ -42,6 +44,28 @@ fn sorted_map<K: Ord, V>(m: &'_ IndexMap<K, V>) -> Vec<(&'_ K, &'_ V)> {
     ret
 }
 
+/// Escape a string to make it suitable for placing between quotes in Nickel
+fn escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace("%{", "\\%{")
+        .replace('\"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
+
+/// Return the string representation of an identifier, and add enclosing double quotes if the
+/// label isn't a valid identifier according to the parser, for example if it contains a
+/// special character like a space.
+fn ident_quoted(ident: &Ident) -> String {
+    let label = ident.label();
+    if QUOTING_REGEX.is_match(label) && !KEYWORDS.contains(&label) {
+        String::from(label)
+    } else {
+        format!("\"{}\"", escape(label))
+    }
+}
+
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
 
 trait NickelAllocatorExt<'a, A: 'a>: DocAllocator<'a, A> + Sized
@@ -52,12 +76,7 @@ where
     /// Escape the special characters in a string, including the newline character, so that it can
     /// be enclosed by double quotes a be a valid Nickel string.
     fn escaped_string(&'a self, s: &str) -> DocBuilder<'a, Self, A> {
-        let s = s
-            .replace('\\', "\\\\")
-            .replace("%{", "\\%{")
-            .replace('\"', "\\\"")
-            .replace('\n', "\\n");
-        self.text(s)
+        self.text(escape(s))
     }
 
     /// Print string chunks, either in the single line or multiline style.
@@ -177,7 +196,7 @@ where
     }
 
     fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        self.text(id.label_quoted())
+        self.text(ident_quoted(id))
             .append(self.field_body(field, with_doc))
     }
 
@@ -295,9 +314,7 @@ where
             BoolNot() => allocator.text("!"),
             BoolAnd() => allocator.space().append(allocator.text("&&")),
             BoolOr() => allocator.space().append(allocator.text("||")),
-            StaticAccess(id) => allocator
-                .text(".")
-                .append(allocator.text(id.label_quoted())),
+            StaticAccess(id) => allocator.text(".").append(allocator.text(ident_quoted(id))),
             Embed(id) => allocator
                 .text("%embed%")
                 .append(allocator.space())
@@ -584,9 +601,7 @@ where
                     .group(),
             },
             Var(id) => allocator.as_string(id),
-            Enum(id) => allocator
-                .text("'")
-                .append(allocator.text(id.label_quoted())),
+            Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
             Record(record) => allocator
                 .line()
                 .append(allocator.fields(&record.fields, true))
@@ -618,7 +633,7 @@ where
                         sorted_map(cases).iter().map(|&(id, t)| {
                             allocator
                                 .text("'")
-                                .append(allocator.text(id.label_quoted()))
+                                .append(allocator.text(ident_quoted(id)))
                                 .append(allocator.space())
                                 .append(allocator.text("=>"))
                                 .append(allocator.space())
@@ -738,7 +753,7 @@ where
             EnumRowsF::Extend { row, tail } => {
                 let builder = allocator
                     .text("'")
-                    .append(allocator.text(row.label_quoted()));
+                    .append(allocator.text(ident_quoted(&row)));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder
                         .append(allocator.text(","))
@@ -777,7 +792,7 @@ where
                 tail,
             } => {
                 let builder = allocator
-                    .text(id.label_quoted())
+                    .text(ident_quoted(&id))
                     .append(allocator.text(":"))
                     .append(allocator.space())
                     .append(types.pretty(allocator));
