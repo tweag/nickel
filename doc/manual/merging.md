@@ -322,7 +322,7 @@ nickel> {foo = 1, bar | optional} & {bar}
 error: missing definition for `bar`
   ┌─ repl-input-4:1:1
   │
-1 │ {foo = 1, bar | optional} & {bar, baz = bar + 1}
+1 │ {foo = 1, bar | optional} & {bar}
   │ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   │ │         │
   │ │         defined here
