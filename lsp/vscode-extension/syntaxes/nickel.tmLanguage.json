@@ -120,7 +120,7 @@
     "arrays": {
       "comment": "array",
       "begin": "\\[",
-      "end": "]",
+      "end": "\\]",
       "patterns": [{ "include": "$self" }]
     },
     "comments": {
@@ -173,22 +173,22 @@
         {
           "comment": "capital identifier for type and contracts",
           "name": "variable.uppercase-identifier",
-          "match": "\\b[[:upper:]][[:word:]'-]*('|\\b)"
+          "match": "\\b[[:upper:]][[:word:]'-]*\\b"
         },
         {
           "comment": "lowercase identifier",
           "name": "variable.lowercase-identifier",
-          "match": "\\b[[:lower:]_][[:word:]-']*('|\\b)"
+          "match": "\\b[[:lower:]_][[:word:]'-]*\\b"
         },
         {
           "comment": "enum tag",
           "name": "constant.other.enum-tag",
-          "match": "'[[:alpha:]][[:word:]-]*\\b"
+          "match": "\\b'[[:alpha:]][[:word:]-]*\\b"
         },
         {
           "comment": "quoted enum tag",
           "name": "constant.other.enum-tag",
-          "begin": "'\"",
+          "begin": "\\b'\"",
           "end": "\"",
           "patterns": [
             {
