@@ -1,4 +1,5 @@
 **/*
+!images
 !out/extension.js
 !language-configuration.json
 !package.json
