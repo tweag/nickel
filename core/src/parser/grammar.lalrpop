@@ -277,14 +277,14 @@ Forall: Types =
 // A n-ary application-like expression (n may be 0, in the sense that this rule
 // also includes previous levels).
 Applicative: UniTerm = {
+    Atom,
     AsUniTerm<WithPos<TypeArray>>,
-    <t1: AsTerm<Applicative>> <t2: AsTerm<RecordOperand>> =>
+    <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> =>
         UniTerm::from(mk_app!(t1, t2)),
-    <op: UOp> <t: AsTerm<RecordOperand>> => UniTerm::from(mk_term::op1(op, t)),
-    <op: BOpPre> <t1: AsTerm<RecordOperand>> <t2: AsTerm<Atom>>
+    <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(mk_term::op1(op, t)),
+    <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
         => UniTerm::from(mk_term::op2(op, t1, t2)),
-    NOpPre<AsTerm<RecordOperand>>,
-    RecordOperand,
+    NOpPre<AsTerm<Atom>>,
     "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
         let mut acc = IndexMap::with_capacity(cases.len());
         let mut default = None;
@@ -308,21 +308,16 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = "Array" <t: AsType<RecordOperand>> =>
+TypeArray: Types = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
     // it doens't compile.
     Types::from(TypeF::Array(Box::new(t)));
 
-RecordOperand: UniTerm = {
-    Atom,
-    AsUniTerm<RecordOperationChain>,
-};
-
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
-    <t: AsTerm<RecordOperand>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
-    <t: AsTerm<RecordOperand>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
+    <t: AsTerm<Atom>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
+    <t: AsTerm<Atom>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
 RecordRowTail: RecordRows = {
@@ -381,6 +376,7 @@ Atom: UniTerm = {
         UniTerm::from(Term::Array(terms, Default::default()))
     },
     AsUniTerm<WithPos<TypeAtom>>,
+    AsUniTerm<RecordOperationChain>,
 };
 
 // A record field definition. The is the only place where we don't fix the type
