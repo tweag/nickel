@@ -10,17 +10,23 @@
     "url": "https://github.com/tweag/nickel"
   },
   "publisher": "tweag",
-  "categories": [],
+  "categories": [
+    "Programming Languages",
+    "Language Packs",
+    "Formatters"
+  ],
   "keywords": [
-    "multi-root ready",
     "syntax",
+    "formatter",
     "nickel",
+    "nls",
     "lsp"
   ],
   "activationEvents": [
     "onLanguage:nickel"
   ],
   "main": "./out/extension",
+  "icon": "images/nickel-logo-256.png",
   "contributes": {
     "languages": [
       {
