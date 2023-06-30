@@ -167,13 +167,12 @@
           # This might change once the Nickel support is stabilized.
           topiary-latest = topiary.lib.${system}.pre-commit-hook // {
             enable = true;
-            # Some tests and benches are currently failing the idempotency
-            # check, and formatting is less important there. We at least want
-            # the examples as well as the stdlib to be properly formatted.
+            # Some tests are currently failing the idempotency check, and
+            # formatting is less important there. We at least want the examples
+            # as well as the stdlib to be properly formatted.
             files = "\\.ncl$";
             excludes = [
               "/tests/(.+)\\.ncl$"
-              "/benches/(.+)\\.ncl$"
             ];
           };
         };

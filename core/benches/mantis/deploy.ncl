@@ -49,7 +49,7 @@ fun vars =>
           ]
       )
       | default
-      = [ "eu-central-1", "us-east-2" ],
+      = ["eu-central-1", "us-east-2"],
     fqdn = "mantis.ws",
     networkConfig
       | String
