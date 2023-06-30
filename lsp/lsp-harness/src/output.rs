@@ -85,3 +85,27 @@ impl LspDebug for lsp_types::GotoDefinitionResponse {
         }
     }
 }
+
+impl LspDebug for lsp_types::CompletionItem {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "{}", self.label)
+    }
+}
+
+impl LspDebug for lsp_types::CompletionResponse {
+    fn debug(&self, w: impl Write) -> std::io::Result<()> {
+        match self {
+            lsp_types::CompletionResponse::Array(items) => {
+                // The order of completions is non-deterministic, so sort them.
+                let mut items = items.clone();
+                items.sort_by_key(|i| i.label.clone());
+                Iter(items.iter()).debug(w)
+            }
+            lsp_types::CompletionResponse::List(list) => {
+                let mut items = list.items.clone();
+                items.sort_by_key(|i| i.label.clone());
+                Iter(list.items.iter()).debug(w)
+            }
+        }
+    }
+}

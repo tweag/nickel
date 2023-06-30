@@ -4,8 +4,8 @@ mod output;
 pub use jsonrpc::Server;
 use log::error;
 use lsp_types::{
-    GotoDefinitionParams, Location, Position, Range, TextDocumentIdentifier,
-    TextDocumentPositionParams, Url,
+    CompletionContext, CompletionParams, GotoDefinitionParams, Location, Position, Range,
+    TextDocumentIdentifier, TextDocumentPositionParams, Url,
 };
 pub use output::LspDebug;
 
@@ -34,6 +34,7 @@ pub struct TestFile {
 /// A subset of LSP requests that our harness supports.
 pub enum Request {
     GotoDefinition(GotoDefinitionParams),
+    Completion(CompletionParams),
 }
 
 /// A private FromStr, with simpler error handling and (because it's
@@ -92,6 +93,28 @@ impl Parse for Request {
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
             })),
+            // The format of a Completion request is the file:line:char location,
+            // followed by an optional trigger character.
+            "Completion" => {
+                let (pos, context) = if let Some((pos, trigger)) = params.split_once(' ') {
+                    (
+                        pos,
+                        Some(CompletionContext {
+                            trigger_kind: lsp_types::CompletionTriggerKind::TriggerCharacter,
+                            trigger_character: Some(trigger.to_owned()),
+                        }),
+                    )
+                } else {
+                    (params, None)
+                };
+                Some(Request::Completion(CompletionParams {
+                    text_document_position: TextDocumentPositionParams::parse(pos)?,
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                    context,
+                }))
+            }
+
             _ => None,
         }
     }
