@@ -21,7 +21,7 @@ let types = import "../schemas/nomad/types.ncl" in
   config = {
     flake = "github:NixOS/nixpkgs/nixos-21.05#telegraf",
     command = "/bin/telegraf",
-    args = [ "-config", "/local/telegraf.config" ],
+    args = ["-config", "/local/telegraf.config"],
   },
 
   template."local/telegraf.config" = {

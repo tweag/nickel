@@ -1,7 +1,7 @@
 let letter | Number -> std.string.Character = fun n =>
-  let letters = std.string.characters "abcdefghijklmnopqrstuvwxyz" in
-  std.array.at (n % 26) letters
-in
+    let letters = std.string.characters "abcdefghijklmnopqrstuvwxyz" in
+    std.array.at (n % 26) letters
+  in
 
 {
   right = {
@@ -11,7 +11,7 @@ in
     },
     nums = {
       run = fun n =>
-        std.array.fold_right (fun x acc => x*acc + (x - acc)) 0 (std.array.generate (fun n => n/2) n)
+        std.array.fold_right (fun x acc => x * acc + (x - acc)) 0 (std.array.generate (fun n => n / 2) n)
     },
     arrays = {
       run = fun n =>
@@ -25,7 +25,7 @@ in
     },
     nums = {
       run = fun n =>
-        std.array.fold_left (fun acc x => x*acc + (x - acc)) 0 (std.array.generate (fun n => n/2) n)
+        std.array.fold_left (fun acc x => x * acc + (x - acc)) 0 (std.array.generate (fun n => n / 2) n)
     },
     arrays = {
       run = fun n =>

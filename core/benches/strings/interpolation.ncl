@@ -1,7 +1,9 @@
 {
-  run = fun n => if n < 1 then
-    ""
-      else m%"
+  run = fun n =>
+    if n < 1 then
+      ""
+    else
+      m%"
         5bSVkTosPNAmX5yhmsDM
         Vdj4osv58320QrJPzBao
         NvTwB4CCW7vSDWPc7fe8

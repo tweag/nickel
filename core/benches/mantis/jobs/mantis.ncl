@@ -19,7 +19,7 @@ let Params = {
   fqdn | String,
   loggers | { _ : String },
   network
-    | lib.contracts.OneOf [ "testnet-internal-nomad", "etc" ]
+    | lib.contracts.OneOf ["testnet-internal-nomad", "etc"]
     | default
     = "testnet-internal-nomad",
   networkConfig | String,
@@ -326,7 +326,7 @@ params.role}.rule=Host(`%{params.namespace}-%{std.string.from_enum params.role}.
           "%{params.namespace}-mantis-%{std.string.from_enum params.role}-server" = {
             address_mode = 'host,
             port = "server",
-            tags = [ "ingress", "server" ] @ baseTags,
+            tags = ["ingress", "server"] @ baseTags,
             meta = {
               Name = "mantis-${NOMAD_ALLOC_INDEX}",
               PublicIp = "${attr.unique.platform.aws.public-ipv4}",

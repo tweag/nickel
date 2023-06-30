@@ -150,12 +150,12 @@ in
       Attempts | std.number.Nat,
       Interval | std.number.Nat,
       Delay | std.number.Nat,
-      Mode | (lib.contracts.OneOf [ "delay", "fail" ]),
+      Mode | (lib.contracts.OneOf ["delay", "fail"]),
     },
 
     Volume = {
       Name | String,
-      Type | (lib.contracts.OneOf [ null, "host", "csi" ]),
+      Type | (lib.contracts.OneOf [ null, "host", "csi"]),
       Source | String,
       ReadOnly
         | Bool
@@ -781,11 +781,13 @@ in
                     }
                   in
                   {
-                    Networks = [{
-                      Mode = tg.network.mode,
-                      ReservedPorts = std.array.map mkPort ports.right,
-                      DynamicPorts = std.array.map mkPort ports.wrong,
-                    }]
+                    Networks = [
+                      {
+                        Mode = tg.network.mode,
+                        ReservedPorts = std.array.map mkPort ports.right,
+                        DynamicPorts = std.array.map mkPort ports.wrong,
+                      }
+                    ]
                   }
                 else
                   {}
@@ -1404,7 +1406,7 @@ in
         | default
         = null,
       initial_status
-        | (lib.contracts.OneOf [ "passing", "warning", "critical", "" ])
+        | (lib.contracts.OneOf ["passing", "warning", "critical", ""])
         | default
         = "",
       success_before_passing

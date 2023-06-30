@@ -8,7 +8,7 @@
 
   run = fun n =>
     let left = std.array.generate std.function.id n in
-    let right = std.array.generate (fun n => n*n/2) n in
+    let right = std.array.generate (fun n => n * n / 2) n in
     let prod = map2 (fun x y => x * y) left right in
     std.array.fold_left (fun x y => x + y) 0 prod
 }
