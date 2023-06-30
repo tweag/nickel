@@ -9,9 +9,35 @@ in
     a = config.version,
     b = config.verified.really,
 }
-### Completion /completion-basic.ncl:7:12
-### Completion /completion-basic.ncl:7:15 .
-### Completion /completion-basic.ncl:8:15 .
-### Completion /completion-basic.ncl:8:23
-### Completion /completion-basic.ncl:8:24 .
-### Completion /completion-basic.ncl:8:27
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 7, character = 12 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 7, character = 15 }
+### context = { triggerKind = 2, triggerCharacter = "." }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 8, character = 15 }
+### context = { triggerKind = 2, triggerCharacter = "." }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 8, character = 23 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 8, character = 24 }
+### context = { triggerKind = 2, triggerCharacter = "." }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 8, character = 27 }

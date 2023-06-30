@@ -11,6 +11,7 @@ lsp-types.workspace = true
 lsp-server.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

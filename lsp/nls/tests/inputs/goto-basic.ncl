@@ -3,6 +3,17 @@ let
   var = "val"
 in
 { foo = var }
-### GotoDefinition /goto.ncl:3:8
-### GotoDefinition /goto.ncl:3:9
-### GotoDefinition /goto.ncl:3:10
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
+### position = { line = 3, character = 8 }
+###
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
+### position = { line = 3, character = 9 }
+###
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
+### position = { line = 3, character = 10 }

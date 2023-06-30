@@ -1310,6 +1310,7 @@ dependencies = [
  "serde",
  "serde_json",
  "test-generator",
+ "toml",
 ]
 
 [[package]]

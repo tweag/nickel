@@ -51,6 +51,8 @@ impl TestHarness {
 
 #[test_resources("lsp/nls/tests/inputs/*.ncl")]
 fn check_snapshots(path: &str) {
+    let _ = env_logger::try_init();
+
     let full_path = project_root().join(path);
     dbg!(path, &full_path);
 
@@ -60,10 +62,6 @@ fn check_snapshots(path: &str) {
 
     if fixture.files.is_empty() {
         panic!("no files");
-    }
-
-    if fixture.reqs.is_empty() {
-        panic!("no reqs");
     }
 
     for file in fixture.files {

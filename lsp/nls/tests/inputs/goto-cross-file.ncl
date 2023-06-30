@@ -5,5 +5,12 @@ let
   record = import "dep.ncl"
 in
   record.foo
-### GotoDefinition /goto.ncl:3:2
-### GotoDefinition /goto.ncl:3:9
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
+### position = { line = 3, character = 2 }
+###
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
+### position = { line = 3, character = 9 }
