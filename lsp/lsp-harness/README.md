@@ -12,10 +12,9 @@ Each chunk between these lines consists of the contents of a file to be loaded i
 the language server, and the line before the chunk specifies the name of that file
 (which must be an absolute path).
 
-The input file must also contain at least one trailing line starting with `###`,
-and each such trailing line denotes a request to send to the language server.
-The format of these requests is ad-hoc and will be expanded as more requests are
-supported. See the implementation of `Parse` for `lsp_harness::Request`.
+The input file may end with a block of lines starting with `###`. If it does,
+these lines specify a list of requests to send to the language server.
+These requests are written as LSP requests translated to toml.
 
 For example, a test file might look like:
 
@@ -24,5 +23,8 @@ For example, a test file might look like:
 <contents of /absolute/path.ncl>
 ### /another/absolute/path.ncl
 <contents of /another/absolute/path.ncl>
-### GotoDefinition /absolute/path.ncl:0:0
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///absolute/path.ncl"
+### position = { line = 3, character = 8 }
 ```
