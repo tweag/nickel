@@ -936,9 +936,13 @@ impl Cache {
         Some(file)
     }
 
-    pub fn get_imports(&self, file: &FileId) -> Option<Vec<FileId>> {
-        let imports_set = self.imports.get(file)?;
-        Some(imports_set.iter().copied().collect())
+    /// Returns the set of files that this file imports.
+    pub fn get_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+        self.imports
+            .get(&file)
+            .into_iter()
+            .flat_map(|s| s.iter())
+            .copied()
     }
 
     /// Returns the set of files that import this file.

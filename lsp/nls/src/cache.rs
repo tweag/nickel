@@ -40,14 +40,12 @@ impl CacheExt for Cache {
             }
         }
 
-        if let Some(ids) = self.get_imports(&file_id) {
-            for id in ids {
-                // If we have typechecked a file correctly, its imports should be
-                // in the `lin_registry`. The imports that are not in `lin_registry`
-                // were not typechecked correctly.
-                if !lin_registry.map.contains_key(&id) {
-                    typecheck_import_diagnostics.push(id);
-                }
+        for id in self.get_imports(file_id) {
+            // If we have typechecked a file correctly, its imports should be
+            // in the `lin_registry`. The imports that are not in `lin_registry`
+            // were not typechecked correctly.
+            if !lin_registry.map.contains_key(&id) {
+                typecheck_import_diagnostics.push(id);
             }
         }
 
