@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use codespan::FileId;
+use codespan_reporting::diagnostic::Diagnostic;
 use log::{debug, trace, warn};
 use lsp_server::{
     Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
@@ -10,9 +13,9 @@ use lsp_types::{
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams, HoverOptions,
-    HoverParams, HoverProviderCapability, OneOf, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgressOptions,
+    HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    Url, WorkDoneProgressOptions,
 };
 
 use nickel_lang_core::{
@@ -24,6 +27,7 @@ use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
+    diagnostic::DiagnosticCompat,
     linearization::{completed::Completed, Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
@@ -35,6 +39,8 @@ pub const FORMATTING_COMMAND: [&str; 3] = ["topiary", "--language", "nickel"];
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
+    /// In order to return diagnostics, we store the URL of each file we know about.
+    pub file_uris: HashMap<FileId, Url>,
     pub lin_registry: LinRegistry,
     pub initial_ctxt: Context,
     pub initial_env: Environment,
@@ -75,6 +81,7 @@ impl Server {
         Server {
             connection,
             cache,
+            file_uris: HashMap::new(),
             lin_registry: LinRegistry::new(),
             initial_ctxt,
             initial_env: Environment::new(),
@@ -264,5 +271,28 @@ impl Server {
                 message: "File has not yet been parsed or cached.".to_owned(),
                 code: ErrorCode::ParseError as i32,
             })
+    }
+
+    pub fn issue_diagnostics(&mut self, file_id: FileId, diagnostics: Vec<Diagnostic<FileId>>) {
+        let Some(uri) = self.file_uris.get(&file_id).cloned() else {
+            warn!("tried to issue diagnostics for unknown file id {file_id:?}");
+            return;
+        };
+
+        let diagnostics: Vec<_> = diagnostics
+            .into_iter()
+            .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.cache.files_mut()))
+            .collect();
+
+        if !diagnostics.is_empty() {
+            self.notify(lsp_server::Notification::new(
+                "textDocument/publishDiagnostics".into(),
+                PublishDiagnosticsParams {
+                    uri,
+                    diagnostics,
+                    version: None,
+                },
+            ));
+        }
     }
 }
