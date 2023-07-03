@@ -6,11 +6,15 @@ use anyhow::{bail, Context, Result};
 use log::debug;
 use lsp_server::ResponseError;
 use lsp_types::{
-    notification::{DidOpenTextDocument, Exit, Initialized, Notification as LspNotification},
+    notification::{
+        DidChangeTextDocument, DidOpenTextDocument, Exit, Initialized,
+        Notification as LspNotification,
+    },
     request::{GotoDefinition, Initialize, Request as LspRequest, Shutdown},
-    ClientCapabilities, DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse,
-    InitializeParams, InitializedParams, Position, TextDocumentIdentifier,
-    TextDocumentPositionParams, Url,
+    ClientCapabilities, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializedParams, Position,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    VersionedTextDocumentIdentifier,
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -114,6 +118,18 @@ impl Server {
                 version: 1,
                 text: contents.to_owned(),
             },
+        })
+    }
+
+    /// Replace the contents of a file with new contents.
+    pub fn replace_file(&mut self, uri: Url, version: i32, contents: &str) -> Result<()> {
+        self.send_notification::<DidChangeTextDocument>(DidChangeTextDocumentParams {
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: contents.to_owned(),
+            }],
+            text_document: VersionedTextDocumentIdentifier { uri, version },
         })
     }
 
