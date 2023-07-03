@@ -510,14 +510,13 @@ impl Cache {
                     self.update_state(file_id, EntryState::Typechecking);
                     self.wildcards.insert(file_id, wildcards);
 
-                    // Here and below, update the state before recursing so that circular
-                    // imports don't cause an infinite loop.
-                    self.update_state(file_id, EntryState::Typechecked);
                     if let Some(imports) = self.imports.get(&file_id).cloned() {
                         for f in imports.into_iter() {
                             self.typecheck(f, initial_ctxt)?;
                         }
                     }
+
+                    self.update_state(file_id, EntryState::Typechecked);
                 }
                 // The else case correponds to `EntryState::Typechecking`. There is nothing to do:
                 // cf (grep for) [transitory_entry_state]
@@ -550,13 +549,13 @@ impl Cache {
                             ..cached_term
                         },
                     );
-                }
 
-                self.update_state(file_id, EntryState::Transformed);
-                if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.into_iter() {
-                        self.transform(f)?;
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.transform(f)?;
+                        }
                     }
+                    self.update_state(file_id, EntryState::Transformed);
                 }
                 Ok(CacheOp::Done(()))
             }
@@ -655,13 +654,13 @@ impl Cache {
                             parse_errs,
                         },
                     );
-                }
 
-                self.update_state(file_id, EntryState::Transformed);
-                if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.into_iter() {
-                        self.transform(f).map_err(|_| CacheError::NotParsed)?;
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.transform(f).map_err(|_| CacheError::NotParsed)?;
+                        }
                     }
+                    self.update_state(file_id, EntryState::Transformed);
                 }
 
                 Ok(CacheOp::Done(()))
