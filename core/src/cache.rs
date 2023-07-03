@@ -64,8 +64,10 @@ pub struct Cache {
     files: Files<String>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
     file_ids: HashMap<OsString, NameIdEntry>,
-    /// Map containing for each FileIDs a list of files they import (directly).
+    /// Map containing for each FileId a list of files they import (directly).
     imports: HashMap<FileId, HashSet<FileId>>,
+    /// Map containing for each FileId a list of files importing them (directly).
+    rev_imports: HashMap<FileId, HashSet<FileId>>,
     /// The table storing parsed terms corresponding to the entries of the file database.
     terms: HashMap<FileId, TermEntry>,
     /// The list of ids corresponding to the stdlib modules
@@ -243,6 +245,7 @@ impl Cache {
             terms: HashMap::new(),
             wildcards: HashMap::new(),
             imports: HashMap::new(),
+            rev_imports: HashMap::new(),
             stdlib_ids: None,
             error_tolerance,
 
@@ -546,15 +549,14 @@ impl Cache {
                             ..cached_term
                         },
                     );
-                }
 
-                if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.into_iter() {
-                        self.transform(f)?;
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.transform(f)?;
+                        }
                     }
+                    self.update_state(file_id, EntryState::Transformed);
                 }
-
-                self.update_state(file_id, EntryState::Transformed);
                 Ok(CacheOp::Done(()))
             }
             _ => Err(CacheError::NotParsed),
@@ -652,15 +654,15 @@ impl Cache {
                             parse_errs,
                         },
                     );
-                }
 
-                if let Some(imports) = self.imports.get(&file_id).cloned() {
-                    for f in imports.into_iter() {
-                        self.transform(f).map_err(|_| CacheError::NotParsed)?;
+                    if let Some(imports) = self.imports.get(&file_id).cloned() {
+                        for f in imports.into_iter() {
+                            self.transform(f).map_err(|_| CacheError::NotParsed)?;
+                        }
                     }
+                    self.update_state(file_id, EntryState::Transformed);
                 }
 
-                self.update_state(file_id, EntryState::Transformed);
                 Ok(CacheOp::Done(()))
             }
             None => Err(CacheError::NotParsed),
@@ -887,7 +889,6 @@ impl Cache {
     }
 
     /// Get an immutable reference to the cached term roots
-    /// (used by the language server to invalidate previously parsed entries)
     pub fn terms(&self) -> &HashMap<FileId, TermEntry> {
         &self.terms
     }
@@ -934,9 +935,38 @@ impl Cache {
         Some(file)
     }
 
-    pub fn get_imports(&self, file: &FileId) -> Option<Vec<FileId>> {
-        let imports_set = self.imports.get(file)?;
-        Some(imports_set.iter().copied().collect())
+    /// Returns the set of files that this file imports.
+    pub fn get_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+        self.imports
+            .get(&file)
+            .into_iter()
+            .flat_map(|s| s.iter())
+            .copied()
+    }
+
+    /// Returns the set of files that import this file.
+    pub fn get_rev_imports(&self, file: FileId) -> impl Iterator<Item = FileId> + '_ {
+        self.rev_imports
+            .get(&file)
+            .into_iter()
+            .flat_map(|s| s.iter())
+            .copied()
+    }
+
+    /// Returns the set of files that transitively depend on this file.
+    pub fn get_rev_imports_transitive(&self, file: FileId) -> HashSet<FileId> {
+        let mut ret = HashSet::new();
+        let mut stack = vec![file];
+
+        while let Some(file) = stack.pop() {
+            for f in self.get_rev_imports(file) {
+                if ret.insert(f) {
+                    stack.push(f);
+                }
+            }
+        }
+
+        ret
     }
 
     /// Retrieve the FileIds for all the stdlib modules
@@ -1164,20 +1194,17 @@ impl ImportResolver for Cache {
         })?;
         let (result, file_id) = match id_op {
             CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
-            CacheOp::Done(id) => {
-                if let Some(parent) = parent {
-                    let parent_id = self.id_of(parent).unwrap();
-                    if let Some(imports) = self.imports.get_mut(&parent_id) {
-                        imports.insert(id);
-                    } else {
-                        let mut imports = HashSet::new();
-                        imports.insert(id);
-                        self.imports.insert(parent_id, imports);
-                    }
-                }
-                (ResolvedTerm::FromFile { path: path_buf }, id)
-            }
+            CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
         };
+
+        if let Some(parent) = parent {
+            let parent_id = self.id_of(parent).unwrap();
+            self.imports.entry(parent_id).or_default().insert(file_id);
+            self.rev_imports
+                .entry(file_id)
+                .or_default()
+                .insert(parent_id);
+        }
 
         self.parse_multi(file_id, format)
             .map_err(|err| ImportError::ParseErrors(err, *pos))?;

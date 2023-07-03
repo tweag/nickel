@@ -5,7 +5,7 @@ use log::trace;
 use lsp_server::RequestId;
 use lsp_types::{
     notification::{DidOpenTextDocument, Notification},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, PublishDiagnosticsParams, Url,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams,
 };
 use nickel_lang_core::{
     cache::{CacheError, CacheOp},
@@ -15,7 +15,6 @@ use nickel_lang_core::{
 use crate::trace::{param::FileUpdate, Enrich, Trace};
 
 use super::cache::CacheExt;
-use super::diagnostic::DiagnosticCompat;
 use super::server::Server;
 
 pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Result<()> {
@@ -36,8 +35,9 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
         params.text_document.uri.to_file_path().unwrap(),
         params.text_document.text,
     );
+    server.file_uris.insert(file_id, params.text_document.uri);
 
-    parse_and_typecheck(server, params.text_document.uri, file_id)?;
+    parse_and_typecheck(server, file_id)?;
     Trace::reply(id);
     Ok(())
 }
@@ -62,10 +62,22 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
         params.content_changes[0].text.to_owned(),
     );
 
+    // Any transitive dependency of the modified file needs to be re-type-checked (but not re-parsed).
+    let invalid = server.cache.get_rev_imports_transitive(file_id);
+    for f in &invalid {
+        server.lin_registry.map.remove(f);
+    }
+
     // TODO: make this part more abstracted
     //       implement typecheck (at least) as part of a persistent AST representation
     //       for now execute the same as above for handling `open` notifications
-    parse_and_typecheck(server, params.text_document.uri, file_id)?;
+    parse_and_typecheck(server, file_id)?;
+
+    for f in &invalid {
+        if let Err(e) = typecheck(server, *f) {
+            server.issue_diagnostics(*f, e);
+        }
+    }
     Trace::reply(id);
     Ok(())
 }
@@ -88,35 +100,20 @@ fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Di
         })
 }
 
-fn parse_and_typecheck(server: &mut Server, uri: Url, file_id: FileId) -> Result<()> {
-    let diagnostics = server
-        .cache
-        .parse(file_id)
-        .map_err(|parse_err| parse_err.into_diagnostics(server.cache.files_mut(), None))
-        .map(|parse_errs| {
-            // Parse errors are not fatal
-            let mut d = parse_errs
-                .inner()
-                .into_diagnostics(server.cache.files_mut(), None);
-            trace!("Parsed, checking types");
-            let _ = typecheck(server, file_id).map_err(|mut ty_d| d.append(&mut ty_d));
-            d
-        })
-        .unwrap_or_else(|d| d);
+fn parse_and_typecheck(server: &mut Server, file_id: FileId) -> Result<()> {
+    let (parse_errs, fatal) = match server.cache.parse(file_id) {
+        Ok(errs) => (errs.inner(), false),
+        Err(errs) => (errs, true),
+    };
+    let diags = parse_errs.into_diagnostics(server.cache.files_mut(), None);
+    server.issue_diagnostics(file_id, diags);
 
-    let diagnostics = diagnostics
-        .into_iter()
-        .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, server.cache.files_mut()))
-        .collect();
-
-    server.notify(lsp_server::Notification::new(
-        "textDocument/publishDiagnostics".into(),
-        PublishDiagnosticsParams {
-            uri,
-            diagnostics,
-            version: None,
-        },
-    ));
+    if !fatal {
+        trace!("Parsed, checking types");
+        if let Err(e) = typecheck(server, file_id) {
+            server.issue_diagnostics(file_id, e);
+        }
+    }
 
     Ok(())
 }

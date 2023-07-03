@@ -1,3 +1,5 @@
+use std::collections::{hash_map::Entry, HashMap};
+
 use assert_cmd::cargo::CommandCargoExt;
 use lsp_types::request::{Completion, GotoDefinition, Request as LspRequest};
 use nickel_lang_utils::project_root::project_root;
@@ -54,18 +56,31 @@ fn check_snapshots(path: &str) {
     let _ = env_logger::try_init();
 
     let full_path = project_root().join(path);
-    dbg!(path, &full_path);
 
     let contents = std::fs::read_to_string(&full_path).unwrap();
     let fixture = TestFixture::parse(&contents).unwrap();
     let mut harness = TestHarness::new();
+
+    let mut file_versions = HashMap::new();
 
     if fixture.files.is_empty() {
         panic!("no files");
     }
 
     for file in fixture.files {
-        harness.srv.send_file(file.uri, &file.contents).unwrap();
+        match file_versions.entry(file.uri.clone()) {
+            Entry::Occupied(mut version) => {
+                *version.get_mut() += 1;
+                harness
+                    .srv
+                    .replace_file(file.uri, *version.get(), &file.contents)
+                    .unwrap();
+            }
+            Entry::Vacant(entry) => {
+                harness.srv.send_file(file.uri, &file.contents).unwrap();
+                entry.insert(1);
+            }
+        }
     }
     for req in fixture.reqs {
         harness.request_dyn(req);
