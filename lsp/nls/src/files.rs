@@ -65,7 +65,7 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     // Any transitive dependency of the modified file needs to be re-type-checked (but not re-parsed).
     let invalid = server.cache.get_rev_imports_transitive(file_id);
     for f in &invalid {
-        server.lin_registry.remove_file(*f);
+        server.lin_registry.map.remove(f);
     }
 
     // TODO: make this part more abstracted

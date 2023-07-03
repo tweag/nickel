@@ -51,11 +51,6 @@ impl LinRegistry {
         let lin = self.map.get(&id.file_id).unwrap();
         lin.get_item(id)
     }
-
-    /// Remove a file's linearization from the registry.
-    pub fn remove_file(&mut self, file_id: FileId) {
-        self.map.remove(&file_id);
-    }
 }
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
