@@ -4,7 +4,7 @@ As Nickel grows, it becomes unwieldy to use a single abstract syntax tree (AST) 
 
 One strategy to deal with this is to repeat a large AST enum in multiple places with small differences, and convert from one to another as we move through program manipulations. This creates a large maintenance burden, since many changes have to be propagated to all the trees.
 
-Another strategy is outlined by the paper [Trees that Grow](https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf). This describes an extendable tree structure using type families and pattern synonyms for ergonomics. While this is quite a bit DRYer, there is still a decent amount of boilerplate, and actually using these trees is less intuitive. Especially in rust, where there are no pattern synonyms.
+Another strategy is outlined by the paper [Trees that Grow](https://www.microsoft.com/en-us/research/uploads/prod/2016/11/trees-that-grow.pdf). This describes an extendable tree structure using type families and pattern synonyms for ergonomics. While this is quite a bit DRYer, there is still a decent amount of boilerplate, and actually using these trees is less intuitive. Especially in Rust, where there are no pattern synonyms (the paper is targeting Haskell).
 
 I (@Radvendii) have explored using proc macros to get the best of both worlds, and remove the boilerplate along the way. There are three ways we could use proc macros, but they share a common syntax.
 
