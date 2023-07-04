@@ -426,7 +426,7 @@ pub enum MultiStringToken<'input> {
     /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
     /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     /// `FalseEnd` otherwise
-    #[regex("\"%+")]
+    #[regex("\"%+")] // m%%""%%{x}"%%m
     CandidateEnd(&'input str),
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
@@ -451,14 +451,27 @@ pub enum Token<'input> {
     MultiStr(MultiStringToken<'input>),
 }
 
+type SpannedToken<'input> = (usize, Token<'input>, usize);
 type NormalLexer<'input> = logos::Lexer<'input, NormalToken<'input>>;
-type StrLexer<'input> = logos::Lexer<'input, StringToken<'input>>;
-type MultiStrLexer<'input> = logos::Lexer<'input, MultiStringToken<'input>>;
+type StringLexer<'input> = logos::Lexer<'input, StringToken<'input>>;
+type MultiStringLexer<'input> = logos::Lexer<'input, MultiStringToken<'input>>;
 
 pub enum ModalLexer<'input> {
-    Normal(NormalLexer<'input>),
-    Str(StrLexer<'input>),
-    MultiStr(MultiStrLexer<'input>),
+    Normal {
+        mode_data: NormalData,
+        logos_lexer: NormalLexer<'input>,
+    },
+    String {
+        logos_lexer: StringLexer<'input>,
+    },
+    MultiString {
+        mode_data: MultiStrData,
+        /// A token that has been buffered and must be returned at the next call to `next()`. This is
+        /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
+        /// [`MultiStringToken::QuotesCandidateInterpolation`].
+        buffer: Option<(MultiStringToken<'input>, Range<usize>)>,
+        logos_lexer: MultiStringLexer<'input>,
+    },
 }
 
 // Wrap the `next()` function of the underlying lexer.
@@ -467,29 +480,49 @@ impl<'input> Iterator for ModalLexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ModalLexer::Normal(lexer) => lexer.next().map(Token::Normal),
-            ModalLexer::Str(lexer) => lexer.next().map(Token::Str),
-            ModalLexer::MultiStr(lexer) => lexer.next().map(Token::MultiStr),
+            ModalLexer::Normal { logos_lexer, .. } => logos_lexer.next().map(Token::Normal),
+            ModalLexer::String { logos_lexer } => logos_lexer.next().map(Token::Str),
+            ModalLexer::MultiString { logos_lexer, .. } => logos_lexer.next().map(Token::MultiStr),
         }
     }
 }
 
-// Wrap the `span()` function of the underlying lexer.
-impl<'input> ModalLexer<'input> {
-    pub fn span(&self) -> std::ops::Range<usize> {
-        match self {
-            ModalLexer::Normal(lexer) => lexer.span(),
-            ModalLexer::Str(lexer) => lexer.span(),
-            ModalLexer::MultiStr(lexer) => lexer.span(),
-        }
+/// State associated to the lexer in multiline string mode.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MultiStrData {
+    /// The number of characters of the starting delimiter, required to correctly detect the end of
+    /// multiline strings.
+    percent_count: usize,
+    /// The position of the opening delimiter of the current multiline string. Used for error
+    /// reporting.
+    opening_delimiter: Range<usize>,
+}
+
+/// State associated to the lexer in normal mode.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct NormalData {
+    /// The current brace counter to determine if a closing brace is the end of
+    /// an interpolated expression.
+    brace_count: usize,
+}
+
+impl NormalData {
+    pub fn new() -> Self {
+        Default::default()
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Copy)]
-pub enum ModeElt {
-    Str,
-    MultiStr(usize),
-    Normal(usize),
+/// Possible lexer modes together with their associated state. `Mode` values are pushed on a stack
+/// when entering a new mode and popped when a mode is exited. The associated mode data are
+/// restored when restoring a previous mode.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Mode {
+    /// When lexing a normal (double quotes) string.
+    String,
+    /// When lexing a multiline string.
+    MultiString(MultiStrData),
+    /// When lexing a normal Nickel expression.
+    Normal(NormalData),
 }
 
 pub struct Lexer<'input> {
@@ -501,32 +534,20 @@ pub struct Lexer<'input> {
     // excepted in an non observable intermediate state during mode switching.
     /// The modal lexer.
     pub lexer: Option<ModalLexer<'input>>,
-    /// A counter:
-    ///  - in normal mode, the current brace counter to determine if a closing brace is the end of
-    ///  an interpolated expression.
-    ///  - in multiline string mode, this is the number of characters of the starting delimiter.
-    ///  This is required to correctly detect the end of such multi-line strings.
-    ///  - in string mode, it is unused, and is always `0`
-    pub count: usize,
-    /// The stack of brace counters.
-    ///
-    /// As interpolated strings can be nested, we can start to lex a new string while we were
-    /// already inside an interpolated expression. In this case, once this string ends, we must
-    /// restore the original brace counter, which is what this stack is used for.
-    pub stack: Vec<ModeElt>,
-    /// A token that has been buffered and must be returned at the next call to `next()`. This is
-    /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
-    /// [`MultiStringToken::QuotesCandidateInterpolation`].
-    pub buffer: Option<(Token<'input>, Range<usize>)>,
+    /// The mode stack. Whenever a new mode is entered (starting to lex a string for example), the
+    /// previous mode together with its associated state is pushed on this stack. It can be then
+    /// restored once the current mode is exited (in the string example, when the string ends).
+    pub modes: Vec<Mode>,
 }
 
 impl<'input> Lexer<'input> {
     pub fn new(s: &'input str) -> Self {
         Lexer {
-            lexer: Some(ModalLexer::Normal(NormalToken::lexer(s))),
-            stack: Vec::new(),
-            count: 0,
-            buffer: None,
+            lexer: Some(ModalLexer::Normal {
+                mode_data: NormalData { brace_count: 0 },
+                logos_lexer: NormalToken::lexer(s),
+            }),
+            modes: Vec::new(),
         }
     }
 
@@ -536,52 +557,73 @@ impl<'input> Lexer<'input> {
     {
         match self.lexer.take() {
             // Cannot transition from a string mode to another one, so the current mode must be
-            //  `Normal`
-            Some(ModalLexer::Normal(lexer)) => {
-                self.stack.push(ModeElt::Normal(self.count));
-                self.lexer = Some(morph(lexer));
+            // `Normal`
+            Some(ModalLexer::Normal {
+                mode_data,
+                logos_lexer,
+            }) => {
+                self.modes.push(Mode::Normal(mode_data));
+                self.lexer = Some(morph(logos_lexer));
             }
             _ => panic!("lexer::enter_strlike"),
         }
     }
 
     fn enter_str(&mut self) {
-        self.enter_strlike(|lexer| ModalLexer::Str(lexer.morph()));
-        self.count = 0;
+        self.enter_strlike(|lexer| ModalLexer::String {
+            logos_lexer: lexer.morph(),
+        });
     }
 
-    fn enter_indstr(&mut self, percent_count: usize) {
-        self.enter_strlike(|lexer| ModalLexer::MultiStr(lexer.morph()));
-        self.count = percent_count;
+    fn enter_indstr(&mut self, percent_count: usize, opening_delimiter: Range<usize>) {
+        self.enter_strlike(|lexer| ModalLexer::MultiString {
+            mode_data: MultiStrData {
+                percent_count,
+                opening_delimiter,
+            },
+            buffer: None,
+            logos_lexer: lexer.morph(),
+        });
     }
 
     fn enter_normal(&mut self) {
         match self.lexer.take() {
-            //count must be zero, and we do not push it on the stack
-            Some(ModalLexer::Str(lexer)) => {
-                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
-                self.stack.push(ModeElt::Str);
+            Some(ModalLexer::String { logos_lexer }) => {
+                self.lexer = Some(ModalLexer::Normal {
+                    mode_data: NormalData::new(),
+                    logos_lexer: logos_lexer.morph(),
+                });
+
+                self.modes.push(Mode::String);
             }
-            Some(ModalLexer::MultiStr(lexer)) => {
-                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
-                self.stack.push(ModeElt::MultiStr(self.count));
+            Some(ModalLexer::MultiString {
+                mode_data,
+                logos_lexer,
+                buffer: _,
+            }) => {
+                self.lexer = Some(ModalLexer::Normal {
+                    mode_data: NormalData::new(),
+                    logos_lexer: logos_lexer.morph(),
+                });
+
+                self.modes.push(Mode::MultiString(mode_data));
             }
             _ => panic!("lexer::enter_normal"),
         }
-
-        self.count = 0;
     }
 
     fn leave_str(&mut self) {
         match self.lexer.take() {
-            Some(ModalLexer::Str(lexer)) => {
+            Some(ModalLexer::String { logos_lexer }) => {
                 // We can only enter string mode from normal mode
-                self.count = match self.stack.pop() {
-                    Some(ModeElt::Normal(count)) => count,
-                    mode => panic!("lexer::leave_str (popped mode {mode:?})"),
+                let Some(Mode::Normal(mode_data)) = self.modes.pop() else {
+                    panic!("lexer::leave_str (popped wrong mode)");
                 };
 
-                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal {
+                    mode_data,
+                    logos_lexer: logos_lexer.morph(),
+                });
             }
             _ => panic!("lexer::leave_str"),
         }
@@ -589,14 +631,16 @@ impl<'input> Lexer<'input> {
 
     fn leave_indstr(&mut self) {
         match self.lexer.take() {
-            Some(ModalLexer::MultiStr(lexer)) => {
+            Some(ModalLexer::MultiString { logos_lexer, .. }) => {
                 // We can only enter string mode from normal mode
-                self.count = match self.stack.pop() {
-                    Some(ModeElt::Normal(count)) => count,
-                    mode => panic!("lexer::leave_str (popped mode {mode:?})"),
+                let Some(Mode::Normal(data)) = self.modes.pop() else {
+                    panic!("lexer::leave_str (popped wrong mode)");
                 };
 
-                self.lexer = Some(ModalLexer::Normal(lexer.morph()));
+                self.lexer = Some(ModalLexer::Normal {
+                    mode_data: data,
+                    logos_lexer: logos_lexer.morph(),
+                });
             }
             _ => panic!("lexer::leave_str"),
         }
@@ -604,13 +648,19 @@ impl<'input> Lexer<'input> {
 
     fn leave_normal(&mut self) {
         match self.lexer.take() {
-            Some(ModalLexer::Normal(lexer)) => {
-                // count must be 0
-                match self.stack.pop() {
-                    Some(ModeElt::Str) => self.lexer = Some(ModalLexer::Str(lexer.morph())),
-                    Some(ModeElt::MultiStr(count)) => {
-                        self.count = count;
-                        self.lexer = Some(ModalLexer::MultiStr(lexer.morph()))
+            Some(ModalLexer::Normal { logos_lexer, .. }) => {
+                match self.modes.pop() {
+                    Some(Mode::String) => {
+                        self.lexer = Some(ModalLexer::String {
+                            logos_lexer: logos_lexer.morph(),
+                        })
+                    }
+                    Some(Mode::MultiString(data)) => {
+                        self.lexer = Some(ModalLexer::MultiString {
+                            mode_data: data,
+                            buffer: None,
+                            logos_lexer: logos_lexer.morph(),
+                        })
                     }
                     mode => panic!("lexer::leave_normal (popped mode {mode:?})"),
                 };
@@ -630,16 +680,17 @@ impl<'input> Lexer<'input> {
         &mut self,
         s: &'input str,
         span: Range<usize>,
-    ) -> (Option<Token<'input>>, Range<usize>) {
-        let split_at = s.len() - self.count;
-        let next_token = Token::MultiStr(MultiStringToken::Interpolation);
+        percent_count: usize,
+    ) -> (Token<'input>, Range<usize>) {
+        let split_at = s.len() - percent_count;
+        let next_token = MultiStringToken::Interpolation;
         let next_span = Range {
             start: span.start + split_at,
             end: span.end,
         };
-        self.buffer = Some((next_token, next_span));
+        self.bufferize(next_token, next_span);
 
-        let token = Some(Token::MultiStr(MultiStringToken::Literal(&s[0..split_at])));
+        let token = Token::MultiStr(MultiStringToken::Literal(&s[0..split_at]));
         let span = Range {
             start: span.start,
             end: span.start + split_at,
@@ -647,43 +698,33 @@ impl<'input> Lexer<'input> {
 
         (token, span)
     }
-}
 
-impl<'input> Iterator for Lexer<'input> {
-    type Item = Result<(usize, Token<'input>, usize), ParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use Token::*;
-
-        let (mut token, mut span) = if let Some((token, span)) = self.buffer.take() {
-            (Some(token), span)
-        } else {
-            let lexer = self.lexer.as_mut().unwrap();
-            let token = lexer.next();
-            let span = lexer.span();
-            (token, span)
-        };
-
-        match token.as_ref() {
-            Some(Normal(NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin)) => {
-                self.enter_str()
-            }
-            Some(Normal(
-                NormalToken::MultiStringStart(delim_size)
-                | NormalToken::SymbolicStringStart(SymbolicStringStart {
-                    length: delim_size, ..
-                }),
-            )) => {
+    // Handle a normal token, updating the mode data if necessary.
+    fn handle_normal_token(
+        &mut self,
+        span: Range<usize>,
+        token: NormalToken<'input>,
+    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+        match token {
+            NormalToken::DoubleQuote | NormalToken::StrEnumTagBegin => self.enter_str(),
+            NormalToken::MultiStringStart(delim_size)
+            | NormalToken::SymbolicStringStart(SymbolicStringStart {
+                length: delim_size, ..
+            }) => {
                 // for interpolation & closing delimiters we only care about
                 // the number of `%`s (plus the opening `"` or `{`) so we
                 // drop the "kind marker" size here (i.e. the `m` character).
                 let size_without_kind_marker = delim_size - 1;
-                self.enter_indstr(size_without_kind_marker)
+                // unwrap(): the lexer must always
+                self.enter_indstr(size_without_kind_marker, span.clone())
             }
-            Some(Normal(NormalToken::LBrace)) => self.count += 1,
-            Some(Normal(NormalToken::RBrace)) => {
-                if self.count == 0 {
-                    if self.stack.is_empty() {
+            NormalToken::LBrace => {
+                self.normal_mode_data_mut().brace_count += 1;
+            }
+            NormalToken::RBrace => {
+                let data = self.normal_mode_data_mut();
+                if data.brace_count == 0 {
+                    if self.modes.is_empty() {
                         return Some(Err(ParseError::Lexical(LexicalError::UnmatchedCloseBrace(
                             span.start,
                         ))));
@@ -691,15 +732,75 @@ impl<'input> Iterator for Lexer<'input> {
 
                     self.leave_normal();
                 } else {
-                    self.count -= 1;
+                    data.brace_count -= 1;
                 }
             }
-            Some(Str(StringToken::DoubleQuote)) => {
+            // Ignore comment
+            NormalToken::LineComment => return self.next(),
+            NormalToken::Error => {
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
+            }
+            _ => (),
+        };
+
+        Some(Ok((span.start, Token::Normal(token), span.end)))
+    }
+
+    // Handle a string token. This method currently doesn't have any side effect, as in string
+    // mode, there's no state to update.
+    fn handle_string_token(
+        &mut self,
+        span: Range<usize>,
+        token: StringToken<'input>,
+    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+        let result = match token {
+            StringToken::DoubleQuote => {
                 self.leave_str();
                 // To make things simpler on the parser side, we only return one variant for
                 // `DoubleQuote`, namely the the normal one.
-                token = Some(Normal(NormalToken::DoubleQuote));
+                Token::Normal(NormalToken::DoubleQuote)
             }
+            tok @ StringToken::Interpolation => {
+                self.enter_normal();
+                Token::Str(tok)
+            }
+            // Convert escape sequences to the corresponding character.
+            StringToken::EscapedChar(c) => {
+                if let Some(esc) = escape_char(c) {
+                    Token::Str(StringToken::EscapedChar(esc))
+                } else {
+                    return Some(Err(ParseError::Lexical(
+                        LexicalError::InvalidEscapeSequence(span.start + 1),
+                    )));
+                }
+            }
+            StringToken::EscapedAscii(code) => {
+                if let Some(esc) = escape_ascii(code) {
+                    Token::Str(StringToken::EscapedChar(esc))
+                } else {
+                    return Some(Err(ParseError::Lexical(
+                        LexicalError::InvalidAsciiEscapeCode(span.start + 2),
+                    )));
+                }
+            }
+            StringToken::Error => {
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
+            }
+            token => Token::Str(token),
+        };
+
+        Some(Ok((span.start, result, span.end)))
+    }
+
+    // Handle a multistring token. Might push a token inside the buffer.
+    fn handle_multistr_token(
+        &mut self,
+        mut span: Range<usize>,
+        token: MultiStringToken<'input>,
+    ) -> Option<Result<SpannedToken<'input>, ParseError>> {
+        let data = self.multistring_mode_data();
+
+        let result = match token {
             // If we encounter a `CandidateInterp` token with the right number of characters, this is
             // an interpolation sequence.
             //
@@ -707,91 +808,141 @@ impl<'input> Iterator for Lexer<'input> {
             // the lexer will process `%%%{` as a candidate interpolation with 4 characters, while
             // `count` is 2. In that case, we must emit a `%%` literal and put an interpolation
             // token in the buffer.
-            Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
-                if s.len() >= self.count =>
-            {
-                if s.len() == self.count {
-                    token = Some(MultiStr(MultiStringToken::Interpolation));
+            MultiStringToken::CandidateInterpolation(s) if s.len() >= data.percent_count => {
+                if s.len() == data.percent_count {
                     self.enter_normal();
+                    Token::MultiStr(MultiStringToken::Interpolation)
                 } else {
-                    let (token_fst, span_fst) = self.split_candidate_interp(s, span);
-                    token = token_fst;
+                    let (token_fst, span_fst) =
+                        self.split_candidate_interp(s, span, data.percent_count);
                     span = span_fst;
+                    token_fst
                 }
             }
             // We never lex something as a `MultiStringToken::Interpolation` directly, but rather
             // generate it in this very function from other tokens. However, such a token could
             // have still been buffered in the previous iteration, and can thus be matched here,
             // which is why we need the case below.
-            Some(MultiStr(MultiStringToken::Interpolation)) => self.enter_normal(),
-            // If we encounter a `QuotesCandidateInterpolation` token with more characters
-            // than the current count, we need to split it into two tokens:
+            tok @ MultiStringToken::Interpolation => {
+                self.enter_normal();
+                Token::MultiStr(tok)
+            }
+            // If we encounter a `QuotesCandidateInterpolation` token with as much `%` characters
+            // as the current count or more, we need to split it into two tokens:
             //
-            // - a literal starting with `"` followed by (s.len() - self.count) `%`s
+            // - a string end delimiter corresponding to the `"` followed by `(s.len() - self.count)`
+            // `%`s
             // - an interpolation token
             // The interpolation token is put in the buffer such that it will be returned next
             // time.
             //
-            // For example, in `m%%""%%%{exp}"%%`, the `"%%%{` is a `QuotesCandidateInterpolation`
+            // For example, in `m%%%""%%{exp}"%%%`, the `"%%{` is a `QuotesCandidateInterpolation`
             // which is split as a `"%` literal followed by an interpolation token.
-            Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s)))
-                if s.len() > self.count =>
-            {
-                let (token_fst, span_fst) = self.split_candidate_interp(s, span);
-                token = token_fst;
+            MultiStringToken::QuotesCandidateInterpolation(s) if s.len() > data.percent_count => {
+                let (token_fst, span_fst) =
+                    self.split_candidate_interp(s, span, data.percent_count);
                 span = span_fst;
-            }
-            // Otherwise, it is just part of the string, so we transform the token into a
-            // `FalseInterpolation` one
-            Some(MultiStr(MultiStringToken::CandidateInterpolation(s)))
-            | Some(MultiStr(MultiStringToken::QuotesCandidateInterpolation(s))) => {
-                token = Some(MultiStr(MultiStringToken::Literal(s)))
-            }
-            Some(Str(StringToken::Interpolation)) => self.enter_normal(),
-            // Convert escape sequences to the corresponding character.
-            Some(Str(StringToken::EscapedChar(c))) => {
-                if let Some(esc) = escape_char(*c) {
-                    token = Some(Str(StringToken::EscapedChar(esc)));
-                } else {
-                    return Some(Err(ParseError::Lexical(
-                        LexicalError::InvalidEscapeSequence(span.start + 1),
-                    )));
-                }
-            }
-            Some(Str(StringToken::EscapedAscii(code))) => {
-                if let Some(esc) = escape_ascii(code) {
-                    token = Some(Str(StringToken::EscapedChar(esc)));
-                } else {
-                    return Some(Err(ParseError::Lexical(
-                        LexicalError::InvalidAsciiEscapeCode(span.start + 2),
-                    )));
-                }
-            }
-            // If we encounter a `CandidateEnd` token with the same number of `%`s as the
-            // starting token then it is the end of a multiline string
-            Some(MultiStr(MultiStringToken::CandidateEnd(s))) if s.len() == self.count => {
-                token = Some(MultiStr(MultiStringToken::End));
-                self.leave_indstr()
+                token_fst
             }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `Literal` one
-            Some(MultiStr(MultiStringToken::CandidateEnd(s))) => {
-                token = Some(MultiStr(MultiStringToken::Literal(s)))
+            MultiStringToken::CandidateInterpolation(s)
+            | MultiStringToken::QuotesCandidateInterpolation(s) => {
+                Token::MultiStr(MultiStringToken::Literal(s))
             }
+            // Strictly speaking, a candidate end delimiter with more than the required count of
+            // `%` should be split between multistring end token, plus a variable number of `%`
+            // tokens. This is annoying because we only buffer one token currently. We could use a
+            // stack instead of a 1-length buffer, but in practice a string such as `m%" "%%` is
+            // almost surely meaningless: there's now meaningful way of interpreting it
+            // (although according to the grammar, it might be valid as a string followed by a
+            // modulo operator `%` - which will fail anyway at runtime with a type error).
+            // Thus, we prefer to emit a proper error right here.
+            MultiStringToken::CandidateEnd(s) if s.len() > data.percent_count => {
+                return Some(Err(ParseError::Lexical(LexicalError::StringEndMismatch {
+                    opening_delimiter: data.opening_delimiter.clone(),
+                    closing_delimiter: span,
+                })))
+            }
+            // If we encounter a `CandidateEnd` token with the same number of `%`s as the
+            // starting token then it is the end of a multiline string
+            MultiStringToken::CandidateEnd(s) if s.len() == data.percent_count => {
+                self.leave_indstr();
+                Token::MultiStr(MultiStringToken::End)
+            }
+            // Otherwise, it is just part of the string, so we transform the token into a
+            // `Literal` one
+            MultiStringToken::CandidateEnd(s) => Token::MultiStr(MultiStringToken::Literal(s)),
             // Early report errors for now. This could change in the future
-            Some(Normal(NormalToken::Error))
-            | Some(Str(StringToken::Error))
-            | Some(MultiStr(MultiStringToken::Error)) => {
-                return Some(Err(ParseError::Lexical(LexicalError::Generic(
-                    span.start, span.end,
-                ))))
+            MultiStringToken::Error => {
+                return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
             }
-            // Ignore comment
-            Some(Normal(NormalToken::LineComment)) => return self.next(),
-            _ => (),
+            token => Token::MultiStr(token),
         };
 
-        token.map(|t| Ok((span.start, t, span.end)))
+        Some(Ok((span.start, result, span.end)))
+    }
+
+    // WARNING: this method expects the lexer to be in normal mode. Panics otherwise.
+    // Ideally, we wouldn't have to match on `self.lexer` again and have this (hopefully)
+    // unreachable `panic!`. In practice, the fact that `handle_normal_token` might both mutate
+    // `mode_data` or switch mode (and thus get rid of the current lexer, which holds mode_data)
+    // altogether makes it hard to do something that is both ergonomic and satisfies the borrow
+    // checker. We tried to thread `data` through `handle_normal_token`, but this not only requires
+    // to clone the data to avoid multiple mutable borrows to `self`, but also had a subtly wrong
+    // behavior because when reaching a comment, we call `self.next()`, which led to
+    fn normal_mode_data_mut(&mut self) -> &mut NormalData {
+        match self.lexer {
+            Some(ModalLexer::Normal {
+                ref mut mode_data, ..
+            }) => mode_data,
+            _ => panic!("lexer: normal_mode_data() called while not in normal mode"),
+        }
+    }
+
+    fn multistring_mode_data(&self) -> &MultiStrData {
+        match self.lexer {
+            Some(ModalLexer::MultiString { ref mode_data, .. }) => mode_data,
+            _ => panic!("lexer: multistring_mode_data() called while not in multistring mode"),
+        }
+    }
+
+    //WARNING: this method expects the lexer to be in multistring mode. Panics otherwise.
+    fn bufferize(&mut self, token: MultiStringToken<'input>, span: Range<usize>) {
+        match self.lexer {
+            Some(ModalLexer::MultiString { ref mut buffer, .. }) => *buffer = Some((token, span)),
+            _ => panic!("lexer: bufferize() called while not in normal mode"),
+        }
+    }
+}
+
+impl<'input> Iterator for Lexer<'input> {
+    type Item = Result<SpannedToken<'input>, ParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.lexer.as_mut().unwrap() {
+            ModalLexer::Normal { logos_lexer, .. } => {
+                let normal_token = logos_lexer.next()?;
+                let span = logos_lexer.span();
+                self.handle_normal_token(span, normal_token)
+            }
+            ModalLexer::String { logos_lexer } => {
+                let string_token = logos_lexer.next()?;
+                let span = logos_lexer.span();
+                self.handle_string_token(span, string_token)
+            }
+            ModalLexer::MultiString {
+                buffer,
+                logos_lexer,
+                ..
+            } => {
+                let (multistr_token, span) = buffer
+                    .take()
+                    .or_else(|| Some((logos_lexer.next()?, logos_lexer.span())))?;
+
+                self.handle_multistr_token(span, multistr_token)
+            }
+        }
     }
 }
 

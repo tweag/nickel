@@ -378,6 +378,12 @@ pub enum ParseError {
     InvalidEscapeSequence(RawSpan),
     /// Invalid ASCII escape code in a string literal.
     InvalidAsciiEscapeCode(RawSpan),
+    /// A multiline string was closed with a delimiter which has a `%` count higher than the
+    /// opening delimiter.
+    StringEndMismatch {
+        opening_delimiter: RawSpan,
+        closing_delimiter: RawSpan,
+    },
     /// Error when parsing an external format such as JSON, YAML, etc.
     ExternalFormatError(
         String, /* format */
@@ -582,8 +588,11 @@ impl ParseError {
                 token: (start, _, end),
             } => ParseError::ExtraToken(mk_span(file_id, start, end)),
             lalrpop_util::ParseError::User { error } => match error {
-                InternalParseError::Lexical(LexicalError::Generic(start, end)) => {
-                    ParseError::UnexpectedToken(mk_span(file_id, start, end), Vec::new())
+                InternalParseError::Lexical(LexicalError::Generic(range)) => {
+                    ParseError::UnexpectedToken(
+                        mk_span(file_id, range.start, range.end),
+                        Vec::new(),
+                    )
                 }
                 InternalParseError::Lexical(LexicalError::UnmatchedCloseBrace(location)) => {
                     ParseError::UnmatchedCloseBrace(mk_span(file_id, location, location + 1))
@@ -594,6 +603,21 @@ impl ParseError {
                 InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
                     ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
                 }
+                InternalParseError::Lexical(LexicalError::StringEndMismatch {
+                    opening_delimiter,
+                    closing_delimiter,
+                }) => ParseError::StringEndMismatch {
+                    opening_delimiter: mk_span(
+                        file_id,
+                        opening_delimiter.start,
+                        opening_delimiter.end,
+                    ),
+                    closing_delimiter: mk_span(
+                        file_id,
+                        closing_delimiter.start,
+                        closing_delimiter.end,
+                    ),
+                },
                 InternalParseError::UnboundTypeVariables(idents) => {
                     ParseError::UnboundTypeVariables(idents)
                 }
@@ -1630,6 +1654,17 @@ impl IntoDiagnostics<FileId> for ParseError {
             ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
                 .with_message("invalid ascii escape code")
                 .with_labels(vec![primary(&span)]),
+            ParseError::StringEndMismatch { opening_delimiter, closing_delimiter } => Diagnostic::error()
+                .with_message("string closing delimiter has too many `%`")
+                .with_labels(vec![
+                    primary(&closing_delimiter).with_message("the closing delimiter"),
+                    secondary(&opening_delimiter).with_message("the opening delimiter"),
+                ])
+                .with_notes(vec![
+                    "A special string must be opened and closed with the same number of `%` \
+                    in the corresponding delimiters.".into(),
+                    "Try removing the superflous `%` in the closing delimiter".into(),
+                ]),
             ParseError::ExternalFormatError(format, msg, span_opt) => {
                 let labels = span_opt
                     .as_ref()
