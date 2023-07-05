@@ -888,9 +888,11 @@ impl<'input> Lexer<'input> {
     // unreachable `panic!`. In practice, the fact that `handle_normal_token` might both mutate
     // `mode_data` or switch mode (and thus get rid of the current lexer, which holds mode_data)
     // altogether makes it hard to do something that is both ergonomic and satisfies the borrow
-    // checker. We tried to thread `data` through `handle_normal_token`, but this not only requires
-    // to clone the data to avoid multiple mutable borrows to `self`, but also had a subtly wrong
-    // behavior because when reaching a comment, we call `self.next()`, which led to
+    // checker.
+    // We initially tried to thread `data` through `handle_normal_token`, but this not only
+    // requires to clone the data to avoid multiple mutable borrows to `self`, but also had a
+    // subtly wrong behavior because when reaching a comment, we call `self.next()`, and threading
+    // data properly becomes non trivial.
     fn normal_mode_data_mut(&mut self) -> &mut NormalData {
         match self.lexer {
             Some(ModalLexer::Normal {
@@ -907,7 +909,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    //WARNING: this method expects the lexer to be in multistring mode. Panics otherwise.
+    // WARNING: this method expects the lexer to be in multistring mode. Panics otherwise.
     fn bufferize(&mut self, token: MultiStringToken<'input>, span: Range<usize>) {
         match self.lexer {
             Some(ModalLexer::MultiString { ref mut buffer, .. }) => *buffer = Some((token, span)),
