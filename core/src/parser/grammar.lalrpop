@@ -1,0 +1,1105 @@
+//! The Nickel grammar.
+//!
+//! # Uniterm
+//!
+//! Nickel uses the uniterm grammar since
+//! [RFC002](../rfcs/002-merge-types-terms-syntax.md). Uniterm is a common
+//! grammar for both term and types. However, it is only a front-end: the rest of
+//! the interpreter pipeline needs terms and types to be separate objects.
+//!
+//! Most of the time, grammar constructs determine unambiguously if an expression
+//! should be considered as a type or a term. Typically, `e1 -> e2` will always
+//! be a type, and `e1 + e2` a term. This doesn't contradict the fact that `e1 ->
+//! e2` can be used as a term: the point is, even in the latter case, we still
+//! parse `e1 -> e2` as a type first, and then derive a term from it wherever it
+//! is used in a context expecting a term.
+//!
+//! This is not the case of all rules. Record literals and variables can both be
+//! interpreted in a different way, depending on how their usage. In
+//! `x : {foo : Num}`, `{foo : Num}` is interpreted as a record type. In `{foo :
+//! Num}.foo`, it is a record literal with a missing definition for `foo`. The
+//! first interpretation is **not** equivalent to first interpreting it as a
+//! term, and then as a type.
+//!
+//! For those reasons, the `uniterm` module introduces a new AST definition, that
+//! just wraps `RichTerm` and `Types`, together with dedicated variants for the
+//! common constructs that are variables and records. As long as a common
+//! construct is not used in a term or a type context, it can be still
+//! interpreted as both. Once the usage determines the nature of a record or a
+//! variable, it is converted to either a `RichTerm` or a `Types` (although still
+//! possibly wrapped as a `UniTerm`).
+//!
+//! In consequence, this grammar uses three main types `RichTerm`, `Types` and
+//! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
+//! Some rules that are known to only produce `RichTerm` or `Types` may have the
+//! corresponding more precise return type. Other rules that produce or just
+//! propagate general uniterms have to return a `UniTerm`.
+use std::{
+    ffi::OsString,
+    convert::TryFrom,
+};
+
+use codespan::FileId;
+use lalrpop_util::ErrorRecovery;
+
+use super::{
+    ExtendedTerm,
+    utils::*,
+    lexer::{Token, NormalToken, StringToken, MultiStringToken, SymbolicStringStart},
+    error::ParseError,
+    uniterm::*,
+};
+
+use crate::{
+    mk_app,
+    mk_opn,
+    mk_fun,
+    identifier::Ident,
+    destructuring::{Match, FieldPattern, LastMatch, RecordPattern},
+    term::{
+        *,
+        record::{RecordAttrs, Field, FieldMetadata},
+        array::Array,
+        make as mk_term,
+    },
+    types::*,
+    position::{TermPos, RawSpan},
+    label::Label,
+};
+
+use malachite::num::basic::traits::Zero;
+
+grammar<'input, 'err, 'wcard>(
+    src_id: FileId,
+    errors: &'err mut Vec<ErrorRecovery<usize, Token<'input>, ParseError>>,
+    next_wildcard_id: &'wcard mut usize,
+);
+
+WithPos<Rule>: Rule = <l: @L> <t: Rule> <r: @R> => t.with_pos(mk_pos(src_id, l, r));
+
+AsTerm<Rule>: RichTerm = <ut: WithPos<Rule>> =>?
+    RichTerm::try_from(ut)
+        .map_err(|e| lalrpop_util::ParseError::User{error: e});
+
+AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
+    Types::try_from(ut)
+        .map_err(|e| lalrpop_util::ParseError::User{error: e});
+
+AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
+
+AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
+    <>.into_iter().fold(Default::default(), Annot::combine);
+
+// A single type or contract annotation. The `Types` rule forbids the use of
+// constructs that can themselves have annotation on the right, such as a `let`.
+// Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
+// either `foo | (let x = 1 in (x : Num))` or `(foo | let x = 1 in x) : Num`).
+//
+// The rule to use for type annotations is given as a parameter. We always use a
+// rule that is syntactically equivalent to the `Types` rule. The parameter is
+// here to control if the type should have its variables fixed now (`FixedType`)
+// or later (bare `Types`). Almost all rules are of the former kind, and use
+// `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
+AnnotAtom<TypeRule>: TypeAnnotation = {
+    "|" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
+        contracts: vec![LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+        ..Default::default()
+    },
+    ":" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
+        types: Some(LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+        ..Default::default()
+    },
+};
+
+// A single metadata annotation attached to a let-binding. Compared to
+// annotations which can appear everywhere (`AnnotAtom`, either a type or a
+// contract annotation), let annotations also include documentation (`doc`).
+LetAnnotAtom<TypeRule>: LetMetadata = {
+    <AnnotAtom<TypeRule>> => <>.into(),
+    "|" "doc" <s: StaticString> => LetMetadata {
+        doc: Some(s),
+        ..Default::default()
+    },
+}
+
+// A single field metadata annotation, without the pseudo-metadata (such as
+// recursive priorities).
+//
+// The rule to use for type annotations is given as a parameter (cf AnnotAtom
+// rule).
+SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
+    <LetAnnotAtom<TypeRule>> => <>.into(),
+    "|" "default" => FieldMetadata {
+        priority: MergePriority::Bottom,
+        ..Default::default()
+    },
+    "|" "force" => FieldMetadata {
+        priority: MergePriority::Top,
+        ..Default::default()
+    },
+    "|" "priority" <SignedNumLiteral> => FieldMetadata {
+        priority: MergePriority::Numeral(<>),
+        ..Default::default()
+    },
+    "|" "optional" => FieldMetadata {
+        opt: true,
+        ..Default::default()
+    },
+    "|" "not_exported" => FieldMetadata {
+        not_exported: true,
+        ..Default::default()
+    },
+}
+
+// A single field metadata annotation.
+//
+// The rule to use for type annotations is given as a parameter (cf AnnotAtom
+// rule).
+FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
+    <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
+    "|" "rec" "force" => FieldExtAnnot {
+        rec_force: true,
+        ..Default::default()
+    },
+    "|" "rec" "default" => FieldExtAnnot {
+        rec_default: true,
+        ..Default::default()
+    },
+}
+
+// An annotation, with possibly many annotations chained.
+Annot<TypeRule>: TypeAnnotation = AnnotSeries<AnnotAtom<WithPos<TypeRule>>>;
+
+// A let annotation, with possibly many annotations chained. Include type
+// annotations, contract annotations and doc annotations.
+LetAnnot<TypeRule>: LetMetadata = AnnotSeries<LetAnnotAtom<WithPos<TypeRule>>>;
+
+// A simple field annotation, with possibly many annotations chained. A simple
+// field annotation excludes pseudo metadata like recursive priorities operator.
+SimpleFieldAnnot<TypeRule>: FieldMetadata = AnnotSeries<SimpleFieldAnnotAtom<TypeRule>>;
+
+// A field annotation, with possibly many annotations chained.
+FieldAnnot<TypeRule>: FieldExtAnnot =
+    AnnotSeries<FieldAnnotAtom<WithPos<TypeRule>>>;
+
+// A general term. Wrap the root of the grammar as a `RichTerm`.
+pub Term: RichTerm = AsTerm<UniTerm>;
+
+// A general type. Chosen such that it can't have top-level annotations.
+// (see `AnnotAtom`)
+Types: Types = {
+    AsType<InfixExpr>,
+    Forall,
+};
+
+// A type with type variables fixed. See `parser::utils::fix_type_vars`.
+//
+// This rule is public and can be used from external modules to parse an input
+// directly as a type.
+pub FixedType: Types = {
+    <l: @L> <mut ty: Types> <r: @R> =>? {
+        ty.fix_type_vars(mk_span(src_id, l, r))?;
+        Ok(ty)
+    }
+};
+
+// Either a term or a top-level let-binding (a let-binding without an `in`).
+// Used exclusively for the REPL.
+pub ExtendedTerm: ExtendedTerm = {
+    "let" <id: Ident> <ann: LetAnnot<FixedType>?> "=" <mut t: Term> => {
+        if let Some(ann) = ann {
+            t = ann.annotation.attach_term(t);
+        }
+
+        ExtendedTerm::ToplevelLet(id, t)
+    },
+    Term => ExtendedTerm::RichTerm(<>),
+};
+
+// A general uniterm. The root of the grammar.
+UniTerm: UniTerm = {
+    InfixExpr,
+    AnnotatedInfixExpr,
+    AsUniTerm<Forall>,
+    "let" <l: @L> <recursive:"rec"?> <r: @R> <pat:Pattern> <ann: LetAnnot<FixedType>?>
+        "=" <mut t1: Term>
+        "in" <t2: Term> =>? {
+        if let Some(ann) = ann {
+            t1 = ann.annotation.attach_term(t1);
+        }
+
+        Ok(UniTerm::from(mk_let(recursive.is_some(), pat, t1, t2, mk_span(src_id, l, r))?))
+    },
+    <l: @L> "fun" <pats: Pattern+> "=>" <t: Term> <r: @R> => {
+        let pos = mk_pos(src_id, l, r);
+        let rt = pats.into_iter().rev().fold(t, |t, assgn| RichTerm {
+            term: SharedTerm::new(mk_fun(assgn, t)),
+            pos,
+        });
+
+        UniTerm::from(rt)
+    },
+    "if" <cond: Term> "then" <t1: Term> "else" <t2: Term> =>
+        UniTerm::from(mk_app!(Term::Op1(UnaryOp::Ite(), cond), t1, t2)),
+    <err: Error> => {
+        UniTerm::from(err)
+    },
+    "import" <s: StandardStaticString> => UniTerm::from(Term::Import(OsString::from(s))),
+};
+
+AnnotatedInfixExpr: UniTerm = {
+    <t: AsTerm<InfixExpr>> <ann: Annot<FixedType>> => {
+        UniTerm::from(ann.attach_term(t))
+    },
+};
+
+Forall: Types =
+    "forall" <ids: Ident+> "." <ty: WithPos<Types>> => {
+        ids.into_iter().rev().fold(
+            ty,
+            // The variable kind will be determined during the `fix_type_vars`
+            // phase. For now, we put a random one (which is also the default
+            // one, for unused type variables)
+            |acc, var| {
+                let pos = acc.pos;
+                Types {
+                    types: TypeF::Forall {
+                        var,
+                        var_kind: VarKind::Type,
+                        body: Box::new(acc)
+                    },
+                    pos
+                }
+            }
+        )
+    };
+
+// A n-ary application-like expression (n may be 0, in the sense that this rule
+// also includes previous levels).
+Applicative: UniTerm = {
+    Atom,
+    AsUniTerm<WithPos<TypeArray>>,
+    <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> =>
+        UniTerm::from(mk_app!(t1, t2)),
+    <op: UOp> <t: AsTerm<Atom>> => UniTerm::from(mk_term::op1(op, t)),
+    <op: BOpPre> <t1: AsTerm<Atom>> <t2: AsTerm<Atom>>
+        => UniTerm::from(mk_term::op2(op, t1, t2)),
+    NOpPre<AsTerm<Atom>>,
+    "match" "{" <cases: (MatchCase ",")*> <last: MatchCase?> "}" => {
+        let mut acc = IndexMap::with_capacity(cases.len());
+        let mut default = None;
+
+        for case in cases.into_iter().map(|x| x.0).chain(last.into_iter()) {
+            match case {
+                MatchCase::Normal(id, t) => acc.insert(id, t),
+                // If there are multiple default cases, the last one silently
+                // erases the others. We should have a dedicated error for that
+                MatchCase::Default(t) => default.replace(t),
+            };
+        }
+
+        UniTerm::from(
+            Term::Match {
+                cases: acc,
+                default,
+            }
+        )
+    },
+};
+
+// The parametrized array type.
+TypeArray: Types = "Array" <t: AsType<Atom>> =>
+    // For some reason, we have to bind the type into a `t`
+    // rather than using the usual `<>` placeholder, otherwise,
+    // it doens't compile.
+    Types::from(TypeF::Array(Box::new(t)));
+
+// A record operation chain, such as `{foo = data}.bar.baz`.
+RecordOperationChain: RichTerm = {
+    <t: AsTerm<Atom>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
+    <t: AsTerm<Atom>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
+};
+
+RecordRowTail: RecordRows = {
+    <Ident> => RecordRows(RecordRowsF::TailVar(<>)),
+    "Dyn" => RecordRows(RecordRowsF::TailDyn),
+};
+
+// A record, that can be later interpreted either as a record literal or as a
+// record type.
+UniRecord: UniRecord = {
+   "{" <fields: (<RecordField> ",")*>
+       <last_l: @L> <last: RecordLastField?> <last_r: @R>
+       <tail_l: @L> <tail: (";" RecordRowTail)?> <tail_r: @R>
+   "}" => {
+        let (last_field, attrs) = match last {
+            Some(RecordLastField::Field(f)) => (Some(f), Default::default()),
+            Some(RecordLastField::Ellipsis) =>
+                (None, RecordAttrs { open: true }),
+            None => (None, Default::default())
+        };
+
+        let pos_ellipsis = if attrs.open {
+                mk_pos(src_id, last_l, last_r)
+            }
+            else {
+                TermPos::None
+            };
+
+        let fields : Vec<_> = fields.into_iter().chain(last_field.into_iter()).collect();
+        UniRecord {
+            fields,
+            tail: tail.map(|t| (t.1, mk_pos(src_id, tail_l, tail_r))),
+            attrs,
+            pos: TermPos::None,
+            pos_ellipsis,
+        }
+    },
+};
+
+Atom: UniTerm = {
+    "(" <AsUniTerm<CurriedOp>> ")",
+    "(" <UniTerm> ")",
+    "num literal" => UniTerm::from(Term::Num(<>)),
+    "null" => UniTerm::from(Term::Null),
+    Bool => UniTerm::from(Term::Bool(<>)),
+    AsUniTerm<StrChunks>,
+    Ident => UniTerm::from(UniTermNode::Var(<>)),
+    WithPos<UniRecord> => UniTerm::from(UniTermNode::Record(<>)),
+    <EnumTag> => UniTerm::from(Term::Enum(<>)),
+    "[" <terms: (<Term> ",")*> <last: Term?> "]" => {
+        let terms = terms
+            .into_iter()
+            .chain(last.into_iter())
+            .collect();
+
+        UniTerm::from(Term::Array(terms, Default::default()))
+    },
+    AsUniTerm<WithPos<TypeAtom>>,
+    AsUniTerm<RecordOperationChain>,
+};
+
+// A record field definition. The is the only place where we don't fix the type
+// variables inside the annotation right away (note the `Annot<Types>` instead
+// of `Annot<Fixed>`).
+RecordField: FieldDef = {
+    <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
+        let annot_span = mk_span(src_id, l, r);
+        let span = if let Some(ref value) = t {
+                // value.pos.unwrap(): the position of `t` is necessarily set by the <Term> rule
+                // result unwrap(): the term and the annotation have spans
+                //   coming from the same file (the current one)
+                RawSpan::fuse(annot_span, value.pos.unwrap()).unwrap()
+        } else {
+            annot_span
+        };
+
+        let field = match (ann, t) {
+            (Some(FieldExtAnnot { metadata, rec_force: false, rec_default: false }), None) => {
+                Field { value: None, metadata, ..Default::default() }
+            }
+            (Some(ann), Some(value)) => {
+                ann.attach_term(value)
+            }
+            (Some(_), None) => {
+                panic!("can't use rec default/rec force on a field without definition");
+            }
+            (None, value) => Field { value, ..Default::default() }
+        };
+
+        FieldDef {
+            path,
+            field,
+            pos: TermPos::Original(span),
+        }
+    },
+    <err: Error> => {
+        FieldDef {
+          pos: err.pos,
+          path: vec![FieldPathElem::Expr(err.clone())],
+          field: Default::default(),
+        }
+    },
+};
+
+// An error recovery handler.
+Error : RichTerm =  <l: @L> <t: !> <r: @R> => {
+    let pos = mk_pos(src_id, l, r);
+    errors.push(t.clone());
+
+    RichTerm::new(Term::ParseError(
+      crate::error::ParseError::from_lalrpop(t.error, src_id)),
+      pos,
+    )
+};
+
+RecordLastField: RecordLastField = {
+    <RecordField> => RecordLastField::Field(<>),
+    ".." => RecordLastField::Ellipsis,
+};
+
+// A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
+pub FieldPath: FieldPath = {
+    <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
+        elems.push(last);
+        elems
+    }
+};
+
+FieldPathElem: FieldPathElem = {
+    <Ident> => FieldPathElem::Ident(<>),
+    <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
+};
+
+// Last field of a pattern
+LastMatch: LastMatch = {
+    Match => LastMatch::Match(Box::new(<>)),
+    ".." <Ident?> => LastMatch::Ellipsis(<>),
+};
+
+// The right hand side of an `=` inside a destructuring pattern.
+#[inline]
+Pattern: FieldPattern = {
+    <id:(<Ident> "@")?> <pat: RecordPattern> => {
+        if let Some(id) = id {
+            FieldPattern::AliasedRecordPattern { alias: id, pattern: pat }
+        } else {
+            FieldPattern::RecordPattern(pat)
+        }
+    },
+    Ident => FieldPattern::Ident(<>),
+};
+
+// A full pattern at the left-hand side of a destructuring let.
+RecordPattern: RecordPattern = {
+    <start: @L> "{" <mut matches: (<Match> ",")*> <last:LastMatch?> "}" <end: @R> =>? {
+        let (open, rest) = match last {
+            Some(LastMatch::Match(m)) => {
+                matches.push(*m);
+                (false,None)
+            },
+            Some(LastMatch::Ellipsis(rest)) => (true, rest),
+            _ => (false, None),
+        };
+
+        let span = mk_span(src_id, start, end);
+        let pattern = RecordPattern{ matches, open, rest, span };
+        pattern.check_matches()?;
+        Ok(pattern)
+    },
+};
+
+// A binding `ident = <pattern>` inside a destructuring pattern.
+Match: Match = {
+    <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
+        let field = combine_match_annots(anns, default, left.pos.unwrap());
+        Match::Assign(left, field, right)
+    },
+    <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
+        let field = combine_match_annots(anns, default, id.pos.unwrap());
+        Match::Simple(id, field)
+    },
+};
+
+// A default annotation in a pattern.
+DefaultAnnot: Field = "?" <t: Term> => Field {
+    metadata: FieldMetadata {
+        priority: MergePriority::Bottom,
+        ..Default::default()
+    },
+    value: Some(t),
+    ..Default::default()
+};
+
+Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
+    Ident::new_with_pos(i, mk_pos(src_id, l, r));
+
+Bool: bool = {
+    "true" => true,
+    "false" => false,
+};
+
+// String-like syntax which supports interpolation.
+// Depending on the opening brace, these either parse as strings, or as "symbolic strings",
+// which get desugared here to an array of terms.
+StrChunks: RichTerm = {
+  <start: StringStart> <fst: ChunkLiteral?> <chunks: (ChunkExpr+ChunkLiteral)*> <lasts:ChunkExpr*> <end: StringEnd> => {
+        debug_assert!(
+            start.is_closed_by(&end),
+            "Fatal parser error: a string starting with {start:?} should never be closed by {end:?}"
+        );
+
+        let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
+            .map(StrChunk::Literal)
+            .chain(chunks.into_iter()
+                .map(|(mut es, s)| {
+                    es.push(StrChunk::Literal(s));
+                    es
+                })
+                .flatten())
+            .chain(lasts.into_iter())
+            .collect();
+
+        let chunks = if start.needs_strip_indent() {
+            strip_indent(chunks)
+        } else {
+            chunks
+        };
+
+        if let StringStartDelimiter::Symbolic(prefix) = start {
+            let terms = chunks.into_iter().map(|chunk| match chunk {
+                StrChunk::Literal(l) => Term::Str(l.into()).into(),
+                StrChunk::Expr(e, _) => e,
+            }).collect();
+
+            RichTerm::from(build_record([
+                (
+                  FieldPathElem::Ident("tag".into()),
+                  Field::from(RichTerm::from(Term::Enum("SymbolicString".into())))
+                ),
+                (
+                  FieldPathElem::Ident("prefix".into()),
+                  Field::from(RichTerm::from(Term::Enum(prefix.into())))
+                ),
+                (
+                  FieldPathElem::Ident("fragments".into()),
+                  Field::from(RichTerm::from(Term::Array(terms, Default::default())))
+                )
+            ], Default::default()))
+        } else {
+            let mut chunks = chunks;
+            chunks.reverse();
+            RichTerm::from(Term::StrChunks(chunks))
+        }
+    },
+};
+
+StringStart : StringStartDelimiter<'input> = {
+    "\"" => StringStartDelimiter::Standard,
+    "m%\"" => StringStartDelimiter::Multiline,
+    "symbolic string start" => StringStartDelimiter::Symbolic(<>.0),
+};
+
+StringEnd : StringEndDelimiter = {
+    "\"" => StringEndDelimiter::Standard,
+    "\"%" => StringEndDelimiter::Special,
+};
+
+ChunkLiteral : String =
+    <parts: ChunkLiteralPart+> => {
+        parts.into_iter().fold(String::new(), |mut acc, part| {
+            match part {
+                ChunkLiteralPart::Str(s) => acc.push_str(s),
+                ChunkLiteralPart::Char(c) => acc.push(c),
+            };
+
+            acc
+        })
+    };
+
+ChunkExpr: StrChunk<RichTerm> = Interpolation <t: WithPos<Term>> "}" => StrChunk::Expr(t, 0);
+
+Interpolation = { "%{", "multstr %{" };
+
+// A construct which looks like a string, but is generic over its delimiters.
+// Used to implement `StaticString` as well as `StringEnumTag`.
+DelimitedStaticString<Start, End>: String = Start <s: ChunkLiteral?> End => s.unwrap_or_default();
+
+StandardStaticString = DelimitedStaticString<"\"", "\"">;
+
+MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
+    // strip the common indentation prefix
+    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::Literal(<>)];
+    match strip_indent(chunks).pop().unwrap() {
+        StrChunk::Literal(s) => s,
+        // We build
+        _ => unreachable!(),
+    }
+};
+
+StaticString : String = {
+    StandardStaticString,
+    MultilineStaticString,
+}
+
+StringEnumTag = DelimitedStaticString<"'\"", "\"">;
+
+EnumTag: Ident = {
+  "raw enum tag" => <>.into(),
+  <StringEnumTag> => <>.into(),
+};
+
+ChunkLiteralPart: ChunkLiteralPart<'input> = {
+    "str literal" => ChunkLiteralPart::Str(<>),
+    "multstr literal" => ChunkLiteralPart::Str(<>),
+    "str esc char" => ChunkLiteralPart::Char(<>),
+};
+
+UOp: UnaryOp = {
+    "typeof" => UnaryOp::Typeof(),
+    "blame" => UnaryOp::Blame(),
+    "chng_pol" => UnaryOp::ChangePolarity(),
+    "polarity" => UnaryOp::Pol(),
+    "go_dom" => UnaryOp::GoDom(),
+    "go_codom" => UnaryOp::GoCodom(),
+    "go_array" => UnaryOp::GoArray(),
+    "go_dict" => UnaryOp::GoDict(),
+    "embed" <Ident> => UnaryOp::Embed(<>),
+    "map"  => UnaryOp::ArrayMap(),
+    "generate" => UnaryOp::ArrayGen(),
+    "record_map" => UnaryOp::RecordMap(),
+    "seq" => UnaryOp::Seq(),
+    "deep_seq" => UnaryOp::DeepSeq(),
+    "op force" => UnaryOp::Force{ ignore_not_exported: false },
+    "length" => UnaryOp::ArrayLength(),
+    "fields" => UnaryOp::FieldsOf(),
+    "values" => UnaryOp::ValuesOf(),
+    "str_trim" => UnaryOp::StrTrim(),
+    "str_chars" => UnaryOp::StrChars(),
+    "str_uppercase" => UnaryOp::StrUppercase(),
+    "str_lowercase" => UnaryOp::StrLowercase(),
+    "str_length" => UnaryOp::StrLength(),
+    "str_from" => UnaryOp::ToStr(),
+    "num_from" => UnaryOp::NumFromStr(),
+    "enum_from" => UnaryOp::EnumFromStr(),
+    "str_is_match" => UnaryOp::StrIsMatch(),
+    "str_find" => UnaryOp::StrFind(),
+    "rec_force_op" => UnaryOp::RecForce(),
+    "rec_default_op" => UnaryOp::RecDefault(),
+    "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
+    "trace" => UnaryOp::Trace(),
+    "label_push_diag" => UnaryOp::LabelPushDiag(),
+    "dualize" => UnaryOp::Dualize(),
+};
+
+MatchCase: MatchCase = {
+    <id: EnumTag> "=>" <t: Term> => MatchCase::Normal(id, t),
+    "_" "=>" <t: Term> => MatchCase::Default(<>),
+}
+
+// Infix operators by precedence levels. Lowest levels take precedence over
+// highest ones.
+
+InfixBOp2: BinaryOp = {
+    "++" => BinaryOp::StrConcat(),
+    "@" => BinaryOp::ArrayConcat(),
+}
+
+InfixBOp3: BinaryOp = {
+    "*" => BinaryOp::Mult(),
+    "/" => BinaryOp::Div(),
+    "%" => BinaryOp::Modulo(),
+}
+
+InfixBOp4: BinaryOp = {
+    "+" => BinaryOp::Plus(),
+    "-" => BinaryOp::Sub(),
+}
+
+InfixUOp5: UnaryOp = {
+    "!" => UnaryOp::BoolNot(),
+}
+
+InfixBOp7: BinaryOp = {
+    "<" => BinaryOp::LessThan(),
+    "<=" => BinaryOp::LessOrEq(),
+    ">" => BinaryOp::GreaterThan(),
+    ">=" => BinaryOp::GreaterOrEq(),
+}
+
+InfixBOp8: BinaryOp = {
+    "==" => BinaryOp::Eq(),
+}
+
+InfixLazyBOp9: UnaryOp = {
+    "&&" => UnaryOp::BoolAnd(),
+}
+
+InfixLazyBOp10: UnaryOp = {
+    "||" => UnaryOp::BoolOr(),
+}
+
+InfixBOp: BinaryOp = {
+    InfixBOp2,
+    InfixBOp3,
+    InfixBOp4,
+    InfixBOp7,
+    InfixBOp8,
+}
+
+InfixUOpOrLazyBOp: UnaryOp = {
+    InfixUOp5,
+    InfixLazyBOp9,
+    InfixLazyBOp10,
+}
+
+InfixOp: InfixOp = {
+    <InfixBOp> => <>.into(),
+    <InfixUOpOrLazyBOp> => <>.into(),
+}
+
+CurriedOp: RichTerm = {
+    <l: @L> <op: InfixOp> <r: @R> =>
+        op.eta_expand(mk_pos(src_id, l, r)),
+    <l: @L> "&" <r: @R> =>
+        InfixOp::from(BinaryOp::Merge(mk_merge_label(src_id, l, r)))
+            .eta_expand(mk_pos(src_id, l, r)),
+    <l: @L> "|>" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_app!(mk_term::var("x2"), mk_term::var("x1"))
+            .with_pos(mk_pos(src_id, l, r))
+        ),
+    <l: @L> "!=" <r: @R> =>
+        mk_fun!("x1", "x2",
+            mk_term::op1(
+                UnaryOp::BoolNot(),
+                Term::Op2(BinaryOp::Eq(),
+                    mk_term::var("x2"),
+                    mk_term::var("x1")
+                )
+            )
+            .with_pos(mk_pos(src_id, l, r))
+        ),
+    //<l: @L> "->" <r: @R> =>?
+    //    UniTerm::from(
+    //        mk_fun!("x1", "x2",
+    //            mk_term::op1(
+    //                UnaryOp::BoolNot(),
+    //                Term::Op2(BinaryOp::Eq(),
+    //                    mk_term::var("x2"),
+    //                    mk_term::var("x1")
+    //                )
+    //            )
+    //            .with_pos(mk_pos(src_id, l, r))
+    //        )
+    //    ),
+}
+
+InfixUOpApp<UOp, Expr>: UniTerm =
+  <op: UOp> <t: AsTerm<Expr>> => UniTerm::from(mk_term::op1(op, t));
+
+InfixBOpApp<BOp, LExpr, RExpr>: UniTerm =
+  <t1: AsTerm<LExpr>> <op: BOp> <t2: AsTerm<RExpr>> =>
+    UniTerm::from(mk_term::op2(op, t1, t2));
+
+InfixLazyBOpApp<UOp, LExpr, RExpr>: UniTerm =
+  <t1: AsTerm<LExpr>> <op: UOp> <t2: AsTerm<RExpr>> =>
+    UniTerm::from(mk_app!(mk_term::op1(op, t1), t2));
+
+InfixExpr: UniTerm = {
+    #[precedence(level="0")]
+    Applicative,
+
+    #[precedence(level="1")]
+    "-" <AsTerm<InfixExpr>> =>
+        UniTerm::from(mk_term::op2(BinaryOp::Sub(), Term::Num(Number::ZERO), <>)),
+
+    #[precedence(level="2")] #[assoc(side="left")]
+    InfixBOpApp<InfixBOp2, InfixExpr, InfixExpr>,
+
+    #[precedence(level="3")] #[assoc(side="left")]
+    InfixBOpApp<InfixBOp3, InfixExpr, InfixExpr>,
+
+    #[precedence(level="4")] #[assoc(side="left")]
+    InfixBOpApp<InfixBOp4, InfixExpr, InfixExpr>,
+
+    #[precedence(level="5")]
+    InfixUOpApp<InfixUOp5, InfixExpr>,
+
+    #[precedence(level="6")] #[assoc(side="left")]
+    <l: @L> <t1: AsTerm<InfixExpr>> "&" <t2: AsTerm<InfixExpr>> <r: @R> =>
+      UniTerm::from(mk_term::op2(BinaryOp::Merge(mk_merge_label(src_id, l, r)), t1, t2)),
+
+    <t1: AsTerm<InfixExpr>> "|>" <t2: AsTerm<InfixExpr>> =>
+        UniTerm::from(mk_app!(t2, t1)),
+
+    #[precedence(level="7")] #[assoc(side="left")]
+    InfixBOpApp<InfixBOp7, InfixExpr, InfixExpr>,
+
+    #[precedence(level="8")] #[assoc(side="left")]
+    InfixBOpApp<InfixBOp8, InfixExpr, InfixExpr>,
+    <t1: AsTerm<InfixExpr>> "!=" <t2: AsTerm<InfixExpr>> =>
+        UniTerm::from(
+            mk_term::op1(UnaryOp::BoolNot(), Term::Op2(BinaryOp::Eq(), t1, t2))
+        ),
+
+    #[precedence(level="9")] #[assoc(side="left")]
+    InfixLazyBOpApp<InfixLazyBOp9, InfixExpr, InfixExpr>,
+
+    #[precedence(level="10")] #[assoc(side="left")]
+    InfixLazyBOpApp<InfixLazyBOp10, InfixExpr, InfixExpr>,
+
+    #[precedence(level="11")] #[assoc(side="right")]
+    <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
+        UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
+}
+
+BOpPre: BinaryOp = {
+    "assume" => BinaryOp::Assume(),
+    "array_lazy_assume" => BinaryOp::ArrayLazyAssume(),
+    "record_lazy_assume" => BinaryOp::RecordLazyAssume(),
+    "unseal" => BinaryOp::Unseal(),
+    "seal" => BinaryOp::Seal(),
+    "go_field" => BinaryOp::GoField(),
+    "has_field" => BinaryOp::HasField(),
+    "elem_at" => BinaryOp::ArrayElemAt(),
+    "hash" => BinaryOp::Hash(),
+    "serialize" => BinaryOp::Serialize(),
+    "deserialize" => BinaryOp::Deserialize(),
+    "pow" => BinaryOp::Pow(),
+    "str_split" => BinaryOp::StrSplit(),
+    "str_contains" => BinaryOp::StrContains(),
+    "record_insert" => BinaryOp::DynExtend {
+        ext_kind: RecordExtKind::WithValue,
+        metadata: Default::default(),
+        pending_contracts: Default::default(),
+    },
+    "record_remove" => BinaryOp::DynRemove(),
+    "label_with_message" => BinaryOp::LabelWithMessage(),
+    "label_with_notes" => BinaryOp::LabelWithNotes(),
+    "label_append_note" => BinaryOp::LabelAppendNote(),
+    "lookup_type_variable" => BinaryOp::LookupTypeVar(),
+}
+
+NOpPre<ArgRule>: UniTerm = {
+    "str_replace" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StrReplace(), t1, t2, t3)),
+    "str_replace_regex" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StrReplaceRegex(), t1, t2, t3)),
+    "str_substr" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::StrSubstr(), t1, t2, t3)),
+    "record_seal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> <t4: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::RecordSealTail(), t1, t2, t3, t4)),
+    "record_unseal_tail" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::RecordUnsealTail(), t1, t2, t3)),
+    "insert_type_variable" <key: ArgRule> <pol: ArgRule> <label: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::InsertTypeVar(), key, pol, label)),
+    "array_slice" <t1: ArgRule> <t2: ArgRule> <t3: ArgRule> =>
+        UniTerm::from(mk_opn!(NAryOp::ArraySlice(), t1, t2, t3)),
+}
+
+TypeBuiltin: Types = {
+     "Dyn" => Types::from(TypeF::Dyn),
+     "Number" => Types::from(TypeF::Number),
+     "Bool" => Types::from(TypeF::Bool),
+     "String" => Types::from(TypeF::String),
+}
+
+TypeAtom: Types = {
+    <TypeBuiltin>,
+    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
+        let ty = rows.into_iter()
+            .chain(last.into_iter())
+            // As we build row types as a linked list via a fold on the original
+            // iterator, the order of identifiers is reversed. This not a big deal
+            // but it's less confusing to the user to print them in the original
+            // order for error reporting.
+            .rev()
+            .fold(
+                EnumRows(
+                    match tail {
+                        Some(id) => EnumRowsF::TailVar(id),
+                        None => EnumRowsF::Empty,
+                    }
+                ),
+                |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
+            );
+            Types::from(TypeF::Enum(ty))
+    },
+    "{" "_" ":" <t: WithPos<Types>> "}" => {
+        Types::from(TypeF::Dict {
+            type_fields: Box::new(t),
+            flavour: DictTypeFlavour::Type
+        })
+    },
+    // Although a dictionary contracts isn't really a type, we treat it like as
+    // a type for now - at least syntactically - as they are represented using a
+    // `TypeF::Dict` constructor in the AST. This just simpler for many reasons
+    // (error reporting of contracts and in particular type paths, LSP, and so
+    // on.)
+    //
+    // However, note that we use a fixed type as an argument. This has the
+    // effect of preventing dictionary contracts from catpuring type variables
+    // that could be in scope. For example, we want `forall a. {_ | a}` to fail
+    // (see https://github.com/tweag/nickel/issues/1228). Fixing type variables
+    // right away inside the dictionary contract (before the enclosing `forall`
+    // is fixed) will indeed turn it into a term variable, and raise an unbound
+    // type variable error.
+    "{" "_" "|" <t: WithPos<FixedType>> "}" => {
+        Types::from(TypeF::Dict {
+            type_fields: Box::new(t),
+            flavour: DictTypeFlavour::Contract
+        })
+    },
+    "_" => {
+        let id = *next_wildcard_id;
+        *next_wildcard_id += 1;
+        Types::from(TypeF::Wildcard(id))
+    },
+}
+
+SignedNumLiteral: Number = <sign: "-"?> <value: "num literal"> => {
+    if sign.is_some() {
+        -value
+    } else {
+        value
+    }
+};
+
+extern {
+    type Location = usize;
+    type Error = ParseError;
+
+    enum Token<'input> {
+        "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
+        "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
+        "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
+        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
+        "num literal" => Token::Normal(NormalToken::NumLiteral(<Number>)),
+
+        "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),
+        "'\"" => Token::Normal(NormalToken::StrEnumTagBegin),
+
+        "if" => Token::Normal(NormalToken::If),
+        "then" => Token::Normal(NormalToken::Then),
+        "else" => Token::Normal(NormalToken::Else),
+        "forall" => Token::Normal(NormalToken::Forall),
+        "in" => Token::Normal(NormalToken::In),
+        "let" => Token::Normal(NormalToken::Let),
+        "rec" => Token::Normal(NormalToken::Rec),
+        "match" => Token::Normal(NormalToken::Match),
+
+        "null" => Token::Normal(NormalToken::Null),
+        "true" => Token::Normal(NormalToken::True),
+        "false" => Token::Normal(NormalToken::False),
+
+        "?" => Token::Normal(NormalToken::QuestionMark),
+        "," => Token::Normal(NormalToken::Comma),
+        ";" => Token::Normal(NormalToken::Semicolon),
+        ":" => Token::Normal(NormalToken::Colon),
+        "$" => Token::Normal(NormalToken::Dollar),
+        "=" => Token::Normal(NormalToken::Equals),
+        "!=" => Token::Normal(NormalToken::NotEquals),
+        "&" => Token::Normal(NormalToken::Ampersand),
+        "." => Token::Normal(NormalToken::Dot),
+        "%{" => Token::Str(StringToken::Interpolation),
+        "multstr %{" => Token::MultiStr(MultiStringToken::Interpolation),
+
+        "+" => Token::Normal(NormalToken::Plus),
+        "-" => Token::Normal(NormalToken::Minus),
+        "*" => Token::Normal(NormalToken::Times),
+        "/" => Token::Normal(NormalToken::Div),
+        "%" => Token::Normal(NormalToken::Percent),
+        "++" => Token::Normal(NormalToken::DoublePlus),
+        "==" => Token::Normal(NormalToken::DoubleEq),
+        "@" => Token::Normal(NormalToken::At),
+        "&&" => Token::Normal(NormalToken::DoubleAnd),
+        "||" => Token::Normal(NormalToken::DoublePipe),
+        "!" => Token::Normal(NormalToken::Bang),
+        ".." => Token::Normal(NormalToken::Ellipsis),
+
+        "fun" => Token::Normal(NormalToken::Fun),
+        "import" => Token::Normal(NormalToken::Import),
+        "|" => Token::Normal(NormalToken::Pipe),
+        "|>" => Token::Normal(NormalToken::RightPipe),
+        "->" => Token::Normal(NormalToken::SimpleArrow),
+        "=>" => Token::Normal(NormalToken::DoubleArrow),
+        "_" => Token::Normal(NormalToken::Underscore),
+        "\"" => Token::Normal(NormalToken::DoubleQuote),
+        "\"%" => Token::MultiStr(MultiStringToken::End),
+        "m%\"" => Token::Normal(NormalToken::MultiStringStart(<usize>)),
+        "symbolic string start" => Token::Normal(NormalToken::SymbolicStringStart(
+          SymbolicStringStart{prefix: <&'input str>, length: <usize>})),
+
+        "Number" => Token::Normal(NormalToken::Number),
+        "Dyn" => Token::Normal(NormalToken::Dyn),
+        "String" => Token::Normal(NormalToken::String),
+        "Bool" => Token::Normal(NormalToken::Bool),
+        "Array" => Token::Normal(NormalToken::Array),
+
+        "typeof" => Token::Normal(NormalToken::Typeof),
+        "assume" => Token::Normal(NormalToken::Assume),
+        "array_lazy_assume" => Token::Normal(NormalToken::ArrayLazyAssume),
+        "record_lazy_assume" => Token::Normal(NormalToken::RecordLazyAssume),
+        "op force" => Token::Normal(NormalToken::OpForce),
+        "blame" => Token::Normal(NormalToken::Blame),
+        "chng_pol" => Token::Normal(NormalToken::ChangePol),
+        "polarity" => Token::Normal(NormalToken::Polarity),
+        "go_dom" => Token::Normal(NormalToken::GoDom),
+        "go_codom" => Token::Normal(NormalToken::GoCodom),
+        "go_array" => Token::Normal(NormalToken::GoArray),
+        "go_dict" => Token::Normal(NormalToken::GoDict),
+        "go_field" => Token::Normal(NormalToken::GoField),
+        "seal" => Token::Normal(NormalToken::Seal),
+        "unseal" => Token::Normal(NormalToken::Unseal),
+        "embed" => Token::Normal(NormalToken::Embed),
+        "record_map" => Token::Normal(NormalToken::RecordMap),
+        "record_empty_with_tail" => Token::Normal(NormalToken::RecordEmptyWithTail),
+        "record_insert" => Token::Normal(NormalToken::RecordInsert),
+        "record_remove" => Token::Normal(NormalToken::RecordRemove),
+        "record_seal_tail" => Token::Normal(NormalToken::RecordSealTail),
+        "record_unseal_tail" => Token::Normal(NormalToken::RecordUnsealTail),
+        "seq" => Token::Normal(NormalToken::Seq),
+        "deep_seq" => Token::Normal(NormalToken::DeepSeq),
+        "length" => Token::Normal(NormalToken::Length),
+        "fields" => Token::Normal(NormalToken::FieldsOf),
+        "values" => Token::Normal(NormalToken::ValuesOf),
+        "pow" => Token::Normal(NormalToken::Pow),
+        "rec_force_op" => Token::Normal(NormalToken::RecForceOp),
+        "rec_default_op" => Token::Normal(NormalToken::RecDefaultOp),
+        "trace" => Token::Normal(NormalToken::Trace),
+        "insert_type_variable" => Token::Normal(NormalToken::InsertTypeVar),
+        "lookup_type_variable" => Token::Normal(NormalToken::LookupTypeVar),
+        "dualize" => Token::Normal(NormalToken::Dualize),
+
+        "has_field" => Token::Normal(NormalToken::HasField),
+        "map" => Token::Normal(NormalToken::Map),
+        "generate" => Token::Normal(NormalToken::ArrayGen),
+        "elem_at" => Token::Normal(NormalToken::ElemAt),
+
+        "merge" => Token::Normal(NormalToken::Merge),
+        "default" => Token::Normal(NormalToken::Default),
+        "force" => Token::Normal(NormalToken::Force),
+        "doc" => Token::Normal(NormalToken::Doc),
+        "optional" => Token::Normal(NormalToken::Optional),
+        "priority" => Token::Normal(NormalToken::Priority),
+        "not_exported" => Token::Normal(NormalToken::NotExported),
+
+        "hash" => Token::Normal(NormalToken::OpHash),
+        "serialize" => Token::Normal(NormalToken::Serialize),
+        "deserialize" => Token::Normal(NormalToken::Deserialize),
+        "str_split" => Token::Normal(NormalToken::StrSplit),
+        "str_trim" => Token::Normal(NormalToken::StrTrim),
+        "str_chars" => Token::Normal(NormalToken::StrChars),
+        "str_uppercase" => Token::Normal(NormalToken::StrUppercase),
+        "str_lowercase" => Token::Normal(NormalToken::StrLowercase),
+        "str_contains" => Token::Normal(NormalToken::StrContains),
+        "str_replace" => Token::Normal(NormalToken::StrReplace),
+        "str_replace_regex" => Token::Normal(NormalToken::StrReplaceRegex),
+        "str_is_match" => Token::Normal(NormalToken::StrIsMatch),
+        "str_find" => Token::Normal(NormalToken::StrFind),
+        "str_length" => Token::Normal(NormalToken::StrLength),
+        "str_substr" => Token::Normal(NormalToken::StrSubstr),
+        "str_from" => Token::Normal(NormalToken::ToStr),
+        "num_from" => Token::Normal(NormalToken::NumFromStr),
+        "enum_from" => Token::Normal(NormalToken::EnumFromStr),
+        "label_with_message" => Token::Normal(NormalToken::LabelWithMessage),
+        "label_with_notes" => Token::Normal(NormalToken::LabelWithNotes),
+        "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
+        "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
+        "array_slice" => Token::Normal(NormalToken::ArraySlice),
+
+        "{" => Token::Normal(NormalToken::LBrace),
+        "}" => Token::Normal(NormalToken::RBrace),
+        "[" => Token::Normal(NormalToken::LBracket),
+        "]" => Token::Normal(NormalToken::RBracket),
+        "(" => Token::Normal(NormalToken::LParen),
+        ")" => Token::Normal(NormalToken::RParen),
+        "<" => Token::Normal(NormalToken::LAngleBracket),
+        "<=" => Token::Normal(NormalToken::LessOrEq),
+        ">" => Token::Normal(NormalToken::RAngleBracket),
+        ">=" => Token::Normal(NormalToken::GreaterOrEq),
+        "[|" => Token::Normal(NormalToken::EnumOpen),
+        "|]" => Token::Normal(NormalToken::EnumClose),
+    }
+}

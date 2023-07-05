@@ -1,0 +1,10 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+# `Hello`
+
+- `Hello : Number`
+- `Hello | std.string.Stringable`
+World\!
+

@@ -7,35 +7,53 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ## Steps to make a release
 
+### About the version numbers
+
+Some of the crates in the Nickel workspace are libraries and not versioned
+according to the version number of the language itself. These are
+
+- `nickel-lang-core`
+- `nickel-lang-utils`
+- `lsp-harness`
+- `nickel-wasm-repl`
+
+Their version numbers take the form `0.W.U` and their public APIs are not
+considered stable. Consequently we bump their versions to `0.(W+1).0` on every
+release.
+
+Other crates carry the version number of the Nickel language. These are
+
+- `nickel-lang-cli`
+- `nickel-lang-lsp`
+- `pyckel`
+
 ### Prepare
 
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
    `git checkout -b X.Y.Z-release`
-2. Bump the version number of all the crates of the workspace to `X.Y.Z`:
-   - Bump the `version` attribute to `X.Y.Z` in `./Cargo.toml`,
-     `./utilities/Cargo.toml`, `lsp/nls/Cargo.toml` and
-     `./nickel-wasm-repl/Cargo.toml`.
-   - Bump the version of the interdependencies of the crates in `nickel-lang-cli`,
-     `nickel-lang-lib`, `lsp/nls` and `nickel-wasm-repl`. For example, `nickel-lang-lib`
-      has the following line in `./nickel-lang-lib/Cargo.toml` under `[dev-dependencies]`:
+2. Bump the overall version number in `Cargo.toml` to `X.Y.Z`. This will be
+   automatically propagated to the CLI, the Nickel language server and Pyckel.
+3. Bump the version number of the other crates in the workspace:
+   - `core/Cargo.toml`
+   - `lsp/lsp-harness/Cargo.toml`
+   - `utils/Cargo.toml`
+   - `wasm-repl/Cargo.toml`
+   Afterwards, also adjust the version numbers in `Cargo.toml`. For example, in
 
-     ```toml
-     nickel-lang-utilities = {path = "../utilities", version = "0.3.0"}
-     ```
+   ```toml
+      nickel-lang-core = { version = "0.1", path = "./core", default-features = false }
+   ```
 
-     You have to bump the `version` number to `X.Y.Z` of such dependencies on
-     `nickel-lang-lib`, `nickel-lang-utilities`, or any other crate of the
-     workspace as well.
+   adjust the version `0.1` to reflect the new version number.
 
-   Commit and push your changes.
-3. Make sure that everything builds: run `nix flake check` at the root of the
+4. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
-4. Add the changelog since the last release in RELEASES.md. GitHub is able to
+5. Add the changelog since the last release in RELEASES.md. GitHub is able to
    automatically generate release notes: refer to [this
    guide](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes).
    While the output needs to be reworked, it's a useful starting point. Commit
    and push your changes.
-5. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
+6. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
    `stable` branch usually contains specific fixes, or cherry-picked commits,
    we'll have to force push. We advise to first save the previous state in a
    local branch:
@@ -63,9 +81,9 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ### Release on crates.io
 
-1. Remove references to `nickel-lang-utilities` from the `[dev-dependencies]`
-   sections of the crates to be published: `./nickel-lang-lib/Cargo.toml` for
-   `nickel-lang-lib`, `./nickel-lang-cli/Cargo.toml` for `nickel-lang-cli` and
+1. Remove references to `nickel-lang-utils` from the `[dev-dependencies]`
+   sections of the crates to be published: `./core/Cargo.toml` for
+   `nickel-lang-core`, `./cli/Cargo.toml` for `nickel-lang-cli` and
    `./lsp/nls/Cargo.toml` for `nickel-lang-lsp` (work-around for
    [cargo:#4242](https://github.com/rust-lang/cargo/issues/4242).
 

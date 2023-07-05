@@ -1,44 +1,31 @@
-use std::{collections::HashMap, ffi::OsString, io};
+use std::collections::HashMap;
 
 use codespan::FileId;
-use nickel_lang_lib::{
+use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, TermEntry},
     error::{Error, ImportError},
     typecheck::{self, linearization::Linearization},
 };
 
-use crate::linearization::{building::Building, completed::Completed, AnalysisHost, Environment};
+use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
 
 pub trait CacheExt {
-    fn update_content(&mut self, path: impl Into<OsString>, s: String) -> io::Result<FileId>;
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
-        lin_cache: &mut HashMap<FileId, Completed>,
+        lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 }
 
 impl CacheExt for Cache {
-    fn update_content(&mut self, path: impl Into<OsString>, source: String) -> io::Result<FileId> {
-        let path: OsString = path.into();
-        if let Some(file_id) = self.id_of(path.clone()) {
-            self.files_mut().update(file_id, source);
-            // invalidate cache so the file gets parsed again
-            self.terms_mut().remove(&file_id);
-            Ok(file_id)
-        } else {
-            Ok(self.add_string(path, source))
-        }
-    }
-
     fn typecheck_with_analysis<'a>(
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
-        lin_cache: &mut HashMap<FileId, Completed>,
+        lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
         if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
@@ -49,30 +36,29 @@ impl CacheExt for Cache {
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
             for id in ids {
-                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_cache);
+                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_registry);
             }
         }
 
-        if let Some(ids) = self.get_imports(&file_id) {
-            for id in ids {
-                // If we have typechecked a file correctly, its imports should be
-                // in the `lin_cache`. The imports that are not in `lin_cache`
-                // were not typechecked correctly.
-                if !lin_cache.contains_key(&id) {
-                    typecheck_import_diagnostics.push(id);
-                }
+        for id in self.get_imports(file_id) {
+            // If we have typechecked a file correctly, its imports should be
+            // in the `lin_registry`. The imports that are not in `lin_registry`
+            // were not typechecked correctly.
+            if !lin_registry.map.contains_key(&id) {
+                typecheck_import_diagnostics.push(id);
             }
         }
 
         // After self.parse(), the cache must be populated
         let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap();
 
-        let result = if *state > EntryState::Typechecked && lin_cache.contains_key(&file_id) {
+        let result = if *state > EntryState::Typechecked && lin_registry.map.contains_key(&file_id)
+        {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
             let building = Linearization::new(Building {
-                lin_cache,
+                lin_registry,
                 linearization: Vec::new(),
                 import_locations: HashMap::new(),
                 cache: self,
@@ -81,7 +67,7 @@ impl CacheExt for Cache {
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)
                     .map_err(|err| vec![Error::TypecheckError(err)])?;
             self.update_state(file_id, EntryState::Typechecked);
-            lin_cache.insert(file_id, linearized);
+            lin_registry.map.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
             // This is unreachable because `EntryState::Parsed` is the first item of the enum, and
@@ -98,10 +84,10 @@ impl CacheExt for Cache {
             .into_iter()
             .map(|id| {
                 let message = "This import could not be resolved because its content has failed to typecheck correctly.";
-                // The unwrap is safe here because (1) we have linearized `file_id` and it must be 
-                // in the `lin_cache` and (2) every resolved import has a corresponding position in 
+                // The unwrap is safe here because (1) we have linearized `file_id` and it must be
+                // in the `lin_registry` and (2) every resolved import has a corresponding position in
                 // the linearization of the file that imports it.
-                let pos = lin_cache.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
+                let pos = lin_registry.map.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
                 let name: String = self.name(id).to_str().unwrap().into();
                 ImportError::IOError(name, String::from(message), *pos)
             });

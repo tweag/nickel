@@ -6,4 +6,3 @@ let server = import "server.ncl" in
 let security = import "security.ncl" in
 # Disabling firewall in the final result
 server & security & { firewall.enabled = false }
-

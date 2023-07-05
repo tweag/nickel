@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use codespan::{ByteIndex, FileId};
+use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
@@ -8,7 +6,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
-use nickel_lang_lib::{
+use nickel_lang_core::{
     identifier::Ident,
     term::{
         record::{Field, FieldMetadata},
@@ -22,7 +20,7 @@ use crate::{
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
-        ItemId, LinearizationItem,
+        ItemId, LinRegistry, LinearizationItem,
     },
     server::{self, Server},
     trace::{Enrich, Trace},
@@ -112,10 +110,11 @@ impl IdentWithType {
     }
 }
 
-/// Completion Context: General data structures required by most completion functions.
+/// Completion context: general data structures required by most completion functions.
+#[derive(Clone, Copy)]
 pub struct ComplCtx<'a> {
     linearization: &'a Completed,
-    lin_cache: &'a HashMap<FileId, Completed>,
+    lin_registry: &'a LinRegistry,
 }
 
 /// Find the record field associated with a particular ID in the linearization
@@ -125,10 +124,10 @@ fn find_fields_from_term_kind(
     path: &mut Vec<Ident>,
     info @ ComplCtx {
         linearization,
-        lin_cache,
-    }: &'_ ComplCtx<'_>,
+        lin_registry,
+    }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    let Some(item) = linearization.get_item(id, lin_cache) else {
+    let Some(item) = linearization.get_item_with_reg(id, lin_registry) else {
         return Vec::new()
     };
     let mut path_clone = path.clone();
@@ -142,8 +141,8 @@ fn find_fields_from_term_kind(
                         // This unwrap is safe because, `id` is the field of the record
                         // we're currently analyzing. We're sure that the linearization
                         // phase doesn't produce wrong or invalid ids.
-                        let item = linearization.get_item(id, lin_cache).unwrap();
-                        let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
+                        let item = linearization.get_item_with_reg(id, lin_registry).unwrap();
+                        let (ty, _) = linearization.get_type_and_metadata(item, lin_registry);
                         IdentWithType {
                             ident,
                             ty,
@@ -157,9 +156,9 @@ fn find_fields_from_term_kind(
                     Some(id) => find_fields_from_term_kind(
                         *id,
                         path,
-                        &ComplCtx {
+                        ComplCtx {
                             linearization,
-                            lin_cache,
+                            lin_registry,
                         },
                     ),
                     None => Vec::new(),
@@ -199,10 +198,10 @@ fn find_fields_from_contract(
     path: &mut Vec<Ident>,
     info @ ComplCtx {
         linearization,
-        lin_cache,
-    }: &'_ ComplCtx<'_>,
+        lin_registry: lin_cache,
+    }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    let Some(item) = linearization.get_item(id, lin_cache) else {
+    let Some(item) = linearization.get_item_with_reg(id, lin_cache) else {
         return Vec::new()
     };
     match &item.metadata {
@@ -229,7 +228,7 @@ fn find_fields_from_contract(
 fn find_fields_from_contracts(
     annot: &TypeAnnotation,
     path: &[Ident],
-    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
+    info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     annot
         .iter()
@@ -244,7 +243,7 @@ fn find_fields_from_contracts(
 fn find_fields_from_type(
     ty: &Types,
     path: &mut Vec<Ident>,
-    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
+    info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     match &ty.types {
         TypeF::Record(row) => find_fields_from_rrows(row, path, info),
@@ -261,7 +260,7 @@ fn find_fields_from_type(
 fn find_fields_from_rrows(
     rrows: &RecordRows,
     path: &mut Vec<Ident>,
-    info @ ComplCtx { .. }: &'_ ComplCtx<'_>,
+    info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
@@ -299,7 +298,7 @@ fn find_fields_from_rrows(
 fn find_fields_from_field(
     field: &Field,
     path: &mut Vec<Ident>,
-    info: &'_ ComplCtx<'_>,
+    info: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     find_fields_from_term_with_annot(&field.metadata.annotation, field.value.as_ref(), path, info)
 }
@@ -309,7 +308,7 @@ fn find_fields_from_term_with_annot(
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
     path: &mut Vec<Ident>,
-    info: &'_ ComplCtx<'_>,
+    info: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
 
@@ -324,7 +323,7 @@ fn find_fields_from_term_with_annot(
 fn find_fields_from_term(
     term: &RichTerm,
     path: &mut Vec<Ident>,
-    info @ ComplCtx { lin_cache, .. }: &'_ ComplCtx<'_>,
+    info @ ComplCtx { lin_registry, .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     match term.as_ref() {
         Term::Record(data) | Term::RecRecord(data, ..) => match path.pop() {
@@ -355,7 +354,7 @@ fn find_fields_from_term(
             // This unwrap is safe because we're getting an expression from
             // a linearized file, so all terms in the file and all terms in its
             // dependencies must have being linearized and stored in the cache.
-            let linearization = lin_cache.get(&span.src_id).unwrap();
+            let linearization = lin_registry.map.get(&span.src_id).unwrap();
             let item = linearization.item_at(&locator).unwrap();
             find_fields_from_term_kind(item.id, path, info)
         }
@@ -365,7 +364,7 @@ fn find_fields_from_term(
 
 lazy_static! {
     // unwraps are safe here because we know these are correct regexes.
-    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang_lib::parser::lexer)
+    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang_core::parser::lexer)
     static ref RE_IDENTIFIER: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
     static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
 }
@@ -443,19 +442,19 @@ fn collect_record_info(
     linearization: &Completed,
     id: ItemId,
     path: &mut Vec<Ident>,
-    lin_cache: &HashMap<FileId, Completed>,
+    lin_registry: &LinRegistry,
 ) -> Vec<IdentWithType> {
     let info = ComplCtx {
         linearization,
-        lin_cache,
+        lin_registry,
     };
     linearization
-        .get_item(id, lin_cache)
+        .get_item_with_reg(id, lin_registry)
         .map(|item| {
-            let (ty, _) = linearization.resolve_item_type_meta(item, lin_cache);
+            let (ty, _) = linearization.get_type_and_metadata(item, lin_registry);
             match (&item.kind, &ty.types) {
                 // Get record fields from static type info
-                (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, &info),
+                (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, info),
                 (
                     TermKind::Declaration {
                         value: ValueState::Known(body_id),
@@ -467,7 +466,7 @@ fn collect_record_info(
                     for ident in idents {
                         path.push(*ident)
                     }
-                    find_fields_from_term_kind(*body_id, path, &info)
+                    find_fields_from_term_kind(*body_id, path, info)
                 }
                 (
                     TermKind::Declaration {
@@ -483,16 +482,16 @@ fn collect_record_info(
                     // The path is mutable, so the first case would consume the path
                     // so we have to clone it so that it can be correctly used for the second case.
                     let mut path_copy = path.clone();
-                    find_fields_from_contract(*body_id, path, &info)
+                    find_fields_from_contract(*body_id, path, info)
                         .into_iter()
-                        .chain(find_fields_from_term_kind(*body_id, &mut path_copy, &info))
+                        .chain(find_fields_from_term_kind(*body_id, &mut path_copy, info))
                         .collect()
                 }
                 _ => {
                     // The item might not com from a declaration (let-binding nor a record field),
                     // but is nontheless a record with interesting completion data. This is
                     // typically the case for the `std` entry point of the stdlib.
-                    find_fields_from_term_kind(id, path, &info)
+                    find_fields_from_term_kind(id, path, info)
                 }
             }
         })
@@ -505,13 +504,15 @@ fn accumulate_record_meta_data<'a>(
     record: ItemId,
     info @ ComplCtx {
         linearization,
-        lin_cache,
-    }: &'a ComplCtx<'a>,
+        lin_registry,
+    }: ComplCtx<'a>,
     mut path: Vec<Ident>,
     result: &mut Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
 ) {
     // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
-    let parent = linearization.get_item(record, lin_cache).unwrap();
+    let parent = linearization
+        .get_item_with_reg(record, lin_registry)
+        .unwrap();
 
     // The element just before a value should be the record field, because the linearization
     // items are sorted wrt. position
@@ -555,12 +556,12 @@ fn get_completion_identifiers(
             return Vec::new()
         };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
-        collect_record_info(lin, *item_id, path, &server.lin_cache)
+        collect_record_info(lin, *item_id, path, &server.lin_registry)
     }
 
     fn context_complete(
         item: &LinearizationItem<Types>,
-        info: &'_ ComplCtx<'_>,
+        info: ComplCtx<'_>,
         path: Vec<Ident>,
     ) -> Vec<IdentWithType> {
         if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
@@ -586,7 +587,7 @@ fn get_completion_identifiers(
 
     let info = ComplCtx {
         linearization,
-        lin_cache: &server.lin_cache,
+        lin_registry: &server.lin_registry,
     };
 
     let in_scope: Vec<_> = match trigger {
@@ -598,7 +599,7 @@ fn get_completion_identifiers(
             let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
 
             let context_path = path.clone();
-            let contextual_result = context_complete(item, &info, context_path);
+            let contextual_result = context_complete(item, info, context_path);
 
             // unwrap is safe here because we are guaranteed by `get_identifier_path`
             // that it will return a non-empty vector
@@ -620,7 +621,7 @@ fn get_completion_identifiers(
                 // The item we get is the uncompleted `dat` field name as the item.
                 // What we *really* want as the item is the `config` field name.
                 let context_path = path.clone();
-                let contextual_result = context_complete(item, &info, context_path);
+                let contextual_result = context_complete(item, info, context_path);
 
                 // unwrap is safe here because we are guaranteed by `get_identifiers_before_field`
                 // that it will return a non-empty vector
@@ -630,11 +631,11 @@ fn get_completion_identifiers(
                     .chain(contextual_result)
                     .collect()
             } else {
-                let contextual_result = context_complete(item, &info, Vec::new());
+                let contextual_result = context_complete(item, info, Vec::new());
                 // Global name completion
-                let (ty, _) = linearization.resolve_item_type_meta(item, &server.lin_cache);
+                let (ty, _) = linearization.get_type_and_metadata(item, &server.lin_registry);
                 linearization
-                    .get_in_scope(item, &server.lin_cache)
+                    .get_in_scope(item, &server.lin_registry)
                     .iter()
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration { id: ident, .. }
@@ -723,7 +724,7 @@ mod tests {
     use super::*;
     use crate::linearization::Environment;
     use codespan::Files;
-    use nickel_lang_lib::{position::TermPos, term::MergePriority};
+    use nickel_lang_core::{position::TermPos, term::MergePriority};
     use std::collections::{HashMap, HashSet};
 
     fn make_lin_item(
@@ -825,7 +826,7 @@ mod tests {
 
     #[test]
     fn test_extract_ident_with_path() {
-        use nickel_lang_lib::{mk_uty_record, mk_uty_row};
+        use nickel_lang_core::{mk_uty_record, mk_uty_row};
         use std::convert::TryInto;
 
         // Representing the type: {a: {b : {c1 : Num, c2: Num}}}
@@ -838,12 +839,12 @@ mod tests {
         // nor type constants
         let info = ComplCtx {
             linearization: &Default::default(),
-            lin_cache: &HashMap::new(),
+            lin_registry: &LinRegistry::new(),
         };
         let result: Vec<_> = find_fields_from_rrows(
             &Box::new(a_record_type.try_into().unwrap()),
             &mut path,
-            &info,
+            info,
         )
         .iter()
         .map(|iwm| iwm.ident)
@@ -925,9 +926,9 @@ mod tests {
             for id in ids {
                 let info = ComplCtx {
                     linearization: &completed,
-                    lin_cache: &HashMap::new(),
+                    lin_registry: &LinRegistry::new(),
                 };
-                let mut actual: Vec<_> = find_fields_from_term_kind(id, &mut Vec::new(), &info)
+                let mut actual: Vec<_> = find_fields_from_term_kind(id, &mut Vec::new(), info)
                     .iter()
                     .map(|iwm| iwm.ident)
                     .collect();
@@ -1109,7 +1110,7 @@ mod tests {
         );
         let lin = make_completed(vec![a, b, c]);
 
-        let actual = collect_record_info(&lin, id, &mut Vec::new(), &HashMap::new());
+        let actual = collect_record_info(&lin, id, &mut Vec::new(), &LinRegistry::new());
         let mut expected = vec![Ident::from("one"), Ident::from("two")];
         let mut actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
         expected.sort();

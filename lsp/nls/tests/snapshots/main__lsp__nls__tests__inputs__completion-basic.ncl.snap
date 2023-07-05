@@ -1,0 +1,11 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[a, b, config]
+[foo, verified, version]
+[foo, verified, version]
+[foo, verified, version]
+[really]
+[really]
+

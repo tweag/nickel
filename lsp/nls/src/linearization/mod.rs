@@ -2,8 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use codespan::FileId;
 use log::debug;
-use nickel_lang_lib::{
-    cache::InputFormat,
+use nickel_lang_core::{
     identifier::Ident,
     position::TermPos,
     term::{
@@ -21,14 +20,38 @@ use nickel_lang_lib::{
 use self::{
     building::Building,
     completed::Completed,
-    interface::{ResolutionState, TermKind, UsageState, ValueState},
+    interface::{ResolutionState, Resolved, TermKind, UsageState, ValueState},
 };
 
 pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang_lib::environment::Environment<Ident, ItemId>;
+pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>;
+
+/// A registry mapping file ids to their corresponding linearization. The registry stores the
+/// linearization of every file that has been imported and analyzed, including the main open
+/// document.
+///
+/// `LinRegistry` wraps some methods of [completed::Completed] by first selecting the linearization
+/// with a matching file id and then calling to the corresponding method on it.
+#[derive(Clone, Default, Debug)]
+pub struct LinRegistry {
+    pub map: HashMap<FileId, Completed>,
+}
+
+impl LinRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Look for the linearization corresponding to an item's id, and return the corresponding item
+    /// from the linearization, if any.
+    pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
+        let lin = self.map.get(&id.file_id).unwrap();
+        lin.get_item(id)
+    }
+}
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]
 pub struct ItemId {
@@ -95,8 +118,8 @@ impl<'a> AnalysisHost<'a> {
     }
 }
 
-use nickel_lang_lib::typecheck::Extra;
-use nickel_lang_lib::types::Types;
+use nickel_lang_core::typecheck::Extra;
+use nickel_lang_core::types::Types;
 impl<'a> Linearizer for AnalysisHost<'a> {
     type Building = Building<'a>;
     type Completed = Completed;
@@ -214,20 +237,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get_and_advance(),
                     };
                     self.env.insert(ident.to_owned(), id);
-                    let kind = match term {
-                        Term::LetPattern(..) => TermKind::Declaration {
-                            id: ident.to_owned(),
-                            usages: Vec::new(),
-                            value: value_ptr,
-                            path: None,
-                        },
-                        Term::FunPattern(..) => TermKind::Declaration {
-                            id: ident.to_owned(),
-                            usages: Vec::new(),
-                            value: ValueState::Unknown,
-                            path: None,
-                        },
-                        _ => unreachable!(),
+
+                    let kind = TermKind::Declaration {
+                        id: ident.to_owned(),
+                        usages: Vec::new(),
+                        value: value_ptr,
+                        path: None,
                     };
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
@@ -316,20 +331,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         index: id_gen.get(),
                     },
                 );
-                let kind = match term {
-                    Term::Let(..) => TermKind::Declaration {
-                        id: ident.to_owned(),
-                        usages: Vec::new(),
-                        value: value_ptr,
-                        path: None,
-                    },
-                    Term::Fun(..) => TermKind::Declaration {
-                        id: ident.to_owned(),
-                        usages: Vec::new(),
-                        value: ValueState::Unknown,
-                        path: None,
-                    },
-                    _ => unreachable!(),
+
+                let kind = TermKind::Declaration {
+                    id: ident.to_owned(),
+                    usages: Vec::new(),
+                    value: value_ptr,
+                    path: None,
                 };
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
@@ -457,24 +464,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                let Some(linearization) = lin.lin_cache.get(file) else {
+                let Some(linearization) = lin.lin_registry.map.get(file) else {
                     return
                 };
 
                 // This is safe because the import file is resolved before we linearize the
                 // containing file, therefore the cache MUST have the term stored.
-                let (term, input_format) = lin.cache.get_with_input_format(file).unwrap();
-
-                // If the import is an external format (such as JSON or YAML), no position will be
-                // set (except the root position). It seems that it should work, but completion
-                // causes the LSP to crash with a stack overflow, probably because external imports
-                // break some invariant or expectation. For now, we simply bail out. This means we
-                // can't "go to definition" or get completion on an external import for the time
-                // being.
-                if !matches!(input_format, InputFormat::Nickel) {
-                    return;
-                }
-
+                let term = lin.cache.get_owned(*file).unwrap();
                 let position = final_term_pos(&term);
 
                 // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only

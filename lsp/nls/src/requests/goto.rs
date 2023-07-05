@@ -1,11 +1,11 @@
 use codespan::ByteIndex;
 use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{RequestId, Response, ResponseError};
+use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
-use nickel_lang_lib::position::RawSpan;
+use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
 use crate::{
@@ -15,22 +15,35 @@ use crate::{
     trace::{Enrich, Trace},
 };
 
+fn resp_error(message: String) -> ResponseError {
+    ResponseError {
+        code: ErrorCode::InternalError as i32,
+        message,
+        data: None,
+    }
+}
+
+macro_rules! resp_error {
+    ($($args:tt)*) => {
+        resp_error(format!($($args)*))
+    };
+}
+
 pub fn handle_to_definition(
     params: GotoDefinitionParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    let path = params
+        .text_document_position_params
+        .text_document
+        .uri
+        .to_file_path()
+        .unwrap();
     let file_id = server
         .cache
-        .id_of(
-            params
-                .text_document_position_params
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
-        )
-        .unwrap();
+        .id_of(&path)
+        .ok_or_else(|| resp_error!("file {} not found", path.as_os_str().to_string_lossy()))?;
 
     let start = position_to_byte_index(
         server.cache.files(),
@@ -53,7 +66,9 @@ pub fn handle_to_definition(
 
     let location = match item.kind {
         TermKind::Usage(UsageState::Resolved(usage_id)) => {
-            let definition = linearization.get_item(usage_id, &server.lin_cache).unwrap();
+            let definition = linearization
+                .get_item_with_reg(usage_id, &server.lin_registry)
+                .unwrap();
             if server.cache.is_stdlib_module(definition.id.file_id) {
                 // The standard library files are embedded in the executable,
                 // so we can't possibly go to their definition on disk.
@@ -128,7 +143,7 @@ pub fn handle_to_usages(
                 .iter()
                 .filter_map(|reference_id| {
                     linearization
-                        .get_item(*reference_id, &server.lin_cache)
+                        .get_item_with_reg(*reference_id, &server.lin_registry)
                         .unwrap()
                         .pos
                         .as_opt_ref()

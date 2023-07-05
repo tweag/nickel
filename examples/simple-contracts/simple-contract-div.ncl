@@ -20,4 +20,3 @@ in
     | Even
     | DivBy3
 )
-

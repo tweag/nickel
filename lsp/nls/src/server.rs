@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use codespan::FileId;
+use codespan_reporting::diagnostic::Diagnostic;
 use log::{debug, trace, warn};
 use lsp_server::{
     Connection, ErrorCode, Message, Notification, RequestId, Response, ResponseError,
@@ -12,21 +13,22 @@ use lsp_types::{
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams, HoverOptions,
-    HoverParams, HoverProviderCapability, OneOf, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    WorkDoneProgressOptions,
+    HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    Url, WorkDoneProgressOptions,
 };
 
-use nickel_lang_lib::{
+use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
     identifier::Ident,
     stdlib::StdlibModule,
 };
-use nickel_lang_lib::{stdlib, typecheck::Context};
+use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
     cache::CacheExt,
-    linearization::{completed::Completed, Environment, ItemId},
+    diagnostic::DiagnosticCompat,
+    linearization::{completed::Completed, Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
@@ -37,7 +39,9 @@ pub const FORMATTING_COMMAND: [&str; 3] = ["topiary", "--language", "nickel"];
 pub struct Server {
     pub connection: Connection,
     pub cache: Cache,
-    pub lin_cache: HashMap<FileId, Completed>,
+    /// In order to return diagnostics, we store the URL of each file we know about.
+    pub file_uris: HashMap<FileId, Url>,
+    pub lin_registry: LinRegistry,
     pub initial_ctxt: Context,
     pub initial_env: Environment,
 }
@@ -71,13 +75,14 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new(ErrorTolerance::Tolerant);
+        // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
         let initial_ctxt = cache.mk_type_ctxt().unwrap();
-        let lin_cache = HashMap::new();
         Server {
             connection,
             cache,
-            lin_cache,
+            file_uris: HashMap::new(),
+            lin_registry: LinRegistry::new(),
             initial_ctxt,
             initial_env: Environment::new(),
         }
@@ -146,7 +151,7 @@ impl Server {
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_env,
-                    &mut self.lin_cache,
+                    &mut self.lin_registry,
                 )
                 .unwrap();
         }
@@ -258,10 +263,36 @@ impl Server {
     }
 
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
-        self.lin_cache.get(file_id).ok_or_else(|| ResponseError {
-            data: None,
-            message: "File has not yet been parsed or cached.".to_owned(),
-            code: ErrorCode::ParseError as i32,
-        })
+        self.lin_registry
+            .map
+            .get(file_id)
+            .ok_or_else(|| ResponseError {
+                data: None,
+                message: "File has not yet been parsed or cached.".to_owned(),
+                code: ErrorCode::ParseError as i32,
+            })
+    }
+
+    pub fn issue_diagnostics(&mut self, file_id: FileId, diagnostics: Vec<Diagnostic<FileId>>) {
+        let Some(uri) = self.file_uris.get(&file_id).cloned() else {
+            warn!("tried to issue diagnostics for unknown file id {file_id:?}");
+            return;
+        };
+
+        let diagnostics: Vec<_> = diagnostics
+            .into_iter()
+            .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.cache.files_mut()))
+            .collect();
+
+        if !diagnostics.is_empty() {
+            self.notify(lsp_server::Notification::new(
+                "textDocument/publishDiagnostics".into(),
+                PublishDiagnosticsParams {
+                    uri,
+                    diagnostics,
+                    version: None,
+                },
+            ));
+        }
     }
 }

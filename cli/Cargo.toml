@@ -1,0 +1,32 @@
+[package]
+name = "nickel-lang-cli"
+description = "The Nickel interpreter CLI"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "nickel"
+path = "bin/nickel.rs"
+bench = false
+
+[features]
+default = ["repl", "doc"]
+repl = ["nickel-lang-core/repl"]
+doc = ["nickel-lang-core/doc"]
+
+[dependencies]
+nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
+
+clap = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+directories.workspace = true
+
+[dev-dependencies]
+nickel-lang-utils.workspace = true
+test-generator.workspace = true
+insta = { workspace = true, features = ["filters"] }

@@ -3,7 +3,7 @@ use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
-use nickel_lang_lib::position::TermPos;
+use nickel_lang_core::position::TermPos;
 use serde_json::Value;
 
 use crate::{
@@ -52,9 +52,9 @@ pub fn handle(
 
     let item = item.unwrap().to_owned();
 
-    debug!("{:?}", item);
+    debug!("Found item {:?}", item);
 
-    let (ty, meta) = linearization.resolve_item_type_meta(&item, &server.lin_cache);
+    let (ty, meta) = linearization.get_type_and_metadata(&item, &server.lin_registry);
 
     if item.pos == TermPos::None {
         server.reply(Response::new_ok(id, Value::Null));

@@ -4,11 +4,17 @@
 
 use anyhow::{bail, Context, Result};
 use log::debug;
+use lsp_server::ResponseError;
 use lsp_types::{
-    notification::{DidOpenTextDocument, Exit, Initialized, Notification as LspNotification},
+    notification::{
+        DidChangeTextDocument, DidOpenTextDocument, Exit, Initialized,
+        Notification as LspNotification,
+    },
     request::{GotoDefinition, Initialize, Request as LspRequest, Shutdown},
-    DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, InitializeParams,
-    InitializedParams, Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    ClientCapabilities, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializedParams, Position,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    VersionedTextDocumentIdentifier,
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -76,7 +82,11 @@ pub struct Response {
     id: u32,
     /// The result. The structure of this should be determined by whatever
     /// request method this is a response to. But it hasn't been checked yet.
+    #[serde(default)]
     result: serde_json::Value,
+    /// Populated if the request generated an error.
+    #[serde(default)]
+    error: Option<ResponseError>,
 }
 
 impl Server {
@@ -111,6 +121,18 @@ impl Server {
         })
     }
 
+    /// Replace the contents of a file with new contents.
+    pub fn replace_file(&mut self, uri: Url, version: i32, contents: &str) -> Result<()> {
+        self.send_notification::<DidChangeTextDocument>(DidChangeTextDocumentParams {
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: contents.to_owned(),
+            }],
+            text_document: VersionedTextDocumentIdentifier { uri, version },
+        })
+    }
+
     /// Send a GotoDefinition request to the language server.
     pub fn goto_def(&mut self, uri: Url, pos: Position) -> Result<Option<GotoDefinitionResponse>> {
         self.send_request::<GotoDefinition>(GotoDefinitionParams {
@@ -130,7 +152,21 @@ impl Server {
     }
 
     fn initialize(&mut self) -> Result<()> {
-        self.send_request::<Initialize>(InitializeParams::default())?;
+        // `root_path` is deprecated, but we need ot initialize the struct
+        // somehow. There is no `Default` implementation for `InitilizeParams`
+        // in versions of `lsp-types` compatible with `codespan-lsp`
+        #[allow(deprecated)]
+        self.send_request::<Initialize>(InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: None,
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+        })?;
         self.send_notification::<Initialized>(InitializedParams {})
     }
 
@@ -150,6 +186,9 @@ impl Server {
             // wait for a response after sending a request, there's only one outstanding
             // response.
             bail!("expected id {}, got {}", self.id, resp.id);
+        }
+        if let Some(err) = resp.error {
+            bail!(err.message);
         }
         Ok(serde_json::value::from_value(resp.result)?)
     }

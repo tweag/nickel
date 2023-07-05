@@ -1,0 +1,101 @@
+{
+  "name": "vscode-nickel",
+  "displayName": "Nickel Language Support",
+  "description": "Syntax highlighting, formatting and LSP integration for the Nickel programming language in VSCode",
+  "author": "Nickel contributors",
+  "license": "MIT",
+  "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tweag/nickel"
+  },
+  "publisher": "tweag",
+  "categories": [
+    "Programming Languages",
+    "Language Packs",
+    "Formatters"
+  ],
+  "keywords": [
+    "syntax",
+    "formatter",
+    "nickel",
+    "nls",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:nickel"
+  ],
+  "main": "./out/extension",
+  "icon": "images/nickel-logo-256.png",
+  "contributes": {
+    "languages": [
+      {
+        "id": "nickel",
+        "aliases": [
+          "Nickel",
+          "nickel"
+        ],
+        "extensions": [
+          ".ncl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "nickel",
+        "scopeName": "source.nickel",
+        "path": "./syntaxes/nickel.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Nickel Language Server Configuration",
+      "properties": {
+        "nls.server.path": {
+          "scope": "window",
+          "type": "string",
+          "default": "nls",
+          "description": "Path to nickel language server"
+        },
+        "nls.server.trace": {
+          "scope": "window",
+          "type": "string",
+          "description": "Enables performance tracing to the given file"
+        },
+        "nls.server.debugLog": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Logs the communication between VS Code and the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "compile": "yarn esbuild-base --sourcemap",
+    "watch": "yarn esbuild-base --sourcemap --watch",
+    "lint": "eslint ./src --ext .ts,.tsx",
+    "test": "sh ./scripts/e2e.sh"
+  },
+  "engines": {
+    "vscode": "^1.52.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^8.2.2",
+    "@types/node": "^12.20.37",
+    "@types/vscode": "1.52.0",
+    "@typescript-eslint/eslint-plugin": "^4.33.0",
+    "@typescript-eslint/parser": "^4.33.0",
+    "@vscode/test-electron": "^1.6.2",
+    "@vscode/vsce": "^2.15.0",
+    "esbuild": "^0.18.9",
+    "eslint": "^7.26.0",
+    "mocha": "^10.1.0",
+    "typescript": "^4.5.3"
+  }
+}

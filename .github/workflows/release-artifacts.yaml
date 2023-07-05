@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   docker-image:
@@ -16,37 +17,59 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: cachix/install-nix-action@v22
         name: "Installing Nix"
         with:
-          extra_nix_config: "experimental-features = nix-command flakes"
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
           nix_path: "nixpkgs=channel:nixos-unstable"
-      - name: "Build docker image"
+      - id: build-image
+        name: "Build docker image"
         run: |
           nix build --print-build-logs .#dockerImage
           cp ./result nickel-docker-image.tar.gz
+          echo "imageName=$(nix eval --raw .#dockerImage.imageName)" >> "$GITHUB_OUTPUT"
+          echo "imageTag=$(nix eval --raw .#dockerImage.imageTag)" >> "$GITHUB_OUTPUT"
       - name: "Upload docker image as release asset"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
-          gh release upload --clobber $RELEASE_TAG nickel-x86_64-docker-image.tar.gz
+          gh release upload --clobber $RELEASE_TAG nickel-docker-image.tar.gz
+      - name: Log in to registry
+        # This is where you will update the personal access token to GITHUB_TOKEN
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
+      - name: Push image
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
+          TARBALL_TAG: ${{ steps.build-image.outputs.imageName }}:${{ steps.build-image.outputs.imageTag }}
+        run: |
+          docker load -i nickel-docker-image.tar.gz
+          docker tag "$TARBALL_TAG" ghcr.io/tweag/nickel:$RELEASE_TAG
+          docker push ghcr.io/tweag/nickel:$RELEASE_TAG
 
   static-binary:
     name: "Build Nickel release binary"
     runs-on: "ubuntu-latest"
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: cachix/install-nix-action@v22
         name: "Installing Nix"
         with:
-          extra_nix_config: "experimental-features = nix-command flakes"
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
           nix_path: "nixpkgs=channel:nixos-unstable"
       - name: "Build x86_64 static binary"
         run: |
           nix build --print-build-logs .#nickel-static
           cp ./result nickel-x86_64-linux
-      - name: "Upload docker image as release asset"
+      - name: "Upload x86_64 static binary as release asset"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}

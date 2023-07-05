@@ -1,0 +1,203 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Nickel",
+  "scopeName": "source.nickel",
+  "patterns": [
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#multiline_strings"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#records"
+    },
+    {
+      "include": "#arrays"
+    },
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#bools"
+    },
+    {
+      "include": "#storage"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "storage": {
+      "patterns": [
+        {
+          "name": "storage.modifier",
+          "match": "\\b(let|in|forall|import|default|force|optional|priority|doc|rec)\\b"
+        },
+        {
+          "name": "storage.type",
+          "match": "\\b(fun)\\b"
+        }
+      ]
+    },
+    "strings_interpolation": {
+      "name": "meta.embedded",
+      "begin": "%\\{",
+      "end": "\\}",
+      "patterns": [
+        {
+          "include": "$self"
+        }
+      ]
+    },
+    "records": {
+      "name": "meta.embedded",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        {
+          "include": "$self"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.class",
+          "match": "\\b(Number|Bool|Dyn|String|Array)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control",
+          "match": "\\b(if|else|then|match)\\b"
+        }
+      ]
+    },
+    "multiline_strings": {
+      "name": "string.quoted.double",
+      "begin": "m(%+)\"",
+      "end": "\"\\1",
+      "patterns": [
+        {
+          "name": "constant.character.escape",
+          "match": "\\\\."
+        },
+        {
+          "include": "#strings_interpolation"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape",
+          "match": "\\\\."
+        },
+        {
+          "include": "#strings_interpolation"
+        }
+      ]
+    },
+    "arrays": {
+      "comment": "array",
+      "begin": "\\[",
+      "end": "\\]",
+      "patterns": [{ "include": "$self" }]
+    },
+    "comments": {
+      "name": "comment.line.number-sign",
+      "patterns": [
+        {
+          "name": "comment.line.number-sign",
+          "match": "#(.+)"
+        }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric",
+      "patterns": [
+        {
+          "name": "constant.numeric",
+          "match": "(\\d+)(\\.\\d+)"
+        }
+      ]
+    },
+    "bools": {
+      "name": "constant.boolean",
+      "patterns": [
+        {
+          "name": "constant.boolean",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "null": {
+      "name": "constant.null",
+      "patterns": [
+        {
+          "name": "constant.null",
+          "match": "\\b(null)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "name": "keyword.operator",
+      "patterns": [
+        {
+          "name": "keyword.operator",
+          "match": "(=>|==|=|\\|\\||\\||->|<|>|>=|<=|\\+\\+|\\+|\\-\\$|\\-|\\*|\\/|&&|&|\\.|\\:|@)"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "comment": "capital identifier for type and contracts",
+          "name": "variable.uppercase-identifier",
+          "match": "\\b[[:upper:]][[:word:]'-]*\\b"
+        },
+        {
+          "comment": "lowercase identifier",
+          "name": "variable.lowercase-identifier",
+          "match": "\\b[[:lower:]_][[:word:]'-]*\\b"
+        },
+        {
+          "comment": "enum tag",
+          "name": "constant.other.enum-tag",
+          "match": "\\b'[[:alpha:]][[:word:]-]*\\b"
+        },
+        {
+          "comment": "quoted enum tag",
+          "name": "constant.other.enum-tag",
+          "begin": "\\b'\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
