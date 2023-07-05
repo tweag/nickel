@@ -11,6 +11,6 @@ nickel -f foreach-pattern.ncl export
 
 Second example:
 
-```
-nickel -f foreach-pattern-on-import export
+```console
+nickel -f foreach-pattern-on-import.ncl export
 ```
