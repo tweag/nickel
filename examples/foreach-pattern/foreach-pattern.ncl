@@ -1,3 +1,4 @@
+# test = 'pass'
 let users =
   ["jane", "pete", "richie"]
   |> std.array.map

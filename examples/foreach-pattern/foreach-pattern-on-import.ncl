@@ -1,3 +1,4 @@
+# test = 'pass'
 let users =
   (import "data_users.yml").users
   |> std.array.map
