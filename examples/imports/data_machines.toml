@@ -1,0 +1,5 @@
+machines = [
+  "VAX-11",
+  "PDP-1",
+  "Bomba"
+]
