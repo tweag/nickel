@@ -1,4 +1,5 @@
-# test = 'pass'
+# test = 'ignore'
+# Fails because `yml`, `json` and `toml` files are source filtered
 
 # Nickel can import plain yaml, or json files
 let _users = (import "data_users.yml") in
