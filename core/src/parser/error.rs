@@ -2,6 +2,7 @@ use codespan::FileId;
 use codespan_reporting::diagnostic::Label;
 
 use crate::{identifier::Ident, position::RawSpan};
+use std::ops::Range;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum LexicalError {
@@ -11,8 +12,14 @@ pub enum LexicalError {
     InvalidEscapeSequence(usize),
     /// Invalid escape ASCII code in a string literal.
     InvalidAsciiEscapeCode(usize),
+    /// A multiline string was closed with a delimiter which has a `%` count higher than the
+    /// opening delimiter.
+    StringEndMismatch {
+        opening_delimiter: Range<usize>,
+        closing_delimiter: Range<usize>,
+    },
     /// Generic lexer error
-    Generic(usize, usize),
+    Generic(Range<usize>),
 }
 
 /// Error indicating that a construct is not allowed when trying to interpret an `UniRecord` as a
