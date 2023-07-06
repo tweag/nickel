@@ -1,5 +1,4 @@
 # test = 'ignore'
-# fails because YAML files are source filtered
 let users =
   (import "data_users.yml").users
   |> std.array.map
