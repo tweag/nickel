@@ -426,7 +426,7 @@ pub enum MultiStringToken<'input> {
     /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
     /// number of characters, and either emit the `End` token above, or turn the `CandidateEnd` to a
     /// `FalseEnd` otherwise
-    #[regex("\"%+")] // m%%""%%{x}"%%m
+    #[regex("\"%+")]
     CandidateEnd(&'input str),
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
