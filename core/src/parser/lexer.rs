@@ -854,7 +854,7 @@ impl<'input> Lexer<'input> {
             // `%` should be split between multistring end token, plus a variable number of `%`
             // tokens. This is annoying because we only buffer one token currently. We could use a
             // stack instead of a 1-length buffer, but in practice a string such as `m%" "%%` is
-            // almost surely meaningless: there's now meaningful way of interpreting it
+            // almost surely meaningless: there's no meaningful way of interpreting it
             // (although according to the grammar, it might be valid as a string followed by a
             // modulo operator `%` - which will fail anyway at runtime with a type error).
             // Thus, we prefer to emit a proper error right here.
