@@ -193,7 +193,7 @@ pub fn to_type(
     let ty = ty.into_root(table);
 
     match ty {
-        UnifType::UnifVar{ id, .. } => Types::from(TypeF::Var(var_name(
+        UnifType::UnifVar { id, .. } => Types::from(TypeF::Var(var_name(
             reported_names,
             names,
             id,
