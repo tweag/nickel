@@ -1,0 +1,16 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: string closing delimiter has too many `%`
+  ┌─ [INPUTS_PATH]/errors/string_delimiter_mismatch.ncl:3:9
+  │
+3 │ m%"Hello"%%
+  │ ---     ^^^ the closing delimiter
+  │ │        
+  │ the opening delimiter
+  │
+  = A special string must be opened and closed with the same number of `%` in the corresponding delimiters.
+  = Try removing the superflous `%` in the closing delimiter
+
+
