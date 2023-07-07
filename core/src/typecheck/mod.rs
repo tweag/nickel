@@ -185,21 +185,21 @@ trait VarLevelUpperBound {
     fn var_level_max(&self) -> VarLevel;
 }
 
-impl VarLevelUpperBound for UnifType {
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
     fn var_level_max(&self) -> VarLevel {
         match self {
-            UnifType::Concrete {
+            GenericUnifType::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
-            UnifType::UnifVar { init_level, .. } => *init_level,
-            UnifType::Contract(..) | UnifType::Constant(_) => {
+            GenericUnifType::UnifVar { init_level, .. } => *init_level,
+            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => {
                 VarLevelsData::new_no_uvars().upper_bound
             }
         }
     }
 }
 
-impl VarLevelUpperBound for UnifTypeUnrolling {
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
     fn var_level_max(&self) -> VarLevel {
         use std::cmp::max;
 
@@ -227,7 +227,7 @@ impl VarLevelUpperBound for UnifEnumRows {
     }
 }
 
-impl VarLevelUpperBound for UnifRecordRows {
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
     fn var_level_max(&self) -> VarLevel {
         todo!()
     }
@@ -281,9 +281,11 @@ type GenericUnifTypeUnrolling<E> =
 impl<E: TermEnvironment> GenericUnifType<E> {
     /// Create a concrete generic unification type with default values for variable levels.
     pub fn concrete(types: GenericUnifTypeUnrolling<E>) -> Self {
+        let upper_bound = types.var_level_max();
+
         GenericUnifType::Concrete {
             types,
-            var_levels_data: Default::default(),
+            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
         }
     }
 
@@ -630,11 +632,11 @@ impl UnifType {
             VarKindDiscriminant::Type => UnifType::Constant(c),
             VarKindDiscriminant::EnumRows => UnifType::Concrete {
                 types: TypeF::Enum(UnifEnumRows::Constant(c)),
-                var_levels_data: Default::default(),
+                var_levels_data: VarLevelsData::new_no_uvars(),
             },
             VarKindDiscriminant::RecordRows => UnifType::Concrete {
                 types: TypeF::Record(UnifRecordRows::Constant(c)),
-                var_levels_data: Default::default(),
+                var_levels_data: VarLevelsData::new_no_uvars(),
             },
         }
     }
