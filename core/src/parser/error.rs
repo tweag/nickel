@@ -14,7 +14,7 @@ pub enum LexicalError {
     InvalidAsciiEscapeCode(usize),
     /// A multiline string was closed with a delimiter which has a `%` count higher than the
     /// opening delimiter.
-    StringEndMismatch {
+    StringDelimiterMismatch {
         opening_delimiter: Range<usize>,
         closing_delimiter: Range<usize>,
     },

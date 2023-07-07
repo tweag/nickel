@@ -859,7 +859,7 @@ impl<'input> Lexer<'input> {
             // modulo operator `%` - which will fail anyway at runtime with a type error).
             // Thus, we prefer to emit a proper error right here.
             MultiStringToken::CandidateEnd(s) if s.len() > data.percent_count => {
-                return Some(Err(ParseError::Lexical(LexicalError::StringEndMismatch {
+                return Some(Err(ParseError::Lexical(LexicalError::StringDelimiterMismatch {
                     opening_delimiter: data.opening_delimiter.clone(),
                     closing_delimiter: span,
                 })))
