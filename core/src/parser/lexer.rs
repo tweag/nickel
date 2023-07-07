@@ -431,12 +431,6 @@ pub enum MultiStringToken<'input> {
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
     CandidateInterpolation(&'input str),
-    /// Unfortunate consequence of Logos' [issue #200](https://github.com/maciejhirsz/logos/issues/200).
-    /// The other rules should be sufficient to match this as a double quote followed by a
-    /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
-    /// valid inputs because of #200.
-    #[regex("\"%+\\{")]
-    QuotesCandidateInterpolation(&'input str),
     /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
     /// an actual end token.
     End,
@@ -827,27 +821,9 @@ impl<'input> Lexer<'input> {
                 self.enter_normal();
                 Token::MultiStr(tok)
             }
-            // If we encounter a `QuotesCandidateInterpolation` token with as much `%` characters
-            // as the current count or more, we need to split it into two tokens:
-            //
-            // - a string end delimiter corresponding to the `"` followed by `(s.len() - self.count)`
-            // `%`s
-            // - an interpolation token
-            // The interpolation token is put in the buffer such that it will be returned next
-            // time.
-            //
-            // For example, in `m%%%""%%{exp}"%%%`, the `"%%{` is a `QuotesCandidateInterpolation`
-            // which is split as a `"%` literal followed by an interpolation token.
-            MultiStringToken::QuotesCandidateInterpolation(s) if s.len() > data.percent_count => {
-                let (token_fst, span_fst) =
-                    self.split_candidate_interp(s, span, data.percent_count);
-                span = span_fst;
-                token_fst
-            }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `Literal` one
-            MultiStringToken::CandidateInterpolation(s)
-            | MultiStringToken::QuotesCandidateInterpolation(s) => {
+            MultiStringToken::CandidateInterpolation(s) => {
                 Token::MultiStr(MultiStringToken::Literal(s))
             }
             // Strictly speaking, a candidate end delimiter with more than the required count of
@@ -859,10 +835,12 @@ impl<'input> Lexer<'input> {
             // modulo operator `%` - which will fail anyway at runtime with a type error).
             // Thus, we prefer to emit a proper error right here.
             MultiStringToken::CandidateEnd(s) if s.len() > data.percent_count => {
-                return Some(Err(ParseError::Lexical(LexicalError::StringDelimiterMismatch {
-                    opening_delimiter: data.opening_delimiter.clone(),
-                    closing_delimiter: span,
-                })))
+                return Some(Err(ParseError::Lexical(
+                    LexicalError::StringDelimiterMismatch {
+                        opening_delimiter: data.opening_delimiter.clone(),
+                        closing_delimiter: span,
+                    },
+                )))
             }
             // If we encounter a `CandidateEnd` token with the same number of `%`s as the
             // starting token then it is the end of a multiline string

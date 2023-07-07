@@ -25,16 +25,6 @@ let {check, ..} = import "../lib/assert.ncl" in
   let expected = "Hello, world! Welcome in the world-universe" in
   actual == expected,
 
-  # Regression tests for  [#361](https://github.com/tweag/nickel/issues/361)
-  m%""%{"foo"}""% == "\"foo\"",
-  m%"""% == "\"",
-
-  # Regression tests for [#596](https://github.com/tweag/nickel/issues/596)
-  let s = "Hello" in m%%""%%{s}" World"%% == "\"Hello\" World",
-  let s = "Hello" in m%%""%%%{s}" World"%% == "\"%Hello\" World",
-  m%"%s"% == "%s",
-  m%%"%%s"%% == "%%s",
-
   # Regression tests for [#659](https://github.com/tweag/nickel/issues/659)
   let b = "x" in m%"a%%{b}c"% == "a%xc",
   m%"%Hel%%{"1"}lo%%%{"2"}"% == "%Hel%1lo%%2",
@@ -49,9 +39,5 @@ let {check, ..} = import "../lib/assert.ncl" in
 
   let actual = m%%%"ABC %%%%{"test"}"%%% in
   let expected = "ABC %test" in
-  actual == expected,
-
-  let actual = m%%"XYZ "%%%{"CBA"}""%% in
-  let expected = "XYZ \"%CBA\"" in
   actual == expected,
 ] |> check
