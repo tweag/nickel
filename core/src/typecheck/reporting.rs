@@ -138,10 +138,10 @@ pub fn to_type(
         let rrows = rrows.into_root(table);
 
         match rrows {
-            UnifRecordRows::UnifVar(var_id) => RecordRows(RecordRowsF::TailVar(var_name(
+            UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(var_name(
                 reported_names,
                 names,
-                var_id,
+                id,
                 VarKindDiscriminant::RecordRows,
             ))),
             UnifRecordRows::Constant(c) => RecordRows(RecordRowsF::TailVar(cst_name(
@@ -150,8 +150,8 @@ pub fn to_type(
                 c,
                 VarKindDiscriminant::RecordRows,
             ))),
-            UnifRecordRows::Concrete(t) => {
-                let mapped = t.map_state(
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let mapped = rrows.map_state(
                     |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                     |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
                     names,

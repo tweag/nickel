@@ -112,14 +112,29 @@ pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 
 /// A unifiable record row.
 pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
+pub type GenericUnifRecordRowsUnrolling<E> =
+    RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>;
 
 /// Unifiable record rows. Same shape as [`crate::types::RecordRows`], but where each type is
 /// unifiable, and each tail may be a unification variable (or a constant).
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
-    Concrete(RecordRowsF<Box<GenericUnifType<E>>, Box<GenericUnifRecordRows<E>>>),
+    Concrete {
+        rrows: GenericUnifRecordRowsUnrolling<E>,
+        /// Additional metadata related to unification variable levels update. See [VarLevelData].
+        var_levels_data: VarLevelsData,
+    },
     Constant(VarId),
-    UnifVar(VarId),
+    /// A unification variable.
+    UnifVar {
+        /// The unique identifier of this variable in the unification table.
+        id: VarId,
+        /// The initial variable level at which the variable was created. This information is
+        /// useful to compute upper bounds, see [VarLevelsData]. Note that the actual level of this
+        /// variable is stored in the unification table, and must satisfy `current_level <=
+        /// init_level` (the level of a variable can only decrease with time).
+        init_level: VarLevel,
+    },
 }
 
 /// Unifiable enum rows. Same shape as [`crate::types::EnumRows`] but where each tail may be a
@@ -233,6 +248,14 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
     }
 }
 
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E> {
+    fn var_level_max(&self) -> VarLevel {
+        use std::cmp::max;
+
+        todo!()
+    }
+}
+
 /// The types on which the unification algorithm operates, which may be either a concrete type, a
 /// type constant or a unification variable.
 ///
@@ -245,10 +268,13 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
 ///
 /// **Important**: the following invariant must always be satisfied: for any free unification
 /// variable[^1] part of a concrete unification type[^2], the level of this variable must be
-/// smaller or equals to `var_levels_data.old_level`. Otherwise, the typechecking algorithm might
-/// not be correct anymore. Be careful when creating new concrete [GenericUnifType] or [UnifType].
-/// The default value for `var_levels_data`, although it can incur more work, should at least
-/// always be correct (as it selects `VarLevel::MAX`).
+/// smaller or equal to `var_levels_data.upper_bound`. Otherwise, the typechecking algorithm might
+/// not be correct. Be careful when creating new concrete [GenericUnifType] or [UnifType] values.
+/// All `from` implementations and builders from [mk_uniftype] correctly compute the `upper_bound`
+/// (given that the subcomponent's upper bound is correct).
+///
+/// The default value for `var_levels_data`, although it can incur more work, is at least always
+/// correct (by setting `upper_bound = VarLevel::MAX`).
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifType<E: TermEnvironment> {
     /// A concrete type (like `Number` or `String -> String`).
@@ -307,12 +333,39 @@ impl<E: TermEnvironment> GenericUnifType<E> {
     }
 }
 
+impl<E: TermEnvironment> GenericUnifRecordRows<E> {
+    /// Create a concrete generic unification type with default values for variable levels.
+    pub fn concrete(types: GenericUnifRecordRowsUnrolling<E>) -> Self {
+        let upper_bound = types.var_level_max();
+
+        GenericUnifRecordRows::Concrete {
+            rrows: types,
+            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+        }
+    }
+
+    /// Doc: todo. Return the var levels data of a general unification type: either it's concrete
+    /// and thus this is just a getter, or the level is determined for other cases.
+    pub fn var_levels_data(&self) -> VarLevelsData {
+        match self {
+            GenericUnifRecordRows::Concrete {
+                var_levels_data, ..
+            } => var_levels_data.clone(),
+            GenericUnifRecordRows::Constant(_) => VarLevelsData::new_no_uvars(),
+            GenericUnifRecordRows::UnifVar { init_level, .. } => VarLevelsData {
+                upper_bound: *init_level,
+                pending: None,
+            },
+        }
+    }
+}
+
 impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUnifRecordRows<E> {
     type Error = ();
 
     fn try_into(self) -> Result<RecordRows, ()> {
         match self {
-            GenericUnifRecordRows::Concrete(rrows) => {
+            GenericUnifRecordRows::Concrete { rrows, .. } => {
                 let converted: RecordRowsF<Box<Types>, Box<RecordRows>> = rrows.try_map(
                     |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
                     |urrows| {
@@ -397,7 +450,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
         let f_rrows =
             |rrows: Box<RecordRows>| Box::new(GenericUnifRecordRows::from_record_rows(*rrows, env));
 
-        GenericUnifRecordRows::Concrete(rrows.0.map(f_rrow, f_rrows))
+        GenericUnifRecordRows::concrete(rrows.0.map(f_rrow, f_rrows))
     }
 }
 
@@ -424,6 +477,8 @@ trait SubstERows {
 
 impl<E: TermEnvironment> SubstType<E> for GenericUnifType<E> {
     fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
+        todo!();
+
         match self {
             GenericUnifType::Concrete {
                 types: TypeF::Var(var_id),
@@ -447,13 +502,15 @@ impl<E: TermEnvironment> SubstType<E> for GenericUnifType<E> {
 
 impl<E: TermEnvironment> SubstType<E> for GenericUnifRecordRows<E> {
     fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
-        match self {
-            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
-                |ty| Box::new(ty.subst_type(id, to)),
-                |rrows| Box::new(rrows.subst_type(id, to)),
-            )),
-            _ => self,
-        }
+        todo!();
+
+        // match self {
+        //     GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
+        //         |ty| Box::new(ty.subst_type(id, to)),
+        //         |rrows| Box::new(rrows.subst_type(id, to)),
+        //     )),
+        //     _ => self,
+        // }
     }
 }
 
@@ -478,16 +535,18 @@ impl<E: TermEnvironment> SubstRRows<E> for GenericUnifType<E> {
 
 impl<E: TermEnvironment> SubstRRows<E> for GenericUnifRecordRows<E> {
     fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
-        match self {
-            GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => {
-                to.clone()
-            }
-            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
-                |ty| Box::new(ty.subst_rrows(id, to)),
-                |rrows| Box::new(rrows.subst_rrows(id, to)),
-            )),
-            _ => self,
-        }
+        todo!();
+
+        //match self {
+        //    GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => {
+        //        to.clone()
+        //    }
+        //    GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
+        //        |ty| Box::new(ty.subst_rrows(id, to)),
+        //        |rrows| Box::new(rrows.subst_rrows(id, to)),
+        //    )),
+        //    _ => self,
+        //}
     }
 }
 
@@ -512,13 +571,21 @@ impl<E: TermEnvironment> SubstERows for GenericUnifType<E> {
 
 impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
     fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
-        match self {
-            GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
-                |ty| Box::new(ty.subst_erows(id, to)),
-                |rrows| Box::new(rrows.subst_erows(id, to)),
-            )),
-            _ => self,
-        }
+        todo!()
+
+        //match self {
+        //    GenericUnifRecordRows::Concrete {
+        //        rrows,
+        //        var_levels_data,
+        //    } => GenericUnifRecordRows::Concrete {
+        //        rrows: rrows.map(
+        //            |ty| Box::new(ty.subst_erows(id, to)),
+        //            |rrows| Box::new(rrows.subst_erows(id, to)),
+        //        ),
+        //        var_levels_data,
+        //    },
+        //    _ => self,
+        //}
     }
 }
 
@@ -560,13 +627,13 @@ impl UnifRecordRows {
     /// as type constants are replaced with the empty row.
     fn into_rrows(self, table: &UnifTable) -> RecordRows {
         match self {
-            UnifRecordRows::UnifVar(p) => match table.root_rrows(p) {
-                t @ UnifRecordRows::Concrete(_) => t.into_rrows(table),
+            UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
+                t @ UnifRecordRows::Concrete { .. } => t.into_rrows(table),
                 _ => RecordRows(RecordRowsF::Empty),
             },
             UnifRecordRows::Constant(_) => RecordRows(RecordRowsF::Empty),
-            UnifRecordRows::Concrete(t) => {
-                let mapped = t.map(
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let mapped = rrows.map(
                     |ty| Box::new(ty.into_type(table)),
                     |rrows| Box::new(rrows.into_rrows(table)),
                 );
@@ -579,7 +646,7 @@ impl UnifRecordRows {
     /// variable, return the result of `table.root_rrows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
-            UnifRecordRows::UnifVar(var_id) => table.root_rrows(var_id),
+            UnifRecordRows::UnifVar { id, init_level } => table.root_rrows(id, init_level),
             urrows => urrows,
         }
     }
@@ -682,17 +749,19 @@ impl From<UnifTypeUnrolling> for UnifType {
 
         UnifType::Concrete {
             types,
-            var_levels_data: VarLevelsData {
-                upper_bound: var_level_max,
-                pending: None,
-            },
+            var_levels_data: VarLevelsData::new_from_bound(var_level_max),
         }
     }
 }
 
 impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
     fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
-        UnifRecordRows::Concrete(rrows)
+        let var_level_max = rrows.var_level_max();
+
+        UnifRecordRows::Concrete {
+            rrows,
+            var_levels_data: VarLevelsData::new_from_bound(var_level_max),
+        }
     }
 }
 
@@ -706,7 +775,7 @@ impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
 pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailDyn,
     TailVar(&'a Ident),
-    TailUnifVar(VarId),
+    TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(RecordRowF<&'a GenericUnifType<E>>),
 }
@@ -721,7 +790,7 @@ impl<'a, E: TermEnvironment> Iterator
 
     fn next(&mut self) -> Option<Self::Item> {
         self.rrows.and_then(|next| match next {
-            GenericUnifRecordRows::Concrete(rrows) => match rrows {
+            GenericUnifRecordRows::Concrete { rrows, .. } => match rrows {
                 RecordRowsF::Empty => {
                     self.rrows = None;
                     None
@@ -742,9 +811,12 @@ impl<'a, E: TermEnvironment> Iterator
                     }))
                 }
             },
-            GenericUnifRecordRows::UnifVar(var_id) => {
+            GenericUnifRecordRows::UnifVar { id, init_level } => {
                 self.rrows = None;
-                Some(GenericUnifRecordRowsIteratorItem::TailUnifVar(*var_id))
+                Some(GenericUnifRecordRowsIteratorItem::TailUnifVar {
+                    id: *id,
+                    init_level: *init_level,
+                })
             }
             GenericUnifRecordRows::Constant(var_id) => {
                 self.rrows = None;
@@ -2029,7 +2101,7 @@ fn replace_wildcards_with_var(
         wildcard_vars: &mut Vec<UnifType>,
         rrows: RecordRows,
     ) -> UnifRecordRows {
-        UnifRecordRows::Concrete(rrows.0.map_state(
+        UnifRecordRows::concrete(rrows.0.map_state(
             |ty, (table, wildcard_vars)| {
                 Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
             },
@@ -2200,7 +2272,7 @@ pub fn infer_record_type(
 ) -> UnifType {
     match rt.as_ref() {
         Term::Record(record) | Term::RecRecord(record, ..) if max_depth > 0 => UnifType::from(
-            TypeF::Record(UnifRecordRows::Concrete(record.fields.iter().fold(
+            TypeF::Record(UnifRecordRows::concrete(record.fields.iter().fold(
                 RecordRowsF::Empty,
                 |r, (id, field)| {
                     let uty = match field_apparent_type(field, None, None) {
@@ -2279,7 +2351,10 @@ fn rrows_add(
     let rrows = rrows.into_root(state.table);
 
     match rrows {
-        UnifRecordRows::Concrete(rrows) => match rrows {
+        UnifRecordRows::Concrete {
+            rrows,
+            var_levels_data,
+        } => match rrows {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
                 Err(RowUnifError::MissingRow(*id))
             }
@@ -2290,7 +2365,7 @@ fn rrows_add(
                     let (extracted_type, subrow) = rrows_add(state, var_level, id, ty, *tail)?;
                     Ok((
                         extracted_type,
-                        UnifRecordRows::Concrete(RecordRowsF::Extend {
+                        UnifRecordRows::concrete(RecordRowsF::Extend {
                             row,
                             tail: Box::new(subrow),
                         }),
@@ -2298,26 +2373,34 @@ fn rrows_add(
                 }
             }
         },
-        UnifRecordRows::UnifVar(uvar) => {
-            let mut excluded = state.constr.get(&uvar).cloned().unwrap_or_default();
+        UnifRecordRows::UnifVar {
+            id: var_id,
+            init_level,
+        } => {
+            let mut excluded = state.constr.get(&var_id).cloned().unwrap_or_default();
             if excluded.contains(id) {
                 return Err(RowUnifError::UnsatConstr(*id, Some(*ty)));
             }
+
             let tail_var_id = state.table.fresh_rrows_var_id(var_level);
-            let new_tail = UnifRecordRows::Concrete(RecordRowsF::Extend {
+            let tail_var = UnifRecordRows::UnifVar {
+                id: tail_var_id,
+                init_level: var_level,
+            };
+            let new_tail = UnifRecordRows::concrete(RecordRowsF::Extend {
                 row: RecordRowF {
                     id: *id,
                     types: ty.clone(),
                 },
-                tail: Box::new(UnifRecordRows::UnifVar(tail_var_id)),
+                tail: Box::new(tail_var.clone()),
             });
 
             excluded.insert(*id);
             state.constr.insert(tail_var_id, excluded);
 
-            state.table.assign_rrows(uvar, new_tail);
+            state.table.assign_rrows(var_id, new_tail);
 
-            Ok((ty, UnifRecordRows::UnifVar(tail_var_id)))
+            Ok((ty, tail_var))
         }
         UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
@@ -2533,66 +2616,77 @@ pub fn unify_rrows(
     let urrows2 = urrows2.into_root(state.table);
 
     match (urrows1, urrows2) {
-        (UnifRecordRows::Concrete(rrows1), UnifRecordRows::Concrete(rrows2)) => {
-            match (rrows1, rrows2) {
-                (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
-                    Err(RowUnifError::UnboundTypeVariable(id))
-                }
-                (RecordRowsF::Empty, RecordRowsF::Empty)
-                | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
-                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
-                (
-                    RecordRowsF::Empty,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                )
-                | (
-                    RecordRowsF::TailDyn,
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                ) => Err(RowUnifError::ExtraRow(id)),
-                (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::TailDyn,
-                )
-                | (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, .. },
-                        ..
-                    },
-                    RecordRowsF::Empty,
-                ) => Err(RowUnifError::MissingRow(id)),
-                (
-                    RecordRowsF::Extend {
-                        row: UnifRecordRow { id, types },
-                        tail,
-                    },
-                    r2 @ RecordRowsF::Extend { .. },
-                ) => {
-                    let (ty2, t2_tail) = rrows_add(
-                        state,
-                        ctxt.var_level,
-                        &id,
-                        types.clone(),
-                        UnifRecordRows::Concrete(r2),
-                    )?;
-                    unify(state, ctxt, *types, *ty2)
-                        .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
-                    unify_rrows(state, ctxt, *tail, t2_tail)
-                }
+        (
+            UnifRecordRows::Concrete {
+                rrows: rrows1,
+                var_levels_data: var_levels1,
+            },
+            UnifRecordRows::Concrete {
+                rrows: rrows2,
+                var_levels_data: var_levels2,
+            },
+        ) => match (rrows1, rrows2) {
+            (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
+                Err(RowUnifError::UnboundTypeVariable(id))
             }
-        }
-        (UnifRecordRows::UnifVar(p), urrows) | (urrows, UnifRecordRows::UnifVar(p)) => {
-            constr_unify_rrows(state.constr, p, &urrows)?;
-            state.table.assign_rrows(p, urrows);
+            (RecordRowsF::Empty, RecordRowsF::Empty)
+            | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
+            (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
+            (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+            (
+                RecordRowsF::Empty,
+                RecordRowsF::Extend {
+                    row: UnifRecordRow { id, .. },
+                    ..
+                },
+            )
+            | (
+                RecordRowsF::TailDyn,
+                RecordRowsF::Extend {
+                    row: UnifRecordRow { id, .. },
+                    ..
+                },
+            ) => Err(RowUnifError::ExtraRow(id)),
+            (
+                RecordRowsF::Extend {
+                    row: UnifRecordRow { id, .. },
+                    ..
+                },
+                RecordRowsF::TailDyn,
+            )
+            | (
+                RecordRowsF::Extend {
+                    row: UnifRecordRow { id, .. },
+                    ..
+                },
+                RecordRowsF::Empty,
+            ) => Err(RowUnifError::MissingRow(id)),
+            (
+                RecordRowsF::Extend {
+                    row: UnifRecordRow { id, types },
+                    tail,
+                },
+                rrows2 @ RecordRowsF::Extend { .. },
+            ) => {
+                let (ty2, t2_tail) = rrows_add(
+                    state,
+                    ctxt.var_level,
+                    &id,
+                    types.clone(),
+                    UnifRecordRows::Concrete {
+                        rrows: rrows2,
+                        var_levels_data: var_levels2,
+                    },
+                )?;
+                unify(state, ctxt, *types, *ty2)
+                    .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
+                unify_rrows(state, ctxt, *tail, t2_tail)
+            }
+        },
+        (UnifRecordRows::UnifVar { id, init_level }, urrows)
+        | (urrows, UnifRecordRows::UnifVar { id, init_level }) => {
+            constr_unify_rrows(state.constr, id, &urrows)?;
+            state.table.assign_rrows(id, urrows);
             Ok(())
         }
         (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
@@ -2723,7 +2817,10 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_rrows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifRecordRows::UnifVar(fresh_uid),
+                    ForallInst::Ptr => UnifRecordRows::UnifVar {
+                        id: fresh_uid,
+                        init_level: ctxt.var_level,
+                    },
                 };
                 state.names.insert((fresh_uid, kind), var);
                 ty = body.subst_rrows(&var, &uvar);
@@ -2802,7 +2899,7 @@ impl UnifTable {
     /// doing, you should probably use `unify` instead.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         // Unifying a free variable with itself is a no-op.
-        if matches!(rrows, UnifRecordRows::UnifVar(x) if x == var) {
+        if matches!(rrows, UnifRecordRows::UnifVar { id, ..} if id == var) {
             return;
         }
 
@@ -2892,7 +2989,10 @@ impl UnifTable {
     /// Create a fresh record rows unification variable and allocate a corresponding slot in the
     /// table.
     pub fn fresh_rrows_uvar(&mut self, var_level: VarLevel) -> UnifRecordRows {
-        UnifRecordRows::UnifVar(self.fresh_rrows_var_id(var_level))
+        UnifRecordRows::UnifVar {
+            id: self.fresh_rrows_var_id(var_level),
+            init_level: var_level,
+        }
     }
 
     /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
@@ -2940,13 +3040,16 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_rrows(&self, var_id: VarId) -> UnifRecordRows {
+    pub fn root_rrows(&self, var_id: VarId, init_level: VarLevel) -> UnifRecordRows {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
         match self.rrows[var_id].value.as_ref() {
-            None => UnifRecordRows::UnifVar(var_id),
-            Some(UnifRecordRows::UnifVar(y)) => self.root_rrows(*y),
+            None => UnifRecordRows::UnifVar {
+                id: var_id,
+                init_level,
+            },
+            Some(UnifRecordRows::UnifVar { id, init_level }) => self.root_rrows(*id, *init_level),
             Some(ty) => ty.clone(),
         }
     }
@@ -3012,23 +3115,22 @@ pub fn constr_unify_rrows(
 ) -> Result<(), RowUnifError> {
     if let Some(p_constr) = constr.remove(&var_id) {
         match rrows {
-            UnifRecordRows::Concrete(RecordRowsF::Extend { row, .. })
-                if p_constr.contains(&row.id) =>
-            {
-                Err(RowUnifError::UnsatConstr(
-                    row.id,
-                    Some(UnifType::concrete(TypeF::Record(rrows.clone()))),
-                ))
-            }
-            UnifRecordRows::Concrete(RecordRowsF::Extend { tail, .. }) => {
-                constr_unify_rrows(constr, var_id, tail)
-            }
-
-            UnifRecordRows::UnifVar(u) if *u != var_id => {
-                if let Some(u_constr) = constr.get_mut(u) {
+            UnifRecordRows::Concrete {
+                rrows: RecordRowsF::Extend { row, .. },
+                ..
+            } if p_constr.contains(&row.id) => Err(RowUnifError::UnsatConstr(
+                row.id,
+                Some(UnifType::concrete(TypeF::Record(rrows.clone()))),
+            )),
+            UnifRecordRows::Concrete {
+                rrows: RecordRowsF::Extend { tail, .. },
+                ..
+            } => constr_unify_rrows(constr, var_id, tail),
+            UnifRecordRows::UnifVar { id, init_level } if *id != var_id => {
+                if let Some(u_constr) = constr.get_mut(id) {
                     u_constr.extend(p_constr.into_iter());
                 } else {
-                    constr.insert(*u, p_constr);
+                    constr.insert(*id, p_constr);
                 }
 
                 Ok(())

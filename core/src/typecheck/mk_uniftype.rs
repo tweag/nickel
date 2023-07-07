@@ -44,13 +44,16 @@ macro_rules! mk_uty_enum_row {
 #[macro_export]
 macro_rules! mk_uty_row {
     () => {
-        $crate::typecheck::UnifRecordRows::Concrete($crate::types::RecordRowsF::Empty)
+        $crate::typecheck::UnifRecordRows::Concrete {
+            rrows: $crate::types::RecordRowsF::Empty,
+            var_levels_data: $crate::typecheck::VarLevelsData::new_no_uvars()
+        }
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifRecordRows::from($tail)
     };
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
-        $crate::typecheck::UnifRecordRows::Concrete(
+        $crate::typecheck::UnifRecordRows::concrete(
             $crate::types::RecordRowsF::Extend {
                 row: $crate::types::RecordRowF {
                     id: Ident::from($id),

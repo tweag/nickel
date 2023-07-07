@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
     mk_uniftype, Context, Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows,
-    UnifType,
+    UnifType, VarLevelsData,
 };
 
 pub fn build_pattern_type_walk_mode(
@@ -72,7 +72,10 @@ fn build_pattern_type(
             TypecheckMode::Check => state.table.fresh_rrows_uvar(ctxt.var_level),
         }
     } else {
-        UnifRecordRows::Concrete(RecordRowsF::Empty)
+        UnifRecordRows::Concrete {
+            rrows: RecordRowsF::Empty,
+            var_levels_data: VarLevelsData::new_no_uvars(),
+        }
     };
 
     let mut rows = pat.matches.iter().map(|m| match m {
@@ -124,7 +127,7 @@ fn build_pattern_type(
     });
 
     rows.try_fold(tail, |tail, row: Result<UnifRecordRow, TypecheckError>| {
-        Ok(UnifRecordRows::Concrete(RecordRowsF::Extend {
+        Ok(UnifRecordRows::concrete(RecordRowsF::Extend {
             row: row?,
             tail: Box::new(tail),
         }))
@@ -219,13 +222,13 @@ impl From<&UnifRecordRows> for RecordTypes {
                         (m, None)
                     }
                     GenericUnifRecordRowsIteratorItem::TailDyn => {
-                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailDyn)))
+                        (m, Some(UnifRecordRows::concrete(RecordRowsF::TailDyn)))
                     }
                     GenericUnifRecordRowsIteratorItem::TailVar(v) => {
-                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailVar(*v))))
+                        (m, Some(UnifRecordRows::concrete(RecordRowsF::TailVar(*v))))
                     }
-                    GenericUnifRecordRowsIteratorItem::TailUnifVar(n) => {
-                        (m, Some(UnifRecordRows::UnifVar(n)))
+                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, init_level } => {
+                        (m, Some(UnifRecordRows::UnifVar { id, init_level }))
                     }
                     GenericUnifRecordRowsIteratorItem::TailConstant(n) => {
                         (m, Some(UnifRecordRows::Constant(n)))
@@ -233,7 +236,7 @@ impl From<&UnifRecordRows> for RecordTypes {
                 });
         RecordTypes {
             known_types,
-            tail: tail.unwrap_or(UnifRecordRows::Concrete(RecordRowsF::Empty)),
+            tail: tail.unwrap_or(UnifRecordRows::concrete(RecordRowsF::Empty)),
         }
     }
 }
@@ -259,12 +262,11 @@ impl RecordTypes {
             types: Box::new(ty.clone()),
         });
         let rrows = rows.fold(tail, |tail, row| {
-            UnifRecordRows::Concrete(RecordRowsF::Extend {
+            UnifRecordRows::concrete(RecordRowsF::Extend {
                 row,
                 tail: Box::new(tail),
             })
         });
-        // TODO: var_levels, is it correct?
         UnifType::concrete(TypeF::Record(rrows))
     }
 }
