@@ -461,8 +461,10 @@ pub enum ModalLexer<'input> {
     MultiString {
         mode_data: MultiStrData,
         /// A token that has been buffered and must be returned at the next call to `next()`. This is
-        /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
-        /// [`MultiStringToken::QuotesCandidateInterpolation`].
+        /// related to lexing an possible interpolation sequence, such as `%%%{`, which requires to
+        /// split a candidate interpolation token in two. In this case, we need to emit the first
+        /// token on the spot, and bufferize the second one, to be emitted on the following call to
+        /// `next()`.
         buffer: Option<(MultiStringToken<'input>, Range<usize>)>,
         logos_lexer: MultiStringLexer<'input>,
     },
