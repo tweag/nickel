@@ -92,8 +92,9 @@ the `nickel-lang-core` crate documentation).
      `$PATH` and is available anywhere.
    - If you're running macOS you can use Homebrew to install the Nickel binary
      with `brew install nickel`.
-   - Without Nix, you can use `cargo run` after [building](#build), passing
-     arguments with an extra `--` as in `cargo run --bin nickel -- -f program.ncl`.
+   - Without Nix, you can use `cargo run --bin nickel` after [building](#build),
+     passing arguments with an extra `--` as in
+     `cargo run --bin nickel -- -f program.ncl`.
 
 2. Run your first program:
 
