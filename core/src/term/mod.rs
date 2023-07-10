@@ -1963,17 +1963,27 @@ pub mod make {
         Term::Num(Number::from(n.into())).into()
     }
 
-    pub fn static_access<I, S>(record: S, fields: I) -> RichTerm
+    pub fn static_access<I, S, T>(record: T, fields: I) -> RichTerm
+    where
+        I: IntoIterator<Item = S>,
+        I::IntoIter: DoubleEndedIterator,
+        S: Into<Ident>,
+        T: Into<RichTerm>,
+    {
+        let mut term = record.into();
+        for f in fields.into_iter() {
+            term = make::op1(UnaryOp::StaticAccess(f.into()), term);
+        }
+        term
+    }
+
+    pub fn static_access_<I, S>(record: S, fields: I) -> RichTerm
     where
         I: IntoIterator<Item = S>,
         I::IntoIter: DoubleEndedIterator,
         S: Into<Ident>,
     {
-        let mut term = make::var(record);
-        for f in fields.into_iter() {
-            term = make::op1(UnaryOp::StaticAccess(f.into()), term);
-        }
-        term
+        static_access(make::var(record), fields)
     }
 }
 
@@ -2000,15 +2010,17 @@ mod tests {
 
     #[test]
     fn make_static_access() {
-        assert_eq!(
-            make::static_access("predicates", ["records", "record"]),
+        let t = make::op1(
+            UnaryOp::StaticAccess("record".into()),
             make::op1(
-                UnaryOp::StaticAccess("record".into()),
-                make::op1(
-                    UnaryOp::StaticAccess("records".into()),
-                    make::var("predicates")
-                )
-            )
-        )
+                UnaryOp::StaticAccess("records".into()),
+                make::var("predicates"),
+            ),
+        );
+        assert_eq!(
+            make::static_access(make::var("predicates"), ["records", "record"]),
+            t
+        );
+        assert_eq!(make::static_access_("predicates", ["records", "record"]), t);
     }
 }
