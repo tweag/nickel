@@ -19,8 +19,7 @@ Stdlib
 Tooling
 -------
 
-- Improve the pretty printing of terms in the CLI and within error messages
-- @vkleen in https://github.com/tweag/nickel/pull/1262
+- Improve the pretty printing of terms in the CLI and within error messages by @vkleen in https://github.com/tweag/nickel/pull/1262
 - Fix LSP panic when importing JSON by @yannham in https://github.com/tweag/nickel/pull/1382
 - Fix LSP hanging under certain conditions involving external imports by @yannham in https://github.com/tweag/nickel/pull/1390
 - Better error message when contract makes certain rows illegal by @Radvendii in https://github.com/tweag/nickel/pull/1323
