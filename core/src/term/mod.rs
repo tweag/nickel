@@ -1976,15 +1976,6 @@ pub mod make {
         }
         term
     }
-
-    pub fn static_access_<I, S>(record: S, fields: I) -> RichTerm
-    where
-        I: IntoIterator<Item = S>,
-        I::IntoIter: DoubleEndedIterator,
-        S: Into<Ident>,
-    {
-        static_access(make::var(record), fields)
-    }
 }
 
 #[cfg(test)]
@@ -2021,6 +2012,5 @@ mod tests {
             make::static_access(make::var("predicates"), ["records", "record"]),
             t
         );
-        assert_eq!(make::static_access_("predicates", ["records", "record"]), t);
     }
 }
