@@ -1,6 +1,6 @@
 [package]
 name = "nickel-lang-utils"
-version = "0.1.0"
+version = "0.2.0"
 description = "Common helper functions for the tests and benchmarks of the nickel-lang crate."
 authors.workspace = true
 edition.workspace = true
