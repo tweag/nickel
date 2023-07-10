@@ -1962,6 +1962,19 @@ pub mod make {
     pub fn integer(n: impl Into<i64>) -> RichTerm {
         Term::Num(Number::from(n.into())).into()
     }
+
+    pub fn static_access<I, S>(record: S, fields: I) -> RichTerm
+    where
+        I: IntoIterator<Item = S>,
+        I::IntoIter: DoubleEndedIterator,
+        S: Into<Ident>,
+    {
+        let mut term = make::var(record);
+        for f in fields.into_iter() {
+            term = make::op1(UnaryOp::StaticAccess(f.into()), term);
+        }
+        term
+    }
 }
 
 #[cfg(test)]
@@ -1983,5 +1996,19 @@ mod tests {
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.types, None);
+    }
+
+    #[test]
+    fn make_static_access() {
+        assert_eq!(
+            make::static_access("predicates", ["records", "record"]),
+            make::op1(
+                UnaryOp::StaticAccess("record".into()),
+                make::op1(
+                    UnaryOp::StaticAccess("records".into()),
+                    make::var("predicates")
+                )
+            )
+        )
     }
 }
