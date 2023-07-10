@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "lsp-harness"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1474,7 +1474,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "clap 4.3.0",
  "directories",
@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ansi_term",
  "assert_matches",
@@ -1534,7 +1534,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-lsp"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1565,7 +1565,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-lang-utils"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "codespan",
  "criterion",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "nickel-wasm-repl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nickel-lang-core",
 ]
@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "pyckel"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "codespan-reporting",
  "nickel-lang-core",

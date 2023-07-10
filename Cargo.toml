@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 license = "MIT"
 edition = "2021"
@@ -20,9 +20,9 @@ homepage = "https://nickel-lang.org"
 readme = "README.md"
 
 [workspace.dependencies]
-nickel-lang-core = { version = "0.1", path = "./core", default-features = false }
-nickel-lang-utils = { version = "0.1", path = "./utils" }
-lsp-harness = { version = "0.1", path = "./lsp/lsp-harness" }
+nickel-lang-core = { version = "0.2", path = "./core", default-features = false }
+nickel-lang-utils = { version = "0.2", path = "./utils" }
+lsp-harness = { version = "0.2", path = "./lsp/lsp-harness" }
 
 # The `wasm-bindgen` version is pinned (`=`) because it must be a version
 # available in Nixpkgs.
