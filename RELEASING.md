@@ -89,12 +89,20 @@ Other crates carry the version number of the Nickel language. These are
 
    **Commit those changes temporarily to please cargo, but they will be
    dropped later. Do not push**.
-2. Check that `cargo publish --dry-run` succeeds. For this to work, you will
-   need to be signed in to `crates.io` with a GitHub account that is part of
-   the [Nickel Core team](https://github.com/orgs/nickel-lang/teams/core),
-   and have a `crates.io` API key saved locally on your machine (normally
-   via `cargo login`). For help with this, contact the Nickel maintainers.
-3. Release on crates.io: `cargo publish`
+2. Check that a dry run of `cargo publish` succeeds on the crates to be
+   published (`nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`):
+   - `cargo publish -p nickel-lang-core --dry-run`
+   - `cargo publish -p nickel-lang-cli --dry-run`
+   - `cargo publish -p nickel-lang-lsp --dry-run`
+
+   For this to work, you will need to be signed in to `crates.io` with a GitHub
+   account that is part of the [Nickel Core
+   team](https://github.com/orgs/nickel-lang/teams/core), and have a `crates.io`
+   API key saved locally on your machine (normally via `cargo login`). For help
+   with this, contact the Nickel maintainers.
+3. Actually release `nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`
+   (in that order, as the cli and the lsp depend on core) on crates.io:
+   `cargo publish -p <crate-to-publish>`
 4. Ditch the potential changes made to the cargo manifests at step 1. by
    dropping the corresponding commit.
 
