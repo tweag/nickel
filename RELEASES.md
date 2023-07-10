@@ -1,3 +1,46 @@
+Version 1.1
+===========
+
+This version mostly includes bugfixes and stdlib improvement since 1.0.
+
+**IMPORTANT**: The main crate `nickel-lang` has been split between
+`nickel-lang-cli` (the binary) and `nickel-lang-core` (the library). If you're
+using `cargo` to install Nickel, please uninstall the previous crate by running
+`cargo uninstall nickel-lang`, and from now one use `cargo install
+nickel-lang-cli` to install 1.1 and do further updates.
+
+Stdlib
+------
+
+- Encode more pre-conditions of stdlib functions as additional contracts,
+  replacing dynamic type errors with nice contract errors by @yannham in https://github.com/tweag/nickel/pull/1358
+- ArraySliceFun incorrectly excluded the length of the array as the end index by @vkleen in https://github.com/tweag/nickel/pull/1396
+
+Tooling
+-------
+
+- Improve the pretty printing of terms in the CLI and within error messages
+- @vkleen in https://github.com/tweag/nickel/pull/1262
+- Fix LSP panic when importing JSON by @yannham in https://github.com/tweag/nickel/pull/1382
+- Fix LSP hanging under certain conditions involving external imports by @yannham in https://github.com/tweag/nickel/pull/1390
+- Better error message when contract makes certain rows illegal by @Radvendii in https://github.com/tweag/nickel/pull/1323
+- Fix function params hovering in the LSP by @yannham in https://github.com/tweag/nickel/pull/1395
+- Fix LSP infinite loop on hovering on external imports by @yannham in https://github.com/tweag/nickel/pull/1397
+
+Fixes
+-----
+
+- Fixes incorrect variable names in type mismatch errors by @vkleen in https://github.com/tweag/nickel/pull/1313
+- Improve error messages for polymorphic tail parametricity violations by @matthew-healy in https://github.com/tweag/nickel/pull/1320
+- Fix panic on duplicated top-level idents in record destructuring by @matthew-healy in https://github.com/tweag/nickel/pull/1324
+- Prevent panic when parsing record type with field path by @matthew-healy in https://github.com/tweag/nickel/pull/1325
+- Give a better error message when trying to query a non-record by @jneem in https://github.com/tweag/nickel/pull/1326
+- Fix error position by @jneem in https://github.com/tweag/nickel/pull/1333
+- Fix panic when interpolating fields in a record type by @jneem in https://github.com/tweag/nickel/pull/1332
+- Fix type annotations not generating contracts by @yannham in https://github.com/tweag/nickel/pull/1379
+- Fix typechecker looping by adding missing check for unifying equal type vars by @yannham in https://github.com/tweag/nickel/pull/1400
+- Fix panic on function contract failure (position of arrow functions not set) by @yannham in https://github.com/tweag/nickel/pull/1407
+
 Version 1.0
 ===========
 
