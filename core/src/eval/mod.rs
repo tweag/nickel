@@ -966,6 +966,9 @@ pub fn subst<C: Cache>(
         | v @ Term::Enum(_)
         | v @ Term::Import(_)
         | v @ Term::ResolvedImport(_)
+        // We could recurse here, because types can contain terms which would then be subject to
+        // substitution. Not recursing should be fine, though, because a type in term position
+        // turns into a contract, and we don't serialize contracts.
         | v @ Term::Types(_) => RichTerm::new(v, pos),
         Term::Let(id, t1, t2, attrs) => {
             let t1 = subst(cache, t1, initial_env, env);
