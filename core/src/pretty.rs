@@ -755,7 +755,7 @@ where
             EnumRowsF::Extend { row, tail } => {
                 let builder = allocator
                     .text("'")
-                    .append(allocator.text(ident_quoted(&row)));
+                    .append(allocator.text(ident_quoted(row)));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder
                         .append(allocator.text(","))
@@ -794,7 +794,7 @@ where
                 tail,
             } => {
                 let builder = allocator
-                    .text(ident_quoted(&id))
+                    .text(ident_quoted(id))
                     .append(allocator.text(":"))
                     .append(allocator.space())
                     .append(types.pretty(allocator));

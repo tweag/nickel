@@ -759,7 +759,6 @@ impl Term {
             | Term::SealingKey(..)
             | Term::Op1(UnaryOp::StaticAccess(_), _)
             | Term::Op2(BinaryOp::DynAccess(), _, _)
-            | Term::Types(_)
             // Those special cases aren't really atoms, but mustn't be parenthesized because they
             // are really functions taking additional non-strict arguments and printed as "partial"
             // infix operators.
@@ -785,6 +784,7 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
+            | Term::Types(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
