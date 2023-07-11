@@ -68,7 +68,7 @@ jobs:
       - name: "Build x86_64 static binary"
         run: |
           nix build --print-build-logs .#nickel-static
-          cp ./result nickel-x86_64-linux
+          cp ./result/bin/nickel nickel-x86_64-linux
       - name: "Upload x86_64 static binary as release asset"
         env:
           GH_TOKEN: ${{ github.token }}
