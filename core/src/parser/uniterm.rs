@@ -109,7 +109,11 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Types(mut ty) => {
                 ty.fix_type_vars(pos.unwrap())?;
-                RichTerm::new(Term::Types(ty), pos)
+                if let TypeF::Flat(rt) = ty.types {
+                    rt.with_pos(pos)
+                } else {
+                    RichTerm::new(Term::Types(ty), pos)
+                }
             }
             UniTermNode::Term(rt) => rt,
         };

@@ -892,18 +892,26 @@ impl Types {
     }
 
     /// Returns the same type with the position cleared (set to `None`).
-    #[cfg(test)]
+    ///
+    /// This is currently only used in test code, but because it's used from integration
+    /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Types {
         self.traverse::<_, _, ()>(
             &|t: Types, _| {
-                let types = match t.types {
-                    TypeF::Flat(rt) => TypeF::Flat(rt.without_pos()),
-                    ty => ty,
-                };
-
                 Ok(Types {
                     pos: TermPos::None,
-                    types,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse::<_, _, ()>(
+            &|t: RichTerm, _| {
+                Ok(RichTerm {
+                    pos: TermPos::None,
+                    ..t
                 })
             },
             &mut (),

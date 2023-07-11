@@ -1377,15 +1377,27 @@ impl RichTerm {
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    #[cfg(test)]
+    ///
+    /// This is currently only used in test code, but because it's used from integration
+    /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Self {
         self.traverse::<_, _, ()>(
-            &|t, _| {
-                let term = match t.term.into_owned() {
-                    Term::Types(ty) => Term::Types(ty.without_pos()),
-                    t => t,
-                };
-                Ok(RichTerm::new(term, TermPos::None))
+            &|t: Types, _| {
+                Ok(Types {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse::<_, _, ()>(
+            &|t: RichTerm, _| {
+                Ok(RichTerm {
+                    pos: TermPos::None,
+                    ..t
+                })
             },
             &mut (),
             TraverseOrder::BottomUp,
@@ -1433,6 +1445,9 @@ pub trait Traverse<T>: Sized {
 }
 
 impl Traverse<RichTerm> for RichTerm {
+    /// Traverse through all `RichTerm`s in the tree.
+    ///
+    /// This also recurses into the terms that are contained in `Types` subtrees.
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
@@ -1601,6 +1616,9 @@ impl Traverse<RichTerm> for RichTerm {
                     Term::Annotated(annot, term),
                     pos,
                 )
+            },
+            Term::Types(ty) => {
+                RichTerm::new(Term::Types(ty.traverse(f, state, order)?), pos)
             }
         } else rt};
 
@@ -1608,6 +1626,21 @@ impl Traverse<RichTerm> for RichTerm {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
         }
+    }
+}
+
+impl Traverse<Types> for RichTerm {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    where
+        F: Fn(Types, &mut S) -> Result<Types, E>,
+    {
+        let f_on_term = |rt: RichTerm, s: &mut S| {
+            match_sharedterm! {rt.term, with {
+                Term::Types(ty) =>
+                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Types(ty), rt.pos))
+            } else Ok(rt)}
+        };
+        self.traverse(&f_on_term, state, order)
     }
 }
 
