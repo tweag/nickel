@@ -59,7 +59,7 @@ impl QueryPath {
     /// # Post-conditions
     ///
     /// If this function succeeds and returns `Ok(query_path)`, then `query_path.0` is non empty.
-    /// Indeed, there's no such thing as a valid empty field path. If `input` is empty, or consist
+    /// Indeed, there's no such thing as a valid empty field path. If `input` is empty, or consists
     /// only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
