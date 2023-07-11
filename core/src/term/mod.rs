@@ -181,7 +181,7 @@ pub enum Term {
     #[serde(skip)]
     ResolvedImport(FileId),
 
-    /// A type.
+    /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
     ///
     /// During evaluation, this will get turned into a contract.
     #[serde(skip)]
