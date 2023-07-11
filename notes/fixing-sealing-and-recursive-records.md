@@ -24,6 +24,26 @@ and this contract gets attached to a record field for some reason, any reference
 to the field has the potential to produce a mismatch between `%seal%` and
 `%unseal%` primops in the program.
 
+In #1161 this was caused by an application of `std.record.map` whose type is
+given in the standard library as `forall a b. (a -> b) -> { _: a } -> { _: b }`:
+
+```console
+nickel> std.record.map (std.function.const std.function.id) { foo = 1 }
+{ foo = 1 }
+nickel> std.record.map (std.function.const std.function.id) { foo = 1, bar = foo }
+error: contract broken by a function
+```
+
+In the first program, the contract corresponding to the type of `std.record.map`
+first attaches a sealing primop to the field `foo`, then evaluates the record
+to weak head normal form, and afterwards attaches an unsealing contract to the
+field. Since the field is only accessed once, sealing and unsealing is paired up
+and everything works fine. In the second program, sealing is applied in the same
+way. But the recursive reference to `foo` in the definition of `bar` means that
+the sealing contract attached to `foo` is applied when the reference to `foo`
+is evaluated. This additional sealing cannot be "canceled" by the unsealing
+contract which is applied in the end.
+
 To fix #1161 we originally proposed to treat a recursive reference to a record
 field that's guarded by a contract containing a free type variable as a function
 application. As such, the reference would need to generate the corresponding
