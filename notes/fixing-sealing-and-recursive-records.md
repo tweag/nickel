@@ -1,7 +1,50 @@
-# Int
+# Polymorphic Sealing and Contract Propagation
 
-WIP. Notes on trying to get our head around an issue involving lazy record
-contracts, recursive record, and polymorphic sealing ().
+This draft note was written in the aftermath of us discovering an issue
+involving the interaction of lazy record contracts, recursive records, and
+polymorphic sealing (#1161, #1228).
+
+Nickel implements dynamic contract checks for polymorphic types by using
+a sealing discipline. When converting a static type into a contract, upon
+encountering a universal quantification like `forall a. ...`, Nickel maps `a` to
+a sealing key. Then, the contract checking `a` in positive position becomes an
+application of the `%unseal%` primop with the respective sealing key, while the
+contract checking `a` in negative position becomes an application of `%seal%`.
+For the contract check to ultimately succeed, evaluation must proceed in such a
+way that `%unseal%` ends up only being applied to a term sealed by `%seal%` with
+matching sealing keys. This means that `%seal%` and `%unseal%` must always end
+up being paired one to one in program being evaluated. However, `%seal%` and
+`%unseal%` are generated in different places.
+
+If a contract containing an as yet unpaired `%seal%` or `%unseal%` ends up being
+attached to a record field, any reference to this field will have to apply the
+contract and essentially duplicates the `%seal%` or `%unseal%` operation. This
+means that if a type containing a free type variable is turned into a contract,
+and this contract gets attached to a record field for some reason, any reference
+to the field has the potential to produce a mismatch between `%seal%` and
+`%unseal%` primops in the program.
+
+To fix #1161 we originally proposed to treat a recursive reference to a record
+field that's guarded by a contract containing a free type variable as a function
+application. As such, the reference would need to generate the corresponding
+sealing or unsealing primop. This would act, for example, as if there were an
+application of the contract for `a -> Dyn` if the field had been assigned the
+contract `a`. We implemented this approach in #1194 by essentially applying all
+record field contracts that contain a free type variable twice. This fixes the
+issue with recursive references first reported in #1161. However, it turns out
+this approach was not enough to solve the problem in its entirety, as reported
+in #1228.
+
+We ended up circumventing the problem in #1271 by making type annotations not
+"stick" to record fields at all. Instead, at runtime, they now produce a one
+time contract check. Since static type annotations are the only things that can
+introduce type variables which require sealing and unsealing at runtime, this
+prevents the root cause of the problem that initiated this note. The sealing and
+unsealing primops can no longer be duplicated arbitrarily by getting attached to
+record fields and recursive references.
+
+We're keeping this draft note around to keep a record of our work debugging
+the issue.
 
 ## Playgroud
 
