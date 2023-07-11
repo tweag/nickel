@@ -894,10 +894,15 @@ impl Types {
     /// Returns the same type with the position cleared (set to `None`).
     pub fn without_pos(self) -> Types {
         self.traverse::<_, _, ()>(
-            &|t, _| {
+            &|t: Types, _| {
+                let types = match t.types {
+                    TypeF::Flat(rt) => TypeF::Flat(rt.without_pos()),
+                    ty => ty,
+                };
+
                 Ok(Types {
                     pos: TermPos::None,
-                    ..t
+                    types,
                 })
             },
             &mut (),

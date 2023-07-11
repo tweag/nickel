@@ -13,7 +13,7 @@ use crate::{
     },
     types::{
         DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF,
-        Types, UnboundTypeVariableError, VarKind,
+        Types, VarKind,
     },
 };
 
@@ -109,9 +109,7 @@ impl TryFrom<UniTerm> for RichTerm {
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
             UniTermNode::Types(mut ty) => {
                 ty.fix_type_vars(pos.unwrap())?;
-                ty.contract().map_err(|UnboundTypeVariableError(id)| {
-                    ParseError::UnboundTypeVariables(vec![id])
-                })?
+                RichTerm::new(Term::Types(ty), pos)
             }
             UniTermNode::Term(rt) => rt,
         };
@@ -443,7 +441,7 @@ impl TryFrom<UniRecord> for RichTerm {
     type Error = ParseError;
 
     /// Convert a `UniRecord` to a term. If the `UniRecord` is syntactically a record type or it
-    /// has a tail, it is first interpreted as a type and then converted to a contract. One
+    /// has a tail, it is first interpreted as a type and then wrapped in a `Term::Types`. One
     /// exception is the empty record, which behaves the same both as a type and a contract, and
     /// turning an empty record literal to an opaque function would break everything.
     ///
@@ -469,8 +467,7 @@ impl TryFrom<UniRecord> for RichTerm {
                 })?;
 
             ty.fix_type_vars(pos.unwrap())?;
-            ty.contract()
-                .map_err(|UnboundTypeVariableError(id)| ParseError::UnboundTypeVariables(vec![id]))
+            Ok(RichTerm::new(Term::Types(ty), pos))
         } else {
             ur.check_typed_field_without_def()?;
 
