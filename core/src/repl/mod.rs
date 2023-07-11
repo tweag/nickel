@@ -428,7 +428,7 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                     out,
                     "<field path> is a dot-separated sequence of identifiers pointing to a field. \
                     Fields can be quoted if they contain special characters, \
-                    very much as in normal Nickel source code.\n"
+                    just like in normal Nickel source code.\n"
                 )?;
                 writeln!(out, "Examples:")?;
                 writeln!(out, "- `:{c} std.array.any`")?;
