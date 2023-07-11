@@ -892,6 +892,7 @@ impl Types {
     }
 
     /// Returns the same type with the position cleared (set to `None`).
+    #[cfg(test)]
     pub fn without_pos(self) -> Types {
         self.traverse::<_, _, ()>(
             &|t: Types, _| {

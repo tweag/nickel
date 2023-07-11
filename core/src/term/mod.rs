@@ -1377,7 +1377,7 @@ impl RichTerm {
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    //#[cfg(test)]
+    #[cfg(test)]
     pub fn without_pos(self) -> Self {
         self.traverse::<_, _, ()>(
             &|t, _| {
