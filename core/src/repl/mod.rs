@@ -63,7 +63,7 @@ pub trait Repl {
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
     fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
     /// Query the metadata of an expression.
-    fn query(&mut self, target: String, path: Option<String>) -> Result<Field, Error>;
+    fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
     fn cache_mut(&mut self) -> &mut Cache;
 }
@@ -285,15 +285,21 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         .into())
     }
 
-    fn query(&mut self, target: String, path: Option<String>) -> Result<Field, Error> {
+    fn query(&mut self, path: String) -> Result<Field, Error> {
         use crate::program;
+
+        let mut query_path = QueryPath::parse(self.vm.import_resolver_mut(), path)?;
+
+        // remove(): this is safe because there is no such thing as an empty field path. If `path`
+        // is empty, the parser will error out. Hence, `QueryPath::parse` always returns a non-empty
+        // vector.
+        let target = query_path.0.remove(0);
 
         let file_id = self
             .vm
             .import_resolver_mut()
-            .replace_string("<repl-query>", target);
+            .replace_string("<repl-query>", target.label().into());
 
-        let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
         program::query(&mut self.vm, file_id, &self.env, query_path)
     }
 
@@ -415,15 +421,18 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
                 )?;
             }
             Ok(c @ CommandType::Query) => {
-                writeln!(out, ":{c} <identifier> [field path]")?;
+                writeln!(out, ":{c} <field path>")?;
                 print_aliases(out, c)?;
                 writeln!(out, "Print the metadata attached to a field")?;
                 writeln!(
                     out,
-                    "<identifier> is valid Nickel identifier representing the record to look into."
+                    "<field path> is a dot-separated sequence of identifiers pointing to a field. \
+                    Fields can be quoted if they contain special characters, \
+                    very much as in normal Nickel source code.\n"
                 )?;
-                writeln!(out, "<field path> is a dot-separated sequence of identifiers pointing to a field.\n")?;
-                writeln!(out, "Example: `:{c} mylib contracts.\"special#chars\".bar`")?;
+                writeln!(out, "Examples:")?;
+                writeln!(out, "- `:{c} std.array.any`")?;
+                writeln!(out, "- `:{c} mylib.contracts.\"special#chars.\".bar`")?;
             }
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;

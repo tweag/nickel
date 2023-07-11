@@ -88,7 +88,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                     Ok(Command::Typecheck(exp)) => {
                         repl.typecheck(&exp).map(|types| println!("Ok: {types}"))
                     }
-                    Ok(Command::Query {target, path}) => repl.query(target, path).map(|field| {
+                    Ok(Command::Query(path)) => repl.query(path).map(|field| {
                         query_print::write_query_result(
                             &mut stdout,
                             &field,
