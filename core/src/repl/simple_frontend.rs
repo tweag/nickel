@@ -49,8 +49,8 @@ pub fn input<R: Repl>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
                 .typecheck(&exp)
                 .map(|types| InputResult::Success(format!("Ok: {types}")))
                 .map_err(InputError::from),
-            Ok(Command::Query { target, path }) => repl
-                .query(target, path)
+            Ok(Command::Query(path)) => repl
+                .query(path)
                 .map(|t| {
                     let mut buffer = Cursor::new(Vec::<u8>::new());
                     query_print::write_query_result(

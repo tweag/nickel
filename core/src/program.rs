@@ -55,6 +55,12 @@ impl QueryPath {
     /// Identifiers can be enclosed by double quotes when they contain characters that aren't
     /// allowed inside bare identifiers. The accepted grammar is the same as a sequence of record
     /// accesses in Nickel, although string interpolation is forbidden.
+    ///
+    /// # Post-conditions
+    ///
+    /// If this function succeeds and returns `Ok(query_path)`, then `query_path.0` is non empty.
+    /// Indeed, there's no such thing as a valid empty field path. If `input` is empty, or consists
+    /// only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
             grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,

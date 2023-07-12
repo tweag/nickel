@@ -25,10 +25,7 @@ impl CommandType {
 pub enum Command {
     Load(OsString),
     Typecheck(String),
-    Query {
-        target: String,
-        path: Option<String>,
-    },
+    Query(String),
     Print(String),
     Help(Option<String>),
     Exit,
@@ -130,22 +127,7 @@ impl FromStr for Command {
             }
             CommandType::Query => {
                 require_arg(cmd, &arg, None)?;
-                let mut args_iter = arg.chars();
-
-                let first_arg = args_iter.by_ref().take_while(|c| *c != ' ').collect();
-                let rest = args_iter.collect::<String>();
-                let rest = rest.trim();
-
-                let path = if !rest.is_empty() {
-                    Some(String::from(rest))
-                } else {
-                    None
-                };
-
-                Ok(Command::Query {
-                    target: first_arg,
-                    path,
-                })
+                Ok(Command::Query(arg))
             }
             CommandType::Print => {
                 require_arg(cmd, &arg, None)?;
