@@ -88,5 +88,3 @@ void = "1"
 topiary = { version = "0.2.3", git = "https://github.com/tweag/topiary.git", rev = "refs/heads/main" }
 tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "refs/heads/main" }
 tempfile = "3.5.0"
-thiserror = "1.0.40"
-
