@@ -293,6 +293,15 @@ pub enum TypecheckError {
         RichTerm, /* the inferred flat type */
         TermPos,
     ),
+    /// Types can appear in term position, like the `Number` in `let c = Number in 5 | c`.
+    /// These types are treated as contracts, but they are not allowed to contain flat types.
+    /// For example, `let c = { foo : 5 } in ...` is disallowed.
+    FlatTypeInTermPosition {
+        /// The term that was in a flat type (the `5` in the example above).
+        flat: RichTerm,
+        /// The position of the entire type (the `{foo : 5}` in the example above).
+        pos: TermPos,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -2050,6 +2059,25 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         .with_notes(vec![
                             "Type variables introduced in a `forall` range over all possible types.".to_owned(),
                         ]),
+                ]
+            }
+            TypecheckError::FlatTypeInTermPosition { flat, pos } => {
+                vec![
+                    Diagnostic::error()
+                        .with_message(
+                            "types containing user-defined contracts cannot be converted into contracts",
+                        )
+                        .with_labels(
+                            pos.into_opt().map(|span|
+                                    primary(&span).with_message("This type (in contract position)")
+                                )
+                                .into_iter()
+                            .chain(
+                                flat.pos.into_opt().map(|span|
+                                    secondary(&span).with_message("contains this user-defined contract")
+                                ))
+                            .collect()
+                    ),
                 ]
             }
         }

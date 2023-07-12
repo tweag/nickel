@@ -1590,11 +1590,13 @@ fn check<L: Linearizer>(
             );
             unify(state, &ctxt, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        // Types in term position are converted to contracts, so convert it before type-checking
-        // it. Note that we'll throw away the converted contract here and then do the conversion
-        // again during evaluation. If we had a mutable pass instead (like `subst`) we could
-        // do this work once.
-        Term::Types(typ) => check(state, ctxt, lin, linearizer, &typ.contract()?, ty),
+        Term::Types(typ) => {
+            if let Some(flat) = typ.find_flat() {
+                Err(TypecheckError::FlatTypeInTermPosition { flat, pos: *pos })
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
