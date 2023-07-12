@@ -24,7 +24,13 @@ nickel-lang-core = { version = "0.1", path = "./core", default-features = false 
 nickel-lang-utils = { version = "0.1", path = "./utils" }
 lsp-harness = { version = "0.1", path = "./lsp/lsp-harness" }
 
-wasm-bindgen = "0.2"
+# The wasm-bindgen version is pinned using `=` since flake.nix reads the version
+# number from Cargo.lock and needs to have matching output hashes for the source
+# derivation. Combined with caching this would leed to silent inconsistent builds
+# if this version changes without the nix output hashes being updated. It's okay
+# to bump the version (for example if not doing so prevents some dependency from
+# building) but flake.nix needs to be kept in sync.
+wasm-bindgen = "=0.2.84"
 
 ansi_term = "0.12"
 anyhow = "1.0"
