@@ -253,7 +253,6 @@
             else
               buildPackage {
                 pname = "nickel-lang-cli";
-                extraBuildArgs = "--features format";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
