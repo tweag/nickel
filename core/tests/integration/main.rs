@@ -163,6 +163,8 @@ enum ErrorExpectation {
     TypecheckExtraDynTail,
     #[serde(rename = "TypecheckError::MissingDynTail")]
     TypecheckMissingDynTail,
+    #[serde(rename = "TypecheckError::FlatTypeInTermPosition")]
+    TypecheckFlatTypeInTermPosition,
     #[serde(rename = "ParseError")]
     AnyParseError,
     #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
@@ -197,6 +199,10 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::MissingDynTail(..)),
             )
             | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
+            | (
+                TypecheckFlatTypeInTermPosition,
+                Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
+            )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..))) => true,
             (e, Error::ParseErrors(es)) => {
                 let first_error = es
@@ -330,6 +336,7 @@ impl std::fmt::Display for ErrorExpectation {
             }
             TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
             TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
+            TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
         };
         write!(f, "{}", name)
     }
