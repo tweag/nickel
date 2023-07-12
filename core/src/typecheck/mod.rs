@@ -146,7 +146,7 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
 pub enum UnifEnumRows {
     Concrete(EnumRowsF<Box<UnifEnumRows>>),
     Constant(VarId),
-    UnifVar(VarId),
+    UnifVar { id: VarId, init_level: VarLevel },
 }
 
 /// Metadata attached to composite types, which are used to delay potentially costly type
@@ -657,7 +657,7 @@ impl UnifEnumRows {
     /// as type constants are replaced with the empty row.
     fn into_erows(self, table: &UnifTable) -> EnumRows {
         match self {
-            UnifEnumRows::UnifVar(p) => match table.root_erows(p) {
+            UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
                 t @ UnifEnumRows::Concrete(_) => t.into_erows(table),
                 _ => EnumRows(EnumRowsF::Empty),
             },
@@ -673,7 +673,7 @@ impl UnifEnumRows {
     /// variable, return the result of `table.root_erows`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
-            UnifEnumRows::UnifVar(var_id) => table.root_erows(var_id),
+            UnifEnumRows::UnifVar { id, init_level } => table.root_erows(id, init_level),
             uerows => uerows,
         }
     }
@@ -829,7 +829,7 @@ impl<'a, E: TermEnvironment> Iterator
 /// Iterator items produced by [`EnumRowsIterator`].
 pub enum UnifEnumRowsIteratorItem<'a> {
     TailVar(&'a Ident),
-    TailUnifVar(VarId),
+    TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(&'a EnumRow),
 }
@@ -853,9 +853,12 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
                     Some(UnifEnumRowsIteratorItem::Row(row))
                 }
             },
-            UnifEnumRows::UnifVar(var_id) => {
+            UnifEnumRows::UnifVar { id, init_level } => {
                 self.erows = None;
-                Some(UnifEnumRowsIteratorItem::TailUnifVar(*var_id))
+                Some(UnifEnumRowsIteratorItem::TailUnifVar {
+                    id: *id,
+                    init_level: *init_level,
+                })
             }
             UnifEnumRows::Constant(var_id) => {
                 self.erows = None;
@@ -2440,16 +2443,23 @@ fn erows_add(
                 }
             }
         },
-        UnifEnumRows::UnifVar(uvar) => {
+        UnifEnumRows::UnifVar {
+            id: tail_var_id,
+            init_level,
+        } => {
             let tail_var_id = state.table.fresh_erows_var_id(var_level);
+            let tail_var = UnifEnumRows::UnifVar {
+                id: tail_var_id,
+                init_level: var_level,
+            };
             let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
                 row: *id,
-                tail: Box::new(UnifEnumRows::UnifVar(tail_var_id)),
+                tail: Box::new(tail_var.clone()),
             });
 
-            state.table.assign_erows(uvar, new_tail);
+            state.table.assign_erows(tail_var_id, new_tail);
 
-            Ok(UnifEnumRows::UnifVar(tail_var_id))
+            Ok(tail_var)
         }
         UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
@@ -2733,8 +2743,9 @@ pub fn unify_erows(
                 }
             }
         }
-        (UnifEnumRows::UnifVar(p), uerows) | (uerows, UnifEnumRows::UnifVar(p)) => {
-            state.table.assign_erows(p, uerows);
+        (UnifEnumRows::UnifVar { id, init_level }, uerows)
+        | (uerows, UnifEnumRows::UnifVar { id, init_level }) => {
+            state.table.assign_erows(id, uerows);
             Ok(())
         }
         (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
@@ -2833,7 +2844,10 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_erows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifEnumRows::UnifVar(fresh_uid),
+                    ForallInst::Ptr => UnifEnumRows::UnifVar {
+                        id: fresh_uid,
+                        init_level: ctxt.var_level,
+                    },
                 };
                 state.names.insert((fresh_uid, kind), var);
                 ty = body.subst_erows(&var, &uvar);
@@ -2914,7 +2928,7 @@ impl UnifTable {
     /// doing, you should probably use `unify` instead.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         // Unifying a free variable with itself is a no-op.
-        if matches!(erows, UnifEnumRows::UnifVar(x) if x == var) {
+        if matches!(erows, UnifEnumRows::UnifVar { id, .. } if id == var) {
             return;
         }
 
@@ -2998,7 +3012,10 @@ impl UnifTable {
     /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
     /// table.
     pub fn fresh_erows_uvar(&mut self, var_level: VarLevel) -> UnifEnumRows {
-        UnifEnumRows::UnifVar(self.fresh_erows_var_id(var_level))
+        UnifEnumRows::UnifVar {
+            id: self.fresh_erows_var_id(var_level),
+            init_level: var_level,
+        }
     }
 
     /// Create a fresh type constant and allocate a corresponding slot in the table.
@@ -3059,13 +3076,16 @@ impl UnifTable {
     ///
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
-    pub fn root_erows(&self, var_id: VarId) -> UnifEnumRows {
+    pub fn root_erows(&self, var_id: VarId, init_level: VarLevel) -> UnifEnumRows {
         // All queried variable must have been introduced by `new_var` and thus a corresponding entry
         // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
         // panic.
         match self.erows[var_id].value.as_ref() {
-            None => UnifEnumRows::UnifVar(var_id),
-            Some(UnifEnumRows::UnifVar(y)) => self.root_erows(*y),
+            None => UnifEnumRows::UnifVar {
+                id: var_id,
+                init_level,
+            },
+            Some(UnifEnumRows::UnifVar { id, init_level }) => self.root_erows(*id, *init_level),
             Some(ty) => ty.clone(),
         }
     }
