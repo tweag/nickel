@@ -1605,7 +1605,6 @@ dependencies = [
  "serde",
  "tempfile",
  "test-generator",
- "thiserror",
  "topiary",
  "tree-sitter-nickel 0.0.1 (git+https://github.com/nickel-lang/tree-sitter-nickel?rev=refs/heads/main)",
 ]
