@@ -72,6 +72,7 @@ use crate::{
 };
 
 use std::{
+    cmp::max,
     collections::{HashMap, HashSet},
     convert::TryInto,
 };
@@ -224,8 +225,6 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
     fn var_level_max(&self) -> VarLevel {
-        use std::cmp::max;
-
         match self {
             TypeF::Dyn | TypeF::Bool | TypeF::Number | TypeF::String | TypeF::Symbol => {
                 VarLevelsData::new_no_uvars().upper_bound
@@ -246,27 +245,56 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
 
 impl VarLevelUpperBound for UnifEnumRows {
     fn var_level_max(&self) -> VarLevel {
-        todo!()
+        match self {
+            UnifEnumRows::Concrete {
+                var_levels_data, ..
+            } => var_levels_data.upper_bound,
+            UnifEnumRows::UnifVar { init_level, .. } => *init_level,
+            UnifEnumRows::Constant(_) => {
+                //TODO: a direct method for that
+                VarLevelsData::new_no_uvars().upper_bound
+            }
+        }
     }
 }
 
 impl VarLevelUpperBound for UnifEnumRowsUnrolling {
     fn var_level_max(&self) -> VarLevel {
-        todo!()
+        match self {
+            // A var that hasn't be instantiated yet isn't a unification variable
+            EnumRowsF::Empty | EnumRowsF::TailVar(_) => VarLevelsData::new_no_uvars().upper_bound,
+            EnumRowsF::Extend { row: _, tail } => tail.var_level_max(),
+        }
     }
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
     fn var_level_max(&self) -> VarLevel {
-        todo!()
+        match self {
+            GenericUnifRecordRows::Concrete {
+                var_levels_data, ..
+            } => var_levels_data.upper_bound,
+            GenericUnifRecordRows::UnifVar { init_level, .. } => *init_level,
+            GenericUnifRecordRows::Constant(_) => {
+                //TODO: a direct method for that
+                VarLevelsData::new_no_uvars().upper_bound
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E> {
     fn var_level_max(&self) -> VarLevel {
-        use std::cmp::max;
-
-        todo!()
+        match self {
+            // A var that hasn't be instantiated yet isn't a unification variable
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => {
+                VarLevelsData::new_no_uvars().upper_bound
+            }
+            RecordRowsF::Extend {
+                row: RecordRowF { id: _, types },
+                tail,
+            } => max(tail.var_level_max(), types.var_level_max()),
+        }
     }
 }
 
