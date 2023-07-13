@@ -170,10 +170,10 @@ pub fn to_type(
         let erows = erows.into_root(table);
 
         match erows {
-            UnifEnumRows::UnifVar(var_id) => EnumRows(EnumRowsF::TailVar(var_name(
+            UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(var_name(
                 reported_names,
                 names,
-                var_id,
+                id,
                 VarKindDiscriminant::EnumRows,
             ))),
             UnifEnumRows::Constant(c) => EnumRows(EnumRowsF::TailVar(cst_name(
@@ -182,9 +182,9 @@ pub fn to_type(
                 c,
                 VarKindDiscriminant::EnumRows,
             ))),
-            UnifEnumRows::Concrete(t) => {
-                let mapped =
-                    t.map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
+            UnifEnumRows::Concrete { erows, .. } => {
+                let mapped = erows
+                    .map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
                 EnumRows(mapped)
             }
         }

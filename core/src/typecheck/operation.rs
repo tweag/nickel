@@ -48,7 +48,10 @@ pub fn get_uop_type(
         // forall rows. [| ; rows |] -> [| id ; rows |]
         UnaryOp::Embed(id) => {
             let row_var_id = state.table.fresh_erows_var_id(var_level);
-            let row = UnifEnumRows::UnifVar(row_var_id);
+            let row = UnifEnumRows::UnifVar {
+                id: row_var_id,
+                init_level: var_level,
+            };
 
             let domain = mk_uty_enum!(; row.clone());
             let codomain = mk_uty_enum!(*id; row);

@@ -23,13 +23,16 @@ macro_rules! mk_uty_arrow {
 #[macro_export]
 macro_rules! mk_uty_enum_row {
     () => {
-        $crate::typecheck::UnifEnumRows::Concrete($crate::types::EnumRowsF::Empty)
+        $crate::typecheck::UnifEnumRows::Concrete {
+            erows: $crate::types::EnumRowsF::Empty,
+            var_levels_data: $crate::typecheck::VarLevelsData::new_no_uvars(),
+        }
     };
     (; $tail:expr) => {
         $crate::typecheck::UnifEnumRows::from($tail)
     };
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
-        $crate::typecheck::UnifEnumRows::Concrete(
+        $crate::typecheck::UnifEnumRows::concrete(
             $crate::types::EnumRowsF::Extend {
                 row: Ident::from($id),
                 tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))

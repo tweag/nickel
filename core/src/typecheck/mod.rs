@@ -137,6 +137,8 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     },
 }
 
+pub type UnifEnumRowsUnrolling = EnumRowsF<Box<UnifEnumRows>>;
+
 /// Unifiable enum rows. Same shape as [`crate::types::EnumRows`] but where each tail may be a
 /// unification variable (or a constant).
 ///
@@ -144,9 +146,15 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
 /// `GenericUnifEnumRows` taking an additional `E` parameter.
 #[derive(Clone, PartialEq, Debug)]
 pub enum UnifEnumRows {
-    Concrete(EnumRowsF<Box<UnifEnumRows>>),
+    Concrete {
+        erows: UnifEnumRowsUnrolling,
+        var_levels_data: VarLevelsData,
+    },
     Constant(VarId),
-    UnifVar { id: VarId, init_level: VarLevel },
+    UnifVar {
+        id: VarId,
+        init_level: VarLevel,
+    },
 }
 
 /// Metadata attached to composite types, which are used to delay potentially costly type
@@ -237,6 +245,12 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
 }
 
 impl VarLevelUpperBound for UnifEnumRows {
+    fn var_level_max(&self) -> VarLevel {
+        todo!()
+    }
+}
+
+impl VarLevelUpperBound for UnifEnumRowsUnrolling {
     fn var_level_max(&self) -> VarLevel {
         todo!()
     }
@@ -385,7 +399,7 @@ impl std::convert::TryInto<EnumRows> for UnifEnumRows {
 
     fn try_into(self) -> Result<EnumRows, ()> {
         match self {
-            UnifEnumRows::Concrete(erows) => {
+            UnifEnumRows::Concrete { erows, .. } => {
                 let converted: EnumRowsF<Box<EnumRows>> =
                     erows.try_map(|erows| Ok(Box::new(UnifEnumRows::try_into(*erows)?)))?;
                 Ok(EnumRows(converted))
@@ -430,7 +444,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Types> for GenericUnifTyp
 // `From<EnumRows>`.
 impl From<EnumRows> for UnifEnumRows {
     fn from(erows: EnumRows) -> Self {
-        UnifEnumRows::Concrete(erows.0.map(|erows| Box::new(UnifEnumRows::from(*erows))))
+        UnifEnumRows::concrete(erows.0.map(|erows| Box::new(UnifEnumRows::from(*erows))))
     }
 }
 
@@ -438,6 +452,16 @@ impl UnifEnumRows {
     /// Return an iterator producing immutable references to individual rows.
     pub fn iter(&self) -> EnumRowsIterator<UnifEnumRows> {
         EnumRowsIterator { erows: Some(self) }
+    }
+
+    /// Create a concrete generic unification type with default values for variable levels.
+    pub fn concrete(erows: UnifEnumRowsUnrolling) -> Self {
+        let upper_bound = erows.var_level_max();
+
+        UnifEnumRows::Concrete {
+            erows,
+            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+        }
     }
 }
 
@@ -591,13 +615,15 @@ impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
 
 impl SubstERows for UnifEnumRows {
     fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
-        match self {
-            UnifEnumRows::Concrete(EnumRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
-            UnifEnumRows::Concrete(rrows) => {
-                UnifEnumRows::Concrete(rrows.map(|erows| Box::new(erows.subst_erows(id, to))))
-            }
-            _ => self,
-        }
+        todo!();
+
+        //match self {
+        //    UnifEnumRows::Concrete(EnumRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
+        //    UnifEnumRows::Concrete(rrows) => {
+        //        UnifEnumRows::Concrete(rrows.map(|erows| Box::new(erows.subst_erows(id, to))))
+        //    }
+        //    _ => self,
+        //}
     }
 }
 
@@ -658,12 +684,12 @@ impl UnifEnumRows {
     fn into_erows(self, table: &UnifTable) -> EnumRows {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
-                t @ UnifEnumRows::Concrete(_) => t.into_erows(table),
+                t @ UnifEnumRows::Concrete { .. } => t.into_erows(table),
                 _ => EnumRows(EnumRowsF::Empty),
             },
             UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
-            UnifEnumRows::Concrete(t) => {
-                let mapped = t.map(|erows| Box::new(erows.into_erows(table)));
+            UnifEnumRows::Concrete { erows, .. } => {
+                let mapped = erows.map(|erows| Box::new(erows.into_erows(table)));
                 EnumRows(mapped)
             }
         }
@@ -766,8 +792,8 @@ impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
 }
 
 impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
-    fn from(ty: EnumRowsF<Box<UnifEnumRows>>) -> Self {
-        UnifEnumRows::Concrete(ty)
+    fn from(erows: EnumRowsF<Box<UnifEnumRows>>) -> Self {
+        UnifEnumRows::concrete(erows)
     }
 }
 
@@ -839,7 +865,7 @@ impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.erows.and_then(|next| match next {
-            UnifEnumRows::Concrete(erows) => match erows {
+            UnifEnumRows::Concrete { erows, .. } => match erows {
                 EnumRowsF::Empty => {
                     self.erows = None;
                     None
@@ -2429,14 +2455,17 @@ fn erows_add(
     let uerows = uerows.into_root(state.table);
 
     match uerows {
-        UnifEnumRows::Concrete(erows) => match erows {
+        UnifEnumRows::Concrete {
+            erows,
+            var_levels_data,
+        } => match erows {
             EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(*id)),
             EnumRowsF::Extend { row, tail } => {
                 if *id == row {
                     Ok(*tail)
                 } else {
                     let subrow = erows_add(state, var_level, id, *tail)?;
-                    Ok(UnifEnumRows::Concrete(EnumRowsF::Extend {
+                    Ok(UnifEnumRows::concrete(EnumRowsF::Extend {
                         row,
                         tail: Box::new(subrow),
                     }))
@@ -2452,7 +2481,7 @@ fn erows_add(
                 id: tail_var_id,
                 init_level: var_level,
             };
-            let new_tail = UnifEnumRows::Concrete(EnumRowsF::Extend {
+            let new_tail = UnifEnumRows::concrete(EnumRowsF::Extend {
                 row: *id,
                 tail: Box::new(tail_var.clone()),
             });
@@ -2725,24 +2754,39 @@ pub fn unify_erows(
     let uerows2 = uerows2.into_root(state.table);
 
     match (uerows1, uerows2) {
-        (UnifEnumRows::Concrete(erows1), UnifEnumRows::Concrete(erows2)) => {
-            match (erows1, erows2) {
-                (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
-                    Err(RowUnifError::UnboundTypeVariable(id))
-                }
-                (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
-                (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, .. }) => {
-                    Err(RowUnifError::ExtraRow(ident))
-                }
-                (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
-                    Err(RowUnifError::MissingRow(ident))
-                }
-                (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
-                    let t2_tail = erows_add(state, var_level, &id, UnifEnumRows::Concrete(erows2))?;
-                    unify_erows(state, var_level, *tail, t2_tail)
-                }
+        (
+            UnifEnumRows::Concrete {
+                erows: erows1,
+                var_levels_data: var_levels1,
+            },
+            UnifEnumRows::Concrete {
+                erows: erows2,
+                var_levels_data: var_levels2,
+            },
+        ) => match (erows1, erows2) {
+            (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
+                Err(RowUnifError::UnboundTypeVariable(id))
             }
-        }
+            (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
+            (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, .. }) => {
+                Err(RowUnifError::ExtraRow(ident))
+            }
+            (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
+                Err(RowUnifError::MissingRow(ident))
+            }
+            (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
+                let t2_tail = erows_add(
+                    state,
+                    var_level,
+                    &id,
+                    UnifEnumRows::Concrete {
+                        erows: erows2,
+                        var_levels_data: var_levels2,
+                    },
+                )?;
+                unify_erows(state, var_level, *tail, t2_tail)
+            }
+        },
         (UnifEnumRows::UnifVar { id, init_level }, uerows)
         | (uerows, UnifEnumRows::UnifVar { id, init_level }) => {
             state.table.assign_erows(id, uerows);
