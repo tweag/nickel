@@ -241,10 +241,7 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
-          nickel-lang-cli = buildPackage {
-            pname = "nickel-lang-cli";
-            extraBuildArgs = "--features format";
-          };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
