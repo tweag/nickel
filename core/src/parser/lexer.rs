@@ -351,9 +351,9 @@ pub enum NormalToken<'input> {
 
 pub const KEYWORDS: &[&str] = &[
     "Dyn",
-    "Num",
+    "Number",
     "Bool",
-    "Str",
+    "String",
     "Array",
     "if",
     "then",
