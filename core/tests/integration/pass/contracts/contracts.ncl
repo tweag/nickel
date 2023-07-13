@@ -166,5 +166,11 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
         = fun r => %record_insert% "g" r g in
   let res = f { z = 3 }
   in true,
+
+  # std.contract.Sequence
+  let three = 3 | std.contract.Sequence [ Number, std.contract.from_predicate (fun x => x < 5) ] in
+  # preserves order
+  let tag = "some_tag" | std.contract.Sequence [ std.enum.TagOrString, [| 'some_tag |] ]
+  in true
 ]
 |> check
