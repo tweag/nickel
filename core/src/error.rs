@@ -293,9 +293,12 @@ pub enum TypecheckError {
         RichTerm, /* the inferred flat type */
         TermPos,
     ),
-    /// Types can appear in term position, like the `Number` in `let c = Number in 5 | c`.
-    /// These types are treated as contracts, but they are not allowed to contain flat types.
-    /// For example, `let c = { foo : 5 } in ...` is disallowed.
+    /// Within statically typed code, the typechecker must reject terms containing nonsensical
+    /// contracts such as `let C = { foo : 5} in ({ foo = 5 } | C)`, which will fail at runtime.
+    /// The typechecker is currently quite conservative and simply forbids to store any custom
+    /// contract (flat type) in a type that appears in term position. Note that this restriction
+    /// doesn't apply to annotations, which aren't considered part of the statically typed block.
+    /// For example, `{foo = 5} | {foo : 5}` is accepted by the typechecker.
     FlatTypeInTermPosition {
         /// The term that was in a flat type (the `5` in the example above).
         flat: RichTerm,
