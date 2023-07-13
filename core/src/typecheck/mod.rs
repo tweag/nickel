@@ -1000,7 +1000,8 @@ fn walk<L: Linearizer>(
         Term::Annotated(annot, rt) => {
             walk_annotated(state, ctxt, lin, linearizer, annot, rt)
         }
-        Term::Sealed(_, t, _) => walk(state, ctxt, lin, linearizer, t)
+        Term::Sealed(_, t, _) => walk(state, ctxt, lin, linearizer, t),
+        Term::Types(ty) => walk_type(state, ctxt, lin, linearizer, ty),
    }
 }
 
@@ -1589,6 +1590,13 @@ fn check<L: Linearizer>(
             );
             unify(state, &ctxt, ty, ty_import).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
+        Term::Types(typ) => {
+            if let Some(flat) = typ.find_flat() {
+                Err(TypecheckError::FlatTypeInTermPosition { flat, pos: *pos })
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -1643,7 +1651,7 @@ fn check_annotated<L: Linearizer>(
 
 /// Function handling the common part of typechecking terms with type or contract annotation, with
 /// or without definitions. This encompasses both standalone type annotation (where `value` is
-/// always `Some(_)`) as well as field definiitions (where `value` may or may not be defined).
+/// always `Some(_)`) as well as field definitions (where `value` may or may not be defined).
 ///
 /// The last argument is a position to use for error reporting when `value` is `None`.
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?

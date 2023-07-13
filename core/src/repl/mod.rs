@@ -113,7 +113,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
             resolved_ids: pending,
         } = import_resolution::strict::resolve_imports(t, self.vm.import_resolver_mut())?;
         for id in &pending {
-            self.vm.import_resolver_mut().resolve_imports(*id).unwrap();
+            dbg!(self.vm.import_resolver_mut().resolve_imports(*id)).unwrap();
         }
 
         let wildcards =

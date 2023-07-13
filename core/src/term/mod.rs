@@ -24,7 +24,7 @@ use crate::{
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
-    types::{TypeF, Types, UnboundTypeVariableError},
+    types::{Types, UnboundTypeVariableError},
 };
 
 use codespan::FileId;
@@ -180,6 +180,12 @@ pub enum Term {
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
+
+    /// A type in term position, such as in `let my_contract = Number -> Number in ...`.
+    ///
+    /// During evaluation, this will get turned into a contract.
+    #[serde(skip)]
+    Types(Types),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
@@ -570,82 +576,6 @@ impl<E> StrChunk<E> {
 }
 
 impl Term {
-    /// Recursively apply a function to all `Term`s contained in a `RichTerm`.
-    pub fn apply_to_rich_terms<F>(&mut self, func: F)
-    where
-        F: Fn(&mut RichTerm),
-    {
-        use self::Term::*;
-        match self {
-            Null | ParseError(_) | RuntimeError(_) => (),
-            Match {
-                ref mut cases,
-                ref mut default,
-            } => {
-                cases.iter_mut().for_each(|c| {
-                    let (_, t) = c;
-                    func(t);
-                });
-                if let Some(default) = default {
-                    func(default)
-                }
-            }
-            Record(ref mut r) => {
-                r.fields.iter_mut().for_each(|(_, field)| {
-                    if let Some(ref mut value) = field.value {
-                        func(value);
-                    }
-                });
-            }
-            RecRecord(ref mut r, ref mut dyn_fields, ..) => {
-                r.fields.iter_mut().for_each(|(_, field)| {
-                    if let Some(ref mut value) = field.value {
-                        func(value);
-                    }
-                });
-                dyn_fields.iter_mut().for_each(|(id_t, field)| {
-                    func(id_t);
-
-                    if let Some(ref mut value) = field.value {
-                        func(value);
-                    }
-                });
-            }
-            Bool(_) | Num(_) | Str(_) | Lbl(_) | Var(_) | SealingKey(_) | Enum(_) | Import(_)
-            | ResolvedImport(_) => {}
-            Fun(_, ref mut t)
-            | FunPattern(_, _, ref mut t)
-            | Op1(_, ref mut t)
-            | Sealed(_, ref mut t, _) => {
-                func(t);
-            }
-            Annotated(ref mut annot, ref mut t) => {
-                annot.iter_mut().for_each(|LabeledType { types, .. }| {
-                    if let TypeF::Flat(ref mut rt) = types.types {
-                        func(rt)
-                    }
-                });
-
-                func(t);
-            }
-            Let(_, ref mut t1, ref mut t2, _)
-            | LetPattern(_, _, ref mut t1, ref mut t2)
-            | App(ref mut t1, ref mut t2)
-            | Op2(_, ref mut t1, ref mut t2) => {
-                func(t1);
-                func(t2);
-            }
-            OpN(_, ref mut terms) => terms.iter_mut().for_each(|t| {
-                func(t);
-            }),
-            Array(ref mut terms, _) => terms.make_mut().iter_mut().for_each(func),
-            StrChunks(chunks) => chunks.iter_mut().for_each(|chunk| match chunk {
-                StrChunk::Literal(_) => (),
-                StrChunk::Expr(e, _) => func(e),
-            }),
-        }
-    }
-
     /// Return the class of an expression in WHNF.
     ///
     /// The class of an expression is an approximation of its type used in error reporting. Class
@@ -677,6 +607,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
+            | Term::Types(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
         }
@@ -723,6 +654,7 @@ impl Term {
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
             Term::RuntimeError(_) => String::from("<runtime error>"),
+            Term::Types(_) => String::from("<type>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -734,7 +666,7 @@ impl Term {
         }
     }
 
-    /// Determine if a term is in evaluated from, called weak head normal form (WHNF).
+    /// Determine if a term is in evaluated form, called weak head normal form (WHNF).
     pub fn is_whnf(&self) -> bool {
         match self {
             Term::Null
@@ -763,6 +695,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
+            | Term::Types(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -804,6 +737,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
+            | Term::Types(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -850,6 +784,7 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
+            | Term::Types(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -1442,15 +1377,32 @@ impl RichTerm {
     /// Erase recursively the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
-    //#[cfg(test)]
-    pub fn without_pos(mut self) -> Self {
-        fn clean_pos(rt: &mut RichTerm) {
-            rt.pos = TermPos::None;
-            SharedTerm::make_mut(&mut rt.term).apply_to_rich_terms(clean_pos);
-        }
-
-        clean_pos(&mut self);
-        self
+    ///
+    /// This is currently only used in test code, but because it's used from integration
+    /// tests we cannot hide it behind cfg(test).
+    pub fn without_pos(self) -> Self {
+        self.traverse::<_, _, ()>(
+            &|t: Types, _| {
+                Ok(Types {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse::<_, _, ()>(
+            &|t: RichTerm, _| {
+                Ok(RichTerm {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
     }
 
     /// Set the position and return the term updated.
@@ -1493,6 +1445,9 @@ pub trait Traverse<T>: Sized {
 }
 
 impl Traverse<RichTerm> for RichTerm {
+    /// Traverse through all `RichTerm`s in the tree.
+    ///
+    /// This also recurses into the terms that are contained in `Types` subtrees.
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
@@ -1661,6 +1616,9 @@ impl Traverse<RichTerm> for RichTerm {
                     Term::Annotated(annot, term),
                     pos,
                 )
+            },
+            Term::Types(ty) => {
+                RichTerm::new(Term::Types(ty.traverse(f, state, order)?), pos)
             }
         } else rt};
 
@@ -1668,6 +1626,21 @@ impl Traverse<RichTerm> for RichTerm {
             TraverseOrder::TopDown => Ok(result),
             TraverseOrder::BottomUp => f(result, state),
         }
+    }
+}
+
+impl Traverse<Types> for RichTerm {
+    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    where
+        F: Fn(Types, &mut S) -> Result<Types, E>,
+    {
+        let f_on_term = |rt: RichTerm, s: &mut S| {
+            match_sharedterm! {rt.term, with {
+                Term::Types(ty) =>
+                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Types(ty), rt.pos))
+            } else Ok(rt)}
+        };
+        self.traverse(&f_on_term, state, order)
     }
 }
 
@@ -1980,6 +1953,8 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::TypeF;
+
     use super::*;
 
     /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)

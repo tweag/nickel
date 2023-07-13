@@ -1395,7 +1395,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             Ok(Closure { body, env: new_env })
                         }
-                        _ => Err(mk_type_error!("assuem", "Contract", 1, t1, pos1)),
+                        _ => Err(mk_type_error!("assume", "Contract", 1, t1, pos1)),
                     }
                 } else {
                     Err(mk_type_error!("assume", "Label", 2, t2, pos2))

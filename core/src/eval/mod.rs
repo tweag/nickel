@@ -709,6 +709,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env,
                     }
                 }
+                // Evaluating a type turns it into a contract.
+                Term::Types(ty) => Closure {
+                    body: ty.contract()?,
+                    env,
+                },
                 // Continuation of operations and element update
                 _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
@@ -960,7 +965,11 @@ pub fn subst<C: Cache>(
         | v @ Term::SealingKey(_)
         | v @ Term::Enum(_)
         | v @ Term::Import(_)
-        | v @ Term::ResolvedImport(_) => RichTerm::new(v, pos),
+        | v @ Term::ResolvedImport(_)
+        // We could recurse here, because types can contain terms which would then be subject to
+        // substitution. Not recursing should be fine, though, because a type in term position
+        // turns into a contract, and we don't substitute inside contracts either currently.
+        | v @ Term::Types(_) => RichTerm::new(v, pos),
         Term::Let(id, t1, t2, attrs) => {
             let t1 = subst(cache, t1, initial_env, env);
             let t2 = subst(cache, t2, initial_env, env);

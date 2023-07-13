@@ -892,10 +892,24 @@ impl Types {
     }
 
     /// Returns the same type with the position cleared (set to `None`).
+    ///
+    /// This is currently only used in test code, but because it's used from integration
+    /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Types {
         self.traverse::<_, _, ()>(
-            &|t, _| {
+            &|t: Types, _| {
                 Ok(Types {
+                    pos: TermPos::None,
+                    ..t
+                })
+            },
+            &mut (),
+            TraverseOrder::BottomUp,
+        )
+        .unwrap()
+        .traverse::<_, _, ()>(
+            &|t: RichTerm, _| {
+                Ok(RichTerm {
                     pos: TermPos::None,
                     ..t
                 })
@@ -1034,6 +1048,29 @@ impl Types {
             _ => false,
         }
     }
+
+    /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
+    pub fn find_flat(&self) -> Option<RichTerm> {
+        match &self.types {
+            TypeF::Flat(f) => Some(f.clone().with_pos(self.pos)),
+            TypeF::Dyn
+            | TypeF::Number
+            | TypeF::Bool
+            | TypeF::String
+            | TypeF::Symbol
+            | TypeF::Wildcard(_)
+            | TypeF::Enum(_)
+            | TypeF::Var(_) => None,
+            TypeF::Arrow(dom, codom) => dom.find_flat().or_else(|| codom.find_flat()),
+            TypeF::Forall { body, .. } => body.find_flat(),
+            TypeF::Record(rrows) => rrows.iter().find_map(|t| match t {
+                RecordRowsIteratorItem::Row(r) => r.types.find_flat(),
+                _ => None,
+            }),
+            TypeF::Dict { type_fields, .. } => type_fields.find_flat(),
+            TypeF::Array(t) => t.find_flat(),
+        }
+    }
 }
 
 impl Traverse<Types> for Types {
@@ -1079,7 +1116,9 @@ impl Traverse<RichTerm> for Types {
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
         let f_on_type = |ty: Types, s: &mut S| match ty.types {
-            TypeF::Flat(t) => t.traverse(f, s, order).map(|t| Types::from(TypeF::Flat(t))),
+            TypeF::Flat(t) => t
+                .traverse(f, s, order)
+                .map(|t| Types::from(TypeF::Flat(t)).with_pos(ty.pos)),
             _ => Ok(ty),
         };
 

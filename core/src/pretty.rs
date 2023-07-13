@@ -426,7 +426,7 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for RichTerm
+impl<'a, D, A> Pretty<'a, D, A> for &RichTerm
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -731,20 +731,21 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
+            Types(ty) => ty.pretty(allocator),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for EnumRows
+impl<'a, D, A> Pretty<'a, D, A> for &EnumRows
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        match self.0 {
+        match &self.0 {
             EnumRowsF::Empty => allocator.nil(),
             EnumRowsF::TailVar(id) => allocator
                 .space()
@@ -754,7 +755,7 @@ where
             EnumRowsF::Extend { row, tail } => {
                 let builder = allocator
                     .text("'")
-                    .append(allocator.text(ident_quoted(&row)));
+                    .append(allocator.text(ident_quoted(row)));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
                     builder
                         .append(allocator.text(","))
@@ -769,14 +770,14 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for RecordRows
+impl<'a, D, A> Pretty<'a, D, A> for &RecordRows
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        match self.0 {
+        match &self.0 {
             RecordRowsF::Empty => allocator.nil(),
             RecordRowsF::TailDyn => allocator
                 .space()
@@ -793,7 +794,7 @@ where
                 tail,
             } => {
                 let builder = allocator
-                    .text(ident_quoted(&id))
+                    .text(ident_quoted(id))
                     .append(allocator.text(":"))
                     .append(allocator.space())
                     .append(types.pretty(allocator));
@@ -812,7 +813,7 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for Types
+impl<'a, D, A> Pretty<'a, D, A> for &Types
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -820,7 +821,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use TypeF::*;
-        match self.types {
+        match &self.types {
             Dyn => allocator.text("Dyn"),
             Number => allocator.text("Number"),
             Bool => allocator.text("Bool"),
@@ -839,7 +840,7 @@ where
             Var(var) => allocator.as_string(var),
             Forall { var, ref body, .. } => {
                 let mut curr = body.as_ref();
-                let mut foralls = vec![&var];
+                let mut foralls = vec![var];
                 while let Types {
                     types: Forall { var, ref body, .. },
                     ..

@@ -172,6 +172,9 @@ impl CollectFreeVars for RichTerm {
 
                 t.collect_free_vars(free_vars);
             }
+            Term::Types(ty) => {
+                ty.collect_free_vars(free_vars);
+            }
         }
     }
 }

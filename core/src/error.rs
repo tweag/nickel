@@ -293,6 +293,18 @@ pub enum TypecheckError {
         RichTerm, /* the inferred flat type */
         TermPos,
     ),
+    /// Within statically typed code, the typechecker must reject terms containing nonsensical
+    /// contracts such as `let C = { foo : 5} in ({ foo = 5 } | C)`, which will fail at runtime.
+    /// The typechecker is currently quite conservative and simply forbids to store any custom
+    /// contract (flat type) in a type that appears in term position. Note that this restriction
+    /// doesn't apply to annotations, which aren't considered part of the statically typed block.
+    /// For example, `{foo = 5} | {foo : 5}` is accepted by the typechecker.
+    FlatTypeInTermPosition {
+        /// The term that was in a flat type (the `5` in the example above).
+        flat: RichTerm,
+        /// The position of the entire type (the `{foo : 5}` in the example above).
+        pos: TermPos,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
@@ -2050,6 +2062,25 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         .with_notes(vec![
                             "Type variables introduced in a `forall` range over all possible types.".to_owned(),
                         ]),
+                ]
+            }
+            TypecheckError::FlatTypeInTermPosition { flat, pos } => {
+                vec![
+                    Diagnostic::error()
+                        .with_message(
+                            "types containing user-defined contracts cannot be converted into contracts",
+                        )
+                        .with_labels(
+                            pos.into_opt().map(|span|
+                                    primary(&span).with_message("This type (in contract position)")
+                                )
+                                .into_iter()
+                            .chain(
+                                flat.pos.into_opt().map(|span|
+                                    secondary(&span).with_message("contains this user-defined contract")
+                                ))
+                            .collect()
+                    ),
                 ]
             }
         }
