@@ -186,6 +186,7 @@ fn find_fields_from_term_kind(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
+        TermKind::Types(ref ty) => find_fields_from_type(ty, path, info),
         _ => Vec::new(),
     };
     result.into_iter().chain(contract_result).collect()

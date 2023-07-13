@@ -21,7 +21,7 @@ impl ResolutionState for Resolved {}
 /// 3. Records, listing their fields
 /// 4. wildcard (Structure) for any other kind of term.
 /// Can be extended later to represent Contracts, Records, etc.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Declaration {
         id: Ident,
@@ -43,6 +43,7 @@ pub enum TermKind {
         usages: Vec<ItemId>,
         value: ValueState,
     },
+    Types(Types),
     Structure,
 }
 
