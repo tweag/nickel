@@ -19,6 +19,7 @@ bench = false
 default = ["repl", "doc"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
+format = ["topiary", "tree-sitter-nickel", "tempfile"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
@@ -26,6 +27,10 @@ nickel-lang-core = { workspace = true, features = [ "markdown" ], default-featur
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 directories.workspace = true
+
+topiary = { workspace = true, optional = true }
+tree-sitter-nickel = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

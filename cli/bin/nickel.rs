@@ -4,18 +4,10 @@ use nickel_lang_core::error::{Error, IOError};
 use nickel_lang_core::eval::cache::CacheImpl;
 use nickel_lang_core::program::Program;
 use nickel_lang_core::repl::query_print;
-#[cfg(feature = "repl")]
-use nickel_lang_core::repl::rustyline_frontend;
 use nickel_lang_core::term::RichTerm;
 use nickel_lang_core::{serialize, serialize::ExportFormat};
-use std::path::{Path, PathBuf};
-use std::{
-    fs::{self, File},
-    io::Write,
-    process,
-};
-// use std::ffi::OsStr;
-use directories::BaseDirs;
+use std::path::PathBuf;
+use std::{fs, io::Write, process};
 
 /// Command-line options and subcommands.
 #[derive(clap::Parser, Debug)]
@@ -74,6 +66,7 @@ enum Command {
     /// Typechecks the program but do not run it
     Typecheck,
     /// Starts an REPL session
+    #[cfg(feature = "repl")]
     Repl {
         #[arg(long)]
         history_file: Option<PathBuf>,
@@ -91,33 +84,18 @@ enum Command {
         stdout: bool,
         /// The output format for the generated documentation.
         #[arg(long, value_enum, default_value_t)]
-        format: DocFormat,
+        format: nickel_lang_cli::doc::DocFormat,
     },
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
-pub enum DocFormat {
-    Json,
-    #[default]
-    Markdown,
-}
-
-impl DocFormat {
-    pub fn extension(&self) -> &'static str {
-        match self {
-            Self::Json => "json",
-            Self::Markdown => "md",
-        }
-    }
-}
-
-impl fmt::Display for DocFormat {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Json => write!(f, "json"),
-            Self::Markdown => write!(f, "markdown"),
-        }
-    }
+    /// Format a nickel file
+    #[cfg(feature = "format")]
+    Format {
+        /// Output file. Standard output by default.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Format in place, overwriting the input file.
+        #[arg(short, long, requires = "file")]
+        in_place: bool,
+    },
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -129,91 +107,97 @@ impl fmt::Display for ParseFormatError {
     }
 }
 
+fn handle_eval_commands(opts: Opt) {
+    let mut program = opts
+        .file
+        .clone()
+        .map(|f| Program::new_from_file(f, std::io::stderr()))
+        .unwrap_or_else(|| Program::new_from_stdin(std::io::stderr()))
+        .unwrap_or_else(|err| {
+            eprintln!("Error when reading input: {err}");
+            process::exit(1)
+        });
+
+    #[cfg(debug_assertions)]
+    if opts.nostdlib {
+        program.set_skip_stdlib();
+    }
+
+    program.set_color(opts.color.into());
+
+    let result = match opts.command {
+        Some(Command::PprintAst { transform }) => program.pprint_ast(
+            &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
+            transform,
+        ),
+        Some(Command::Export { format, output }) => export(&mut program, format, output),
+        Some(Command::Query {
+            path,
+            doc,
+            contract,
+            types,
+            default,
+            value,
+        }) => {
+            program.query(path).map(|term| {
+                // Print a default selection of attributes if no option is specified
+                let attrs = if !doc && !contract && !types && !default && !value {
+                    query_print::Attributes::default()
+                } else {
+                    query_print::Attributes {
+                        doc,
+                        contract,
+                        types,
+                        default,
+                        value,
+                    }
+                };
+
+                query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
+            })
+        }
+        Some(Command::Typecheck) => program.typecheck(),
+        #[cfg(feature = "doc")]
+        Some(Command::Doc {
+            output,
+            stdout,
+            format,
+        }) => nickel_lang_cli::doc::export_doc(
+            &mut program,
+            opts.file.as_ref(),
+            output,
+            stdout,
+            format,
+        ),
+        None => program.eval_full().map(|t| println!("{t}")),
+
+        #[cfg(feature = "repl")]
+        Some(Command::Repl { .. }) => unreachable!(),
+        #[cfg(feature = "format")]
+        Some(Command::Format { .. }) => unreachable!(),
+    };
+
+    if let Err(err) = result {
+        program.report(err);
+        process::exit(1)
+    }
+}
+
 fn main() {
     use clap::Parser;
 
     let opts = Opt::parse();
 
-    if let Some(Command::Repl { history_file }) = opts.command {
-        let histfile = if let Some(h) = history_file {
-            h
-        } else {
-            BaseDirs::new()
-                .expect("Cannot retrieve home directory path")
-                .home_dir()
-                .join(".nickel_history")
-        };
+    match opts.command {
         #[cfg(feature = "repl")]
-        if rustyline_frontend::repl(histfile, opts.color.into()).is_err() {
-            process::exit(1);
+        Some(Command::Repl { history_file }) => {
+            nickel_lang_cli::repl::repl(history_file, opts.color.into())
         }
-
-        #[cfg(not(feature = "repl"))]
-        eprintln!("error: this executable was not compiled with REPL support");
-    } else {
-        let mut program = opts
-            .file
-            .clone()
-            .map(|f| Program::new_from_file(f, std::io::stderr()))
-            .unwrap_or_else(|| Program::new_from_stdin(std::io::stderr()))
-            .unwrap_or_else(|err| {
-                eprintln!("Error when reading input: {err}");
-                process::exit(1)
-            });
-
-        #[cfg(debug_assertions)]
-        if opts.nostdlib {
-            program.set_skip_stdlib();
+        #[cfg(feature = "format")]
+        Some(Command::Format { output, in_place }) => {
+            nickel_lang_cli::format::format(opts.file.as_deref(), output.as_deref(), in_place)
         }
-
-        program.set_color(opts.color.into());
-
-        let result = match opts.command {
-            Some(Command::PprintAst { transform }) => program.pprint_ast(
-                &mut std::io::BufWriter::new(Box::new(std::io::stdout())),
-                transform,
-            ),
-            Some(Command::Export { format, output }) => export(&mut program, format, output),
-            Some(Command::Query {
-                path,
-                doc,
-                contract,
-                types,
-                default,
-                value,
-            }) => {
-                program.query(path).map(|term| {
-                    // Print a default selection of attributes if no option is specified
-                    let attrs = if !doc && !contract && !types && !default && !value {
-                        query_print::Attributes::default()
-                    } else {
-                        query_print::Attributes {
-                            doc,
-                            contract,
-                            types,
-                            default,
-                            value,
-                        }
-                    };
-
-                    query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
-                })
-            }
-            Some(Command::Typecheck) => program.typecheck(),
-            Some(Command::Repl { .. }) => unreachable!(),
-            #[cfg(feature = "doc")]
-            Some(Command::Doc {
-                output,
-                stdout,
-                format,
-            }) => export_doc(&mut program, opts.file.as_ref(), output, stdout, format),
-            None => program.eval_full().map(|t| println!("{t}")),
-        };
-
-        if let Err(err) = result {
-            program.report(err);
-            process::exit(1)
-        }
+        _ => handle_eval_commands(opts),
     }
 }
 
@@ -246,69 +230,4 @@ fn export(
     }
 
     Ok(())
-}
-
-#[cfg(feature = "doc")]
-fn export_doc(
-    program: &mut Program<CacheImpl>,
-    file: Option<&PathBuf>,
-    output: Option<PathBuf>,
-    stdout: bool,
-    format: DocFormat,
-) -> Result<(), Error> {
-    let mut out: Box<dyn std::io::Write> = if stdout {
-        Box::new(std::io::stdout())
-    } else {
-        Box::new(
-            output
-                .as_ref()
-                .map(|output| {
-                    fs::File::create(output.clone()).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when opening or creating output file `{}`: {}",
-                            output.to_string_lossy(),
-                            e
-                        )))
-                    })
-                })
-                .unwrap_or_else(|| {
-                    let docpath = Path::new(".nickel/doc/");
-                    fs::create_dir_all(docpath).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when creating output path `{}`: {}",
-                            docpath.to_string_lossy(),
-                            e
-                        )))
-                    })?;
-                    let mut output_file = docpath.to_path_buf();
-
-                    let mut has_file_name = false;
-
-                    if let Some(path) = file {
-                        if let Some(file_stem) = path.file_stem() {
-                            output_file.push(file_stem);
-                            has_file_name = true;
-                        }
-                    }
-
-                    if !has_file_name {
-                        output_file.push("out");
-                    }
-
-                    output_file.set_extension(format.extension());
-                    File::create(output_file.clone().into_os_string()).map_err(|e| {
-                        Error::IOError(IOError(format!(
-                            "when opening or creating output file `{}`: {}",
-                            output_file.to_string_lossy(),
-                            e
-                        )))
-                    })
-                })?,
-        )
-    };
-    let doc = program.extract_doc()?;
-    match format {
-        DocFormat::Json => doc.write_json(&mut out),
-        DocFormat::Markdown => doc.write_markdown(&mut out),
-    }
 }

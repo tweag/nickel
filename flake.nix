@@ -72,13 +72,13 @@
 
             src = final.fetchCrate {
               inherit pname version;
-              sha256 = "sha256-+PWxeRL5MkIfJtfN3/DjaDlqRgBgWZMa6dBt1Q+lpd0=";
+              sha256 = "sha256-0rK+Yx4/Jy44Fw5VwJ3tG243ZsyOIBBehYU54XP/JGk=";
             };
 
             cargoDeps = oldAttrs.cargoDeps.overrideAttrs (final.lib.const {
               # This `inherit src` is important, otherwise, the old `src` would be used here
               inherit src;
-              outputHash = "sha256-n3Z/jdw4CZvqixnEQX0mS/Fs2ocskLM/s7nt+pd4hPA=";
+              outputHash = "sha256-vcpxcRlW1OKoD64owFF6mkxSqmNrvY+y3Ckn5UwEQ50=";
             });
           });
       };
@@ -187,6 +187,7 @@
           nclFilter = mkFilter ".*ncl$";
           txtFilter = mkFilter ".*txt$";
           snapFilter = mkFilter ".*snap$";
+          scmFilter = mkFilter ".*scm$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -199,6 +200,7 @@
               nclFilter
               txtFilter
               snapFilter
+              scmFilter
               filterCargoSources
             ];
         };
@@ -225,7 +227,7 @@
             buildInputs = [ pkgs.python3 ];
           };
 
-          buildPackage = { pname, extraArgs ? { } }:
+          buildPackage = { pname, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
@@ -233,7 +235,7 @@
                 version
                 cargoArtifacts;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} --package ${pname}";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}";
             } // extraArgs);
         in
         rec {
