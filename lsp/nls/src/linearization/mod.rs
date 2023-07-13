@@ -493,6 +493,16 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     metadata: self.meta.take(),
                 })
             }
+            Term::Types(t) => {
+                lin.push(LinearizationItem {
+                    env: self.env.clone(),
+                    id,
+                    pos,
+                    ty,
+                    kind: TermKind::Types(t.clone()),
+                    metadata: self.meta.take(),
+                });
+            }
             other => {
                 debug!("Add wildcard item: {:?}", other);
 
