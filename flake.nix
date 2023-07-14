@@ -241,19 +241,25 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
-          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
+          nickel-lang-cli = buildPackage {
+            pname = "nickel-lang-cli";
+            extraBuildArgs = "--features format";
+          };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           nickel-static =
             if pkgs.stdenv.hostPlatform.isMacOS
             then nickel-lang-cli
             else
-              buildPackage {
+              craneLib.buildPackage rec {
                 pname = "nickel-lang-cli";
-                extraArgs = {
-                  CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
-                  CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
-                };
+                inherit src version;
+                cargoExtraArgs = "${cargoBuildExtraArgs} --features format --package ${pname}";
+                CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
+                CXXSTDLIB = "static=c++";
+                stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                doCheck = false;
               };
 
           benchmarks = craneLib.mkCargoDerivation {
