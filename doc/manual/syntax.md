@@ -39,12 +39,14 @@ fit exactly into a 64-bit signed integer or a 64-bit unsigned integer. They
 are serialized as a 64-bit float otherwise. The latter conversion might lose
 precision as well, for example when serializing `1/3`.
 
-Here are some examples of number literals in Nickel:
+Here are some examples of number literals in Nickel; scientific notation for
+decimal is supported:
 
 ```nickel
 1
 0.543
-42
+1.7e217
+-3e-3
 -1000000
 -6.8
 ```
