@@ -16,7 +16,7 @@ path = "bin/nickel.rs"
 bench = false
 
 [features]
-default = ["repl", "doc"]
+default = ["repl", "doc", "format"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
 format = ["topiary", "tree-sitter-nickel", "tempfile"]
