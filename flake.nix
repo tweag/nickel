@@ -487,18 +487,21 @@
           nickel-lang-cli
           benchmarks
           lsp-nls
-          cargoArtifacts
-          nickel-static;
+          cargoArtifacts;
         default = pkgs.buildEnv {
           name = "nickel";
           paths = [ packages.nickel-lang-cli packages.lsp-nls ];
         };
         nickelWasm = buildNickelWasm { };
-        dockerImage = buildDocker packages.nickel-static; # TODO: docker image should be a passthru
+        dockerImage = buildDocker packages.nickel-lang-cli; # TODO: docker image should be a passthru
         inherit vscodeExtension;
         inherit userManual;
         stdlibMarkdown = stdlibDoc "markdown";
         stdlibJson = stdlibDoc "json";
+      } // pkgs.lib.optionalAttrs (!pkgs.stdenv.hostPlatform.isDarwin) {
+        inherit (mkCraneArtifacts { }) nickel-static;
+        # Use the statically linked binary for the docker image if we're not on MacOS.
+        dockerImage = buildDocker packages.nickel-static;
       };
 
       apps = {
