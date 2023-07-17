@@ -515,45 +515,44 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
-trait SubstType<E: TermEnvironment> {
-    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self;
+// A type which contains variables which can be substitued with values of type `T`.
+trait Subst<T: Clone>: Sized {
+    fn subst(self, id: &Ident, to: &T) -> Self {
+        self.subst_levels(id, to).0
+    }
+
+    // Must be filled by implementers. In addition to performing substitution, this method bubbles
+    // up potential new values for variable levels data.
+    fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevelsData);
 }
 
-trait SubstRRows<E: TermEnvironment> {
-    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self;
-}
-
-trait SubstERows {
-    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self;
-}
-
-impl<E: TermEnvironment> SubstType<E> for GenericUnifType<E> {
-    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
+impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
+    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevelsData) {
         todo!();
 
-        match self {
-            GenericUnifType::Concrete {
-                types: TypeF::Var(var_id),
-                ..
-            } if var_id == *id => to.clone(),
-            GenericUnifType::Concrete {
-                types,
-                var_levels_data,
-            } => GenericUnifType::Concrete {
-                types: types.map(
-                    |ty| Box::new(ty.subst_type(id, to)),
-                    |rrows| rrows.subst_type(id, to),
-                    |erows| erows,
-                ),
-                var_levels_data,
-            },
-            _ => self,
-        }
+        //        match self {
+        //            GenericUnifType::Concrete {
+        //                types: TypeF::Var(var_id),
+        //                ..
+        //            } if var_id == *id => to.clone(),
+        //            GenericUnifType::Concrete {
+        //                types,
+        //                var_levels_data,
+        //            } => GenericUnifType::Concrete {
+        //                types: types.map(
+        //                    |ty| Box::new(ty.subst_type(id, to)),
+        //                    |rrows| rrows.subst_type(id, to),
+        //                    |erows| erows,
+        //                ),
+        //                var_levels_data,
+        //            },
+        //            _ => self,
+        //        }
     }
 }
 
-impl<E: TermEnvironment> SubstType<E> for GenericUnifRecordRows<E> {
-    fn subst_type(self, id: &Ident, to: &GenericUnifType<E>) -> Self {
+impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> {
+    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevelsData) {
         todo!();
 
         // match self {
@@ -566,27 +565,29 @@ impl<E: TermEnvironment> SubstType<E> for GenericUnifRecordRows<E> {
     }
 }
 
-impl<E: TermEnvironment> SubstRRows<E> for GenericUnifType<E> {
-    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
-        match self {
-            GenericUnifType::Concrete {
-                types,
-                var_levels_data,
-            } => GenericUnifType::Concrete {
-                types: types.map(
-                    |ty| Box::new(ty.subst_rrows(id, to)),
-                    |rrows| rrows.subst_rrows(id, to),
-                    |erows| erows,
-                ),
-                var_levels_data,
-            },
-            _ => self,
-        }
+impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
+    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevelsData) {
+        todo!();
+
+        // match self {
+        //     GenericUnifType::Concrete {
+        //         types,
+        //         var_levels_data,
+        //     } => GenericUnifType::Concrete {
+        //         types: types.map(
+        //             |ty| Box::new(ty.subst_rrows(id, to)),
+        //             |rrows| rrows.subst_rrows(id, to),
+        //             |erows| erows,
+        //         ),
+        //         var_levels_data,
+        //     },
+        //     _ => self,
+        // }
     }
 }
 
-impl<E: TermEnvironment> SubstRRows<E> for GenericUnifRecordRows<E> {
-    fn subst_rrows(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> Self {
+impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRows<E> {
+    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevelsData) {
         todo!();
 
         //match self {
@@ -602,27 +603,29 @@ impl<E: TermEnvironment> SubstRRows<E> for GenericUnifRecordRows<E> {
     }
 }
 
-impl<E: TermEnvironment> SubstERows for GenericUnifType<E> {
-    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
-        match self {
-            GenericUnifType::Concrete {
-                types,
-                var_levels_data,
-            } => GenericUnifType::Concrete {
-                types: types.map(
-                    |ty| Box::new(ty.subst_erows(id, to)),
-                    |rrows| rrows.subst_erows(id, to),
-                    |erows| erows.subst_erows(id, to),
-                ),
-                var_levels_data,
-            },
-            _ => self,
-        }
+impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
+        todo!();
+
+        // match self {
+        //     GenericUnifType::Concrete {
+        //         types,
+        //         var_levels_data,
+        //     } => GenericUnifType::Concrete {
+        //         types: types.map(
+        //             |ty| Box::new(ty.subst_erows(id, to)),
+        //             |rrows| rrows.subst_erows(id, to),
+        //             |erows| erows.subst_erows(id, to),
+        //         ),
+        //         var_levels_data,
+        //     },
+        //     _ => self,
+        // }
     }
 }
 
-impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
-    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
         todo!()
 
         //match self {
@@ -641,8 +644,8 @@ impl<E: TermEnvironment> SubstERows for GenericUnifRecordRows<E> {
     }
 }
 
-impl SubstERows for UnifEnumRows {
-    fn subst_erows(self, id: &Ident, to: &UnifEnumRows) -> Self {
+impl Subst<UnifEnumRows> for UnifEnumRows {
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
         todo!();
 
         //match self {
@@ -2620,22 +2623,22 @@ pub fn unify(
                     VarKind::Type => {
                         let constant_type = state.table.fresh_type_const(ctxt.var_level);
                         (
-                            body1.subst_type(&var1, &constant_type),
-                            body2.subst_type(&var2, &constant_type),
+                            body1.subst(&var1, &constant_type),
+                            body2.subst(&var2, &constant_type),
                         )
                     }
                     VarKind::RecordRows { .. } => {
                         let constant_type = state.table.fresh_rrows_const(ctxt.var_level);
                         (
-                            body1.subst_rrows(&var1, &constant_type),
-                            body2.subst_rrows(&var2, &constant_type),
+                            body1.subst(&var1, &constant_type),
+                            body2.subst(&var2, &constant_type),
                         )
                     }
                     VarKind::EnumRows => {
                         let constant_type = state.table.fresh_erows_const(ctxt.var_level);
                         (
-                            body1.subst_erows(&var1, &constant_type),
-                            body2.subst_erows(&var2, &constant_type),
+                            body1.subst(&var1, &constant_type),
+                            body2.subst(&var2, &constant_type),
                         )
                     }
                 };
@@ -2894,7 +2897,7 @@ fn instantiate_foralls(
                     },
                 };
                 state.names.insert((fresh_uid, kind), var);
-                ty = body.subst_type(&var, &uvar);
+                ty = body.subst(&var, &uvar);
             }
             VarKind::RecordRows { excluded } => {
                 let fresh_uid = state.table.fresh_rrows_var_id(ctxt.var_level);
@@ -2906,7 +2909,7 @@ fn instantiate_foralls(
                     },
                 };
                 state.names.insert((fresh_uid, kind), var);
-                ty = body.subst_rrows(&var, &uvar);
+                ty = body.subst(&var, &uvar);
 
                 if inst == ForallInst::Ptr {
                     state.constr.insert(fresh_uid, excluded);
@@ -2922,7 +2925,7 @@ fn instantiate_foralls(
                     },
                 };
                 state.names.insert((fresh_uid, kind), var);
-                ty = body.subst_erows(&var, &uvar);
+                ty = body.subst(&var, &uvar);
             }
         };
     }
@@ -3170,8 +3173,6 @@ impl UnifTable {
     /// Used inside [self::eq] to generate temporary rigid type variables that are guaranteed to
     /// not conflict with existing variables.
     pub fn max_uvars_count(&self) -> VarId {
-        use std::cmp::max;
-
         max(self.types.len(), max(self.rrows.len(), self.erows.len()))
     }
 }

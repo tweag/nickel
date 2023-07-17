@@ -512,16 +512,16 @@ fn type_eq_bounded<E: TermEnvironment>(
 
                 let (uty1_subst, uty2_subst) = match var_kind1 {
                     VarKind::Type => (
-                        body1.subst_type(var1, &GenericUnifType::Constant(cst_id)),
-                        body2.subst_type(var2, &GenericUnifType::Constant(cst_id)),
+                        body1.subst(var1, &GenericUnifType::Constant(cst_id)),
+                        body2.subst(var2, &GenericUnifType::Constant(cst_id)),
                     ),
                     VarKind::RecordRows { .. } => (
-                        body1.subst_rrows(var1, &GenericUnifRecordRows::Constant(cst_id)),
-                        body2.subst_rrows(var2, &GenericUnifRecordRows::Constant(cst_id)),
+                        body1.subst(var1, &GenericUnifRecordRows::Constant(cst_id)),
+                        body2.subst(var2, &GenericUnifRecordRows::Constant(cst_id)),
                     ),
                     VarKind::EnumRows => (
-                        body1.subst_erows(var1, &UnifEnumRows::Constant(cst_id)),
-                        body2.subst_erows(var2, &UnifEnumRows::Constant(cst_id)),
+                        body1.subst(var1, &UnifEnumRows::Constant(cst_id)),
+                        body2.subst(var2, &UnifEnumRows::Constant(cst_id)),
                     ),
                 };
 
