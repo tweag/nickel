@@ -241,10 +241,7 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
-          nickel-lang-cli = buildPackage {
-            pname = "nickel-lang-cli";
-            extraBuildArgs = "--features format";
-          };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
@@ -257,7 +254,6 @@
             # tried building with libstdc++ but without success.
               buildPackage {
                 pname = "nickel-lang-cli";
-                extraBuildArgs = "--features format";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   # For some reason, the rust build doesn't pick up the paths
