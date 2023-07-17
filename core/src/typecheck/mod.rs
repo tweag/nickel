@@ -522,139 +522,316 @@ trait Subst<T: Clone>: Sized {
     }
 
     // Must be filled by implementers. In addition to performing substitution, this method bubbles
-    // up potential new values for variable levels data.
-    fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevelsData);
+    // up a potential new upper bound for the variable levels.
+    fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevel);
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifType::Concrete {
+                types: TypeF::Var(var_id),
+                var_levels_data,
+            } if var_id == *id => {
+                debug_assert!(
+                    var_levels_data.upper_bound == VarLevelsData::new_no_uvars().upper_bound
+                );
+                (to.clone(), to.var_level_max())
+            }
+            GenericUnifType::Concrete {
+                types,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        //        match self {
-        //            GenericUnifType::Concrete {
-        //                types: TypeF::Var(var_id),
-        //                ..
-        //            } if var_id == *id => to.clone(),
-        //            GenericUnifType::Concrete {
-        //                types,
-        //                var_levels_data,
-        //            } => GenericUnifType::Concrete {
-        //                types: types.map(
-        //                    |ty| Box::new(ty.subst_type(id, to)),
-        //                    |rrows| rrows.subst_type(id, to),
-        //                    |erows| erows,
-        //                ),
-        //                var_levels_data,
-        //            },
-        //            _ => self,
-        //        }
+                let new_ty = GenericUnifType::Concrete {
+                    types: types.map_state(
+                        |ty, upper_bound| {
+                            let (new_type, new_ub) = ty.subst_levels(id, to);
+                            *upper_bound = max(*upper_bound, new_ub);
+                            Box::new(new_type)
+                        },
+                        |rrows, upper_bound| {
+                            let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                            *upper_bound = max(*upper_bound, new_ub);
+                            new_rrows
+                        },
+                        |erows, _| erows,
+                        &mut upper_bound,
+                    ),
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_ty, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifRecordRows::Concrete {
+                rrows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        // match self {
-        //     GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
-        //         |ty| Box::new(ty.subst_type(id, to)),
-        //         |rrows| Box::new(rrows.subst_type(id, to)),
-        //     )),
-        //     _ => self,
-        // }
+                let new_rrows = rrows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |rrows, upper_bound| {
+                        let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_rrows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_urrows = GenericUnifRecordRows::Concrete {
+                    rrows: new_rrows,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_urrows, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifType::Concrete {
+                types,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        // match self {
-        //     GenericUnifType::Concrete {
-        //         types,
-        //         var_levels_data,
-        //     } => GenericUnifType::Concrete {
-        //         types: types.map(
-        //             |ty| Box::new(ty.subst_rrows(id, to)),
-        //             |rrows| rrows.subst_rrows(id, to),
-        //             |erows| erows,
-        //         ),
-        //         var_levels_data,
-        //     },
-        //     _ => self,
-        // }
+                let new_ty = types.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |rrows, upper_bound| {
+                        let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        new_rrows
+                    },
+                    |erows, _| erows,
+                    &mut upper_bound,
+                );
+
+                let new_uty = GenericUnifType::Concrete {
+                    types: new_ty,
+                    var_levels_data,
+                };
+
+                (new_uty, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifRecordRows::Concrete {
+                rrows: RecordRowsF::TailVar(var_id),
+                var_levels_data,
+            } if var_id == *id => {
+                debug_assert!(var_levels_data.upper_bound == VarLevel::MIN);
+                (to.clone(), to.var_level_max())
+            }
+            GenericUnifRecordRows::Concrete {
+                rrows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        //match self {
-        //    GenericUnifRecordRows::Concrete(RecordRowsF::TailVar(var_id)) if var_id == *id => {
-        //        to.clone()
-        //    }
-        //    GenericUnifRecordRows::Concrete(rrows) => GenericUnifRecordRows::Concrete(rrows.map(
-        //        |ty| Box::new(ty.subst_rrows(id, to)),
-        //        |rrows| Box::new(rrows.subst_rrows(id, to)),
-        //    )),
-        //    _ => self,
-        //}
+                let new_rrows = rrows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |rrows, upper_bound| {
+                        let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_rrows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_urrows = GenericUnifRecordRows::Concrete {
+                    rrows: new_rrows,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_urrows, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+        match self {
+            GenericUnifType::Concrete {
+                types,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        // match self {
-        //     GenericUnifType::Concrete {
-        //         types,
-        //         var_levels_data,
-        //     } => GenericUnifType::Concrete {
-        //         types: types.map(
-        //             |ty| Box::new(ty.subst_erows(id, to)),
-        //             |rrows| rrows.subst_erows(id, to),
-        //             |erows| erows.subst_erows(id, to),
-        //         ),
-        //         var_levels_data,
-        //     },
-        //     _ => self,
-        // }
+                let new_ty = types.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |rrows, upper_bound| {
+                        let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        new_rrows
+                    },
+                    |erows, upper_bound| {
+                        let (new_erows, new_ub) = erows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        new_erows
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_uty = GenericUnifType::Concrete {
+                    types: new_ty,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_uty, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
-        todo!()
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+        match self {
+            GenericUnifRecordRows::Concrete {
+                rrows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        //match self {
-        //    GenericUnifRecordRows::Concrete {
-        //        rrows,
-        //        var_levels_data,
-        //    } => GenericUnifRecordRows::Concrete {
-        //        rrows: rrows.map(
-        //            |ty| Box::new(ty.subst_erows(id, to)),
-        //            |rrows| Box::new(rrows.subst_erows(id, to)),
-        //        ),
-        //        var_levels_data,
-        //    },
-        //    _ => self,
-        //}
+                let new_rrows = rrows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |rrows, upper_bound| {
+                        let (new_rrows, new_ub) = rrows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_rrows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_urrows = GenericUnifRecordRows::Concrete {
+                    rrows: new_rrows,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_urrows, upper_bound)
+            }
+
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
 impl Subst<UnifEnumRows> for UnifEnumRows {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevelsData) {
-        todo!();
+    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+        match self {
+            UnifEnumRows::Concrete {
+                erows: EnumRowsF::TailVar(var_id),
+                var_levels_data,
+            } if var_id == *id => {
+                debug_assert!(var_levels_data.upper_bound == VarLevel::MIN);
+                (to.clone(), to.var_level_max())
+            }
+            UnifEnumRows::Concrete {
+                erows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::MIN;
 
-        //match self {
-        //    UnifEnumRows::Concrete(EnumRowsF::TailVar(var_id)) if var_id == *id => to.clone(),
-        //    UnifEnumRows::Concrete(rrows) => {
-        //        UnifEnumRows::Concrete(rrows.map(|erows| Box::new(erows.subst_erows(id, to))))
-        //    }
-        //    _ => self,
-        //}
+                let new_erows = erows.map_state(
+                    |erows, upper_bound| {
+                        let (new_erows, new_ub) = erows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_erows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_uerows = UnifEnumRows::Concrete {
+                    erows: new_erows,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_uerows, upper_bound)
+            }
+
+            _ => {
+                let upper_bound = self.var_level_max();
+                (self, upper_bound)
+            }
+        }
     }
 }
 
