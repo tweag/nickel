@@ -1856,8 +1856,8 @@ fn check<L: Linearizer>(
             subsumption(state, &ctxt, tgt, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Match { cases, default } => {
-            // Currently, if it has a default value, we typecheck the whole thing as
-            // taking ANY enum, since it's more permissive and there's no loss of information.
+            // Currently, if the match has a default value, we typecheck the whole thing as taking
+            // ANY enum, since it's more permissive and there's no loss of information.
 
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
             // `a` is a enum type determined by the matched tags and `b` is the type of each match
@@ -2681,7 +2681,7 @@ fn erows_add(
             }
         },
         UnifEnumRows::UnifVar {
-            id: tail_var_id,
+            id: var_id,
             init_level,
         } => {
             let tail_var_id = state.table.fresh_erows_var_id(var_level);
@@ -2694,7 +2694,7 @@ fn erows_add(
                 tail: Box::new(tail_var.clone()),
             });
 
-            state.table.assign_erows(tail_var_id, new_tail);
+            state.table.assign_erows(var_id, new_tail);
 
             Ok(tail_var)
         }
