@@ -262,7 +262,7 @@
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   # For some reason, the rust build doesn't pick up the paths
                   # to `libcxx` and `libcxxabi` from the stdenv. So we specify
-                  # them explicitly. Also, `libcxx` expects to be linked fith
+                  # them explicitly. Also, `libcxx` expects to be linked with
                   # `libcxxabi` at the end, and we need to make the rust linker
                   # aware of that.
                   RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
