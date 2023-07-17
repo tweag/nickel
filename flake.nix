@@ -247,19 +247,33 @@
           };
           lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
+          # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
             if pkgs.stdenv.hostPlatform.isMacOS
             then nickel-lang-cli
             else
-              craneLib.buildPackage rec {
+            # To build Nickel and its dependencies statically we use the musl
+            # libc and clang with libc++ to build C and C++ dependencies. We
+            # tried building with libstdc++ but without success.
+              buildPackage {
                 pname = "nickel-lang-cli";
-                inherit src version;
-                cargoExtraArgs = "${cargoBuildExtraArgs} --features format --package ${pname}";
-                CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
-                RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
-                CXXSTDLIB = "static=c++";
-                stdenv = pkgs.pkgsMusl.libcxxStdenv;
-                doCheck = false;
+                extraBuildArgs = "--features format";
+                extraArgs = {
+                  CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                  # For some reason, the rust build doesn't pick up the paths
+                  # to `libcxx` and `libcxxabi` from the stdenv. So we specify
+                  # them explicitly. Also, `libcxx` expects to be linked fith
+                  # `libcxxabi` at the end, and we need to make the rust linker
+                  # aware of that.
+                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
+                  # Explain to `cc-rs` that it should use the `libcxx` C++
+                  # standard library, and a static version of it, when building
+                  # C++ libraries. The `cc-rs` is typically used in downstream
+                  # build.rs scripts.
+                  CXXSTDLIB = "static=c++";
+                  stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                  doCheck = false;
+                };
               };
 
           benchmarks = craneLib.mkCargoDerivation {
