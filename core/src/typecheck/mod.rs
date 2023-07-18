@@ -2841,7 +2841,14 @@ pub fn unify(
 
                 if state.table.get_level(id) < constant_level {
                     println!("Uvar {id} has a lower level than constant {constant_level}");
-                    return Err(UnifError::WithConst(VarKindDiscriminant::Type, cst_id, UnifType::UnifVar { id, init_level: VarLevel::default() }));
+                    return Err(UnifError::WithConst(
+                        VarKindDiscriminant::Type,
+                        cst_id,
+                        UnifType::UnifVar {
+                            id,
+                            init_level: VarLevel::default(),
+                        },
+                    ));
                 }
             }
 
@@ -3569,10 +3576,19 @@ impl UnifTable {
                         },
                 } => {
                     // Such an update wouldn't change the outcome of unifying a variable with a
-                    // constant of level `constant_level`. Meaningful updates are updates that
-                    // might change a variable level from something greater than or equals to
-                    // `constant_level` to a new level strictly smaller.
-                    if upper_bound <= constant_level || pending_level >= constant_level {
+                    // constant of level `constant_level`. Impactful updates are updates that
+                    // might change a variable level from a value greater than or equals to
+                    // `constant_level` to a new level strictly smaller, but:
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
+                    //    already strictly smaller than `constant_level`. An update won't change
+                    //    this inequality (level update can only decrease levels)
+                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
+                    //    level that was greater than `constant_level` to a `pending_level`
+                    //    which is still greater than `constant_level`. Once again, the update
+                    //    doesn't change the inequality with respect to constant_level.
+                    //
+                    // Thus, such updates might be delayed even more.
+                    if upper_bound < constant_level || pending_level >= constant_level {
                         return (
                             UnifType::Concrete {
                                 types,
