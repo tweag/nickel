@@ -169,6 +169,10 @@ pub enum UnifEnumRows {
 /// type. The idea behind Didier Remy's algorithm is to delay those traversal, and use the values
 /// of `VarLevelData` to avoid doing unneeded work, to make variable unification run in constant
 /// time again.
+///
+/// We need to keep separate upper bounds for all 3 kinds of unification variable: type,
+/// record rows or enum rows.
+//TODO: 3 different upper bounds
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this
@@ -3131,6 +3135,10 @@ impl<Ty> UnifSlot<Ty> {
 ///
 /// The unification table is really three separate tables, corresponding to the different kinds of
 /// types: standard types, record rows, and enum rows.
+///
+/// The unification table is a relatively low-level data structure, whose consumer has to ensure
+/// specific invariants. It is used by the `unify` function and its variants, but you should avoid
+/// to use it directly, unless you know what you're doing.
 #[derive(Default)]
 pub struct UnifTable {
     types: Vec<UnifSlot<UnifType>>,
@@ -3151,40 +3159,61 @@ impl UnifTable {
     /// `assign_xxx` methods check for variable levels condition and update variables level, at
     /// least lazily, by pushing them to a stack of pending traversals.
     ///
-    /// **Caution**: this is the responsibility of the consumer of `UnifTable` to force pending
-    /// level updates when needed, as the unification table is at a level too low to decide when to
-    /// trigger those. Having pending variable level updates might make typechecking unsound in
-    /// some situation (by allowing unsound generalization).
+    /// # Preconditions
+    ///
+    /// - For this function to work correctly on unification variable levels, if the target type is a
+    /// unification variable as well, it must not be assigned to another unification type.
+    /// - This is the responsibility of the user of `UnifTable` to force pending level updates when
+    /// needed. Having pending variable level updates and using `assign_type` might make
+    /// typechecking incorrect in some situation (by unduely allowing unsound generalization).
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         // Unifying a free variable with itself is a no-op.
         if matches!(uty, UnifType::UnifVar { id, ..} if id == var) {
             return;
         }
 
-        self.update_type_level(var, &uty, self.types[var].level);
+        debug_assert!({
+            if let UnifType::UnifVar { id, init_level } = &uty {
+                self.types[*id].value.is_none()
+            } else {
+                true
+            }
+        });
         debug_assert!(self.types[var].value.is_none());
-        self.types[var].value = Some(uty);
+
+        let uty_lvl_updated = self.update_type_level(var, uty, self.types[var].level);
+        self.types[var].value = Some(uty_lvl_updated);
     }
 
-    fn update_type_level(&mut self, var: VarId, uty: &UnifType, new_level: VarLevel) {
+    fn update_type_level(&mut self, var: VarId, uty: UnifType, new_level: VarLevel) -> UnifType {
         match uty {
             // We can do the update right away
-            UnifType::UnifVar {
-                id: var_id,
-                init_level: _,
-            } => {
-                if new_level < self.types[*var_id].level {
-                    self.types[*var_id].level = new_level;
+            UnifType::UnifVar { id, init_level } => {
+                if new_level < self.types[id].level {
+                    self.types[id].level = new_level;
                 }
+
+                UnifType::UnifVar { id, init_level }
             }
             // If a concrete type is a candidate for update, we push the pending update on the
             // stack
             UnifType::Concrete {
-                var_levels_data, ..
-            } if var_levels_data.upper_bound >= new_level => self.pending_type_updates.push(var),
+                types,
+                var_levels_data,
+            } if var_levels_data.upper_bound >= new_level => {
+                self.pending_type_updates.push(var);
+
+                UnifType::Concrete {
+                    types,
+                    var_levels_data: VarLevelsData {
+                        pending: Some(new_level),
+                        ..var_levels_data
+                    },
+                }
+            }
             // The remaining types either don't contain unification variables or have all their
             // level greater than the updated level
-            _ => (),
+            _ => uty,
         }
     }
 
@@ -3428,37 +3457,68 @@ impl UnifTable {
     }
 
     fn force_type_updates(&mut self, constant_level: VarLevel) {
-        fn update_unrolling(
+        fn update_unr_with_lvl(
             table: &mut UnifTable,
             uty: UnifTypeUnrolling,
             level: VarLevel,
         ) -> UnifTypeUnrolling {
             uty.map_state(
-                |uty, table| Box::new(update_utype(table, *uty, level)),
-                |rrows, table| todo!(),
+                |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
+                |rrows, table| update_rrows_with_lvl(table, rrows, level),
                 |erows, _table| erows,
-                table
+                table,
             )
         }
 
-        fn update_utype(table: &mut UnifTable, uty: UnifType, level: VarLevel) -> UnifType {
-            match uty {
-                UnifType::UnifVar {
-                    id,
-                    init_level,
+        fn update_rrows_with_lvl(
+            table: &mut UnifTable,
+            rrows: UnifRecordRows,
+            level: VarLevel,
+        ) -> UnifRecordRows {
+            let rrows = rrows.into_root(table);
+
+            match rrows {
+                UnifRecordRows::Concrete {
+                    rrows,
+                    var_levels_data,
                 } => {
-                    let slot = &mut table.types[id];
+                    let level = var_levels_data
+                        .pending
+                        .map(|pending_level| max(pending_level, level))
+                        .unwrap_or(level);
 
-                    if slot.level > level {
-                        slot.level = level;
+                    let rrows = rrows.map_state(
+                        |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
+                        |rrows, table| Box::new(update_rrows_with_lvl(table, *rrows, level)),
+                        table,
+                    );
+
+                    UnifRecordRows::Concrete {
+                        rrows,
+                        var_levels_data: VarLevelsData {
+                            upper_bound: level,
+                            pending: None,
+                        },
+                    }
+                }
+                UnifRecordRows::UnifVar { .. } | UnifRecordRows::Constant(_) => rrows,
+            }
+        }
+
+        fn update_utype_with_lvl(
+            table: &mut UnifTable,
+            uty: UnifType,
+            level: VarLevel,
+        ) -> UnifType {
+            let uty = uty.into_root(table);
+
+            match uty {
+                UnifType::UnifVar { id, init_level } => {
+                    if table.types[id].level > level {
+                        table.types[id].level = level;
                     }
 
-                    UnifType::UnifVar {
-                        id,
-                        // we should probably update init_level, but I first have to think if this
-                        // is sound to do so
-                        init_level,
-                    }
+                    UnifType::UnifVar { id, init_level }
                 }
                 UnifType::Concrete {
                     types,
@@ -3468,7 +3528,7 @@ impl UnifTable {
                         .pending
                         .map(|pending_level| max(pending_level, level))
                         .unwrap_or(level);
-                    let types = update_unrolling(table, types, level);
+                    let types = update_unr_with_lvl(table, types, level);
 
                     UnifType::Concrete {
                         types,
@@ -3478,32 +3538,81 @@ impl UnifTable {
                         },
                     }
                 }
-                UnifType::Constant(_)
-                | UnifType::Contract(..)
-                | UnifType::Concrete { .. } => uty,
+                UnifType::Constant(_) | UnifType::Contract(..) | UnifType::Concrete { .. } => uty,
+            }
+        }
+
+        fn update_utype(
+            table: &mut UnifTable,
+            uty: UnifType,
+            constant_level: VarLevel,
+        ) -> (UnifType, bool) {
+            match uty {
+                UnifType::UnifVar { .. } => {
+                    // We should never end up updating the level of a type variable, as this update
+                    // is done on the spot.
+                    debug_assert!(false);
+                    (uty, false)
+                }
+                UnifType::Concrete {
+                    types,
+                    var_levels_data:
+                        VarLevelsData {
+                            pending: Some(pending_level),
+                            upper_bound,
+                        },
+                } => {
+                    // Such an update wouldn't change the outcome of unifying a variable with a
+                    // constant of level `constant_level`. Meaningful updates are updates that
+                    // might change a variable level from something greater than or equals to
+                    // `constant_level` to a new level strictly smaller.
+                    if upper_bound <= constant_level || pending_level >= constant_level {
+                        return (
+                            UnifType::Concrete {
+                                types,
+                                var_levels_data: VarLevelsData {
+                                    upper_bound: pending_level,
+                                    pending: None,
+                                },
+                            },
+                            true,
+                        );
+                    }
+
+                    let types = if upper_bound > pending_level {
+                        update_unr_with_lvl(table, types, pending_level)
+                    } else {
+                        types
+                    };
+
+                    (
+                        UnifType::Concrete {
+                            types,
+                            var_levels_data: VarLevelsData {
+                                upper_bound: pending_level,
+                                pending: None,
+                            },
+                        },
+                        false,
+                    )
+                }
+                UnifType::Constant(_) | UnifType::Contract(..) | UnifType::Concrete { .. } => {
+                    (uty, false)
+                }
             }
         }
 
         let rest = std::mem::take(&mut self.pending_type_updates)
             .into_iter()
             .filter(|id| {
-                let new_level = self.types[*id].level;
+                // unwrap(): if a unification variable has been push on the update stack, it
+                // has been been by `assign_type`, and thus MUST have been assigned to
+                // something.
+                let types = self.types[*id].value.take().unwrap();
+                let (new_type, delayed) = update_utype(self, types, constant_level);
+                self.types[*id].value = Some(new_type);
 
-                // If the update has not chance of bumping a level above constant_level, it won't
-                // affect the unification of a constant of level `constant_level`, so we can
-                // postpone it for now.
-                if new_level >= constant_level {
-                    return true;
-                } else {
-                    // unwrap(): if a unification variable has been push on the update stack, it
-                    // has been been by `assign_type`, and thus MUST have been assigned to
-                    // something. 
-                    let types = self.types[*id].value.take().unwrap();
-                    let new_type = update_utype(self, types, new_level); 
-                    self.types[*id].value = Some(new_type); 
-
-                    return false;
-                }
+                delayed
             })
             .collect();
 
