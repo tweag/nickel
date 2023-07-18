@@ -2835,6 +2835,16 @@ pub fn unify(
             )),
         },
         (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
+            if let UnifType::Constant(cst_id) = uty {
+                let constant_level = state.table.get_level(cst_id);
+                state.table.force_type_updates(constant_level);
+
+                if state.table.get_level(id) < constant_level {
+                    println!("Uvar {id} has a lower level than constant {constant_level}");
+                    return Err(UnifError::WithConst(VarKindDiscriminant::Type, cst_id, UnifType::UnifVar { id, init_level: VarLevel::default() }));
+                }
+            }
+
             state.table.assign_type(id, uty);
             Ok(())
         }
@@ -3173,7 +3183,7 @@ impl UnifTable {
         }
 
         debug_assert!({
-            if let UnifType::UnifVar { id, init_level } = &uty {
+            if let UnifType::UnifVar { id, init_level: _ } = &uty {
                 self.types[*id].value.is_none()
             } else {
                 true
@@ -3482,23 +3492,19 @@ impl UnifTable {
                     rrows,
                     var_levels_data,
                 } => {
-                    let level = var_levels_data
-                        .pending
-                        .map(|pending_level| max(pending_level, level))
-                        .unwrap_or(level);
-
                     let rrows = rrows.map_state(
                         |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
                         |rrows, table| Box::new(update_rrows_with_lvl(table, *rrows, level)),
                         table,
                     );
 
+                    // Note that for `UnifRecordRows`, the variable levels data are concerned with
+                    // record rows unification variables, not type unification variable. We thus
+                    // let them untouched, as updating record rows variable levels is an orthogonal
+                    // concern.
                     UnifRecordRows::Concrete {
                         rrows,
-                        var_levels_data: VarLevelsData {
-                            upper_bound: level,
-                            pending: None,
-                        },
+                        var_levels_data,
                     }
                 }
                 UnifRecordRows::UnifVar { .. } | UnifRecordRows::Constant(_) => rrows,
