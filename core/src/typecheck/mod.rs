@@ -3228,7 +3228,7 @@ impl UnifTable {
             return;
         }
 
-        self.update_rrows_level(var, &rrows, self.types[var].level);
+        self.update_rrows_level(var, &rrows, self.rrows[var].level);
         debug_assert!(self.rrows[var].value.is_none());
         self.rrows[var].value = Some(rrows);
     }
@@ -3240,7 +3240,7 @@ impl UnifTable {
                 id: var_id,
                 init_level: _,
             } => {
-                if new_level < self.types[*var_id].level {
+                if new_level < self.rrows[*var_id].level {
                     self.rrows[*var_id].level = new_level;
                 }
             }
@@ -3265,7 +3265,7 @@ impl UnifTable {
             return;
         }
 
-        self.update_erows_level(var, &erows, self.types[var].level);
+        self.update_erows_level(var, &erows, self.erows[var].level);
         debug_assert!(self.erows[var].value.is_none());
         self.erows[var].value = Some(erows);
     }
@@ -3277,7 +3277,7 @@ impl UnifTable {
                 id: var_id,
                 init_level: _,
             } => {
-                if new_level < self.types[*var_id].level {
+                if new_level < self.erows[*var_id].level {
                     self.erows[*var_id].level = new_level;
                 }
             }
