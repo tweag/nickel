@@ -172,7 +172,6 @@ pub enum UnifEnumRows {
 ///
 /// We need to keep separate upper bounds for all 3 kinds of unification variable: type,
 /// record rows or enum rows.
-//TODO: 3 different upper bounds
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this
@@ -856,6 +855,8 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
 }
 
 type UnifTypeUnrolling = GenericUnifTypeUnrolling<SimpleTermEnvironment>;
+type UnifRecordRowsUnrolling = GenericUnifRecordRowsUnrolling<SimpleTermEnvironment>;
+
 pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
 pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
 pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
@@ -2835,6 +2836,11 @@ pub fn unify(
             )),
         },
         (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
+            // If we are unifying a variable with a rigid type variable, force potential
+            // unification variable level updates and check that the level of the unification
+            // variable is greater or equals to the constant: that is, that the variable doesn't
+            // "escape its scope". This is required to handle polymorphism soundly, and is the
+            // whole point of all the machinery around variable levels.
             if let UnifType::Constant(cst_id) = uty {
                 let constant_level = state.table.get_level(cst_id);
                 state.table.force_type_updates(constant_level);
@@ -3594,7 +3600,7 @@ impl UnifTable {
                                 types,
                                 var_levels_data: VarLevelsData {
                                     upper_bound: pending_level,
-                                    pending: None,
+                                    pending: Some(pending_level),
                                 },
                             },
                             true,
@@ -3642,15 +3648,302 @@ impl UnifTable {
     }
 
     pub fn force_rrows_updates(&mut self, constant_level: VarLevel) {
-        for var_id in self.pending_rrows_updates.drain(..) {
-            todo!();
+        fn update_unr_with_lvl(
+            table: &mut UnifTable,
+            rrows: UnifRecordRowsUnrolling,
+            level: VarLevel,
+        ) -> UnifRecordRowsUnrolling {
+            rrows.map_state(
+                |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
+                |rrows, table| Box::new(update_rrows_with_lvl(table, *rrows, level)),
+                table,
+            )
         }
+
+        fn update_utype_with_lvl(
+            table: &mut UnifTable,
+            utype: UnifType,
+            level: VarLevel,
+        ) -> UnifType {
+            let utype = utype.into_root(table);
+
+            match utype {
+                UnifType::Concrete {
+                    types,
+                    var_levels_data,
+                } => {
+                    let types = types.map_state(
+                        |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
+                        |rrows, table| update_rrows_with_lvl(table, rrows, level),
+                        |erows, _| erows,
+                        table,
+                    );
+
+                    // Note that for `UnifType`, the variable levels data are concerned with type
+                    // unification variables, not record rows unification variable. We thus let
+                    // them untouched, as updating type variable levels is an orthogonal
+                    // concern.
+                    UnifType::Concrete {
+                        types,
+                        var_levels_data,
+                    }
+                }
+                UnifType::UnifVar { .. } | UnifType::Constant(_) | UnifType::Contract(..) => utype,
+            }
+        }
+
+        fn update_rrows_with_lvl(
+            table: &mut UnifTable,
+            rrows: UnifRecordRows,
+            level: VarLevel,
+        ) -> UnifRecordRows {
+            let rrows = rrows.into_root(table);
+
+            match rrows {
+                UnifRecordRows::UnifVar { id, init_level } => {
+                    if table.rrows[id].level > level {
+                        table.rrows[id].level = level;
+                    }
+
+                    UnifRecordRows::UnifVar { id, init_level }
+                }
+                UnifRecordRows::Concrete {
+                    rrows,
+                    var_levels_data,
+                } if var_levels_data.upper_bound > level => {
+                    let level = var_levels_data
+                        .pending
+                        .map(|pending_level| max(pending_level, level))
+                        .unwrap_or(level);
+                    let rrows = update_unr_with_lvl(table, rrows, level);
+
+                    UnifRecordRows::Concrete {
+                        rrows,
+                        var_levels_data: VarLevelsData {
+                            upper_bound: level,
+                            pending: None,
+                        },
+                    }
+                }
+                UnifRecordRows::Constant(_) | UnifRecordRows::Concrete { .. } => rrows,
+            }
+        }
+
+        fn update_rrows(
+            table: &mut UnifTable,
+            rrows: UnifRecordRows,
+            constant_level: VarLevel,
+        ) -> (UnifRecordRows, bool) {
+            match rrows {
+                UnifRecordRows::UnifVar { .. } => {
+                    // We should never end up updating the level of a unification variable, as this
+                    // update is done on the spot.
+                    debug_assert!(false);
+                    (rrows, false)
+                }
+                UnifRecordRows::Concrete {
+                    rrows,
+                    var_levels_data:
+                        VarLevelsData {
+                            pending: Some(pending_level),
+                            upper_bound,
+                        },
+                } => {
+                    // Such an update wouldn't change the outcome of unifying a variable with a
+                    // constant of level `constant_level`. Impactful updates are updates that
+                    // might change a variable level from a value greater than or equals to
+                    // `constant_level` to a new level strictly smaller, but:
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
+                    //    already strictly smaller than `constant_level`. An update won't change
+                    //    this inequality (level update can only decrease levels)
+                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
+                    //    level that was greater than `constant_level` to a `pending_level`
+                    //    which is still greater than `constant_level`. Once again, the update
+                    //    doesn't change the inequality with respect to constant_level.
+                    //
+                    // Thus, such updates might be delayed even more.
+                    if upper_bound < constant_level || pending_level >= constant_level {
+                        return (
+                            UnifRecordRows::Concrete {
+                                rrows,
+                                var_levels_data: VarLevelsData {
+                                    upper_bound: pending_level,
+                                    pending: Some(pending_level),
+                                },
+                            },
+                            true,
+                        );
+                    }
+
+                    let rrows = if upper_bound > pending_level {
+                        update_unr_with_lvl(table, rrows, pending_level)
+                    } else {
+                        rrows
+                    };
+
+                    (
+                        UnifRecordRows::Concrete {
+                            rrows,
+                            var_levels_data: VarLevelsData {
+                                upper_bound: pending_level,
+                                pending: None,
+                            },
+                        },
+                        false,
+                    )
+                }
+                UnifRecordRows::Constant(_) | UnifRecordRows::Concrete { .. } => (rrows, false),
+            }
+        }
+
+        let rest = std::mem::take(&mut self.pending_rrows_updates)
+            .into_iter()
+            .filter(|id| {
+                // unwrap(): if a unification variable has been push on the update stack, it
+                // has been been by `assign_type`, and thus MUST have been assigned to
+                // something.
+                let rrows = self.rrows[*id].value.take().unwrap();
+                let (new_rrows, delay) = update_rrows(self, rrows, constant_level);
+                self.rrows[*id].value = Some(new_rrows);
+
+                delay
+            })
+            .collect();
+
+        self.pending_rrows_updates = rest;
     }
 
     pub fn force_erows_updates(&mut self, constant_level: VarLevel) {
-        for var_id in self.pending_erows_updates.drain(..) {
-            todo!();
+        fn update_unr_with_lvl(
+            table: &mut UnifTable,
+            erows: UnifEnumRowsUnrolling,
+            level: VarLevel,
+        ) -> UnifEnumRowsUnrolling {
+            erows.map_state(
+                |erows, table| Box::new(update_erows_with_lvl(table, *erows, level)),
+                table,
+            )
         }
+
+        fn update_erows_with_lvl(
+            table: &mut UnifTable,
+            erows: UnifEnumRows,
+            level: VarLevel,
+        ) -> UnifEnumRows {
+            let erows = erows.into_root(table);
+
+            match erows {
+                UnifEnumRows::UnifVar { id, init_level } => {
+                    if table.erows[id].level > level {
+                        table.erows[id].level = level;
+                    }
+
+                    UnifEnumRows::UnifVar { id, init_level }
+                }
+                UnifEnumRows::Concrete {
+                    erows,
+                    var_levels_data,
+                } if var_levels_data.upper_bound > level => {
+                    let level = var_levels_data
+                        .pending
+                        .map(|pending_level| max(pending_level, level))
+                        .unwrap_or(level);
+                    let erows = update_unr_with_lvl(table, erows, level);
+
+                    UnifEnumRows::Concrete {
+                        erows,
+                        var_levels_data: VarLevelsData {
+                            upper_bound: level,
+                            pending: None,
+                        },
+                    }
+                }
+                UnifEnumRows::Constant(_) | UnifEnumRows::Concrete { .. } => erows,
+            }
+        }
+
+        fn update_erows(
+            table: &mut UnifTable,
+            erows: UnifEnumRows,
+            constant_level: VarLevel,
+        ) -> (UnifEnumRows, bool) {
+            match erows {
+                UnifEnumRows::UnifVar { .. } => {
+                    // We should never end up updating the level of a unification variable, as this
+                    // update is done on the spot.
+                    debug_assert!(false);
+                    (erows, false)
+                }
+                UnifEnumRows::Concrete {
+                    erows,
+                    var_levels_data:
+                        VarLevelsData {
+                            pending: Some(pending_level),
+                            upper_bound,
+                        },
+                } => {
+                    // Such an update wouldn't change the outcome of unifying a variable with a
+                    // constant of level `constant_level`. Impactful updates are updates that
+                    // might change a variable level from a value greater than or equals to
+                    // `constant_level` to a new level strictly smaller, but:
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
+                    //    already strictly smaller than `constant_level`. An update won't change
+                    //    this inequality (level update can only decrease levels)
+                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
+                    //    level that was greater than `constant_level` to a `pending_level`
+                    //    which is still greater than `constant_level`. Once again, the update
+                    //    doesn't change the inequality with respect to constant_level.
+                    //
+                    // Thus, such updates might be delayed even more.
+                    if upper_bound < constant_level || pending_level >= constant_level {
+                        return (
+                            UnifEnumRows::Concrete {
+                                erows,
+                                var_levels_data: VarLevelsData {
+                                    upper_bound: pending_level,
+                                    pending: Some(pending_level),
+                                },
+                            },
+                            true,
+                        );
+                    }
+
+                    let erows = if upper_bound > pending_level {
+                        update_unr_with_lvl(table, erows, pending_level)
+                    } else {
+                        erows
+                    };
+
+                    (
+                        UnifEnumRows::Concrete {
+                            erows,
+                            var_levels_data: VarLevelsData {
+                                upper_bound: pending_level,
+                                pending: None,
+                            },
+                        },
+                        false,
+                    )
+                }
+                UnifEnumRows::Constant(_) | UnifEnumRows::Concrete { .. } => (erows, false),
+            }
+        }
+
+        let rest = std::mem::take(&mut self.pending_erows_updates)
+            .into_iter()
+            .filter(|id| {
+                // unwrap(): if a unification variable has been push on the update stack, it
+                // has been been by `assign_type`, and thus MUST have been assigned to
+                // something.
+                let erows = self.erows[*id].value.take().unwrap();
+                let (new_erows, delay) = update_erows(self, erows, constant_level);
+                self.erows[*id].value = Some(new_erows);
+
+                delay
+            })
+            .collect();
+
+        self.pending_erows_updates = rest;
     }
 }
 
