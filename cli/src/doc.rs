@@ -41,6 +41,7 @@ pub fn export_doc(
     stdout: bool,
     format: DocFormat,
 ) -> Result<(), Error> {
+    let doc = program.extract_doc()?;
     let mut out: Box<dyn std::io::Write> = if stdout {
         Box::new(std::io::stdout())
     } else {
@@ -91,7 +92,6 @@ pub fn export_doc(
                 })?,
         )
     };
-    let doc = program.extract_doc()?;
     match format {
         DocFormat::Json => doc.write_json(&mut out),
         DocFormat::Markdown => doc.write_markdown(&mut out),
