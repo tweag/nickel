@@ -259,18 +259,45 @@ impl<EC: EvalCache> Program<EC> {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
+    /// Evaluate a program into a form suitable for extracting documentation.
+    /// This needs to evaluate to WHNF, but then still descend into subfields
+    /// whose values are records.
+    #[cfg(feature = "doc")]
+    pub fn eval_for_docs(&mut self) -> Result<RichTerm, Error> {
+        use crate::eval::{Closure, Environment};
+        use crate::match_sharedterm;
+        use crate::term::Term;
+
+        let (t, initial_env) = self.prepare_eval()?;
+
+        fn do_eval<EC: EvalCache>(
+            vm: &mut VirtualMachine<Cache, EC>,
+            t: RichTerm,
+            initial_env: &Environment,
+        ) -> Result<RichTerm, Error> {
+            vm.reset();
+            let (rt, env) = vm
+                .eval_closure(Closure::atomic_closure(t), initial_env)
+                .map_err(Error::from)?;
+            let eval_field =
+                |_id, rt: RichTerm| -> RichTerm { do_eval(vm, rt.clone(), &env).unwrap_or(rt) };
+
+            match_sharedterm! {rt.term, with {
+                    Term::Record(data) => Ok(Term::Record(data.map_defined_values(eval_field)).into())
+                } else Ok(rt)
+            }
+        }
+
+        do_eval(&mut self.vm, t, &initial_env)
+    }
+
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
-        self.vm.import_resolver_mut().parse(self.main_id)?;
-        let term = self
-            .vm
-            .import_resolver()
-            .get_ref(self.main_id)
-            .expect("The file has been parsed and must therefore be in the cache");
-        doc::ExtractedDocumentation::extract_from_term(term).ok_or(Error::ExportError(
+        let term = self.eval_for_docs()?;
+        doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
             ExportError::NoDocumentation(term.clone()),
         ))
     }
