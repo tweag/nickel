@@ -957,13 +957,13 @@
           such as an argument to another contract:
 
           ```nickel
-          x | Array (std.contract.sequence [ Foo, Bar ])
+          x | Array (std.contract.Sequence [ Foo, Bar ])
           ```
 
           Or stored in a variable:
 
           ```nickel
-          let C = std.contract.sequence [ Foo, Bar ] in
+          let C = std.contract.Sequence [ Foo, Bar ] in
           x | C
           ```
         "%
