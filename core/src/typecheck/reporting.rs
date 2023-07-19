@@ -101,7 +101,7 @@ fn var_name(
 
 /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
 /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-fn cst_name(
+pub(super) fn cst_name(
     names: &NameTable,
     name_reg: &mut NameReg,
     id: VarId,

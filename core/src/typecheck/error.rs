@@ -1,5 +1,5 @@
 //! Internal error types for typechecking.
-use super::{reporting, State, UnifType};
+use super::{reporting, State, UnifType, VarId};
 use crate::{
     error::TypecheckError,
     identifier::Ident,
@@ -88,6 +88,11 @@ pub enum UnifError {
     DomainMismatch(UnifType, UnifType, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch(UnifType, UnifType, Box<UnifError>),
+    /// Tried to unify a constant with a unification variable with a strictly lower level.
+    VariableLevelMismatch {
+        constant_id: VarId,
+        var_kind: VarKindDiscriminant,
+    },
 }
 
 impl UnifError {
@@ -212,6 +217,12 @@ impl UnifError {
                     Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
                     pos_opt,
                 )
+            }
+            UnifError::VariableLevelMismatch { constant_id, var_kind } => {
+                TypecheckError::VariableLevelMismatch {
+                    constant: reporting::cst_name(state.names, names, constant_id, var_kind),
+                    pos: pos_opt,
+                }
             }
         }
     }

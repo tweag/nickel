@@ -2846,15 +2846,10 @@ pub fn unify(
                 state.table.force_type_updates(constant_level);
 
                 if state.table.get_level(id) < constant_level {
-                    println!("Uvar {id} has a lower level than constant {constant_level}");
-                    return Err(UnifError::WithConst(
-                        VarKindDiscriminant::Type,
-                        cst_id,
-                        UnifType::UnifVar {
-                            id,
-                            init_level: VarLevel::default(),
-                        },
-                    ));
+                    return Err(UnifError::VariableLevelMismatch {
+                        constant_id: cst_id,
+                        var_kind: VarKindDiscriminant::Type
+                    })
                 }
             }
 
@@ -3079,7 +3074,6 @@ fn instantiate_foralls(
     // type variables introduced afterwards.
     ctxt.var_level += 1;
 
-    // TODO: variable levels
     while let UnifType::Concrete {
         types: TypeF::Forall {
             var,
