@@ -331,7 +331,10 @@ pub enum TypecheckError {
     /// [crate::typecheck] for more details. This error indicates that a case similar to the above
     /// example happened.
     VariableLevelMismatch {
-        constant: Ident,
+        /// The user-defined type variable (the rigid type variable during unification) that
+        /// couldn't be unified.
+        type_var: Ident,
+        /// The position of the expression that was being typechecked as `type_var`.
         pos: TermPos,
     },
 }
@@ -2113,7 +2116,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 ]
             }
             TypecheckError::VariableLevelMismatch {
-                constant,
+                type_var: constant,
                 pos,
             } => {
                 let mut labels = mk_expr_label(&pos);
@@ -2124,22 +2127,20 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     labels.push(secondary(&span).with_message("this polymorphic type"));
                 }
 
-                vec![
-                    Diagnostic::error()
-                        .with_message(format!(
-                            "invalid polymorphic generalization"
-                        ))
-                        .with_labels(labels)
-                        .with_notes(vec![
-                            "While the type of this expression is still undetermined, it appears \
+                vec![Diagnostic::error()
+                    .with_message(format!("invalid polymorphic generalization"))
+                    .with_labels(labels)
+                    .with_notes(vec![
+                        "While the type of this expression is still undetermined, it appears \
                             indirectly in the type of another expression introduced before \
-                            the `forall` block.".into(),
-                            format!(
-                                "The type of this expression escapes the scope of the \
+                            the `forall` block."
+                            .into(),
+                        format!(
+                            "The type of this expression escapes the scope of the \
                                 corresponding `forall` and can't be generalized to the \
-                                polymorphic type `{constant}`"),
-                        ]),
-                ]
+                                polymorphic type `{constant}`"
+                        ),
+                    ])]
             }
         }
     }

@@ -2848,8 +2848,8 @@ pub fn unify(
                 if state.table.get_level(id) < constant_level {
                     return Err(UnifError::VariableLevelMismatch {
                         constant_id: cst_id,
-                        var_kind: VarKindDiscriminant::Type
-                    })
+                        var_kind: VarKindDiscriminant::Type,
+                    });
                 }
             }
 

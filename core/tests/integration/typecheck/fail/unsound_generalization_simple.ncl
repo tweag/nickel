@@ -2,9 +2,8 @@
 # eval = 'typecheck'
 #
 # [test.metadata]
-# error = 'TypecheckError::TypeMismatch'
+# error = 'TypecheckError::VariableLevelMismatch'
 #
 # [test.metadata.expectation]
-# expected = 'a'
-# found = '_a'
+# type_var = 'a'
 (fun x => let y : forall a. a = x in y) : _

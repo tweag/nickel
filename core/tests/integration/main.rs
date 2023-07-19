@@ -165,6 +165,8 @@ enum ErrorExpectation {
     TypecheckMissingDynTail,
     #[serde(rename = "TypecheckError::FlatTypeInTermPosition")]
     TypecheckFlatTypeInTermPosition,
+    #[serde(rename = "TypecheckError::VariableLevelMismatch")]
+    TypecheckVariableLevelMismatch { type_var: String },
     #[serde(rename = "ParseError")]
     AnyParseError,
     #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
@@ -276,6 +278,13 @@ impl PartialEq<Error> for ErrorExpectation {
                 TypecheckError::RowConflict(ident, ..) => row == ident.label(),
                 _ => false,
             },
+            (
+                TypecheckVariableLevelMismatch { type_var: ident },
+                Error::TypecheckError(TypecheckError::VariableLevelMismatch {
+                    type_var: constant,
+                    ..
+                }),
+            ) => ident == constant.label(),
             (_, _) => false,
         }
     }
@@ -337,6 +346,9 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
             TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
             TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
+            TypecheckVariableLevelMismatch { type_var: ident } => {
+                format!("TypecheckError::VariableLevelMismatch({ident})")
+            }
         };
         write!(f, "{}", name)
     }

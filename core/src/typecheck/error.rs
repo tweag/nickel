@@ -218,12 +218,13 @@ impl UnifError {
                     pos_opt,
                 )
             }
-            UnifError::VariableLevelMismatch { constant_id, var_kind } => {
-                TypecheckError::VariableLevelMismatch {
-                    constant: reporting::cst_name(state.names, names, constant_id, var_kind),
-                    pos: pos_opt,
-                }
-            }
+            UnifError::VariableLevelMismatch {
+                constant_id,
+                var_kind,
+            } => TypecheckError::VariableLevelMismatch {
+                type_var: reporting::cst_name(state.names, names, constant_id, var_kind),
+                pos: pos_opt,
+            },
         }
     }
 
