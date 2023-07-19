@@ -944,7 +944,7 @@
           # Examples
 
           ```nickel
-          x | std.contract.Sequence [ Foo Bar ]
+          x | std.contract.Sequence [ Foo, Bar ]
           ```
 
           is equivalent to
