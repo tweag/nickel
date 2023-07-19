@@ -30,6 +30,11 @@ pub enum RowUnifError {
     ConstMismatch(VarKindDiscriminant, usize, usize),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
+    /// Tried to unify a constant with a unification variable with a strictly lower level.
+    VariableLevelMismatch {
+        constant_id: VarId,
+        var_kind: VarKindDiscriminant,
+    },
 }
 
 impl RowUnifError {
@@ -53,6 +58,13 @@ impl RowUnifError {
             RowUnifError::WithConst(c, k, uty) => UnifError::WithConst(c, k, uty),
             RowUnifError::ConstMismatch(k, c1, c2) => UnifError::ConstMismatch(k, c1, c2),
             RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
+            RowUnifError::VariableLevelMismatch {
+                constant_id,
+                var_kind,
+            } => UnifError::VariableLevelMismatch {
+                constant_id,
+                var_kind,
+            },
         }
     }
 }

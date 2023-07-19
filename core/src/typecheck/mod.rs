@@ -2836,11 +2836,12 @@ pub fn unify(
             )),
         },
         (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
-            // If we are unifying a variable with a rigid type variable, force potential
-            // unification variable level updates and check that the level of the unification
-            // variable is greater or equals to the constant: that is, that the variable doesn't
-            // "escape its scope". This is required to handle polymorphism soundly, and is the
-            // whole point of all the machinery around variable levels.
+            // [^check-unif-var-level]: If we are unifying a variable with a rigid type
+            // variable, force potential unification variable level updates and check that the
+            // level of the unification variable is greater or equals to the constant: that is,
+            // that the variable doesn't "escape its scope". This is required to handle
+            // polymorphism soundly, and is the whole point of all the machinery around variable
+            // levels.
             if let UnifType::Constant(cst_id) = uty {
                 let constant_level = state.table.get_level(cst_id);
                 state.table.force_type_updates(constant_level);
@@ -2954,6 +2955,19 @@ pub fn unify_rrows(
         },
         (UnifRecordRows::UnifVar { id, init_level }, urrows)
         | (urrows, UnifRecordRows::UnifVar { id, init_level }) => {
+            // see [^check-unif-var-level]
+            if let UnifRecordRows::Constant(cst_id) = urrows {
+                let constant_level = state.table.get_rrows_level(cst_id);
+                state.table.force_rrows_updates(constant_level);
+
+                if state.table.get_rrows_level(id) < constant_level {
+                    return Err(RowUnifError::VariableLevelMismatch {
+                        constant_id: cst_id,
+                        var_kind: VarKindDiscriminant::RecordRows,
+                    });
+                }
+            }
+
             constr_unify_rrows(state.constr, id, &urrows)?;
             state.table.assign_rrows(id, urrows);
             Ok(())
@@ -3019,6 +3033,19 @@ pub fn unify_erows(
         },
         (UnifEnumRows::UnifVar { id, init_level }, uerows)
         | (uerows, UnifEnumRows::UnifVar { id, init_level }) => {
+            // see [^check-unif-var-level]
+            if let UnifEnumRows::Constant(cst_id) = uerows {
+                let constant_level = state.table.get_erows_level(cst_id);
+                state.table.force_erows_updates(constant_level);
+
+                if state.table.get_erows_level(id) < constant_level {
+                    return Err(RowUnifError::VariableLevelMismatch {
+                        constant_id: cst_id,
+                        var_kind: VarKindDiscriminant::EnumRows,
+                    });
+                }
+            }
+
             state.table.assign_erows(id, uerows);
             Ok(())
         }
