@@ -952,6 +952,20 @@
           ```nickel
           (x | Foo) | Bar
           ```
+
+          This is useful in positions where one cannot apply multiple contracts,
+          such as an argument to another contract:
+
+          ```nickel
+          x | Array (std.contract.sequence [ Foo, Bar ])
+          ```
+
+          Or stored in a variable:
+
+          ```nickel
+          let C = std.contract.sequence [ Foo, Bar ] in
+          x | C
+          ```
         "%
       = fun contracts label value =>
         std.array.fold_right (fun contract => std.contract.apply contract label) value contracts,
