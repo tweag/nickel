@@ -202,7 +202,7 @@ pub enum UnifEnumRows {
 /// run in constant time again, as long as we don't unify with a rigid type variable.
 ///
 /// Variable levels data might correspond to different variable kinds (type, record rows and enum
-/// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [EnumRecordRows])
+/// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [UnifEnumRows])
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this type.
