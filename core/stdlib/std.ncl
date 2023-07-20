@@ -934,6 +934,41 @@
         "%
       = fun pred label value => if pred value then value else %blame% label,
 
+    Sequence
+      | doc m%"
+          Apply multiple contracts from left to right.
+
+          Type: `Array Contract -> Contract`
+          (for technical reasons, this function isn't actually statically typed)
+
+          # Examples
+
+          ```nickel
+          x | std.contract.Sequence [ Foo, Bar ]
+          ```
+
+          is equivalent to
+
+          ```nickel
+          (x | Foo) | Bar
+          ```
+
+          This is useful in positions where one cannot apply multiple contracts,
+          such as an argument to another contract:
+
+          ```nickel
+          x | Array (std.contract.Sequence [ Foo, Bar ])
+          ```
+
+          Or stored in a variable:
+
+          ```nickel
+          let C = std.contract.Sequence [ Foo, Bar ] in
+          x | C
+          ```
+        "%
+      = fun contracts label value =>
+        std.array.fold_right (fun contract => std.contract.apply contract label) value contracts,
     label
       | doc m%"
           The label submodule provides functions that manipulate the label
