@@ -764,6 +764,12 @@ impl ParseError {
             }),
         )
     }
+
+    #[cfg(feature = "nix-experimental")]
+    pub fn from_nix(error: &str, file_id: FileId) -> Self {
+        // XXX: fill in span
+        ParseError::ExternalFormatError(String::from("nix"), error.to_string(), None)
+    }
 }
 
 pub const INTERNAL_ERROR_MSG: &str =

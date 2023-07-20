@@ -1158,7 +1158,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix() => {
                 if let Term::Str(s) = &*t {
-                    let json = nix_ffi::nix_ffi::eval_to_json(&String::from(s));
+                    let json = nix_ffi::eval_to_json(&String::from(s))
+                        .map_err(|e| EvalError::Other(e.what().to_string(), pos))?;
                     Ok(Closure::atomic_closure(
                         serde_json::from_str(&json).expect("Nix should produce valid json"),
                     ))

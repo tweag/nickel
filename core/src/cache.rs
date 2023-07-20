@@ -596,7 +596,8 @@ impl Cache {
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
             #[cfg(feature = "nix-experimental")]
             InputFormat::Nix => {
-                let json = nix_ffi::nix_ffi::eval_to_json(self.files.source(file_id));
+                let json = nix_ffi::eval_to_json(self.files.source(file_id))
+                    .map_err(|e| ParseError::from_nix(e.what(), file_id))?;
                 serde_json::from_str(&json)
                     .map(|t| (attach_pos(t), ParseErrors::default()))
                     .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
