@@ -1,5 +1,5 @@
 //! Internal error types for typechecking.
-use super::{reporting, State, UnifType};
+use super::{reporting, State, UnifType, VarId};
 use crate::{
     error::TypecheckError,
     identifier::Ident,
@@ -30,6 +30,11 @@ pub enum RowUnifError {
     ConstMismatch(VarKindDiscriminant, usize, usize),
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
+    /// Tried to unify a constant with a unification variable with a strictly lower level.
+    VarLevelMismatch {
+        constant_id: VarId,
+        var_kind: VarKindDiscriminant,
+    },
 }
 
 impl RowUnifError {
@@ -53,6 +58,13 @@ impl RowUnifError {
             RowUnifError::WithConst(c, k, uty) => UnifError::WithConst(c, k, uty),
             RowUnifError::ConstMismatch(k, c1, c2) => UnifError::ConstMismatch(k, c1, c2),
             RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
+            RowUnifError::VarLevelMismatch {
+                constant_id,
+                var_kind,
+            } => UnifError::VarLevelMismatch {
+                constant_id,
+                var_kind,
+            },
         }
     }
 }
@@ -88,6 +100,11 @@ pub enum UnifError {
     DomainMismatch(UnifType, UnifType, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch(UnifType, UnifType, Box<UnifError>),
+    /// Tried to unify a constant with a unification variable with a strictly lower level.
+    VarLevelMismatch {
+        constant_id: VarId,
+        var_kind: VarKindDiscriminant,
+    },
 }
 
 impl UnifError {
@@ -213,6 +230,13 @@ impl UnifError {
                     pos_opt,
                 )
             }
+            UnifError::VarLevelMismatch {
+                constant_id,
+                var_kind,
+            } => TypecheckError::VarLevelMismatch {
+                type_var: reporting::cst_name(state.names, names, constant_id, var_kind),
+                pos: pos_opt,
+            },
         }
     }
 
@@ -245,8 +269,14 @@ impl UnifError {
         loop {
             match curr {
                 UnifError::DomainMismatch(
-                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
+                    uty2 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
                     err,
                 ) => {
                     utys = utys.or(Some((uty1, uty2)));
@@ -257,8 +287,14 @@ impl UnifError {
                     "typechecking::to_type_path(): domain mismatch error on a non arrow type"
                 ),
                 UnifError::CodomainMismatch(
-                    uty1 @ UnifType::Concrete(TypeF::Arrow(_, _)),
-                    uty2 @ UnifType::Concrete(TypeF::Arrow(_, _)),
+                    uty1 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
+                    uty2 @ UnifType::Concrete {
+                        types: TypeF::Arrow(_, _),
+                        ..
+                    },
                     err,
                 ) => {
                     utys = utys.or(Some((uty1, uty2)));

@@ -210,7 +210,7 @@ pub enum TypecheckError {
     ///
     /// For example, in a function like this:
     ///
-    /// ```ncl
+    /// ```nickel
     /// let f : forall a. { x: String, y: String } -> { x: String; a } =
     ///   fun r => r
     /// in ...
@@ -303,6 +303,38 @@ pub enum TypecheckError {
         /// The term that was in a flat type (the `5` in the example above).
         flat: RichTerm,
         /// The position of the entire type (the `{foo : 5}` in the example above).
+        pos: TermPos,
+    },
+    /// Unsound generalization.
+    ///
+    /// When typechecking polymorphic expressions, polymorphic variables introduced by a `forall`
+    /// are substituted with rigid type variables, which can only unify with a free unification
+    /// variable. However, the condition that the unification variable is free isn't enough.
+    ///
+    /// Consider the following example:
+    ///
+    /// ```nickel
+    /// (fun x => let y : forall a. a = x in (y : Number)) : _
+    /// ```
+    ///
+    /// This example must be rejected, as it is an identity function that casts any value to something
+    /// of type `Number`. It will typically fail with a contract error if applied to a string, for
+    /// example.
+    ///
+    /// But when `let y : forall a. a = x` is typechecked, `x` is affected to a free unification
+    /// variable `_a`, which isn't determined yet. The unsoundess comes from the fact that `_a` was
+    /// introduced **before** the block with the `forall a. a` annotation, and thus shouldn't be
+    /// allowed to be generalized (unified with a rigid type variable) at this point.
+    ///
+    /// Nickel uses an algorithm coming from the OCaml implementation, recognizing that the
+    /// discipline needed to reject those case is similar to region-based memory management. See
+    /// [crate::typecheck] for more details. This error indicates that a case similar to the above
+    /// example happened.
+    VarLevelMismatch {
+        /// The user-defined type variable (the rigid type variable during unification) that
+        /// couldn't be unified.
+        type_var: Ident,
+        /// The position of the expression that was being typechecked as `type_var`.
         pos: TermPos,
     },
 }
@@ -2082,6 +2114,31 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                             .collect()
                     ),
                 ]
+            }
+            TypecheckError::VarLevelMismatch {
+                type_var: constant,
+                pos,
+            } => {
+                let mut labels = mk_expr_label(&pos);
+
+                if let Some(span) = constant.pos.into_opt() {
+                    labels.push(secondary(&span).with_message("this polymorphic type"));
+                }
+
+                vec![Diagnostic::error()
+                    .with_message("invalid polymorphic generalization".to_string())
+                    .with_labels(labels)
+                    .with_notes(vec![
+                        "While the type of this expression is still undetermined, it appears \
+                            indirectly in the type of another expression introduced before \
+                            the `forall` block."
+                            .into(),
+                        format!(
+                            "The type of this expression escapes the scope of the \
+                                corresponding `forall` and can't be generalized to the \
+                                polymorphic type `{constant}`"
+                        ),
+                    ])]
             }
         }
     }

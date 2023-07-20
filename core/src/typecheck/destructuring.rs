@@ -10,7 +10,7 @@ use crate::{
 
 use super::{
     mk_uniftype, Context, Environment, GenericUnifRecordRowsIteratorItem, State, UnifRecordRows,
-    UnifType,
+    UnifType, VarLevelsData,
 };
 
 pub fn build_pattern_type_walk_mode(
@@ -57,7 +57,7 @@ fn build_pattern_type(
                 if let Some(l_ty) = ty_annot {
                     UnifType::from_type(l_ty.types, &ctxt.term_env)
                 } else {
-                    state.table.fresh_type_uvar()
+                    state.table.fresh_type_uvar(ctxt.var_level)
                 }
             }
         }
@@ -69,10 +69,13 @@ fn build_pattern_type(
             // but if/when we remove dynamic record tails this could
             // likely be made an empty tail with no impact.
             TypecheckMode::Walk => mk_uty_row!(; RecordRowsF::TailDyn),
-            TypecheckMode::Check => state.table.fresh_rrows_uvar(),
+            TypecheckMode::Check => state.table.fresh_rrows_uvar(ctxt.var_level),
         }
     } else {
-        UnifRecordRows::Concrete(RecordRowsF::Empty)
+        UnifRecordRows::Concrete {
+            rrows: RecordRowsF::Empty,
+            var_levels_data: VarLevelsData::new_no_uvars(),
+        }
     };
 
     let mut rows = pat.matches.iter().map(|m| match m {
@@ -101,7 +104,7 @@ fn build_pattern_type(
             | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
         ) => {
             let row_tys = build_pattern_type(state, ctxt, r_pat, mode)?;
-            let ty = UnifType::Concrete(TypeF::Record(row_tys));
+            let ty = UnifType::concrete(TypeF::Record(row_tys));
 
             // If there are type annotations within nested record patterns
             // then we need to unify them with the pattern type we've built
@@ -123,7 +126,7 @@ fn build_pattern_type(
     });
 
     rows.try_fold(tail, |tail, row: Result<UnifRecordRow, TypecheckError>| {
-        Ok(UnifRecordRows::Concrete(RecordRowsF::Extend {
+        Ok(UnifRecordRows::concrete(RecordRowsF::Extend {
             row: row?,
             tail: Box::new(tail),
         }))
@@ -163,12 +166,11 @@ pub fn inject_pattern_variables(
             // binding like:
             //
             // ```
-            //   let { foo = { bar = baz } } = { foo.bar = 1 } in ...
+            // let { foo = { bar = baz } } = { foo.bar = 1 } in ...
             // ```
             //
             // As such, we don't need to add it to the environment.
-
-            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+            let UnifType::Concrete { types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -180,7 +182,7 @@ pub fn inject_pattern_variables(
 
             env.insert(*alias, ty.clone());
 
-            let UnifType::Concrete(TypeF::Record(rs)) = ty else {
+            let UnifType::Concrete{ types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -216,13 +218,13 @@ impl From<&UnifRecordRows> for RecordTypes {
                         (m, None)
                     }
                     GenericUnifRecordRowsIteratorItem::TailDyn => {
-                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailDyn)))
+                        (m, Some(UnifRecordRows::concrete(RecordRowsF::TailDyn)))
                     }
                     GenericUnifRecordRowsIteratorItem::TailVar(v) => {
-                        (m, Some(UnifRecordRows::Concrete(RecordRowsF::TailVar(*v))))
+                        (m, Some(UnifRecordRows::concrete(RecordRowsF::TailVar(*v))))
                     }
-                    GenericUnifRecordRowsIteratorItem::TailUnifVar(n) => {
-                        (m, Some(UnifRecordRows::UnifVar(n)))
+                    GenericUnifRecordRowsIteratorItem::TailUnifVar { id, init_level } => {
+                        (m, Some(UnifRecordRows::UnifVar { id, init_level }))
                     }
                     GenericUnifRecordRowsIteratorItem::TailConstant(n) => {
                         (m, Some(UnifRecordRows::Constant(n)))
@@ -230,7 +232,7 @@ impl From<&UnifRecordRows> for RecordTypes {
                 });
         RecordTypes {
             known_types,
-            tail: tail.unwrap_or(UnifRecordRows::Concrete(RecordRowsF::Empty)),
+            tail: tail.unwrap_or(UnifRecordRows::concrete(RecordRowsF::Empty)),
         }
     }
 }
@@ -256,11 +258,11 @@ impl RecordTypes {
             types: Box::new(ty.clone()),
         });
         let rrows = rows.fold(tail, |tail, row| {
-            UnifRecordRows::Concrete(RecordRowsF::Extend {
+            UnifRecordRows::concrete(RecordRowsF::Extend {
                 row,
                 tail: Box::new(tail),
             })
         });
-        UnifType::Concrete(TypeF::Record(rrows))
+        UnifType::concrete(TypeF::Record(rrows))
     }
 }

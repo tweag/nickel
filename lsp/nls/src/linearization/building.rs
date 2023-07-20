@@ -128,7 +128,7 @@ impl<'b> Building<'b> {
                 id,
                 pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped
-                ty: UnifType::Concrete(TypeF::Dyn),
+                ty: UnifType::concrete(TypeF::Dyn),
                 kind: TermKind::RecordField {
                     record,
                     ident: *ident,

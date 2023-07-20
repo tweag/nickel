@@ -438,7 +438,10 @@ fn type_eq_bounded<E: TermEnvironment>(
     env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (GenericUnifType::Concrete(s1), GenericUnifType::Concrete(s2)) => match (s1, s2) {
+        (
+            GenericUnifType::Concrete { types: s1, .. },
+            GenericUnifType::Concrete { types: s2, .. },
+        ) => match (s1, s2) {
             (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
             (TypeF::Dyn, TypeF::Dyn)
             | (TypeF::Number, TypeF::Number)
@@ -509,16 +512,16 @@ fn type_eq_bounded<E: TermEnvironment>(
 
                 let (uty1_subst, uty2_subst) = match var_kind1 {
                     VarKind::Type => (
-                        body1.subst_type(var1, &GenericUnifType::Constant(cst_id)),
-                        body2.subst_type(var2, &GenericUnifType::Constant(cst_id)),
+                        body1.subst(var1, &GenericUnifType::Constant(cst_id)),
+                        body2.subst(var2, &GenericUnifType::Constant(cst_id)),
                     ),
                     VarKind::RecordRows { .. } => (
-                        body1.subst_rrows(var1, &GenericUnifRecordRows::Constant(cst_id)),
-                        body2.subst_rrows(var2, &GenericUnifRecordRows::Constant(cst_id)),
+                        body1.subst(var1, &GenericUnifRecordRows::Constant(cst_id)),
+                        body2.subst(var2, &GenericUnifRecordRows::Constant(cst_id)),
                     ),
                     VarKind::EnumRows => (
-                        body1.subst_erows(var1, &UnifEnumRows::Constant(cst_id)),
-                        body2.subst_erows(var2, &UnifEnumRows::Constant(cst_id)),
+                        body1.subst(var1, &UnifEnumRows::Constant(cst_id)),
+                        body2.subst(var2, &UnifEnumRows::Constant(cst_id)),
                     ),
                 };
 
@@ -528,12 +531,12 @@ fn type_eq_bounded<E: TermEnvironment>(
             // all type variables should have been substituted at this point, so we bail out.
             _ => false,
         },
-        (GenericUnifType::UnifVar(p1), GenericUnifType::UnifVar(p2)) => {
+        (GenericUnifType::UnifVar { id: id1, .. }, GenericUnifType::UnifVar { id: id2, .. }) => {
             debug_assert!(
                 false,
                 "we shouldn't come across unification variables during type equality computation"
             );
-            p1 == p2
+            id1 == id2
         }
         (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
         _ => false,

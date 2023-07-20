@@ -101,7 +101,7 @@ fn var_name(
 
 /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
 /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-fn cst_name(
+pub(super) fn cst_name(
     names: &NameTable,
     name_reg: &mut NameReg,
     id: VarId,
@@ -138,10 +138,10 @@ pub fn to_type(
         let rrows = rrows.into_root(table);
 
         match rrows {
-            UnifRecordRows::UnifVar(var_id) => RecordRows(RecordRowsF::TailVar(var_name(
+            UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(var_name(
                 reported_names,
                 names,
-                var_id,
+                id,
                 VarKindDiscriminant::RecordRows,
             ))),
             UnifRecordRows::Constant(c) => RecordRows(RecordRowsF::TailVar(cst_name(
@@ -150,8 +150,8 @@ pub fn to_type(
                 c,
                 VarKindDiscriminant::RecordRows,
             ))),
-            UnifRecordRows::Concrete(t) => {
-                let mapped = t.map_state(
+            UnifRecordRows::Concrete { rrows, .. } => {
+                let mapped = rrows.map_state(
                     |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                     |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
                     names,
@@ -170,10 +170,10 @@ pub fn to_type(
         let erows = erows.into_root(table);
 
         match erows {
-            UnifEnumRows::UnifVar(var_id) => EnumRows(EnumRowsF::TailVar(var_name(
+            UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(var_name(
                 reported_names,
                 names,
-                var_id,
+                id,
                 VarKindDiscriminant::EnumRows,
             ))),
             UnifEnumRows::Constant(c) => EnumRows(EnumRowsF::TailVar(cst_name(
@@ -182,9 +182,9 @@ pub fn to_type(
                 c,
                 VarKindDiscriminant::EnumRows,
             ))),
-            UnifEnumRows::Concrete(t) => {
-                let mapped =
-                    t.map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
+            UnifEnumRows::Concrete { erows, .. } => {
+                let mapped = erows
+                    .map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
                 EnumRows(mapped)
             }
         }
@@ -193,10 +193,10 @@ pub fn to_type(
     let ty = ty.into_root(table);
 
     match ty {
-        UnifType::UnifVar(p) => Types::from(TypeF::Var(var_name(
+        UnifType::UnifVar { id, .. } => Types::from(TypeF::Var(var_name(
             reported_names,
             names,
-            p,
+            id,
             VarKindDiscriminant::Type,
         ))),
         UnifType::Constant(c) => Types::from(TypeF::Var(cst_name(
@@ -205,8 +205,8 @@ pub fn to_type(
             c,
             VarKindDiscriminant::Type,
         ))),
-        UnifType::Concrete(t) => {
-            let mapped = t.map_state(
+        UnifType::Concrete { types, .. } => {
+            let mapped = types.map_state(
                 |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                 |rrows, names| rrows_to_type(table, reported_names, names, rrows),
                 |erows, names| erows_to_type(table, reported_names, names, erows),
