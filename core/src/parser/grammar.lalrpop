@@ -667,6 +667,11 @@ UOp: UnaryOp = {
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
     "trace" => UnaryOp::Trace(),
     "label_push_diag" => UnaryOp::LabelPushDiag(),
+    // XXX: there doesn't seem to be a way to hide lalrpop stuff behind feature flags
+    // SEE: https://github.com/lalrpop/lalrpop/issues/681
+    // this doesn't work:
+    // #[cfg(feature = "nix-experimental")]
+    "eval_nix" => UnaryOp::EvalNix(),
 };
 
 MatchCase: MatchCase = {
@@ -1087,6 +1092,8 @@ extern {
         "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
         "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
         "array_slice" => Token::Normal(NormalToken::ArraySlice),
+        // #[cfg(feature = "nix-experimental")]
+        "eval_nix" => Token::Normal(NormalToken::EvalNix),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

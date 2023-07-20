@@ -1233,6 +1233,10 @@ pub enum UnaryOp {
     /// This primop shouldn't be used directly by user a priori, but is used internally during e.g.
     /// contract application.
     LabelPushDiag(),
+
+    /// Evaluate a string of nix code into a resulting nickel value. Currently completely (strictly) evaluates the nix code, and must result in a value serializable into JSON.
+    #[cfg(feature = "nix-experimental")]
+    EvalNix(),
 }
 
 impl fmt::Display for UnaryOp {

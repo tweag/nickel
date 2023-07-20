@@ -16,7 +16,7 @@ use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
+    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record, nix_ffi,
     parser::utils::parse_number,
     position::TermPos,
     serialize,
@@ -1154,6 +1154,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(mk_type_error!("label_push_diag", "Label"))
                 }}
+            }
+            #[cfg(feature = "nix-experimental")]
+            UnaryOp::EvalNix() => {
+                if let Term::Str(s) = &*t {
+                    let json = nix_ffi::nix_ffi::eval_to_json(&String::from(s));
+                    Ok(Closure::atomic_closure(
+                        serde_json::from_str(&json).expect("Nix should produce valid json"),
+                    ))
+                } else {
+                    // Not using mk_type_error! because of a non-uniform message
+                    Err(EvalError::TypeError(
+                        String::from("String"),
+                        String::from("%eval_nix% takes a string of nix code as an argument"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }
             }
         }
     }
