@@ -1123,7 +1123,6 @@ pub trait ReifyAsUnifType {
 /// The typing context is a structure holding the scoped, environment-like data structures required
 /// to perform typechecking.
 ///
-/// The typing context currently includes , and the term environment.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Context {
     /// The typing environment, counterpart of the eval environment for typechecking
