@@ -307,7 +307,7 @@ pub enum TypecheckError {
     },
     /// Unsound generalization.
     ///
-    /// When typechecking polymorphic expressions, polymoprhic variables introduced by a `forall`
+    /// When typechecking polymorphic expressions, polymorphic variables introduced by a `forall`
     /// are substituted with rigid type variables, which can only unify with a free unification
     /// variable. However, the condition that the unification variable is free isn't enough.
     ///
@@ -317,7 +317,7 @@ pub enum TypecheckError {
     /// (fun x => let y : forall a. a = x in (y : Number)) : _
     /// ```
     ///
-    /// This example must be rejected, as it is an identity function casts any value to something
+    /// This example must be rejected, as it is an identity function that casts any value to something
     /// of type `Number`. It will typically fail with a contract error if applied to a string, for
     /// example.
     ///
