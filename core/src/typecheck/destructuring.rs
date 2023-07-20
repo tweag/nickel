@@ -104,7 +104,6 @@ fn build_pattern_type(
             | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
         ) => {
             let row_tys = build_pattern_type(state, ctxt, r_pat, mode)?;
-            //TODO: var_level, is it correct?
             let ty = UnifType::concrete(TypeF::Record(row_tys));
 
             // If there are type annotations within nested record patterns
@@ -171,8 +170,6 @@ pub fn inject_pattern_variables(
             // ```
             //
             // As such, we don't need to add it to the environment.
-
-            //TODO: var_level, is it correct?
             let UnifType::Concrete { types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
@@ -185,7 +182,6 @@ pub fn inject_pattern_variables(
 
             env.insert(*alias, ty.clone());
 
-            //TODO: var_level, is it correct?
             let UnifType::Concrete{ types: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
