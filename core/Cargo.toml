@@ -21,9 +21,11 @@ repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
 doc = ["dep:comrak"]
 format = ["dep:topiary", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
+nix-experimental = [ "dep:cxx", "dep:cxx-build" ]
 
 [build-dependencies]
 lalrpop.workspace = true
+cxx-build = { workspace = true, optional = true }
 
 [dependencies]
 lalrpop-util.workspace = true
@@ -32,6 +34,7 @@ simple-counter.workspace = true
 clap = { workspace = true, features = ["derive"] }
 codespan.workspace = true
 codespan-reporting.workspace = true
+cxx = { workspace = true, optional = true }
 logos.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

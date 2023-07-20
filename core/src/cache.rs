@@ -3,6 +3,7 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::nix_ffi;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
@@ -28,12 +29,15 @@ use std::time::SystemTime;
 use void::Void;
 
 /// Supported input formats.
-#[derive(Clone, Copy, Eq, Debug, PartialEq)]
+#[derive(Default, Clone, Copy, Eq, Debug, PartialEq)]
 pub enum InputFormat {
+    #[default]
     Nickel,
     Json,
     Yaml,
     Toml,
+    #[cfg(feature = "nix-experimental")]
+    Nix,
 }
 
 impl InputFormat {
@@ -44,6 +48,8 @@ impl InputFormat {
             Some("json") => Some(InputFormat::Json),
             Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
             Some("toml") => Some(InputFormat::Toml),
+            #[cfg(feature = "nix-experimental")]
+            Some("nix") => Some(InputFormat::Nix),
             _ => None,
         }
     }
@@ -520,7 +526,7 @@ impl Cache {
 
     /// Parse a source without querying nor populating the cache.
     pub fn parse_nocache(&self, file_id: FileId) -> Result<(RichTerm, ParseErrors), ParseError> {
-        self.parse_nocache_multi(file_id, InputFormat::Nickel)
+        self.parse_nocache_multi(file_id, InputFormat::default())
     }
 
     /// Parse a source without querying nor populating the cache. Support multiple formats.
@@ -588,6 +594,13 @@ impl Cache {
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
+            #[cfg(feature = "nix-experimental")]
+            InputFormat::Nix => {
+                let json = nix_ffi::nix_ffi::eval_to_json(self.files.source(file_id));
+                serde_json::from_str(&json)
+                    .map(|t| (attach_pos(t), ParseErrors::default()))
+                    .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files))
+            }
         }
     }
 
@@ -1297,7 +1310,7 @@ impl ImportResolver for Cache {
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let parent_path = parent.and_then(|p| self.get_path(p)).map(PathBuf::from);
         let path_buf = with_parent(path, parent_path);
-        let format = InputFormat::from_path(&path_buf).unwrap_or(InputFormat::Nickel);
+        let format = InputFormat::from_path_buf(&path_buf).unwrap_or_default();
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
                 path_buf.to_string_lossy().into_owned(),
