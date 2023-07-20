@@ -2128,7 +2128,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 }
 
                 vec![Diagnostic::error()
-                    .with_message(format!("invalid polymorphic generalization"))
+                    .with_message("invalid polymorphic generalization".to_string())
                     .with_labels(labels)
                     .with_notes(vec![
                         "While the type of this expression is still undetermined, it appears \

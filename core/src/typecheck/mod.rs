@@ -75,6 +75,7 @@ use std::{
     cmp::max,
     collections::{HashMap, HashSet},
     convert::TryInto,
+    num::NonZeroU16,
 };
 
 use self::linearization::{Linearization, Linearizer, StubHost};
@@ -100,13 +101,42 @@ pub type Environment = GenericEnvironment<Ident, UnifType>;
 
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Types>;
+
 /// Unification variable or type constants unique identifier.
 pub type VarId = usize;
+
 /// Variable levels. Levels are used in order to implement higher-rank polymorphism in a sound way:
 /// we need to associate to each unification variable and rigid type variable a level, which
 /// depends on when those variables were introduced, and to forbid some unifications if a condition
 /// on levels is not met.
-pub type VarLevel = u16;
+#[derive(Clone, Copy, Ord, Eq, PartialEq, PartialOrd, Debug)]
+pub struct VarLevel(NonZeroU16);
+
+impl VarLevel {
+    /// Special constant used for level upper bound to indicate that a type doesn't contain any
+    /// unification variable. It's equal to `1` and strictly greater than [MIN_LEVEL], so it's
+    /// strictly greater than any concrete variable level.
+    const NO_VAR: Self = VarLevel(NonZeroU16::MIN);
+    /// The first available variable level, `2`.
+    // unsafe is required because `unwrap()` is not usable in `const fn` code as of today in stable
+    // Rust.
+    // unsafe(): we must enforce the invariant that the argument `n` of `new_unchecked(n)` verifies
+    // `0 < n`. Indeed `0 < 2`.
+    const MIN_LEVEL: Self = unsafe { VarLevel(NonZeroU16::new_unchecked(2)) };
+    /// The maximum level. Used as an upper bound to indicate that nothing can be said about the
+    /// levels of the unification variables contained in a type.
+    const MAX_LEVEL: Self = VarLevel(NonZeroU16::MAX);
+
+    /// Increment the variable level by one. Panic if the maximum capacity of the underlying
+    /// numeric type is reached (currently, `u16::MAX`).
+    pub fn incr(&mut self) {
+        let new_value = self
+            .0
+            .checked_add(1)
+            .expect("reached the maxium unification variable level");
+        self.0 = new_value;
+    }
+}
 
 /// A table mapping variable IDs with their kind to names.
 pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
@@ -130,10 +160,19 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     UnifVar {
         /// The unique identifier of this variable in the unification table.
         id: VarId,
-        /// The initial variable level at which the variable was created. This information is
-        /// useful to compute upper bounds, see [VarLevelsData]. Note that the actual level of this
-        /// variable is stored in the unification table, and must satisfy `current_level <=
-        /// init_level` (the level of a variable can only decrease with time).
+        /// An upper bound on this variable level's, which usually correspond to the initial level
+        /// at which the variable was allocated, although this value might be bumped for some
+        /// variables by level updates.
+        ///
+        /// In a model where unification variables directly store a mutable level attribute, we
+        /// wouldn't need to duplicate this level information both here at the variable level and
+        /// in the unification. `init_level` is used to compute upper bounds without having to
+        /// thread the unification table around (in the `from`/`try_from` implementation for
+        /// unification types, typically).
+        ///
+        /// Note that the actual level of this variable is stored in the unification table, which
+        /// is the source of truth. The actual level must satisfy `current_level <= init_level`
+        /// (the level of a variable can only decrease with time).
         init_level: VarLevel,
     },
 }
@@ -158,20 +197,19 @@ pub enum UnifEnumRows {
     },
 }
 
-/// Metadata attached to composite types, which are used to delay potentially costly type
-/// traversals required to update the variable levels of the free unification variables of this
-/// type.
-/// Based on Didier Remy's algorithm for the OCaml typechecker, see [Efficient and insightful
+/// Metadata attached to unification types, which are used to delay and optimize potentially costly
+/// type traversals when updating the levels of the free unification variables of a type. Based on
+/// Didier Remy's algorithm for the OCaml typechecker, see [Efficient and insightful
 /// generalization](http://web.archive.org/web/20230525023637/https://okmij.org/ftp/ML/generalization.html).
 ///
-/// When unifying a variable with a composite type, we potentially have to update the levels of all
-/// the free unification variables contained in that type, which incur a full traversal of the
-/// type. The idea behind Didier Remy's algorithm is to delay those traversal, and use the values
-/// of `VarLevelData` to avoid doing unneeded work, to make variable unification run in constant
-/// time again.
+/// When unifying a variable with a composite type, we have to update the levels of all the free
+/// unification variables contained in that type, which naively incurs a full traversal of the
+/// type. The idea behind Didier Remy's algorithm is to delay such traversals, and use the values
+/// of `VarLevelData` to group traversals and avoid unneeded ones. This make variable unification
+/// run in constant time again, as long as we don't unify with a rigid type variable.
 ///
-/// We need to keep separate upper bounds for all 3 kinds of unification variable: type,
-/// record rows or enum rows.
+/// Variable levels data might correspond to different variable kinds (type, record rows and enum
+/// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [EnumRecordRows])
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
     /// Upper bound on the variable levels of free unification variables contained in this
@@ -186,7 +224,7 @@ pub struct VarLevelsData {
 
 impl Default for VarLevelsData {
     fn default() -> Self {
-        VarLevelsData::new_from_bound(VarLevel::MAX)
+        VarLevelsData::new_from_bound(VarLevel::MAX_LEVEL)
     }
 }
 
@@ -203,100 +241,94 @@ impl VarLevelsData {
     }
 
     pub fn new_no_uvars() -> Self {
-        Self::new_from_bound(VarLevel::MIN)
+        Self::new_from_bound(VarLevel::NO_VAR)
     }
 }
 
-//TODO: doc
+// Unification types and variants that store an upper bound on the level of the unification
+// variables they contain, or for which an upper bound can be computed quickly (in constant time).
 trait VarLevelUpperBound {
-    fn var_level_max(&self) -> VarLevel;
+    // Return an upper bound on the level of the unification variables contained in `self`.
+    // Depending on the implementer, the level might refer to different kind of unification
+    // variables (type, record rows or enum rows).
+    fn var_level_upper_bound(&self) -> VarLevel;
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifType<E> {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             GenericUnifType::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
             GenericUnifType::UnifVar { init_level, .. } => *init_level,
-            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => {
-                VarLevelsData::new_no_uvars().upper_bound
-            }
+            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             TypeF::Dyn | TypeF::Bool | TypeF::Number | TypeF::String | TypeF::Symbol => {
-                VarLevelsData::new_no_uvars().upper_bound
+                VarLevel::NO_VAR
             }
-            TypeF::Arrow(domain, codomain) => max(domain.var_level_max(), codomain.var_level_max()),
-            TypeF::Forall { body, .. } => body.var_level_max(),
-            TypeF::Enum(erows) => erows.var_level_max(),
-            TypeF::Record(rrows) => rrows.var_level_max(),
-            TypeF::Dict { type_fields, .. } => type_fields.var_level_max(),
-            TypeF::Array(ty_elts) => ty_elts.var_level_max(),
+            TypeF::Arrow(domain, codomain) => max(domain.var_level_upper_bound(), codomain.var_level_upper_bound()),
+            TypeF::Forall { body, .. } => body.var_level_upper_bound(),
+            TypeF::Enum(erows) => erows.var_level_upper_bound(),
+            TypeF::Record(rrows) => rrows.var_level_upper_bound(),
+            TypeF::Dict { type_fields, .. } => type_fields.var_level_upper_bound(),
+            TypeF::Array(ty_elts) => ty_elts.var_level_upper_bound(),
             TypeF::Wildcard(_)
             | TypeF::Var(_)
             // This should be unreachable, but let's not panic in release mode nonetheless
-            | TypeF::Flat(_) => VarLevelsData::new_no_uvars().upper_bound,
+            | TypeF::Flat(_) => VarLevel::NO_VAR,
         }
     }
 }
 
 impl VarLevelUpperBound for UnifEnumRows {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             UnifEnumRows::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
             UnifEnumRows::UnifVar { init_level, .. } => *init_level,
-            UnifEnumRows::Constant(_) => {
-                //TODO: a direct method for that
-                VarLevelsData::new_no_uvars().upper_bound
-            }
+            UnifEnumRows::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
 impl VarLevelUpperBound for UnifEnumRowsUnrolling {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
-            EnumRowsF::Empty | EnumRowsF::TailVar(_) => VarLevelsData::new_no_uvars().upper_bound,
-            EnumRowsF::Extend { row: _, tail } => tail.var_level_max(),
+            EnumRowsF::Empty | EnumRowsF::TailVar(_) => VarLevel::NO_VAR,
+            EnumRowsF::Extend { row: _, tail } => tail.var_level_upper_bound(),
         }
     }
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRows<E> {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             GenericUnifRecordRows::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
             GenericUnifRecordRows::UnifVar { init_level, .. } => *init_level,
-            GenericUnifRecordRows::Constant(_) => {
-                //TODO: a direct method for that
-                VarLevelsData::new_no_uvars().upper_bound
-            }
+            GenericUnifRecordRows::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
 impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E> {
-    fn var_level_max(&self) -> VarLevel {
+    fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
-            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => {
-                VarLevelsData::new_no_uvars().upper_bound
-            }
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => VarLevel::NO_VAR,
             RecordRowsF::Extend {
                 row: RecordRowF { id: _, types },
                 tail,
-            } => max(tail.var_level_max(), types.var_level_max()),
+            } => max(tail.var_level_upper_bound(), types.var_level_upper_bound()),
         }
     }
 }
@@ -352,28 +384,11 @@ type GenericUnifTypeUnrolling<E> =
 impl<E: TermEnvironment> GenericUnifType<E> {
     /// Create a concrete generic unification type with default values for variable levels.
     pub fn concrete(types: GenericUnifTypeUnrolling<E>) -> Self {
-        let upper_bound = types.var_level_max();
+        let upper_bound = types.var_level_upper_bound();
 
         GenericUnifType::Concrete {
             types,
             var_levels_data: VarLevelsData::new_from_bound(upper_bound),
-        }
-    }
-
-    /// Doc: todo. Return the var levels data of a general unification type: either it's concrete
-    /// and thus this is just a getter, or the level is determined for other cases.
-    pub fn var_levels_data(&self) -> VarLevelsData {
-        match self {
-            GenericUnifType::Concrete {
-                var_levels_data, ..
-            } => var_levels_data.clone(),
-            GenericUnifType::Contract(..) | GenericUnifType::Constant(_) => {
-                VarLevelsData::new_no_uvars()
-            }
-            GenericUnifType::UnifVar { init_level, .. } => VarLevelsData {
-                upper_bound: *init_level,
-                pending: None,
-            },
         }
     }
 }
@@ -381,26 +396,11 @@ impl<E: TermEnvironment> GenericUnifType<E> {
 impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     /// Create a concrete generic unification type with default values for variable levels.
     pub fn concrete(types: GenericUnifRecordRowsUnrolling<E>) -> Self {
-        let upper_bound = types.var_level_max();
+        let upper_bound = types.var_level_upper_bound();
 
         GenericUnifRecordRows::Concrete {
             rrows: types,
             var_levels_data: VarLevelsData::new_from_bound(upper_bound),
-        }
-    }
-
-    /// Doc: todo. Return the var levels data of a general unification type: either it's concrete
-    /// and thus this is just a getter, or the level is determined for other cases.
-    pub fn var_levels_data(&self) -> VarLevelsData {
-        match self {
-            GenericUnifRecordRows::Concrete {
-                var_levels_data, ..
-            } => var_levels_data.clone(),
-            GenericUnifRecordRows::Constant(_) => VarLevelsData::new_no_uvars(),
-            GenericUnifRecordRows::UnifVar { init_level, .. } => VarLevelsData {
-                upper_bound: *init_level,
-                pending: None,
-            },
         }
     }
 }
@@ -487,7 +487,7 @@ impl UnifEnumRows {
 
     /// Create a concrete generic unification type with default values for variable levels.
     pub fn concrete(erows: UnifEnumRowsUnrolling) -> Self {
-        let upper_bound = erows.var_level_max();
+        let upper_bound = erows.var_level_upper_bound();
 
         UnifEnumRows::Concrete {
             erows,
@@ -518,14 +518,16 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
-// A type which contains variables which can be substitued with values of type `T`.
+// A type which contains variables that can be substitued with values of type `T`.
 trait Subst<T: Clone>: Sized {
+    // Substitute all variables of identifier `id` with `to`.
     fn subst(self, id: &Ident, to: &T) -> Self {
         self.subst_levels(id, to).0
     }
 
-    // Must be filled by implementers. In addition to performing substitution, this method bubbles
-    // up a potential new upper bound for the variable levels.
+    // Must be filled by implementers of this trait.
+    // In addition to performing substitution, this method threads variable levels upper bounds to
+    // compute the new bounds.
     fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevel);
 }
 
@@ -536,16 +538,14 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
                 types: TypeF::Var(var_id),
                 var_levels_data,
             } if var_id == *id => {
-                debug_assert!(
-                    var_levels_data.upper_bound == VarLevelsData::new_no_uvars().upper_bound
-                );
-                (to.clone(), to.var_level_max())
+                debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
+                (to.clone(), to.var_level_upper_bound())
             }
             GenericUnifType::Concrete {
                 types,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_ty = GenericUnifType::Concrete {
                     types: types.map_state(
@@ -571,7 +571,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
                 (new_ty, upper_bound)
             }
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -585,7 +585,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
                 rrows,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_rrows = rrows.map_state(
                     |ty, upper_bound| {
@@ -612,7 +612,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
                 (new_urrows, upper_bound)
             }
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -626,7 +626,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
                 types,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_ty = types.map_state(
                     |ty, upper_bound| {
@@ -651,7 +651,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
                 (new_uty, upper_bound)
             }
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -665,14 +665,14 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
                 rrows: RecordRowsF::TailVar(var_id),
                 var_levels_data,
             } if var_id == *id => {
-                debug_assert!(var_levels_data.upper_bound == VarLevel::MIN);
-                (to.clone(), to.var_level_max())
+                debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
+                (to.clone(), to.var_level_upper_bound())
             }
             GenericUnifRecordRows::Concrete {
                 rrows,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_rrows = rrows.map_state(
                     |ty, upper_bound| {
@@ -699,7 +699,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
                 (new_urrows, upper_bound)
             }
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -713,7 +713,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
                 types,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_ty = types.map_state(
                     |ty, upper_bound| {
@@ -745,7 +745,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
                 (new_uty, upper_bound)
             }
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -759,7 +759,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
                 rrows,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_rrows = rrows.map_state(
                     |ty, upper_bound| {
@@ -787,7 +787,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
             }
 
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -801,14 +801,14 @@ impl Subst<UnifEnumRows> for UnifEnumRows {
                 erows: EnumRowsF::TailVar(var_id),
                 var_levels_data,
             } if var_id == *id => {
-                debug_assert!(var_levels_data.upper_bound == VarLevel::MIN);
-                (to.clone(), to.var_level_max())
+                debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
+                (to.clone(), to.var_level_upper_bound())
             }
             UnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => {
-                let mut upper_bound = VarLevel::MIN;
+                let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_erows = erows.map_state(
                     |erows, upper_bound| {
@@ -831,7 +831,7 @@ impl Subst<UnifEnumRows> for UnifEnumRows {
             }
 
             _ => {
-                let upper_bound = self.var_level_max();
+                let upper_bound = self.var_level_upper_bound();
                 (self, upper_bound)
             }
         }
@@ -984,7 +984,7 @@ impl From<UnifTypeUnrolling> for UnifType {
     fn from(types: UnifTypeUnrolling) -> Self {
         debug_assert!(!matches!(types, TypeF::Flat(_)));
 
-        let var_level_max = types.var_level_max();
+        let var_level_max = types.var_level_upper_bound();
 
         UnifType::Concrete {
             types,
@@ -995,7 +995,7 @@ impl From<UnifTypeUnrolling> for UnifType {
 
 impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
     fn from(rrows: RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>) -> Self {
-        let var_level_max = rrows.var_level_max();
+        let var_level_max = rrows.var_level_upper_bound();
 
         UnifRecordRows::Concrete {
             rrows,
@@ -1132,7 +1132,7 @@ impl Context {
         Context {
             type_env: Environment::new(),
             term_env: SimpleTermEnvironment::new(),
-            var_level: 0,
+            var_level: VarLevel::MIN_LEVEL,
         }
     }
 }
@@ -1195,7 +1195,7 @@ pub fn mk_initial_ctxt(
     Ok(Context {
         type_env,
         term_env,
-        var_level: 0,
+        var_level: VarLevel::MIN_LEVEL,
     })
 }
 
@@ -1976,7 +1976,7 @@ fn check<L: Linearizer>(
                         type_fields: rec_ty,
                         ..
                     },
-                var_levels_data,
+                ..
             } = root_ty
             {
                 // Checking for a dictionary
@@ -2593,10 +2593,7 @@ fn rrows_add(
     let rrows = rrows.into_root(state.table);
 
     match rrows {
-        UnifRecordRows::Concrete {
-            rrows,
-            var_levels_data,
-        } => match rrows {
+        UnifRecordRows::Concrete { rrows, .. } => match rrows {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
                 Err(RowUnifError::MissingRow(*id))
             }
@@ -2615,10 +2612,7 @@ fn rrows_add(
                 }
             }
         },
-        UnifRecordRows::UnifVar {
-            id: var_id,
-            init_level,
-        } => {
+        UnifRecordRows::UnifVar { id: var_id, .. } => {
             let mut excluded = state.constr.get(&var_id).cloned().unwrap_or_default();
             if excluded.contains(id) {
                 return Err(RowUnifError::UnsatConstr(*id, Some(*ty)));
@@ -2668,10 +2662,7 @@ fn erows_add(
     let uerows = uerows.into_root(state.table);
 
     match uerows {
-        UnifEnumRows::Concrete {
-            erows,
-            var_levels_data,
-        } => match erows {
+        UnifEnumRows::Concrete { erows, .. } => match erows {
             EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(*id)),
             EnumRowsF::Extend { row, tail } => {
                 if *id == row {
@@ -2685,10 +2676,7 @@ fn erows_add(
                 }
             }
         },
-        UnifEnumRows::UnifVar {
-            id: var_id,
-            init_level,
-        } => {
+        UnifEnumRows::UnifVar { id: var_id, .. } => {
             let tail_var_id = state.table.fresh_erows_var_id(var_level);
             let tail_var = UnifEnumRows::UnifVar {
                 id: tail_var_id,
@@ -2740,11 +2728,11 @@ pub fn unify(
         (
             UnifType::Concrete {
                 types: s1,
-                var_levels_data: var_levels1,
+                var_levels_data: _,
             },
             UnifType::Concrete {
                 types: s2,
-                var_levels_data: var_levels2,
+                var_levels_data: _,
             },
         ) => match (s1, s2) {
             (TypeF::Dyn, TypeF::Dyn)
@@ -2889,7 +2877,7 @@ pub fn unify_rrows(
         (
             UnifRecordRows::Concrete {
                 rrows: rrows1,
-                var_levels_data: var_levels1,
+                var_levels_data: _,
             },
             UnifRecordRows::Concrete {
                 rrows: rrows2,
@@ -2953,8 +2941,8 @@ pub fn unify_rrows(
                 unify_rrows(state, ctxt, *tail, t2_tail)
             }
         },
-        (UnifRecordRows::UnifVar { id, init_level }, urrows)
-        | (urrows, UnifRecordRows::UnifVar { id, init_level }) => {
+        (UnifRecordRows::UnifVar { id, init_level: _ }, urrows)
+        | (urrows, UnifRecordRows::UnifVar { id, init_level: _ }) => {
             // see [^check-unif-var-level]
             if let UnifRecordRows::Constant(cst_id) = urrows {
                 let constant_level = state.table.get_rrows_level(cst_id);
@@ -3001,7 +2989,7 @@ pub fn unify_erows(
         (
             UnifEnumRows::Concrete {
                 erows: erows1,
-                var_levels_data: var_levels1,
+                var_levels_data: _,
             },
             UnifEnumRows::Concrete {
                 erows: erows2,
@@ -3031,8 +3019,8 @@ pub fn unify_erows(
                 unify_erows(state, var_level, *tail, t2_tail)
             }
         },
-        (UnifEnumRows::UnifVar { id, init_level }, uerows)
-        | (uerows, UnifEnumRows::UnifVar { id, init_level }) => {
+        (UnifEnumRows::UnifVar { id, init_level: _ }, uerows)
+        | (uerows, UnifEnumRows::UnifVar { id, init_level: _ }) => {
             // see [^check-unif-var-level]
             if let UnifEnumRows::Constant(cst_id) = uerows {
                 let constant_level = state.table.get_erows_level(cst_id);
@@ -3097,9 +3085,9 @@ fn instantiate_foralls(
     ty = ty.into_root(state.table);
 
     // We are instantiating a polymorphic type: it's precisely the place where we have to increment
-    // the variable level, to prevent already existing unification variables to unify with rigid
-    // type variables introduced afterwards.
-    ctxt.var_level += 1;
+    // the variable level, to prevent already existing unification variables to unify with the
+    // rigid type variables introduced here.
+    ctxt.var_level.incr();
 
     while let UnifType::Concrete {
         types: TypeF::Forall {
@@ -4010,7 +3998,7 @@ pub fn constr_unify_rrows(
                 rrows: RecordRowsF::Extend { tail, .. },
                 ..
             } => constr_unify_rrows(constr, var_id, tail),
-            UnifRecordRows::UnifVar { id, init_level } if *id != var_id => {
+            UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
                 if let Some(u_constr) = constr.get_mut(id) {
                     u_constr.extend(p_constr.into_iter());
                 } else {
