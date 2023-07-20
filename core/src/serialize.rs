@@ -273,94 +273,91 @@ mod tests {
         prog.eval_full().expect("program eval should succeed")
     }
 
-    macro_rules! assert_json_eq {
-        ( $term:expr, $result:expr ) => {
-            assert_eq!(
-                serde_json::to_string(&eval($term)).unwrap(),
-                serde_json::to_string(&$result).unwrap()
-            )
-        };
+    #[track_caller]
+    fn assert_json_eq<T: Serialize>(term: &str, expected: T) {
+        assert_eq!(
+            serde_json::to_string(&eval(term)).unwrap(),
+            serde_json::to_string(&expected).unwrap()
+        )
     }
 
-    macro_rules! assert_nickel_eq {
-        ( $term:expr, $result:expr ) => {
-            assert_eq!(
-                VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
-                    .eval(
-                        mk_term::op2(BinaryOp::Eq(), $term, $result),
-                        &Environment::new(),
-                    )
-                    .map(Term::from),
-                Ok(Term::Bool(true))
-            )
-        };
+    #[track_caller]
+    fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
+        assert_eq!(
+            VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
+                .eval(
+                    mk_term::op2(BinaryOp::Eq(), term, expected),
+                    &Environment::new(),
+                )
+                .map(Term::from),
+            Ok(Term::Bool(true))
+        )
     }
 
-    macro_rules! assert_pass_validation {
-        ( $format:expr, $term:expr, true) => {
-            validate($format, &eval($term)).unwrap();
-        };
-        ( $format:expr, $term:expr, false) => {
-            validate($format, &eval($term)).unwrap_err();
-        };
+    #[track_caller]
+    fn assert_pass_validation(format: ExportFormat, term: &str) {
+        validate(format, &eval(term)).unwrap();
     }
 
-    macro_rules! assert_involutory {
-        ( $term:expr ) => {
-            let evaluated = eval($term);
-            let from_json: RichTerm =
-                serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
-            let from_yaml: RichTerm =
-                serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
-            let from_toml: RichTerm =
-                toml::from_str(&format!("{}", &toml::to_string(&evaluated).unwrap())).unwrap();
+    #[track_caller]
+    fn assert_fail_validation(format: ExportFormat, term: &str) {
+        validate(format, &eval(term)).unwrap_err();
+    }
 
-            assert_nickel_eq!(from_json, evaluated.clone());
-            assert_nickel_eq!(from_yaml, evaluated.clone());
-            assert_nickel_eq!(from_toml, evaluated);
-        };
+    #[track_caller]
+    fn assert_involutory(term: &str) {
+        let evaluated = eval(term);
+        let from_json: RichTerm =
+            serde_json::from_str(&serde_json::to_string(&evaluated).unwrap()).unwrap();
+        let from_yaml: RichTerm =
+            serde_yaml::from_str(&serde_yaml::to_string(&evaluated).unwrap()).unwrap();
+        let from_toml: RichTerm = toml::from_str(&toml::to_string(&evaluated).unwrap()).unwrap();
+
+        assert_nickel_eq(from_json, evaluated.clone());
+        assert_nickel_eq(from_yaml, evaluated.clone());
+        assert_nickel_eq(from_toml, evaluated);
     }
 
     #[test]
     fn basic() {
-        assert_json_eq!("1 + 1", 2);
+        assert_json_eq("1 + 1", 2);
 
         let null: Option<()> = None;
-        assert_json_eq!("null", null);
+        assert_json_eq("null", null);
 
-        assert_json_eq!("if true then false else true", false);
-        assert_json_eq!(r##""Hello, %{"world"}!""##, "Hello, world!");
-        assert_json_eq!("'foo", "foo");
+        assert_json_eq("if true then false else true", false);
+        assert_json_eq(r##""Hello, %{"world"}!""##, "Hello, world!");
+        assert_json_eq("'foo", "foo");
     }
 
     #[test]
     fn arrays() {
-        assert_json_eq!("[]", json!([]));
-        assert_json_eq!("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
-        assert_json_eq!(
+        assert_json_eq("[]", json!([]));
+        assert_json_eq("[null, (1+1), (2+2), (3+3)]", json!([null, 2, 4, 6]));
+        assert_json_eq(
             r##"['a, ("b" ++ "c"), "d%{"e"}f", "g"]"##,
-            json!(["a", "bc", "def", "g"])
+            json!(["a", "bc", "def", "g"]),
         );
-        assert_json_eq!(
+        assert_json_eq(
             r#"std.array.fold_right (fun elt acc => [[elt]] @ acc) [] [1, 2, 3, 4]"#,
-            json!([[1], [2], [3], [4]])
+            json!([[1], [2], [3], [4]]),
         );
-        assert_json_eq!("[\"a\", 1, false, 'foo]", json!(["a", 1, false, "foo"]));
+        assert_json_eq("[\"a\", 1, false, 'foo]", json!(["a", 1, false, "foo"]));
     }
 
     #[test]
     fn records() {
-        assert_json_eq!(
+        assert_json_eq(
             "{a = 1, b = 2+2, c = 3, d = null}",
-            json!({"a": 1, "b": 4, "c": 3, "d": null})
+            json!({"a": 1, "b": 4, "c": 3, "d": null}),
         );
 
-        assert_json_eq!(
+        assert_json_eq(
             "{a = {} & {b = {c = if true then 'richtig else 'falsch}}}",
-            json!({"a": {"b": {"c": "richtig"}}})
+            json!({"a": {"b": {"c": "richtig"}}}),
         );
 
-        assert_json_eq!(
+        assert_json_eq(
             "{foo = let z = 0.5 + 0.5 in z, bar = [\"str\", true || false], baz = {subfoo = !false} & {subbar = 1 - 1}}",
             json!({"foo": 1, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0}})
         );
@@ -368,44 +365,43 @@ mod tests {
 
     #[test]
     fn meta_values() {
-        assert_json_eq!(
+        assert_json_eq(
             "{a | default = 1, b | doc \"doc\" = 2+2, c = 3}",
-            json!({"a": 1, "b": 4, "c": 3})
+            json!({"a": 1, "b": 4, "c": 3}),
         );
 
-        assert_json_eq!(
+        assert_json_eq(
             "{a = {b | default = {}} & {b.c | default = (if true then 'faux else 'vrai)}}",
-            json!({"a": {"b": {"c": "faux"}}})
+            json!({"a": {"b": {"c": "faux"}}}),
         );
 
-        assert_json_eq!(
+        assert_json_eq(
             "{baz | default = {subfoo | default = !false} & {subbar | default = 1 - 1}}",
-            json!({"baz": {"subfoo": true, "subbar": 0}})
+            json!({"baz": {"subfoo": true, "subbar": 0}}),
         );
 
-        assert_json_eq!(
+        assert_json_eq(
             "{a = {b | default = {}} & {b.c | not_exported = false} & {b.d = true}}",
-            json!({"a": {"b": {"d": true}}})
+            json!({"a": {"b": {"d": true}}}),
         );
     }
 
     #[test]
     fn prevalidation() {
-        assert_pass_validation!(ExportFormat::Json, "{a = 1, b = {c = fun x => x}}", false);
-        assert_pass_validation!(
+        assert_fail_validation(ExportFormat::Json, "{a = 1, b = {c = fun x => x}}");
+        assert_fail_validation(
             ExportFormat::Json,
             "{foo.bar = let y = \"a\" in y, b = [[fun x => x]]}",
-            false
         );
-        assert_pass_validation!(ExportFormat::Json, "{foo = null}", true);
-        assert_pass_validation!(ExportFormat::Toml, "{foo = null}", false);
+        assert_pass_validation(ExportFormat::Json, "{foo = null}");
+        assert_fail_validation(ExportFormat::Toml, "{foo = null}");
     }
 
     #[test]
     fn involution() {
-        assert_involutory!("{val = 1 + 1}");
-        assert_involutory!("{val = \"Some string\"}");
-        assert_involutory!("{val = [\"a\", 3, []]}");
-        assert_involutory!("{a.foo.bar = \"2\", b = false, c = [{d = \"e\"}, {d = \"f\"}]}");
+        assert_involutory("{val = 1 + 1}");
+        assert_involutory("{val = \"Some string\"}");
+        assert_involutory("{val = [\"a\", 3, []]}");
+        assert_involutory("{a.foo.bar = \"2\", b = false, c = [{d = \"e\"}, {d = \"f\"}]}");
     }
 }
