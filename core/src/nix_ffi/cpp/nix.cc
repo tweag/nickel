@@ -23,9 +23,7 @@ struct DummyEvalCommand : virtual EvalCommand {
 
 };
 
-// XXX: properly propagating errors from nix code to nickel. Malformed nix code shouldn't cause a crash.
-//      can we even get span information?
-
+// FIXME: error messages have an extra `error:` on them
 rust::String eval_to_json(rust::Str nixCode)
 {
   auto dummy = DummyEvalCommand({});
