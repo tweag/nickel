@@ -31,7 +31,7 @@ pub enum RowUnifError {
     /// An unbound type variable was referenced.
     UnboundTypeVariable(Ident),
     /// Tried to unify a constant with a unification variable with a strictly lower level.
-    VariableLevelMismatch {
+    VarLevelMismatch {
         constant_id: VarId,
         var_kind: VarKindDiscriminant,
     },
@@ -58,10 +58,10 @@ impl RowUnifError {
             RowUnifError::WithConst(c, k, uty) => UnifError::WithConst(c, k, uty),
             RowUnifError::ConstMismatch(k, c1, c2) => UnifError::ConstMismatch(k, c1, c2),
             RowUnifError::UnboundTypeVariable(id) => UnifError::UnboundTypeVariable(id),
-            RowUnifError::VariableLevelMismatch {
+            RowUnifError::VarLevelMismatch {
                 constant_id,
                 var_kind,
-            } => UnifError::VariableLevelMismatch {
+            } => UnifError::VarLevelMismatch {
                 constant_id,
                 var_kind,
             },
@@ -101,7 +101,7 @@ pub enum UnifError {
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch(UnifType, UnifType, Box<UnifError>),
     /// Tried to unify a constant with a unification variable with a strictly lower level.
-    VariableLevelMismatch {
+    VarLevelMismatch {
         constant_id: VarId,
         var_kind: VarKindDiscriminant,
     },
@@ -230,10 +230,10 @@ impl UnifError {
                     pos_opt,
                 )
             }
-            UnifError::VariableLevelMismatch {
+            UnifError::VarLevelMismatch {
                 constant_id,
                 var_kind,
-            } => TypecheckError::VariableLevelMismatch {
+            } => TypecheckError::VarLevelMismatch {
                 type_var: reporting::cst_name(state.names, names, constant_id, var_kind),
                 pos: pos_opt,
             },

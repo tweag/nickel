@@ -2835,7 +2835,7 @@ pub fn unify(
                 state.table.force_type_updates(constant_level);
 
                 if state.table.get_level(id) < constant_level {
-                    return Err(UnifError::VariableLevelMismatch {
+                    return Err(UnifError::VarLevelMismatch {
                         constant_id: cst_id,
                         var_kind: VarKindDiscriminant::Type,
                     });
@@ -2949,7 +2949,7 @@ pub fn unify_rrows(
                 state.table.force_rrows_updates(constant_level);
 
                 if state.table.get_rrows_level(id) < constant_level {
-                    return Err(RowUnifError::VariableLevelMismatch {
+                    return Err(RowUnifError::VarLevelMismatch {
                         constant_id: cst_id,
                         var_kind: VarKindDiscriminant::RecordRows,
                     });
@@ -3027,7 +3027,7 @@ pub fn unify_erows(
                 state.table.force_erows_updates(constant_level);
 
                 if state.table.get_erows_level(id) < constant_level {
-                    return Err(RowUnifError::VariableLevelMismatch {
+                    return Err(RowUnifError::VarLevelMismatch {
                         constant_id: cst_id,
                         var_kind: VarKindDiscriminant::EnumRows,
                     });

@@ -330,7 +330,7 @@ pub enum TypecheckError {
     /// discipline needed to reject those case is similar to region-based memory management. See
     /// [crate::typecheck] for more details. This error indicates that a case similar to the above
     /// example happened.
-    VariableLevelMismatch {
+    VarLevelMismatch {
         /// The user-defined type variable (the rigid type variable during unification) that
         /// couldn't be unified.
         type_var: Ident,
@@ -2115,15 +2115,13 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     ),
                 ]
             }
-            TypecheckError::VariableLevelMismatch {
+            TypecheckError::VarLevelMismatch {
                 type_var: constant,
                 pos,
             } => {
                 let mut labels = mk_expr_label(&pos);
 
-                println!("Position of constant: {:?}", constant.pos);
                 if let Some(span) = constant.pos.into_opt() {
-                    println!("Adding to label position");
                     labels.push(secondary(&span).with_message("this polymorphic type"));
                 }
 

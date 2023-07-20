@@ -280,9 +280,8 @@ impl PartialEq<Error> for ErrorExpectation {
             },
             (
                 TypecheckVariableLevelMismatch { type_var: ident },
-                Error::TypecheckError(TypecheckError::VariableLevelMismatch {
-                    type_var: constant,
-                    ..
+                Error::TypecheckError(TypecheckError::VarLevelMismatch {
+                    type_var: constant, ..
                 }),
             ) => ident == constant.label(),
             (_, _) => false,
