@@ -944,12 +944,12 @@ pub fn constr_unify_rrows(
     }
 }
 
-/// Types which can be unified, with error type `E`.
+/// Types which can be unified.
 pub(super) trait Unify {
     type Error;
 
     /// Try to unify two types. Unification corresponds to imposing an equality constraints on
-    /// those types.
+    /// those types. This can fail if the types can't be matched.
     fn unify(self, t2: Self, state: &mut State, ctxt: &Context) -> Result<(), Self::Error>;
 }
 
