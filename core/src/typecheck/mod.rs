@@ -152,7 +152,7 @@ pub type GenericUnifRecordRowsUnrolling<E> =
 pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     Concrete {
         rrows: GenericUnifRecordRowsUnrolling<E>,
-        /// Additional metadata related to unification variable levels update. See [VarLevelData].
+        /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
     Constant(VarId),
@@ -160,19 +160,8 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     UnifVar {
         /// The unique identifier of this variable in the unification table.
         id: VarId,
-        /// An upper bound on this variable level's, which usually correspond to the initial level
-        /// at which the variable was allocated, although this value might be bumped for some
-        /// variables by level updates.
-        ///
-        /// In a model where unification variables directly store a mutable level attribute, we
-        /// wouldn't need to duplicate this level information both here at the variable level and
-        /// in the unification. `init_level` is used to compute upper bounds without having to
-        /// thread the unification table around (in the `from`/`try_from` implementation for
-        /// unification types, typically).
-        ///
-        /// Note that the actual level of this variable is stored in the unification table, which
-        /// is the source of truth. The actual level must satisfy `current_level <= init_level`
-        /// (the level of a variable can only decrease with time).
+        /// The initial variable level at which the variable was created. See
+        /// [GenericUnifType::UnifVar].
         init_level: VarLevel,
     },
 }
@@ -188,11 +177,15 @@ pub type UnifEnumRowsUnrolling = EnumRowsF<Box<UnifEnumRows>>;
 pub enum UnifEnumRows {
     Concrete {
         erows: UnifEnumRowsUnrolling,
+        /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
     Constant(VarId),
     UnifVar {
+        /// The unique identifier of this variable in the unification table.
         id: VarId,
+        /// The initial variable level at which the variable was created. See
+        /// [GenericUnifType::UnifVar].
         init_level: VarLevel,
     },
 }
@@ -205,20 +198,16 @@ pub enum UnifEnumRows {
 /// When unifying a variable with a composite type, we have to update the levels of all the free
 /// unification variables contained in that type, which naively incurs a full traversal of the
 /// type. The idea behind Didier Remy's algorithm is to delay such traversals, and use the values
-/// of `VarLevelData` to group traversals and avoid unneeded ones. This make variable unification
+/// of [VarLevelsData] to group traversals and avoid unneeded ones. This make variable unification
 /// run in constant time again, as long as we don't unify with a rigid type variable.
 ///
 /// Variable levels data might correspond to different variable kinds (type, record rows and enum
 /// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [EnumRecordRows])
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct VarLevelsData {
-    /// Upper bound on the variable levels of free unification variables contained in this
-    /// type. This bound is used to delay costly type traversals related to variable level
-    /// update, see [^variable-level-update].
+    /// Upper bound on the variable levels of free unification variables contained in this type.
     upper_bound: VarLevel,
-    /// Pending variable level update, which must always satisfy `new_level <= old_level`. This
-    /// value is used to delay costly type traversals related to variable level update, see
-    /// [^variable-level-update].
+    /// Pending variable level update, which must satisfy `pending_level <= old_level`.
     pending: Option<VarLevel>,
 }
 
@@ -233,6 +222,7 @@ impl VarLevelsData {
         Self::default()
     }
 
+    /// Create new variable levels data with the given upper bound and no pending level update.
     pub fn new_from_bound(upper_bound: VarLevel) -> Self {
         VarLevelsData {
             upper_bound,
@@ -240,6 +230,8 @@ impl VarLevelsData {
         }
     }
 
+    /// Create new variable levels data with an upper bound that there is no unification variable
+    /// in the attached type and no pending level update.
     pub fn new_no_uvars() -> Self {
         Self::new_from_bound(VarLevel::NO_VAR)
     }
@@ -344,20 +336,25 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifRecordRowsUnrolling<E
 /// # Invariants
 ///
 /// **Important**: the following invariant must always be satisfied: for any free unification
-/// variable[^1] part of a concrete unification type[^2], the level of this variable must be
-/// smaller or equal to `var_levels_data.upper_bound`. Otherwise, the typechecking algorithm might
-/// not be correct. Be careful when creating new concrete [GenericUnifType] or [UnifType] values.
-/// All `from` implementations and builders from [mk_uniftype] correctly compute the `upper_bound`
-/// (given that the subcomponent's upper bound is correct).
+/// variable[^free-unif-var] part of a concrete unification type, the level of this variable must
+/// be smaller or equal to `var_levels_data.upper_bound`. Otherwise, the typechecking algorithm
+/// might not be correct. Be careful when creating new concrete [GenericUnifType] or [UnifType]
+/// values manually. All `from` and `try_from` implementations, the `concrete` method as well as
+/// builders from the [mk_uniftype] module all correctly compute the upper bound (given that the
+/// upper bounds of the subcomponents are correct).
 ///
 /// The default value for `var_levels_data`, although it can incur more work, is at least always
 /// correct (by setting `upper_bound = VarLevel::MAX`).
+///
+/// [^free-unif-var]: A free unification variable is a unification variable that isn't assigned to
+/// any type yet, i.e. verifying  `uty.root_type(..) == uty` (adapt with the corresponding
+/// `root_xxx` method for rows).
 #[derive(Clone, PartialEq, Debug)]
 pub enum GenericUnifType<E: TermEnvironment> {
     /// A concrete type (like `Number` or `String -> String`).
     Concrete {
         types: GenericUnifTypeUnrolling<E>,
-        /// Additional metadata related to unification variable levels update. See [VarLevelData].
+        /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
@@ -370,10 +367,19 @@ pub enum GenericUnifType<E: TermEnvironment> {
     UnifVar {
         /// The unique identifier of this variable in the unification table.
         id: VarId,
-        /// The initial variable level at which the variable was created. This information is
-        /// useful to compute upper bounds, see [VarLevelsData]. Note that the actual level of this
-        /// variable is stored in the unification table, and must satisfy `current_level <=
-        /// init_level` (the level of a variable can only decrease with time).
+        /// An upper bound of this variable level, which usually correspond to the initial level at
+        /// which the variable was allocated, although this value might be bumped for some
+        /// variables by level updates.
+        ///
+        /// In a model where unification variables directly store a mutable level attribute, we
+        /// wouldn't need to duplicate this level information both here at the variable level and
+        /// in the unification table. `init_level` is used to compute upper bounds without having
+        /// to thread the unification table around (in the `from`/`try_from` implementation for
+        /// unification types, typically).
+        ///
+        /// Note that the actual level of this variable is stored in the unification table, which
+        /// is the source of truth. The actual level must satisfy `current_level <= init_level`
+        /// (the level of a variable can only decrease with time).
         init_level: VarLevel,
     },
 }
@@ -382,7 +388,8 @@ type GenericUnifTypeUnrolling<E> =
     TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>;
 
 impl<E: TermEnvironment> GenericUnifType<E> {
-    /// Create a concrete generic unification type with default values for variable levels.
+    /// Create a concrete generic unification type. Compute the variable levels data from the
+    /// subcomponents.
     pub fn concrete(types: GenericUnifTypeUnrolling<E>) -> Self {
         let upper_bound = types.var_level_upper_bound();
 
@@ -394,7 +401,8 @@ impl<E: TermEnvironment> GenericUnifType<E> {
 }
 
 impl<E: TermEnvironment> GenericUnifRecordRows<E> {
-    /// Create a concrete generic unification type with default values for variable levels.
+    /// Create concrete generic record rows. Compute the variable levels data from the
+    /// subcomponents.
     pub fn concrete(types: GenericUnifRecordRowsUnrolling<E>) -> Self {
         let upper_bound = types.var_level_upper_bound();
 
@@ -485,7 +493,8 @@ impl UnifEnumRows {
         EnumRowsIterator { erows: Some(self) }
     }
 
-    /// Create a concrete generic unification type with default values for variable levels.
+    /// Create concrete generic unification enum rows. Compute the variable levels data from the
+    /// subcomponents.
     pub fn concrete(erows: UnifEnumRowsUnrolling) -> Self {
         let upper_bound = erows.var_level_upper_bound();
 
@@ -518,16 +527,16 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
-// A type which contains variables that can be substitued with values of type `T`.
+// A type which contains variables that can be substituted with values of type `T`.
 trait Subst<T: Clone>: Sized {
     // Substitute all variables of identifier `id` with `to`.
     fn subst(self, id: &Ident, to: &T) -> Self {
         self.subst_levels(id, to).0
     }
 
-    // Must be filled by implementers of this trait.
+    // Must be implemented by implementers of this trait.
     // In addition to performing substitution, this method threads variable levels upper bounds to
-    // compute the new bounds.
+    // compute new upper bounds efficiently.
     fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevel);
 }
 
@@ -2329,7 +2338,6 @@ fn apparent_or_infer(
     }
 }
 
-///TODO: var levels
 /// Substitute wildcards in a type for their unification variable.
 fn replace_wildcards_with_var(
     table: &mut UnifTable,
@@ -3170,7 +3178,7 @@ impl<Ty> UnifSlot<Ty> {
 ///
 /// The unification table is a relatively low-level data structure, whose consumer has to ensure
 /// specific invariants. It is used by the `unify` function and its variants, but you should avoid
-/// to use it directly, unless you know what you're doing.
+/// using it directly, unless you know what you're doing.
 #[derive(Default)]
 pub struct UnifTable {
     types: Vec<UnifSlot<UnifType>>,
@@ -3188,16 +3196,21 @@ impl UnifTable {
 
     /// Assign a type to a type unification variable.
     ///
-    /// `assign_xxx` methods check for variable levels condition and update variables level, at
-    /// least lazily, by pushing them to a stack of pending traversals.
+    /// This method updates variables level, at least lazily, by pushing them to a stack of pending
+    /// traversals.
     ///
     /// # Preconditions
     ///
-    /// - For this function to work correctly on unification variable levels, if the target type is a
-    /// unification variable as well, it must not be assigned to another unification type.
-    /// - This is the responsibility of the user of `UnifTable` to force pending level updates when
-    /// needed. Having pending variable level updates and using `assign_type` might make
-    /// typechecking incorrect in some situation (by unduely allowing unsound generalization).
+    /// - This method doesn't check for the variable level conditions. This is the responsibility
+    /// of the caller.
+    /// - If the target type is a unification variable as well, it must not be assigned to another
+    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    /// handling of variable levels will be messed up.
+    /// - This method doesn't force pending level updates when needed (calling to
+    /// `force_type_updates`), i.e.
+    /// when `uty` is a rigid type variable. Having pending variable level updates and using
+    /// `assign_type` might make typechecking incorrect in some situation by unduely allowing
+    /// unsound generalization. This is the responsibility of the caller.
     pub fn assign_type(&mut self, var: VarId, uty: UnifType) {
         // Unifying a free variable with itself is a no-op.
         if matches!(uty, UnifType::UnifVar { id, ..} if id == var) {
@@ -3217,6 +3230,8 @@ impl UnifTable {
         self.types[var].value = Some(uty_lvl_updated);
     }
 
+    // Lazily propagate a variable level to the unification variables contained in `uty`. Either do
+    // a direct update in constant time when possible, or push a stack of delayed updates for composite types.
     fn update_type_level(&mut self, var: VarId, uty: UnifType, new_level: VarLevel) -> UnifType {
         match uty {
             // We can do the update right away
@@ -3251,9 +3266,21 @@ impl UnifTable {
 
     /// Assign record rows to a record rows unification variable.
     ///
-    /// This is a low-level operation. In particular, `assign_xxx` methods don't check for variable
-    /// levels condition, and don't update variables level either. Unless you know what you're
-    /// doing, you should probably use `unify` instead.
+    /// This method updates variables level, at least lazily, by pushing them to a stack of pending
+    /// traversals.
+    ///
+    /// # Preconditions
+    ///
+    /// - This method doesn't check for the variable level conditions. This is the responsibility
+    /// of the caller.
+    /// - If the target type is a unification variable as well, it must not be assigned to another
+    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    /// handling of variable levels will be messed up.
+    /// - This method doesn't force pending level updates when needed (calling to
+    /// `force_rrows_updates`), i.e.
+    /// when `uty` is a rigid type variable. Having pending variable level updates and using
+    /// `assign_type` might make typechecking incorrect in some situation by unduly allowing
+    /// unsound generalization. This is the responsibility of the caller.
     pub fn assign_rrows(&mut self, var: VarId, rrows: UnifRecordRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(rrows, UnifRecordRows::UnifVar { id, ..} if id == var) {
@@ -3265,6 +3292,7 @@ impl UnifTable {
         self.rrows[var].value = Some(rrows);
     }
 
+    // cf `update_type_level()`
     fn update_rrows_level(&mut self, var: VarId, uty: &UnifRecordRows, new_level: VarLevel) {
         match uty {
             // We can do the update right away
@@ -3288,9 +3316,21 @@ impl UnifTable {
 
     /// Assign enum rows to an enum rows unification variable.
     ///
-    /// This is a low-level operation. In particular, `assign_xxx` methods don't check for variable
-    /// levels condition, and don't update variables level either. Unless you know what you're
-    /// doing, you should probably use `unify` instead.
+    /// This method updates variables level, at least lazily, by pushing them to a stack of pending
+    /// traversals.
+    ///
+    /// # Preconditions
+    ///
+    /// - This method doesn't check for the variable level conditions. This is the responsibility
+    /// of the caller.
+    /// - If the target type is a unification variable as well, it must not be assigned to another
+    /// unification type. That is, `assign` should always be passed a root type. Otherwise, the
+    /// handling of variable levels will be messed up.
+    /// - This method doesn't force pending level updates when needed (calling to
+    /// `force_erows_updates`), i.e.
+    /// when `uty` is a rigid type variable. Having pending variable level updates and using
+    /// `assign_type` might make typechecking incorrect in some situation by unduly allowing
+    /// unsound generalization. This is the responsibility of the caller.
     pub fn assign_erows(&mut self, var: VarId, erows: UnifEnumRows) {
         // Unifying a free variable with itself is a no-op.
         if matches!(erows, UnifEnumRows::UnifVar { id, .. } if id == var) {
@@ -3302,6 +3342,7 @@ impl UnifTable {
         self.erows[var].value = Some(erows);
     }
 
+    // cf `update_type_level()`
     fn update_erows_level(&mut self, var: VarId, uty: &UnifEnumRows, new_level: VarLevel) {
         match uty {
             // We can do the update right away
@@ -3357,67 +3398,67 @@ impl UnifTable {
 
     /// Create a fresh type unification variable (or constant) identifier and allocate a
     /// corresponding slot in the table.
-    fn fresh_type_var_id(&mut self, var_level: VarLevel) -> VarId {
+    fn fresh_type_var_id(&mut self, current_level: VarLevel) -> VarId {
         let next = self.types.len();
-        self.types.push(UnifSlot::new(var_level));
+        self.types.push(UnifSlot::new(current_level));
         next
     }
 
     /// Create a fresh record rows variable (or constant) identifier and allocate a corresponding
     /// slot in the table.
-    fn fresh_rrows_var_id(&mut self, var_level: VarLevel) -> VarId {
+    fn fresh_rrows_var_id(&mut self, current_level: VarLevel) -> VarId {
         let next = self.rrows.len();
-        self.rrows.push(UnifSlot::new(var_level));
+        self.rrows.push(UnifSlot::new(current_level));
         next
     }
 
     /// Create a fresh enum rows variable (or constant) identifier and allocate a corresponding
     /// slot in the table.
-    fn fresh_erows_var_id(&mut self, var_level: VarLevel) -> VarId {
+    fn fresh_erows_var_id(&mut self, current_level: VarLevel) -> VarId {
         let next = self.erows.len();
-        self.erows.push(UnifSlot::new(var_level));
+        self.erows.push(UnifSlot::new(current_level));
         next
     }
 
     /// Create a fresh type unification variable and allocate a corresponding slot in the table.
-    pub fn fresh_type_uvar(&mut self, var_level: VarLevel) -> UnifType {
+    pub fn fresh_type_uvar(&mut self, current_level: VarLevel) -> UnifType {
         UnifType::UnifVar {
-            id: self.fresh_type_var_id(var_level),
-            init_level: var_level,
+            id: self.fresh_type_var_id(current_level),
+            init_level: current_level,
         }
     }
 
     /// Create a fresh record rows unification variable and allocate a corresponding slot in the
     /// table.
-    pub fn fresh_rrows_uvar(&mut self, var_level: VarLevel) -> UnifRecordRows {
+    pub fn fresh_rrows_uvar(&mut self, current_level: VarLevel) -> UnifRecordRows {
         UnifRecordRows::UnifVar {
-            id: self.fresh_rrows_var_id(var_level),
-            init_level: var_level,
+            id: self.fresh_rrows_var_id(current_level),
+            init_level: current_level,
         }
     }
 
     /// Create a fresh enum rows unification variable and allocate a corresponding slot in the
     /// table.
-    pub fn fresh_erows_uvar(&mut self, var_level: VarLevel) -> UnifEnumRows {
+    pub fn fresh_erows_uvar(&mut self, current_level: VarLevel) -> UnifEnumRows {
         UnifEnumRows::UnifVar {
-            id: self.fresh_erows_var_id(var_level),
-            init_level: var_level,
+            id: self.fresh_erows_var_id(current_level),
+            init_level: current_level,
         }
     }
 
     /// Create a fresh type constant and allocate a corresponding slot in the table.
-    pub fn fresh_type_const(&mut self, var_level: VarLevel) -> UnifType {
-        UnifType::Constant(self.fresh_type_var_id(var_level))
+    pub fn fresh_type_const(&mut self, current_level: VarLevel) -> UnifType {
+        UnifType::Constant(self.fresh_type_var_id(current_level))
     }
 
     /// Create a fresh record rows constant and allocate a corresponding slot in the table.
-    pub fn fresh_rrows_const(&mut self, var_level: VarLevel) -> UnifRecordRows {
-        UnifRecordRows::Constant(self.fresh_rrows_var_id(var_level))
+    pub fn fresh_rrows_const(&mut self, current_level: VarLevel) -> UnifRecordRows {
+        UnifRecordRows::Constant(self.fresh_rrows_var_id(current_level))
     }
 
     /// Create a fresh enum rows constant and allocate a corresponding slot in the table.
-    pub fn fresh_erows_const(&mut self, var_level: VarLevel) -> UnifEnumRows {
-        UnifEnumRows::Constant(self.fresh_erows_var_id(var_level))
+    pub fn fresh_erows_const(&mut self, current_level: VarLevel) -> UnifEnumRows {
+        UnifEnumRows::Constant(self.fresh_erows_var_id(current_level))
     }
 
     /// Follow the links in the unification table to find the representative of the equivalence
@@ -3488,6 +3529,9 @@ impl UnifTable {
         max(self.types.len(), max(self.rrows.len(), self.erows.len()))
     }
 
+    // Force pending type updates when prior to unifying a variable with a rigid type variable of
+    // level `constant_level`. Updates that wouldn't change the outcome of such a unification are
+    // delayed further.
     fn force_type_updates(&mut self, constant_level: VarLevel) {
         fn update_unr_with_lvl(
             table: &mut UnifTable,
@@ -3656,6 +3700,7 @@ impl UnifTable {
         self.pending_type_updates = rest;
     }
 
+    // See `force_type_updates()`
     pub fn force_rrows_updates(&mut self, constant_level: VarLevel) {
         fn update_unr_with_lvl(
             table: &mut UnifTable,
@@ -3822,6 +3867,7 @@ impl UnifTable {
         self.pending_rrows_updates = rest;
     }
 
+    // See `force_type_updates()`
     pub fn force_erows_updates(&mut self, constant_level: VarLevel) {
         fn update_unr_with_lvl(
             table: &mut UnifTable,
