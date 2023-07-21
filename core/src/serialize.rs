@@ -1,5 +1,6 @@
 //! Serialization of an evaluated program to various data format.
 use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
+use once_cell::sync::Lazy;
 
 use crate::{
     error::ExportError,
@@ -187,6 +188,9 @@ impl<'de> Deserialize<'de> for RichTerm {
 pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
     use Term::*;
 
+    static NUMBER_MIN: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MIN).unwrap());
+    static NUMBER_MAX: Lazy<Number> = Lazy::new(|| Number::try_from(f64::MAX).unwrap());
+
     if format == ExportFormat::Raw {
         if let Term::Str(_) = t.term.as_ref() {
             Ok(())
@@ -198,7 +202,17 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
             // TOML doesn't support null values
             Null if format == ExportFormat::Json || format == ExportFormat::Yaml => Ok(()),
             Null => Err(ExportError::UnsupportedNull(format, t.clone())),
-            Bool(_) | Num(_) | Str(_) | Enum(_) => Ok(()),
+            Bool(_) | Str(_) | Enum(_) => Ok(()),
+            Num(n) => {
+                if *n >= *NUMBER_MIN && *n <= *NUMBER_MAX {
+                    Ok(())
+                } else {
+                    Err(ExportError::NumberOutOfRange {
+                        term: t.clone(),
+                        value: n.clone(),
+                    })
+                }
+            }
             Record(record) => {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for

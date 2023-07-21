@@ -5,6 +5,7 @@
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
+use malachite::num::conversion::traits::ToSci;
 
 use crate::{
     eval::callstack::CallStack,
@@ -23,7 +24,7 @@ use crate::{
     position::{RawSpan, TermPos},
     repl,
     serialize::ExportFormat,
-    term::{record::FieldMetadata, RichTerm},
+    term::{record::FieldMetadata, Number, RichTerm},
     types::{TypeF, Types, VarKindDiscriminant},
 };
 
@@ -521,6 +522,11 @@ pub enum ExportError {
     NonSerializable(RichTerm),
     /// No exportable documentation was found when requested.
     NoDocumentation(RichTerm),
+    /// A number was too large (in absolute value) to be serialized as `f64`
+    NumberOutOfRange {
+        term: RichTerm,
+        value: Number,
+    },
     Other(String),
 }
 
@@ -2219,6 +2225,17 @@ impl IntoDiagnostics<FileId> for ExportError {
                 .with_notes(vec![
                     "documentation can only be collected from a record.".to_owned()
                 ])],
+            ExportError::NumberOutOfRange { term, value } => vec![Diagnostic::error()
+                .with_message(format!(
+                    "The number {} is too large (in absolute value) to be serialized.",
+                    value.to_sci()
+                ))
+                .with_labels(vec![primary_term(&term, files)])
+                .with_notes(vec![format!(
+                    "Only numbers in the range {:e} to {:e} can be portably serialized",
+                    f64::MIN,
+                    f64::MAX
+                )])],
             ExportError::Other(msg) => vec![Diagnostic::error()
                 .with_message("serialization failed")
                 .with_notes(vec![msg])],
