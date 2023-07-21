@@ -4,7 +4,7 @@ use crate::{
     identifier::Ident,
     mk_uty_row,
     term::{IndexMap, LabeledType},
-    typecheck::{unify, UnifRecordRow},
+    typecheck::{UnifRecordRow, Unify},
     types::{RecordRowF, RecordRowsF, TypeF},
 };
 
@@ -114,7 +114,8 @@ fn build_pattern_type(
                 let types = annot_ty.types.clone();
                 let pos = types.pos;
                 let annot_ty = UnifType::from_type(types, &ctxt.term_env);
-                unify(state, ctxt, ty.clone(), annot_ty)
+                ty.clone()
+                    .unify(annot_ty, state, ctxt)
                     .map_err(|e| e.into_typecheck_err(state, pos))?;
             }
 

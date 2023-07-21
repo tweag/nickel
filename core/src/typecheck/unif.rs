@@ -944,359 +944,379 @@ pub fn constr_unify_rrows(
     }
 }
 
-/// Try to unify two types.
-pub fn unify(
-    state: &mut State,
-    ctxt: &Context,
-    t1: UnifType,
-    t2: UnifType,
-) -> Result<(), UnifError> {
-    let t1 = t1.into_root(state.table);
-    let t2 = t2.into_root(state.table);
+/// Types which can be unified.
+pub(super) trait Unify {
+    type Error;
 
-    // t1 and t2 are roots of the type
-    match (t1, t2) {
-        // If either type is a wildcard, unify with the associated type var
-        (
-            UnifType::Concrete {
-                types: TypeF::Wildcard(id),
-                ..
-            },
-            ty2,
-        )
-        | (
-            ty2,
-            UnifType::Concrete {
-                types: TypeF::Wildcard(id),
-                ..
-            },
-        ) => {
-            let ty1 = get_wildcard_var(state.table, ctxt.var_level, state.wildcard_vars, id);
-            unify(state, ctxt, ty1, ty2)
-        }
-        (
-            UnifType::Concrete {
-                types: s1,
-                var_levels_data: _,
-            },
-            UnifType::Concrete {
-                types: s2,
-                var_levels_data: _,
-            },
-        ) => match (s1, s2) {
-            (TypeF::Dyn, TypeF::Dyn)
-            | (TypeF::Number, TypeF::Number)
-            | (TypeF::Bool, TypeF::Bool)
-            | (TypeF::String, TypeF::String)
-            | (TypeF::Symbol, TypeF::Symbol) => Ok(()),
-            (TypeF::Array(uty1), TypeF::Array(uty2)) => unify(state, ctxt, *uty1, *uty2),
-            (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
-                unify(state, ctxt, (*s1s).clone(), (*s2s).clone()).map_err(|err| {
-                    UnifError::DomainMismatch(
-                        UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
-                        UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
-                        Box::new(err),
-                    )
-                })?;
-                unify(state, ctxt, (*s1t).clone(), (*s2t).clone()).map_err(|err| {
-                    UnifError::CodomainMismatch(
-                        UnifType::concrete(TypeF::Arrow(s1s, s1t)),
-                        UnifType::concrete(TypeF::Arrow(s2s, s2t)),
-                        Box::new(err),
-                    )
-                })
-            }
-            (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
-            (TypeF::Enum(erows1), TypeF::Enum(erows2)) => {
-                unify_erows(state, ctxt.var_level, erows1.clone(), erows2.clone()).map_err(|err| {
-                    err.into_unif_err(mk_uty_enum!(; erows1), mk_uty_enum!(; erows2))
-                })
-            }
-            (TypeF::Record(rrows1), TypeF::Record(rrows2)) => {
-                unify_rrows(state, ctxt, rrows1.clone(), rrows2.clone()).map_err(|err| {
-                    err.into_unif_err(mk_uty_record!(; rrows1), mk_uty_record!(; rrows2))
-                })
-            }
-            (
-                TypeF::Dict {
-                    type_fields: uty1, ..
-                },
-                TypeF::Dict {
-                    type_fields: uty2, ..
-                },
-            ) => unify(state, ctxt, *uty1, *uty2),
-            (
-                TypeF::Forall {
-                    var: var1,
-                    var_kind: var_kind1,
-                    body: body1,
-                },
-                TypeF::Forall {
-                    var: var2,
-                    var_kind: var_kind2,
-                    body: body2,
-                },
-            ) if var_kind1 == var_kind2 => {
-                // Very stupid (slow) implementation
-                let (substd1, substd2) = match var_kind1 {
-                    VarKind::Type => {
-                        let constant_type = state.table.fresh_type_const(ctxt.var_level);
-                        (
-                            body1.subst(&var1, &constant_type),
-                            body2.subst(&var2, &constant_type),
-                        )
-                    }
-                    VarKind::RecordRows { .. } => {
-                        let constant_type = state.table.fresh_rrows_const(ctxt.var_level);
-                        (
-                            body1.subst(&var1, &constant_type),
-                            body2.subst(&var2, &constant_type),
-                        )
-                    }
-                    VarKind::EnumRows => {
-                        let constant_type = state.table.fresh_erows_const(ctxt.var_level);
-                        (
-                            body1.subst(&var1, &constant_type),
-                            body2.subst(&var2, &constant_type),
-                        )
-                    }
-                };
-
-                unify(state, ctxt, substd1, substd2)
-            }
-            (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
-                Err(UnifError::UnboundTypeVariable(ident))
-            }
-            (ty1, ty2) => Err(UnifError::TypeMismatch(
-                UnifType::concrete(ty1),
-                UnifType::concrete(ty2),
-            )),
-        },
-        (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
-            // [^check-unif-var-level]: If we are unifying a variable with a rigid type
-            // variable, force potential unification variable level updates and check that the
-            // level of the unification variable is greater or equals to the constant: that is,
-            // that the variable doesn't "escape its scope". This is required to handle
-            // polymorphism soundly, and is the whole point of all the machinery around variable
-            // levels.
-            if let UnifType::Constant(cst_id) = uty {
-                let constant_level = state.table.get_level(cst_id);
-                state.table.force_type_updates(constant_level);
-
-                if state.table.get_level(id) < constant_level {
-                    return Err(UnifError::VarLevelMismatch {
-                        constant_id: cst_id,
-                        var_kind: VarKindDiscriminant::Type,
-                    });
-                }
-            }
-
-            state.table.assign_type(id, uty);
-            Ok(())
-        }
-        (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifType::Constant(i1), UnifType::Constant(i2)) => {
-            Err(UnifError::ConstMismatch(VarKindDiscriminant::Type, i1, i2))
-        }
-        (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
-            Err(UnifError::WithConst(VarKindDiscriminant::Type, i, ty))
-        }
-        (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
-            if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
-        {
-            Ok(())
-        }
-        (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
-            Err(UnifError::TypeMismatch(uty1, uty2))
-        }
-    }
+    /// Try to unify two types. Unification corresponds to imposing an equality constraints on
+    /// those types. This can fail if the types can't be matched.
+    fn unify(self, t2: Self, state: &mut State, ctxt: &Context) -> Result<(), Self::Error>;
 }
 
-/// Try to unify two enum row types.
-pub fn unify_erows(
-    state: &mut State,
-    var_level: VarLevel,
-    uerows1: UnifEnumRows,
-    uerows2: UnifEnumRows,
-) -> Result<(), RowUnifError> {
-    let uerows1 = uerows1.into_root(state.table);
-    let uerows2 = uerows2.into_root(state.table);
+impl Unify for UnifType {
+    type Error = UnifError;
 
-    match (uerows1, uerows2) {
-        (
-            UnifEnumRows::Concrete {
-                erows: erows1,
-                var_levels_data: _,
-            },
-            UnifEnumRows::Concrete {
-                erows: erows2,
-                var_levels_data: var_levels2,
-            },
-        ) => match (erows1, erows2) {
-            (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
-                Err(RowUnifError::UnboundTypeVariable(id))
-            }
-            (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
-            (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, .. }) => {
-                Err(RowUnifError::ExtraRow(ident))
-            }
-            (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
-                Err(RowUnifError::MissingRow(ident))
-            }
-            (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
-                let t2_tail = erows_add(
-                    state,
-                    var_level,
-                    &id,
-                    UnifEnumRows::Concrete {
-                        erows: erows2,
-                        var_levels_data: var_levels2,
-                    },
-                )?;
-                unify_erows(state, var_level, *tail, t2_tail)
-            }
-        },
-        (UnifEnumRows::UnifVar { id, init_level: _ }, uerows)
-        | (uerows, UnifEnumRows::UnifVar { id, init_level: _ }) => {
-            // see [^check-unif-var-level]
-            if let UnifEnumRows::Constant(cst_id) = uerows {
-                let constant_level = state.table.get_erows_level(cst_id);
-                state.table.force_erows_updates(constant_level);
+    fn unify(self, t2: UnifType, state: &mut State, ctxt: &Context) -> Result<(), UnifError> {
+        let t1 = self.into_root(state.table);
+        let t2 = t2.into_root(state.table);
 
-                if state.table.get_erows_level(id) < constant_level {
-                    return Err(RowUnifError::VarLevelMismatch {
-                        constant_id: cst_id,
-                        var_kind: VarKindDiscriminant::EnumRows,
-                    });
-                }
-            }
-
-            state.table.assign_erows(id, uerows);
-            Ok(())
-        }
-        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => Err(
-            RowUnifError::ConstMismatch(VarKindDiscriminant::EnumRows, i1, i2),
-        ),
-        (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
-            //TODO ROWS: should we refactor RowUnifError as well?
-            Err(RowUnifError::WithConst(
-                VarKindDiscriminant::EnumRows,
-                i,
-                UnifType::concrete(TypeF::Enum(uerows)),
-            ))
-        }
-    }
-}
-
-/// Try to unify two record row types.
-pub fn unify_rrows(
-    state: &mut State,
-    ctxt: &Context,
-    urrows1: UnifRecordRows,
-    urrows2: UnifRecordRows,
-) -> Result<(), RowUnifError> {
-    let urrows1 = urrows1.into_root(state.table);
-    let urrows2 = urrows2.into_root(state.table);
-
-    match (urrows1, urrows2) {
-        (
-            UnifRecordRows::Concrete {
-                rrows: rrows1,
-                var_levels_data: _,
-            },
-            UnifRecordRows::Concrete {
-                rrows: rrows2,
-                var_levels_data: var_levels2,
-            },
-        ) => match (rrows1, rrows2) {
-            (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
-                Err(RowUnifError::UnboundTypeVariable(id))
-            }
-            (RecordRowsF::Empty, RecordRowsF::Empty)
-            | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-            (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
-            (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+        // t1 and t2 are roots of the type
+        match (t1, t2) {
+            // If either type is a wildcard, unify with the associated type var
             (
-                RecordRowsF::Empty,
-                RecordRowsF::Extend {
-                    row: UnifRecordRow { id, .. },
+                UnifType::Concrete {
+                    types: TypeF::Wildcard(id),
                     ..
                 },
+                ty2,
             )
             | (
-                RecordRowsF::TailDyn,
-                RecordRowsF::Extend {
-                    row: UnifRecordRow { id, .. },
+                ty2,
+                UnifType::Concrete {
+                    types: TypeF::Wildcard(id),
                     ..
                 },
-            ) => Err(RowUnifError::ExtraRow(id)),
-            (
-                RecordRowsF::Extend {
-                    row: UnifRecordRow { id, .. },
-                    ..
-                },
-                RecordRowsF::TailDyn,
-            )
-            | (
-                RecordRowsF::Extend {
-                    row: UnifRecordRow { id, .. },
-                    ..
-                },
-                RecordRowsF::Empty,
-            ) => Err(RowUnifError::MissingRow(id)),
-            (
-                RecordRowsF::Extend {
-                    row: UnifRecordRow { id, types },
-                    tail,
-                },
-                rrows2 @ RecordRowsF::Extend { .. },
             ) => {
-                let (ty2, t2_tail) = rrows_add(
-                    state,
-                    ctxt.var_level,
-                    &id,
-                    types.clone(),
-                    UnifRecordRows::Concrete {
-                        rrows: rrows2,
-                        var_levels_data: var_levels2,
-                    },
-                )?;
-                unify(state, ctxt, *types, *ty2)
-                    .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
-                unify_rrows(state, ctxt, *tail, t2_tail)
+                let ty1 = get_wildcard_var(state.table, ctxt.var_level, state.wildcard_vars, id);
+                ty1.unify(ty2, state, ctxt)
             }
-        },
-        (UnifRecordRows::UnifVar { id, init_level: _ }, urrows)
-        | (urrows, UnifRecordRows::UnifVar { id, init_level: _ }) => {
-            // see [^check-unif-var-level]
-            if let UnifRecordRows::Constant(cst_id) = urrows {
-                let constant_level = state.table.get_rrows_level(cst_id);
-                state.table.force_rrows_updates(constant_level);
-
-                if state.table.get_rrows_level(id) < constant_level {
-                    return Err(RowUnifError::VarLevelMismatch {
-                        constant_id: cst_id,
-                        var_kind: VarKindDiscriminant::RecordRows,
-                    });
+            (
+                UnifType::Concrete {
+                    types: s1,
+                    var_levels_data: _,
+                },
+                UnifType::Concrete {
+                    types: s2,
+                    var_levels_data: _,
+                },
+            ) => match (s1, s2) {
+                (TypeF::Dyn, TypeF::Dyn)
+                | (TypeF::Number, TypeF::Number)
+                | (TypeF::Bool, TypeF::Bool)
+                | (TypeF::String, TypeF::String)
+                | (TypeF::Symbol, TypeF::Symbol) => Ok(()),
+                (TypeF::Array(uty1), TypeF::Array(uty2)) => uty1.unify(*uty2, state, ctxt),
+                (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
+                    s1s.clone()
+                        .unify((*s2s).clone(), state, ctxt)
+                        .map_err(|err| {
+                            UnifError::DomainMismatch(
+                                UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
+                                UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
+                                Box::new(err),
+                            )
+                        })?;
+                    s1t.clone()
+                        .unify((*s2t).clone(), state, ctxt)
+                        .map_err(|err| {
+                            UnifError::CodomainMismatch(
+                                UnifType::concrete(TypeF::Arrow(s1s, s1t)),
+                                UnifType::concrete(TypeF::Arrow(s2s, s2t)),
+                                Box::new(err),
+                            )
+                        })
                 }
-            }
+                (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
+                (TypeF::Enum(erows1), TypeF::Enum(erows2)) => erows1
+                    .clone()
+                    .unify(erows2.clone(), state, ctxt)
+                    .map_err(|err| {
+                        err.into_unif_err(mk_uty_enum!(; erows1), mk_uty_enum!(; erows2))
+                    }),
+                (TypeF::Record(rrows1), TypeF::Record(rrows2)) => rrows1
+                    .clone()
+                    .unify(rrows2.clone(), state, ctxt)
+                    .map_err(|err| {
+                        err.into_unif_err(mk_uty_record!(; rrows1), mk_uty_record!(; rrows2))
+                    }),
+                (
+                    TypeF::Dict {
+                        type_fields: uty1, ..
+                    },
+                    TypeF::Dict {
+                        type_fields: uty2, ..
+                    },
+                ) => uty1.unify(*uty2, state, ctxt),
+                (
+                    TypeF::Forall {
+                        var: var1,
+                        var_kind: var_kind1,
+                        body: body1,
+                    },
+                    TypeF::Forall {
+                        var: var2,
+                        var_kind: var_kind2,
+                        body: body2,
+                    },
+                ) if var_kind1 == var_kind2 => {
+                    // Very stupid (slow) implementation
+                    let (substd1, substd2) = match var_kind1 {
+                        VarKind::Type => {
+                            let constant_type = state.table.fresh_type_const(ctxt.var_level);
+                            (
+                                body1.subst(&var1, &constant_type),
+                                body2.subst(&var2, &constant_type),
+                            )
+                        }
+                        VarKind::RecordRows { .. } => {
+                            let constant_type = state.table.fresh_rrows_const(ctxt.var_level);
+                            (
+                                body1.subst(&var1, &constant_type),
+                                body2.subst(&var2, &constant_type),
+                            )
+                        }
+                        VarKind::EnumRows => {
+                            let constant_type = state.table.fresh_erows_const(ctxt.var_level);
+                            (
+                                body1.subst(&var1, &constant_type),
+                                body2.subst(&var2, &constant_type),
+                            )
+                        }
+                    };
 
-            constr_unify_rrows(state.constr, id, &urrows)?;
-            state.table.assign_rrows(id, urrows);
-            Ok(())
+                    substd1.unify(substd2, state, ctxt)
+                }
+                (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
+                    Err(UnifError::UnboundTypeVariable(ident))
+                }
+                (ty1, ty2) => Err(UnifError::TypeMismatch(
+                    UnifType::concrete(ty1),
+                    UnifType::concrete(ty2),
+                )),
+            },
+            (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
+                // [^check-unif-var-level]: If we are unifying a variable with a rigid type
+                // variable, force potential unification variable level updates and check that the
+                // level of the unification variable is greater or equals to the constant: that is,
+                // that the variable doesn't "escape its scope". This is required to handle
+                // polymorphism soundly, and is the whole point of all the machinery around variable
+                // levels.
+                if let UnifType::Constant(cst_id) = uty {
+                    let constant_level = state.table.get_level(cst_id);
+                    state.table.force_type_updates(constant_level);
+
+                    if state.table.get_level(id) < constant_level {
+                        return Err(UnifError::VarLevelMismatch {
+                            constant_id: cst_id,
+                            var_kind: VarKindDiscriminant::Type,
+                        });
+                    }
+                }
+
+                state.table.assign_type(id, uty);
+                Ok(())
+            }
+            (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
+            (UnifType::Constant(i1), UnifType::Constant(i2)) => {
+                Err(UnifError::ConstMismatch(VarKindDiscriminant::Type, i1, i2))
+            }
+            (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
+                Err(UnifError::WithConst(VarKindDiscriminant::Type, i, ty))
+            }
+            (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
+                if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
+            {
+                Ok(())
+            }
+            (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
+                Err(UnifError::TypeMismatch(uty1, uty2))
+            }
         }
-        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
-        (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => Err(
-            RowUnifError::ConstMismatch(VarKindDiscriminant::RecordRows, i1, i2),
-        ),
-        (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
-            //TODO ROWS: should we refactor RowUnifError as well?
-            Err(RowUnifError::WithConst(
-                VarKindDiscriminant::RecordRows,
-                i,
-                UnifType::concrete(TypeF::Record(urrows)),
-            ))
+    }
+}
+
+impl Unify for UnifEnumRows {
+    type Error = RowUnifError;
+
+    fn unify(
+        self,
+        uerows2: UnifEnumRows,
+        state: &mut State,
+        ctxt: &Context,
+    ) -> Result<(), RowUnifError> {
+        let uerows1 = self.into_root(state.table);
+        let uerows2 = uerows2.into_root(state.table);
+
+        match (uerows1, uerows2) {
+            (
+                UnifEnumRows::Concrete {
+                    erows: erows1,
+                    var_levels_data: _,
+                },
+                UnifEnumRows::Concrete {
+                    erows: erows2,
+                    var_levels_data: var_levels2,
+                },
+            ) => match (erows1, erows2) {
+                (EnumRowsF::TailVar(id), _) | (_, EnumRowsF::TailVar(id)) => {
+                    Err(RowUnifError::UnboundTypeVariable(id))
+                }
+                (EnumRowsF::Empty, EnumRowsF::Empty) => Ok(()),
+                (EnumRowsF::Empty, EnumRowsF::Extend { row: ident, .. }) => {
+                    Err(RowUnifError::ExtraRow(ident))
+                }
+                (EnumRowsF::Extend { row: ident, .. }, EnumRowsF::Empty) => {
+                    Err(RowUnifError::MissingRow(ident))
+                }
+                (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
+                    let t2_tail = erows_add(
+                        state,
+                        ctxt.var_level,
+                        &id,
+                        UnifEnumRows::Concrete {
+                            erows: erows2,
+                            var_levels_data: var_levels2,
+                        },
+                    )?;
+                    tail.unify(t2_tail, state, ctxt)
+                }
+            },
+            (UnifEnumRows::UnifVar { id, init_level: _ }, uerows)
+            | (uerows, UnifEnumRows::UnifVar { id, init_level: _ }) => {
+                // see [^check-unif-var-level]
+                if let UnifEnumRows::Constant(cst_id) = uerows {
+                    let constant_level = state.table.get_erows_level(cst_id);
+                    state.table.force_erows_updates(constant_level);
+
+                    if state.table.get_erows_level(id) < constant_level {
+                        return Err(RowUnifError::VarLevelMismatch {
+                            constant_id: cst_id,
+                            var_kind: VarKindDiscriminant::EnumRows,
+                        });
+                    }
+                }
+
+                state.table.assign_erows(id, uerows);
+                Ok(())
+            }
+            (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
+            (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => Err(
+                RowUnifError::ConstMismatch(VarKindDiscriminant::EnumRows, i1, i2),
+            ),
+            (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
+                //TODO ROWS: should we refactor RowUnifError as well?
+                Err(RowUnifError::WithConst(
+                    VarKindDiscriminant::EnumRows,
+                    i,
+                    UnifType::concrete(TypeF::Enum(uerows)),
+                ))
+            }
+        }
+    }
+}
+
+impl Unify for UnifRecordRows {
+    type Error = RowUnifError;
+
+    fn unify(
+        self,
+        urrows2: UnifRecordRows,
+        state: &mut State,
+        ctxt: &Context,
+    ) -> Result<(), RowUnifError> {
+        let urrows1 = self.into_root(state.table);
+        let urrows2 = urrows2.into_root(state.table);
+
+        match (urrows1, urrows2) {
+            (
+                UnifRecordRows::Concrete {
+                    rrows: rrows1,
+                    var_levels_data: _,
+                },
+                UnifRecordRows::Concrete {
+                    rrows: rrows2,
+                    var_levels_data: var_levels2,
+                },
+            ) => match (rrows1, rrows2) {
+                (RecordRowsF::TailVar(id), _) | (_, RecordRowsF::TailVar(id)) => {
+                    Err(RowUnifError::UnboundTypeVariable(id))
+                }
+                (RecordRowsF::Empty, RecordRowsF::Empty)
+                | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
+                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+                (
+                    RecordRowsF::Empty,
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                )
+                | (
+                    RecordRowsF::TailDyn,
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                ) => Err(RowUnifError::ExtraRow(id)),
+                (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                    RecordRowsF::TailDyn,
+                )
+                | (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, .. },
+                        ..
+                    },
+                    RecordRowsF::Empty,
+                ) => Err(RowUnifError::MissingRow(id)),
+                (
+                    RecordRowsF::Extend {
+                        row: UnifRecordRow { id, types },
+                        tail,
+                    },
+                    rrows2 @ RecordRowsF::Extend { .. },
+                ) => {
+                    let (ty2, t2_tail) = rrows_add(
+                        state,
+                        ctxt.var_level,
+                        &id,
+                        types.clone(),
+                        UnifRecordRows::Concrete {
+                            rrows: rrows2,
+                            var_levels_data: var_levels2,
+                        },
+                    )?;
+                    types
+                        .unify(*ty2, state, ctxt)
+                        .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
+                    tail.unify(t2_tail, state, ctxt)
+                }
+            },
+            (UnifRecordRows::UnifVar { id, init_level: _ }, urrows)
+            | (urrows, UnifRecordRows::UnifVar { id, init_level: _ }) => {
+                // see [^check-unif-var-level]
+                if let UnifRecordRows::Constant(cst_id) = urrows {
+                    let constant_level = state.table.get_rrows_level(cst_id);
+                    state.table.force_rrows_updates(constant_level);
+
+                    if state.table.get_rrows_level(id) < constant_level {
+                        return Err(RowUnifError::VarLevelMismatch {
+                            constant_id: cst_id,
+                            var_kind: VarKindDiscriminant::RecordRows,
+                        });
+                    }
+                }
+
+                constr_unify_rrows(state.constr, id, &urrows)?;
+                state.table.assign_rrows(id, urrows);
+                Ok(())
+            }
+            (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
+            (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => Err(
+                RowUnifError::ConstMismatch(VarKindDiscriminant::RecordRows, i1, i2),
+            ),
+            (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
+                //TODO ROWS: should we refactor RowUnifError as well?
+                Err(RowUnifError::WithConst(
+                    VarKindDiscriminant::RecordRows,
+                    i,
+                    UnifType::concrete(TypeF::Record(urrows)),
+                ))
+            }
         }
     }
 }
