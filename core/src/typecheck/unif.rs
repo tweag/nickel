@@ -922,7 +922,7 @@ pub fn constr_unify_rrows(
                 ..
             } if p_constr.contains(&row.id) => Err(RowUnifError::UnsatConstr(
                 row.id,
-                Some(UnifType::concrete(TypeF::Record(rrows.clone()))),
+                UnifType::concrete(TypeF::Record(rrows.clone())),
             )),
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::Extend { tail, .. },
@@ -1159,16 +1159,12 @@ impl Unify for UnifEnumRows {
                     Err(RowUnifError::MissingRow(ident))
                 }
                 (EnumRowsF::Extend { row: id, tail }, erows2 @ EnumRowsF::Extend { .. }) => {
-                    let t2_tail = erows_add(
-                        state,
-                        ctxt.var_level,
-                        &id,
-                        UnifEnumRows::Concrete {
-                            erows: erows2,
-                            var_levels_data: var_levels2,
-                        },
-                    )?;
-                    tail.unify(t2_tail, state, ctxt)
+                    let uerows2 = UnifEnumRows::Concrete {
+                        erows: erows2,
+                        var_levels_data: var_levels2,
+                    };
+                    let (_, t2_without_row) = uerows2.remove_row(&id, state, ctxt.var_level)?;
+                    tail.unify(t2_without_row, state, ctxt)
                 }
             },
             (UnifEnumRows::UnifVar { id, init_level: _ }, uerows)
@@ -1270,20 +1266,22 @@ impl Unify for UnifRecordRows {
                     },
                     rrows2 @ RecordRowsF::Extend { .. },
                 ) => {
-                    let (ty2, t2_tail) = rrows_add(
-                        state,
-                        ctxt.var_level,
-                        &id,
-                        types.clone(),
-                        UnifRecordRows::Concrete {
-                            rrows: rrows2,
-                            var_levels_data: var_levels2,
-                        },
-                    )?;
+                    let urrows2 = UnifRecordRows::Concrete {
+                        rrows: rrows2,
+                        var_levels_data: var_levels2,
+                    };
+                    let (ty2, urrows2_without_ty2) = urrows2
+                        .remove_row(&id, state, ctxt.var_level)
+                        .map_err(|err| match err {
+                            RemoveRRowError::Missing => RowUnifError::MissingRow(id),
+                            RemoveRRowError::Conflict => {
+                                RowUnifError::UnsatConstr(id, *types.clone())
+                            }
+                        })?;
                     types
-                        .unify(*ty2, state, ctxt)
+                        .unify(ty2, state, ctxt)
                         .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
-                    tail.unify(t2_tail, state, ctxt)
+                    tail.unify(urrows2_without_ty2, state, ctxt)
                 }
             },
             (UnifRecordRows::UnifVar { id, init_level: _ }, urrows)
@@ -1321,126 +1319,150 @@ impl Unify for UnifRecordRows {
     }
 }
 
-/// Try to find a specific row inside record rows, or add it if permitted.
-///
-/// If the row is present, this function returns the corresponding type together with the tail
-/// corresponding to the other rows coming after the found one.
-///
-/// If the row is not present:
-///
-/// - If the given record rows are extensible, i.e. they end with a free unification variable, this
-///   function adds a new row with the provided type `ty` (if allowed by [row
-///   constraints][RowConstr]). Returns `ty` together with the new tail (a fresh unification
-///   variable).
-/// - Otherwise, raise a missing row error.
-fn rrows_add(
-    state: &mut State,
-    var_level: VarLevel,
-    id: &Ident,
-    ty: Box<UnifType>,
-    rrows: UnifRecordRows,
-) -> Result<(Box<UnifType>, UnifRecordRows), RowUnifError> {
-    let rrows = rrows.into_root(state.table);
+trait RemoveRow: Sized {
+    // The row data minus the identifier.
+    type RowContent;
+    type Error;
 
-    match rrows {
-        UnifRecordRows::Concrete { rrows, .. } => match rrows {
-            RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
-                Err(RowUnifError::MissingRow(*id))
-            }
-            RecordRowsF::Extend { row, tail } => {
-                if *id == row.id {
-                    Ok((row.types, *tail))
-                } else {
-                    let (extracted_type, subrow) = rrows_add(state, var_level, id, ty, *tail)?;
-                    Ok((
-                        extracted_type,
-                        UnifRecordRows::concrete(RecordRowsF::Extend {
-                            row,
-                            tail: Box::new(subrow),
-                        }),
-                    ))
+    // Fetch a specific row with the same id as `row.id` from a row type, and return the found row
+    // together with the original row type with the found row removed.
+    //
+    // If the row isn't found directly in the row type:
+    // - If the row type is extensible, i.e. it ends with a free unification variable for the tail,
+    //   this function adds the missing row (with `row.types` as a type for record rows, if allowed by [row
+    //   constraints][RowConstr]) and then acts as if `remove_row` was called on extended row type. That is, `remove_row` then returns the new
+    //   row and the extended type without the added row).
+    // - Otherwise, raise a missing row error.
+    fn remove_row(
+        self,
+        row_id: &Ident,
+        state: &mut State,
+        var_level: VarLevel,
+    ) -> Result<(Self::RowContent, Self), Self::Error>;
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RemoveRRowError {
+    // The row to add was missing and the row type was closed (no free unification variable in free
+    // position).
+    Missing,
+    // The row to add was missing and the row type couldn't be extended because of row constraints.
+    Conflict,
+}
+
+impl RemoveRow for UnifRecordRows {
+    type RowContent = UnifType;
+    type Error = RemoveRRowError;
+
+    fn remove_row(
+        self,
+        target: &Ident,
+        state: &mut State,
+        var_level: VarLevel,
+    ) -> Result<(UnifType, UnifRecordRows), RemoveRRowError> {
+        let rrows = self.into_root(state.table);
+
+        match rrows {
+            UnifRecordRows::Concrete { rrows, .. } => match rrows {
+                RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => {
+                    Err(RemoveRRowError::Missing)
                 }
+                RecordRowsF::Extend {
+                    row: next_row,
+                    tail,
+                } => {
+                    if *target == next_row.id {
+                        Ok((*next_row.types, *tail))
+                    } else {
+                        let (extracted_row, rest) = tail.remove_row(target, state, var_level)?;
+                        Ok((
+                            extracted_row,
+                            UnifRecordRows::concrete(RecordRowsF::Extend {
+                                row: next_row,
+                                tail: Box::new(rest),
+                            }),
+                        ))
+                    }
+                }
+            },
+            UnifRecordRows::UnifVar { id: var_id, .. } => {
+                let excluded = state.constr.entry(var_id).or_default();
+
+                if !excluded.insert(*target) {
+                    return Err(RemoveRRowError::Conflict);
+                }
+
+                let fresh_uvar = state.table.fresh_type_uvar(var_level);
+                let tail_var_id = state.table.fresh_rrows_var_id(var_level);
+
+                let row_to_insert = UnifRecordRow {
+                    id: *target,
+                    types: Box::new(fresh_uvar.clone()),
+                };
+                let tail_var = UnifRecordRows::UnifVar {
+                    id: tail_var_id,
+                    init_level: var_level,
+                };
+                let tail_extended = UnifRecordRows::concrete(RecordRowsF::Extend {
+                    row: row_to_insert,
+                    tail: Box::new(tail_var.clone()),
+                });
+
+                state.table.assign_rrows(var_id, tail_extended);
+
+                Ok((fresh_uvar, tail_var))
             }
-        },
-        UnifRecordRows::UnifVar { id: var_id, .. } => {
-            let mut excluded = state.constr.get(&var_id).cloned().unwrap_or_default();
-            if excluded.contains(id) {
-                return Err(RowUnifError::UnsatConstr(*id, Some(*ty)));
-            }
-
-            let tail_var_id = state.table.fresh_rrows_var_id(var_level);
-            let tail_var = UnifRecordRows::UnifVar {
-                id: tail_var_id,
-                init_level: var_level,
-            };
-            let new_tail = UnifRecordRows::concrete(RecordRowsF::Extend {
-                row: RecordRowF {
-                    id: *id,
-                    types: ty.clone(),
-                },
-                tail: Box::new(tail_var.clone()),
-            });
-
-            excluded.insert(*id);
-            state.constr.insert(tail_var_id, excluded);
-
-            state.table.assign_rrows(var_id, new_tail);
-
-            Ok((ty, tail_var))
+            UnifRecordRows::Constant(_) => Err(RemoveRRowError::Missing),
         }
-        UnifRecordRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
 }
 
-/// Try to find a specific row (ident) inside enum rows, or add it if permitted.
-///
-/// If the row is present, this function returns the tail corresponding to the remaining rows coming after
-/// the found one.
-///
-/// If the row is not present:
-///
-/// - If the given enum rows are extensible, i.e. they end with a free unification variable, this
-///   function adds a new row (if allowed by [row constraints][RowConstr]). Returns the new tail (a
-///   fresh unification variable).
-/// - Otherwise, raise a missing row error.
-fn erows_add(
-    state: &mut State,
-    var_level: VarLevel,
-    id: &Ident,
-    uerows: UnifEnumRows,
-) -> Result<UnifEnumRows, RowUnifError> {
-    let uerows = uerows.into_root(state.table);
+impl RemoveRow for UnifEnumRows {
+    type RowContent = ();
+    type Error = RowUnifError;
 
-    match uerows {
-        UnifEnumRows::Concrete { erows, .. } => match erows {
-            EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(*id)),
-            EnumRowsF::Extend { row, tail } => {
-                if *id == row {
-                    Ok(*tail)
-                } else {
-                    let subrow = erows_add(state, var_level, id, *tail)?;
-                    Ok(UnifEnumRows::concrete(EnumRowsF::Extend {
-                        row,
-                        tail: Box::new(subrow),
-                    }))
+    fn remove_row(
+        self,
+        target: &Ident,
+        state: &mut State,
+        var_level: VarLevel,
+    ) -> Result<((), UnifEnumRows), RowUnifError> {
+        let uerows = self.into_root(state.table);
+
+        match uerows {
+            UnifEnumRows::Concrete { erows, .. } => match erows {
+                EnumRowsF::Empty | EnumRowsF::TailVar(_) => Err(RowUnifError::MissingRow(*target)),
+                EnumRowsF::Extend { row, tail } => {
+                    if *target == row {
+                        Ok(((), *tail))
+                    } else {
+                        let (_, rest) = tail.remove_row(target, state, var_level)?;
+                        Ok((
+                            (),
+                            UnifEnumRows::concrete(EnumRowsF::Extend {
+                                row,
+                                tail: Box::new(rest),
+                            }),
+                        ))
+                    }
                 }
+            },
+            UnifEnumRows::UnifVar { id: var_id, .. } => {
+                let tail_var_id = state.table.fresh_erows_var_id(var_level);
+                let tail_var = UnifEnumRows::UnifVar {
+                    id: tail_var_id,
+                    init_level: var_level,
+                };
+                let new_tail = UnifEnumRows::concrete(EnumRowsF::Extend {
+                    row: *target,
+                    tail: Box::new(tail_var.clone()),
+                });
+
+                state.table.assign_erows(var_id, new_tail);
+
+                Ok(((), tail_var))
             }
-        },
-        UnifEnumRows::UnifVar { id: var_id, .. } => {
-            let tail_var_id = state.table.fresh_erows_var_id(var_level);
-            let tail_var = UnifEnumRows::UnifVar {
-                id: tail_var_id,
-                init_level: var_level,
-            };
-            let new_tail = UnifEnumRows::concrete(EnumRowsF::Extend {
-                row: *id,
-                tail: Box::new(tail_var.clone()),
-            });
-
-            state.table.assign_erows(var_id, new_tail);
-
-            Ok(tail_var)
+            UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(*target)),
         }
-        UnifEnumRows::Constant(_) => Err(RowUnifError::MissingRow(*id)),
     }
 }
