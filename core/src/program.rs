@@ -266,6 +266,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn eval_for_docs(&mut self) -> Result<RichTerm, Error> {
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
+        use crate::term::record::RecordData;
         use crate::term::Term;
 
         let (t, initial_env) = self.prepare_eval()?;
@@ -273,22 +274,48 @@ impl<EC: EvalCache> Program<EC> {
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
             t: RichTerm,
+            current_env: Environment,
             initial_env: &Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
             let (rt, env) = vm
-                .eval_closure(Closure::atomic_closure(t), initial_env)
+                .eval_closure(
+                    Closure {
+                        body: t,
+                        env: current_env,
+                    },
+                    initial_env,
+                )
                 .map_err(Error::from)?;
-            let eval_field =
-                |_id, rt: RichTerm| -> RichTerm { do_eval(vm, rt.clone(), &env).unwrap_or(rt) };
 
             match_sharedterm! {rt.term, with {
-                    Term::Record(data) => Ok(Term::Record(data.map_defined_values(eval_field)).into())
+                    Term::Record(data) => {
+                        let fields = data
+                            .fields
+                            .into_iter()
+                            .map(|(id, field)| -> Result<_, Error> {
+                                Ok((
+                                    id,
+                                    Field {
+                                        value: field
+                                            .value
+                                            .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
+                                            .transpose()?,
+                                        ..field
+                                    },
+                                ))
+                            })
+                            .collect::<Result<_, Error>>()?;
+                        Ok(RichTerm::new(
+                            Term::Record(RecordData { fields, ..data }),
+                            rt.pos,
+                        ))
+                    }
                 } else Ok(rt)
             }
         }
 
-        do_eval(&mut self.vm, t, &initial_env)
+        do_eval(&mut self.vm, t, Environment::new(), &initial_env)
     }
 
     /// Extract documentation from the program
