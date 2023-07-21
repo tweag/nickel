@@ -2,7 +2,7 @@
 # eval = 'typecheck'
 #
 # [test.metadata]
-# error = 'TypecheckError::VariableLevelMismatch'
+# error = 'TypecheckError::VarLevelMismatch'
 #
 # [test.metadata.expectation]
 # type_var = 'c'
