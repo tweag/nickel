@@ -9,12 +9,12 @@ use nickel_lang_core::{
         record::{Field, FieldMetadata},
         RichTerm, Term, UnaryOp,
     },
+    typ::TypeF,
     typecheck::{
         linearization::{Linearization, Linearizer},
         reporting::{to_type, NameReg},
         UnifType,
     },
-    types::TypeF,
 };
 
 use self::{
@@ -118,8 +118,8 @@ impl<'a> AnalysisHost<'a> {
     }
 }
 
+use nickel_lang_core::typ::Type;
 use nickel_lang_core::typecheck::Extra;
-use nickel_lang_core::types::Types;
 impl<'a> Linearizer for AnalysisHost<'a> {
     type Building = Building<'a>;
     type Completed = Completed;
@@ -493,13 +493,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     metadata: self.meta.take(),
                 })
             }
-            Term::Types(t) => {
+            Term::Type(t) => {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     id,
                     pos,
                     ty,
-                    kind: TermKind::Types(t.clone()),
+                    kind: TermKind::Type(t.clone()),
                     metadata: self.meta.take(),
                 });
             }
@@ -585,8 +585,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 id_mapping.insert(*id, index);
             });
 
-        fn transform_wildcard(wildcards: &[Types], t: Types) -> Types {
-            match t.types {
+        fn transform_wildcard(wildcards: &[Type], t: Type) -> Type {
+            match t.typ {
                 TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&t).clone(),
                 _ => t,
             }

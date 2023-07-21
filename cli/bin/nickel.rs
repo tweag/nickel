@@ -57,7 +57,7 @@ enum Command {
         #[arg(long)]
         contract: bool,
         #[arg(long = "type")]
-        types: bool,
+        typ: bool,
         #[arg(long)]
         default: bool,
         #[arg(long)]
@@ -135,7 +135,7 @@ fn handle_eval_commands(opts: Opt) {
             path,
             doc,
             contract,
-            types,
+            typ: types,
             default,
             value,
         }) => {
@@ -147,7 +147,7 @@ fn handle_eval_commands(opts: Opt) {
                     query_print::Attributes {
                         doc,
                         contract,
-                        types,
+                        typ: types,
                         default,
                         value,
                     }

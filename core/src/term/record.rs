@@ -102,11 +102,11 @@ impl FieldMetadata {
         // so on).
         // Keep the inner value.
 
-        if outer.annotation.types.is_some() {
+        if outer.annotation.typ.is_some() {
             // If both have type annotations, the result will have the outer one as a type annotation.
             // However we still need to enforce the corresponding contract to preserve the operational
             // semantics. Thus, the inner type annotation is derelicted to a contract.
-            if let Some(ctr) = inner.annotation.types.take() {
+            if let Some(ctr) = inner.annotation.typ.take() {
                 outer.annotation.contracts.push(ctr)
             }
         }
@@ -128,7 +128,7 @@ impl FieldMetadata {
         FieldMetadata {
             doc: outer.doc.or(inner.doc),
             annotation: TypeAnnotation {
-                types: outer.annotation.types.or(inner.annotation.types),
+                typ: outer.annotation.typ.or(inner.annotation.typ),
                 contracts: outer.annotation.contracts,
             },
             opt: outer.opt || inner.opt,

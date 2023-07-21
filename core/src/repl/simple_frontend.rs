@@ -47,7 +47,7 @@ pub fn input<R: Repl>(repl: &mut R, line: &str) -> Result<InputResult, InputErro
             ))),
             Ok(Command::Typecheck(exp)) => repl
                 .typecheck(&exp)
-                .map(|types| InputResult::Success(format!("Ok: {types}")))
+                .map(|typ| InputResult::Success(format!("Ok: {typ}")))
                 .map_err(InputError::from),
             Ok(Command::Query(path)) => repl
                 .query(path)

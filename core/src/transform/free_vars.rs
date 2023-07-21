@@ -10,7 +10,7 @@ use crate::{
         record::{Field, FieldDeps, RecordDeps},
         IndexMap, RichTerm, SharedTerm, StrChunk, Term,
     },
-    types::{RecordRowF, RecordRows, RecordRowsF, TypeF, Types},
+    typ::{RecordRowF, RecordRows, RecordRowsF, Type, TypeF},
 };
 
 use std::collections::HashSet;
@@ -167,21 +167,21 @@ impl CollectFreeVars for RichTerm {
             }
             Term::Annotated(annot, t) => {
                 for ctr in annot.iter_mut() {
-                    ctr.types.collect_free_vars(free_vars)
+                    ctr.typ.collect_free_vars(free_vars)
                 }
 
                 t.collect_free_vars(free_vars);
             }
-            Term::Types(ty) => {
+            Term::Type(ty) => {
                 ty.collect_free_vars(free_vars);
             }
         }
     }
 }
 
-impl CollectFreeVars for Types {
+impl CollectFreeVars for Type {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
-        match &mut self.types {
+        match &mut self.typ {
             TypeF::Dyn
             | TypeF::Number
             | TypeF::Bool
@@ -211,10 +211,10 @@ impl CollectFreeVars for RecordRows {
         match &mut self.0 {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
             RecordRowsF::Extend {
-                row: RecordRowF { types, .. },
+                row: RecordRowF { typ, .. },
                 tail,
             } => {
-                types.collect_free_vars(set);
+                typ.collect_free_vars(set);
                 tail.collect_free_vars(set);
             }
         }
@@ -224,7 +224,7 @@ impl CollectFreeVars for RecordRows {
 impl CollectFreeVars for Field {
     fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         for labeled_ty in self.metadata.annotation.iter_mut() {
-            labeled_ty.types.collect_free_vars(set)
+            labeled_ty.typ.collect_free_vars(set)
         }
 
         if let Some(ref mut value) = self.value {

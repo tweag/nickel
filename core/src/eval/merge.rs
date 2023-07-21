@@ -164,7 +164,7 @@ pub fn merge<C: Cache>(
         // `array1 & array2` to `contract.Equal array1 array2`, so that we extend merge in the
         // minimum way such that it is idempotent.
         (t1 @ Term::Array(..), t2 @ Term::Array(..)) => {
-            use crate::{mk_app, stdlib, types::TypeF};
+            use crate::{mk_app, stdlib, typ::TypeF};
             use std::rc::Rc;
 
             let mut env = Environment::new();
@@ -189,7 +189,7 @@ pub fn merge<C: Cache>(
             );
 
             let label = Label {
-                types: Rc::new(TypeF::Flat(contract_for_display).into()),
+                typ: Rc::new(TypeF::Flat(contract_for_display).into()),
                 span: MergeLabel::from(mode).span,
                 ..Default::default()
             }
@@ -417,7 +417,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 
     // If both have type annotations, we arbitrarily choose the first one as the type annotation
     // for the resulting field. This doesn't make any difference operationally.
-    let types = match (annot1.types.take(), annot2.types.take()) {
+    let typ = match (annot1.typ.take(), annot2.typ.take()) {
         (Some(ctr1), Some(ctr2)) => {
             annot1.contracts.push(ctr2);
             Some(ctr1)
@@ -433,7 +433,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
 
     let metadata = FieldMetadata {
         doc: merge_doc(metadata1.doc, metadata2.doc),
-        annotation: TypeAnnotation { types, contracts },
+        annotation: TypeAnnotation { typ, contracts },
         // If one of the record requires this field, then it musn't be optional. The
         // resulting field is optional iff both are.
         opt: metadata1.opt && metadata2.opt,

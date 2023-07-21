@@ -1,7 +1,7 @@
 use crate::error::{ParseError, ParseErrors};
 use crate::identifier::Ident;
 use crate::term::RichTerm;
-use crate::types::Types;
+use crate::typ::Type;
 use codespan::FileId;
 use lalrpop_util::lalrpop_mod;
 
@@ -88,7 +88,7 @@ macro_rules! generate_lalrpop_parser_impl {
 
 generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm);
 generate_lalrpop_parser_impl!(grammar::TermParser, RichTerm);
-generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Types);
+generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Type);
 generate_lalrpop_parser_impl!(grammar::FieldPathParser, utils::FieldPath);
 
 /// Generic interface of the various specialized Nickel parsers.

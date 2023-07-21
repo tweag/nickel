@@ -213,7 +213,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.vm.import_resolver_mut().parse(self.main_id)?;
         self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_types_env()");
+        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_type_ctxt()");
         self.vm
             .import_resolver_mut()
             .resolve_imports(self.main_id)
@@ -390,7 +390,7 @@ mod doc {
         /// Field value [`ExtractedDocumentation`], if any
         fields: Option<ExtractedDocumentation>,
         /// Rendered type annotation, if any
-        types: Option<String>,
+        typ: Option<String>,
         /// Rendered contract annotations
         contracts: Vec<String>,
         /// Rendered documentation, if any
@@ -407,19 +407,19 @@ mod doc {
                         .map(|(ident, field)| {
                             let fields = field.value.as_ref().and_then(Self::extract_from_term);
 
-                            let types = field
+                            let typ = field
                                 .metadata
                                 .annotation
-                                .types
+                                .typ
                                 .as_ref()
-                                .map(|lt| lt.types.to_string());
+                                .map(|lt| lt.typ.to_string());
 
                             let contracts = field
                                 .metadata
                                 .annotation
                                 .contracts
                                 .iter()
-                                .map(|lt| lt.types.to_string())
+                                .map(|lt| lt.typ.to_string())
                                 .collect();
 
                             let documentation = field.metadata.doc.clone();
@@ -428,7 +428,7 @@ mod doc {
                                 ident.label().to_owned(),
                                 DocumentationField {
                                     fields,
-                                    types,
+                                    typ,
                                     contracts,
                                     documentation,
                                 },
@@ -478,11 +478,11 @@ mod doc {
                 let header = mk_header(ident, header_level + 1, arena);
                 document.append(header);
 
-                if field.types.is_some() || !field.contracts.is_empty() {
+                if field.typ.is_some() || !field.contracts.is_empty() {
                     document.append(mk_types_and_contracts(
                         ident,
                         arena,
-                        field.types.as_deref(),
+                        field.typ.as_deref(),
                         field.contracts.as_ref(),
                     ))
                 }
@@ -552,7 +552,7 @@ mod doc {
     fn mk_types_and_contracts<'a>(
         ident: &str,
         arena: &'a Arena<AstNode<'a>>,
-        types: Option<&'a str>,
+        typ: Option<&'a str>,
         contracts: &'a [String],
     ) -> &'a AstNode<'a> {
         let list = arena.alloc(AstNode::from(NodeValue::List(NodeList {
@@ -565,7 +565,7 @@ mod doc {
             tight: true,
         })));
 
-        if let Some(t) = types {
+        if let Some(t) = typ {
             list.append(mk_type(ident, ':', t, arena));
         }
 
@@ -579,7 +579,7 @@ mod doc {
     fn mk_type<'a>(
         ident: &str,
         separator: char,
-        types: &str,
+        typ: &str,
         arena: &'a Arena<AstNode<'a>>,
     ) -> &'a AstNode<'a> {
         let list_item = arena.alloc(AstNode::from(NodeValue::Item(NodeList {
@@ -593,7 +593,7 @@ mod doc {
         })));
 
         list_item.append(arena.alloc(AstNode::from(NodeValue::Code(NodeCode {
-            literal: format!("{ident} {separator} {types}"),
+            literal: format!("{ident} {separator} {typ}"),
             num_backticks: 1,
         }))));
 

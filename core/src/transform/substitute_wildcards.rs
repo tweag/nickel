@@ -13,8 +13,8 @@ use crate::{
         record::{Field, FieldMetadata, RecordData},
         LabeledType, RichTerm, Term, Traverse, TraverseOrder, TypeAnnotation,
     },
+    typ::{Type, TypeF},
     typecheck::Wildcards,
-    types::{TypeF, Types},
 };
 
 /// If the top-level node of the AST is a meta-value with a wildcard type annotation, replace
@@ -25,7 +25,7 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
         with {
             Term::Annotated(
                 annot @ TypeAnnotation {
-                    types: Some(_),
+                    typ: Some(_),
                     ..
                 },
                 inner
@@ -52,11 +52,8 @@ pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
 }
 
 /// Get the inferred type for a wildcard, or `Dyn` if no type was inferred.
-fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Types {
-    wildcards
-        .get(id)
-        .cloned()
-        .unwrap_or(Types::from(TypeF::Dyn))
+fn get_wildcard_type(wildcards: &Wildcards, id: usize) -> Type {
+    wildcards.get(id).cloned().unwrap_or(Type::from(TypeF::Dyn))
 }
 
 trait SubstWildcard {
@@ -64,11 +61,11 @@ trait SubstWildcard {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Self;
 }
 
-impl SubstWildcard for Types {
-    fn subst_wildcards(self, wildcards: &Wildcards) -> Types {
+impl SubstWildcard for Type {
+    fn subst_wildcards(self, wildcards: &Wildcards) -> Type {
         self.traverse::<_, _, Infallible>(
-            &|ty: Types, _| {
-                if let TypeF::Wildcard(id) = ty.types {
+            &|ty: Type, _| {
+                if let TypeF::Wildcard(id) = ty.typ {
                     Ok(get_wildcard_type(wildcards, id))
                 } else {
                     Ok(ty)
@@ -84,7 +81,7 @@ impl SubstWildcard for Types {
 impl SubstWildcard for LabeledType {
     fn subst_wildcards(self, wildcards: &Wildcards) -> LabeledType {
         LabeledType {
-            types: self.types.subst_wildcards(wildcards),
+            typ: self.typ.subst_wildcards(wildcards),
             label: self.label.subst_wildcards(wildcards),
         }
     }
@@ -93,7 +90,7 @@ impl SubstWildcard for LabeledType {
 impl SubstWildcard for Label {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Label {
         Label {
-            types: Rc::new((*self.types).clone().subst_wildcards(wildcards)),
+            typ: Rc::new((*self.typ).clone().subst_wildcards(wildcards)),
             ..self
         }
     }
@@ -101,8 +98,8 @@ impl SubstWildcard for Label {
 
 impl SubstWildcard for TypeAnnotation {
     fn subst_wildcards(self, wildcards: &Wildcards) -> TypeAnnotation {
-        let types = self
-            .types
+        let typ = self
+            .typ
             .map(|labeled_ty| labeled_ty.subst_wildcards(wildcards));
         let contracts = self
             .contracts
@@ -110,7 +107,7 @@ impl SubstWildcard for TypeAnnotation {
             .map(|labeled_ty| labeled_ty.subst_wildcards(wildcards))
             .collect();
 
-        TypeAnnotation { types, contracts }
+        TypeAnnotation { typ, contracts }
     }
 }
 

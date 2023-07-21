@@ -20,7 +20,7 @@ use crate::{
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
         *,
     },
-    types::{TypeF, Types},
+    typ::{Type, TypeF},
 };
 
 use malachite::num::conversion::traits::FromSciString;
@@ -301,7 +301,7 @@ impl Annot for TypeAnnotation {
     /// Combine two type annotations. If both have `types` set, the final type is the one of outer,
     /// while inner's type is put inside the final `contracts`.
     fn combine(outer: Self, inner: Self) -> Self {
-        let (types, leftover) = match (inner.types, outer.types) {
+        let (typ, leftover) = match (inner.typ, outer.typ) {
             (outer_ty @ Some(_), inner_ty @ Some(_)) => (outer_ty, inner_ty),
             (outer_ty, inner_ty) => (outer_ty.or(inner_ty), None),
         };
@@ -313,7 +313,7 @@ impl Annot for TypeAnnotation {
             .chain(outer.contracts.into_iter())
             .collect();
 
-        TypeAnnotation { types, contracts }
+        TypeAnnotation { typ, contracts }
     }
 }
 
@@ -352,8 +352,8 @@ pub fn combine_match_annots(
         (None, None) => {
             let dummy_annot = TypeAnnotation {
                 contracts: vec![LabeledType {
-                    types: Types {
-                        types: TypeF::Dyn,
+                    typ: Type {
+                        typ: TypeF::Dyn,
                         pos: TermPos::Original(span),
                     },
                     label: Label {
@@ -592,9 +592,9 @@ pub fn mk_pos(src_id: FileId, l: usize, r: usize) -> TermPos {
 }
 
 /// Same as `mk_span`, but for labels.
-pub fn mk_label(types: Types, src_id: FileId, l: usize, r: usize) -> Label {
+pub fn mk_label(typ: Type, src_id: FileId, l: usize, r: usize) -> Label {
     Label {
-        types: Rc::new(types),
+        typ: Rc::new(typ),
         span: mk_span(src_id, l, r),
         ..Default::default()
     }

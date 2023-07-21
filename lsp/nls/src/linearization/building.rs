@@ -7,8 +7,8 @@ use nickel_lang_core::{
     identifier::Ident,
     position::TermPos,
     term::{record::Field, IndexMap},
+    typ::TypeF,
     typecheck::{linearization::LinearizationState, UnifType},
-    types::TypeF,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};
@@ -90,7 +90,7 @@ impl<'b> Building<'b> {
             TermKind::Record(_) => (),
             // unreachable()!: add_usage can only called on let binding, functions and record
             // fields, only referring to items which support usages.
-            TermKind::Types(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
+            TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
             TermKind::Declaration { ref mut usages, .. }
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };

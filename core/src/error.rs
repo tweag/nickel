@@ -25,7 +25,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, Number, RichTerm},
-    types::{TypeF, Types, VarKindDiscriminant},
+    typ::{Type, TypeF, VarKindDiscriminant},
 };
 
 /// A general error occurring during either parsing or evaluation.
@@ -184,27 +184,27 @@ pub enum TypecheckError {
     /// A specific row was expected to be in the type of an expression, but was not.
     MissingRow(
         Ident,
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        /* the expected type */ Type,
+        /* the inferred/annotated type */ Type,
         TermPos,
     ),
     /// A dynamic tail was expected to be in the type of an expression, but was not.
     MissingDynTail(
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        /* the expected type */ Type,
+        /* the inferred/annotated type */ Type,
         TermPos,
     ),
     /// A specific row was not expected to be in the type of an expression.
     ExtraRow(
         Ident,
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        /* the expected type */ Type,
+        /* the inferred/annotated type */ Type,
         TermPos,
     ),
     /// A additional dynamic tail was not expected to be in the type of an expression.
     ExtraDynTail(
-        /* the expected type */ Types,
-        /* the inferred/annotated type */ Types,
+        /* the expected type */ Type,
+        /* the inferred/annotated type */ Type,
         TermPos,
     ),
     /// A parametricity violation involving a row-kinded type variable.
@@ -221,8 +221,8 @@ pub enum TypecheckError {
     /// `{ y : String }` as the `violating_type`.
     ForallParametricityViolation {
         kind: VarKindDiscriminant,
-        tail: Types,
-        violating_type: Types,
+        tail: Type,
+        violating_type: Type,
         pos: TermPos,
     },
     /// An unbound type variable was referenced.
@@ -230,15 +230,15 @@ pub enum TypecheckError {
     /// The actual (inferred or annotated) type of an expression is incompatible with its expected
     /// type.
     TypeMismatch(
-        /* the expected type */ Types,
-        /* the actual type */ Types,
+        /* the expected type */ Type,
+        /* the actual type */ Type,
         TermPos,
     ),
     /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
     RowMismatch(
         Ident,
-        /* the expected row type (whole) */ Types,
-        /* the actual row type (whole) */ Types,
+        /* the expected row type (whole) */ Type,
+        /* the actual row type (whole) */ Type,
         /* error at the given row */ Box<TypecheckError>,
         TermPos,
     ),
@@ -257,9 +257,9 @@ pub enum TypecheckError {
     /// the direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         Ident,
-        /* the second type assignment which violates the constraint */ Types,
-        /* the expected type of the subexpression */ Types,
-        /* the actual type of the subexpression */ Types,
+        /* the second type assignment which violates the constraint */ Type,
+        /* the expected type of the subexpression */ Type,
+        /* the actual type of the subexpression */ Type,
         TermPos,
     ),
     /// Type mismatch on a subtype of an an arrow type.
@@ -278,8 +278,8 @@ pub enum TypecheckError {
     /// This specific error stores additionally the [type path][crate::label::ty_path] that
     /// identifies the subtype where unification failed and the corresponding error.
     ArrowTypeMismatch(
-        /* the expected arrow type */ Types,
-        /* the actual arrow type */ Types,
+        /* the expected arrow type */ Type,
+        /* the actual arrow type */ Type,
         /* the path to the incompatible subtypes */ ty_path::Path,
         /* the error on the subtype unification */ Box<TypecheckError>,
         TermPos,
@@ -1277,7 +1277,7 @@ mod blame_error {
         },
         position::TermPos,
         term::RichTerm,
-        types::Types,
+        typ::Type,
     };
 
     use super::{primary, secondary, secondary_term};
@@ -1427,7 +1427,7 @@ mod blame_error {
     /// subtype isn't defined), [path_span] pretty-prints the type inside a new source, parses it,
     /// and calls `ty_path::span`. This new type is guaranteed to have all of its positions set,
     /// providing a definite `PathSpan`. This is similar to the behavior of [`super::primary_alt`].
-    pub fn path_span(files: &mut Files<String>, path: &[ty_path::Elem], ty: &Types) -> PathSpan {
+    pub fn path_span(files: &mut Files<String>, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
         use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
 
         ty_path::span(path.iter().peekable(), ty).or_else(|| {
@@ -1457,7 +1457,7 @@ mod blame_error {
             span,
             last,
             last_arrow_elem,
-        } = path_span(files, &l.path, &l.types);
+        } = path_span(files, &l.path, &l.typ);
 
         let (msg, notes) = match (last, last_arrow_elem) {
             // The type path doesn't contain any arrow, and the failing subcontract is the
@@ -1920,14 +1920,14 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     "Did you forget to put a `forall {ident}.` somewhere in the enclosing type?"
                 )])],
             TypecheckError::TypeMismatch(expd, actual, span_opt) => {
-                fn addendum(ty: &Types) -> &str {
-                    if ty.types.is_flat() {
+                fn addendum(ty: &Type) -> &str {
+                    if ty.typ.is_flat() {
                         " (a contract)"
                     } else {
                         ""
                     }
                 }
-                let last_note = if expd.types.is_flat() ^ actual.types.is_flat() {
+                let last_note = if expd.typ.is_flat() ^ actual.typ.is_flat() {
                     "Static types and contracts are not compatible"
                 } else {
                     "These types are not compatible"
@@ -1971,7 +1971,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     format!("Found an expression of a record type with the row `{field}: {ty}`")
                 };
 
-                let note1 = if let TypeF::Record(rrows) = &expd.types {
+                let note1 = if let TypeF::Record(rrows) = &expd.typ {
                     match rrows.row_find_path(path.as_slice()) {
                         Some(ty) => mk_expected_row_msg(&field, ty),
                         None => mk_expected_msg(&expd),
@@ -1980,7 +1980,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     mk_expected_msg(&expd)
                 };
 
-                let note2 = if let TypeF::Record(rrows) = &actual.types {
+                let note2 = if let TypeF::Record(rrows) = &actual.typ {
                     match rrows.row_find_path(path.as_slice()) {
                         Some(ty) => mk_inferred_row_msg(&field, ty),
                         None => mk_inferred_msg(&actual),

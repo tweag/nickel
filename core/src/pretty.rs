@@ -6,7 +6,7 @@ use crate::term::{
     record::{Field, FieldMetadata},
     *,
 };
-use crate::types::*;
+use crate::typ::*;
 
 use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
@@ -265,11 +265,11 @@ where
     }
 
     fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        if let Some(types) = &annot.types {
+        if let Some(typ) = &annot.typ {
             self.line()
                 .append(self.text(":"))
                 .append(self.space())
-                .append(types.types.clone().pretty(self))
+                .append(typ.typ.clone().pretty(self))
         } else {
             self.nil()
         }
@@ -282,7 +282,7 @@ where
             annot.contracts.iter().map(|c| {
                 self.text("|")
                     .append(self.space())
-                    .append(c.to_owned().types.pretty(self))
+                    .append(c.to_owned().typ.pretty(self))
             }),
             self.line(),
         ))
@@ -731,7 +731,7 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
-            Types(ty) => ty.pretty(allocator),
+            Type(ty) => ty.pretty(allocator),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
         }
@@ -790,14 +790,14 @@ where
                 .append(allocator.space())
                 .append(allocator.as_string(id)),
             RecordRowsF::Extend {
-                row: RecordRowF { id, types },
+                row: RecordRowF { id, typ },
                 tail,
             } => {
                 let builder = allocator
                     .text(ident_quoted(id))
                     .append(allocator.text(":"))
                     .append(allocator.space())
-                    .append(types.pretty(allocator));
+                    .append(typ.pretty(allocator));
 
                 let builder = if let RecordRowsF::Extend { .. } = tail.0 {
                     builder
@@ -813,7 +813,7 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &Types
+impl<'a, D, A> Pretty<'a, D, A> for &Type
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -821,7 +821,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use TypeF::*;
-        match &self.types {
+        match &self.typ {
             Dyn => allocator.text("Dyn"),
             Number => allocator.text("Number"),
             Bool => allocator.text("Bool"),
@@ -841,8 +841,8 @@ where
             Forall { var, ref body, .. } => {
                 let mut curr = body.as_ref();
                 let mut foralls = vec![var];
-                while let Types {
-                    types: Forall { var, ref body, .. },
+                while let Type {
+                    typ: Forall { var, ref body, .. },
                     ..
                 } = curr
                 {
@@ -878,7 +878,7 @@ where
                 .append(ty.pretty(allocator))
                 .append(allocator.line())
                 .braces(),
-            Arrow(dom, codom) => match dom.types {
+            Arrow(dom, codom) => match dom.typ {
                 Arrow(..) | Forall { .. } => dom
                     .pretty(allocator)
                     .parens()

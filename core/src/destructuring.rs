@@ -12,7 +12,7 @@ use crate::{
         record::{Field, RecordAttrs, RecordData},
         LabeledType, Term,
     },
-    types::{TypeF, Types},
+    typ::{Type, TypeF},
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -121,8 +121,8 @@ impl RecordPattern {
         let is_open = self.is_open();
         let pos = TermPos::Original(self.span);
         LabeledType {
-            types: Types {
-                types: TypeF::Flat(
+            typ: Type {
+                typ: TypeF::Flat(
                     Term::Record(RecordData::new(
                         self.inner().into_iter().map(Match::as_binding).collect(),
                         RecordAttrs { open: is_open },

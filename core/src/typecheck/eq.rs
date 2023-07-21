@@ -329,9 +329,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &GenericUnifType::from_type(ctr1.types.clone(), env1),
+                    &GenericUnifType::from_type(ctr1.typ.clone(), env1),
                     env1,
-                    &GenericUnifType::from_type(ctr2.types.clone(), env2),
+                    &GenericUnifType::from_type(ctr2.typ.clone(), env2),
                     env2,
                 ),
                 _ => false,
@@ -377,7 +377,9 @@ fn rows_as_map<E: TermEnvironment>(
     let map: Option<IndexMap<Ident, _>> = erows
         .iter()
         .map(|item| match item {
-            GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, types }) => Some((id, types)),
+            GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, typ: types }) => {
+                Some((id, types))
+            }
             _ => None,
         })
         .collect();
@@ -423,7 +425,7 @@ fn contract_eq_fields<E: TermEnvironment>(
 /// Perform the type equality comparison on types. Structurally recurse into type constructors and test
 /// that subtypes or subterms (contracts) are equals.
 ///
-/// Currently, this function operates on `Types` rather than `TypeWrapper`s as it is called
+/// Currently, this function operates on `Type` rather than `TypeWrapper`s as it is called
 /// by `contract_eq_bounded` on type annotations. But we need to substitute variables to correctly
 /// compare `foralls`, hence it accepts more general `TypeWrapper`s. However, we expect to never
 /// meet unification variables (we treat them for completeness and to be future proof), and that
@@ -438,99 +440,102 @@ fn type_eq_bounded<E: TermEnvironment>(
     env2: &E,
 ) -> bool {
     match (ty1, ty2) {
-        (
-            GenericUnifType::Concrete { types: s1, .. },
-            GenericUnifType::Concrete { types: s2, .. },
-        ) => match (s1, s2) {
-            (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
-            (TypeF::Dyn, TypeF::Dyn)
-            | (TypeF::Number, TypeF::Number)
-            | (TypeF::Bool, TypeF::Bool)
-            | (TypeF::Symbol, TypeF::Symbol)
-            | (TypeF::String, TypeF::String) => true,
-            (
-                TypeF::Dict {
-                    type_fields: uty1,
-                    flavour: attrs1,
-                },
-                TypeF::Dict {
-                    type_fields: uty2,
-                    flavour: attrs2,
-                },
-            ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
-            (TypeF::Array(uty1), TypeF::Array(uty2)) => {
-                type_eq_bounded(state, uty1, env1, uty2, env2)
-            }
-            (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
-                type_eq_bounded(state, s1, env1, s2, env2)
-                    && type_eq_bounded(state, t1, env1, t2, env2)
-            }
-            (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
-                let rows1 = rows_as_set(uty1);
-                let rows2 = rows_as_set(uty2);
-                rows1.is_some() && rows2.is_some() && rows1 == rows2
-            }
-            (TypeF::Record(uty1), TypeF::Record(uty2)) => {
-                fn type_eq_bounded_wrapper<E: TermEnvironment>(
-                    state: &mut State,
-                    uty1: &&GenericUnifType<E>,
-                    env1: &E,
-                    uty2: &&GenericUnifType<E>,
-                    env2: &E,
-                ) -> bool {
-                    type_eq_bounded(state, *uty1, env1, *uty2, env2)
+        (GenericUnifType::Concrete { typ: s1, .. }, GenericUnifType::Concrete { typ: s2, .. }) => {
+            match (s1, s2) {
+                (TypeF::Wildcard(id1), TypeF::Wildcard(id2)) => id1 == id2,
+                (TypeF::Dyn, TypeF::Dyn)
+                | (TypeF::Number, TypeF::Number)
+                | (TypeF::Bool, TypeF::Bool)
+                | (TypeF::Symbol, TypeF::Symbol)
+                | (TypeF::String, TypeF::String) => true,
+                (
+                    TypeF::Dict {
+                        type_fields: uty1,
+                        flavour: attrs1,
+                    },
+                    TypeF::Dict {
+                        type_fields: uty2,
+                        flavour: attrs2,
+                    },
+                ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
+                (TypeF::Array(uty1), TypeF::Array(uty2)) => {
+                    type_eq_bounded(state, uty1, env1, uty2, env2)
                 }
-
-                let map1 = rows_as_map(uty1);
-                let map2 = rows_as_map(uty2);
-
-                map1.zip(map2)
-                    .map(|(m1, m2)| map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2))
-                    .unwrap_or(false)
-            }
-            (TypeF::Flat(t1), TypeF::Flat(t2)) => contract_eq_bounded(state, t1, env1, t2, env2),
-            (
-                TypeF::Forall {
-                    var: var1,
-                    var_kind: var_kind1,
-                    body: body1,
-                },
-                TypeF::Forall {
-                    var: var2,
-                    var_kind: var_kind2,
-                    body: body2,
-                },
-            ) => {
-                let cst_id = state.fresh_cst_id();
-
-                if var_kind1 != var_kind2 {
-                    return false;
+                (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
+                    type_eq_bounded(state, s1, env1, s2, env2)
+                        && type_eq_bounded(state, t1, env1, t2, env2)
                 }
+                (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
+                    let rows1 = rows_as_set(uty1);
+                    let rows2 = rows_as_set(uty2);
+                    rows1.is_some() && rows2.is_some() && rows1 == rows2
+                }
+                (TypeF::Record(uty1), TypeF::Record(uty2)) => {
+                    fn type_eq_bounded_wrapper<E: TermEnvironment>(
+                        state: &mut State,
+                        uty1: &&GenericUnifType<E>,
+                        env1: &E,
+                        uty2: &&GenericUnifType<E>,
+                        env2: &E,
+                    ) -> bool {
+                        type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                    }
 
-                let body1 = body1.clone();
-                let body2 = body2.clone();
+                    let map1 = rows_as_map(uty1);
+                    let map2 = rows_as_map(uty2);
 
-                let (uty1_subst, uty2_subst) = match var_kind1 {
-                    VarKind::Type => (
-                        body1.subst(var1, &GenericUnifType::Constant(cst_id)),
-                        body2.subst(var2, &GenericUnifType::Constant(cst_id)),
-                    ),
-                    VarKind::RecordRows { .. } => (
-                        body1.subst(var1, &GenericUnifRecordRows::Constant(cst_id)),
-                        body2.subst(var2, &GenericUnifRecordRows::Constant(cst_id)),
-                    ),
-                    VarKind::EnumRows => (
-                        body1.subst(var1, &UnifEnumRows::Constant(cst_id)),
-                        body2.subst(var2, &UnifEnumRows::Constant(cst_id)),
-                    ),
-                };
+                    map1.zip(map2)
+                        .map(|(m1, m2)| {
+                            map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
+                        })
+                        .unwrap_or(false)
+                }
+                (TypeF::Flat(t1), TypeF::Flat(t2)) => {
+                    contract_eq_bounded(state, t1, env1, t2, env2)
+                }
+                (
+                    TypeF::Forall {
+                        var: var1,
+                        var_kind: var_kind1,
+                        body: body1,
+                    },
+                    TypeF::Forall {
+                        var: var2,
+                        var_kind: var_kind2,
+                        body: body2,
+                    },
+                ) => {
+                    let cst_id = state.fresh_cst_id();
 
-                type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
+                    if var_kind1 != var_kind2 {
+                        return false;
+                    }
+
+                    let body1 = body1.clone();
+                    let body2 = body2.clone();
+
+                    let (uty1_subst, uty2_subst) = match var_kind1 {
+                        VarKind::Type => (
+                            body1.subst(var1, &GenericUnifType::Constant(cst_id)),
+                            body2.subst(var2, &GenericUnifType::Constant(cst_id)),
+                        ),
+                        VarKind::RecordRows { .. } => (
+                            body1.subst(var1, &GenericUnifRecordRows::Constant(cst_id)),
+                            body2.subst(var2, &GenericUnifRecordRows::Constant(cst_id)),
+                        ),
+                        VarKind::EnumRows => (
+                            body1.subst(var1, &UnifEnumRows::Constant(cst_id)),
+                            body2.subst(var2, &UnifEnumRows::Constant(cst_id)),
+                        ),
+                    };
+
+                    type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
+                }
+                // We can't compare type variables without knowing what they are instantiated to, and
+                // all type variables should have been substituted at this point, so we bail out.
+                _ => false,
             }
-            // We can't compare type variables without knowing what they are instantiated to, and
-            // all type variables should have been substituted at this point, so we bail out.
-            _ => false,
-        },
+        }
         (GenericUnifType::UnifVar { id: id1, .. }, GenericUnifType::UnifVar { id: id2, .. }) => {
             debug_assert!(
                 false,

@@ -6,7 +6,7 @@ use crate::{
     label::ty_path,
     position::TermPos,
     term::RichTerm,
-    types::{TypeF, VarKindDiscriminant},
+    typ::{TypeF, VarKindDiscriminant},
 };
 
 /// Error during the unification of two row types.
@@ -270,11 +270,11 @@ impl UnifError {
             match curr {
                 UnifError::DomainMismatch(
                     uty1 @ UnifType::Concrete {
-                        types: TypeF::Arrow(_, _),
+                        typ: TypeF::Arrow(_, _),
                         ..
                     },
                     uty2 @ UnifType::Concrete {
-                        types: TypeF::Arrow(_, _),
+                        typ: TypeF::Arrow(_, _),
                         ..
                     },
                     err,
@@ -288,11 +288,11 @@ impl UnifError {
                 ),
                 UnifError::CodomainMismatch(
                     uty1 @ UnifType::Concrete {
-                        types: TypeF::Arrow(_, _),
+                        typ: TypeF::Arrow(_, _),
                         ..
                     },
                     uty2 @ UnifType::Concrete {
-                        types: TypeF::Arrow(_, _),
+                        typ: TypeF::Arrow(_, _),
                         ..
                     },
                     err,

@@ -13,8 +13,8 @@ use crate::{
         record::{Field, RecordData},
         RichTerm, SealingKey, Term,
     },
+    typ::{Type, TypeF},
     typecheck::{ReifyAsUnifType, UnifType},
-    types::{TypeF, Types},
 };
 
 use codespan::Files;
@@ -55,7 +55,7 @@ pub mod ty_path {
     use crate::{
         identifier::Ident,
         position::RawSpan,
-        types::{RecordRowF, RecordRowsIteratorItem, TypeF, Types},
+        typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
     };
 
     /// An element of a path type.
@@ -141,16 +141,16 @@ pub mod ty_path {
     /// Here, the type path will contain an `Array` (added by the builtin implementation of the
     /// `Array` contract), but the original type will be `Foo`, which isn't of the form `Array _`.
     /// Thus we can't underline the subtype `_`, and stops at the whole `Array T`.
-    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Types) -> Option<PathSpan>
+    pub fn span<'a, I>(mut path_it: std::iter::Peekable<I>, mut ty: &Type) -> Option<PathSpan>
     where
         I: Iterator<Item = &'a Elem>,
         I: std::clone::Clone,
     {
-        while let TypeF::Forall { body, .. } = &ty.types {
+        while let TypeF::Forall { body, .. } = &ty.typ {
             ty = body.as_ref();
         }
 
-        match (&ty.types, path_it.next()) {
+        match (&ty.typ, path_it.next()) {
             (TypeF::Arrow(dom, codom), Some(next)) => {
                 match next {
                     Elem::Domain => {
@@ -175,7 +175,7 @@ pub mod ty_path {
             (TypeF::Record(rows), next @ Some(Elem::Field(ident))) => {
                 for row_item in rows.iter() {
                     match row_item {
-                        RecordRowsIteratorItem::Row(RecordRowF { id, types: ty })
+                        RecordRowsIteratorItem::Row(RecordRowF { id, typ: ty })
                             if id == *ident =>
                         {
                             let path_span = span(path_it, ty)?;
@@ -195,10 +195,10 @@ pub mod ty_path {
                     "span: current type path element indicates to go to field `{}`,\
 but this field doesn't exist in {}",
                     ident,
-                    Types::from(TypeF::Record(rows.clone())),
+                    Type::from(TypeF::Record(rows.clone())),
                 )
             }
-            (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().types == TypeF::Dyn =>
+            (TypeF::Array(ty), Some(Elem::Array)) if ty.as_ref().typ == TypeF::Dyn =>
             // Dyn shouldn't be the target of any blame
             {
                 panic!("span(): unexpected blame of a dyn contract inside an array")
@@ -275,7 +275,7 @@ but this field doesn't exist in {}",
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     /// The type checked by the original contract.
-    pub types: Rc<Types>,
+    pub typ: Rc<Type>,
     /// Custom diagnostics set by user code. There might be several diagnostics stacked up, as some
     /// contracts might in turn apply other subcontracts.
     ///
@@ -418,7 +418,7 @@ impl Label {
     /// Generate a dummy label for testing purpose.
     pub fn dummy() -> Label {
         Label {
-            types: Rc::new(Types::from(TypeF::Number)),
+            typ: Rc::new(Type::from(TypeF::Number)),
             diagnostics: vec![ContractDiagnostic::new().with_message(String::from("testing"))],
             span: RawSpan {
                 src_id: Files::new().add("<test>", String::from("empty")),
@@ -502,7 +502,7 @@ impl Label {
 impl Default for Label {
     fn default() -> Label {
         Label {
-            types: Rc::new(Types::from(TypeF::Dyn)),
+            typ: Rc::new(Type::from(TypeF::Dyn)),
             span: RawSpan {
                 src_id: Files::new().add("<null>", String::from("")),
                 start: 0.into(),

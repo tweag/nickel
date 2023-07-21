@@ -4,8 +4,8 @@ use crate::{
     identifier::Ident,
     mk_uty_row,
     term::{IndexMap, LabeledType},
+    typ::{RecordRowF, RecordRowsF, TypeF},
     typecheck::{UnifRecordRow, Unify},
-    types::{RecordRowF, RecordRowsF, TypeF},
 };
 
 use super::{
@@ -55,7 +55,7 @@ fn build_pattern_type(
             TypecheckMode::Walk => mk_uniftype::dynamic(),
             TypecheckMode::Check => {
                 if let Some(l_ty) = ty_annot {
-                    UnifType::from_type(l_ty.types, &ctxt.term_env)
+                    UnifType::from_type(l_ty.typ, &ctxt.term_env)
                 } else {
                     state.table.fresh_type_uvar(ctxt.var_level)
                 }
@@ -81,20 +81,20 @@ fn build_pattern_type(
     let mut rows = pat.matches.iter().map(|m| match m {
         Match::Simple(id, field) => Ok(RecordRowF {
             id: *id,
-            types: Box::new(new_leaf_type(
+            typ: Box::new(new_leaf_type(
                 state,
                 ctxt,
                 mode,
-                field.metadata.annotation.types.clone(),
+                field.metadata.annotation.typ.clone(),
             )),
         }),
         Match::Assign(id, field, FieldPattern::Ident(_)) => Ok(RecordRowF {
             id: *id,
-            types: Box::new(new_leaf_type(
+            typ: Box::new(new_leaf_type(
                 state,
                 ctxt,
                 mode,
-                field.metadata.annotation.types.clone(),
+                field.metadata.annotation.typ.clone(),
             )),
         }),
         Match::Assign(
@@ -110,18 +110,17 @@ fn build_pattern_type(
             // then we need to unify them with the pattern type we've built
             // to ensure (1) that they're mutually compatible and (2) that
             // we assign the annotated types to the right unification variables.
-            if let Some(annot_ty) = &field.metadata.annotation.types {
-                let types = annot_ty.types.clone();
-                let pos = types.pos;
-                let annot_ty = UnifType::from_type(types, &ctxt.term_env);
+            if let Some(annot_ty) = &field.metadata.annotation.typ {
+                let pos = annot_ty.typ.pos;
+                let annot_uty = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
                 ty.clone()
-                    .unify(annot_ty, state, ctxt)
+                    .unify(annot_uty, state, ctxt)
                     .map_err(|e| e.into_typecheck_err(state, pos))?;
             }
 
             Ok(RecordRowF {
                 id: *id,
-                types: Box::new(ty),
+                typ: Box::new(ty),
             })
         }
     });
@@ -171,7 +170,7 @@ pub fn inject_pattern_variables(
             // ```
             //
             // As such, we don't need to add it to the environment.
-            let UnifType::Concrete { types: TypeF::Record(rs), .. } = ty else {
+            let UnifType::Concrete { typ: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -183,7 +182,7 @@ pub fn inject_pattern_variables(
 
             env.insert(*alias, ty.clone());
 
-            let UnifType::Concrete{ types: TypeF::Record(rs), .. } = ty else {
+            let UnifType::Concrete{ typ: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
                               which means it must be a concrete record type")
@@ -215,7 +214,7 @@ impl From<&UnifRecordRows> for RecordTypes {
             u.iter()
                 .fold((IndexMap::new(), None), |(mut m, _), ty| match ty {
                     GenericUnifRecordRowsIteratorItem::Row(rt) => {
-                        m.insert(rt.id, rt.types.clone());
+                        m.insert(rt.id, rt.typ.clone());
                         (m, None)
                     }
                     GenericUnifRecordRowsIteratorItem::TailDyn => {
@@ -256,7 +255,7 @@ impl RecordTypes {
         let Self { known_types, tail } = self;
         let rows = known_types.iter().map(|(id, ty)| RecordRowF {
             id: *id,
-            types: Box::new(ty.clone()),
+            typ: Box::new(ty.clone()),
         });
         let rrows = rows.fold(tail, |tail, row| {
             UnifRecordRows::concrete(RecordRowsF::Extend {
