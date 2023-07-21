@@ -24,7 +24,7 @@ macro_rules! assert_snapshot_filtered {
     }
 }
 
-#[test_resources("cli/tests/snapshot/inputs/*/*.ncl")]
+#[test_resources("cli/tests/snapshot/inputs/**/*.ncl")]
 fn check_snapshots(path: &str) {
     let file = TestFile::from_project_path(path);
 

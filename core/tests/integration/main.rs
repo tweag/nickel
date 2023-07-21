@@ -1,7 +1,7 @@
 use std::{io::Cursor, thread};
 
 use nickel_lang_core::{
-    error::{Error, EvalError, ImportError, ParseError, TypecheckError},
+    error::{Error, EvalError, ExportError, ImportError, ParseError, TypecheckError},
     term::Term,
 };
 use nickel_lang_utils::{
@@ -175,6 +175,8 @@ enum ErrorExpectation {
     ParseTypedFieldWithoutDefinition,
     #[serde(rename = "ImportError::ParseError")]
     ImportParseError,
+    #[serde(rename = "ExportError::NumberOutOfRange")]
+    SerializeNumberOutOfRange,
 }
 
 impl PartialEq<Error> for ErrorExpectation {
@@ -205,7 +207,13 @@ impl PartialEq<Error> for ErrorExpectation {
                 TypecheckFlatTypeInTermPosition,
                 Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
             )
-            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..))) => true,
+            | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
+            | (
+                SerializeNumberOutOfRange,
+                Error::EvalError(EvalError::SerializationError(ExportError::NumberOutOfRange {
+                    ..
+                })),
+            ) => true,
             (e, Error::ParseErrors(es)) => {
                 let first_error = es
                     .errors
@@ -348,6 +356,7 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckVariableLevelMismatch { type_var: ident } => {
                 format!("TypecheckError::VariableLevelMismatch({ident})")
             }
+            SerializeNumberOutOfRange => "ExportError::NumberOutOfRange".to_owned(),
         };
         write!(f, "{}", name)
     }

@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: The number 1e400 is too large (in absolute value) to be serialized.
+  ┌─ [INPUTS_PATH]/errors/serialization_number_out_of_range.ncl:4:1
+  │
+4 │ 1e400
+  │ ^^^^^
+  │
+  = Only numbers in the range -1.7976931348623157e308 to 1.7976931348623157e308 can be portably serialized
+
+
