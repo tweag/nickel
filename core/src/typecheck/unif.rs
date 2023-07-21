@@ -1324,14 +1324,15 @@ trait RemoveRow: Sized {
     type RowContent;
     type Error;
 
-    // Fetch a specific row with the same id as `row.id` from a row type, and return the found row
-    // together with the original row type with the found row removed.
+    // Fetch a specific `row_id` from a row type, and return the content of the row together with
+    // the original row type without the found row.
     //
-    // If the row isn't found directly in the row type:
-    // - If the row type is extensible, i.e. it ends with a free unification variable for the tail,
-    //   this function adds the missing row (with `row.types` as a type for record rows, if allowed by [row
-    //   constraints][RowConstr]) and then acts as if `remove_row` was called on extended row type. That is, `remove_row` then returns the new
-    //   row and the extended type without the added row).
+    // If the searched row isn't found directly:
+    // - If the row type is extensible, i.e. it ends with a free unification variable in tail
+    //   position, this function adds the missing row (with `row.types` as a type for record rows,
+    //   if allowed by row constraints) and then acts as if `remove_row` was called again on
+    //   this extended row type. That is, `remove_row` returns the new row and the extended type
+    //   without the added row).
     // - Otherwise, raise a missing row error.
     fn remove_row(
         self,
@@ -1343,7 +1344,7 @@ trait RemoveRow: Sized {
 
 #[derive(Clone, Copy, Debug)]
 enum RemoveRRowError {
-    // The row to add was missing and the row type was closed (no free unification variable in free
+    // The row to add was missing and the row type was closed (no free unification variable in tail
     // position).
     Missing,
     // The row to add was missing and the row type couldn't be extended because of row constraints.
