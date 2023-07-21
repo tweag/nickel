@@ -14,8 +14,8 @@ pub struct VarLevel(NonZeroU16);
 
 impl VarLevel {
     /// Special constant used for level upper bound to indicate that a type doesn't contain any
-    /// unification variable. It's equal to `1` and strictly greater than [MIN_LEVEL], so it's
-    /// strictly greater than any concrete variable level.
+    /// unification variable. It's equal to `1` and strictly greater than [VarLevel::MIN_LEVEL], so
+    /// it's strictly greater than any concrete variable level.
     pub const NO_VAR: Self = VarLevel(NonZeroU16::MIN);
     /// The first available variable level, `2`.
     // unsafe is required because `unwrap()` is not usable in `const fn` code as of today in stable
