@@ -58,7 +58,6 @@ use crate::{
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
     identifier::Ident,
-    position::TermPos,
     stdlib as nickel_stdlib,
     term::{
         record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
@@ -1581,7 +1580,7 @@ fn walk_annotated<L: Linearizer>(
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
 fn walk_with_annot<L: Linearizer>(
     state: &mut State,
-    mut ctxt: Context,
+    ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     annot: &TypeAnnotation,
@@ -1600,8 +1599,7 @@ fn walk_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            let instantiated = instantiate_foralls(state, &mut ctxt, uty2, ForallInst::Constant);
-            check(state, ctxt, lin, linearizer.scope(), value, instantiated)
+            check(state, ctxt, lin, linearizer.scope(), value, uty2)
         }
         (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
         // TODO: we might have something to do with the linearizer to clear the current
@@ -1624,9 +1622,9 @@ fn walk_with_annot<L: Linearizer>(
 ///
 /// # Introduction rules
 ///
-/// Following Pfenning's recipe (see [Bidirectional Typing][bidirectional-typing]),
-/// introduction rules (e.g. typechecking a record) are checking. `check` follows the same logic
-/// here: it uses unification to "match" on the expected type (in the case of record, a record type
+/// Following Pfenning's recipe (see [Bidirectional Typing][bidirectional-typing]), introduction
+/// rules (e.g. typechecking a record) are checking. `check` follows the same logic here: it uses
+/// unification to "match" on the expected type (for example in the case of records, a record type
 /// or a dictionary type) and pushes typechecking down the record fields.
 ///
 /// # Elimination rules
@@ -1670,6 +1668,12 @@ fn check<L: Linearizer>(
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(lin, t, *pos, ty.clone());
+    // When checking against a polymorphic type, we immediatly instantiate potential heading
+    // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
+    // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
+    // with unification variables, such that terms like
+    // `(fun x => x : forall a. a -> a) : forall b. b -> b` typecheck correctly.
+    let ty = instantiate_foralls(state, &mut ctxt, ty, ForallInst::Constant);
 
     match t.as_ref() {
         Term::ParseError(_) => Ok(()),
@@ -1827,21 +1831,6 @@ fn check<L: Linearizer>(
 
             check(state, ctxt, lin, linearizer, rt, ty)
         }
-        Term::App(e, t) => {
-            // This part corresponds to the infer rule for application.
-            let function_type = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
-
-            let src = state.table.fresh_type_uvar(ctxt.var_level);
-            let tgt = state.table.fresh_type_uvar(ctxt.var_level);
-            let arr = mk_uty_arrow!(src.clone(), tgt.clone());
-
-            arr.unify(function_type, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, e.pos))?;
-
-            check(state, ctxt.clone(), lin, linearizer, t, src)?;
-
-            subsumption(state, &ctxt, tgt, ty).map_err(|err| err.into_typecheck_err(state, rt.pos))
-        }
         Term::Match { cases, default } => {
             // Currently, if the match has a default value, we typecheck the whole thing as taking
             // ANY enum, since it's more permissive and there's no loss of information.
@@ -1888,15 +1877,20 @@ fn check<L: Linearizer>(
                 .unify(mk_uty_enum!(; erows), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::Var(x) => {
-            let x_ty = ctxt
-                .type_env
-                .get(x)
-                .cloned()
-                .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
+        // Elimination forms (variable, function application and primitive operator application)
+        // follow the inference discipline, following the Pfennig recipe and the current type
+        // system specification (as far as typechecking is concerned, primitive operator
+        // application is the same as function application).
+        Term::Var(_)
+        | Term::App(..)
+        | Term::Op1(..)
+        | Term::Op2(..)
+        | Term::OpN(..)
+        | Term::Annotated(..) => {
+            let inferred = infer(state, ctxt.clone(), lin, linearizer, rt)?;
 
-            let instantiated = instantiate_foralls(state, &mut ctxt, x_ty, ForallInst::Ptr);
-            ty.unify(instantiated, state, &ctxt)
+            // We call to `subsumption` to perform the switch from infer mode to checking mode.
+            subsumption(state, ctxt, inferred, ty)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         Term::Enum(id) => {
@@ -2027,52 +2021,7 @@ fn check<L: Linearizer>(
                 Ok(())
             }
         }
-        // Primitive operator application follows the inference discipline, like function
-        // application, because it's an elimination rule (as far as typechecking is concerned,
-        // primitive operator application is strictly the same as normal function application).
-        //
-        // Note that the order of checking an argument against an inferred type or unifying the
-        // target type with an expected value doesn't matter (those operation commutes). We usually
-        // `unify` first, because it doesn't consume the context, while `check` needs an owned
-        // value.
-        Term::Op1(op, t) => {
-            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
 
-            //TODO: this should go after the call to `subsumption`, to avoid context cloning, once
-            //we get rid of the special casing of type instantation below. For the time being, the
-            //instantiation is depending on this check having happened before, so we have to leave
-            //it as it is.
-            check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
-
-            let instantiated = instantiate_foralls(state, &mut ctxt, ty_res, ForallInst::Ptr);
-            subsumption(state, &ctxt, instantiated, ty)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))
-        }
-        Term::Op2(op, t1, t2) => {
-            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
-
-            subsumption(state, &ctxt, ty_res, ty)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
-            check(state, ctxt, lin, linearizer, t2, ty_arg2)
-        }
-        Term::OpN(op, args) => {
-            let (tys_op, ty_ret) = get_nop_type(state, ctxt.var_level, op)?;
-
-            ty.unify(ty_ret, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            tys_op.into_iter().zip(args.iter()).try_for_each(
-                |(ty_t, t)| -> Result<_, TypecheckError> {
-                    check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_t)?;
-                    Ok(())
-                },
-            )?;
-
-            Ok(())
-        }
-        Term::Annotated(annot, rt) => check_annotated(state, ctxt, lin, linearizer, annot, rt, ty),
         Term::SealingKey(_) => ty
             .unify(mk_uniftype::sym(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -2106,16 +2055,26 @@ fn check<L: Linearizer>(
 
 /// Change from inference mode to checking mode, and apply a potential subsumption rule.
 ///
-/// Currently, there is no subtyping (until RFC004 is implemented), hence this function simply
-/// performs unification (put differently, the subtyping relation is the equality relation). In the
-/// future, this function might implement a non-trivial subsumption rule.
+/// Currently, there is no subtyping (until RFC004 is implemented), hence this function performs
+/// polymorphic type instantiation with unification variable on the left (on the inferred type),
+/// and then simply performs unification (put differently, the subtyping relation is the equality
+/// relation).
+///
+/// The type instantiation corresponds to the zero-ary case of application in the current
+/// specification (which is based on [A Quick Look at Impredicativity][quick-look], also we
+/// currently don't support impredicative polymorphism).
+///
+/// In the future, this function might implement a non-trivial subsumption rule.
+///
+/// [quick-look]: https://www.microsoft.com/en-us/research/uploads/prod/2020/01/quick-look-icfp20-fixed.pdf
 pub fn subsumption(
     state: &mut State,
-    ctxt: &Context,
+    mut ctxt: Context,
     inferred: UnifType,
     checked: UnifType,
 ) -> Result<(), UnifError> {
-    checked.unify(inferred, state, ctxt)
+    let inferred_inst = instantiate_foralls(state, &mut ctxt, inferred, ForallInst::UnifVar);
+    checked.unify(inferred_inst, state, &ctxt)
 }
 
 fn check_field<L: Linearizer>(
@@ -2129,49 +2088,60 @@ fn check_field<L: Linearizer>(
 ) -> Result<(), TypecheckError> {
     linearizer.add_field_metadata(lin, field);
 
-    check_with_annot(
-        state,
-        ctxt,
-        lin,
-        linearizer,
-        &field.metadata.annotation,
-        field.value.as_ref(),
-        ty,
-        field.value.as_ref().map(|v| v.pos).unwrap_or(id.pos),
-    )
+    // If there's no annotation, we simply check the underlying value, if any.
+    if field.metadata.annotation.is_empty() {
+        if let Some(value) = field.value.as_ref() {
+            check(state, ctxt, lin, linearizer, value, ty)
+        } else {
+            // It might make sense to accept any type for a value without definition (which would
+            // act a bit like a function parameter). But for now, we play safe and implement a more
+            // restrictive rule, which is that a value without a definition has type `Dyn`
+            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, id.pos))
+        }
+    } else {
+        let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(id.pos);
+
+        let inferred = infer_with_annot(
+            state,
+            ctxt.clone(),
+            lin,
+            linearizer,
+            &field.metadata.annotation,
+            field.value.as_ref(),
+        )?;
+
+        subsumption(state, ctxt, inferred, ty).map_err(|err| err.into_typecheck_err(state, pos))
+    }
 }
 
-fn check_annotated<L: Linearizer>(
+fn infer_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
     linearizer: L,
     annot: &TypeAnnotation,
     rt: &RichTerm,
-    ty: UnifType,
-) -> Result<(), TypecheckError> {
-    check_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), ty, rt.pos)
+) -> Result<UnifType, TypecheckError> {
+    infer_with_annot(state, ctxt, lin, linearizer, annot, Some(rt))
 }
 
-/// Function handling the common part of typechecking terms with type or contract annotation, with
-/// or without definitions. This encompasses both standalone type annotation (where `value` is
-/// always `Some(_)`) as well as field definitions (where `value` may or may not be defined).
-///
-/// The last argument is a position to use for error reporting when `value` is `None`.
+/// Function handling the common part of inferring the type of terms with type or contract
+/// annotation, with or without definitions. This encompasses both standalone type annotation
+/// (where `value` is always `Some(_)`) as well as field definitions (where `value` may or may not
+/// be defined).
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
-fn check_with_annot<L: Linearizer>(
+fn infer_with_annot<L: Linearizer>(
     state: &mut State,
-    mut ctxt: Context,
+    ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
-    ty: UnifType,
-    pos: TermPos,
-) -> Result<(), TypecheckError> {
-    annot
-        .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ))?;
+) -> Result<UnifType, TypecheckError> {
+    annot.iter().try_for_each(|ty| {
+        walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ)
+    })?;
 
     match (annot, value) {
         (
@@ -2182,12 +2152,9 @@ fn check_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            let instantiated =
-                instantiate_foralls(state, &mut ctxt, uty2.clone(), ForallInst::Constant);
 
-            uty2.unify(ty, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, pos))?;
-            check(state, ctxt, lin, linearizer, value, instantiated)
+            check(state, ctxt.clone(), lin, linearizer, value, uty2.clone())?;
+            Ok(uty2)
         }
         // A annotation without a type but with a contract switches the typechecker back to walk
         // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
@@ -2203,27 +2170,19 @@ fn check_with_annot<L: Linearizer>(
             let ctr = contracts.get(0).unwrap();
             let LabeledType { typ: ty2, .. } = ctr;
 
-            ty.unify(
-                UnifType::from_type(ty2.clone(), &ctxt.term_env),
-                state,
-                &ctxt,
-            )
-            .map_err(|err| err.into_typecheck_err(state, pos))?;
+            let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            // if there's an inner value, we still have to walk it, as it may contain
-            // statically typed blocks.
+            // If there's an inner value, we have to walk it, as it may contain statically typed
+            // blocks.
             if let Some(value) = value_opt {
-                walk(state, ctxt, lin, linearizer, value)
-            } else {
-                // TODO: we might have something to with the linearizer to clear the current
-                // metadata. It looks like it may be unduly attached to the next field definition,
-                // which is not critical, but still a bug.
-                Ok(())
+                walk(state, ctxt, lin, linearizer, value)?;
             }
+
+            Ok(uty2)
         }
         // A non-empty value without a type or a contract annotation is typechecked in the same way
         // as its inner value
-        (_, Some(value)) => check(state, ctxt, lin, linearizer, value, ty),
+        (_, Some(value)) => infer(state, ctxt, lin, linearizer, value),
         // A empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         //
@@ -2235,8 +2194,7 @@ fn check_with_annot<L: Linearizer>(
                 .first()
                 .map(|labeled_ty| UnifType::from_type(labeled_ty.typ.clone(), &ctxt.term_env))
                 .unwrap_or_else(mk_uniftype::dynamic);
-            ty.unify(inferred, state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, pos))
+            Ok(inferred)
         }
     }
 }
@@ -2244,23 +2202,99 @@ fn check_with_annot<L: Linearizer>(
 /// Infer a type for an expression.
 ///
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
-/// bidirectional typechecking together with traditional ML-like unification. In practice, to avoid
-/// duplicating a lot of rules for both checking mode and inference mode, the current [`check`]
-/// function mixes both and inference simply corresponds to checking against a free unification
-/// variable.
-///
-/// Still, using this dedicated method - although it is a thin wrapper - helps making clear when
-/// inference mode is used and when checking mode is used in the typechecking algorithm.
+/// bidirectional typechecking and traditional ML-like unification.
 fn infer<L: Linearizer>(
     state: &mut State,
-    ctxt: Context,
+    mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
-    linearizer: L,
+    mut linearizer: L,
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {
-    let inferred = state.table.fresh_type_uvar(ctxt.var_level);
-    check(state, ctxt, lin, linearizer, rt, inferred.clone())?;
-    Ok(inferred.into_root(state.table))
+    let RichTerm { term, pos } = rt;
+
+    // For the following infer rules, we need to be careful to call to `linearizer.add_term` at the
+    // right moment. We need to provide a type, so we can't do it before having inferred a type for
+    // `rt`. However, we must do it **before** any subsequent calls to `check` or `infer`, because
+    // the linearizer relies on terms being visited in order (pre-order).
+    match term.as_ref() {
+        Term::Var(x) => {
+            let x_ty = ctxt
+                .type_env
+                .get(x)
+                .cloned()
+                .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
+
+            linearizer.add_term(lin, term, *pos, x_ty.clone());
+            Ok(x_ty)
+        }
+        // Theoretically, we need to instantiate the type of the head of the primop application,
+        // that is, the primop itself. In practice, `get_uop_type`,`get_bop_type` and
+        // `get_nop_type` return type that are already instantiated with free unification
+        // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
+        // the type of a primop is currently always monomorphic.
+        Term::Op1(op, t) => {
+            let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
+            linearizer.add_term(lin, term, *pos, ty_res.clone());
+
+            check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
+
+            Ok(ty_res)
+        }
+        Term::Op2(op, t1, t2) => {
+            let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
+            linearizer.add_term(lin, term, *pos, ty_res.clone());
+
+            check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
+            check(state, ctxt.clone(), lin, linearizer, t2, ty_arg2)?;
+
+            Ok(ty_res)
+        }
+        Term::OpN(op, args) => {
+            let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
+            linearizer.add_term(lin, term, *pos, ty_res.clone());
+
+            tys_args.into_iter().zip(args.iter()).try_for_each(
+                |(ty_arg, arg)| -> Result<_, TypecheckError> {
+                    check(state, ctxt.clone(), lin, linearizer.scope(), arg, ty_arg)?;
+                    Ok(())
+                },
+            )?;
+
+            Ok(ty_res)
+        }
+        Term::App(e, t) => {
+            // If we go the full Quick Look route (cf [quick-look] and the Nickel type system
+            // specification), we will have a more advanced and specific rule to guess the
+            // instantiation of the potentially polymorphic type of the head of the application.
+            // Currently, we limit ourselves to predicative instantiation, and we can get away
+            // by eagerly instantiating heading `foralls` with fresh unification variables.
+            let head_poly = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
+            let head = instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
+
+            let dom = state.table.fresh_type_uvar(ctxt.var_level);
+            let codom = state.table.fresh_type_uvar(ctxt.var_level);
+            let arrow = mk_uty_arrow!(dom.clone(), codom.clone());
+
+            // "Match" the type of the head with `dom -> codom`
+            arrow
+                .unify(head, state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, e.pos))?;
+
+            linearizer.add_term(lin, term, *pos, codom.clone());
+            check(state, ctxt.clone(), lin, linearizer, t, dom)?;
+            Ok(codom)
+        }
+        Term::Annotated(annot, rt) => infer_annotated(state, ctxt, lin, linearizer, annot, rt),
+        _ => {
+            // The remaining cases can't produce polymorphic types, and thus we can reuse the
+            // checking code. Inferring the type for those rules is equivalent to checking against
+            // a free unification variable. This saves use from duplicating all the remaining
+            // cases.
+            let inferred = state.table.fresh_type_uvar(ctxt.var_level);
+            check(state, ctxt, lin, linearizer, rt, inferred.clone())?;
+            Ok(inferred.into_root(state.table))
+        }
+    }
 }
 
 /// Determine the type of a let-bound expression.
@@ -2563,7 +2597,7 @@ fn has_wildcards(ty: &Type) -> bool {
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum ForallInst {
     Constant,
-    Ptr,
+    UnifVar,
 }
 
 /// Instantiate the type variables which are quantified in head position with either unification
@@ -2609,7 +2643,7 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_type_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifType::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifType::UnifVar {
+                    ForallInst::UnifVar => UnifType::UnifVar {
                         id: fresh_uid,
                         init_level: ctxt.var_level,
                     },
@@ -2621,7 +2655,7 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_rrows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifRecordRows::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifRecordRows::UnifVar {
+                    ForallInst::UnifVar => UnifRecordRows::UnifVar {
                         id: fresh_uid,
                         init_level: ctxt.var_level,
                     },
@@ -2629,7 +2663,7 @@ fn instantiate_foralls(
                 state.names.insert((fresh_uid, kind), var);
                 ty = body.subst(&var, &uvar);
 
-                if inst == ForallInst::Ptr {
+                if inst == ForallInst::UnifVar {
                     state.constr.insert(fresh_uid, excluded);
                 }
             }
@@ -2637,7 +2671,7 @@ fn instantiate_foralls(
                 let fresh_uid = state.table.fresh_erows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
-                    ForallInst::Ptr => UnifEnumRows::UnifVar {
+                    ForallInst::UnifVar => UnifEnumRows::UnifVar {
                         id: fresh_uid,
                         init_level: ctxt.var_level,
                     },
