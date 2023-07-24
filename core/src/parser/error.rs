@@ -134,4 +134,8 @@ pub enum ParseError {
         /// The position of the type annotation.
         annot_span: RawSpan,
     },
+    DisabledFeature {
+        feature: String,
+        span: RawSpan,
+    },
 }

@@ -499,6 +499,10 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
+    DisabledFeature {
+        feature: String,
+        span: RawSpan,
+    },
 }
 
 /// An error occurring during the resolution of an import.
@@ -698,6 +702,9 @@ impl ParseError {
                 },
                 InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
                     ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
+                }
+                InternalParseError::DisabledFeature { feature, span } => {
+                    ParseError::DisabledFeature { feature, span }
                 }
             },
         }
@@ -1791,6 +1798,11 @@ impl IntoDiagnostics<FileId> for ParseError {
                     secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
                     primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
                 ]),
+            ParseError::DisabledFeature { feature, span } =>
+                Diagnostic::error()
+                    .with_message("Interpreter compiled without required features")
+                    .with_labels(vec![primary(&span).with_message(format!("this syntax is only supported with the `{}` feature", feature))])
+                    .with_notes(vec![format!("Recompile nickel with `--features {}`", feature)]),
         };
 
         vec![diagnostic]

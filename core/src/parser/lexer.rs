@@ -320,7 +320,6 @@ pub enum NormalToken<'input> {
     LabelPushDiag,
     #[token("%array_slice%")]
     ArraySlice,
-    #[cfg(feature = "nix-experimental")]
     #[token("%eval_nix%")]
     EvalNix,
 

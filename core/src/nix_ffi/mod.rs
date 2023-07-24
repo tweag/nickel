@@ -1,3 +1,4 @@
+#![cfg(feature = "nix-experimental")]
 #[cxx::bridge]
 mod nix_ffi {
     unsafe extern "C++" {

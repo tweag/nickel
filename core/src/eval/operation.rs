@@ -12,11 +12,14 @@ use super::{
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
 
+#[cfg(feature = "nix-experimental")]
+use crate::nix_ffi;
+
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
-    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record, nix_ffi,
+    match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     parser::utils::parse_number,
     position::TermPos,
     serialize,
