@@ -1161,10 +1161,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix() => {
                 if let Term::Str(s) = &*t {
-                    let json = nix_ffi::eval_to_json(&String::from(s))
-                        .map_err(|e| EvalError::Other(e.what().to_string(), pos))?;
+                    let json = nix_ffi::eval_to_json(&String::from(s)).map_err(|e| {
+                        EvalError::Other(
+                            format!("nix code failed to evaluate:\n {}", e.what().to_string()),
+                            pos,
+                        )
+                    })?;
                     Ok(Closure::atomic_closure(
-                        serde_json::from_str(&json).expect("Nix should produce valid json"),
+                        serde_json::from_str(&json).map_err(|e| {
+                            EvalError::Other(format!("Nix produced invalid json: {}", e), pos)
+                        })?,
                     ))
                 } else {
                     // Not using mk_type_error! because of a non-uniform message
