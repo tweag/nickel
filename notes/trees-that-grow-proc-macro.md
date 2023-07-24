@@ -103,9 +103,9 @@ trait Extension {
 enum Exp<Ext: Extension> {
     Lit(Ext::Lit, i32),
     Var(Ext::Var, Var),
-    Ann(Ext::Ann, Box<Exp>, Typ),
-    Abs(Ext::Abs, Var, Box<Exp>),
-    App(Ext::App, Box<Exp, Box<Exp>),
+    Ann(Ext::Ann, Box<Exp<Ext>>, Typ),
+    Abs(Ext::Abs, Var, Box<Exp<Ext>>),
+    App(Ext::App, Box<Exp<Ext>, Box<Exp<Ext>>),
     Ext::More,
 }
 pub struct Base;
