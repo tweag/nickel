@@ -774,7 +774,7 @@ impl ParseError {
 
     #[cfg(feature = "nix-experimental")]
     pub fn from_nix(error: &str, _file_id: FileId) -> Self {
-        // XXX: fill in span information
+        // Span is shown in the nix error message
         ParseError::ExternalFormatError(String::from("nix"), error.to_string(), None)
     }
 }
