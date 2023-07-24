@@ -1754,6 +1754,7 @@ dependencies = [
  "metrics",
  "nickel-lang-utils",
  "once_cell",
+ "pkg-config",
  "pprof",
  "pretty",
  "pretty_assertions",

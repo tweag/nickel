@@ -9,6 +9,9 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
+# XXX: i think this should in theory contain  "nix-store", "nix-cmd", "nix-
+#      expr", "nix-main", but it's not clear how to specify multiple values
+links = "nix"
 
 [lib]
 bench = false
@@ -21,11 +24,12 @@ repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
 doc = ["dep:comrak"]
 format = ["dep:topiary", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
-nix-experimental = [ "dep:cxx", "dep:cxx-build" ]
+nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
 
 [build-dependencies]
 lalrpop.workspace = true
 cxx-build = { workspace = true, optional = true }
+pkg-config = { workspace = true, optional = true }
 
 [dependencies]
 lalrpop-util.workspace = true

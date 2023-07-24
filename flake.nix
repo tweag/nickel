@@ -1,4 +1,3 @@
-# XXX: propagating errors from nix to nickel
 {
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-unstable";
@@ -298,8 +297,7 @@
             '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
-            # XXX: I still need to add "-isystem ${pkgs.nix}/include/nix" to $NIX_CFLAGS_COMPILE
-            buildInputs = [ pkgs.python3 pkgs.nixVersions.nix_2_16 pkgs.boost ];
+            buildInputs = with pkgs; [ python3 pkg-config nixVersions.nix_2_16 boost ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
@@ -466,8 +464,6 @@
         shellHook = (pre-commit-builder { inherit rust; checkFormat = true; }).shellHook + ''
           echo "=== Nickel development shell ==="
           echo "Info: Git hooks can be installed using \`pre-commit install\`"
-          # XXX
-          NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -isystem ${pkgs.nixVersions.nix_2_16.dev}/include/nix"
         '';
 
         RUST_SRC_PATH = "${rust}/lib/rustlib/src/rust/library";
