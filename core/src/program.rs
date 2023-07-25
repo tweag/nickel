@@ -26,7 +26,11 @@ use crate::eval;
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::LocIdent;
-use crate::term::{record::Field, RichTerm};
+use crate::label::Label;
+use crate::term::make::builder;
+use crate::term::record::RecordData;
+use crate::term::{make as mk_term, record::Field, RichTerm};
+use crate::term::{BinaryOp, Term};
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
@@ -203,8 +207,31 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Same as `eval`, but proceeds to a full evaluation.
     /// Skips record fields marked `not_exported`
-    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+    pub fn eval_full_for_export(
+        &mut self,
+        overrides: Option<impl IntoIterator<Item = (Vec<String>, String)>>,
+    ) -> Result<RichTerm, Error> {
+        let (t, initial_env) = match overrides {
+            None => self.prepare_eval()?,
+            Some(overrides) => {
+                let mut record = builder::Record::new();
+
+                for (path, value) in overrides {
+                    let value_file_id = self
+                        .vm
+                        .import_resolver_mut()
+                        .add_string(format!("<override {}>", path.join(".")), value);
+                    self.vm.prepare_eval(value_file_id)?;
+                    record = record.path(path).value(Term::ResolvedImport(value_file_id));
+                }
+
+                let (t, initial_env) = self.prepare_eval()?;
+                let built_record = record.build();
+                let wrapper =
+                    mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
+                (wrapper, initial_env)
+            }
+        };
         self.vm.reset();
         self.vm
             .eval_full_for_export(t, &initial_env)
@@ -283,10 +310,26 @@ impl<EC: EvalCache> Program<EC> {
         use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
-        use crate::term::record::RecordData;
-        use crate::term::Term;
+        use crate::term::record::FieldMetadata;
+        use crate::term::TypeAnnotation;
+        use crate::typ::TypeF;
 
         let (t, initial_env) = self.prepare_eval()?;
+
+        fn eval_annotation<EC: EvalCache>(
+            vm: &mut VirtualMachine<Cache, EC>,
+            mut annotation: TypeAnnotation,
+            current_env: Environment,
+            initial_env: &Environment,
+        ) -> Result<TypeAnnotation, Error> {
+            vm.reset();
+            for ann in annotation.iter_mut() {
+                if let TypeF::Flat(rt) = &mut ann.typ.typ {
+                    *rt = do_eval(vm, rt.clone(), current_env.clone(), initial_env)?;
+                }
+            }
+            Ok(annotation)
+        }
 
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
@@ -330,6 +373,15 @@ impl<EC: EvalCache> Program<EC> {
                                             .value
                                             .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
                                             .transpose()?,
+                                        metadata: FieldMetadata {
+                                            annotation: eval_annotation(
+                                                vm,
+                                                field.metadata.annotation,
+                                                env.clone(),
+                                                initial_env,
+                                            )?,
+                                            ..field.metadata
+                                        },
                                         ..field
                                     },
                                 ))

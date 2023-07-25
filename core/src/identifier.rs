@@ -241,6 +241,7 @@ mod interner {
 
         /// Stores a string inside the [Interner] if it does not exists, and returns the corresponding [Symbol].
         pub(crate) fn intern(&self, string: impl AsRef<str>) -> Symbol {
+            let string = string.as_ref();
             self.0.write().unwrap().intern(string)
         }
 

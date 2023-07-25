@@ -1875,6 +1875,12 @@ impl fmt::Display for Term {
     }
 }
 
+impl std::fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
 /// Allows to match on SharedTerm without taking ownership of the matched part until the match.
 /// In the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that point.
 ///
@@ -1928,6 +1934,8 @@ macro_rules! match_sharedterm {
 /// Helpers to build `RichTerm` objects.
 pub mod make {
     use super::*;
+
+    pub mod builder;
 
     /// Multi-ary application for types implementing `Into<RichTerm>`.
     #[macro_export]
