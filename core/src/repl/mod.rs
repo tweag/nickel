@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance};
+use crate::cache::{Cache, CacheError, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
@@ -113,7 +113,12 @@ impl<EC: EvalCache> ReplImpl<EC> {
             resolved_ids: pending,
         } = import_resolution::strict::resolve_imports(t, self.vm.import_resolver_mut())?;
         for id in &pending {
-            dbg!(self.vm.import_resolver_mut().resolve_imports(*id)).unwrap();
+            self.vm
+                .import_resolver_mut()
+                .resolve_imports(*id)
+                .map_err(|cache_err| {
+                    cache_err.unwrap_error("repl::eval_(): expected imports to be parsed")
+                })?;
         }
 
         let wildcards =
