@@ -2267,7 +2267,7 @@ fn infer<L: Linearizer>(
             // specification), we will have a more advanced and specific rule to guess the
             // instantiation of the potentially polymorphic type of the head of the application.
             // Currently, we limit ourselves to predicative instantiation, and we can get away
-            // by eagerly instantiating heading `foralls` with fresh unification variables.
+            // with eagerly instantiating heading `foralls` with fresh unification variables.
             let head_poly = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
             let head = instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
 
