@@ -296,7 +296,7 @@ impl PartialEq<Error> for ErrorExpectation {
             ) => ident == constant.label(),
             // The clone is not ideal, but currently we can't compare `TypecheckError` directly
             // with an ErrorExpectation. Ideally, we would implement `eq` for all error subtypes,
-            // and have the eq with `Error` just dipsatch to those sub-eq functions.
+            // and have the eq with `Error` just dispatch to those sub-eq functions.
             (
                 TypecheckArrowTypeMismatch {
                     sub_error: sub_error1,
