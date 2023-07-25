@@ -263,7 +263,7 @@ impl<EC: EvalCache> Program<EC> {
     /// This needs to evaluate to WHNF, but then still descend into subfields
     /// whose values are records.
     #[cfg(feature = "doc")]
-    pub fn eval_for_docs(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_for_doc(&mut self) -> Result<RichTerm, Error> {
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
         use crate::term::record::RecordData;
@@ -323,7 +323,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
-        let term = self.eval_for_docs()?;
+        let term = self.eval_for_doc()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
             ExportError::NoDocumentation(term.clone()),
         ))
