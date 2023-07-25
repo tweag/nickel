@@ -528,7 +528,7 @@ impl TypeAnnotation {
     /// Return `true` if this annotation is empty, i.e. hold neither a type annotation nor
     /// contracts annotations.
     pub fn is_empty(&self) -> bool {
-        self.types.is_none() && self.contracts.is_empty()
+        self.typ.is_none() && self.contracts.is_empty()
     }
 }
 

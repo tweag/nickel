@@ -2139,9 +2139,9 @@ fn infer_with_annot<L: Linearizer>(
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
 ) -> Result<UnifType, TypecheckError> {
-    annot.iter().try_for_each(|ty| {
-        walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ)
-    })?;
+    annot
+        .iter()
+        .try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ))?;
 
     match (annot, value) {
         (
@@ -2153,7 +2153,7 @@ fn infer_with_annot<L: Linearizer>(
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            check(state, ctxt.clone(), lin, linearizer, value, uty2.clone())?;
+            check(state, ctxt, lin, linearizer, value, uty2.clone())?;
             Ok(uty2)
         }
         // A annotation without a type but with a contract switches the typechecker back to walk
