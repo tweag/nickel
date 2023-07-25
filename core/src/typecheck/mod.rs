@@ -2061,7 +2061,7 @@ fn check<L: Linearizer>(
 /// relation).
 ///
 /// The type instantiation corresponds to the zero-ary case of application in the current
-/// specification (which is based on [A Quick Look at Impredicativity][quick-look], also we
+/// specification (which is based on [A Quick Look at Impredicativity][quick-look], although we
 /// currently don't support impredicative polymorphism).
 ///
 /// In the future, this function might implement a non-trivial subsumption rule.
