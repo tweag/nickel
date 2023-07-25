@@ -513,6 +513,7 @@ impl TypeAnnotation {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    /// Set the `field_name` attribute of the labels of the type and contracts annotations.
     pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
         TypeAnnotation {
             typ: self.typ.map(|t| t.with_field_name(field_name)),
@@ -522,6 +523,12 @@ impl TypeAnnotation {
                 .map(|t| t.with_field_name(field_name))
                 .collect(),
         }
+    }
+
+    /// Return `true` if this annotation is empty, i.e. hold neither a type annotation nor
+    /// contracts annotations.
+    pub fn is_empty(&self) -> bool {
+        self.typ.is_none() && self.contracts.is_empty()
     }
 }
 

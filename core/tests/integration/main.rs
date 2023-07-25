@@ -163,10 +163,12 @@ enum ErrorExpectation {
     TypecheckExtraDynTail,
     #[serde(rename = "TypecheckError::MissingDynTail")]
     TypecheckMissingDynTail,
+    #[serde(rename = "TypecheckError::ArrowTypeMismatch")]
+    TypecheckArrowTypeMismatch { sub_error: Box<ErrorExpectation> },
     #[serde(rename = "TypecheckError::FlatTypeInTermPosition")]
     TypecheckFlatTypeInTermPosition,
-    #[serde(rename = "TypecheckError::VariableLevelMismatch")]
-    TypecheckVariableLevelMismatch { type_var: String },
+    #[serde(rename = "TypecheckError::VarLevelMismatch")]
+    TypecheckVarLevelMismatch { type_var: String },
     #[serde(rename = "ParseError")]
     AnyParseError,
     #[serde(rename = "ParseError::DuplicateIdentInRecordPattern")]
@@ -287,11 +289,20 @@ impl PartialEq<Error> for ErrorExpectation {
                 _ => false,
             },
             (
-                TypecheckVariableLevelMismatch { type_var: ident },
+                TypecheckVarLevelMismatch { type_var: ident },
                 Error::TypecheckError(TypecheckError::VarLevelMismatch {
                     type_var: constant, ..
                 }),
             ) => ident == constant.label(),
+            // The clone is not ideal, but currently we can't compare `TypecheckError` directly
+            // with an ErrorExpectation. Ideally, we would implement `eq` for all error subtypes,
+            // and have the eq with `Error` just dispatch to those sub-eq functions.
+            (
+                TypecheckArrowTypeMismatch {
+                    sub_error: sub_error1,
+                },
+                Error::TypecheckError(TypecheckError::ArrowTypeMismatch(_, _, _, sub_error2, _)),
+            ) => sub_error1.as_ref() == &Error::TypecheckError((**sub_error2).clone()),
             (_, _) => false,
         }
     }
@@ -352,9 +363,12 @@ impl std::fmt::Display for ErrorExpectation {
             }
             TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
             TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
+            TypecheckArrowTypeMismatch { sub_error } => {
+                format!("TypecheckError::ArrowTypeMismatch{sub_error})")
+            }
             TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
-            TypecheckVariableLevelMismatch { type_var: ident } => {
-                format!("TypecheckError::VariableLevelMismatch({ident})")
+            TypecheckVarLevelMismatch { type_var: ident } => {
+                format!("TypecheckError::VarLevelMismatch({ident})")
             }
             SerializeNumberOutOfRange => "ExportError::NumberOutOfRange".to_owned(),
         };
