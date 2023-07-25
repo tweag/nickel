@@ -1278,8 +1278,7 @@ impl Unify for UnifRecordRows {
                                 RowUnifError::UnsatConstr(id, *typ.clone())
                             }
                         })?;
-                    typ
-                        .unify(ty2, state, ctxt)
+                    typ.unify(ty2, state, ctxt)
                         .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
                     tail.unify(urrows2_without_ty2, state, ctxt)
                 }
