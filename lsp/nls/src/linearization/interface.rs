@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
-use nickel_lang_core::{identifier::Ident, typecheck::UnifType, types::Types};
+use nickel_lang_core::{identifier::Ident, typ::Type, typecheck::UnifType};
 
 use super::ItemId;
 
 pub trait ResolutionState {}
 /// Types are available as [nickel_lang_core::typecheck::UnifType] only during recording. They are
-/// resolved after typechecking as [nickel_lang_core::types::Types]
+/// resolved after typechecking as [nickel_lang_core::typ::Type]
 pub type Unresolved = UnifType;
 impl ResolutionState for Unresolved {}
 
-/// When resolved a concrete [Types] is known
-pub type Resolved = Types;
+/// When resolved a concrete [Type] is known
+pub type Resolved = Type;
 impl ResolutionState for Resolved {}
 
 /// Abstract term kinds.
@@ -43,7 +43,7 @@ pub enum TermKind {
         usages: Vec<ItemId>,
         value: ValueState,
     },
-    Types(Types),
+    Type(Type),
     Structure,
 }
 

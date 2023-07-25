@@ -4,7 +4,7 @@ use crate::{
     error::TypecheckError,
     label::{Polarity, TypeVarData},
     term::{BinaryOp, NAryOp, RecordExtKind, UnaryOp},
-    types::TypeF,
+    typ::TypeF,
 };
 use crate::{mk_uty_arrow, mk_uty_enum, mk_uty_record};
 

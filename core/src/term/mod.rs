@@ -24,7 +24,7 @@ use crate::{
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
-    types::{Types, UnboundTypeVariableError},
+    typ::{Type, UnboundTypeVariableError},
 };
 
 use codespan::FileId;
@@ -185,7 +185,7 @@ pub enum Term {
     ///
     /// During evaluation, this will get turned into a contract.
     #[serde(skip)]
-    Types(Types),
+    Type(Type),
 
     /// A term that couldn't be parsed properly. Used by the LSP to handle partially valid
     /// programs.
@@ -310,7 +310,7 @@ impl std::convert::TryFrom<LabeledType> for RuntimeContract {
 
     fn try_from(labeled_ty: LabeledType) -> Result<Self, Self::Error> {
         Ok(RuntimeContract::new(
-            labeled_ty.types.contract()?,
+            labeled_ty.typ.contract()?,
             labeled_ty.label,
         ))
     }
@@ -424,7 +424,7 @@ impl fmt::Display for MergePriority {
 /// A type or a contract together with its corresponding label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct LabeledType {
-    pub types: Types,
+    pub typ: Type,
     pub label: Label,
 }
 
@@ -446,10 +446,9 @@ impl Traverse<RichTerm> for LabeledType {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let LabeledType { types, label } = self;
-        types
-            .traverse(f, state, order)
-            .map(|types| LabeledType { types, label })
+        let LabeledType { typ, label } = self;
+        typ.traverse(f, state, order)
+            .map(|typ| LabeledType { typ, label })
     }
 }
 
@@ -457,7 +456,7 @@ impl Traverse<RichTerm> for LabeledType {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct TypeAnnotation {
     /// The type annotation (using `:`).
-    pub types: Option<LabeledType>,
+    pub typ: Option<LabeledType>,
     /// The contracts annotation (using `|`).
     pub contracts: Vec<LabeledType>,
 }
@@ -466,17 +465,17 @@ impl TypeAnnotation {
     /// Return the main annotation, which is either the type annotation if any, or the first
     /// contract annotation.
     pub fn first(&self) -> Option<&LabeledType> {
-        self.types.iter().chain(self.contracts.iter()).next()
+        self.typ.iter().chain(self.contracts.iter()).next()
     }
 
     /// Iterate over the annotations, starting by the type and followed by the contracts.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledType> {
-        self.types.iter().chain(self.contracts.iter())
+        self.typ.iter().chain(self.contracts.iter())
     }
 
     /// Mutably iterate over the annotations, starting by the type and followed by the contracts.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut LabeledType> {
-        self.types.iter_mut().chain(self.contracts.iter_mut())
+        self.typ.iter_mut().chain(self.contracts.iter_mut())
     }
 
     /// Return a string representation of the contracts (without the static type annotation) as a
@@ -485,7 +484,7 @@ impl TypeAnnotation {
         (!self.contracts.is_empty()).then(|| {
             self.contracts
                 .iter()
-                .map(|contract| format!("{}", contract.label.types,))
+                .map(|contract| format!("{}", contract.label.typ,))
                 .collect::<Vec<_>>()
                 .join(",")
         })
@@ -506,7 +505,7 @@ impl TypeAnnotation {
     /// Convert all the contracts of this annotation, including the potential type annotation as
     /// the first element, to a runtime representation.
     pub fn all_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
-        self.types
+        self.typ
             .iter()
             .chain(self.contracts.iter())
             .cloned()
@@ -516,7 +515,7 @@ impl TypeAnnotation {
 
     pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
         TypeAnnotation {
-            types: self.types.map(|t| t.with_field_name(field_name)),
+            typ: self.typ.map(|t| t.with_field_name(field_name)),
             contracts: self
                 .contracts
                 .into_iter()
@@ -540,18 +539,18 @@ impl Traverse<RichTerm> for TypeAnnotation {
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let TypeAnnotation { types, contracts } = self;
+        let TypeAnnotation { typ, contracts } = self;
 
         let contracts = contracts
             .into_iter()
             .map(|labeled_ty| labeled_ty.traverse(f, state, order))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let types = types
+        let typ = typ
             .map(|labeled_ty| labeled_ty.traverse(f, state, order))
             .transpose()?;
 
-        Ok(TypeAnnotation { types, contracts })
+        Ok(TypeAnnotation { typ, contracts })
     }
 }
 
@@ -607,7 +606,7 @@ impl Term {
             | Term::Import(_)
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
-            | Term::Types(_)
+            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
         }
@@ -654,7 +653,7 @@ impl Term {
             Term::Var(id) => id.to_string(),
             Term::ParseError(_) => String::from("<parse error>"),
             Term::RuntimeError(_) => String::from("<runtime error>"),
-            Term::Types(_) => String::from("<type>"),
+            Term::Type(_) => String::from("<type>"),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
@@ -695,7 +694,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::Types(_)
+            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -737,7 +736,7 @@ impl Term {
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
-            | Term::Types(_)
+            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -784,7 +783,7 @@ impl Term {
             | Term::Annotated(..)
             | Term::Import(..)
             | Term::ResolvedImport(..)
-            | Term::Types(_)
+            | Term::Type(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -1313,7 +1312,7 @@ pub enum NAryOp {
     /// Takes four arguments:
     ///   - the [sealing key](Term::SealingKey) assigned to the type variable
     ///   - the [introduction polarity](crate::label::Polarity) of the type variable
-    ///   - the [kind](crate::types::VarKind) of the type variable
+    ///   - the [kind](crate::typ::VarKind) of the type variable
     ///   - a [label](Term::Lbl) on which to operate
     InsertTypeVar(),
     /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
@@ -1382,8 +1381,8 @@ impl RichTerm {
     /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Self {
         self.traverse::<_, _, ()>(
-            &|t: Types, _| {
-                Ok(Types {
+            &|t: Type, _| {
+                Ok(Type {
                     pos: TermPos::None,
                     ..t
                 })
@@ -1447,7 +1446,7 @@ pub trait Traverse<T>: Sized {
 impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
     ///
-    /// This also recurses into the terms that are contained in `Types` subtrees.
+    /// This also recurses into the terms that are contained in `Type` subtrees.
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
@@ -1617,8 +1616,8 @@ impl Traverse<RichTerm> for RichTerm {
                     pos,
                 )
             },
-            Term::Types(ty) => {
-                RichTerm::new(Term::Types(ty.traverse(f, state, order)?), pos)
+            Term::Type(ty) => {
+                RichTerm::new(Term::Type(ty.traverse(f, state, order)?), pos)
             }
         } else rt};
 
@@ -1629,15 +1628,15 @@ impl Traverse<RichTerm> for RichTerm {
     }
 }
 
-impl Traverse<Types> for RichTerm {
+impl Traverse<Type> for RichTerm {
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
     where
-        F: Fn(Types, &mut S) -> Result<Types, E>,
+        F: Fn(Type, &mut S) -> Result<Type, E>,
     {
         let f_on_term = |rt: RichTerm, s: &mut S| {
             match_sharedterm! {rt.term, with {
-                Term::Types(ty) =>
-                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Types(ty), rt.pos))
+                Term::Type(ty) =>
+                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
             } else Ok(rt)}
         };
         self.traverse(&f_on_term, state, order)
@@ -1904,12 +1903,12 @@ pub mod make {
         Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
 
-    pub fn assume<T>(types: Types, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
+    pub fn assume<T>(typ: Type, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
     where
         T: Into<RichTerm>,
     {
         Ok(mk_app!(
-            op2(BinaryOp::Assume(), types.contract()?, Term::Lbl(l)),
+            op2(BinaryOp::Assume(), typ.contract()?, Term::Lbl(l)),
             t.into()
         ))
     }
@@ -1953,7 +1952,7 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::TypeF;
+    use crate::typ::TypeF;
 
     use super::*;
 
@@ -1963,15 +1962,15 @@ mod tests {
         use crate::parser::utils::Annot;
 
         let inner = TypeAnnotation {
-            types: Some(LabeledType {
-                types: Types::from(TypeF::Number),
+            typ: Some(LabeledType {
+                typ: Type::from(TypeF::Number),
                 label: Label::dummy(),
             }),
             ..Default::default()
         };
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
-        assert_ne!(res.types, None);
+        assert_ne!(res.typ, None);
     }
 
     #[test]

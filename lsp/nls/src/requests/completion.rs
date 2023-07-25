@@ -12,7 +12,7 @@ use nickel_lang_core::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
     },
-    types::{RecordRows, RecordRowsIteratorItem, TypeF, Types},
+    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
 use serde_json::Value;
 
@@ -37,7 +37,7 @@ use crate::{
 #[derive(Debug)]
 struct IdentWithType {
     ident: Ident,
-    ty: Types,
+    ty: Type,
     meta: Option<FieldMetadata>,
 }
 
@@ -45,7 +45,7 @@ impl From<Ident> for IdentWithType {
     fn from(ident: Ident) -> Self {
         IdentWithType {
             ident,
-            ty: Types::from(TypeF::Dyn),
+            ty: Type::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -55,7 +55,7 @@ impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
             ident: Ident::from(ident),
-            ty: Types::from(TypeF::Dyn),
+            ty: Type::from(TypeF::Dyn),
             meta: None,
         }
     }
@@ -67,9 +67,9 @@ impl IdentWithType {
             .as_ref()
             .and_then(|FieldMetadata { annotation, .. }| {
                 annotation
-                    .types
+                    .typ
                     .as_ref()
-                    .map(|ty| ty.types.to_string())
+                    .map(|ty| ty.typ.to_string())
                     .or_else(|| annotation.contracts_to_string())
             })
             .unwrap_or_else(|| self.ty.to_string())
@@ -186,7 +186,7 @@ fn find_fields_from_term_kind(
         TermKind::Usage(UsageState::Resolved(new_id)) => {
             find_fields_from_term_kind(new_id, path, info)
         }
-        TermKind::Types(ref ty) => find_fields_from_type(ty, path, info),
+        TermKind::Type(ref ty) => find_fields_from_type(ty, path, info),
         _ => Vec::new(),
     };
     result.into_iter().chain(contract_result).collect()
@@ -235,18 +235,18 @@ fn find_fields_from_contracts(
         .iter()
         .flat_map(|contract| {
             let mut path_copy = Vec::from(path);
-            find_fields_from_type(&contract.types, &mut path_copy, info)
+            find_fields_from_type(&contract.typ, &mut path_copy, info)
         })
         .collect()
 }
 
 /// Find the fields that can be found from a type.
 fn find_fields_from_type(
-    ty: &Types,
+    ty: &Type,
     path: &mut Vec<Ident>,
     info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
-    match &ty.types {
+    match &ty.typ {
         TypeF::Record(row) => find_fields_from_rrows(row, path, info),
         TypeF::Dict { type_fields, .. } => match path.pop() {
             Some(..) => find_fields_from_type(type_fields, path, info),
@@ -265,17 +265,17 @@ fn find_fields_from_rrows(
 ) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
         let type_of_current = rrows.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.types.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id == current => Some(row.typ.clone()),
             _ => None,
         });
 
         match type_of_current {
-            Some(Types {
-                types: TypeF::Record(rrows_current),
+            Some(Type {
+                typ: TypeF::Record(rrows_current),
                 ..
             }) => find_fields_from_rrows(&rrows_current, path, info),
-            Some(Types {
-                types: TypeF::Flat(term),
+            Some(Type {
+                typ: TypeF::Flat(term),
                 ..
             }) => find_fields_from_term(&term, path, info),
             _ => Vec::new(),
@@ -284,7 +284,7 @@ fn find_fields_from_rrows(
         rrows
             .iter()
             .filter_map(|item| match item {
-                RecordRowsIteratorItem::Row(row) => Some((row.id, row.types)),
+                RecordRowsIteratorItem::Row(row) => Some((row.id, row.typ)),
                 _ => None,
             })
             .map(|(ident, types)| IdentWithType {
@@ -335,7 +335,7 @@ fn find_fields_from_term(
                     ident: *ident,
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
-                    ty: Types::from(TypeF::Dyn),
+                    ty: Type::from(TypeF::Dyn),
                     meta: Some(field.metadata.clone()),
                 })
                 .collect(),
@@ -453,7 +453,7 @@ fn collect_record_info(
         .get_item_with_reg(id, lin_registry)
         .map(|item| {
             let (ty, _) = linearization.get_type_and_metadata(item, lin_registry);
-            match (&item.kind, &ty.types) {
+            match (&item.kind, &ty.typ) {
                 // Get record fields from static type info
                 (_, TypeF::Record(rrows)) => find_fields_from_rrows(rrows, path, info),
                 (
@@ -508,7 +508,7 @@ fn accumulate_record_meta_data<'a>(
         lin_registry,
     }: ComplCtx<'a>,
     mut path: Vec<Ident>,
-    result: &mut Vec<(&'a LinearizationItem<Types>, Vec<Ident>)>,
+    result: &mut Vec<(&'a LinearizationItem<Type>, Vec<Ident>)>,
 ) {
     // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
     let parent = linearization
@@ -544,11 +544,11 @@ fn get_completion_identifiers(
     source: &str,
     trigger: Option<&str>,
     linearization: &Completed,
-    item: &LinearizationItem<Types>,
+    item: &LinearizationItem<Type>,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     fn complete(
-        item: &LinearizationItem<Types>,
+        item: &LinearizationItem<Type>,
         name: Ident,
         server: &Server,
         path: &mut Vec<Ident>,
@@ -561,7 +561,7 @@ fn get_completion_identifiers(
     }
 
     fn context_complete(
-        item: &LinearizationItem<Types>,
+        item: &LinearizationItem<Type>,
         info: ComplCtx<'_>,
         path: Vec<Ident>,
     ) -> Vec<IdentWithType> {
@@ -732,18 +732,18 @@ mod tests {
         id: ItemId,
         kind: TermKind,
         metadata: Option<FieldMetadata>,
-    ) -> LinearizationItem<Types> {
+    ) -> LinearizationItem<Type> {
         LinearizationItem {
             env: Environment::new(),
             id,
             pos: TermPos::None,
-            ty: Types::from(TypeF::Dyn),
+            ty: Type::from(TypeF::Dyn),
             kind,
             metadata,
         }
     }
 
-    fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
+    fn make_completed(linearization: Vec<LinearizationItem<Type>>) -> Completed {
         let id_to_index: HashMap<_, _> = linearization
             .iter()
             .map(|item| item.id)
@@ -904,7 +904,7 @@ mod tests {
 
     #[test]
     fn test_find_record_fields() {
-        fn make_completed(linearization: Vec<LinearizationItem<Types>>) -> Completed {
+        fn make_completed(linearization: Vec<LinearizationItem<Type>>) -> Completed {
             let id_to_index: HashMap<_, _> = linearization
                 .iter()
                 .map(|item| item.id)
@@ -917,7 +917,7 @@ mod tests {
         // ids is an array of the ids from this linearization
         // which would give the expected output
         fn single_case<const N: usize>(
-            linearization: Vec<LinearizationItem<Types>>,
+            linearization: Vec<LinearizationItem<Type>>,
             ids: [ItemId; N],
             expected: Vec<IdentWithType>,
         ) {
@@ -1092,7 +1092,7 @@ mod tests {
         let meta = FieldMetadata {
             doc: Some("doc".to_string()),
             annotation: TypeAnnotation {
-                types: None,
+                typ: None,
                 contracts: Vec::new(),
             },
             opt: false,

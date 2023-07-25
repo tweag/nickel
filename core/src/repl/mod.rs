@@ -15,7 +15,7 @@ use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::QueryPath;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
-use crate::types::Types;
+use crate::typ::Type;
 use crate::{eval, transform, typecheck};
 use codespan::FileId;
 use simple_counter::*;
@@ -61,7 +61,7 @@ pub trait Repl {
     /// Load the content of a file in the environment. Return the loaded record.
     fn load(&mut self, path: impl AsRef<OsStr>) -> Result<RichTerm, Error>;
     /// Typecheck an expression and return its [apparent type][crate::typecheck::ApparentType].
-    fn typecheck(&mut self, exp: &str) -> Result<Types, Error>;
+    fn typecheck(&mut self, exp: &str) -> Result<Type, Error>;
     /// Query the metadata of an expression.
     fn query(&mut self, path: String) -> Result<Field, Error>;
     /// Required for error reporting on the frontend.
@@ -245,7 +245,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         Ok(term)
     }
 
-    fn typecheck(&mut self, exp: &str) -> Result<Types, Error> {
+    fn typecheck(&mut self, exp: &str) -> Result<Type, Error> {
         let file_id = self
             .vm
             .import_resolver_mut()

@@ -1,13 +1,13 @@
 //! Helpers for building `TypeWrapper`s.
 use super::{UnifType, VarLevelsData};
-use crate::types::{DictTypeFlavour, TypeF};
+use crate::typ::{DictTypeFlavour, TypeF};
 
 /// Multi-ary arrow constructor for types implementing `Into<TypeWrapper>`.
 #[macro_export]
 macro_rules! mk_uty_arrow {
     ($left:expr, $right:expr) => {
         $crate::typecheck::UnifType::concrete(
-            $crate::types::TypeF::Arrow(
+            $crate::typ::TypeF::Arrow(
                 Box::new($crate::typecheck::UnifType::from($left)),
                 Box::new($crate::typecheck::UnifType::from($right))
              )
@@ -24,7 +24,7 @@ macro_rules! mk_uty_arrow {
 macro_rules! mk_uty_enum_row {
     () => {
         $crate::typecheck::UnifEnumRows::Concrete {
-            erows: $crate::types::EnumRowsF::Empty,
+            erows: $crate::typ::EnumRowsF::Empty,
             var_levels_data: $crate::typecheck::VarLevelsData::new_no_uvars(),
         }
     };
@@ -33,7 +33,7 @@ macro_rules! mk_uty_enum_row {
     };
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::UnifEnumRows::concrete(
-            $crate::types::EnumRowsF::Extend {
+            $crate::typ::EnumRowsF::Extend {
                 row: Ident::from($id),
                 tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))
             }
@@ -48,7 +48,7 @@ macro_rules! mk_uty_enum_row {
 macro_rules! mk_uty_row {
     () => {
         $crate::typecheck::UnifRecordRows::Concrete {
-            rrows: $crate::types::RecordRowsF::Empty,
+            rrows: $crate::typ::RecordRowsF::Empty,
             var_levels_data: $crate::typecheck::VarLevelsData::new_no_uvars()
         }
     };
@@ -57,10 +57,10 @@ macro_rules! mk_uty_row {
     };
     (($id:expr, $ty:expr) $(,($ids:expr, $tys:expr))* $(; $tail:expr)?) => {
         $crate::typecheck::UnifRecordRows::concrete(
-            $crate::types::RecordRowsF::Extend {
-                row: $crate::types::RecordRowF {
+            $crate::typ::RecordRowsF::Extend {
+                row: $crate::typ::RecordRowF {
                     id: Ident::from($id),
-                    types: Box::new($ty.into()),
+                    typ: Box::new($ty.into()),
                 },
                 tail: Box::new($crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),
             }
@@ -73,7 +73,7 @@ macro_rules! mk_uty_row {
 macro_rules! mk_uty_enum {
     ($( $ids:expr ),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::concrete(
-            $crate::types::TypeF::Enum(
+            $crate::typ::TypeF::Enum(
                 $crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?)
             )
         )
@@ -85,7 +85,7 @@ macro_rules! mk_uty_enum {
 macro_rules! mk_uty_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::concrete(
-            $crate::types::TypeF::Record(
+            $crate::typ::TypeF::Record(
                 $crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
             )
         )
@@ -97,7 +97,7 @@ macro_rules! generate_builder {
     ($fun:ident, $var:ident) => {
         pub fn $fun() -> UnifType {
             UnifType::Concrete {
-                types: TypeF::$var,
+                typ: TypeF::$var,
                 var_levels_data: VarLevelsData::new_no_uvars(),
             }
         }

@@ -40,7 +40,7 @@ pub fn test_query_with_wildcard() {
                     FieldMetadata {
                         annotation:
                             TypeAnnotation {
-                                types: Some(contract1),
+                                typ: Some(contract1),
                                 ..
                             },
                         ..
@@ -52,7 +52,7 @@ pub fn test_query_with_wildcard() {
                     FieldMetadata {
                         annotation:
                             TypeAnnotation {
-                                types: Some(contract2),
+                                typ: Some(contract2),
                                 ..
                             },
                         ..
@@ -66,8 +66,8 @@ pub fn test_query_with_wildcard() {
             // stored inside the label, which is the one used for reporting anyway.
             // assert_eq!(contract1.types, contract2.types);
             assert_eq!(
-                contract1.label.types.as_ref().clone().without_pos(),
-                contract2.label.types.as_ref().clone().without_pos()
+                contract1.label.typ.as_ref().clone().without_pos(),
+                contract2.label.typ.as_ref().clone().without_pos()
             );
         } else {
             panic!();
@@ -83,7 +83,7 @@ pub fn test_query_with_wildcard() {
         result,
         Field {
             metadata: FieldMetadata {
-                annotation: TypeAnnotation { types: None, .. },
+                annotation: TypeAnnotation { typ: None, .. },
                 ..
             },
             ..

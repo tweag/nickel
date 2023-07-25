@@ -4,8 +4,8 @@ use crate::{
     eval::{cache::Cache, Closure, Environment, IdentKind},
     identifier::Ident,
     term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
+    typ::UnboundTypeVariableError,
     typecheck::Wildcards,
-    types::UnboundTypeVariableError,
 };
 
 pub mod desugar_destructuring;
@@ -75,7 +75,7 @@ pub fn transform_no_free_vars(
 /// Structures which can be packed together with their environment as a closure.
 ///
 /// The typical implementer is [`crate::term::RichTerm`], but structures containing
-/// terms can also be closurizable, such as the contract in a [`crate::types::Types`].
+/// terms can also be closurizable, such as the contract in a [`crate::typ::Type`].
 /// In this case, the inner term is closurized.
 pub trait Closurizable {
     /// Pack a closurizable together with its environment `with_env` as a closure in the main

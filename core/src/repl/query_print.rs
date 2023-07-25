@@ -142,7 +142,7 @@ impl QueryPrinter for MarkdownRenderer {
 pub struct Attributes {
     pub doc: bool,
     pub contract: bool,
-    pub types: bool,
+    pub typ: bool,
     pub default: bool,
     pub value: bool,
 }
@@ -153,7 +153,7 @@ impl Default for Attributes {
         Attributes {
             doc: true,
             contract: true,
-            types: true,
+            typ: true,
             default: true,
             value: true,
         }
@@ -217,25 +217,19 @@ fn render_query_result<R: QueryPrinter>(
             .contracts
             .iter()
             // We use the original user-written type stored in the label. Using
-            // `ctr.types` instead is unreadable most of the time, as it can have been
+            // `ctr.typ` instead is unreadable most of the time, as it can have been
             // altered by closurizations or other run-time rewriting
-            .map(|ctr| ctr.label.types.to_string())
+            .map(|ctr| ctr.label.typ.to_string())
             .collect();
         renderer.write_metadata(out, "contract", &ctrs.join(","))?;
         found = true;
     }
 
-    if selected_attrs.types && metadata.annotation.types.is_some() {
+    if selected_attrs.typ && metadata.annotation.typ.is_some() {
         renderer.write_metadata(
             out,
             "type",
-            &metadata
-                .annotation
-                .types
-                .as_ref()
-                .unwrap()
-                .types
-                .to_string(),
+            &metadata.annotation.typ.as_ref().unwrap().typ.to_string(),
         )?;
         found = true;
     }

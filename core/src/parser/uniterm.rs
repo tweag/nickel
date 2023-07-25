@@ -11,9 +11,9 @@ use crate::{
         record::{Field, FieldMetadata, RecordAttrs},
         LabeledType, MergePriority, RichTerm, Term, TypeAnnotation,
     },
-    types::{
-        DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, TypeF,
-        Types, VarKind,
+    typ::{
+        DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, Type,
+        TypeF, VarKind,
     },
 };
 
@@ -42,7 +42,7 @@ use std::{
 ///
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
-/// variable, and return `UniTermNode::Types(TypeF::Arrow(..))` (there is actually a subtlety: see
+/// variable, and return `UniTermNode::Type(TypeF::Arrow(..))` (there is actually a subtlety: see
 /// the in-code documentation of the private symbol `FixTypeVars::fix_type_vars`, but let's ignore it
 /// here). If, on the other hand, we enter the rule for an infix operator as in `a + 1`, `a` will
 /// be converted to a `Term::Var` and the resulting uniterm will be
@@ -55,7 +55,7 @@ pub enum UniTermNode {
     /// A uniterm that has been determined to be a term.
     Term(RichTerm),
     /// A uniterm that has been determined to be a type.
-    Types(Types),
+    Type(Type),
 }
 
 /// A uniterm with positional information.
@@ -80,19 +80,19 @@ impl UniTerm {
     }
 }
 
-// For nodes such as `Types` or `Record`, the following implementation has to choose between two positions to
+// For nodes such as `Type` or `Record`, the following implementation has to choose between two positions to
 // use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or the `Type`.
 // This implementation assumes that the latest set is the one of `UniTerm`, which is the single
 // source of truth.
-impl TryFrom<UniTerm> for Types {
+impl TryFrom<UniTerm> for Type {
     type Error = ParseError;
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         let ty_without_pos = match ut.node {
-            UniTermNode::Var(id) => Types::from(TypeF::Var(id)),
-            UniTermNode::Record(r) => Types::try_from(r)?,
-            UniTermNode::Types(ty) => ty,
-            UniTermNode::Term(rt) => Types::from(TypeF::Flat(rt)),
+            UniTermNode::Var(id) => Type::from(TypeF::Var(id)),
+            UniTermNode::Record(r) => Type::try_from(r)?,
+            UniTermNode::Type(ty) => ty,
+            UniTermNode::Term(rt) => Type::from(TypeF::Flat(rt)),
         };
 
         Ok(ty_without_pos.with_pos(ut.pos))
@@ -107,12 +107,12 @@ impl TryFrom<UniTerm> for RichTerm {
         let rt = match node {
             UniTermNode::Var(id) => RichTerm::new(Term::Var(id), pos),
             UniTermNode::Record(r) => RichTerm::try_from(r)?,
-            UniTermNode::Types(mut ty) => {
+            UniTermNode::Type(mut ty) => {
                 ty.fix_type_vars(pos.unwrap())?;
-                if let TypeF::Flat(rt) = ty.types {
+                if let TypeF::Flat(rt) = ty.typ {
                     rt.with_pos(pos)
                 } else {
-                    RichTerm::new(Term::Types(ty), pos)
+                    RichTerm::new(Term::Type(ty), pos)
                 }
             }
             UniTermNode::Term(rt) => rt,
@@ -139,11 +139,11 @@ impl From<Term> for UniTerm {
     }
 }
 
-impl From<Types> for UniTerm {
-    fn from(ty: Types) -> Self {
+impl From<Type> for UniTerm {
+    fn from(ty: Type) -> Self {
         let pos = ty.pos;
         UniTerm {
-            node: UniTermNode::Types(ty),
+            node: UniTermNode::Type(ty),
             pos,
         }
     }
@@ -225,7 +225,7 @@ impl UniRecord {
                         FieldMetadata {
                             annotation:
                                 TypeAnnotation {
-                                    types: Some(labeled_ty),
+                                    typ: Some(labeled_ty),
                                     ..
                                 },
                             ..
@@ -302,7 +302,7 @@ impl UniRecord {
                             doc: None,
                             annotation:
                                 TypeAnnotation {
-                                    types: Some(_),
+                                    typ: Some(_),
                                     contracts,
                                 },
                             opt: false,
@@ -319,7 +319,7 @@ impl UniRecord {
     /// A plain record type, uniquely containing fields of the form `fields:
     /// Type`. Currently, this doesn't support the field path syntax:
     /// `{foo.bar.baz : Type}.into_type_strict()` returns an `Err`.
-    pub fn into_type_strict(self) -> Result<Types, InvalidRecordTypeError> {
+    pub fn into_type_strict(self) -> Result<Type, InvalidRecordTypeError> {
         fn term_to_record_rows(
             id: Ident,
             field_def: FieldDef,
@@ -337,7 +337,7 @@ impl UniRecord {
                             doc: None,
                             annotation:
                                 TypeAnnotation {
-                                    types: Some(labeled_ty),
+                                    typ: Some(labeled_ty),
                                     contracts,
                                 },
                             opt: false,
@@ -350,7 +350,7 @@ impl UniRecord {
                 } if contracts.is_empty() => Ok(RecordRows(RecordRowsF::Extend {
                     row: RecordRow {
                         id,
-                        types: Box::new(labeled_ty.types),
+                        typ: Box::new(labeled_ty.typ),
                     },
                     tail: Box::new(tail),
                 })),
@@ -429,8 +429,8 @@ impl UniRecord {
                     }
                 },
             )?;
-        Ok(Types {
-            types: TypeF::Record(rrows),
+        Ok(Type {
+            typ: TypeF::Record(rrows),
             pos: self.pos,
         })
     }
@@ -471,7 +471,7 @@ impl TryFrom<UniRecord> for RichTerm {
                 })?;
 
             ty.fix_type_vars(pos.unwrap())?;
-            Ok(RichTerm::new(Term::Types(ty), pos))
+            Ok(RichTerm::new(Term::Type(ty), pos))
         } else {
             ur.check_typed_field_without_def()?;
 
@@ -493,7 +493,7 @@ impl TryFrom<UniRecord> for RichTerm {
 }
 
 /// Try to convert a `UniRecord` to a type. The strict part means that the `UniRecord` must be
-impl TryFrom<UniRecord> for Types {
+impl TryFrom<UniRecord> for Type {
     type Error = ParseError;
 
     /// Convert a `UniRecord` to a type. If the `UniRecord` has a tail, it is interpreted strictly
@@ -513,8 +513,8 @@ impl TryFrom<UniRecord> for Types {
         } else {
             let pos = ur.pos;
             ur.clone().into_type_strict().or_else(|_| {
-                RichTerm::try_from(ur).map(|rt| Types {
-                    types: TypeF::Flat(rt),
+                RichTerm::try_from(ur).map(|rt| Type {
+                    typ: TypeF::Flat(rt),
                     pos,
                 })
             })
@@ -626,7 +626,7 @@ pub(super) trait FixTypeVars {
     ///
     /// # Variable kind
     ///
-    /// Type variables can have different kind (cf [crate::types::VarKind]). The kind determines if
+    /// Type variables can have different kind (cf [crate::typ::VarKind]). The kind determines if
     /// the variable is meant to be substituted for a type, record rows, or enum rows.
     ///
     /// During parsing, the kind is determined syntactically, depending on where the corresponding
@@ -655,13 +655,13 @@ pub(super) trait FixTypeVars {
     ) -> Result<(), ParseError>;
 }
 
-impl FixTypeVars for Types {
+impl FixTypeVars for Type {
     fn fix_type_vars_env(
         &mut self,
         mut bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        match self.types {
+        match self.typ {
             TypeF::Dyn
             | TypeF::Number
             | TypeF::Bool
@@ -686,7 +686,7 @@ impl FixTypeVars for Types {
                 } else {
                     let id = *id;
                     let pos = id.pos;
-                    self.types = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
+                    self.typ = TypeF::Flat(RichTerm::new(Term::Var(id), pos));
                 }
                 Ok(())
             }
@@ -751,7 +751,7 @@ impl FixTypeVars for RecordRows {
                     ref mut tail,
                 } => {
                     maybe_excluded.insert(row.id);
-                    row.types.fix_type_vars_env(bound_vars.clone(), span)?;
+                    row.typ.fix_type_vars_env(bound_vars.clone(), span)?;
                     helper(tail, bound_vars, span, maybe_excluded)
                 }
             }
@@ -793,12 +793,15 @@ impl FixTypeVars for EnumRows {
 /// Fix the type variables of types appearing as annotations of record fields. See the in-code
 /// documentation of the private symbol `Types::fix_type_vars`.
 pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<(), ParseError> {
-    if let Some(LabeledType { ref mut types, .. }) = metadata.annotation.types {
+    if let Some(LabeledType {
+        typ: ref mut types, ..
+    }) = metadata.annotation.typ
+    {
         types.fix_type_vars(span)?;
     }
 
     for ctr in metadata.annotation.contracts.iter_mut() {
-        ctr.types.fix_type_vars(span)?;
+        ctr.typ.fix_type_vars(span)?;
     }
 
     Ok(())

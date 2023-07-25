@@ -1,53 +1,45 @@
-//! Define the Nickel type system.
+//! Nickel static types.
 //!
-//! # Base types
+//! The type system of Nickel is comprised of primitive types, arrays, records, functions, and
+//! opaque types (contracts). This is a structural type system with row polymorphism for both
+//! records and enums.
 //!
-//! - Number: a floating-point number
-//! - Bool: a boolean
-//! - String: a string literal
-//! - Sym: a symbol, used by contracts when checking polymorphic types
-//! - Array: an (heterogeneous) array
+//! ## Record types (rows)
 //!
-//! # Higher-order types
+//! A row type for a record is represented as a linked list of pairs `(id, type)` indicating the
+//! name and the type of each field. Row-polymorphism means that the tail of this list can be a
+//! type variable which can be abstracted over, leaving the row open for future extension. A simple
+//! illustration is record field access:
 //!
-//! - `->`: the function type, or arrow
-//! - `forall a. type`: polymorphic type
-//! - `#customContract`: an opaque type created from an user-defined contract
-//!
-//! # Record types
-//!
-//! The type systems feature structural records with row-polymorphism.
-//!
-//! ## Records (row types)
-//!
-//! A row type for a record is a linked list of pairs `(id, type)` indicating the name and the type
-//! of each field. Row-polymorphism means that the tail of this list can be a type variable which
-//! can be abstracted over, leaving the row open for future extension. A simple and demonstrative
-//! example is field access:
-//!
-//! ```text
-//! let f = Promise(forall a. { myField : Number, a} -> Number, fun rec => rec.myField)
+//! ```nickel
+//! let f : forall a. { some_field : Number; a} -> Number =
+//!   fun record => record.some_field
 //! ```
 //!
-//! The type `{ myField : Number, a }` indicates that any argument must have at least the field
-//! `myField` of type `Number`, but may contain any other fields (or no additional field at all).
+//! The type `{ some_field: Number; a }` indicates that an argument to this function must have at
+//! least the field `some_field` of type `Number`, but may contain other fields (or not).
 //!
 //! ## Dictionaries
 //!
-//! A dictionary type: `{ _ : Type }`. It has string keys and `Type` values. It can be mapped
-//! over and accessed in a type-safe manner.
+//! A dictionary type `{ _ : Type }` represents a record whose fields all have the type `Type`. The
+//! count and the name of the fields aren't constrained. Dictionaries can be mapped over, extended,
+//! shrinked and accessed in a type-safe manner.
 //!
 //! # Enum types
 //!
-//! An enum type is also a row type, but each list element only contains an identifier without an
-//! associated type. It indicates which tag the enum can contain.
+//! An enum type is also a row type where each element is a tag, such as `[| 'foo, 'bar, 'baz |]`.
+//! This type represent values that can be either `'foo`, `'bar` or `'baz`. Enums support row
+//! polymorphism as well.
 //!
 //! # Contracts
 //!
-//! To each type corresponds a contract, which is a Nickel function which checks at runtime that
-//! its argument is of the given type and either returns it if it passes or raise a blame
-//! otherwise.  Contract checks are introduced by a contract annotation or propagated via merging.
-//! They ensure sane interaction between typed and untyped parts.
+//! To each type corresponds a contract, which is equivalent to a Nickel function which checks at
+//! runtime that its argument is of the given type. Contract checks are introduced by a contract
+//! annotation or propagated via merging. They ensure sane interaction between typed and untyped
+//! parts.
+//!
+//! Conversely, any Nickel term seen as a contract corresponds to a type, which is opaque and can
+//! only be equated with itself.
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::Ident,
@@ -76,7 +68,7 @@ use std::{
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RecordRowF<Ty> {
     pub id: Ident,
-    pub types: Ty,
+    pub typ: Ty,
 }
 
 /// An enum row, which is just an identifier. An enum type is a set of identifiers, represented as
@@ -195,8 +187,8 @@ pub enum DictTypeFlavour {
 /// example, one would expect the constructor for function types (`Arrow`) to look like:
 ///
 /// ```rust
-/// pub enum Types {
-///      Arrow(Box<Types>, Box<Types>),
+/// pub enum Type {
+///      Arrow(Box<Type>, Box<Type>),
 ///      // ...
 /// }
 /// ```
@@ -212,15 +204,15 @@ pub enum DictTypeFlavour {
 /// ```
 ///
 /// `Ty` is also called a recursive unfolding throughout the documentation. By defining `struct
-/// Types(TypeF<Box<Types>>)`, we get back the original, natural definition.
+/// Type(TypeF<Box<Types>>)`, we get back the original, natural definition.
 ///
 /// ## Motivation 1: variation on `Types`
 ///
 /// Having a generic definition makes it possible to easily create other types with the _same
-/// shape_ as `Types` (seen as trees), but with enriched nodes. The typical use-case in Nickel is
+/// shape_ as `Type` (seen as trees), but with enriched nodes. The typical use-case in Nickel is
 /// the variation on types used by the typechecker. During type inference, the typechecker operates
 /// on trees where each node can either be a concrete type, or a unification variable (a unknown
-/// type to be inferred). Instead of duplicating the whole definition of `Types` as well as all
+/// type to be inferred). Instead of duplicating the whole definition of `Type` as well as all
 /// basic methods, we can simply have a different recursive definition:
 ///
 /// ```
@@ -248,7 +240,7 @@ pub enum DictTypeFlavour {
 /// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
 /// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
 /// suffix) in terms of simple appropriate chaining of `map` and folding/unfolding operations. A
-/// good example is the definition of `[Types::traverse]`. Although [`crate::term::Term`] isn't
+/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't
 /// currently defined using functors per se, the way program transformations are written is in the same
 /// style as recursion schemes: we simply define the action of a transformation as a mapping on the
 /// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
@@ -306,22 +298,22 @@ pub enum TypeF<Ty, RRows, ERows> {
 // complain that the type has an infinite size), but also avoid putting in more than necessary.
 //
 // For example, `RecordRows` contains a `RecordRow`. The latter doesn't need to be boxed, because a
-// `RecordRow` itself potentially contains occurrences of `Types` and `RecordRows`, which need to
+// `RecordRow` itself potentially contains occurrences of `Type` and `RecordRows`, which need to
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
 /// Concrete, recursive definition for enum rows.
 #[derive(Clone, PartialEq, Debug)]
 pub struct EnumRows(pub EnumRowsF<Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
-pub type RecordRow = RecordRowF<Box<Types>>;
+pub type RecordRow = RecordRowF<Box<Type>>;
 #[derive(Clone, PartialEq, Debug)]
 /// Concrete, recursive definition for record rows.
-pub struct RecordRows(pub RecordRowsF<Box<Types>, Box<RecordRows>>);
+pub struct RecordRows(pub RecordRowsF<Box<Type>, Box<RecordRows>>);
 
 /// Concrete, recursive type for a Nickel type.
 #[derive(Clone, PartialEq, Debug)]
-pub struct Types {
-    pub types: TypeF<Box<Types>, RecordRows, EnumRows>,
+pub struct Type {
+    pub typ: TypeF<Box<Type>, RecordRows, EnumRows>,
     pub pos: TermPos,
 }
 
@@ -354,12 +346,12 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         match self {
             RecordRowsF::Empty => Ok(RecordRowsF::Empty),
             RecordRowsF::Extend {
-                row: RecordRowF { id, types },
+                row: RecordRowF { id, typ },
                 tail,
             } => Ok(RecordRowsF::Extend {
                 row: RecordRowF {
                     id,
-                    types: f_ty(types, state)?,
+                    typ: f_ty(typ, state)?,
                 },
                 tail: f_rrows(tail, state)?,
             }),
@@ -492,7 +484,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     /// `TypeF` a functor (of arity 3). As hinted by the type signature, this function just
     /// maps on "one-level" of recursion, so to speak.
     ///
-    /// Take the instantiated version `Types`, and a type of the form `(Dyn -> Dyn) -> (Number ->
+    /// Take the instantiated version `Type`, and a type of the form `(Dyn -> Dyn) -> (Number ->
     /// Dyn)`. Then, calling `try_map_state(f_ty, ..)` on this type rows will map `f_ty` onto `(Dyn
     /// -> Dyn)` and `Number -> Dyn` because they are direct children of the root `Arrow` node.
     ///
@@ -614,7 +606,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 }
 
-impl Traverse<Types> for RecordRows {
+impl Traverse<Type> for RecordRows {
     fn traverse<FTy, S, E>(
         self,
         f: &FTy,
@@ -622,7 +614,7 @@ impl Traverse<Types> for RecordRows {
         order: TraverseOrder,
     ) -> Result<RecordRows, E>
     where
-        FTy: Fn(Types, &mut S) -> Result<Types, E>,
+        FTy: Fn(Type, &mut S) -> Result<Type, E>,
     {
         let inner = self.0.try_map_state(
             |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
@@ -674,8 +666,8 @@ pub enum RecordRowsIteratorItem<'a, Ty> {
     Row(RecordRowF<&'a Ty>),
 }
 
-impl<'a> Iterator for RecordRowsIterator<'a, Types, RecordRows> {
-    type Item = RecordRowsIteratorItem<'a, Types>;
+impl<'a> Iterator for RecordRowsIterator<'a, Type, RecordRows> {
+    type Item = RecordRowsIteratorItem<'a, Type>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.rrows.and_then(|next| match next.0 {
@@ -695,7 +687,7 @@ impl<'a> Iterator for RecordRowsIterator<'a, Types, RecordRows> {
                 self.rrows = Some(tail);
                 Some(RecordRowsIteratorItem::Row(RecordRowF {
                     id: row.id,
-                    types: row.types.as_ref(),
+                    typ: row.typ.as_ref(),
                 }))
             }
         })
@@ -817,7 +809,7 @@ impl RecordRows {
         let mut fcs = IndexMap::new();
 
         while let RecordRowsF::Extend {
-            row: RecordRowF { id, types: ty },
+            row: RecordRowF { id, typ: ty },
             tail,
         } = &rrows.0
         {
@@ -848,27 +840,27 @@ impl RecordRows {
     /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<Types> {
+    pub fn row_find_path(&self, path: &[Ident]) -> Option<Type> {
         if path.is_empty() {
             return None;
         }
 
         let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id == path[0] => Some(row.types.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id == path[0] => Some(row.typ.clone()),
             _ => None,
         });
 
         if path.len() == 1 {
             next
         } else {
-            match next.map(|ty| ty.types) {
+            match next.map(|ty| ty.typ) {
                 Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
                 _ => None,
             }
         }
     }
 
-    pub fn iter(&self) -> RecordRowsIterator<Types, RecordRows> {
+    pub fn iter(&self) -> RecordRowsIterator<Type, RecordRows> {
         RecordRowsIterator {
             rrows: Some(self),
             ty: std::marker::PhantomData,
@@ -876,29 +868,29 @@ impl RecordRows {
     }
 }
 
-impl From<TypeF<Box<Types>, RecordRows, EnumRows>> for Types {
-    fn from(types: TypeF<Box<Types>, RecordRows, EnumRows>) -> Self {
-        Types {
-            types,
+impl From<TypeF<Box<Type>, RecordRows, EnumRows>> for Type {
+    fn from(typ: TypeF<Box<Type>, RecordRows, EnumRows>) -> Self {
+        Type {
+            typ,
             pos: TermPos::None,
         }
     }
 }
 
-impl Types {
+impl Type {
     /// Creates a `Type` with the specified position
-    pub fn with_pos(self, pos: TermPos) -> Types {
-        Types { pos, ..self }
+    pub fn with_pos(self, pos: TermPos) -> Type {
+        Type { pos, ..self }
     }
 
     /// Returns the same type with the position cleared (set to `None`).
     ///
     /// This is currently only used in test code, but because it's used from integration
     /// tests we cannot hide it behind cfg(test).
-    pub fn without_pos(self) -> Types {
+    pub fn without_pos(self) -> Type {
         self.traverse::<_, _, ()>(
-            &|t: Types, _| {
-                Ok(Types {
+            &|t: Type, _| {
+                Ok(Type {
                     pos: TermPos::None,
                     ..t
                 })
@@ -929,7 +921,7 @@ impl Types {
 
     /// Returns true if this type is a function type, false otherwise.
     pub fn is_function_type(&self) -> bool {
-        match &self.types {
+        match &self.typ {
             TypeF::Forall { body, .. } => body.is_function_type(),
             TypeF::Arrow(..) => true,
             _ => false,
@@ -953,7 +945,7 @@ impl Types {
     ) -> Result<RichTerm, UnboundTypeVariableError> {
         use crate::stdlib::internals;
 
-        let ctr = match self.types {
+        let ctr = match self.typ {
             TypeF::Dyn => internals::dynamic(),
             TypeF::Number => internals::num(),
             TypeF::Bool => internals::bool(),
@@ -1036,7 +1028,7 @@ impl Types {
     /// type delimited by specific markers (such as a row type). Used in formatting to decide if
     /// parentheses need to be inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
-        match &self.types {
+        match &self.typ {
             TypeF::Dyn
             | TypeF::Number
             | TypeF::Bool
@@ -1051,7 +1043,7 @@ impl Types {
 
     /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
     pub fn find_flat(&self) -> Option<RichTerm> {
-        match &self.types {
+        match &self.typ {
             TypeF::Flat(f) => Some(f.clone().with_pos(self.pos)),
             TypeF::Dyn
             | TypeF::Number
@@ -1064,7 +1056,7 @@ impl Types {
             TypeF::Arrow(dom, codom) => dom.find_flat().or_else(|| codom.find_flat()),
             TypeF::Forall { body, .. } => body.find_flat(),
             TypeF::Record(rrows) => rrows.iter().find_map(|t| match t {
-                RecordRowsIteratorItem::Row(r) => r.types.find_flat(),
+                RecordRowsIteratorItem::Row(r) => r.typ.find_flat(),
                 _ => None,
             }),
             TypeF::Dict { type_fields, .. } => type_fields.find_flat(),
@@ -1073,25 +1065,25 @@ impl Types {
     }
 }
 
-impl Traverse<Types> for Types {
+impl Traverse<Type> for Type {
     fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
-        FTy: Fn(Types, &mut S) -> Result<Types, E>,
+        FTy: Fn(Type, &mut S) -> Result<Type, E>,
     {
         match order {
             TraverseOrder::TopDown => {
                 let ty = f(self, state)?;
-                let inner = ty.types.try_map_state(
+                let inner = ty.typ.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
                     state,
                 )?;
 
-                Ok(Types { types: inner, ..ty })
+                Ok(Type { typ: inner, ..ty })
             }
             TraverseOrder::BottomUp => {
-                let traversed_depth_first = self.types.try_map_state(
+                let traversed_depth_first = self.typ.try_map_state(
                     |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
                     |rrows, state| rrows.traverse(f, state, order),
                     |erows, _| Ok(erows),
@@ -1099,8 +1091,8 @@ impl Traverse<Types> for Types {
                 )?;
 
                 f(
-                    Types {
-                        types: traversed_depth_first,
+                    Type {
+                        typ: traversed_depth_first,
                         ..self
                     },
                     state,
@@ -1110,15 +1102,15 @@ impl Traverse<Types> for Types {
     }
 }
 
-impl Traverse<RichTerm> for Types {
+impl Traverse<RichTerm> for Type {
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
         F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
     {
-        let f_on_type = |ty: Types, s: &mut S| match ty.types {
+        let f_on_type = |ty: Type, s: &mut S| match ty.typ {
             TypeF::Flat(t) => t
                 .traverse(f, s, order)
-                .map(|t| Types::from(TypeF::Flat(t)).with_pos(ty.pos)),
+                .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
             _ => Ok(ty),
         };
 
@@ -1130,7 +1122,7 @@ impl Display for RecordRows {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             RecordRowsF::Extend { ref row, ref tail } => {
-                write!(f, "{}: {}", row.id, row.types)?;
+                write!(f, "{}: {}", row.id, row.typ)?;
 
                 match tail.0 {
                     RecordRowsF::Extend { .. } => write!(f, ", {tail}"),
@@ -1161,9 +1153,9 @@ impl Display for EnumRows {
     }
 }
 
-impl Display for Types {
+impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.types {
+        match &self.typ {
             TypeF::Dyn => write!(f, "Dyn"),
             TypeF::Number => write!(f, "Number"),
             TypeF::Bool => write!(f, "Bool"),
@@ -1181,10 +1173,10 @@ impl Display for Types {
             TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
             TypeF::Var(var) => write!(f, "{var}"),
             TypeF::Forall { var, ref body, .. } => {
-                let mut curr: &Types = body.as_ref();
+                let mut curr: &Type = body.as_ref();
                 write!(f, "forall {var}")?;
-                while let Types {
-                    types: TypeF::Forall { var, ref body, .. },
+                while let Type {
+                    typ: TypeF::Forall { var, ref body, .. },
                     ..
                 } = curr
                 {
@@ -1203,7 +1195,7 @@ impl Display for Types {
                 type_fields,
                 flavour: DictTypeFlavour::Contract,
             } => write!(f, "{{ _ | {type_fields} }}"),
-            TypeF::Arrow(dom, codom) => match dom.types {
+            TypeF::Arrow(dom, codom) => match dom.typ {
                 TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
                 _ => write!(f, "{dom} -> {codom}"),
             },
@@ -1214,13 +1206,13 @@ impl Display for Types {
 
 #[cfg(test)]
 mod test {
-    use super::Types;
+    use super::Type;
     use crate::parser::lexer::Lexer;
     use crate::parser::{grammar::FixedTypeParser, ErrorTolerantParser};
     use codespan::Files;
 
     /// Parse a type represented as a string.
-    fn parse_type(s: &str) -> Types {
+    fn parse_type(s: &str) -> Type {
         let id = Files::new().add("<test>", s);
 
         FixedTypeParser::new()

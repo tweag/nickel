@@ -18,7 +18,7 @@ use crate::{
         record::{Field, RecordData},
         IndexMap, RichTerm, RuntimeContract, Term,
     },
-    types::UnboundTypeVariableError,
+    typ::UnboundTypeVariableError,
 };
 
 pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -30,7 +30,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
         let value = field
             .value
             .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
-                if let Some(labeled_ty) = &field.metadata.annotation.types {
+                if let Some(labeled_ty) = &field.metadata.annotation.typ {
                     let pos = v.pos;
                     let contract = RuntimeContract::try_from(labeled_ty.clone())?;
                     Ok(contract.apply(v, pos))

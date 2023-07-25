@@ -22,16 +22,16 @@
 //! term, and then as a type.
 //!
 //! For those reasons, the `uniterm` module introduces a new AST definition, that
-//! just wraps `RichTerm` and `Types`, together with dedicated variants for the
+//! just wraps `RichTerm` and `Type`, together with dedicated variants for the
 //! common constructs that are variables and records. As long as a common
 //! construct is not used in a term or a type context, it can be still
 //! interpreted as both. Once the usage determines the nature of a record or a
-//! variable, it is converted to either a `RichTerm` or a `Types` (although still
+//! variable, it is converted to either a `RichTerm` or a `Type` (although still
 //! possibly wrapped as a `UniTerm`).
 //!
-//! In consequence, this grammar uses three main types `RichTerm`, `Types` and
+//! In consequence, this grammar uses three main types `RichTerm`, `Type` and
 //! `UniTerm`, as well as conversion macros `AsTerm`, `AsType` and `AsUniTerm`.
-//! Some rules that are known to only produce `RichTerm` or `Types` may have the
+//! Some rules that are known to only produce `RichTerm` or `Type` may have the
 //! corresponding more precise return type. Other rules that produce or just
 //! propagate general uniterms have to return a `UniTerm`.
 use std::{
@@ -62,7 +62,7 @@ use crate::{
         array::Array,
         make as mk_term,
     },
-    types::*,
+    typ::*,
     position::{TermPos, RawSpan},
     label::Label,
 };
@@ -81,8 +81,8 @@ AsTerm<Rule>: RichTerm = <ut: WithPos<Rule>> =>?
     RichTerm::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
-AsType<Rule>: Types = <ut: WithPos<Rule>> =>?
-    Types::try_from(ut)
+AsType<Rule>: Type = <ut: WithPos<Rule>> =>?
+    Type::try_from(ut)
         .map_err(|e| lalrpop_util::ParseError::User{error: e});
 
 AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
@@ -90,23 +90,23 @@ AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
 AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
     <>.into_iter().fold(Default::default(), Annot::combine);
 
-// A single type or contract annotation. The `Types` rule forbids the use of
+// A single type or contract annotation. The `Type` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.
 // Otherwise, `foo | let x = 1 in x : Num` is ambiguous (the annotation could be
 // either `foo | (let x = 1 in (x : Num))` or `(foo | let x = 1 in x) : Num`).
 //
 // The rule to use for type annotations is given as a parameter. We always use a
-// rule that is syntactically equivalent to the `Types` rule. The parameter is
+// rule that is syntactically equivalent to the `Type` rule. The parameter is
 // here to control if the type should have its variables fixed now (`FixedType`)
-// or later (bare `Types`). Almost all rules are of the former kind, and use
+// or later (bare `Type`). Almost all rules are of the former kind, and use
 // `FixedType` (see `FixedType` and `parser::utils::fix_type_vars`).
 AnnotAtom<TypeRule>: TypeAnnotation = {
     "|" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
-        contracts: vec![LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}],
+        contracts: vec![LabeledType {typ: ty.clone(), label: mk_label(ty, src_id, l, r)}],
         ..Default::default()
     },
     ":" <l: @L> <ty: TypeRule> <r: @R> => TypeAnnotation {
-        types: Some(LabeledType {types: ty.clone(), label: mk_label(ty, src_id, l, r)}),
+        typ: Some(LabeledType {typ: ty.clone(), label: mk_label(ty, src_id, l, r)}),
         ..Default::default()
     },
 };
@@ -187,7 +187,7 @@ pub Term: RichTerm = AsTerm<UniTerm>;
 
 // A general type. Chosen such that it can't have top-level annotations.
 // (see `AnnotAtom`)
-Types: Types = {
+Type: Type = {
     AsType<InfixExpr>,
     Forall,
 };
@@ -196,8 +196,8 @@ Types: Types = {
 //
 // This rule is public and can be used from external modules to parse an input
 // directly as a type.
-pub FixedType: Types = {
-    <l: @L> <mut ty: Types> <r: @R> =>? {
+pub FixedType: Type = {
+    <l: @L> <mut ty: Type> <r: @R> =>? {
         ty.fix_type_vars(mk_span(src_id, l, r))?;
         Ok(ty)
     }
@@ -253,8 +253,8 @@ AnnotatedInfixExpr: UniTerm = {
     },
 };
 
-Forall: Types =
-    "forall" <ids: Ident+> "." <ty: WithPos<Types>> => {
+Forall: Type =
+    "forall" <ids: Ident+> "." <ty: WithPos<Type>> => {
         ids.into_iter().rev().fold(
             ty,
             // The variable kind will be determined during the `fix_type_vars`
@@ -262,8 +262,8 @@ Forall: Types =
             // one, for unused type variables)
             |acc, var| {
                 let pos = acc.pos;
-                Types {
-                    types: TypeF::Forall {
+                Type {
+                    typ: TypeF::Forall {
                         var,
                         var_kind: VarKind::Type,
                         body: Box::new(acc)
@@ -308,11 +308,11 @@ Applicative: UniTerm = {
 };
 
 // The parametrized array type.
-TypeArray: Types = "Array" <t: AsType<Atom>> =>
+TypeArray: Type = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
     // it doens't compile.
-    Types::from(TypeF::Array(Box::new(t)));
+    Type::from(TypeF::Array(Box::new(t)));
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
@@ -380,10 +380,10 @@ Atom: UniTerm = {
 };
 
 // A record field definition. The is the only place where we don't fix the type
-// variables inside the annotation right away (note the `Annot<Types>` instead
+// variables inside the annotation right away (note the `Annot<Type>` instead
 // of `Annot<Fixed>`).
 RecordField: FieldDef = {
-    <l: @L> <path: FieldPath> <ann: FieldAnnot<Types>?> <r: @R> <t: ("=" <Term>)?> => {
+    <l: @L> <path: FieldPath> <ann: FieldAnnot<Type>?> <r: @R> <t: ("=" <Term>)?> => {
         let annot_span = mk_span(src_id, l, r);
         let span = if let Some(ref value) = t {
                 // value.pos.unwrap(): the position of `t` is necessarily set by the <Term> rule
@@ -831,7 +831,7 @@ InfixExpr: UniTerm = {
 
     #[precedence(level="11")] #[assoc(side="right")]
     <s: AsType<InfixExpr>> "->" <t: AsType<InfixExpr>> =>
-        UniTerm::from(Types::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
+        UniTerm::from(Type::from(TypeF::Arrow(Box::new(s), Box::new(t)))),
 }
 
 BOpPre: BinaryOp = {
@@ -878,14 +878,14 @@ NOpPre<ArgRule>: UniTerm = {
         UniTerm::from(mk_opn!(NAryOp::ArraySlice(), t1, t2, t3)),
 }
 
-TypeBuiltin: Types = {
-     "Dyn" => Types::from(TypeF::Dyn),
-     "Number" => Types::from(TypeF::Number),
-     "Bool" => Types::from(TypeF::Bool),
-     "String" => Types::from(TypeF::String),
+TypeBuiltin: Type = {
+     "Dyn" => Type::from(TypeF::Dyn),
+     "Number" => Type::from(TypeF::Number),
+     "Bool" => Type::from(TypeF::Bool),
+     "String" => Type::from(TypeF::String),
 }
 
-TypeAtom: Types = {
+TypeAtom: Type = {
     <TypeBuiltin>,
     "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
@@ -904,10 +904,10 @@ TypeAtom: Types = {
                 ),
                 |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
             );
-            Types::from(TypeF::Enum(ty))
+            Type::from(TypeF::Enum(ty))
     },
-    "{" "_" ":" <t: WithPos<Types>> "}" => {
-        Types::from(TypeF::Dict {
+    "{" "_" ":" <t: WithPos<Type>> "}" => {
+        Type::from(TypeF::Dict {
             type_fields: Box::new(t),
             flavour: DictTypeFlavour::Type
         })
@@ -926,7 +926,7 @@ TypeAtom: Types = {
     // is fixed) will indeed turn it into a term variable, and raise an unbound
     // type variable error.
     "{" "_" "|" <t: WithPos<FixedType>> "}" => {
-        Types::from(TypeF::Dict {
+        Type::from(TypeF::Dict {
             type_fields: Box::new(t),
             flavour: DictTypeFlavour::Contract
         })
@@ -934,7 +934,7 @@ TypeAtom: Types = {
     "_" => {
         let id = *next_wildcard_id;
         *next_wildcard_id += 1;
-        Types::from(TypeF::Wildcard(id))
+        Type::from(TypeF::Wildcard(id))
     },
 }
 

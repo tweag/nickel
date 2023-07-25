@@ -129,13 +129,13 @@ impl UnifTable {
             // If a concrete type is a candidate for update, we push the pending update on the
             // stack
             UnifType::Concrete {
-                types,
+                typ,
                 var_levels_data,
             } if var_levels_data.upper_bound >= new_level => {
                 self.pending_type_updates.push(var);
 
                 UnifType::Concrete {
-                    types,
+                    typ,
                     var_levels_data: VarLevelsData {
                         pending: Some(new_level),
                         ..var_levels_data
@@ -477,17 +477,17 @@ impl UnifTable {
                     UnifType::UnifVar { id, init_level }
                 }
                 UnifType::Concrete {
-                    types,
+                    typ,
                     var_levels_data,
                 } if var_levels_data.upper_bound > level => {
                     let level = var_levels_data
                         .pending
                         .map(|pending_level| max(pending_level, level))
                         .unwrap_or(level);
-                    let types = update_unr_with_lvl(table, types, level);
+                    let typ = update_unr_with_lvl(table, typ, level);
 
                     UnifType::Concrete {
-                        types,
+                        typ,
                         var_levels_data: VarLevelsData {
                             upper_bound: level,
                             pending: None,
@@ -511,7 +511,7 @@ impl UnifTable {
                     (uty, false)
                 }
                 UnifType::Concrete {
-                    types,
+                    typ,
                     var_levels_data:
                         VarLevelsData {
                             pending: Some(pending_level),
@@ -534,7 +534,7 @@ impl UnifTable {
                     if upper_bound < constant_level || pending_level >= constant_level {
                         return (
                             UnifType::Concrete {
-                                types,
+                                typ,
                                 var_levels_data: VarLevelsData {
                                     upper_bound: pending_level,
                                     pending: Some(pending_level),
@@ -544,15 +544,15 @@ impl UnifTable {
                         );
                     }
 
-                    let types = if upper_bound > pending_level {
-                        update_unr_with_lvl(table, types, pending_level)
+                    let typ = if upper_bound > pending_level {
+                        update_unr_with_lvl(table, typ, pending_level)
                     } else {
-                        types
+                        typ
                     };
 
                     (
                         UnifType::Concrete {
-                            types,
+                            typ,
                             var_levels_data: VarLevelsData {
                                 upper_bound: pending_level,
                                 pending: None,
@@ -573,8 +573,8 @@ impl UnifTable {
                 // unwrap(): if a unification variable has been push on the update stack, it
                 // has been been by `assign_type`, and thus MUST have been assigned to
                 // something.
-                let types = self.types[*id].value.take().unwrap();
-                let (new_type, delayed) = update_utype(self, types, constant_level);
+                let typ = self.types[*id].value.take().unwrap();
+                let (new_type, delayed) = update_utype(self, typ, constant_level);
                 self.types[*id].value = Some(new_type);
 
                 delayed
@@ -607,10 +607,10 @@ impl UnifTable {
 
             match utype {
                 UnifType::Concrete {
-                    types,
+                    typ,
                     var_levels_data,
                 } => {
-                    let types = types.map_state(
+                    let typ = typ.map_state(
                         |uty, table| Box::new(update_utype_with_lvl(table, *uty, level)),
                         |rrows, table| update_rrows_with_lvl(table, rrows, level),
                         |erows, _| erows,
@@ -622,7 +622,7 @@ impl UnifTable {
                     // them untouched, as updating type variable levels is an orthogonal
                     // concern.
                     UnifType::Concrete {
-                        types,
+                        typ,
                         var_levels_data,
                     }
                 }
@@ -965,7 +965,7 @@ impl Unify for UnifType {
             // If either type is a wildcard, unify with the associated type var
             (
                 UnifType::Concrete {
-                    types: TypeF::Wildcard(id),
+                    typ: TypeF::Wildcard(id),
                     ..
                 },
                 ty2,
@@ -973,7 +973,7 @@ impl Unify for UnifType {
             | (
                 ty2,
                 UnifType::Concrete {
-                    types: TypeF::Wildcard(id),
+                    typ: TypeF::Wildcard(id),
                     ..
                 },
             ) => {
@@ -982,11 +982,11 @@ impl Unify for UnifType {
             }
             (
                 UnifType::Concrete {
-                    types: s1,
+                    typ: s1,
                     var_levels_data: _,
                 },
                 UnifType::Concrete {
-                    types: s2,
+                    typ: s2,
                     var_levels_data: _,
                 },
             ) => match (s1, s2) {
@@ -1261,7 +1261,7 @@ impl Unify for UnifRecordRows {
                 ) => Err(RowUnifError::MissingRow(id)),
                 (
                     RecordRowsF::Extend {
-                        row: UnifRecordRow { id, types },
+                        row: UnifRecordRow { id, typ },
                         tail,
                     },
                     rrows2 @ RecordRowsF::Extend { .. },
@@ -1275,11 +1275,10 @@ impl Unify for UnifRecordRows {
                         .map_err(|err| match err {
                             RemoveRRowError::Missing => RowUnifError::MissingRow(id),
                             RemoveRRowError::Conflict => {
-                                RowUnifError::UnsatConstr(id, *types.clone())
+                                RowUnifError::UnsatConstr(id, *typ.clone())
                             }
                         })?;
-                    types
-                        .unify(ty2, state, ctxt)
+                    typ.unify(ty2, state, ctxt)
                         .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
                     tail.unify(urrows2_without_ty2, state, ctxt)
                 }
@@ -1373,7 +1372,7 @@ impl RemoveRow for UnifRecordRows {
                     tail,
                 } => {
                     if *target == next_row.id {
-                        Ok((*next_row.types, *tail))
+                        Ok((*next_row.typ, *tail))
                     } else {
                         let (extracted_row, rest) = tail.remove_row(target, state, var_level)?;
                         Ok((
@@ -1398,7 +1397,7 @@ impl RemoveRow for UnifRecordRows {
 
                 let row_to_insert = UnifRecordRow {
                     id: *target,
-                    types: Box::new(fresh_uvar.clone()),
+                    typ: Box::new(fresh_uvar.clone()),
                 };
                 let tail_var = UnifRecordRows::UnifVar {
                     id: tail_var_id,

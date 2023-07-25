@@ -1,4 +1,4 @@
-//! Helpers to convert a `TypeWrapper` to a human-readable `Types` representation for error
+//! Helpers to convert a `TypeWrapper` to a human-readable `Type` representation for error
 //! reporting.
 use super::*;
 use std::collections::HashSet;
@@ -117,7 +117,7 @@ pub(super) fn cst_name(
 
 /// Extract a concrete type corresponding to a unifiable type, for error reporting purpose.
 ///
-/// Similar [`crate::types::Types::from`], excepted that free unification variables and type
+/// Similar [`crate::typ::Type::from`], excepted that free unification variables and type
 /// constants are replaced by type variables which names are determined by the `var_name` and
 /// `cst_name`.
 ///
@@ -128,7 +128,7 @@ pub fn to_type(
     reported_names: &NameTable,
     names: &mut NameReg,
     ty: UnifType,
-) -> Types {
+) -> Type {
     fn rrows_to_type(
         table: &UnifTable,
         reported_names: &NameTable,
@@ -193,27 +193,27 @@ pub fn to_type(
     let ty = ty.into_root(table);
 
     match ty {
-        UnifType::UnifVar { id, .. } => Types::from(TypeF::Var(var_name(
+        UnifType::UnifVar { id, .. } => Type::from(TypeF::Var(var_name(
             reported_names,
             names,
             id,
             VarKindDiscriminant::Type,
         ))),
-        UnifType::Constant(c) => Types::from(TypeF::Var(cst_name(
+        UnifType::Constant(c) => Type::from(TypeF::Var(cst_name(
             reported_names,
             names,
             c,
             VarKindDiscriminant::Type,
         ))),
-        UnifType::Concrete { types, .. } => {
-            let mapped = types.map_state(
+        UnifType::Concrete { typ, .. } => {
+            let mapped = typ.map_state(
                 |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
                 |rrows, names| rrows_to_type(table, reported_names, names, rrows),
                 |erows, names| erows_to_type(table, reported_names, names, erows),
                 names,
             );
-            Types::from(mapped)
+            Type::from(mapped)
         }
-        UnifType::Contract(t, _) => Types::from(TypeF::Flat(t)),
+        UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
     }
 }
