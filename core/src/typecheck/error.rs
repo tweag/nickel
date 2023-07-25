@@ -23,7 +23,7 @@ pub enum RowUnifError {
     /// There were two incompatible definitions for the same row.
     RowMismatch(Ident, Box<UnifError>),
     /// A [row constraint][super::RowConstr] was violated.
-    UnsatConstr(Ident, Option<UnifType>),
+    UnsatConstr(Ident, UnifType),
     /// Tried to unify a type constant with another different type.
     WithConst(VarKindDiscriminant, usize, UnifType),
     /// Tried to unify two distinct type constants.
@@ -88,7 +88,7 @@ pub enum UnifError {
     ExtraDynTail(UnifType, UnifType),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
-    RowConflict(Ident, Option<UnifType>, UnifType, UnifType),
+    RowConflict(Ident, UnifType, UnifType, UnifType),
     /// Tried to unify a type constant with another different type.
     WithConst(VarKindDiscriminant, usize, UnifType),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
@@ -213,7 +213,7 @@ impl UnifError {
             ),
             UnifError::RowConflict(id, uty, left, right) => TypecheckError::RowConflict(
                 id,
-                uty.map(|uty| reporting::to_type(state.table, state.names, names, uty)),
+                reporting::to_type(state.table, state.names, names, uty),
                 reporting::to_type(state.table, state.names, names, left),
                 reporting::to_type(state.table, state.names, names, right),
                 pos_opt,

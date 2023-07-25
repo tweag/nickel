@@ -257,7 +257,7 @@ pub enum TypecheckError {
     /// the direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         Ident,
-        /* the second type assignment which violates the constraint */ Option<Types>,
+        /* the second type assignment which violates the constraint */ Types,
         /* the expected type of the subexpression */ Types,
         /* the actual type of the subexpression */ Types,
         TermPos,
@@ -2015,7 +2015,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         .with_message("multiple rows declaration")
                         .with_labels(mk_expr_label(&span_opt))
                         .with_notes(vec![
-                            format!("Found an expression of a record type `{}` with the row `{}`", conflict.as_ref().cloned().unwrap(), ident),
+                            format!("Found an expression of a record type `{}` with the row `{}`", conflict, ident),
                             format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
                             String::from("A type cannot have two conflicting declarations for the same row"),
                         ])]
