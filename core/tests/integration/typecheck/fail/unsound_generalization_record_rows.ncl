@@ -6,4 +6,10 @@
 #
 # [test.metadata.expectation]
 # type_var = 'tail'
-(fun r => let foo = r.foo in let g : forall tail. {foo : _; tail} = r in g.baz) : _
+(
+  fun r =>
+    let foo = r.foo in
+    let g : forall tail. { foo : _; tail } = r in
+    g.baz
+) : _
+
