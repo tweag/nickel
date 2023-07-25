@@ -259,18 +259,72 @@ impl<EC: EvalCache> Program<EC> {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
+    /// Evaluate a program into a form suitable for extracting documentation.
+    /// This needs to evaluate to WHNF, but then still descend into subfields
+    /// whose values are records.
+    #[cfg(feature = "doc")]
+    pub fn eval_for_doc(&mut self) -> Result<RichTerm, Error> {
+        use crate::eval::{Closure, Environment};
+        use crate::match_sharedterm;
+        use crate::term::record::RecordData;
+        use crate::term::Term;
+
+        let (t, initial_env) = self.prepare_eval()?;
+
+        fn do_eval<EC: EvalCache>(
+            vm: &mut VirtualMachine<Cache, EC>,
+            t: RichTerm,
+            current_env: Environment,
+            initial_env: &Environment,
+        ) -> Result<RichTerm, Error> {
+            vm.reset();
+            let (rt, env) = vm
+                .eval_closure(
+                    Closure {
+                        body: t,
+                        env: current_env,
+                    },
+                    initial_env,
+                )
+                .map_err(Error::from)?;
+
+            match_sharedterm! {rt.term, with {
+                    Term::Record(data) => {
+                        let fields = data
+                            .fields
+                            .into_iter()
+                            .map(|(id, field)| -> Result<_, Error> {
+                                Ok((
+                                    id,
+                                    Field {
+                                        value: field
+                                            .value
+                                            .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
+                                            .transpose()?,
+                                        ..field
+                                    },
+                                ))
+                            })
+                            .collect::<Result<_, Error>>()?;
+                        Ok(RichTerm::new(
+                            Term::Record(RecordData { fields, ..data }),
+                            rt.pos,
+                        ))
+                    }
+                } else Ok(rt)
+            }
+        }
+
+        do_eval(&mut self.vm, t, Environment::new(), &initial_env)
+    }
+
     /// Extract documentation from the program
     #[cfg(feature = "doc")]
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
-        self.vm.import_resolver_mut().parse(self.main_id)?;
-        let term = self
-            .vm
-            .import_resolver()
-            .get_ref(self.main_id)
-            .expect("The file has been parsed and must therefore be in the cache");
-        doc::ExtractedDocumentation::extract_from_term(term).ok_or(Error::ExportError(
+        let term = self.eval_for_doc()?;
+        doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
             ExportError::NoDocumentation(term.clone()),
         ))
     }
