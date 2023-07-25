@@ -688,69 +688,69 @@ impl Cache {
         file_id: FileId,
     ) -> Result<CacheOp<(Vec<FileId>, Vec<ImportError>)>, CacheError<ImportError>> {
         match self.entry_state(file_id) {
-            Some(state) if state >= EntryState::ImportsResolved => {
-                Ok(CacheOp::Cached((Vec::new(), Vec::new())))
-            }
-            Some(state) if state >= EntryState::Parsed => {
-                let (pending, errors) = if state < EntryState::ImportsResolving {
-                    let TermEntry { term, .. } = self.terms.get(&file_id).unwrap();
-                    let term = term.clone();
+            Some(EntryState::Parsed) => {
+                let TermEntry { term, .. } = self.terms.get(&file_id).unwrap();
+                let term = term.clone();
 
-                    let import_resolution::tolerant::ResolveResult {
-                        transformed_term,
-                        resolved_ids: pending,
-                        import_errors,
-                    } = match self.error_tolerance {
-                        ErrorTolerance::Tolerant => {
-                            import_resolution::tolerant::resolve_imports(term, self)
-                        }
-                        ErrorTolerance::Strict => {
-                            import_resolution::strict::resolve_imports(term, self)?.into()
-                        }
-                    };
-
-                    // unwrap!(): we called `unwrap()` at the beggining of the enclosing if branch
-                    // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
-                    // `resolve_imports` in between, which don't remove anything from `self.terms`.
-                    let cached_term = self.terms.get_mut(&file_id).unwrap();
-                    cached_term.term = transformed_term;
-                    cached_term.state = EntryState::ImportsResolving;
-
-                    let mut done = Vec::new();
-
-                    // Transitively resolve the imports, and accumulate the ids of the resolved
-                    // files along the way.
-                    for id in pending {
-                        if let CacheOp::Done((mut done_local, _)) = self.resolve_imports(id)? {
-                            done.push(id);
-                            done.append(&mut done_local)
-                        }
+                let import_resolution::tolerant::ResolveResult {
+                    transformed_term,
+                    resolved_ids: pending,
+                    import_errors,
+                } = match self.error_tolerance {
+                    ErrorTolerance::Tolerant => {
+                        import_resolution::tolerant::resolve_imports(term, self)
                     }
-
-                    self.update_state(file_id, EntryState::ImportsResolved);
-                    (done, import_errors)
-                } else {
-                    // [transitory_entry_state]:
-                    //
-                    // In this branch, the state is `EntryState::ImportsResolving`. Which means we
-                    // recursively called `resolve_imports` on the same entry: there is a cyclic
-                    // import. In that case, we don't do anything, as the entry is being treated
-                    // by a on-going call to `resolve_import` higher up in the call chain.
-                    //
-                    // Note that in some cases, this intermediate state can be observed by an
-                    // external caller: if a first call to `resolve_imports` fails in the middle of
-                    // resolving the transitive imports, the end state of the entry is
-                    // `ImportsResolving`. Subsequent calls to `resolve_imports` will succeed, but
-                    // won't change the state to `EntryState::ImportsResolved` (and for a good
-                    // reason: we wouldn't even know what are the pending imports to resolve). The
-                    // Nickel pipeline should however fail if `resolve_imports` failed at some
-                    // point, anyway.
-                    (Vec::new(), Vec::new())
+                    ErrorTolerance::Strict => {
+                        import_resolution::strict::resolve_imports(term, self)?.into()
+                    }
                 };
 
-                Ok(CacheOp::Done((pending, errors)))
+                // unwrap!(): we called `unwrap()` at the beggining of the enclosing if branch
+                // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
+                // `resolve_imports` in between, which don't remove anything from `self.terms`.
+                let cached_term = self.terms.get_mut(&file_id).unwrap();
+                cached_term.term = transformed_term;
+                cached_term.state = EntryState::ImportsResolving;
+
+                let mut done = Vec::new();
+
+                // Transitively resolve the imports, and accumulate the ids of the resolved
+                // files along the way.
+                for id in pending {
+                    if let CacheOp::Done((mut done_local, _)) = self.resolve_imports(id)? {
+                        done.push(id);
+                        done.append(&mut done_local)
+                    }
+                }
+
+                self.update_state(file_id, EntryState::ImportsResolved);
+
+                Ok(CacheOp::Done((done, import_errors)))
             }
-            _ => Err(CacheError::NotParsed),
+            // [transitory_entry_state]:
+            //
+            // This case is triggered by a cyclic import. The entry is already
+            // being treated by an ongoing call to `resolve_import` higher up in
+            // the call chain, so we don't do anything here.
+            //
+            // Note that in some cases, this intermediate state can be observed by an
+            // external caller: if a first call to `resolve_imports` fails in the middle of
+            // resolving the transitive imports, the end state of the entry is
+            // `ImportsResolving`. Subsequent calls to `resolve_imports` will succeed, but
+            // won't change the state to `EntryState::ImportsResolved` (and for a good
+            // reason: we wouldn't even know what are the pending imports to resolve). The
+            // Nickel pipeline should however fail if `resolve_imports` failed at some
+            // point, anyway.
+            Some(EntryState::ImportsResolving) => Ok(CacheOp::Done((Vec::new(), Vec::new()))),
+            // >= EntryState::ImportsResolved
+            Some(
+                EntryState::ImportsResolved
+                | EntryState::Typechecking
+                | EntryState::Typechecked
+                | EntryState::Transforming
+                | EntryState::Transformed,
+            ) => Ok(CacheOp::Cached((Vec::new(), Vec::new()))),
+            None => Err(CacheError::NotParsed),
         }
     }
 
