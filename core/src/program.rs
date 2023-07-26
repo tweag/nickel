@@ -264,6 +264,7 @@ impl<EC: EvalCache> Program<EC> {
     /// whose values are records.
     #[cfg(feature = "doc")]
     pub fn eval_for_doc(&mut self) -> Result<RichTerm, Error> {
+        use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
         use crate::term::record::RecordData;
@@ -278,15 +279,18 @@ impl<EC: EvalCache> Program<EC> {
             initial_env: &Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
-            let (rt, env) = vm
-                .eval_closure(
-                    Closure {
-                        body: t,
-                        env: current_env,
-                    },
-                    initial_env,
-                )
-                .map_err(Error::from)?;
+            let result = vm.eval_closure(
+                Closure {
+                    body: t.clone(),
+                    env: current_env,
+                },
+                initial_env,
+            );
+
+            let (rt, env) = match result {
+                Err(EvalError::MissingFieldDef { .. }) => return Ok(t),
+                _ => result,
+            }?;
 
             match_sharedterm! {rt.term, with {
                     Term::Record(data) => {
