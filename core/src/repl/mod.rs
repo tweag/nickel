@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, CacheError, Envs, ErrorTolerance};
+use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
