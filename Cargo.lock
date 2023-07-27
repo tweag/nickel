@@ -2054,6 +2054,7 @@ dependencies = [
  "codespan-reporting",
  "nickel-lang-core",
  "pyo3",
+ "pyo3-build-config",
 ]
 
 [[package]]
