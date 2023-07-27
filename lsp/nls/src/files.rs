@@ -74,9 +74,8 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     parse_and_typecheck(server, file_id)?;
 
     for f in &invalid {
-        if let Err(e) = typecheck(server, *f) {
-            server.issue_diagnostics(*f, e);
-        }
+        let errors = typecheck(server, *f).err().unwrap_or_default();
+        server.issue_diagnostics(*f, errors);
     }
     Trace::reply(id);
     Ok(())
@@ -105,15 +104,15 @@ fn parse_and_typecheck(server: &mut Server, file_id: FileId) -> Result<()> {
         Ok(errs) => (errs.inner(), false),
         Err(errs) => (errs, true),
     };
-    let diags = parse_errs.into_diagnostics(server.cache.files_mut(), None);
-    server.issue_diagnostics(file_id, diags);
+    let mut diags = parse_errs.into_diagnostics(server.cache.files_mut(), None);
 
     if !fatal {
         trace!("Parsed, checking types");
         if let Err(e) = typecheck(server, file_id) {
-            server.issue_diagnostics(file_id, e);
+            diags.extend_from_slice(&e);
         }
     }
+    server.issue_diagnostics(file_id, diags);
 
     Ok(())
 }

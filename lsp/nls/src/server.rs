@@ -284,15 +284,15 @@ impl Server {
             .flat_map(|d| lsp_types::Diagnostic::from_codespan(d, self.cache.files_mut()))
             .collect();
 
-        if !diagnostics.is_empty() {
-            self.notify(lsp_server::Notification::new(
-                "textDocument/publishDiagnostics".into(),
-                PublishDiagnosticsParams {
-                    uri,
-                    diagnostics,
-                    version: None,
-                },
-            ));
-        }
+        // Issue diagnostics even if they're empty (empty diagnostics are how the editor knows
+        // that any previous errors were resolved).
+        self.notify(lsp_server::Notification::new(
+            "textDocument/publishDiagnostics".into(),
+            PublishDiagnosticsParams {
+                uri,
+                diagnostics,
+                version: None,
+            },
+        ));
     }
 }
