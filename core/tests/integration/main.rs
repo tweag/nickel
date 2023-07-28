@@ -37,17 +37,19 @@ fn check_annotated_nickel_file(path: &str) {
         .expect("Failed to join thread")
 }
 
-#[test_resources("core/tests/integration/imports/imported/root_path/import.ncl")]
+#[test_resources("core/tests/integration/imports/imported/import_parent.ncl")]
 fn check_from_dir(path: &str) {
     let test: TestCase<Test> =
         read_annotated_test_case(path).expect("Failed to parse annotated program");
 
     let path = project_root().join(path);
-
     let dir = std::env::current_dir().unwrap();
     let test_dir = path.parent().unwrap();
     std::env::set_current_dir(test_dir).unwrap();
-    run_test(test, String::from(path.to_string_lossy()));
+    run_test(
+        test,
+        String::from(path.file_name().unwrap().to_string_lossy()),
+    );
     std::env::set_current_dir(dir).unwrap();
 }
 
