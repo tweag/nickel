@@ -116,7 +116,7 @@ fn do_format(
     let topiary_config = topiary::Configuration::parse_default_configuration()?;
     let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
     let grammar = tree_sitter_nickel::language().into();
-    Ok(topiary::formatter(
+    topiary::formatter(
         &mut input,
         &mut output,
         &TopiaryQuery::nickel(),
@@ -126,5 +126,7 @@ fn do_format(
             skip_idempotence: true,
             tolerate_parsing_errors: true,
         },
-    )?)
+    )?;
+    output.persist();
+    Ok(())
 }
