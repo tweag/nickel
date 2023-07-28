@@ -6,6 +6,8 @@ use nickel_lang_core::program::Program;
 use nickel_lang_core::repl::query_print;
 use nickel_lang_core::term::RichTerm;
 use nickel_lang_core::{serialize, serialize::ExportFormat};
+
+use git_version::git_version;
 use std::path::PathBuf;
 use std::{fs, io::Write, process};
 
@@ -28,6 +30,10 @@ struct Opt {
 
     #[command(subcommand)]
     command: Option<Command>,
+
+    /// Print version.
+    #[arg(long, short = 'V')]
+    version: bool,
 }
 
 /// Available subcommands.
@@ -187,6 +193,16 @@ fn main() {
     use clap::Parser;
 
     let opts = Opt::parse();
+
+    if opts.version {
+        println!(
+            "{} {} (rev {})",
+            env!("CARGO_BIN_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            git_version!()
+        );
+        return;
+    }
 
     match opts.command {
         #[cfg(feature = "repl")]

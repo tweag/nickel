@@ -95,7 +95,7 @@
       };
 
       # Additional packages required to build Nickel on Darwin
-      missingSysPkgs =
+      systemSpecificPkgs =
         if pkgs.stdenv.isDarwin then
           [
             pkgs.darwin.apple_sdk.frameworks.Security
@@ -405,7 +405,9 @@
             pkgs.wasm-pack
             pkgs.wasm-bindgen-cli
             pkgs.binaryen
-          ] ++ missingSysPkgs;
+            # Used to include the git revision in the Nickel binary, for `--version`
+            pkgs.git
+          ] ++ systemSpecificPkgs;
         };
 
       buildDocker = nickel: pkgs.dockerTools.buildLayeredImage {
