@@ -35,7 +35,8 @@ impl CacheExt for Cache {
         let mut typecheck_import_diagnostics: Vec<FileId> = Vec::new();
         if let Ok(CacheOp::Done((ids, errors))) = self.resolve_imports(file_id) {
             import_errors = errors;
-            for id in ids {
+            // Reverse the imports, so we try to typecheck the leaf dependencies first.
+            for &id in ids.iter().rev() {
                 let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_registry);
             }
         }
