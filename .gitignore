@@ -27,3 +27,6 @@
 # Python virtual env
 .venv/
 venv/
+
+# helix configuration
+.helix/
