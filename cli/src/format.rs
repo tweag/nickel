@@ -44,6 +44,7 @@ impl Display for FormatError {
     }
 }
 
+#[derive(Debug)]
 pub enum Output {
     Stdout,
     Disk {
@@ -57,7 +58,13 @@ impl Output {
         match path {
             None => Ok(Self::Stdout),
             Some(path) => {
-                let path = path.canonicalize()?;
+                // `canonicalize()` will fail if `path` does not exist. In this
+                // case, our best bet will be to just use `path` as given by
+                // the user.
+                let path = path.canonicalize().or_else(|e| match e.kind() {
+                    io::ErrorKind::NotFound => Ok(path.to_owned()),
+                    _ => Err(e),
+                })?;
                 Ok(Self::Disk {
                     staged: NamedTempFile::new_in(path.parent().ok_or_else(|| {
                         FormatError::NotAFile {
@@ -116,7 +123,7 @@ fn do_format(
     let topiary_config = topiary::Configuration::parse_default_configuration()?;
     let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
     let grammar = tree_sitter_nickel::language().into();
-    Ok(topiary::formatter(
+    topiary::formatter(
         &mut input,
         &mut output,
         &TopiaryQuery::nickel(),
@@ -126,5 +133,7 @@ fn do_format(
             skip_idempotence: true,
             tolerate_parsing_errors: true,
         },
-    )?)
+    )?;
+    output.persist();
+    Ok(())
 }
