@@ -35,7 +35,7 @@ Let's describe a few simple cases first:
     - `let foo = { bar = 3 } in foo.bar`,
     - `let baz = { bar = 3 } in let foo = baz in foo.bar`, and
 
-  the second occurrence of `bar` references the first. 
+  the second occurrence of `bar` references the first.
 
 - The definitions should be repeatedly "resolved" for all path elements
   except the last.
@@ -55,28 +55,29 @@ Let's describe a few simple cases first:
   in `let x = if ... then { foo = 1 } else { foo = 2 } in x.foo`, the last instance of `foo`
   references the first two instances.
 
-- This might be getting too fancy, but we could potentially do static analysis of functions
-  to track the origin of record fields. For example, we might expect that sprinkling the
-  identity function around doesn't affect definition tracking.
+- We should see through function applications to some extent (with details TBD).
+  For example, sprinkling around the identity function shouldn't break any of the examples
+  above. Other examples: in each of
 
-### The typescript-language-server
+   - `let f = fun x => {bar = 1} in (f 0).bar`
+   - `let f = fun x => x.foo in (f { foo = { bar = 1 } }).bar`
 
-`typescript-language-server` has a somewhat similar behavior to what we're aiming for, and
-it can even "see through" functions to some extent.
-For example, in
+  the second instance of `bar` references the first.
 
-```typescript
-function foo() {
-  return { foo : 1 };
-}
+  `typescript-language-server` is worth looking at for inspiration here.
+  For example, in
 
-const x = foo();
-x.foo;
-```
+  ```typescript
+  function foo() {
+    return { foo : 1 };
+  }
 
-then "goto definition" on the final `foo` points to the `foo` in the record literal.
-The algorithm seems to be mainly type-directed. For example, annotating `foo()`
-as `function foo(): any { ... }` breaks going to the definition of `foo`
+  const x = foo();
+  x.foo;
+  ```
+  then "goto definition" on the final `foo` points to the `foo` in the record literal.
+  The algorithm seems to be mainly type-directed. For example, annotating `foo()`
+  as `function foo(): any { ... }` breaks going to the definition of `foo`
 
 ### Proposed algorithm
 
@@ -87,10 +88,40 @@ approximation, of course, because we aren't evaluating. Let's call this process
 "record literal resolution," and it is defined by:
 
 - a record literal resolves to itself
-- a variable resolves to the term that it's bound to
+- a variable resolves to the term that it's bound to (e.g. in a let binding)
+- an import statement resolves to the contents of the file that was imported
 - a merge resolves to the union of the resolutions of the two merged terms
 - an if-then-else resolves to the union of the resolutions of the two branches
+- a function application resolves to the resolution of its body (with the
+  function arguments bound appropriately). There probably needs to be some
+  protection against recursion (TBD)
 - everything else resolves to the empty set (but this can be extended later)
+
+Here is some pseudocode roughly corresponding to what's above: we have
+a struct `DefInfo` that represents some object with fields having locations:
+
+```rust
+struct DefInfo {
+  /// What are the definitions available on this field? There could be many:
+  /// in the presence of a merge, a field might be defined in both branches.
+  definitions: HashMap<Ident, Vec<DefInfo>>,
+  // The location of the definition, if any.
+  body: TermPos,
+}
+```
+
+Then we have a function `field_infos(RichTerm) -> DefInfo` that looks something like:
+
+```text
+field_infos(e1 & e2) = field_infos(e1) U field_infos(e2)
+field_infos(let x = e1 in e2) = field_infos(e2)
+field_infos(fun x => body) = field_infos(body)
+field_infos(head x) = field_infos(head)
+field_infos(var) = field_infos(goto_definition(var))
+field_infos(e1 | C) = field_infos(e1) U extract_field_infos(C)
+field_infos(foo.bar) = field_infos(goto_definition(bar in foo.bar))
+other cases => empty
+```
 
 Now to find the definition of `baz` in `foo.bar.baz`, we first resolve `foo`
 to a set of record literals. For each of those literals containing a `bar` field,
@@ -111,7 +142,7 @@ be the same as a "goto definition" request for `Foo`.
 Here is a list of items that we might want to provide completions for:
 
 - record fields, as in `let x = { foo = 1 } in x.fo`
-- enum variants
+- enum variants, as in `let x | [| 'Foo, 'Bar |] = 'Fo`
 - variables in scope, as in `let foo = 1 in 2 + fo`
 - filenames in imports, as in `import "fo` when `foo.ncl` exists on disk
 - maybe keywords? They're pretty short in nickel
@@ -128,10 +159,8 @@ to `x` (it still doesn't need to care about whether they start with "fo").
 Type information can also be used to filter completions for enum variants and
 variables in scope (more on that below).
 
-In summary, the desired completion behavior is:
+Completion behavior for everything except a record path is fairly straightforward:
 
-- when completing a record path, find the type (or contract) of the second-last
-  element of the path. If it's a record type, return all of its fields.
 - when completing an enum variant, if we know the type of the term that's being
   completed (and it's an enum type), return all of that type's known enum variants.
   Otherwise, just return all the enum variants we've seen ever.
@@ -144,3 +173,10 @@ In summary, the desired completion behavior is:
   all files in that directory
 - if we decide we want to complete keywords, just return all the keywords and let
   the editor filter them
+
+Record fields are more complicated. Completing record fields is quite related
+to going to definitions, and so they may be able to share some of the implementation,
+including the `field_infos` function described above. One potential difference
+is in how they treat contract annotations. For example, in
+`(x | { foo | Number }).foo` we certainly want to use the contract annotation
+for completion, but do we want to use it for goto definition?
