@@ -1606,7 +1606,7 @@ dependencies = [
  "tempfile",
  "test-generator",
  "topiary",
- "tree-sitter-nickel 0.0.1 (git+https://github.com/nickel-lang/tree-sitter-nickel?rev=refs/heads/main)",
+ "tree-sitter-nickel",
 ]
 
 [[package]]
@@ -2054,6 +2054,7 @@ dependencies = [
  "codespan-reporting",
  "nickel-lang-core",
  "pyo3",
+ "pyo3-build-config",
 ]
 
 [[package]]
@@ -2969,7 +2970,7 @@ dependencies = [
  "tree-sitter-bash",
  "tree-sitter-facade",
  "tree-sitter-json",
- "tree-sitter-nickel 0.0.1 (git+https://github.com/nickel-lang/tree-sitter-nickel?rev=b1a4718601ebd29a62bf3a7fd1069a99ccf48093)",
+ "tree-sitter-nickel",
  "tree-sitter-ocaml",
  "tree-sitter-query",
  "tree-sitter-rust",
@@ -3023,15 +3024,6 @@ dependencies = [
 name = "tree-sitter-nickel"
 version = "0.0.1"
 source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=b1a4718601ebd29a62bf3a7fd1069a99ccf48093#b1a4718601ebd29a62bf3a7fd1069a99ccf48093"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-nickel"
-version = "0.0.1"
-source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=refs/heads/main#e1d9337864d209898a08c26b8cd4c2dd14c15148"
 dependencies = [
  "cc",
  "tree-sitter",

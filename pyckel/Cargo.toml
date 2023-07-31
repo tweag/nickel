@@ -15,5 +15,8 @@ nickel-lang-core = { workspace = true, default-features = false }
 pyo3 = { workspace = true, features = ["extension-module"] }
 codespan-reporting.workspace = true
 
+[build-dependencies]
+pyo3-build-config.workspace = true
+
 [lib]
 crate-type = ["cdylib", "rlib"]
