@@ -289,7 +289,7 @@ impl Cache {
     pub fn add_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
         let path = path.into();
         let timestamp = timestamp(&path)?;
-        let normalized = normalize_path(PathBuf::from(&path).as_path());
+        let normalized = normalize_path(&path)?;
         self.add_file_(normalized, timestamp)
     }
 
@@ -298,7 +298,7 @@ impl Cache {
     /// If it was not in cache, try to read it from the filesystem and add it as a new entry.
     pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
-        let normalized = normalize_path(PathBuf::from(&path).as_path());
+        let normalized = normalize_path(&path)?;
         match self.id_or_new_timestamp_of(&path)? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
             SourceState::Stale(timestamp) => {
@@ -1241,7 +1241,18 @@ fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
 
 /// Normalize the path of a file for unique identification in the cache.
 ///
-/// This implementation (including the commend below) was taken from cargo-util.
+/// The returned path will be an absolute path.
+pub fn normalize_path(path: &OsStr) -> std::io::Result<OsString> {
+    let mut path = PathBuf::from(path);
+    if path.is_relative() {
+        path = std::env::current_dir()?.join(path);
+    }
+    Ok(normalize_abs_path(&path))
+}
+
+/// Normalize the path (assumed to be absolute) of a file for unique identification in the cache.
+///
+/// This implementation (including the comment below) was taken from cargo-util.
 ///
 /// CAUTION: This does not resolve symlinks (unlike
 /// [`std::fs::canonicalize`]). This may cause incorrect or surprising
@@ -1249,7 +1260,7 @@ fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
 /// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
 /// fail, or on Windows returns annoying device paths. This is a problem Cargo
 /// needs to improve on.
-pub fn normalize_path(path: &Path) -> OsString {
+fn normalize_abs_path(path: &Path) -> OsString {
     use std::path::Component;
 
     let mut components = path.components().peekable();

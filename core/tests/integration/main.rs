@@ -37,6 +37,25 @@ fn check_annotated_nickel_file(path: &str) {
         .expect("Failed to join thread")
 }
 
+// Like check_annotated_nickel_file, but runs the test from the directory of
+// the test file itself (and opens the test file with a relative path). This
+// is mainly for integration testing path normalization.
+#[test_resources("core/tests/integration/imports/imported/import_parent.ncl")]
+fn check_from_dir(path: &str) {
+    let test: TestCase<Test> =
+        read_annotated_test_case(path).expect("Failed to parse annotated program");
+
+    let path = project_root().join(path);
+    let dir = std::env::current_dir().unwrap();
+    let test_dir = path.parent().unwrap();
+    std::env::set_current_dir(test_dir).unwrap();
+    run_test(
+        test,
+        String::from(path.file_name().unwrap().to_string_lossy()),
+    );
+    std::env::set_current_dir(dir).unwrap();
+}
+
 fn run_test(test_case: TestCase<Test>, path: String) {
     let repeat = test_case.annotation.repeat.unwrap_or(1);
     let eval_strategy = test_case.annotation.eval.unwrap_or(EvalStrategy::Standard);
