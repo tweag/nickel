@@ -680,6 +680,11 @@ impl Cache {
     /// component: this return value is currently used by the LSP to re-run code analysis on new
     /// files/modified files.
     ///
+    /// The resolved imports are ordered by a pre-order depth-first-search. In
+    /// particular, earlier elements in the returned list might import later
+    /// elements but -- unless there are cyclic imports -- later elements do not
+    /// import earlier elements.
+    ///
     /// It only accumulates errors if the cache is in error tolerant mode, otherwise it returns an
     /// `Err(..)` containing  a `CacheError`.
     #[allow(clippy::type_complexity)]
@@ -705,7 +710,7 @@ impl Cache {
                     }
                 };
 
-                // unwrap!(): we called `unwrap()` at the beggining of the enclosing if branch
+                // unwrap!(): we called `unwrap()` at the beginning of the enclosing if branch
                 // on the result of `self.terms.get(&file_id)`. We only made recursive calls to
                 // `resolve_imports` in between, which don't remove anything from `self.terms`.
                 let cached_term = self.terms.get_mut(&file_id).unwrap();

@@ -541,7 +541,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             wildcards,
         }: Extra,
     ) -> Linearization<Completed> {
-        debug!("linearizing");
+        debug!("linearizing {:?}", self.file);
 
         // TODO: Storing defers while linearizing?
         let mut defers: Vec<(ItemId, ItemId, Ident)> = lin
