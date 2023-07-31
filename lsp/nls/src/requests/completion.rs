@@ -394,7 +394,7 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     };
 
     let result: Vec<_> = RE_SPACE.split(text.as_ref()).map(String::from).collect();
-    let path = result.iter().rev().next().cloned()?;
+    let path = result.iter().next_back().cloned()?;
 
     let path = path
         .split('.')
