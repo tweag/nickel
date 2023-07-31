@@ -17,7 +17,7 @@ pub fn handle_format_document(
     let file_id = server.cache.id_of(document_id).unwrap();
     let text = server.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
-    let last_line_length = text.lines().rev().next().unwrap().len() as u32;
+    let last_line_length = text.lines().next_back().unwrap().len() as u32;
 
     let formatting_command = server::FORMATTING_COMMAND;
     let Ok(mut topiary) = process::Command::new(formatting_command[0])
