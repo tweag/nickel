@@ -9,8 +9,10 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
-# XXX: i think this should in theory contain  "nix-store", "nix-cmd", "nix-
-#      expr", "nix-main", but it's not clear how to specify multiple values
+# Maybe we should have the nix bindings in a separate -sys crate. maybe we
+# should even have separate crates for "nix-store", "nix-cmd", "nix-expr", "nix-
+# main", since they're separate libraries, but that seems a bit over the top.
+# SEE: https://kornel.ski/rust-sys-crate
 links = "nix"
 
 [lib]
