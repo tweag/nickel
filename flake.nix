@@ -297,7 +297,11 @@
             '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
-            buildInputs = with pkgs; [ python3 pkg-config nixVersions.nix_2_16 boost ];
+            nativeBuildInputs = with pkgs; [ pkg-config python3 ];
+            buildInputs = with pkgs; [
+              nixVersions.nix_2_16
+              boost # implicit dependency of nix
+            ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
@@ -448,8 +452,6 @@
         inputsFrom = [ (mkCraneArtifacts { inherit rust; }).cargoArtifactsDeps ];
 
         buildInputs = [
-          # pkgs.nix.dev
-          # pkgs.boost # implicit dependency of Nix
           pkgs.rust-analyzer
           pkgs.cargo-insta
           pkgs.nixpkgs-fmt
