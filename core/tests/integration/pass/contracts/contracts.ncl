@@ -171,6 +171,11 @@ let {check, Assert, ..} = import "../lib/assert.ncl" in
   let three = 3 | std.contract.Sequence [ Number, std.contract.from_predicate (fun x => x < 5) ] in
   # preserves order
   let tag = "some_tag" | std.contract.Sequence [ std.enum.TagOrString, [| 'some_tag |] ]
-  in true
+  in true,
+
+  # std.contract.Nullable
+  let three = 3 | std.contract.Nullable Number in
+  let nul = null | std.contract.Nullable Number in
+  true
 ]
 |> check

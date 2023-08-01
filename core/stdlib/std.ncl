@@ -869,6 +869,28 @@
                 |> from_predicate ((==) constant) ctr_label,
           },
 
+    Nullable
+      | doc m%"
+          `Nullable sub_contract` is a contract that gets verified if the value
+          is either `null` or verified by `sub_contract`.
+
+          # Examples
+
+          ```
+          1 | std.contract.Nullable Number
+            => 1
+          null | std.contract.Nullable Number
+            => null
+          "foo" | std.contract.Nullable Number
+            => error
+          ```
+        "%
+      = fun sub_contract label value =>
+        if value == null then
+          null
+        else
+          std.contract.apply sub_contract label value,
+
     blame
       | doc m%"
           Raises blame for a given label.
