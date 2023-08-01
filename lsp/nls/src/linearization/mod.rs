@@ -64,8 +64,15 @@ pub struct ItemId {
 /// the linearization using the LSP [AnalysisHost]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearizationItem<S: ResolutionState> {
+    /// The term that spawned this linearization item. Note that there is not a one-to-one
+    /// relationship between terms and linearization items. For example, a single `let` term
+    /// with a pattern binding can create multiple `declaration` linearization items.
+    pub term: RichTerm,
     pub env: Environment,
     pub id: ItemId,
+    /// This is not necessarily the same as `term.pos`, for example if this linearization
+    /// item points to a single pattern binding in a `let` term then `pos` will be the position
+    /// of just the identifier.
     pub pos: TermPos,
     pub ty: S,
     pub kind: TermKind,
@@ -125,13 +132,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     type Completed = Completed;
     type CompletionExtra = Extra;
 
-    fn add_term(
-        &mut self,
-        lin: &mut Linearization<Building>,
-        term: &Term,
-        pos: TermPos,
-        ty: UnifType,
-    ) {
+    fn add_term(&mut self, lin: &mut Linearization<Building>, rt: &RichTerm, ty: UnifType) {
+        let pos = rt.pos;
+        let term = rt.term.as_ref();
         debug!("adding term: {:?} @ {:?}", term, pos);
         let mut id_gen = lin.id_gen();
 
@@ -213,6 +216,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                             // stub object, representing the whole function
                             lin.push(LinearizationItem {
                                 env: self.env.clone(),
+                                term: rt.clone(),
                                 id: ItemId {
                                     file_id: self.file,
                                     index: id_gen.get_and_advance(),
@@ -246,6 +250,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
+                        term: rt.clone(),
                         id,
                         ty,
                         pos: ident.pos,
@@ -281,6 +286,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     self.env.insert(new_ident, id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
+                        term: rt.clone(),
                         id,
                         // TODO: get type from pattern
                         ty: UnifType::concrete(TypeF::Dyn),
@@ -306,6 +312,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         // stub object, representing the whole function
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
+                            term: rt.clone(),
                             id: ItemId {
                                 file_id: self.file,
                                 index: id_gen.get_and_advance(),
@@ -340,6 +347,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 };
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id: ItemId {
                         file_id: self.file,
                         index: id_gen.get(),
@@ -365,6 +373,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 let pointed = self.env.get(&key).copied();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id: root_id,
                     pos: ident.pos,
                     ty: UnifType::concrete(TypeF::Dyn),
@@ -387,6 +396,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
+                            term: rt.clone(),
                             id,
                             pos: accessor.pos,
                             ty: UnifType::concrete(TypeF::Dyn),
@@ -405,6 +415,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             Term::Record(record) | Term::RecRecord(record, ..) => {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id,
                     pos,
                     ty,
@@ -412,7 +423,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     metadata: self.meta.take(),
                 });
 
-                lin.register_fields(self.file, &record.fields, id, &mut self.env);
+                lin.register_fields(self.file, rt, &record.fields, id, &mut self.env);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
@@ -486,6 +497,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id,
                     pos,
                     ty,
@@ -496,6 +508,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             Term::Type(t) => {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id,
                     pos,
                     ty,
@@ -508,6 +521,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
+                    term: rt.clone(),
                     id,
                     pos,
                     ty,
@@ -597,6 +611,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             .map(
                 |LinearizationItem {
                      env,
+                     term,
                      id,
                      pos,
                      ty,
@@ -604,6 +619,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                      metadata: meta,
                  }| LinearizationItem {
                     ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
+                    term,
                     env,
                     id,
                     pos,

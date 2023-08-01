@@ -1325,8 +1325,7 @@ fn walk<L: Linearizer>(
     let RichTerm { term: t, pos } = rt;
     linearizer.add_term(
         lin,
-        t,
-        *pos,
+        rt,
         UnifType::from_apparent_type(
             apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
             &ctxt.term_env,
@@ -1667,7 +1666,7 @@ fn check<L: Linearizer>(
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-    linearizer.add_term(lin, t, *pos, ty.clone());
+    linearizer.add_term(lin, rt, ty.clone());
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
     // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
@@ -2224,7 +2223,7 @@ fn infer<L: Linearizer>(
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
-            linearizer.add_term(lin, term, *pos, x_ty.clone());
+            linearizer.add_term(lin, rt, x_ty.clone());
             Ok(x_ty)
         }
         // Theoretically, we need to instantiate the type of the head of the primop application,
@@ -2234,7 +2233,7 @@ fn infer<L: Linearizer>(
         // the type of a primop is currently always monomorphic.
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, term, *pos, ty_res.clone());
+            linearizer.add_term(lin, rt, ty_res.clone());
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
@@ -2242,7 +2241,7 @@ fn infer<L: Linearizer>(
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, term, *pos, ty_res.clone());
+            linearizer.add_term(lin, rt, ty_res.clone());
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
             check(state, ctxt.clone(), lin, linearizer, t2, ty_arg2)?;
@@ -2251,7 +2250,7 @@ fn infer<L: Linearizer>(
         }
         Term::OpN(op, args) => {
             let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, term, *pos, ty_res.clone());
+            linearizer.add_term(lin, rt, ty_res.clone());
 
             tys_args.into_iter().zip(args.iter()).try_for_each(
                 |(ty_arg, arg)| -> Result<_, TypecheckError> {
@@ -2280,7 +2279,7 @@ fn infer<L: Linearizer>(
                 .unify(head, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, e.pos))?;
 
-            linearizer.add_term(lin, term, *pos, codom.clone());
+            linearizer.add_term(lin, rt, codom.clone());
             check(state, ctxt.clone(), lin, linearizer, t, dom)?;
             Ok(codom)
         }

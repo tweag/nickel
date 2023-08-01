@@ -25,11 +25,8 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use super::UnifType;
-use crate::{
-    identifier::Ident,
-    position::TermPos,
-    term::{record::Field, Term},
-};
+use crate::term::RichTerm;
+use crate::{identifier::Ident, term::record::Field};
 
 /// Holds the state of a linearization, either in progress or finalized
 /// Restricts the possible states of a linearization to entities marked
@@ -94,8 +91,7 @@ pub trait Linearizer {
     fn add_term(
         &mut self,
         _lin: &mut Linearization<Self::Building>,
-        _term: &Term,
-        _pos: TermPos,
+        _term: &RichTerm,
         _ty: UnifType,
     ) {
     }

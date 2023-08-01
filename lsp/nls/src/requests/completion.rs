@@ -735,6 +735,7 @@ mod tests {
     ) -> LinearizationItem<Type> {
         LinearizationItem {
             env: Environment::new(),
+            term: RichTerm::new(Term::Null, TermPos::None),
             id,
             pos: TermPos::None,
             ty: Type::from(TypeF::Dyn),
