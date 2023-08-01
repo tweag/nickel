@@ -33,22 +33,22 @@ in
         | Array Spread
         | default
         = [],
-      ConsulToken | lib.contracts.Nullable String,
-      VaultToken | lib.contracts.Nullable String,
+      ConsulToken | std.contracts.Nullable String,
+      VaultToken | std.contracts.Nullable String,
       Vault
-        | lib.contracts.Nullable json.Vault
+        | std.contracts.Nullable json.Vault
         | default
         = null,
       Update
-        | lib.contracts.Nullable json.Update
+        | std.contracts.Nullable json.Update
         | default
         = null,
       Migrate
-        | lib.contracts.Nullable json.Migrate
+        | std.contracts.Nullable json.Migrate
         | default
         = null,
       Periodic
-        | lib.contracts.Nullable json.Periodic
+        | std.contracts.Nullable json.Periodic
         | default
         = null,
     },
@@ -86,7 +86,7 @@ in
 
     Constraint = {
       LTarget
-        | lib.contracts.Nullable String
+        | std.contracts.Nullable String
         | default
         = null,
       RTarget | String,
@@ -114,7 +114,7 @@ in
     Spread = {
       Attribute | String,
       Weight
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.AllOf
               [
@@ -134,7 +134,7 @@ in
     SpreadTargetElem = {
       Value | String,
       Percent
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.AllOf
               [
@@ -162,14 +162,14 @@ in
         | default
         = false,
       MountOptions
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           {
             FsType
-              | lib.contracts.Nullable String
+              | std.contracts.Nullable String
               | default
               = null,
             mountFlags
-              | lib.contracts.Nullable String
+              | std.contracts.Nullable String
               | default
               = null
           }
@@ -179,11 +179,11 @@ in
 
     ReschedulePolicy = {
       Attempts
-        | lib.contracts.Nullable std.number.Nat
+        | std.contracts.Nullable std.number.Nat
         | default
         = null,
       DelayFunction
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.OneOf
               [
@@ -195,7 +195,7 @@ in
         | default
         = null,
       Delay
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.AllOf
               [
@@ -206,15 +206,15 @@ in
         | default
         = null,
       Interval
-        | lib.contracts.Nullable std.number.Nat
+        | std.contracts.Nullable std.number.Nat
         | default
         = null,
       MaxDelay
-        | lib.contracts.Nullable std.number.Nat
+        | std.contracts.Nullable std.number.Nat
         | default
         = null,
       Unlimited
-        | lib.contracts.Nullable Bool
+        | std.contracts.Nullable Bool
         | default
         = null,
     },
@@ -263,11 +263,11 @@ in
         | [| 'checks, 'task_states, 'manual |]
         | default
         = 'checks,
-      HealthyDeadline | lib.contracts.Nullable std.number.Nat | default = null,
+      HealthyDeadline | std.contracts.Nullable std.number.Nat | default = null,
       MaxParallel | std.number.Nat | default = 1,
-      MinHealthyTime | lib.contracts.Nullable std.number.Nat | default = null,
-      ProgressDeadline | lib.contracts.Nullable std.number.Nat | default = null,
-      Stagger | lib.contracts.Nullable std.number.Nat | default = null,
+      MinHealthyTime | std.contracts.Nullable std.number.Nat | default = null,
+      ProgressDeadline | std.contracts.Nullable std.number.Nat | default = null,
+      Stagger | std.contracts.Nullable std.number.Nat | default = null,
     },
 
     TaskGroup = {
@@ -289,7 +289,7 @@ in
       # TODO: Meta  [string]  string
       Name | String,
       RestartPolicy
-        | lib.contracts.Nullable json.RestartPolicy
+        | std.contracts.Nullable json.RestartPolicy
         | default
         = null,
       Services
@@ -304,7 +304,7 @@ in
       # TODO Volumes: [string]:  #json.Volume
       ReschedulePolicy | json.ReschedulePolicy,
       EphemeralDisk
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           {
             Migrate | Bool,
             SizeMB | std.number.Nat,
@@ -313,11 +313,11 @@ in
         | default
         = null,
       Migrate
-        | lib.contracts.Nullable json.Migrate
+        | std.contracts.Nullable json.Migrate
         | default
         = null,
       Update
-        | lib.contracts.Nullable json.Update
+        | std.contracts.Nullable json.Update
         | default
         = null,
       Networks
@@ -325,21 +325,21 @@ in
         | default
         = [],
       StopAfterClientDisconnect
-        | lib.contracts.Nullable std.number.Nat
+        | std.contracts.Nullable std.number.Nat
         | default
         = null,
       Scaling = null,
       Vault
-        | lib.contracts.Nullable json.Vault
+        | std.contracts.Nullable json.Vault
         | default
         = null,
     },
 
     Port = {
       Label | String,
-      Value | lib.contracts.Nullable std.number.Nat | default = null,
+      Value | std.contracts.Nullable std.number.Nat | default = null,
       # used for static ports
-      To | lib.contracts.Nullable std.number.Nat | default = null,
+      To | std.contracts.Nullable std.number.Nat | default = null,
       HostNetwork | String | default = "",
     },
 
@@ -349,14 +349,14 @@ in
       CIDR | String | default = "",
       IP | String | default = "",
       DNS = null,
-      ReservedPorts | lib.contracts.Nullable (Array json.Port) | default = null,
-      DynamicPorts | lib.contracts.Nullable (Array json.Port) | default = null,
+      ReservedPorts | std.contracts.Nullable (Array json.Port) | default = null,
+      DynamicPorts | std.contracts.Nullable (Array json.Port) | default = null,
       MBits = null,
     },
 
     ServiceCheck = {
       AddressMode | [| 'alloc, 'driver, 'host |],
-      Args | lib.contracts.Nullable (Array String) | default = null,
+      Args | std.contracts.Nullable (Array String) | default = null,
       CheckRestart | json.CheckRestart,
       Command | String | default = "",
       Expose = false,
@@ -374,12 +374,12 @@ in
       Timeout | std.number.Nat,
       TLSSkipVerify | Bool | default = false,
       Type | [| 'http, 'tcp, 'script, 'grpc |],
-      Body | lib.contracts.Nullable String | default = null,
+      Body | std.contracts.Nullable String | default = null,
       # TODO  Header  [string]  [...string]
     },
 
     CheckRestart
-      | lib.contracts.Nullable
+      | std.contracts.Nullable
         {
           Limit | std.number.Nat | default = 0,
           Grace | std.number.Nat | default = 10000000000,
@@ -388,11 +388,11 @@ in
 
     Lifecycle = {
       Hook | [| 'prestart, 'poststart, 'poststop |],
-      Sidecar | lib.contracts.Nullable Bool | default = null,
+      Sidecar | std.contracts.Nullable Bool | default = null,
     },
 
     LogConfig
-      | lib.contracts.Nullable
+      | std.contracts.Nullable
         {
           MaxFiles | std.number.PosNat,
           MaxFileSizeMB | std.number.PosNat,
@@ -456,16 +456,16 @@ in
           | default
           = 300,
         DiskMB
-          | lib.contracts.Nullable std.number.Nat
+          | std.contracts.Nullable std.number.Nat
           | default
           = null,
       },
       Meta = {},
-      RestartPolicy | lib.contracts.Nullable json.RestartPolicy | default = null,
+      RestartPolicy | std.contracts.Nullable json.RestartPolicy | default = null,
       ShutdownDelay | std.number.Nat | default = 0,
       User | String | default = "",
-      Lifecycle | lib.contracts.Nullable json.Lifecycle | default = null,
-      KillTimeout | lib.contracts.Nullable std.number.Nat | default = null,
+      Lifecycle | std.contracts.Nullable json.Lifecycle | default = null,
+      KillTimeout | std.contracts.Nullable std.number.Nat | default = null,
       LogConfig | json.LogConfig,
       Artifacts
         | Array json.Artifact
@@ -483,7 +483,7 @@ in
       Leader | Bool | default = false,
       KillSignal | String,
       ScalingPolicies = null,
-      Vault | lib.contracts.Nullable json.Vault | default = null,
+      Vault | std.contracts.Nullable json.Vault | default = null,
     },
 
     VolumeMount = {
@@ -1093,11 +1093,11 @@ in
             }
           },
         update
-          | lib.contracts.Nullable stanza.update
+          | std.contracts.Nullable stanza.update
           | default
           = null,
         vaultc
-          | lib.contracts.Nullable stanza.vault
+          | std.contracts.Nullable stanza.vault
           | default
           = null,
         priority_
@@ -1105,11 +1105,11 @@ in
           | default
           = 50,
         periodic
-          | lib.contracts.Nullable stanza.periodic
+          | std.contracts.Nullable stanza.periodic
           | default
           = null,
         migrate
-          | lib.contracts.Nullable stanza.migrate
+          | std.contracts.Nullable stanza.migrate
           | default
           = null,
       },
@@ -1209,11 +1209,11 @@ in
 
     spread = {
       attribute
-        | lib.contracts.Nullable String
+        | std.contracts.Nullable String
         | default
         = null,
       weight
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.AllOf
               [
@@ -1232,11 +1232,11 @@ in
 
     targetElem = {
       value
-        | lib.contracts.Nullable String
+        | std.contracts.Nullable String
         | default
         = null,
       percent
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           (
             lib.contracts.AllOf
               [
@@ -1250,7 +1250,7 @@ in
     },
 
     ephemeral_disk =
-      lib.contracts.Nullable
+      std.contracts.Nullable
         {
           size | std.number.PosNat,
           migrate | Bool | default = false,
@@ -1273,7 +1273,7 @@ in
         = [],
       ephemeral_disk | stanza.ephemeral_disk | default = null,
       network
-        | lib.contracts.Nullable stanza.network
+        | std.contracts.Nullable stanza.network
         | default
         = null,
       service | { _ : stanza.service },
@@ -1281,15 +1281,15 @@ in
       count | std.number.Nat,
       volume | { _ : stanza.volume } | default = {},
       vault
-        | lib.contracts.Nullable stanza.vault
+        | std.contracts.Nullable stanza.vault
         | default
         = null,
       restart
-        | lib.contracts.Nullable stanza.restart
+        | std.contracts.Nullable stanza.restart
         | default
         = null,
       restart_policy
-        | lib.contracts.Nullable stanza.restart
+        | std.contracts.Nullable stanza.restart
         | default
         = null,
       reschedule
@@ -1328,7 +1328,7 @@ in
     network = {
       mode | [| 'host, 'bridge |],
       dns
-        | lib.contracts.Nullable
+        | std.contracts.Nullable
           {
             servers
               | Array String
@@ -1341,11 +1341,11 @@ in
         | {
           _ : {
             static
-              | lib.contracts.Nullable std.number.Nat
+              | std.contracts.Nullable std.number.Nat
               | default
               = null,
             to
-              | lib.contracts.Nullable std.number.Nat
+              | std.contracts.Nullable std.number.Nat
               | default
               = null,
             host_network
@@ -1367,7 +1367,7 @@ in
 
     service = {
       check_restart
-        | lib.contracts.Nullable stanza.check_restart
+        | std.contracts.Nullable stanza.check_restart
         | default
         = null,
       port | String,
@@ -1397,12 +1397,12 @@ in
       interval | Duration,
       timeout | Duration,
       check_restart
-        | lib.contracts.Nullable stanza.check_restart
+        | std.contracts.Nullable stanza.check_restart
         | default
         = null,
       header | { _ : Array String } | default = {},
       body
-        | lib.contracts.Nullable String
+        | std.contracts.Nullable String
         | default
         = null,
       initial_status
@@ -1456,7 +1456,7 @@ in
     dockerConfig = {
       image | String,
       command
-        | lib.contracts.Nullable String
+        | std.contracts.Nullable String
         | default
         = null,
       args
@@ -1490,7 +1490,7 @@ in
     lifecycle = {
       hook | [| 'prestart, 'poststart, 'poststop |],
       sidecar
-        | lib.contracts.Nullable Bool
+        | std.contracts.Nullable Bool
         | default
         = null,
     },
@@ -1559,17 +1559,17 @@ in
       #}
 
       kill_timeout
-        | lib.contracts.Nullable Duration
+        | std.contracts.Nullable Duration
         | default
         = null,
 
       lifecycle
-        | lib.contracts.Nullable stanza.lifecycle
+        | std.contracts.Nullable stanza.lifecycle
         | default
         = null,
 
       logs
-        | lib.contracts.Nullable stanza.logs
+        | std.contracts.Nullable stanza.logs
         | default
         = null,
 
@@ -1630,16 +1630,16 @@ in
         },
 
       vault
-        | lib.contracts.Nullable stanza.vault
+        | std.contracts.Nullable stanza.vault
         | default
         = null,
       volume_mount | { _ : stanza.volume_mount } | default = {},
       restart
-        | lib.contracts.Nullable stanza.restart
+        | std.contracts.Nullable stanza.restart
         | default
         = null,
       restart_policy
-        | lib.contracts.Nullable stanza.restart
+        | std.contracts.Nullable stanza.restart
         | default
         = null,
       leader

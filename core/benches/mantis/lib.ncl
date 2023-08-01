@@ -19,11 +19,6 @@
               value
               values
         ),
-    Nullable = fun ctr label value =>
-      if value == null then
-        null
-      else
-        std.contract.apply ctr label value,
     NotEq = fun x => std.contract.from_predicate (fun y => x != y),
     GreaterEq = fun x => std.contract.from_predicate (fun y => y >= x),
     Greater = fun x => std.contract.from_predicate (fun y => y > x),
