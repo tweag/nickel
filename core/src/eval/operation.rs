@@ -1176,7 +1176,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
                         String::from("String"),
-                        String::from("%eval_nix% takes a string of nix code as an argument"),
+                        String::from("eval_nix takes a string of nix code as an argument"),
                         arg_pos,
                         RichTerm { term: t, pos },
                     ))
