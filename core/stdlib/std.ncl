@@ -871,12 +871,12 @@
 
     Nullable
       | doc m%"
-          `Nullable sub_contract` is a contract that gets verified if the value
-          is either `null` or verified by `sub_contract`.
+          A value satisfies `Nullable sub_contract` if it is either `null` or
+          satisfies `sub_contract`.
 
           # Examples
 
-          ```
+          ```nickel
           1 | std.contract.Nullable Number
             => 1
           null | std.contract.Nullable Number
