@@ -1,8 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use codespan::{ByteIndex, FileId};
 use nickel_lang_core::{
-    position::TermPos, term::record::FieldMetadata, typecheck::linearization::LinearizationState,
+    position::TermPos,
+    term::{record::FieldMetadata, SharedTerm, Term},
+    typecheck::linearization::LinearizationState,
 };
 
 use super::{
@@ -10,11 +12,32 @@ use super::{
     ItemId, LinRegistry, LinearizationItem,
 };
 
+#[derive(Clone, Debug)]
+struct SharedTermPtr(SharedTerm);
+
+impl PartialEq for SharedTermPtr {
+    fn eq(&self, other: &Self) -> bool {
+        SharedTerm::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for SharedTermPtr {}
+
+impl Hash for SharedTermPtr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.0.as_ref() as *const Term).hash(state);
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     pub import_locations: HashMap<FileId, TermPos>,
     id_to_index: HashMap<ItemId, usize>,
+    // A map from terms to the index of the first linearization item that points to it.
+    // The first linearization item is the "largest" one: the one that starts earliest
+    // and ends latest.
+    term_to_index: HashMap<SharedTermPtr, usize>,
 }
 
 impl Completed {
@@ -23,10 +46,17 @@ impl Completed {
         id_to_index: HashMap<ItemId, usize>,
         import_locations: HashMap<FileId, TermPos>,
     ) -> Self {
+        let mut term_to_index = HashMap::new();
+
+        for (idx, item) in linearization.iter().enumerate() {
+            let term = SharedTermPtr(item.term.term.clone());
+            term_to_index.entry(term).or_insert(idx);
+        }
         Self {
             linearization,
             import_locations,
             id_to_index,
+            term_to_index,
         }
     }
 
