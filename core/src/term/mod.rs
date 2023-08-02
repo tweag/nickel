@@ -304,10 +304,7 @@ impl Traverse<RichTerm> for RuntimeContract {
         Ok(RuntimeContract { contract, ..self })
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&RichTerm) -> TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         self.contract.traverse_ref(f)
     }
 }
@@ -458,10 +455,7 @@ impl Traverse<RichTerm> for LabeledType {
             .map(|typ| LabeledType { typ, label })
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&RichTerm) -> crate::term::TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         self.typ.traverse_ref(f)
     }
 }
@@ -574,10 +568,7 @@ impl Traverse<RichTerm> for TypeAnnotation {
         Ok(TypeAnnotation { typ, contracts })
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&RichTerm) -> crate::term::TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         self.contracts
             .iter()
             .find_map(|c| c.traverse_ref(f))
@@ -1497,9 +1488,7 @@ pub trait Traverse<T>: Sized {
     ///
     /// Through its return value, `f` can short-circuit one branch of the traversal or
     /// the entire traversal.
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&T) -> TraverseControl<U>;
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&T) -> TraverseControl<U>) -> Option<U>;
 }
 
 impl Traverse<RichTerm> for RichTerm {
@@ -1686,10 +1675,7 @@ impl Traverse<RichTerm> for RichTerm {
         }
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&RichTerm) -> TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         match f(self) {
             TraverseControl::Continue => {}
             TraverseControl::SkipBranch => {
@@ -1764,10 +1750,7 @@ impl Traverse<Type> for RichTerm {
         self.traverse(&f_on_term, state, order)
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&Type) -> TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
         let mut f_on_term = |rt: &RichTerm| match &*rt.term {
             Term::Type(ty) => ty.traverse_ref(f).into(),
             _ => TraverseControl::Continue,

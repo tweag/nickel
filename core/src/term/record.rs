@@ -234,10 +234,7 @@ impl Traverse<RichTerm> for Field {
         })
     }
 
-    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
-    where
-        F: FnMut(&RichTerm) -> TraverseControl<U>,
-    {
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         self.metadata
             .annotation
             .traverse_ref(f)
