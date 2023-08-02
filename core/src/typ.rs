@@ -627,11 +627,9 @@ impl Traverse<Type> for RecordRows {
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
         match &self.0 {
-            RecordRowsF::Extend { row, tail } => row
-                .typ
-                .traverse_ref(f)
-                .or_else(|| tail.traverse_ref(f))
-                .into(),
+            RecordRowsF::Extend { row, tail } => {
+                row.typ.traverse_ref(f).or_else(|| tail.traverse_ref(f))
+            }
             _ => None,
         }
     }
