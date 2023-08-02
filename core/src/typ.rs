@@ -48,7 +48,7 @@ use crate::{
     position::TermPos,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        RichTerm, Term, Traverse, TraverseOrder,
+        RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
@@ -624,6 +624,20 @@ impl Traverse<Type> for RecordRows {
 
         Ok(RecordRows(inner))
     }
+
+    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
+    where
+        F: FnMut(&Type) -> crate::term::TraverseControl<U>,
+    {
+        match &self.0 {
+            RecordRowsF::Extend { row, tail } => row
+                .typ
+                .traverse_ref(f)
+                .or_else(|| tail.traverse_ref(f))
+                .into(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1100,6 +1114,38 @@ impl Traverse<Type> for Type {
             }
         }
     }
+
+    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
+    where
+        F: FnMut(&Type) -> crate::term::TraverseControl<U>,
+    {
+        match f(self) {
+            TraverseControl::Continue => {}
+            TraverseControl::SkipBranch => {
+                return None;
+            }
+            TraverseControl::Return(ret) => {
+                return Some(ret);
+            }
+        };
+
+        match &self.typ {
+            TypeF::Dyn
+            | TypeF::Number
+            | TypeF::Bool
+            | TypeF::String
+            | TypeF::Symbol
+            | TypeF::Var(_)
+            | TypeF::Enum(_)
+            | TypeF::Wildcard(_) => None,
+            TypeF::Flat(rt) => rt.traverse_ref(f),
+            TypeF::Arrow(t1, t2) => t1.traverse_ref(f).or_else(|| t2.traverse_ref(f)),
+            TypeF::Forall { body: t, .. }
+            | TypeF::Dict { type_fields: t, .. }
+            | TypeF::Array(t) => t.traverse_ref(f),
+            TypeF::Record(rrows) => rrows.traverse_ref(f),
+        }
+    }
 }
 
 impl Traverse<RichTerm> for Type {
@@ -1115,6 +1161,17 @@ impl Traverse<RichTerm> for Type {
         };
 
         self.traverse(&f_on_type, state, order)
+    }
+
+    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
+    where
+        F: FnMut(&RichTerm) -> crate::term::TraverseControl<U>,
+    {
+        let mut f_on_type = |ty: &Type| match &ty.typ {
+            TypeF::Flat(t) => t.traverse_ref(f).into(),
+            _ => TraverseControl::Continue,
+        };
+        self.traverse_ref(&mut f_on_type)
     }
 }
 

@@ -233,6 +233,21 @@ impl Traverse<RichTerm> for Field {
             pending_contracts,
         })
     }
+
+    fn traverse_ref<F, U>(&self, f: &mut F) -> Option<U>
+    where
+        F: FnMut(&RichTerm) -> TraverseControl<U>,
+    {
+        self.metadata
+            .annotation
+            .traverse_ref(f)
+            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f)))
+            .or_else(|| {
+                self.pending_contracts
+                    .iter()
+                    .find_map(|c| c.traverse_ref(f))
+            })
+    }
 }
 
 /// The base structure of a Nickel record.
