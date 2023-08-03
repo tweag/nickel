@@ -6,6 +6,7 @@ use crate::eval::Closure;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
+use crate::term::array::Array;
 use crate::term::record::{Field, RecordData};
 use crate::term::{RichTerm, SharedTerm, Term};
 use crate::transform::import_resolution;
@@ -14,12 +15,14 @@ use crate::typecheck::{self, type_check, Wildcards};
 use crate::{eval, parser, transform};
 use codespan::{FileId, Files};
 use io::Read;
+use serde::Deserialize;
 use std::collections::hash_map;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::result::Result;
 use std::time::SystemTime;
 use void::Void;
@@ -483,9 +486,39 @@ impl Cache {
             InputFormat::Json => serde_json::from_str(self.files.source(file_id))
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| ParseError::from_serde_json(err, file_id, &self.files)),
-            InputFormat::Yaml => serde_yaml::from_str(self.files.source(file_id))
-                .map(|t| (attach_pos(t), ParseErrors::default()))
-                .map_err(|err| (ParseError::from_serde_yaml(err, file_id))),
+            InputFormat::Yaml => {
+                // YAML files can contain multiple documents. If there is only
+                // one we transparently deserialize it. If there are multiple,
+                // we deserialize the file as an array.
+                let de = serde_yaml::Deserializer::from_str(self.files.source(file_id));
+                let mut terms = de
+                    .map(|de| {
+                        RichTerm::deserialize(de)
+                            .map(attach_pos)
+                            .map_err(|err| (ParseError::from_serde_yaml(err, file_id)))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                if terms.is_empty() {
+                    unreachable!("serde always produces at least one document, the empty string turns into `null`")
+                } else if terms.len() == 1 {
+                    Ok((
+                        terms.pop().expect("we just checked the length"),
+                        ParseErrors::default(),
+                    ))
+                } else {
+                    Ok((
+                        attach_pos(
+                            Term::Array(
+                                Array::new(Rc::from(terms.into_boxed_slice())),
+                                Default::default(),
+                            )
+                            .into(),
+                        ),
+                        ParseErrors::default(),
+                    ))
+                }
+            }
             InputFormat::Toml => toml::from_str(self.files.source(file_id))
                 .map(|t| (attach_pos(t), ParseErrors::default()))
                 .map_err(|err| (ParseError::from_toml(err, file_id))),
