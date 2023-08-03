@@ -303,6 +303,10 @@ impl Traverse<RichTerm> for RuntimeContract {
         let contract = self.contract.traverse(f, state, order)?;
         Ok(RuntimeContract { contract, ..self })
     }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        self.contract.traverse_ref(f)
+    }
 }
 
 impl std::convert::TryFrom<LabeledType> for RuntimeContract {
@@ -450,6 +454,10 @@ impl Traverse<RichTerm> for LabeledType {
         typ.traverse(f, state, order)
             .map(|typ| LabeledType { typ, label })
     }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        self.typ.traverse_ref(f)
+    }
 }
 
 /// A type and/or contract annotation.
@@ -558,6 +566,13 @@ impl Traverse<RichTerm> for TypeAnnotation {
             .transpose()?;
 
         Ok(TypeAnnotation { typ, contracts })
+    }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        self.contracts
+            .iter()
+            .find_map(|c| c.traverse_ref(f))
+            .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f)))
     }
 }
 
@@ -1440,6 +1455,25 @@ impl RichTerm {
     }
 }
 
+/// Flow control for tree traverals.
+pub enum TraverseControl<U> {
+    /// Normal control flow: continue recursing into the children.
+    Continue,
+    /// Skip this branch of the tree.
+    SkipBranch,
+    /// Finish traversing immediately (and return a value).
+    Return(U),
+}
+
+impl<U> From<Option<U>> for TraverseControl<U> {
+    fn from(value: Option<U>) -> Self {
+        match value {
+            Some(u) => TraverseControl::Return(u),
+            None => TraverseControl::Continue,
+        }
+    }
+}
+
 pub trait Traverse<T>: Sized {
     /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
     /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
@@ -1448,6 +1482,13 @@ pub trait Traverse<T>: Sized {
     fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
     where
         F: Fn(T, &mut S) -> Result<T, E>;
+
+    /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
+    /// each object.
+    ///
+    /// Through its return value, `f` can short-circuit one branch of the traversal or
+    /// the entire traversal.
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&T) -> TraverseControl<U>) -> Option<U>;
 }
 
 impl Traverse<RichTerm> for RichTerm {
@@ -1633,6 +1674,66 @@ impl Traverse<RichTerm> for RichTerm {
             TraverseOrder::BottomUp => f(result, state),
         }
     }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        match f(self) {
+            TraverseControl::Continue => {}
+            TraverseControl::SkipBranch => {
+                return None;
+            }
+            TraverseControl::Return(ret) => {
+                return Some(ret);
+            }
+        };
+
+        match &*self.term {
+            Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::Var(_)
+            | Term::Enum(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::SealingKey(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => None,
+            Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
+                if let StrChunk::Expr(term, _) = ch {
+                    term.traverse_ref(f)
+                } else {
+                    None
+                }
+            }),
+            Term::Fun(_, t)
+            | Term::FunPattern(_, _, t)
+            | Term::Op1(_, t)
+            | Term::Sealed(_, t, _) => t.traverse_ref(f),
+            Term::Let(_, t1, t2, _)
+            | Term::LetPattern(_, _, t1, t2)
+            | Term::App(t1, t2)
+            | Term::Op2(_, t1, t2) => t1.traverse_ref(f).or_else(|| t2.traverse_ref(f)),
+            Term::Record(data) => data.fields.values().find_map(|field| field.traverse_ref(f)),
+            Term::RecRecord(data, dyn_data, _) => data
+                .fields
+                .values()
+                .find_map(|field| field.traverse_ref(f))
+                .or_else(|| {
+                    dyn_data.iter().find_map(|(id, field)| {
+                        id.traverse_ref(f).or_else(|| field.traverse_ref(f))
+                    })
+                }),
+            Term::Match { cases, default } => cases
+                .iter()
+                .find_map(|(_id, t)| t.traverse_ref(f))
+                .or_else(|| default.as_ref().and_then(|t| t.traverse_ref(f))),
+            Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f)),
+            Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f)),
+            Term::Annotated(annot, t) => t.traverse_ref(f).or_else(|| annot.traverse_ref(f)),
+            Term::Type(ty) => ty.traverse_ref(f),
+        }
+    }
 }
 
 impl Traverse<Type> for RichTerm {
@@ -1647,6 +1748,14 @@ impl Traverse<Type> for RichTerm {
             } else Ok(rt)}
         };
         self.traverse(&f_on_term, state, order)
+    }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
+        let mut f_on_term = |rt: &RichTerm| match &*rt.term {
+            Term::Type(ty) => ty.traverse_ref(f).into(),
+            _ => TraverseControl::Continue,
+        };
+        self.traverse_ref(&mut f_on_term)
     }
 }
 

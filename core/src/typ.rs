@@ -48,7 +48,7 @@ use crate::{
     position::TermPos,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        RichTerm, Term, Traverse, TraverseOrder,
+        RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
     },
 };
 
@@ -624,6 +624,15 @@ impl Traverse<Type> for RecordRows {
 
         Ok(RecordRows(inner))
     }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
+        match &self.0 {
+            RecordRowsF::Extend { row, tail } => {
+                row.typ.traverse_ref(f).or_else(|| tail.traverse_ref(f))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1043,25 +1052,10 @@ impl Type {
 
     /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
     pub fn find_flat(&self) -> Option<RichTerm> {
-        match &self.typ {
-            TypeF::Flat(f) => Some(f.clone().with_pos(self.pos)),
-            TypeF::Dyn
-            | TypeF::Number
-            | TypeF::Bool
-            | TypeF::String
-            | TypeF::Symbol
-            | TypeF::Wildcard(_)
-            | TypeF::Enum(_)
-            | TypeF::Var(_) => None,
-            TypeF::Arrow(dom, codom) => dom.find_flat().or_else(|| codom.find_flat()),
-            TypeF::Forall { body, .. } => body.find_flat(),
-            TypeF::Record(rrows) => rrows.iter().find_map(|t| match t {
-                RecordRowsIteratorItem::Row(r) => r.typ.find_flat(),
-                _ => None,
-            }),
-            TypeF::Dict { type_fields, .. } => type_fields.find_flat(),
-            TypeF::Array(t) => t.find_flat(),
-        }
+        self.traverse_ref(&mut |ty: &Type| match &ty.typ {
+            TypeF::Flat(f) => TraverseControl::Return(f.clone()),
+            _ => TraverseControl::Continue,
+        })
     }
 }
 
@@ -1100,6 +1094,35 @@ impl Traverse<Type> for Type {
             }
         }
     }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
+        match f(self) {
+            TraverseControl::Continue => {}
+            TraverseControl::SkipBranch => {
+                return None;
+            }
+            TraverseControl::Return(ret) => {
+                return Some(ret);
+            }
+        };
+
+        match &self.typ {
+            TypeF::Dyn
+            | TypeF::Number
+            | TypeF::Bool
+            | TypeF::String
+            | TypeF::Symbol
+            | TypeF::Var(_)
+            | TypeF::Enum(_)
+            | TypeF::Wildcard(_) => None,
+            TypeF::Flat(rt) => rt.traverse_ref(f),
+            TypeF::Arrow(t1, t2) => t1.traverse_ref(f).or_else(|| t2.traverse_ref(f)),
+            TypeF::Forall { body: t, .. }
+            | TypeF::Dict { type_fields: t, .. }
+            | TypeF::Array(t) => t.traverse_ref(f),
+            TypeF::Record(rrows) => rrows.traverse_ref(f),
+        }
+    }
 }
 
 impl Traverse<RichTerm> for Type {
@@ -1115,6 +1138,14 @@ impl Traverse<RichTerm> for Type {
         };
 
         self.traverse(&f_on_type, state, order)
+    }
+
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        let mut f_on_type = |ty: &Type| match &ty.typ {
+            TypeF::Flat(t) => t.traverse_ref(f).into(),
+            _ => TraverseControl::Continue,
+        };
+        self.traverse_ref(&mut f_on_type)
     }
 }
 
