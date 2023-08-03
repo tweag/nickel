@@ -58,13 +58,7 @@ impl Output {
         match path {
             None => Ok(Self::Stdout),
             Some(path) => {
-                // `canonicalize()` will fail if `path` does not exist. In this
-                // case, our best bet will be to just use `path` as given by
-                // the user.
-                let path = path.canonicalize().or_else(|e| match e.kind() {
-                    io::ErrorKind::NotFound => Ok(path.to_owned()),
-                    _ => Err(e),
-                })?;
+                let path = nickel_lang_core::cache::normalize_path(path)?;
                 Ok(Self::Disk {
                     staged: NamedTempFile::new_in(path.parent().ok_or_else(|| {
                         FormatError::NotAFile {

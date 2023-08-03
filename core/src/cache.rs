@@ -1242,8 +1242,8 @@ fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
 /// Normalize the path of a file for unique identification in the cache.
 ///
 /// The returned path will be an absolute path.
-pub fn normalize_path(path: &OsStr) -> std::io::Result<OsString> {
-    let mut path = PathBuf::from(path);
+pub fn normalize_path(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
+    let mut path = path.into();
     if path.is_relative() {
         path = std::env::current_dir()?.join(path);
     }
@@ -1260,7 +1260,7 @@ pub fn normalize_path(path: &OsStr) -> std::io::Result<OsString> {
 /// [`std::fs::canonicalize`] can be hard to use correctly, since it can often
 /// fail, or on Windows returns annoying device paths. This is a problem Cargo
 /// needs to improve on.
-fn normalize_abs_path(path: &Path) -> OsString {
+fn normalize_abs_path(path: &Path) -> PathBuf {
     use std::path::Component;
 
     let mut components = path.components().peekable();
@@ -1286,7 +1286,7 @@ fn normalize_abs_path(path: &Path) -> OsString {
             }
         }
     }
-    ret.into_os_string()
+    ret
 }
 
 /// Return the timestamp of a file. Return `None` if an IO error occurred.
