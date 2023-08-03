@@ -188,6 +188,7 @@
           txtFilter = mkFilter ".*txt$";
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
+          importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -202,6 +203,7 @@
               snapFilter
               scmFilter
               filterCargoSources
+              importsFilter
             ];
         };
 
