@@ -457,6 +457,7 @@ mod doc {
         /// Field value [`ExtractedDocumentation`], if any
         fields: Option<ExtractedDocumentation>,
         /// Rendered type annotation, if any
+        #[serde(rename = "type")]
         typ: Option<String>,
         /// Rendered contract annotations
         contracts: Vec<String>,
