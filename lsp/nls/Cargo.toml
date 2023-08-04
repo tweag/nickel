@@ -36,6 +36,7 @@ anyhow.workspace = true
 derive_more.workspace = true
 lazy_static.workspace = true
 csv.workspace = true
+thiserror = "1.0.44"
 
 [dev-dependencies]
 assert_cmd.workspace = true

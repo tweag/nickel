@@ -17,6 +17,7 @@ use nickel_lang_core::{
 use serde_json::Value;
 
 use crate::{
+    error::Error,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -665,25 +666,23 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
+    let uri = params.text_document_position.text_document.uri;
     let file_id = server
         .cache
         .id_of(
-            params
-                .text_document_position
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
+            uri.to_file_path()
+                .map_err(|_| Error::FileNotFound(uri.clone()))?,
         )
-        .unwrap();
+        .ok_or_else(|| Error::FileNotFound(uri.clone()))?;
 
     let text = server.cache.files().source(file_id);
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position.position,
-    )
-    .unwrap();
+    let pos = params.text_document_position.position;
+    let start = position_to_byte_index(server.cache.files(), file_id, &pos).map_err(|_| {
+        Error::InvalidPosition {
+            pos,
+            file: uri.clone(),
+        }
+    })?;
 
     // -1 because at the current cursor position, there is no linearization item there,
     // so we try to get the item just before the cursor.
