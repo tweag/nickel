@@ -1,8 +1,8 @@
 use std::{collections::HashMap, hash::Hash};
 
-use codespan::{ByteIndex, FileId};
+use codespan::FileId;
 use nickel_lang_core::{
-    position::TermPos,
+    position::{RawPos, TermPos},
     term::{record::FieldMetadata, SharedTerm, Term},
     typecheck::linearization::LinearizationState,
 };
@@ -121,16 +121,12 @@ impl Completed {
     /// If neither is possible `None` is returned as no corresponding linearization
     /// item could be found.
     ///
-    pub fn item_at(
-        &self,
-        locator: &(codespan::FileId, ByteIndex),
-    ) -> Option<&LinearizationItem<Resolved>> {
-        let (file_id, start) = locator;
+    pub fn item_at(&self, pos: RawPos) -> Option<&LinearizationItem<Resolved>> {
         let linearization = &self.linearization;
         let item = match linearization.binary_search_by(|item| {
             item.pos
                 .as_opt_ref()
-                .map(|pos| (pos.src_id, pos.start).cmp(locator))
+                .and_then(|span| span.start_pos().partial_cmp(&pos))
                 .unwrap_or(std::cmp::Ordering::Less)
         }) {
             // Found item(s) starting at `locator`
@@ -140,8 +136,7 @@ impl Completed {
                 .take_while(|item| {
                     // Here because None is smaller than everything, if binary search succeeds,
                     // we can safely unwrap the position.
-                    let pos = item.pos.unwrap();
-                    (pos.src_id, pos.start) == *locator
+                    item.pos.unwrap().start_pos() == pos
                 })
                 .last(),
             // No perfect match found
@@ -149,7 +144,7 @@ impl Completed {
             Err(index) => linearization[..index].iter().rfind(|item| {
                 item.pos
                     .as_opt_ref()
-                    .map(|pos| file_id == &pos.src_id && start > &pos.start && start < &pos.end)
+                    .map(|span| span.contains(pos))
                     // if the item found is None, we can not find a better one.
                     .unwrap_or(true)
             }),

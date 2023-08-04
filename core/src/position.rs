@@ -13,6 +13,12 @@ pub struct RawPos {
     pub index: ByteIndex,
 }
 
+impl RawPos {
+    pub fn new(src_id: FileId, index: ByteIndex) -> Self {
+        Self { src_id, index }
+    }
+}
+
 /// A position span identified by a starting byte offset and an ending byte offset in a file.
 ///
 /// `end` is the offset of the last character plus one.
@@ -44,6 +50,13 @@ impl RawSpan {
             src_id,
             start: span.start(),
             end: span.end(),
+        }
+    }
+
+    pub fn start_pos(self) -> RawPos {
+        RawPos {
+            src_id: self.src_id,
+            index: self.start,
         }
     }
 

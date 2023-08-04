@@ -1,7 +1,6 @@
 use codespan::ByteIndex;
-use codespan_lsp::position_to_byte_index;
 use log::debug;
-use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
+use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     GotoDefinitionParams, GotoDefinitionResponse, Location, Range, ReferenceParams, Url,
 };
@@ -9,55 +8,26 @@ use nickel_lang_core::position::RawSpan;
 use serde_json::Value;
 
 use crate::{
+    cache::CacheExt,
     diagnostic::LocationCompat,
     linearization::interface::{TermKind, UsageState},
     server::Server,
     trace::{Enrich, Trace},
 };
 
-fn resp_error(message: String) -> ResponseError {
-    ResponseError {
-        code: ErrorCode::InternalError as i32,
-        message,
-        data: None,
-    }
-}
-
-macro_rules! resp_error {
-    ($($args:tt)*) => {
-        resp_error(format!($($args)*))
-    };
-}
-
 pub fn handle_to_definition(
     params: GotoDefinitionParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let path = params
-        .text_document_position_params
-        .text_document
-        .uri
-        .to_file_path()
-        .unwrap();
-    let file_id = server
+    let pos = server
         .cache
-        .id_of(&path)
-        .ok_or_else(|| resp_error!("file {} not found", path.as_os_str().to_string_lossy()))?;
-
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position_params.position,
-    )
-    .unwrap();
-
-    let locator = (file_id, ByteIndex(start as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
+        .position(&params.text_document_position_params)?;
+    let linearization = server.lin_cache_get(&pos.src_id)?;
 
     Trace::enrich(&id, linearization);
 
-    let Some(item) = linearization.item_at(&locator) else {
+    let Some(item) = linearization.item_at(pos) else {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(())
     };
@@ -108,29 +78,10 @@ pub fn handle_to_usages(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let file_id = server
-        .cache
-        .id_of(
-            params
-                .text_document_position
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
-        )
-        .unwrap();
+    let pos = server.cache.position(&params.text_document_position)?;
+    let linearization = server.lin_cache_get(&pos.src_id)?;
 
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position.position,
-    )
-    .unwrap();
-
-    let locator = (file_id, ByteIndex(start as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
-
-    let Some(item) = linearization.item_at(&locator) else {
+    let Some(item) = linearization.item_at(pos) else {
         server.reply(Response::new_ok(id, Value::Null));
         return Ok(());
     };

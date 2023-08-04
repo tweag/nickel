@@ -1,5 +1,3 @@
-use codespan::ByteIndex;
-use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
@@ -17,7 +15,7 @@ use nickel_lang_core::{
 use serde_json::Value;
 
 use crate::{
-    error::Error,
+    cache::CacheExt,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -352,12 +350,11 @@ fn find_fields_from_term(
         Term::Var(ident) | Term::Op1(UnaryOp::StaticAccess(ident), _) => {
             let pos = ident.pos;
             let span = pos.unwrap();
-            let locator = (span.src_id, span.start);
             // This unwrap is safe because we're getting an expression from
             // a linearized file, so all terms in the file and all terms in its
             // dependencies must have being linearized and stored in the cache.
             let linearization = lin_registry.map.get(&span.src_id).unwrap();
-            let item = linearization.item_at(&locator).unwrap();
+            let item = linearization.item_at(span.start_pos()).unwrap();
             find_fields_from_term_kind(item.id, path, info)
         }
         _ => Vec::new(),
@@ -666,31 +663,16 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let uri = params.text_document_position.text_document.uri;
-    let file_id = server
-        .cache
-        .id_of(
-            uri.to_file_path()
-                .map_err(|_| Error::FileNotFound(uri.clone()))?,
-        )
-        .ok_or_else(|| Error::FileNotFound(uri.clone()))?;
-
-    let text = server.cache.files().source(file_id);
-    let pos = params.text_document_position.position;
-    let start = position_to_byte_index(server.cache.files(), file_id, &pos).map_err(|_| {
-        Error::InvalidPosition {
-            pos,
-            file: uri.clone(),
-        }
-    })?;
-
     // -1 because at the current cursor position, there is no linearization item there,
     // so we try to get the item just before the cursor.
-    let locator = (file_id, ByteIndex((start - 1) as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
-    let item = linearization.item_at(&locator);
+    let mut pos = server.cache.position(&params.text_document_position)?;
+    pos.index.0 -= 1;
+    let start = pos.index.to_usize();
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    let item = linearization.item_at(pos);
     Trace::enrich(&id, linearization);
 
+    let text = server.cache.files().source(pos.src_id);
     let result = match item {
         Some(item) => {
             debug!("found closest item: {:?}", item);

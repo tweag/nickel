@@ -13,11 +13,10 @@ mod linearization;
 mod requests;
 mod server;
 use server::Server;
-
-use crate::trace::Trace;
-
 mod term;
 mod trace;
+
+use crate::trace::Trace;
 
 #[derive(clap::Parser, Debug)]
 /// The LSP server of the Nickel language.

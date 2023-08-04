@@ -487,10 +487,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only
                 // happens if the `RichTerm` has been transformed or evaluated. None of these
                 // happen before linearization.
-                let start = position.unwrap().start;
-                let locator = (*file, start);
-
-                let Some(term_id) = linearization.item_at(&locator) else {
+                let Some(term_id) = linearization.item_at(position.unwrap().start_pos()) else {
                     return
                 };
                 let term_id = term_id.id;

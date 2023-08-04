@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use codespan::FileId;
+use codespan::{ByteIndex, FileId};
+use lsp_types::TextDocumentPositionParams;
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, TermEntry},
     error::{Error, ImportError},
+    position::RawPos,
     typecheck::{self, linearization::Linearization},
 };
 
@@ -17,6 +19,9 @@ pub trait CacheExt {
         initial_env: &Environment,
         lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
+
+    fn position(&self, lsp_pos: &TextDocumentPositionParams)
+        -> Result<RawPos, crate::error::Error>;
 }
 
 impl CacheExt for Cache {
@@ -98,5 +103,29 @@ impl CacheExt for Cache {
                 import_errors.into_iter().map(Error::ImportError).collect(),
             ))
         }
+    }
+
+    fn position(
+        &self,
+        lsp_pos: &TextDocumentPositionParams,
+    ) -> Result<RawPos, crate::error::Error> {
+        let uri = &lsp_pos.text_document.uri;
+        let file_id = self
+            .id_of(
+                uri.to_file_path()
+                    .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?,
+            )
+            .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
+
+        let pos = lsp_pos.position;
+        let idx =
+            codespan_lsp::position_to_byte_index(self.files(), file_id, &pos).map_err(|_| {
+                crate::error::Error::InvalidPosition {
+                    pos,
+                    file: uri.clone(),
+                }
+            })?;
+
+        Ok(RawPos::new(file_id, ByteIndex(idx as u32)))
     }
 }

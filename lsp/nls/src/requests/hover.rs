@@ -1,5 +1,3 @@
-use codespan::ByteIndex;
-use codespan_lsp::position_to_byte_index;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
@@ -7,6 +5,7 @@ use nickel_lang_core::position::TermPos;
 use serde_json::Value;
 
 use crate::{
+    cache::CacheExt,
     diagnostic::LocationCompat,
     server::Server,
     trace::{Enrich, Trace},
@@ -17,31 +16,14 @@ pub fn handle(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let file_id = server
+    let pos = server
         .cache
-        .id_of(
-            params
-                .text_document_position_params
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
-        )
-        .unwrap();
+        .position(&params.text_document_position_params)?;
 
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position_params.position,
-    )
-    .unwrap();
+    debug!("pos of hovered item: {pos:?}");
 
-    debug!("start of hovered item: ByteIndex({})", start);
-
-    let locator = (file_id, ByteIndex(start as u32));
-
-    let linearization = server.lin_cache_get(&file_id)?;
-    let item = linearization.item_at(&locator);
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    let item = linearization.item_at(pos);
 
     Trace::enrich(&id, linearization);
 
@@ -62,7 +44,7 @@ pub fn handle(
     }
     let pos = item.pos.unwrap();
     let range = Range::from_codespan(
-        &file_id,
+        &pos.src_id,
         &(pos.start.to_usize()..pos.end.to_usize()),
         server.cache.files(),
     );
