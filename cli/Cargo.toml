@@ -31,7 +31,8 @@ directories.workspace = true
 topiary = { workspace = true, optional = true }
 tree-sitter-nickel = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
-git-version = "0.3.5"
+
+git-version = { workspace = true }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

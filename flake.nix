@@ -227,15 +227,21 @@
             buildInputs = [ pkgs.python3 ];
           };
 
+          env = {
+            NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
+          };
+
           buildPackage = { pname, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
                 src
                 version
-                cargoArtifacts;
+                cargoArtifacts
+                env;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}";
+
             } // extraArgs);
         in
         rec {
@@ -264,8 +270,8 @@
                   RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
                   # Explain to `cc-rs` that it should use the `libcxx` C++
                   # standard library, and a static version of it, when building
-                  # C++ libraries. The `cc-rs` is typically used in downstream
-                  # build.rs scripts.
+                  # C++ libraries. The `cc-rs` crate is typically used in
+                  # upstream build.rs scripts.
                   CXXSTDLIB = "static=c++";
                   stdenv = pkgs.pkgsMusl.libcxxStdenv;
                   doCheck = false;
@@ -273,7 +279,7 @@
               };
 
           benchmarks = craneLib.mkCargoDerivation {
-            inherit src version cargoArtifacts;
+            inherit src version cargoArtifacts env;
 
             pname = "nickel-lang-bench";
 
@@ -286,7 +292,7 @@
 
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.mkCargoDerivation {
-            inherit src version cargoArtifacts;
+            inherit src version cargoArtifacts env;
             inherit (cargoArtifacts) buildInputs;
 
             pname = "nickel-lang-doc";
@@ -300,7 +306,7 @@
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
-            inherit src;
+            inherit src env;
             pname = "nickel-lang-rustfmt";
 
             cargoExtraArgs = "--all";
@@ -312,7 +318,8 @@
           clippy = craneLib.cargoClippy {
             inherit
               src
-              cargoArtifacts;
+              cargoArtifacts
+              env;
             pname = "nickel-lang-clippy";
 
             inherit (cargoArtifacts) buildInputs;
