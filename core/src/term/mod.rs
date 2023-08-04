@@ -1454,11 +1454,11 @@ impl RichTerm {
         }
     }
 
-    pub fn find_pos(&self, pos: RawPos) -> Vec<RichTerm> {
-        let mut ret = Vec::new();
+    pub fn find_pos(&self, pos: RawPos) -> Option<RichTerm> {
+        let mut ret = None;
         self.traverse_ref(&mut |rt: &RichTerm| {
             if rt.pos.contains(pos) {
-                ret.push(rt.clone());
+                ret = Some(rt.clone());
                 TraverseControl::<()>::Continue
             } else {
                 TraverseControl::SkipBranch
@@ -2124,26 +2124,22 @@ mod tests {
         let (src_id, rt) = parse("let x = { y = 1 } in x.y");
 
         // Index 14 points to the 1 in { y = 1 }
-        let path_to_1 = rt.find_pos(RawPos {
-            src_id,
-            index: 14.into(),
-        });
-        assert_eq!(3, path_to_1.len());
-        assert_matches!(path_to_1[0].term.as_ref(), Term::Let(..));
-        assert_matches!(path_to_1[1].term.as_ref(), Term::RecRecord(..));
-        assert_matches!(path_to_1[2].term.as_ref(), Term::Num(..));
+        let term_1 = rt
+            .find_pos(RawPos {
+                src_id,
+                index: 14.into(),
+            })
+            .unwrap();
+        assert_matches!(term_1.term.as_ref(), Term::Num(..));
 
         // Index 23 points to the y in x.y
-        let path_to_y = rt.find_pos(RawPos {
-            src_id,
-            index: 23.into(),
-        });
-        assert_eq!(2, path_to_y.len());
-        assert_matches!(path_to_y[0].term.as_ref(), Term::Let(..));
-        assert_matches!(
-            path_to_y[1].term.as_ref(),
-            Term::Op1(UnaryOp::StaticAccess(_), _)
-        );
+        let term_y = rt
+            .find_pos(RawPos {
+                src_id,
+                index: 23.into(),
+            })
+            .unwrap();
+        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::StaticAccess(_), _));
     }
 
     #[test]

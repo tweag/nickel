@@ -8,6 +8,7 @@ use lsp_server::Connection;
 mod cache;
 mod diagnostic;
 mod error;
+mod field_walker;
 mod files;
 mod linearization;
 mod requests;

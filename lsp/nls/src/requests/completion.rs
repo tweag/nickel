@@ -15,6 +15,7 @@ use nickel_lang_core::{
 
 use crate::{
     cache::CacheExt,
+    field_walker,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -657,6 +658,44 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
+fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
+    let mut path = Vec::new();
+
+    loop {
+        if let Term::Op1(UnaryOp::StaticAccess(id), parent) = rt.term.as_ref() {
+            path.push(*id);
+            rt = parent.clone();
+        } else {
+            return (rt, path);
+        }
+    }
+}
+
+fn term_based_completion(
+    term: &RichTerm,
+    linearization: &Completed,
+    server: &Server,
+) -> Result<Vec<CompletionItem>, ResponseError> {
+    log::info!("term based completion path: {term:?}");
+
+    // For completing record paths, we discard the last path element: if we're
+    // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
+    let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let (start_term, path) = extract_static_path(parent.clone());
+
+    let def = field_walker::Def::build(&start_term, linearization, server);
+    Ok(def
+        .follow(&path)
+        .map(|ident| CompletionItem {
+            label: ident.label().to_owned(),
+            ..Default::default()
+        })
+        .collect())
+}
+
 pub fn handle_completion(
     params: CompletionParams,
     id: RequestId,
@@ -671,19 +710,33 @@ pub fn handle_completion(
     let item = linearization.item_at(pos);
     Trace::enrich(&id, linearization);
 
-    let text = server.cache.files().source(pos.src_id);
-    let completions = match item {
-        Some(item) => {
-            debug!("found closest item: {:?}", item);
-
-            let trigger = params
-                .context
-                .as_ref()
-                .and_then(|context| context.trigger_character.as_deref());
-
-            get_completion_identifiers(&text[..start], trigger, linearization, item, server)?
-        }
+    let rt = server
+        .cache
+        .get_ref(pos.src_id)
+        .and_then(|rt| rt.find_pos(pos));
+    let mut completions = match &rt {
+        Some(rt) => term_based_completion(path, linearization, server)?,
         None => Vec::new(),
+    };
+
+    log::info!("term-based completion provided {completions:?}");
+
+    let text = server.cache.files().source(pos.src_id);
+    if let Some(item) = item {
+        debug!("found closest item: {:?}", item);
+
+        let trigger = params
+            .context
+            .as_ref()
+            .and_then(|context| context.trigger_character.as_deref());
+
+        completions.extend_from_slice(&get_completion_identifiers(
+            &text[..start],
+            trigger,
+            linearization,
+            item,
+            server,
+        )?);
     };
 
     server.reply(Response::new_ok(id.clone(), completions));
