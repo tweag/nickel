@@ -12,7 +12,6 @@ use nickel_lang_core::{
     },
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
-use serde_json::Value;
 
 use crate::{
     cache::CacheExt,
@@ -673,7 +672,7 @@ pub fn handle_completion(
     Trace::enrich(&id, linearization);
 
     let text = server.cache.files().source(pos.src_id);
-    let result = match item {
+    let completions = match item {
         Some(item) => {
             debug!("found closest item: {:?}", item);
 
@@ -682,23 +681,13 @@ pub fn handle_completion(
                 .as_ref()
                 .and_then(|context| context.trigger_character.as_deref());
 
-            let in_scope =
-                get_completion_identifiers(&text[..start], trigger, linearization, item, server)?;
-
-            Some(in_scope)
+            get_completion_identifiers(&text[..start], trigger, linearization, item, server)?
         }
-        None => None,
+        None => Vec::new(),
     };
 
-    result
-        .map(|in_scope| {
-            server.reply(Response::new_ok(id.clone(), in_scope));
-            Ok(())
-        })
-        .unwrap_or_else(|| {
-            server.reply(Response::new_ok(id, Value::Null));
-            Ok(())
-        })
+    server.reply(Response::new_ok(id.clone(), completions));
+    Ok(())
 }
 
 #[cfg(test)]
