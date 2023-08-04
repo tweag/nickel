@@ -438,7 +438,11 @@
 
           clippy = craneLib.cargoClippy {
             inherit pname src cargoArtifacts env;
+<<<<<<< HEAD
             inherit (cargoArtifactsDeps) buildInputs;
+=======
+            inherit (cargoArtifacts) nativeBuildInputs buildInputs;
+>>>>>>> f5b1ffb9 (clippy needs nativeBuildInputs)
 
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
