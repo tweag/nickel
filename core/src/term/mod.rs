@@ -23,7 +23,7 @@ use crate::{
     identifier::Ident,
     label::{Label, MergeLabel},
     match_sharedterm,
-    position::TermPos,
+    position::{RawPos, TermPos},
     typ::{Type, UnboundTypeVariableError},
 };
 
@@ -1453,6 +1453,19 @@ impl RichTerm {
             truncated
         }
     }
+
+    pub fn find_pos(&self, pos: RawPos) -> Vec<RichTerm> {
+        let mut ret = Vec::new();
+        self.traverse_ref(&mut |rt: &RichTerm| {
+            if rt.pos.contains(pos) {
+                ret.push(rt.clone());
+                TraverseControl::<()>::Continue
+            } else {
+                TraverseControl::SkipBranch
+            }
+        });
+        ret
+    }
 }
 
 /// Flow control for tree traverals.
@@ -2068,7 +2081,13 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
-    use crate::typ::TypeF;
+    use assert_matches::assert_matches;
+    use codespan::Files;
+
+    use crate::{
+        parser::{grammar, lexer, ErrorTolerantParser},
+        typ::TypeF,
+    };
 
     use super::*;
 
@@ -2087,6 +2106,44 @@ mod tests {
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.typ, None);
+    }
+
+    fn parse(s: &str) -> (FileId, RichTerm) {
+        let id = Files::new().add("<test>", String::from(s));
+
+        (
+            id,
+            grammar::TermParser::new()
+                .parse_strict(id, lexer::Lexer::new(s))
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn find_pos() {
+        let (src_id, rt) = parse("let x = { y = 1 } in x.y");
+
+        // Index 14 points to the 1 in { y = 1 }
+        let path_to_1 = rt.find_pos(RawPos {
+            src_id,
+            index: 14.into(),
+        });
+        assert_eq!(3, path_to_1.len());
+        assert_matches!(path_to_1[0].term.as_ref(), Term::Let(..));
+        assert_matches!(path_to_1[1].term.as_ref(), Term::RecRecord(..));
+        assert_matches!(path_to_1[2].term.as_ref(), Term::Num(..));
+
+        // Index 23 points to the y in x.y
+        let path_to_y = rt.find_pos(RawPos {
+            src_id,
+            index: 23.into(),
+        });
+        assert_eq!(2, path_to_y.len());
+        assert_matches!(path_to_y[0].term.as_ref(), Term::Let(..));
+        assert_matches!(
+            path_to_y[1].term.as_ref(),
+            Term::Op1(UnaryOp::StaticAccess(_), _)
+        );
     }
 
     #[test]

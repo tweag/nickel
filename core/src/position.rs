@@ -46,6 +46,11 @@ impl RawSpan {
             end: span.end(),
         }
     }
+
+    /// Check whether this span contains a position.
+    pub fn contains(self, pos: RawPos) -> bool {
+        self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
+    }
 }
 
 /// The position span of a term.
@@ -109,6 +114,11 @@ impl TermPos {
             TermPos::Original(pos) => TermPos::Inherited(pos),
             p => p,
         }
+    }
+
+    /// Check whether this span contains a position.
+    pub fn contains(self, pos: RawPos) -> bool {
+        self.into_opt().map_or(false, |sp| sp.contains(pos))
     }
 }
 
