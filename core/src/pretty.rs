@@ -1,4 +1,4 @@
-use crate::destructuring::{self, RecordPattern};
+use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::Ident;
 
 use crate::parser::lexer::KEYWORDS;
@@ -363,6 +363,26 @@ where
     }
 }
 
+impl<'a, D, A> Pretty<'a, D, A> for &FieldPattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        match self {
+            FieldPattern::Ident(id) => allocator.as_string(id),
+            FieldPattern::RecordPattern(rp) => rp.pretty(allocator),
+            FieldPattern::AliasedRecordPattern { alias, pattern } => allocator
+                .as_string(alias)
+                .append(allocator.space())
+                .append(allocator.text("@"))
+                .append(allocator.space())
+                .append(pattern.pretty(allocator)),
+        }
+    }
+}
+
 impl<'a, D, A> Pretty<'a, D, A> for &RecordPattern
 where
     D: NickelAllocatorExt<'a, A>,
@@ -378,8 +398,14 @@ where
         } = self;
         allocator
             .intersperse(
-                matches.iter().map(|m| match m {
-                    destructuring::Match::Simple(id, field) => allocator
+                matches.iter().map(|m| {
+                    let (id, field, pattern_opt) = match m {
+                        destructuring::Match::Simple(id, field) => (id, field, None),
+                        destructuring::Match::Assign(id, field, pattern) => {
+                            (id, field, Some(pattern))
+                        }
+                    };
+                    allocator
                         .as_string(id)
                         .append(allocator.space())
                         .append(match field {
@@ -404,8 +430,15 @@ where
                                     false,
                                 )),
                             field => allocator.field_metadata(&field.metadata, false),
-                        }),
-                    _ => unimplemented!(),
+                        })
+                        .append(match pattern_opt {
+                            Some(pattern) => allocator
+                                .space()
+                                .append(allocator.text("="))
+                                .append(allocator.space())
+                                .append(pattern),
+                            None => allocator.nil(),
+                        })
                 }),
                 allocator.text(",").append(allocator.space()),
             )
