@@ -715,7 +715,7 @@ pub fn handle_completion(
         .get_ref(pos.src_id)
         .and_then(|rt| rt.find_pos(pos));
     let mut completions = match &rt {
-        Some(rt) => term_based_completion(path, linearization, server)?,
+        Some(rt) => term_based_completion(rt, linearization, server)?,
         None => Vec::new(),
     };
 
