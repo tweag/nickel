@@ -353,7 +353,7 @@ impl<EC: EvalCache> Program<EC> {
 
     pub fn pprint_ast(
         &mut self,
-        out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
+        out: &mut impl std::io::Write,
         apply_transforms: bool,
     ) -> Result<(), Error> {
         use crate::pretty::*;

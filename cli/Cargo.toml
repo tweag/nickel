@@ -12,7 +12,7 @@ readme.workspace = true
 
 [[bin]]
 name = "nickel"
-path = "bin/nickel.rs"
+path = "src/main.rs"
 bench = false
 
 [features]
@@ -33,6 +33,7 @@ tree-sitter-nickel = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 
 git-version = { workspace = true }
+clap_complete = { workspace = true }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true

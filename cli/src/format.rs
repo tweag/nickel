@@ -9,6 +9,8 @@ use std::{
 use tempfile::NamedTempFile;
 use topiary::TopiaryQuery;
 
+use crate::cli::{Files, GlobalOptions};
+
 #[derive(Debug)]
 pub enum FormatError {
     NotAFile { path: PathBuf },
@@ -94,40 +96,41 @@ impl Write for Output {
     }
 }
 
-pub fn format(input: Option<&Path>, output: Option<&Path>, in_place: bool) {
-    if let Err(e) = do_format(input, output, in_place) {
-        eprintln!("{e}");
-        process::exit(1);
-    }
+#[derive(clap::Parser, Debug)]
+pub struct FormatOptions {
+    #[command(flatten)]
+    sources: Files,
 }
 
-fn do_format(
-    input: Option<&Path>,
-    output: Option<&Path>,
-    in_place: bool,
-) -> Result<(), FormatError> {
-    let mut output: Output = match (output, input, in_place) {
-        (None, None, _) | (None, Some(_), false) => Output::new(None)?,
-        (None, Some(file), true) | (Some(file), _, _) => Output::new(Some(file))?,
-    };
-    let mut input: Box<dyn Read> = match input {
-        None => Box::new(stdin()),
-        Some(f) => Box::new(BufReader::new(File::open(f)?)),
-    };
-    let topiary_config = topiary::Configuration::parse_default_configuration()?;
-    let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
-    let grammar = tree_sitter_nickel::language().into();
-    topiary::formatter(
-        &mut input,
-        &mut output,
-        &TopiaryQuery::nickel(),
-        language,
-        &grammar,
-        topiary::Operation::Format {
-            skip_idempotence: true,
-            tolerate_parsing_errors: true,
-        },
-    )?;
-    output.persist();
-    Ok(())
+impl FormatOptions {
+    pub fn run(self, _: GlobalOptions) {
+        if let Err(e) = self.format() {
+            eprintln!("{e}");
+            process::exit(1);
+        }
+    }
+
+    fn format(self) -> Result<(), FormatError> {
+        let mut output: Output = Output::new(self.sources.files.as_deref())?;
+        let mut input: Box<dyn Read> = match self.sources.files {
+            None => Box::new(stdin()),
+            Some(f) => Box::new(BufReader::new(File::open(f)?)),
+        };
+        let topiary_config = topiary::Configuration::parse_default_configuration()?;
+        let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
+        let grammar = tree_sitter_nickel::language().into();
+        topiary::formatter(
+            &mut input,
+            &mut output,
+            &TopiaryQuery::nickel(),
+            language,
+            &grammar,
+            topiary::Operation::Format {
+                skip_idempotence: true,
+                tolerate_parsing_errors: true,
+            },
+        )?;
+        output.persist();
+        Ok(())
+    }
 }
