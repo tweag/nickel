@@ -8,12 +8,18 @@ use nickel_lang_core::{
 
 use crate::{linearization::completed::Completed, server::Server};
 
-/// The position at which a something is defined.
+/// The position at which something is defined.
 #[derive(Clone, Debug)]
 pub struct Def {
-    /// The identifier of the definition. (TODO: example)
+    /// The identifier at the definition site.
+    ///
+    /// Remember that an `Ident` has a position; this one points to the identifier
+    /// at the position where it is bound. For example, in `{ foo = 1 }`, this ident
+    /// might point at the `foo`.
     pub ident: Ident,
     /// The value assigned by the definition, if there is one.
+    ///
+    /// For example, in `{ foo = 1 }`, this could point at the `1`.
     pub value: Option<RichTerm>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
@@ -42,6 +48,7 @@ impl Def {
             })
     }
 
+    /// Creates a completion item from this definition.
     pub fn to_completion_item(&self) -> CompletionItem {
         /// Attach quotes to a non-ASCII string
         fn adjust_name(name: &str) -> String {
@@ -62,8 +69,9 @@ impl Def {
     }
 }
 
+/// A map from identifiers to the defs that they refer to.
 #[derive(Clone, Debug, Default)]
-pub struct FieldDefs {
+struct FieldDefs {
     // The key to this map is really a Symbol rather than an Ident. Since the interner is not
     // public, we use an Ident that has had its location removed.
     fields: HashMap<Ident, Vec<Def>>,
@@ -95,7 +103,12 @@ pub fn resolve_path<'a>(
 }
 
 impl FieldDefs {
-    pub fn resolve(rt: &RichTerm, linearization: &Completed, server: &Server) -> FieldDefs {
+    /// Find all the fields that are defined on a term.
+    ///
+    /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
+    /// heuristics. For example, it knows that the fields defined on a merge of two records
+    /// are the fields defined on either record.
+    fn resolve(rt: &RichTerm, linearization: &Completed, server: &Server) -> FieldDefs {
         match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 let fields = data

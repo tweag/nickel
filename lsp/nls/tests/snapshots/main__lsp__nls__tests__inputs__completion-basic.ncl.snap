@@ -8,4 +8,7 @@ expression: output
 [foo, verified, version]
 [really]
 [really]
+[foo, really, verified, version]
+[has a space, lalala]
+[falala]
 
