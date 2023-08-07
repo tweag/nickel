@@ -28,6 +28,7 @@ pub struct FieldDefs {
     fields: HashMap<Ident, Vec<Def>>,
 }
 
+/// Resolve a record path iteratively, returning the names of all the fields defined on the final path element.
 pub fn resolve_path<'a>(
     rt: &'a RichTerm,
     mut path: &'a [Ident],
@@ -71,6 +72,13 @@ impl FieldDefs {
             Term::Var(_) => {
                 if let Some(def) = linearization.lookup_usage(rt) {
                     FieldDefs::resolve(&def, linearization, server).fields
+                } else {
+                    Default::default()
+                }
+            }
+            Term::ResolvedImport(file_id) => {
+                if let Some(term) = server.cache.get_ref(*file_id) {
+                    FieldDefs::resolve(term, linearization, server).fields
                 } else {
                     Default::default()
                 }
