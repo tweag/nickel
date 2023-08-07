@@ -1,9 +1,9 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
-    position::TermPos,
-    term::{RichTerm, Term},
+    term::{record::FieldMetadata, RichTerm, Term},
 };
 
 use crate::{linearization::completed::Completed, server::Server};
@@ -11,14 +11,55 @@ use crate::{linearization::completed::Completed, server::Server};
 /// The position at which a something is defined.
 #[derive(Clone, Debug)]
 pub struct Def {
-    /// The location of the definition.
-    ///
-    /// This is not necessarily the same as the position
-    /// of any `RichTerm`. For example, the location of `x`'s definition in `let x = 1` is
-    /// just the location of the "x" itself.
-    pub location: TermPos,
+    /// The identifier of the definition. (TODO: example)
+    pub ident: Ident,
     /// The value assigned by the definition, if there is one.
     pub value: Option<RichTerm>,
+    /// Field metadata.
+    pub metadata: Option<FieldMetadata>,
+}
+
+impl Def {
+    fn doc(&self) -> Option<Documentation> {
+        let doc = self.metadata.as_ref()?.doc.as_ref()?;
+        Some(Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: doc.clone(),
+        }))
+    }
+
+    // If the field is annotated, returns its type annotation (preferred) or its
+    // contract annotation (fallback).
+    fn detail(&self) -> Option<String> {
+        self.metadata
+            .as_ref()
+            .and_then(|FieldMetadata { annotation, .. }| {
+                annotation
+                    .typ
+                    .as_ref()
+                    .map(|ty| ty.typ.to_string())
+                    .or_else(|| annotation.contracts_to_string())
+            })
+    }
+
+    pub fn to_completion_item(&self) -> CompletionItem {
+        /// Attach quotes to a non-ASCII string
+        fn adjust_name(name: &str) -> String {
+            if name.is_ascii() {
+                String::from(name)
+            } else {
+                format!("\"{name}\"")
+            }
+        }
+
+        CompletionItem {
+            label: adjust_name(self.ident.label()),
+            detail: self.detail(),
+            kind: Some(CompletionItemKind::Property),
+            documentation: self.doc(),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -34,7 +75,7 @@ pub fn resolve_path<'a>(
     mut path: &'a [Ident],
     linearization: &Completed,
     server: &Server,
-) -> impl Iterator<Item = Ident> {
+) -> impl Iterator<Item = Def> {
     let mut fields = FieldDefs::resolve(rt, linearization, server);
 
     while let Some((id, tail)) = path.split_first() {
@@ -49,8 +90,8 @@ pub fn resolve_path<'a>(
 
     fields
         .fields
-        .into_iter()
-        .flat_map(|(id, defs)| defs.into_iter().map(move |d| id.with_pos(d.location)))
+        .into_values()
+        .flat_map(|defs| defs.into_iter())
 }
 
 impl FieldDefs {
@@ -63,8 +104,9 @@ impl FieldDefs {
                     (
                         ident.without_pos(),
                         vec![Def {
-                            location: ident.pos,
+                            ident,
                             value: field.value.clone(),
+                            metadata: Some(field.metadata.clone()),
                         }],
                     )
                 })

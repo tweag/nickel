@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
@@ -688,13 +686,8 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(parent.clone());
 
-    let idents = field_walker::resolve_path(&start_term, &path, linearization, server);
-    Ok(idents
-        .map(|ident| CompletionItem {
-            label: ident.label().to_owned(),
-            ..Default::default()
-        })
-        .collect())
+    let defs = field_walker::resolve_path(&start_term, &path, linearization, server);
+    Ok(defs.map(|d| d.to_completion_item()).collect())
 }
 
 pub fn handle_completion(
@@ -739,6 +732,7 @@ pub fn handle_completion(
             server,
         )?);
     };
+    let completions = remove_duplicates(&completions);
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())

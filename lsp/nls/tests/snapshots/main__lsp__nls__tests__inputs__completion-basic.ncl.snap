@@ -3,9 +3,9 @@ source: lsp/nls/tests/main.rs
 expression: output
 ---
 [a, b, config]
-[foo, foo, verified, verified, version, version]
-[foo, foo, verified, verified, version, version]
-[foo, foo, verified, verified, version, version]
-[really, really]
-[really, really]
+[foo, verified, version]
+[foo, verified, version]
+[foo, verified, version]
+[really]
+[really]
 
