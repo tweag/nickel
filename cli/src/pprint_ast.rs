@@ -1,5 +1,5 @@
 use crate::{
-    cli::{Files, GlobalOptions},
+    cli::GlobalOptions,
     error::{CliResult, WithProgram},
     eval,
 };
@@ -9,15 +9,11 @@ pub struct PprintAstOptions {
     /// Performs code transformations before printing
     #[arg(long)]
     pub transform: bool,
-
-    /// Input file, omit to read from stdin
-    #[command(flatten)]
-    pub sources: Files,
 }
 
 impl PprintAstOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&self.sources, &global)?;
+        let mut program = eval::prepare(&global.files, &global)?;
         program
             .pprint_ast(&mut std::io::stdout(), self.transform)
             .with_program(program)

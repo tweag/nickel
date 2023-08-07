@@ -94,12 +94,23 @@ impl Write for Output {
 pub struct FormatOptions {
     #[command(flatten)]
     sources: Files,
+
+    /// Output file. Standard output by default.
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// Format in place, overwriting the input file.
+    #[arg(short, long, requires = "file")]
+    in_place: bool,
 }
 
 impl FormatOptions {
-    pub fn run(self, _: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = Output::new(self.sources.file.as_deref())?;
-        let mut input: Box<dyn Read> = match self.sources.file {
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut output: Output = match (&self.output, &global.files.file, self.in_place) {
+            (None, None, _) | (None, Some(_), false) => Output::new(None)?,
+            (None, Some(file), true) | (Some(file), _, _) => Output::new(Some(file))?,
+        };
+        let mut input: Box<dyn Read> = match global.files.file {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };

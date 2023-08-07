@@ -10,7 +10,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    cli::{Files, GlobalOptions},
+    cli::GlobalOptions,
     error::{CliResult, WithProgram},
     eval,
 };
@@ -53,18 +53,19 @@ pub struct DocOptions {
     /// The output format for the generated documentation.
     #[arg(long, value_enum, default_value_t)]
     pub format: crate::doc::DocFormat,
-
-    #[command(flatten)]
-    pub sources: Files,
 }
 
 impl DocOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&self.sources, &global)?;
-        self.export_doc(&mut program).with_program(program)
+        let mut program = eval::prepare(&global.files, &global)?;
+        self.export_doc(&mut program, &global).with_program(program)
     }
 
-    fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
+    fn export_doc(
+        self,
+        program: &mut Program<CacheImpl>,
+        global: &GlobalOptions,
+    ) -> Result<(), Error> {
         let doc = program.extract_doc()?;
         let mut out: Box<dyn std::io::Write> = if self.stdout {
             Box::new(std::io::stdout())
@@ -94,7 +95,7 @@ impl DocOptions {
 
                         let mut has_file_name = false;
 
-                        if let Some(path) = self.sources.file {
+                        if let Some(path) = &global.files.file {
                             if let Some(file_stem) = path.file_stem() {
                                 output_file.push(file_stem);
                                 has_file_name = true;
