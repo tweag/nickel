@@ -165,6 +165,11 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
+    /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
+    pub fn parse(&mut self) -> Result<RichTerm, Error> {
+        Ok(self.vm.import_resolver().parse_nocache(self.main_id)?.0)
+    }
+
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
