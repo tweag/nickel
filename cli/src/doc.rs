@@ -61,7 +61,7 @@ pub struct DocOptions {
 impl DocOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = eval::prepare(&self.sources, &global)?;
-        Ok(self.export_doc(&mut program).with_program(program)?)
+        self.export_doc(&mut program).with_program(program)
     }
 
     fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
@@ -94,7 +94,7 @@ impl DocOptions {
 
                         let mut has_file_name = false;
 
-                        if let Some(path) = self.sources.files {
+                        if let Some(path) = self.sources.file {
                             if let Some(file_stem) = path.file_stem() {
                                 output_file.push(file_stem);
                                 has_file_name = true;

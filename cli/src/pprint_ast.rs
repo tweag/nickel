@@ -18,8 +18,8 @@ pub struct PprintAstOptions {
 impl PprintAstOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = eval::prepare(&self.sources, &global)?;
-        Ok(program
+        program
             .pprint_ast(&mut std::io::stdout(), self.transform)
-            .with_program(program)?)
+            .with_program(program)
     }
 }

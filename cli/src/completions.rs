@@ -11,11 +11,12 @@ pub struct GenCompletionsOptions {
 
 impl GenCompletionsOptions {
     pub fn run(self, _: GlobalOptions) -> CliResult<()> {
-        Ok(clap_complete::generate(
+        clap_complete::generate(
             self.shell,
             &mut <Options as clap::CommandFactory>::command(),
             env!("CARGO_BIN_NAME"),
             &mut std::io::stdout(),
-        ))
+        );
+        Ok(())
     }
 }

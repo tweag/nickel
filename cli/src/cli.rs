@@ -22,7 +22,7 @@ pub struct Options {
     pub global: GlobalOptions,
 
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(clap::Parser, Debug)]
@@ -35,19 +35,25 @@ pub struct GlobalOptions {
     /// Configure when to output messages in color
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
+
+    #[command(flatten)]
+    pub files: Files,
 }
 
 #[derive(clap::Parser, Debug)]
 pub struct Files {
-    /// Input files, omit to read from stdin
-    pub files: Option<PathBuf>,
+    /// Input file, omit to read from stdin
+    #[arg(long, short, global = true)]
+    pub file: Option<PathBuf>,
 }
 
 /// Available subcommands.
 #[derive(clap::Subcommand, Debug)]
 pub enum Command {
-    /// Evaluate a Nickel program and pretty print the result.
+    /// Evaluate a Nickel program and pretty-print the result.
+    #[command(hide = true)]
     Eval(EvalOptions),
+
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
     PprintAst(PprintAstOptions),
@@ -67,6 +73,6 @@ pub enum Command {
     #[cfg(feature = "format")]
     Format(FormatOptions),
 
-    #[command(hide = true)]
+    /// Generate shell completion files
     GenCompletions(GenCompletionsOptions),
 }

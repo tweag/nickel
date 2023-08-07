@@ -30,7 +30,7 @@ impl ExportOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
-        Ok(self.export(&mut program).with_program(program)?)
+        self.export(&mut program).with_program(program)
     }
 
     fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {

@@ -98,8 +98,8 @@ pub struct FormatOptions {
 
 impl FormatOptions {
     pub fn run(self, _: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = Output::new(self.sources.files.as_deref())?;
-        let mut input: Box<dyn Read> = match self.sources.files {
+        let mut output: Output = Output::new(self.sources.file.as_deref())?;
+        let mut input: Box<dyn Read> = match self.sources.file {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };

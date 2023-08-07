@@ -33,7 +33,7 @@ impl QueryOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
-        Ok(program
+        program
             .query(self.path)
             .map(|term| {
                 // Print a default selection of attributes if no option is specified
@@ -52,6 +52,6 @@ impl QueryOptions {
 
                 query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
             })
-            .with_program(program)?)
+            .with_program(program)
     }
 }

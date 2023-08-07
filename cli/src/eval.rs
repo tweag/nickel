@@ -1,5 +1,3 @@
-use std::ffi::OsString;
-
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{
@@ -8,18 +6,11 @@ use crate::{
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct EvalOptions {
-    #[command(flatten)]
-    pub sources: Files,
-
-    /// freeform args after --
-    #[arg(last = true)]
-    pub freeform: Vec<OsString>,
-}
+pub struct EvalOptions {}
 
 impl EvalOptions {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = prepare(&self.sources, &global)?;
+        let mut program = prepare(&global.files, &global)?;
         program
             .eval_full()
             .map(|t| println!("{t}"))
@@ -27,13 +18,13 @@ impl EvalOptions {
     }
 
     pub fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
-        prepare(&self.sources, global)
+        prepare(&global.files, global)
     }
 }
 
 pub fn prepare(sources: &Files, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
     let mut program = sources
-        .files
+        .file
         .clone()
         .map(|f| Program::new_from_file(f, std::io::stderr()))
         .unwrap_or_else(|| Program::new_from_stdin(std::io::stderr()))?;
