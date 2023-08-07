@@ -1,7 +1,6 @@
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
-    process,
 };
 
 use nickel_lang_core::{
@@ -12,6 +11,7 @@ use nickel_lang_core::{
 
 use crate::{
     cli::{Files, GlobalOptions},
+    error::{CliResult, WithProgram},
     eval,
 };
 
@@ -59,12 +59,9 @@ pub struct DocOptions {
 }
 
 impl DocOptions {
-    pub fn run(self, global: GlobalOptions) {
-        let mut program = eval::prepare(&self.sources, &global);
-        if let Err(err) = self.export_doc(&mut program) {
-            program.report(err);
-            process::exit(1)
-        }
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut program = eval::prepare(&self.sources, &global)?;
+        Ok(self.export_doc(&mut program).with_program(program)?)
     }
 
     fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {

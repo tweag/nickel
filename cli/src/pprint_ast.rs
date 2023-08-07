@@ -1,7 +1,6 @@
-use std::process;
-
 use crate::{
     cli::{Files, GlobalOptions},
+    error::{CliResult, WithProgram},
     eval,
 };
 
@@ -17,12 +16,10 @@ pub struct PprintAstOptions {
 }
 
 impl PprintAstOptions {
-    pub fn run(self, global: GlobalOptions) {
-        let mut program = eval::prepare(&self.sources, &global);
-
-        if let Err(err) = program.pprint_ast(&mut std::io::stdout(), self.transform) {
-            program.report(err);
-            process::exit(1);
-        }
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut program = eval::prepare(&self.sources, &global)?;
+        Ok(program
+            .pprint_ast(&mut std::io::stdout(), self.transform)
+            .with_program(program)?)
     }
 }

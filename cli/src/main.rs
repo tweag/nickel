@@ -9,6 +9,7 @@ mod repl;
 
 mod cli;
 mod completions;
+mod error;
 mod eval;
 mod export;
 mod pprint_ast;
@@ -20,7 +21,7 @@ use crate::cli::{Command, Options};
 fn main() {
     let opts = <Options as clap::Parser>::parse();
 
-    match opts.command {
+    let result = match opts.command {
         Command::Eval(eval) => eval.run(opts.global),
 
         Command::PprintAst(pprint_ast) => pprint_ast.run(opts.global),
@@ -41,5 +42,7 @@ fn main() {
         Command::Format(format) => format.run(opts.global),
 
         Command::GenCompletions(completions) => completions.run(opts.global),
-    }
+    };
+
+    result.unwrap_or_else(|e| e.report())
 }

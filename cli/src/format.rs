@@ -3,25 +3,20 @@ use std::{
     fs::File,
     io::{self, stdin, stdout, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process,
 };
 
 use tempfile::NamedTempFile;
 use topiary::TopiaryQuery;
 
-use crate::cli::{Files, GlobalOptions};
+use crate::{
+    cli::{Files, GlobalOptions},
+    error::CliResult,
+};
 
 #[derive(Debug)]
 pub enum FormatError {
     NotAFile { path: PathBuf },
     TopiaryError(topiary::FormatterError),
-    IOError(io::Error),
-}
-
-impl From<io::Error> for FormatError {
-    fn from(e: io::Error) -> Self {
-        Self::IOError(e)
-    }
 }
 
 impl From<topiary::FormatterError> for FormatError {
@@ -41,7 +36,6 @@ impl Display for FormatError {
                 )
             }
             FormatError::TopiaryError(e) => write!(f, "{e}"),
-            FormatError::IOError(e) => write!(f, "{e}"),
         }
     }
 }
@@ -56,7 +50,7 @@ pub enum Output {
 }
 
 impl Output {
-    pub fn new(path: Option<&Path>) -> Result<Self, FormatError> {
+    pub fn new(path: Option<&Path>) -> CliResult<Self> {
         match path {
             None => Ok(Self::Stdout),
             Some(path) => {
@@ -103,20 +97,14 @@ pub struct FormatOptions {
 }
 
 impl FormatOptions {
-    pub fn run(self, _: GlobalOptions) {
-        if let Err(e) = self.format() {
-            eprintln!("{e}");
-            process::exit(1);
-        }
-    }
-
-    fn format(self) -> Result<(), FormatError> {
+    pub fn run(self, _: GlobalOptions) -> CliResult<()> {
         let mut output: Output = Output::new(self.sources.files.as_deref())?;
         let mut input: Box<dyn Read> = match self.sources.files {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };
-        let topiary_config = topiary::Configuration::parse_default_configuration()?;
+        let topiary_config =
+            topiary::Configuration::parse_default_configuration().map_err(FormatError::from)?;
         let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
         let grammar = tree_sitter_nickel::language().into();
         topiary::formatter(
@@ -129,7 +117,8 @@ impl FormatOptions {
                 skip_idempotence: true,
                 tolerate_parsing_errors: true,
             },
-        )?;
+        )
+        .map_err(FormatError::from)?;
         output.persist();
         Ok(())
     }

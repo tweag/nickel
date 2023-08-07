@@ -1,4 +1,7 @@
-use crate::cli::{GlobalOptions, Options};
+use crate::{
+    cli::{GlobalOptions, Options},
+    error::CliResult,
+};
 
 #[derive(clap::Parser, Debug)]
 pub struct GenCompletionsOptions {
@@ -7,12 +10,12 @@ pub struct GenCompletionsOptions {
 }
 
 impl GenCompletionsOptions {
-    pub fn run(self, _: GlobalOptions) {
-        clap_complete::generate(
+    pub fn run(self, _: GlobalOptions) -> CliResult<()> {
+        Ok(clap_complete::generate(
             self.shell,
             &mut <Options as clap::CommandFactory>::command(),
             env!("CARGO_BIN_NAME"),
             &mut std::io::stdout(),
-        )
+        ))
     }
 }

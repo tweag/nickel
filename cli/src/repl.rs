@@ -1,9 +1,9 @@
-use std::{path::PathBuf, process};
+use std::path::PathBuf;
 
 use directories::BaseDirs;
 use nickel_lang_core::repl::rustyline_frontend;
 
-use crate::cli::GlobalOptions;
+use crate::{cli::GlobalOptions, error::CliResult};
 
 #[derive(clap::Parser, Debug)]
 pub struct ReplOptions {
@@ -12,7 +12,7 @@ pub struct ReplOptions {
 }
 
 impl ReplOptions {
-    pub fn run(self, global: GlobalOptions) {
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let histfile = if let Some(h) = self.history_file {
             h
         } else {
@@ -21,8 +21,6 @@ impl ReplOptions {
                 .home_dir()
                 .join(".nickel_history")
         };
-        if rustyline_frontend::repl(histfile, global.color.into()).is_err() {
-            process::exit(1);
-        }
+        Ok(rustyline_frontend::repl(histfile, global.color.into())?)
     }
 }

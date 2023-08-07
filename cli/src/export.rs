@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::process;
 use std::{fs, path::PathBuf};
 
 use nickel_lang_core::error::Error;
@@ -11,6 +10,7 @@ use nickel_lang_core::{
     term::RichTerm,
 };
 
+use crate::error::{CliResult, WithProgram};
 use crate::{cli::GlobalOptions, eval::EvalOptions};
 
 #[derive(clap::Parser, Debug)]
@@ -27,12 +27,10 @@ pub struct ExportOptions {
 }
 
 impl ExportOptions {
-    pub fn run(self, global: GlobalOptions) {
-        let mut program = self.evaluation.prepare(&global);
-        if let Err(err) = self.export(&mut program) {
-            program.report(err);
-            process::exit(1);
-        }
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut program = self.evaluation.prepare(&global)?;
+
+        Ok(self.export(&mut program).with_program(program)?)
     }
 
     fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {
