@@ -1110,8 +1110,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe69f1cbdb6e28af2bac214e943b99ce8a0a06b447d15d3e61161b0423139f3f"
 dependencies = [
  "proc-macro-hack",
- "proc-macro2 1.0.56",
- "quote 1.0.26",
+ "proc-macro2 1.0.66",
+ "quote 1.0.32",
  "syn 1.0.109",
 ]
 

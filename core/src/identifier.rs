@@ -39,6 +39,19 @@ impl Ident {
         Self::new_with_pos(label, TermPos::None)
     }
 
+    /// Create an identifier with the same label as this one, but no position.
+    pub fn without_pos(self) -> Ident {
+        Ident {
+            pos: TermPos::None,
+            ..self
+        }
+    }
+
+    /// Create an identifier with the same label as this one, but a specified position.
+    pub fn with_pos(self, pos: TermPos) -> Ident {
+        Ident { pos, ..self }
+    }
+
     /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
     /// with any identifier defined before. Generated identifiers start with a special prefix that
     /// can't be used by normal, user-defined identifiers.

@@ -8,54 +8,80 @@ use nickel_lang_core::{
 
 use crate::{linearization::completed::Completed, server::Server};
 
+/// The position at which a something is defined.
 #[derive(Clone, Debug)]
 pub struct Def {
-    location: TermPos,
-    // FIXME: this is the wrong recursive definition, because it forces us to fully resolve
-    // the tree of fields before we can query a single path. Do something lazier.
+    /// The location of the definition.
+    ///
+    /// This is not necessarily the same as the position
+    /// of any `RichTerm`. For example, the location of `x`'s definition in `let x = 1` is
+    /// just the location of the "x" itself.
+    pub location: TermPos,
+    /// The value assigned by the definition, if there is one.
+    pub value: Option<RichTerm>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldDefs {
+    // The key to this map is really a Symbol rather than an Ident. Since the interner is not
+    // public, we use an Ident that has had its location removed.
     fields: HashMap<Ident, Vec<Def>>,
 }
 
-impl Def {
-    pub fn build(rt: &RichTerm, linearization: &Completed, server: &Server) -> Def {
+pub fn resolve_path<'a>(
+    rt: &'a RichTerm,
+    mut path: &'a [Ident],
+    linearization: &Completed,
+    server: &Server,
+) -> impl Iterator<Item = Ident> {
+    let mut fields = FieldDefs::resolve(rt, linearization, server);
+
+    while let Some((id, tail)) = path.split_first() {
+        path = tail;
+        let defs = fields.fields.remove(&id.without_pos()).unwrap_or_default();
+        fields.fields.clear();
+
+        for rt in defs.into_iter().filter_map(|d| d.value) {
+            fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+        }
+    }
+
+    fields
+        .fields
+        .into_iter()
+        .flat_map(|(id, defs)| defs.into_iter().map(move |d| id.with_pos(d.location)))
+}
+
+impl FieldDefs {
+    pub fn resolve(rt: &RichTerm, linearization: &Completed, server: &Server) -> FieldDefs {
         let fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => data
                 .fields
                 .iter()
                 .map(|(&ident, field)| {
-                    let field_def = match &field.value {
-                        Some(val) => vec![Def::build(val, linearization, server)],
-                        None => vec![],
-                    };
-                    // TODO: also take into account a type annotation
-                    (ident, field_def)
+                    (
+                        ident.without_pos(),
+                        vec![Def {
+                            location: ident.pos,
+                            value: field.value.clone(),
+                        }],
+                    )
                 })
                 .collect(),
+            Term::Var(_) => {
+                if let Some(def) = linearization.lookup_usage(rt) {
+                    FieldDefs::resolve(&def, linearization, server).fields
+                } else {
+                    Default::default()
+                }
+            }
             _ => Default::default(),
         };
 
-        Def {
-            location: rt.pos,
-            fields,
-        }
+        FieldDefs { fields }
     }
 
-    pub fn follow<'a>(&'a self, path: &'a [Ident]) -> impl Iterator<Item = Ident> + 'a {
-        match path.split_first() {
-            Some((id, tail)) => {
-                let fields = self.fields.get(id);
-                if let Some(fields) = fields {
-                    Box::new(fields.iter().flat_map(|def| def.follow(tail)))
-                        as Box<dyn Iterator<Item = Ident>>
-                } else {
-                    Box::new(std::iter::empty())
-                }
-            }
-            None => Box::new(self.fields.keys().copied()) as Box<dyn Iterator<Item = Ident>>,
-        }
-    }
-
-    fn merge_from(mut self, other: Def) -> Def {
+    fn merge_from(mut self, other: FieldDefs) -> FieldDefs {
         for (ident, defs) in other.fields {
             match self.fields.entry(ident) {
                 Entry::Occupied(oc) => {

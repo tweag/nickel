@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 use codespan::FileId;
 use nickel_lang_core::{
     position::{RawPos, TermPos},
-    term::{record::FieldMetadata, SharedTerm, Term},
+    term::{record::FieldMetadata, RichTerm, SharedTerm, Term},
     typecheck::linearization::LinearizationState,
 };
 
@@ -58,6 +58,30 @@ impl Completed {
             id_to_index,
             term_to_index,
         }
+    }
+
+    pub fn lookup_usage(&self, rt: &RichTerm) -> Option<RichTerm> {
+        let ptr = SharedTermPtr(rt.term.clone());
+        log::info!("looking up {rt:?}");
+        if let Some(item) = self
+            .term_to_index
+            .get(&ptr)
+            .and_then(|idx| self.linearization.get(*idx))
+        {
+            if let TermKind::Usage(UsageState::Resolved(id)) = item.kind {
+                log::info!("found item {item:?} for term {rt:?}");
+                if let Some(def) = self.get_item(id) {
+                    if let TermKind::Declaration {
+                        value: ValueState::Known(id),
+                        ..
+                    } = def.kind
+                    {
+                        return self.get_item(id).map(|it| it.term.clone());
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Returns the closest item to the left (if any) and to the right (if any) of
