@@ -56,33 +56,6 @@
 
       version = "${cargoTOML.workspace.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
 
-      customOverlay = final: prev: {
-        # The version of `wasm-bindgen` CLI *must* be the same as the `wasm-bindgen` Rust dependency in `Cargo.toml`.
-        # The definition of `wasm-bindgen-cli` in Nixpkgs does not allow overriding directly the attrset passed to `buildRustPackage`.
-        # We instead override the attrset that `buildRustPackage` generates and passes to `mkDerivation`.
-        # See https://discourse.nixos.org/t/is-it-possible-to-override-cargosha256-in-buildrustpackage/4393
-        wasm-bindgen-cli = prev.wasm-bindgen-cli.overrideAttrs (oldAttrs:
-          let
-            wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
-            wasmBindgenVersion = assert builtins.length wasmBindgenCargoVersions == 1; builtins.elemAt wasmBindgenCargoVersions 0;
-          in
-          rec {
-            pname = "wasm-bindgen-cli";
-            version = wasmBindgenVersion;
-
-            src = final.fetchCrate {
-              inherit pname version;
-              sha256 = "sha256-0rK+Yx4/Jy44Fw5VwJ3tG243ZsyOIBBehYU54XP/JGk=";
-            };
-
-            cargoDeps = oldAttrs.cargoDeps.overrideAttrs (final.lib.const {
-              # This `inherit src` is important, otherwise, the old `src` would be used here
-              inherit src;
-              outputHash = "sha256-c9EMsnMoPuK05tGKOE7Y995orZPMc3WbVBZditaMyWQ=";
-            });
-          });
-      };
-
     in
     flake-utils.lib.eachSystem SYSTEMS (system:
     let
@@ -90,9 +63,19 @@
         inherit system;
         overlays = [
           (import rust-overlay)
-          customOverlay
         ];
       };
+
+      wasm-bindgen-cli =
+        let
+          wasmBindgenCargoVersions = builtins.map ({ version, ... }: version) (builtins.filter ({ name, ... }: name == "wasm-bindgen") cargoLock.package);
+          wasmBindgenVersion = assert builtins.length wasmBindgenCargoVersions == 1; builtins.elemAt wasmBindgenCargoVersions 0;
+        in
+        pkgs.wasm-bindgen-cli.override {
+          version = wasmBindgenVersion;
+          hash = "sha256-0rK+Yx4/Jy44Fw5VwJ3tG243ZsyOIBBehYU54XP/JGk=";
+          cargoHash = "sha256-vcpxcRlW1OKoD64owFF6mkxSqmNrvY+y3Ckn5UwEQ50=";
+        };
 
       # Additional packages required to build Nickel on Darwin
       systemSpecificPkgs =
@@ -411,7 +394,7 @@
           nativeBuildInputs = [
             rust
             pkgs.wasm-pack
-            pkgs.wasm-bindgen-cli
+            wasm-bindgen-cli
             pkgs.binaryen
             # Used to include the git revision in the Nickel binary, for `--version`
             pkgs.git
