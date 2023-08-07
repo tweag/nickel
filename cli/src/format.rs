@@ -91,7 +91,7 @@ impl Write for Output {
 }
 
 #[derive(clap::Parser, Debug)]
-pub struct FormatOptions {
+pub struct FormatCommand {
     #[command(flatten)]
     sources: Files,
 
@@ -104,7 +104,7 @@ pub struct FormatOptions {
     in_place: bool,
 }
 
-impl FormatOptions {
+impl FormatCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut output: Output = match (&self.output, &global.files.file, self.in_place) {
             (None, None, _) | (None, Some(_), false) => Output::new(None)?,

@@ -5,15 +5,15 @@ use crate::{
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct PprintAstOptions {
+pub struct PprintAstCommand {
     /// Performs code transformations before printing
     #[arg(long)]
     pub transform: bool,
 }
 
-impl PprintAstOptions {
+impl PprintAstCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&global.files, &global)?;
+        let mut program = eval::prepare(&global)?;
         program
             .pprint_ast(&mut std::io::stdout(), self.transform)
             .with_program(program)

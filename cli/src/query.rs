@@ -3,11 +3,11 @@ use nickel_lang_core::repl::query_print;
 use crate::{
     cli::GlobalOptions,
     error::{CliResult, WithProgram},
-    eval::EvalOptions,
+    eval::EvalCommand,
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct QueryOptions {
+pub struct QueryCommand {
     pub path: Option<String>,
 
     #[arg(long)]
@@ -26,10 +26,10 @@ pub struct QueryOptions {
     pub value: bool,
 
     #[command(flatten)]
-    pub evaluation: EvalOptions,
+    pub evaluation: EvalCommand,
 }
 
-impl QueryOptions {
+impl QueryCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 

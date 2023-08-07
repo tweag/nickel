@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use git_version::git_version;
 
 use crate::{
-    completions::GenCompletionsOptions, doc::DocOptions, eval::EvalOptions, export::ExportOptions,
-    format::FormatOptions, pprint_ast::PprintAstOptions, query::QueryOptions, repl::ReplOptions,
-    typecheck::TypecheckOptions,
+    completions::GenCompletionsCommand, doc::DocCommand, eval::EvalCommand, export::ExportCommand,
+    format::FormatCommand, pprint_ast::PprintAstCommand, query::QueryCommand, repl::ReplCommand,
+    typecheck::TypecheckCommand,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -52,27 +52,27 @@ pub struct Files {
 pub enum Command {
     /// Evaluate a Nickel program and pretty-print the result.
     #[command(hide = true)]
-    Eval(EvalOptions),
+    Eval(EvalCommand),
 
     /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
     /// debugging purpose
-    PprintAst(PprintAstOptions),
+    PprintAst(PprintAstCommand),
     /// Exports the result to a different format
-    Export(ExportOptions),
+    Export(ExportCommand),
     /// Prints the metadata attached to an attribute, given as a path
-    Query(QueryOptions),
+    Query(QueryCommand),
     /// Typechecks the program but do not run it
-    Typecheck(TypecheckOptions),
+    Typecheck(TypecheckCommand),
     /// Starts a REPL session
     #[cfg(feature = "repl")]
-    Repl(ReplOptions),
+    Repl(ReplCommand),
     /// Generates the documentation files for the specified nickel file
     #[cfg(feature = "doc")]
-    Doc(DocOptions),
+    Doc(DocCommand),
     /// Format Nickel files
     #[cfg(feature = "format")]
-    Format(FormatOptions),
+    Format(FormatCommand),
 
     /// Generate shell completion files
-    GenCompletions(GenCompletionsOptions),
+    GenCompletions(GenCompletionsCommand),
 }

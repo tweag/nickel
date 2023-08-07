@@ -41,7 +41,7 @@ impl fmt::Display for DocFormat {
 }
 
 #[derive(clap::Parser, Debug)]
-pub struct DocOptions {
+pub struct DocCommand {
     /// The path of the generated documentation file. Default to
     /// `~/.nickel/doc/<input-file>.md` for input `<input-file>.ncl`, or to
     /// `~/.nickel/doc/out.md` if the input is read from stdin.
@@ -55,9 +55,9 @@ pub struct DocOptions {
     pub format: crate::doc::DocFormat,
 }
 
-impl DocOptions {
+impl DocCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&global.files, &global)?;
+        let mut program = eval::prepare(&global)?;
         self.export_doc(&mut program, &global).with_program(program)
     }
 

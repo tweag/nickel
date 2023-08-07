@@ -4,12 +4,12 @@ use crate::{
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct GenCompletionsOptions {
+pub struct GenCompletionsCommand {
     #[arg(value_enum)]
     pub shell: clap_complete::Shell,
 }
 
-impl GenCompletionsOptions {
+impl GenCompletionsCommand {
     pub fn run(self, _: GlobalOptions) -> CliResult<()> {
         clap_complete::generate(
             self.shell,

@@ -11,10 +11,10 @@ use nickel_lang_core::{
 };
 
 use crate::error::{CliResult, WithProgram};
-use crate::{cli::GlobalOptions, eval::EvalOptions};
+use crate::{cli::GlobalOptions, eval::EvalCommand};
 
 #[derive(clap::Parser, Debug)]
-pub struct ExportOptions {
+pub struct ExportCommand {
     #[arg(long, value_enum, default_value_t)]
     pub format: ExportFormat,
 
@@ -23,10 +23,10 @@ pub struct ExportOptions {
     pub output: Option<PathBuf>,
 
     #[command(flatten)]
-    pub evaluation: EvalOptions,
+    pub evaluation: EvalCommand,
 }
 
-impl ExportOptions {
+impl ExportCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 

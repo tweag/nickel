@@ -1,16 +1,16 @@
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{
-    cli::{Files, GlobalOptions},
+    cli::GlobalOptions,
     error::{CliResult, WithProgram},
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct EvalOptions {}
+pub struct EvalCommand {}
 
-impl EvalOptions {
+impl EvalCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = prepare(&global.files, &global)?;
+        let mut program = prepare(&global)?;
         program
             .eval_full()
             .map(|t| println!("{t}"))
@@ -18,12 +18,13 @@ impl EvalOptions {
     }
 
     pub fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
-        prepare(&global.files, global)
+        prepare(global)
     }
 }
 
-pub fn prepare(sources: &Files, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
-    let mut program = sources
+pub fn prepare(global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
+    let mut program = global
+        .files
         .file
         .clone()
         .map(|f| Program::new_from_file(f, std::io::stderr()))

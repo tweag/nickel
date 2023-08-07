@@ -5,11 +5,11 @@ use crate::{
 };
 
 #[derive(clap::Parser, Debug)]
-pub struct TypecheckOptions {}
+pub struct TypecheckCommand {}
 
-impl TypecheckOptions {
+impl TypecheckCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&global.files, &global)?;
+        let mut program = eval::prepare(&global)?;
         program.typecheck().with_program(program)
     }
 }

@@ -16,23 +16,20 @@ mod pprint_ast;
 mod query;
 mod typecheck;
 
-use eval::EvalOptions;
+use eval::EvalCommand;
 
 use crate::cli::{Command, Options};
 
 fn main() {
     let opts = <Options as clap::Parser>::parse();
 
-    let result = match opts.command.unwrap_or(Command::Eval(EvalOptions {})) {
+    let result = match opts.command.unwrap_or(Command::Eval(EvalCommand {})) {
         Command::Eval(eval) => eval.run(opts.global),
-
         Command::PprintAst(pprint_ast) => pprint_ast.run(opts.global),
-
         Command::Export(export) => export.run(opts.global),
-
         Command::Query(query) => query.run(opts.global),
-
         Command::Typecheck(typecheck) => typecheck.run(opts.global),
+        Command::GenCompletions(completions) => completions.run(opts.global),
 
         #[cfg(feature = "repl")]
         Command::Repl(repl) => repl.run(opts.global),
@@ -42,8 +39,6 @@ fn main() {
 
         #[cfg(feature = "format")]
         Command::Format(format) => format.run(opts.global),
-
-        Command::GenCompletions(completions) => completions.run(opts.global),
     };
 
     result.unwrap_or_else(|e| e.report())
