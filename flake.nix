@@ -241,7 +241,6 @@
                 env;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}";
-
             } // extraArgs);
         in
         rec {
