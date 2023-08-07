@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
-    term::{record::FieldMetadata, RichTerm, Term},
+    term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
 use crate::{linearization::completed::Completed, server::Server};
@@ -62,7 +62,7 @@ impl Def {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FieldDefs {
     // The key to this map is really a Symbol rather than an Ident. Since the interner is not
     // public, we use an Ident that has had its location removed.
@@ -96,39 +96,37 @@ pub fn resolve_path<'a>(
 
 impl FieldDefs {
     pub fn resolve(rt: &RichTerm, linearization: &Completed, server: &Server) -> FieldDefs {
-        let fields = match rt.term.as_ref() {
-            Term::Record(data) | Term::RecRecord(data, ..) => data
-                .fields
-                .iter()
-                .map(|(&ident, field)| {
-                    (
-                        ident.without_pos(),
-                        vec![Def {
-                            ident,
-                            value: field.value.clone(),
-                            metadata: Some(field.metadata.clone()),
-                        }],
-                    )
-                })
-                .collect(),
-            Term::Var(_) => {
-                if let Some(def) = linearization.lookup_usage(rt) {
-                    FieldDefs::resolve(&def, linearization, server).fields
-                } else {
-                    Default::default()
-                }
+        match rt.term.as_ref() {
+            Term::Record(data) | Term::RecRecord(data, ..) => {
+                let fields = data
+                    .fields
+                    .iter()
+                    .map(|(&ident, field)| {
+                        (
+                            ident.without_pos(),
+                            vec![Def {
+                                ident,
+                                value: field.value.clone(),
+                                metadata: Some(field.metadata.clone()),
+                            }],
+                        )
+                    })
+                    .collect();
+                FieldDefs { fields }
             }
-            Term::ResolvedImport(file_id) => {
-                if let Some(term) = server.cache.get_ref(*file_id) {
-                    FieldDefs::resolve(term, linearization, server).fields
-                } else {
-                    Default::default()
-                }
-            }
+            Term::Var(_) => linearization
+                .lookup_usage(rt)
+                .map(|def| FieldDefs::resolve(&def, linearization, server))
+                .unwrap_or_default(),
+            Term::ResolvedImport(file_id) => server
+                .cache
+                .get_ref(*file_id)
+                .map(|term| FieldDefs::resolve(term, linearization, server))
+                .unwrap_or_default(),
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => FieldDefs::resolve(t1, linearization, server)
+                .merge_from(FieldDefs::resolve(t2, linearization, server)),
             _ => Default::default(),
-        };
-
-        FieldDefs { fields }
+        }
     }
 
     fn merge_from(mut self, other: FieldDefs) -> FieldDefs {
