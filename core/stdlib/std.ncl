@@ -968,7 +968,11 @@
           ```
         "%
       = fun contracts label value =>
-        std.array.fold_right (fun contract => std.contract.apply contract label) value contracts,
+        std.array.fold_left
+          (fun acc contract => std.contract.apply contract label acc)
+          value
+          contracts,
+
     label
       | doc m%"
           The label submodule provides functions that manipulate the label
