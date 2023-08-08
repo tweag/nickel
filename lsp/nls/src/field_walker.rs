@@ -3,6 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
+    pretty::ident_quoted,
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
@@ -50,17 +51,8 @@ impl Def {
 
     /// Creates a completion item from this definition.
     pub fn to_completion_item(&self) -> CompletionItem {
-        /// Attach quotes to a non-ASCII string
-        fn adjust_name(name: &str) -> String {
-            if name.is_ascii() {
-                String::from(name)
-            } else {
-                format!("\"{name}\"")
-            }
-        }
-
         CompletionItem {
-            label: adjust_name(self.ident.label()),
+            label: ident_quoted(&self.ident),
             detail: self.detail(),
             kind: Some(CompletionItemKind::Property),
             documentation: self.doc(),

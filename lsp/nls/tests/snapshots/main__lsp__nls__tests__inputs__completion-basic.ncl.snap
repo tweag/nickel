@@ -9,6 +9,6 @@ expression: output
 [really]
 [really]
 [foo, really, verified, version]
-[has a space, lalala]
+["has a space", lalala]
 [falala]
 

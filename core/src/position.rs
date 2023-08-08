@@ -53,7 +53,8 @@ impl RawSpan {
         }
     }
 
-    pub fn start_pos(self) -> RawPos {
+    /// Return the start of this range.
+    pub fn start_pos(&self) -> RawPos {
         RawPos {
             src_id: self.src_id,
             index: self.start,
@@ -61,7 +62,7 @@ impl RawSpan {
     }
 
     /// Check whether this span contains a position.
-    pub fn contains(self, pos: RawPos) -> bool {
+    pub fn contains(&self, pos: RawPos) -> bool {
         self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
     }
 }
@@ -130,8 +131,8 @@ impl TermPos {
     }
 
     /// Check whether this span contains a position.
-    pub fn contains(self, pos: RawPos) -> bool {
-        self.into_opt().map_or(false, |sp| sp.contains(pos))
+    pub fn contains(&self, pos: RawPos) -> bool {
+        self.as_opt_ref().map_or(false, |sp| sp.contains(pos))
     }
 }
 
