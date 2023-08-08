@@ -2128,7 +2128,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 let mut labels = mk_expr_label(&pos);
 
                 if let Some(span) = constant.pos.into_opt() {
-                    labels.push(secondary(&span).with_message("this polymorphic type"));
+                    labels.push(secondary(&span).with_message("this polymorphic type variable"));
                 }
 
                 vec![Diagnostic::error()
@@ -2142,7 +2142,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         format!(
                             "The type of this expression escapes the scope of the \
                                 corresponding `forall` and can't be generalized to the \
-                                polymorphic type `{constant}`"
+                                polymorphic type variable `{constant}`"
                         ),
                     ])]
             }

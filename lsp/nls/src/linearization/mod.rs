@@ -12,7 +12,7 @@ use nickel_lang_core::{
     typ::TypeF,
     typecheck::{
         linearization::{Linearization, Linearizer},
-        reporting::{to_type, NameReg},
+        reporting::NameReg,
         UnifType,
     },
 };
@@ -542,6 +542,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }: Extra,
     ) -> Linearization<Completed> {
         debug!("linearizing {:?}", self.file);
+        let mut name_reg = NameReg::new(reported_names);
 
         // TODO: Storing defers while linearizing?
         let mut defers: Vec<(ItemId, ItemId, Ident)> = lin
@@ -603,7 +604,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                      kind,
                      metadata: meta,
                  }| LinearizationItem {
-                    ty: to_type(&table, &reported_names, &mut NameReg::new(), ty),
+                    ty: name_reg.to_type(&table, ty),
                     env,
                     id,
                     pos,
