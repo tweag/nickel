@@ -40,11 +40,11 @@ impl From<nickel_lang_core::repl::InitError> for Error {
     }
 }
 
-pub trait ReportWithProgram<T> {
+pub trait ResultErrorExt<T> {
     fn report_with_program(self, program: Program<CBNCache>) -> CliResult<T>;
 }
 
-impl<T> ReportWithProgram<T> for Result<T, nickel_lang_core::error::Error> {
+impl<T> ResultErrorExt<T> for Result<T, nickel_lang_core::error::Error> {
     fn report_with_program(self, program: Program<CBNCache>) -> CliResult<T> {
         self.map_err(|error| Error::Program { program, error })
     }

@@ -2,7 +2,7 @@ use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, ReportWithProgram},
+    error::{CliResult, ResultErrorExt},
 };
 
 #[derive(clap::Parser, Debug)]

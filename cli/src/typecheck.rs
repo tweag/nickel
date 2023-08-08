@@ -1,6 +1,6 @@
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, ReportWithProgram},
+    error::{CliResult, ResultErrorExt},
     eval,
 };
 

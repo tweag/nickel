@@ -2,7 +2,7 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, ReportWithProgram},
+    error::{CliResult, ResultErrorExt},
     eval::EvalCommand,
 };
 

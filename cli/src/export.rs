@@ -10,7 +10,7 @@ use nickel_lang_core::{
     term::RichTerm,
 };
 
-use crate::error::{CliResult, ReportWithProgram};
+use crate::error::{CliResult, ResultErrorExt};
 use crate::{cli::GlobalOptions, eval::EvalCommand};
 
 #[derive(clap::Parser, Debug)]
