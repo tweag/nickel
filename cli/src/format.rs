@@ -47,21 +47,14 @@ pub enum Output {
 }
 
 impl Output {
-    pub fn new(path: Option<&Path>) -> CliResult<Self> {
-        match path {
-            None => Ok(Self::Stdout),
-            Some(path) => {
-                let path = nickel_lang_core::cache::normalize_path(path)?;
-                Ok(Self::Disk {
-                    staged: NamedTempFile::new_in(path.parent().ok_or_else(|| {
-                        FormatError::NotAFile {
-                            path: path.to_owned(),
-                        }
-                    })?)?,
-                    output: path.to_owned(),
-                })
-            }
-        }
+    pub fn from_path(path: &Path) -> CliResult<Self> {
+        let path = nickel_lang_core::cache::normalize_path(path)?;
+        Ok(Self::Disk {
+            staged: NamedTempFile::new_in(path.parent().ok_or_else(|| FormatError::NotAFile {
+                path: path.to_owned(),
+            })?)?,
+            output: path.to_owned(),
+        })
     }
 
     pub fn persist(self) {
@@ -101,8 +94,8 @@ pub struct FormatCommand {
 impl FormatCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut output: Output = match (&self.output, &global.file, self.in_place) {
-            (None, None, _) | (None, Some(_), false) => Output::new(None)?,
-            (None, Some(file), true) | (Some(file), _, _) => Output::new(Some(file))?,
+            (None, None, _) | (None, Some(_), false) => Output::Stdout,
+            (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
         };
         let mut input: Box<dyn Read> = match global.file {
             None => Box::new(stdin()),

@@ -30,27 +30,37 @@ pub struct QueryCommand {
 }
 
 impl QueryCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+    fn attributes_specified(&self) -> bool {
+        self.doc || self.contract || self.typ || self.default || self.value
+    }
+
+    fn query_attributes(&self) -> query_print::Attributes {
+        // Use a default selection of attributes if no option is specified
+        if !self.attributes_specified() {
+            query_print::Attributes::default()
+        } else {
+            query_print::Attributes {
+                doc: self.doc,
+                contract: self.contract,
+                typ: self.typ,
+                default: self.default,
+                value: self.value,
+            }
+        }
+    }
+
+    pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
         program
-            .query(self.path)
+            .query(std::mem::take(&mut self.path))
             .map(|term| {
-                // Print a default selection of attributes if no option is specified
-                let attrs =
-                    if !self.doc && !self.contract && !self.typ && !self.default && !self.value {
-                        query_print::Attributes::default()
-                    } else {
-                        query_print::Attributes {
-                            doc: self.doc,
-                            contract: self.contract,
-                            typ: self.typ,
-                            default: self.default,
-                            value: self.value,
-                        }
-                    };
-
-                query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
+                query_print::write_query_result(
+                    &mut std::io::stdout(),
+                    &term,
+                    self.query_attributes(),
+                )
+                .unwrap()
             })
             .report_with_program(program)
     }
