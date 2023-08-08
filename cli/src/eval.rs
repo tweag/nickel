@@ -2,7 +2,7 @@ use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, WithProgram},
+    error::{CliResult, ReportWithProgram},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -14,7 +14,7 @@ impl EvalCommand {
         program
             .eval_full()
             .map(|t| println!("{t}"))
-            .with_program(program)
+            .report_with_program(program)
     }
 
     pub fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {

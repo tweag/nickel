@@ -1,6 +1,6 @@
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, WithProgram},
+    error::{CliResult, ReportWithProgram},
     eval,
 };
 
@@ -10,6 +10,6 @@ pub struct TypecheckCommand {}
 impl TypecheckCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = eval::prepare(&global)?;
-        program.typecheck().with_program(program)
+        program.typecheck().report_with_program(program)
     }
 }

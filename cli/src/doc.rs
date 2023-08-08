@@ -11,7 +11,7 @@ use nickel_lang_core::{
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, WithProgram},
+    error::{CliResult, ReportWithProgram},
     eval,
 };
 
@@ -58,7 +58,8 @@ pub struct DocCommand {
 impl DocCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = eval::prepare(&global)?;
-        self.export_doc(&mut program, &global).with_program(program)
+        self.export_doc(&mut program, &global)
+            .report_with_program(program)
     }
 
     fn export_doc(

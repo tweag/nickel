@@ -1,6 +1,6 @@
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, WithProgram},
+    error::{CliResult, ReportWithProgram},
     eval,
 };
 
@@ -16,6 +16,6 @@ impl PprintAstCommand {
         let mut program = eval::prepare(&global)?;
         program
             .pprint_ast(&mut std::io::stdout(), self.transform)
-            .with_program(program)
+            .report_with_program(program)
     }
 }

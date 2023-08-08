@@ -10,7 +10,7 @@ use nickel_lang_core::{
     term::RichTerm,
 };
 
-use crate::error::{CliResult, WithProgram};
+use crate::error::{CliResult, ReportWithProgram};
 use crate::{cli::GlobalOptions, eval::EvalCommand};
 
 #[derive(clap::Parser, Debug)]
@@ -30,7 +30,7 @@ impl ExportCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
-        self.export(&mut program).with_program(program)
+        self.export(&mut program).report_with_program(program)
     }
 
     fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {

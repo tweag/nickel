@@ -2,7 +2,7 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, WithProgram},
+    error::{CliResult, ReportWithProgram},
     eval::EvalCommand,
 };
 
@@ -52,6 +52,6 @@ impl QueryCommand {
 
                 query_print::write_query_result(&mut std::io::stdout(), &term, attrs).unwrap()
             })
-            .with_program(program)
+            .report_with_program(program)
     }
 }
