@@ -184,6 +184,7 @@
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
           mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
+          cxxFilter = mkFilter ".*(cc|hh)$";
           importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
 
           infraFilter = mkFilter ".*/infra/.*$";
@@ -201,6 +202,7 @@
               snapFilter
               scmFilter
               mdFilter
+              cxxFilter
               filterCargoSources
               importsFilter
             ] && !(builtins.any (filter: filter path type) [
@@ -438,11 +440,7 @@
 
           clippy = craneLib.cargoClippy {
             inherit pname src cargoArtifacts env;
-<<<<<<< HEAD
-            inherit (cargoArtifactsDeps) buildInputs;
-=======
-            inherit (cargoArtifacts) nativeBuildInputs buildInputs;
->>>>>>> f5b1ffb9 (clippy needs nativeBuildInputs)
+            inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";

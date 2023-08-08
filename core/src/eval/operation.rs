@@ -1163,7 +1163,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Term::Str(s) = &*t {
                     let json = nix_ffi::eval_to_json(&String::from(s)).map_err(|e| {
                         EvalError::Other(
-                            format!("nix code failed to evaluate:\n {}", e.what().to_string()),
+                            format!("nix code failed to evaluate:\n {}", e.what()),
                             pos,
                         )
                     })?;
