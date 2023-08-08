@@ -1935,7 +1935,7 @@
 
           ```nickel
           std.record.remove "foo" { foo = "foo", bar = "bar" } =>
-            { bar = "bar }
+            { bar = "bar" }
           ```
         "%
       = fun field r => %record_remove% field r,
