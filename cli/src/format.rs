@@ -8,10 +8,7 @@ use std::{
 use tempfile::NamedTempFile;
 use topiary::TopiaryQuery;
 
-use crate::{
-    cli::{Files, GlobalOptions},
-    error::CliResult,
-};
+use crate::{cli::GlobalOptions, error::CliResult};
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -92,9 +89,6 @@ impl Write for Output {
 
 #[derive(clap::Parser, Debug)]
 pub struct FormatCommand {
-    #[command(flatten)]
-    sources: Files,
-
     /// Output file. Standard output by default.
     #[arg(short, long)]
     output: Option<PathBuf>,
@@ -106,11 +100,11 @@ pub struct FormatCommand {
 
 impl FormatCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = match (&self.output, &global.files.file, self.in_place) {
+        let mut output: Output = match (&self.output, &global.file, self.in_place) {
             (None, None, _) | (None, Some(_), false) => Output::new(None)?,
             (None, Some(file), true) | (Some(file), _, _) => Output::new(Some(file))?,
         };
-        let mut input: Box<dyn Read> = match global.files.file {
+        let mut input: Box<dyn Read> = match global.file {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };

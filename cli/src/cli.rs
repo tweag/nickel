@@ -44,12 +44,6 @@ pub struct GlobalOptions {
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
 
-    #[command(flatten)]
-    pub files: Files,
-}
-
-#[derive(clap::Parser, Debug)]
-pub struct Files {
     /// Input file, omit to read from stdin
     #[arg(long, short, global = true)]
     pub file: Option<PathBuf>,

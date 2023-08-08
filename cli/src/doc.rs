@@ -96,7 +96,7 @@ impl DocCommand {
 
                         let mut has_file_name = false;
 
-                        if let Some(path) = &global.files.file {
+                        if let Some(path) = &global.file {
                             if let Some(file_stem) = path.file_stem() {
                                 output_file.push(file_stem);
                                 has_file_name = true;

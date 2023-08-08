@@ -24,7 +24,6 @@ impl EvalCommand {
 
 pub fn prepare(global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
     let mut program = global
-        .files
         .file
         .clone()
         .map(|f| Program::new_from_file(f, std::io::stderr()))
