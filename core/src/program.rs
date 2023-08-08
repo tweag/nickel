@@ -27,6 +27,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::term::{record::Field, RichTerm};
+use atty;
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
@@ -439,7 +440,13 @@ where
 impl From<ColorOpt> for ColorChoice {
     fn from(c: ColorOpt) -> Self {
         match c.0 {
-            clap::ColorChoice::Auto => ColorChoice::Auto,
+            clap::ColorChoice::Auto => {
+                if atty::is(atty::Stream::Stdout) {
+                    ColorChoice::Auto
+                } else {
+                    ColorChoice::Never
+                }
+            }
             clap::ColorChoice::Always => ColorChoice::Always,
             clap::ColorChoice::Never => ColorChoice::Never,
         }

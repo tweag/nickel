@@ -27,6 +27,7 @@ lalrpop.workspace = true
 lalrpop-util.workspace = true
 regex.workspace = true
 simple-counter.workspace = true
+atty.workspace = true
 clap = { workspace = true, features = ["derive"] }
 codespan.workspace = true
 codespan-reporting.workspace = true
