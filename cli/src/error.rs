@@ -57,6 +57,7 @@ impl Error {
             Error::Io { error } => {
                 eprintln!("{error}")
             }
+            #[cfg(feature = "repl")]
             Error::Repl { error } => {
                 use nickel_lang_core::repl::InitError;
                 match error {
@@ -66,6 +67,7 @@ impl Error {
                     }
                 }
             }
+            #[cfg(feature = "format")]
             Error::Format { error } => eprintln!("{error}"),
         }
     }

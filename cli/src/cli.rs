@@ -4,10 +4,18 @@ use std::path::PathBuf;
 use git_version::git_version;
 
 use crate::{
-    completions::GenCompletionsCommand, doc::DocCommand, eval::EvalCommand, export::ExportCommand,
-    format::FormatCommand, pprint_ast::PprintAstCommand, query::QueryCommand, repl::ReplCommand,
-    typecheck::TypecheckCommand,
+    completions::GenCompletionsCommand, eval::EvalCommand, export::ExportCommand,
+    pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
 };
+
+#[cfg(feature = "repl")]
+use crate::repl::ReplCommand;
+
+#[cfg(feature = "doc")]
+use crate::doc::DocCommand;
+
+#[cfg(feature = "format")]
+use crate::format::FormatCommand;
 
 #[derive(clap::Parser, Debug)]
 /// The interpreter of the Nickel language.
