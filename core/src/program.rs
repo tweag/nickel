@@ -165,6 +165,19 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
+    /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
+    pub fn parse(&mut self) -> Result<RichTerm, Error> {
+        self.vm
+            .import_resolver_mut()
+            .parse(self.main_id)
+            .map_err(Error::ParseErrors)?;
+        Ok(self
+            .vm
+            .import_resolver()
+            .get(self.main_id)
+            .expect("File parsed and then immediately accessed doesn't exist"))
+    }
+
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
