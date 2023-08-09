@@ -14,11 +14,12 @@ readme.workspace = true
 bench = false
 
 [features]
-default = ["markdown", "repl", "doc"]
+default = ["markdown", "repl", "doc", "format"]
 markdown = ["termimad"]
 repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
 doc = ["comrak"]
+format = ["topiary", "tree-sitter-nickel"]
 
 [build-dependencies]
 lalrpop.workspace = true
@@ -62,6 +63,9 @@ malachite = { workspace = true, features = ["enable_serde"] }
 malachite-q.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 strip-ansi-escapes.workspace = true
+
+topiary = { workspace = true, optional = true }
+tree-sitter-nickel = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
