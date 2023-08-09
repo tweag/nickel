@@ -24,9 +24,9 @@ pub enum Error {
 
 /// Warning emitted by the CLI.
 pub enum Warning {
-        /// The user queried a program without providing any path. In this case,
-        /// querying won't show most information, and it's most probably not
-        /// what the user wanted.
+    /// The user queried a program without providing any path. In this case,
+    /// querying won't show most information, and it's most probably not
+    /// what the user wanted.
     EmptyQueryPath,
 }
 
