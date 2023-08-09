@@ -2,7 +2,7 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    error::{CliResult, ResultErrorExt},
+    error::{CliResult, ResultErrorExt, Warning},
     eval::EvalCommand,
 };
 
@@ -52,12 +52,16 @@ impl QueryCommand {
     pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
+        if self.path.is_none() {
+            program.report(Warning::EmptyQueryPath)
+        }
+
         program
             .query(std::mem::take(&mut self.path))
-            .map(|term| {
+            .map(|field| {
                 query_print::write_query_result(
                     &mut std::io::stdout(),
-                    &term,
+                    &field,
                     self.query_attributes(),
                 )
                 .unwrap()
