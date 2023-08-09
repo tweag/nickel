@@ -7,16 +7,17 @@ use lsp_server::Connection;
 
 mod cache;
 mod diagnostic;
+mod error;
+mod field_walker;
 mod files;
 mod linearization;
 mod requests;
 mod server;
 use server::Server;
-
-use crate::trace::Trace;
-
 mod term;
 mod trace;
+
+use crate::trace::Trace;
 
 #[derive(clap::Parser, Debug)]
 /// The LSP server of the Nickel language.

@@ -6,7 +6,7 @@ use nickel_lang_core::{
     cache::Cache,
     identifier::Ident,
     position::TermPos,
-    term::{record::Field, IndexMap},
+    term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
     typecheck::{linearization::LinearizationState, UnifType},
 };
@@ -114,6 +114,7 @@ impl<'b> Building<'b> {
     pub(super) fn register_fields(
         &mut self,
         current_file: FileId,
+        record_term: &RichTerm,
         record_fields: &IndexMap<Ident, Field>,
         record: ItemId,
         env: &mut Environment,
@@ -125,6 +126,7 @@ impl<'b> Building<'b> {
             };
             self.push(LinearizationItem {
                 env: env.clone(),
+                term: record_term.clone(),
                 id,
                 pos: ident.pos,
                 // temporary, the actual type is resolved later and the item retyped

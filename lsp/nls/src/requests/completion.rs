@@ -1,5 +1,3 @@
-use codespan::ByteIndex;
-use codespan_lsp::position_to_byte_index;
 use lazy_static::lazy_static;
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
@@ -14,9 +12,10 @@ use nickel_lang_core::{
     },
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
-use serde_json::Value;
 
 use crate::{
+    cache::CacheExt,
+    field_walker,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -351,12 +350,11 @@ fn find_fields_from_term(
         Term::Var(ident) | Term::Op1(UnaryOp::StaticAccess(ident), _) => {
             let pos = ident.pos;
             let span = pos.unwrap();
-            let locator = (span.src_id, span.start);
             // This unwrap is safe because we're getting an expression from
             // a linearized file, so all terms in the file and all terms in its
             // dependencies must have being linearized and stored in the cache.
             let linearization = lin_registry.map.get(&span.src_id).unwrap();
-            let item = linearization.item_at(&locator).unwrap();
+            let item = linearization.item_at(span.start_pos()).unwrap();
             find_fields_from_term_kind(item.id, path, info)
         }
         _ => Vec::new(),
@@ -660,64 +658,84 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
+fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
+    let mut path = Vec::new();
+
+    loop {
+        if let Term::Op1(UnaryOp::StaticAccess(id), parent) = rt.term.as_ref() {
+            path.push(*id);
+            rt = parent.clone();
+        } else {
+            return (rt, path);
+        }
+    }
+}
+
+fn term_based_completion(
+    term: &RichTerm,
+    linearization: &Completed,
+    server: &Server,
+) -> Result<Vec<CompletionItem>, ResponseError> {
+    log::info!("term based completion path: {term:?}");
+
+    // For completing record paths, we discard the last path element: if we're
+    // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
+    let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() else {
+        return Ok(Vec::new());
+    };
+
+    let (start_term, path) = extract_static_path(parent.clone());
+
+    let defs = field_walker::resolve_path(&start_term, &path, linearization, server);
+    Ok(defs.map(|d| d.to_completion_item()).collect())
+}
+
 pub fn handle_completion(
     params: CompletionParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let file_id = server
-        .cache
-        .id_of(
-            params
-                .text_document_position
-                .text_document
-                .uri
-                .to_file_path()
-                .unwrap(),
-        )
-        .unwrap();
-
-    let text = server.cache.files().source(file_id);
-    let start = position_to_byte_index(
-        server.cache.files(),
-        file_id,
-        &params.text_document_position.position,
-    )
-    .unwrap();
-
     // -1 because at the current cursor position, there is no linearization item there,
     // so we try to get the item just before the cursor.
-    let locator = (file_id, ByteIndex((start - 1) as u32));
-    let linearization = server.lin_cache_get(&file_id)?;
-    let item = linearization.item_at(&locator);
+    let mut pos = server.cache.position(&params.text_document_position)?;
+    pos.index.0 -= 1;
+    let start = pos.index.to_usize();
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    let item = linearization.item_at(pos);
     Trace::enrich(&id, linearization);
 
-    let result = match item {
-        Some(item) => {
-            debug!("found closest item: {:?}", item);
-
-            let trigger = params
-                .context
-                .as_ref()
-                .and_then(|context| context.trigger_character.as_deref());
-
-            let in_scope =
-                get_completion_identifiers(&text[..start], trigger, linearization, item, server)?;
-
-            Some(in_scope)
-        }
-        None => None,
+    let rt = server
+        .cache
+        .get_ref(pos.src_id)
+        .and_then(|rt| rt.find_pos(pos));
+    let mut completions = match &rt {
+        Some(rt) => term_based_completion(rt, linearization, server)?,
+        None => Vec::new(),
     };
 
-    result
-        .map(|in_scope| {
-            server.reply(Response::new_ok(id.clone(), in_scope));
-            Ok(())
-        })
-        .unwrap_or_else(|| {
-            server.reply(Response::new_ok(id, Value::Null));
-            Ok(())
-        })
+    log::info!("term-based completion provided {completions:?}");
+
+    let text = server.cache.files().source(pos.src_id);
+    if let Some(item) = item {
+        debug!("found closest item: {:?}", item);
+
+        let trigger = params
+            .context
+            .as_ref()
+            .and_then(|context| context.trigger_character.as_deref());
+
+        completions.extend_from_slice(&get_completion_identifiers(
+            &text[..start],
+            trigger,
+            linearization,
+            item,
+            server,
+        )?);
+    };
+    let completions = remove_duplicates(&completions);
+
+    server.reply(Response::new_ok(id.clone(), completions));
+    Ok(())
 }
 
 #[cfg(test)]
@@ -735,6 +753,7 @@ mod tests {
     ) -> LinearizationItem<Type> {
         LinearizationItem {
             env: Environment::new(),
+            term: RichTerm::new(Term::Null, TermPos::None),
             id,
             pos: TermPos::None,
             ty: Type::from(TypeF::Dyn),

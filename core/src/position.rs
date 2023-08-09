@@ -13,6 +13,12 @@ pub struct RawPos {
     pub index: ByteIndex,
 }
 
+impl RawPos {
+    pub fn new(src_id: FileId, index: ByteIndex) -> Self {
+        Self { src_id, index }
+    }
+}
+
 /// A position span identified by a starting byte offset and an ending byte offset in a file.
 ///
 /// `end` is the offset of the last character plus one.
@@ -45,6 +51,19 @@ impl RawSpan {
             start: span.start(),
             end: span.end(),
         }
+    }
+
+    /// Return the start of this range.
+    pub fn start_pos(&self) -> RawPos {
+        RawPos {
+            src_id: self.src_id,
+            index: self.start,
+        }
+    }
+
+    /// Check whether this span contains a position.
+    pub fn contains(&self, pos: RawPos) -> bool {
+        self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
     }
 }
 
@@ -109,6 +128,11 @@ impl TermPos {
             TermPos::Original(pos) => TermPos::Inherited(pos),
             p => p,
         }
+    }
+
+    /// Check whether this span contains a position.
+    pub fn contains(&self, pos: RawPos) -> bool {
+        self.as_opt_ref().map_or(false, |sp| sp.contains(pos))
     }
 }
 

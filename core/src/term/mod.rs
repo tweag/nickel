@@ -23,7 +23,7 @@ use crate::{
     identifier::Ident,
     label::{Label, MergeLabel},
     match_sharedterm,
-    position::TermPos,
+    position::{RawPos, TermPos},
     typ::{Type, UnboundTypeVariableError},
 };
 
@@ -1453,6 +1453,19 @@ impl RichTerm {
             truncated
         }
     }
+
+    pub fn find_pos(&self, pos: RawPos) -> Option<RichTerm> {
+        let mut ret = None;
+        self.traverse_ref(&mut |rt: &RichTerm| {
+            if rt.pos.contains(pos) {
+                ret = Some(rt.clone());
+                TraverseControl::<()>::Continue
+            } else {
+                TraverseControl::SkipBranch
+            }
+        });
+        ret
+    }
 }
 
 /// Flow control for tree traverals.
@@ -2068,7 +2081,13 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
-    use crate::typ::TypeF;
+    use assert_matches::assert_matches;
+    use codespan::Files;
+
+    use crate::{
+        parser::{grammar, lexer, ErrorTolerantParser},
+        typ::TypeF,
+    };
 
     use super::*;
 
@@ -2087,6 +2106,40 @@ mod tests {
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.typ, None);
+    }
+
+    fn parse(s: &str) -> (FileId, RichTerm) {
+        let id = Files::new().add("<test>", String::from(s));
+
+        (
+            id,
+            grammar::TermParser::new()
+                .parse_strict(id, lexer::Lexer::new(s))
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn find_pos() {
+        let (src_id, rt) = parse("let x = { y = 1 } in x.y");
+
+        // Index 14 points to the 1 in { y = 1 }
+        let term_1 = rt
+            .find_pos(RawPos {
+                src_id,
+                index: 14.into(),
+            })
+            .unwrap();
+        assert_matches!(term_1.term.as_ref(), Term::Num(..));
+
+        // Index 23 points to the y in x.y
+        let term_y = rt
+            .find_pos(RawPos {
+                src_id,
+                index: 23.into(),
+            })
+            .unwrap();
+        assert_matches!(term_y.term.as_ref(), Term::Op1(UnaryOp::StaticAccess(_), _));
     }
 
     #[test]
