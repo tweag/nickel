@@ -109,15 +109,6 @@ pub enum UnifError {
 
 impl UnifError {
     /// Convert a unification error to a typechecking error.
-    ///
-    /// Wrapper that calls [`Self::into_typecheck_err_`] with an empty [name
-    /// registry][reporting::NameReg].
-    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
-        self.into_typecheck_err_(state, &mut reporting::NameReg::new(), pos_opt)
-    }
-
-    /// Convert a unification error to a typechecking error.
-    ///
     /// There is a hierarchy between error types, from the most local/specific to the most high-level:
     /// - [`RowUnifError`]
     /// - [`UnifError`]
@@ -130,60 +121,51 @@ impl UnifError {
     ///
     /// - `state`: the state of unification. Used to access the unification table, and the original
     /// names of of unification variable or type constant.
-    /// - `names`: a [name registry][reporting::NameReg], structure used to assign
-    /// unique a humain-readable names to unification variables and type constants.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
-    pub fn into_typecheck_err_(
+    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
+        let mut names = reporting::NameReg::new(state.names.clone());
+        self.into_typecheck_err_(state, &mut names, pos_opt)
+    }
+
+    /// Convert a unification error to a typechecking error, given a populated [name
+    /// registry][reporting::NameReg]. Actual meat of the implementation of
+    /// [`Self::into_typecheck_err`].
+    fn into_typecheck_err_(
         self,
         state: &State,
-        names: &mut reporting::NameReg,
+        names_reg: &mut reporting::NameReg,
         pos_opt: TermPos,
     ) -> TypecheckError {
         match self {
             UnifError::TypeMismatch(ty1, ty2) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, ty1),
-                reporting::to_type(state.table, state.names, names, ty2),
+                names_reg.to_type(state.table, ty1),
+                names_reg.to_type(state.table, ty2),
                 pos_opt,
             ),
             UnifError::RowMismatch(ident, uty1, uty2, err) => TypecheckError::RowMismatch(
                 ident,
-                reporting::to_type(state.table, state.names, names, uty1),
-                reporting::to_type(state.table, state.names, names, uty2),
-                Box::new((*err).into_typecheck_err_(state, names, TermPos::None)),
+                names_reg.to_type(state.table, uty1),
+                names_reg.to_type(state.table, uty2),
+                Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None)),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a
             // usual type mismatch. It could be nice to have a specific error message in the
             // future.
             UnifError::ConstMismatch(k, c1, c2) => TypecheckError::TypeMismatch(
-                reporting::to_type(
-                    state.table,
-                    state.names,
-                    names,
-                    UnifType::from_constant_of_kind(c1, k),
-                ),
-                reporting::to_type(
-                    state.table,
-                    state.names,
-                    names,
-                    UnifType::from_constant_of_kind(c2, k),
-                ),
+                names_reg.to_type(state.table, UnifType::from_constant_of_kind(c1, k)),
+                names_reg.to_type(state.table, UnifType::from_constant_of_kind(c2, k)),
                 pos_opt,
             ),
             UnifError::WithConst(VarKindDiscriminant::Type, c, ty) => TypecheckError::TypeMismatch(
-                reporting::to_type(state.table, state.names, names, UnifType::Constant(c)),
-                reporting::to_type(state.table, state.names, names, ty),
+                names_reg.to_type(state.table, UnifType::Constant(c)),
+                names_reg.to_type(state.table, ty),
                 pos_opt,
             ),
             UnifError::WithConst(kind, c, ty) => TypecheckError::ForallParametricityViolation {
                 kind,
-                tail: reporting::to_type(
-                    state.table,
-                    state.names,
-                    names,
-                    UnifType::from_constant_of_kind(c, kind),
-                ),
-                violating_type: reporting::to_type(state.table, state.names, names, ty),
+                tail: names_reg.to_type(state.table, UnifType::from_constant_of_kind(c, kind)),
+                violating_type: names_reg.to_type(state.table, ty),
                 pos: pos_opt,
             },
             UnifError::IncomparableFlatTypes(rt1, rt2) => {
@@ -191,31 +173,31 @@ impl UnifError {
             }
             UnifError::MissingRow(id, uty1, uty2) => TypecheckError::MissingRow(
                 id,
-                reporting::to_type(state.table, state.names, names, uty1),
-                reporting::to_type(state.table, state.names, names, uty2),
+                names_reg.to_type(state.table, uty1),
+                names_reg.to_type(state.table, uty2),
                 pos_opt,
             ),
             UnifError::MissingDynTail(uty1, uty2) => TypecheckError::MissingDynTail(
-                reporting::to_type(state.table, state.names, names, uty1),
-                reporting::to_type(state.table, state.names, names, uty2),
+                names_reg.to_type(state.table, uty1),
+                names_reg.to_type(state.table, uty2),
                 pos_opt,
             ),
             UnifError::ExtraRow(id, uty1, uty2) => TypecheckError::ExtraRow(
                 id,
-                reporting::to_type(state.table, state.names, names, uty1),
-                reporting::to_type(state.table, state.names, names, uty2),
+                names_reg.to_type(state.table, uty1),
+                names_reg.to_type(state.table, uty2),
                 pos_opt,
             ),
             UnifError::ExtraDynTail(uty1, uty2) => TypecheckError::ExtraDynTail(
-                reporting::to_type(state.table, state.names, names, uty1),
-                reporting::to_type(state.table, state.names, names, uty2),
+                names_reg.to_type(state.table, uty1),
+                names_reg.to_type(state.table, uty2),
                 pos_opt,
             ),
             UnifError::RowConflict(id, uty, left, right) => TypecheckError::RowConflict(
                 id,
-                reporting::to_type(state.table, state.names, names, uty),
-                reporting::to_type(state.table, state.names, names, left),
-                reporting::to_type(state.table, state.names, names, right),
+                names_reg.to_type(state.table, uty),
+                names_reg.to_type(state.table, left),
+                names_reg.to_type(state.table, right),
                 pos_opt,
             ),
             UnifError::UnboundTypeVariable(ident) => TypecheckError::UnboundTypeVariable(ident),
@@ -223,10 +205,10 @@ impl UnifError {
             | err @ UnifError::DomainMismatch(_, _, _) => {
                 let (expd, actual, path, err_final) = err.into_type_path().unwrap();
                 TypecheckError::ArrowTypeMismatch(
-                    reporting::to_type(state.table, state.names, names, expd),
-                    reporting::to_type(state.table, state.names, names, actual),
+                    names_reg.to_type(state.table, expd),
+                    names_reg.to_type(state.table, actual),
                     path,
-                    Box::new(err_final.into_typecheck_err_(state, names, TermPos::None)),
+                    Box::new(err_final.into_typecheck_err_(state, names_reg, TermPos::None)),
                     pos_opt,
                 )
             }
@@ -234,7 +216,7 @@ impl UnifError {
                 constant_id,
                 var_kind,
             } => TypecheckError::VarLevelMismatch {
-                type_var: reporting::cst_name(state.names, names, constant_id, var_kind),
+                type_var: names_reg.gen_cst_name(constant_id, var_kind),
                 pos: pos_opt,
             },
         }
