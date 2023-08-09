@@ -2,8 +2,8 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-use codespan::{FileId, Files};
-use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
+pub use codespan::{FileId, Files};
+pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
 

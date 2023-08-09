@@ -1,4 +1,8 @@
-use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
+use nickel_lang_core::{
+    error::{Diagnostic, Files, IntoDiagnostics},
+    eval::cache::lazy::CBNCache,
+    program::Program,
+};
 
 pub enum Error {
     Program {
@@ -16,6 +20,36 @@ pub enum Error {
     Format {
         error: crate::format::FormatError,
     },
+}
+
+/// Warning emitted by the CLI.
+pub enum Warning {
+    /// The user queried a program without providing any path, and the result isn't a record. In
+    /// this case, querying won't show anything useful, and it's most probably not what the user
+    /// want.
+    EmptyQueryPath,
+}
+
+impl<FileId> IntoDiagnostics<FileId> for Warning {
+    fn into_diagnostics(
+        self,
+        _files: &mut Files<String>,
+        _stdlib_ids: Option<&Vec<FileId>>,
+    ) -> Vec<Diagnostic<FileId>> {
+        vec![Diagnostic::warning()
+            .with_message("empty query path")
+            .with_notes(vec![
+                "You queried a value without requesting a specific field path. \
+            This operation can't find any metadata, beside listing the fields of a record."
+                    .into(),
+                "Try to query the root configuration and provide a query path instead.".into(),
+                "For example, instead of querying the expression \
+            `(import \"config.ncl\").module.input` with an empty path, query \
+            `config.ncl` with the `module.input` path: \
+            \n`nickel query module.input -f config.ncl`"
+                    .into(),
+            ])]
+    }
 }
 
 pub type CliResult<T> = Result<T, Error>;
