@@ -362,6 +362,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fc443334c81a804575546c5a8a79b4913b50e28d69232903604cada1de817ce"
+dependencies = [
+ "clap 4.3.0",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1620,6 +1629,7 @@ name = "nickel-lang-cli"
 version = "1.1.1"
 dependencies = [
  "clap 4.3.0",
+ "clap_complete",
  "directories",
  "git-version",
  "insta",
@@ -1638,6 +1648,7 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "assert_matches",
+ "atty",
  "clap 4.3.0",
  "codespan",
  "codespan-reporting",

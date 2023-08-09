@@ -118,7 +118,7 @@ field_infos(let x = e1 in e2) = field_infos(e2)
 field_infos(fun x => body) = field_infos(body)
 field_infos(head x) = field_infos(head)
 field_infos(var) = field_infos(goto_definition(var))
-field_infos(e1 | C) = field_infos(e1) U extract_field_infos(C)
+field_infos(e1 | C) = field_infos(e1) U field_infos(C)
 field_infos(foo.bar) = field_infos(goto_definition(bar in foo.bar))
 other cases => empty
 ```
@@ -141,7 +141,8 @@ be the same as a "goto definition" request for `Foo`.
 
 Here is a list of items that we might want to provide completions for:
 
-- record fields, as in `let x = { foo = 1 } in x.fo`
+- record fields in static paths, as in `let x = { foo = 1 } in x.fo`
+- record fields in record literals, as in `{ fo } | { foo | Number }`
 - enum variants, as in `let x | [| 'Foo, 'Bar |] = 'Fo`
 - variables in scope, as in `let foo = 1 in 2 + fo`
 - filenames in imports, as in `import "fo` when `foo.ncl` exists on disk
@@ -159,7 +160,7 @@ to `x` (it still doesn't need to care about whether they start with "fo").
 Type information can also be used to filter completions for enum variants and
 variables in scope (more on that below).
 
-Completion behavior for everything except a record path is fairly straightforward:
+Completion behavior for everything except a record field is fairly straightforward:
 
 - when completing an enum variant, if we know the type of the term that's being
   completed (and it's an enum type), return all of that type's known enum variants.

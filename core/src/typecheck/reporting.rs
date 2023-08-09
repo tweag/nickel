@@ -1,219 +1,196 @@
 //! Helpers to convert a `TypeWrapper` to a human-readable `Type` representation for error
 //! reporting.
 use super::*;
-use std::collections::HashSet;
 
 /// A name registry used to replace unification variables and type constants with human-readable
 /// and distinct names.
 pub struct NameReg {
-    reg: NameTable,
-    taken: HashSet<String>,
+    /// Currently allocated names, including both variables written by the user and generated
+    /// names.
+    names: NameTable,
+    /// A reverse name table, always kept in sync with `names`, in order to efficiently check if a
+    /// name is already taken.
+    taken: HashSet<Ident>,
+    /// Counter used to generate fresh letters for unification variables.
     var_count: usize,
+    /// Counter used to generate fresh letters for type constants.
     cst_count: usize,
 }
 
 impl NameReg {
-    pub fn new() -> Self {
+    /// Create a new registry from an initial table corresponding to user-written type constants.
+    pub fn new(names: NameTable) -> Self {
+        let taken = names.values().copied().collect();
+
         NameReg {
-            reg: HashMap::new(),
-            taken: HashSet::new(),
+            names,
+            taken,
             var_count: 0,
             cst_count: 0,
         }
     }
-}
 
-/// Create a fresh name candidate for a type variable or a type constant.
-///
-/// Used by [`to_type`] and subfunctions [`var_name`] and [`cst_name`] when converting a type
-/// wrapper to a human-readable representation.
-///
-/// To select a candidate, first check in `names` if the variable or the constant corresponds to a
-/// type variable written by the user. If it is, return the name of the variable. Otherwise, use
-/// the given counter to generate a new single letter.
-///
-/// Generated name is clearly not necessarily unique. This is handled by [`select_uniq`].
-fn mk_name(names: &NameTable, counter: &mut usize, id: VarId, kind: VarKindDiscriminant) -> String {
-    match names.get(&(id, kind)) {
-        // First check if that constant or variable was introduced by a forall. If it was, try
-        // to use the same name.
-        Some(orig) => format!("{orig}"),
-        None => {
-            //Otherwise, generate a new character
-            let next = *counter;
-            *counter += 1;
-
-            let prefix = match kind {
-                VarKindDiscriminant::Type => "",
-                VarKindDiscriminant::EnumRows => "erows_",
-                VarKindDiscriminant::RecordRows => "rrows_",
-            };
-            let character = std::char::from_u32(('a' as u32) + ((next % 26) as u32)).unwrap();
-            format!("{prefix}{character}")
-        }
-    }
-}
-
-/// Select a name distinct from all the others, starting from a candidate name for a type
-/// variable or a type constant.
-///
-/// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and so
-/// on until a free name is found. See `var_to_type` and `cst_to_type`.
-fn select_uniq(
-    name_reg: &mut NameReg,
-    mut name: String,
-    id: VarId,
-    kind: VarKindDiscriminant,
-) -> Ident {
-    // To avoid clashing with already picked names, we add a numeric suffix to the picked
-    // letter.
-    if name_reg.taken.contains(&name) {
-        let mut suffix = 1;
-
-        while name_reg.taken.contains(&format!("{name}{suffix}")) {
-            suffix += 1;
-        }
-
-        name = format!("{name}{suffix}");
+    pub fn taken(&self, name: &str) -> bool {
+        self.taken.contains(&name.into())
     }
 
-    let ident = Ident::from(name);
-    name_reg.reg.insert((id, kind), ident);
-    ident
-}
+    fn insert(&mut self, var_id: VarId, discriminant: VarKindDiscriminant, name: Ident) {
+        self.names.insert((var_id, discriminant), name);
+        self.taken.insert(name);
+    }
 
-/// Either retrieve or generate a new fresh name for a unification variable for error reporting,
-/// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`, ..
-/// and so on.
-fn var_name(
-    names: &NameTable,
-    name_reg: &mut NameReg,
-    id: VarId,
-    kind: VarKindDiscriminant,
-) -> Ident {
-    name_reg.reg.get(&(id, kind)).cloned().unwrap_or_else(|| {
-        // Select a candidate name and add a "_" prefix
-        let name = format!("_{}", mk_name(names, &mut name_reg.var_count, id, kind));
-        // Add a suffix to make it unique if it has already been picked
-        select_uniq(name_reg, name, id, kind)
-    })
-}
+    /// Create a fresh name candidate for a type variable or a type constant.
+    ///
+    /// Used to convert a unification type to a human-readable representation.
+    ///
+    /// To select a candidate, first check in `names` if the variable or the constant corresponds
+    /// to a type variable written by the user. If it is, return the name of the variable.
+    /// Otherwise, use the given counter to generate a new single letter.
+    ///
+    /// A generated name is clearly not necessarily unique. [`select_uniq`] must then be applied.
+    fn gen_candidate_name(
+        names: &NameTable,
+        counter: &mut usize,
+        id: VarId,
+        kind: VarKindDiscriminant,
+    ) -> String {
+        match names.get(&(id, kind)) {
+            // First check if that constant or variable was introduced by a forall. If it was, try
+            // to use the same name.
+            Some(orig) => format!("{orig}"),
+            None => {
+                //Otherwise, generate a new character
+                let next = *counter;
+                *counter += 1;
 
-/// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
-/// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-pub(super) fn cst_name(
-    names: &NameTable,
-    name_reg: &mut NameReg,
-    id: VarId,
-    kind: VarKindDiscriminant,
-) -> Ident {
-    name_reg.reg.get(&(id, kind)).cloned().unwrap_or_else(|| {
-        // Select a candidate name
-        let name = mk_name(names, &mut name_reg.cst_count, id, kind);
-        // Add a suffix to make it unique if it has already been picked
-        select_uniq(name_reg, name, id, kind)
-    })
-}
-
-/// Extract a concrete type corresponding to a unifiable type, for error reporting purpose.
-///
-/// Similar [`crate::typ::Type::from`], excepted that free unification variables and type
-/// constants are replaced by type variables which names are determined by the `var_name` and
-/// `cst_name`.
-///
-/// Distinguishing occurrences of unification variables and type constants is more informative
-/// than having `Dyn` everywhere.
-pub fn to_type(
-    table: &UnifTable,
-    reported_names: &NameTable,
-    names: &mut NameReg,
-    ty: UnifType,
-) -> Type {
-    fn rrows_to_type(
-        table: &UnifTable,
-        reported_names: &NameTable,
-        names: &mut NameReg,
-        rrows: UnifRecordRows,
-    ) -> RecordRows {
-        let rrows = rrows.into_root(table);
-
-        match rrows {
-            UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(var_name(
-                reported_names,
-                names,
-                id,
-                VarKindDiscriminant::RecordRows,
-            ))),
-            UnifRecordRows::Constant(c) => RecordRows(RecordRowsF::TailVar(cst_name(
-                reported_names,
-                names,
-                c,
-                VarKindDiscriminant::RecordRows,
-            ))),
-            UnifRecordRows::Concrete { rrows, .. } => {
-                let mapped = rrows.map_state(
-                    |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
-                    |rrows, names| Box::new(rrows_to_type(table, reported_names, names, *rrows)),
-                    names,
-                );
-                RecordRows(mapped)
+                let prefix = match kind {
+                    VarKindDiscriminant::Type => "",
+                    VarKindDiscriminant::EnumRows => "erows_",
+                    VarKindDiscriminant::RecordRows => "rrows_",
+                };
+                let character = std::char::from_u32(('a' as u32) + ((next % 26) as u32)).unwrap();
+                format!("{prefix}{character}")
             }
         }
     }
 
-    fn erows_to_type(
-        table: &UnifTable,
-        reported_names: &NameTable,
-        names: &mut NameReg,
-        erows: UnifEnumRows,
-    ) -> EnumRows {
-        let erows = erows.into_root(table);
+    /// Select a name distinct from all the others, starting from a candidate name for a type
+    /// variable or a type constant. Insert the corresponding name in the name table.
+    ///
+    /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and so
+    /// on until a free name is found. See `var_to_type` and `cst_to_type`.
+    fn select_uniq(&mut self, mut name: String, id: VarId, kind: VarKindDiscriminant) -> Ident {
+        // To avoid clashing with already picked names, we add a numeric suffix to the picked
+        // letter.
+        if self.taken(&name) {
+            let mut suffix = 1;
 
-        match erows {
-            UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(var_name(
-                reported_names,
-                names,
-                id,
-                VarKindDiscriminant::EnumRows,
-            ))),
-            UnifEnumRows::Constant(c) => EnumRows(EnumRowsF::TailVar(cst_name(
-                reported_names,
-                names,
-                c,
-                VarKindDiscriminant::EnumRows,
-            ))),
-            UnifEnumRows::Concrete { erows, .. } => {
-                let mapped = erows
-                    .map(|erows| Box::new(erows_to_type(table, reported_names, names, *erows)));
-                EnumRows(mapped)
+            name = format!("{name}{suffix}");
+            while self.taken(&name) {
+                suffix += 1;
             }
         }
+
+        let ident = Ident::from(name);
+        self.insert(id, kind, ident);
+        ident
     }
 
-    let ty = ty.into_root(table);
-
-    match ty {
-        UnifType::UnifVar { id, .. } => Type::from(TypeF::Var(var_name(
-            reported_names,
-            names,
-            id,
-            VarKindDiscriminant::Type,
-        ))),
-        UnifType::Constant(c) => Type::from(TypeF::Var(cst_name(
-            reported_names,
-            names,
-            c,
-            VarKindDiscriminant::Type,
-        ))),
-        UnifType::Concrete { typ, .. } => {
-            let mapped = typ.map_state(
-                |btyp, names| Box::new(to_type(table, reported_names, names, *btyp)),
-                |rrows, names| rrows_to_type(table, reported_names, names, rrows),
-                |erows, names| erows_to_type(table, reported_names, names, erows),
-                names,
+    /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
+    /// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`, ..
+    /// and so on.
+    pub fn gen_var_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
+        self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
+            // Select a candidate name and add a "_" prefix
+            let candidate = format!(
+                "_{}",
+                Self::gen_candidate_name(&self.names, &mut self.var_count, id, kind)
             );
-            Type::from(mapped)
+            // Add a suffix to make it unique if it has already been picked
+            self.select_uniq(candidate, id, kind)
+        })
+    }
+
+    /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
+    /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
+    pub fn gen_cst_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
+        self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
+            // Select a candidate name
+            let candidate = Self::gen_candidate_name(&self.names, &mut self.cst_count, id, kind);
+            // Add a suffix to make it unique if it has already been picked
+            self.select_uniq(candidate, id, kind)
+        })
+    }
+
+    /// Extract a concrete type corresponding to a unification type for error reporting purpose.
+    ///
+    /// As opposed to [`crate::typ::Type::from`], free unification variables and type constants are
+    /// replaced by type variables which names are determined by this name registry.
+    ///
+    /// When reporting error, we want to distinguish occurrences of unification variables and type
+    /// constants in a human-readable way.
+    pub fn to_type(&mut self, table: &UnifTable, ty: UnifType) -> Type {
+        fn rrows_to_type(
+            reg: &mut NameReg,
+            table: &UnifTable,
+            rrows: UnifRecordRows,
+        ) -> RecordRows {
+            let rrows = rrows.into_root(table);
+
+            match rrows {
+                UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(
+                    reg.gen_var_name(id, VarKindDiscriminant::RecordRows),
+                )),
+                UnifRecordRows::Constant(id) => RecordRows(RecordRowsF::TailVar(
+                    reg.gen_cst_name(id, VarKindDiscriminant::RecordRows),
+                )),
+                UnifRecordRows::Concrete { rrows, .. } => {
+                    let mapped = rrows.map_state(
+                        |btyp, reg| Box::new(reg.to_type(table, *btyp)),
+                        |rrows, reg| Box::new(rrows_to_type(reg, table, *rrows)),
+                        reg,
+                    );
+                    RecordRows(mapped)
+                }
+            }
         }
-        UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
+
+        fn erows_to_type(reg: &mut NameReg, table: &UnifTable, erows: UnifEnumRows) -> EnumRows {
+            let erows = erows.into_root(table);
+
+            match erows {
+                UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(
+                    reg.gen_var_name(id, VarKindDiscriminant::EnumRows),
+                )),
+                UnifEnumRows::Constant(id) => EnumRows(EnumRowsF::TailVar(
+                    reg.gen_cst_name(id, VarKindDiscriminant::EnumRows),
+                )),
+                UnifEnumRows::Concrete { erows, .. } => {
+                    let mapped = erows.map(|erows| Box::new(erows_to_type(reg, table, *erows)));
+                    EnumRows(mapped)
+                }
+            }
+        }
+
+        let ty = ty.into_root(table);
+
+        match ty {
+            UnifType::UnifVar { id, .. } => {
+                Type::from(TypeF::Var(self.gen_var_name(id, VarKindDiscriminant::Type)))
+            }
+            UnifType::Constant(id) => {
+                Type::from(TypeF::Var(self.gen_cst_name(id, VarKindDiscriminant::Type)))
+            }
+            UnifType::Concrete { typ, .. } => {
+                let mapped = typ.map_state(
+                    |btyp, reg| Box::new(reg.to_type(table, *btyp)),
+                    |rrows, reg| rrows_to_type(reg, table, rrows),
+                    |erows, reg| erows_to_type(reg, table, erows),
+                    self,
+                );
+                Type::from(mapped)
+            }
+            UnifType::Contract(t, _) => Type::from(TypeF::Flat(t)),
+        }
     }
 }

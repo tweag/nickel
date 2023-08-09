@@ -27,6 +27,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::Ident;
 use crate::term::{record::Field, RichTerm};
+use atty;
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
@@ -163,6 +164,19 @@ impl<EC: EvalCache> Program<EC> {
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
         })
+    }
+
+    /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
+    pub fn parse(&mut self) -> Result<RichTerm, Error> {
+        self.vm
+            .import_resolver_mut()
+            .parse(self.main_id)
+            .map_err(Error::ParseErrors)?;
+        Ok(self
+            .vm
+            .import_resolver()
+            .get(self.main_id)
+            .expect("File parsed and then immediately accessed doesn't exist"))
     }
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
@@ -353,7 +367,7 @@ impl<EC: EvalCache> Program<EC> {
 
     pub fn pprint_ast(
         &mut self,
-        out: &mut std::io::BufWriter<Box<dyn std::io::Write>>,
+        out: &mut impl std::io::Write,
         apply_transforms: bool,
     ) -> Result<(), Error> {
         use crate::pretty::*;
@@ -426,7 +440,13 @@ where
 impl From<ColorOpt> for ColorChoice {
     fn from(c: ColorOpt) -> Self {
         match c.0 {
-            clap::ColorChoice::Auto => ColorChoice::Auto,
+            clap::ColorChoice::Auto => {
+                if atty::is(atty::Stream::Stdout) {
+                    ColorChoice::Auto
+                } else {
+                    ColorChoice::Never
+                }
+            }
             clap::ColorChoice::Always => ColorChoice::Always,
             clap::ColorChoice::Never => ColorChoice::Never,
         }

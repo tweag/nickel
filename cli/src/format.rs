@@ -1,25 +1,19 @@
 use std::{
     fmt::Display,
     fs::File,
-    io::{self, stdin, stdout, BufReader, Read, Write},
+    io::{stdin, stdout, BufReader, Read, Write},
     path::{Path, PathBuf},
-    process,
 };
 
 use tempfile::NamedTempFile;
 use topiary::TopiaryQuery;
 
+use crate::{cli::GlobalOptions, error::CliResult};
+
 #[derive(Debug)]
 pub enum FormatError {
     NotAFile { path: PathBuf },
     TopiaryError(topiary::FormatterError),
-    IOError(io::Error),
-}
-
-impl From<io::Error> for FormatError {
-    fn from(e: io::Error) -> Self {
-        Self::IOError(e)
-    }
 }
 
 impl From<topiary::FormatterError> for FormatError {
@@ -39,7 +33,6 @@ impl Display for FormatError {
                 )
             }
             FormatError::TopiaryError(e) => write!(f, "{e}"),
-            FormatError::IOError(e) => write!(f, "{e}"),
         }
     }
 }
@@ -54,21 +47,14 @@ pub enum Output {
 }
 
 impl Output {
-    pub fn new(path: Option<&Path>) -> Result<Self, FormatError> {
-        match path {
-            None => Ok(Self::Stdout),
-            Some(path) => {
-                let path = nickel_lang_core::cache::normalize_path(path)?;
-                Ok(Self::Disk {
-                    staged: NamedTempFile::new_in(path.parent().ok_or_else(|| {
-                        FormatError::NotAFile {
-                            path: path.to_owned(),
-                        }
-                    })?)?,
-                    output: path.to_owned(),
-                })
-            }
-        }
+    pub fn from_path(path: &Path) -> CliResult<Self> {
+        let path = nickel_lang_core::cache::normalize_path(path)?;
+        Ok(Self::Disk {
+            staged: NamedTempFile::new_in(path.parent().ok_or_else(|| FormatError::NotAFile {
+                path: path.to_owned(),
+            })?)?,
+            output: path.to_owned(),
+        })
     }
 
     pub fn persist(self) {
@@ -94,40 +80,44 @@ impl Write for Output {
     }
 }
 
-pub fn format(input: Option<&Path>, output: Option<&Path>, in_place: bool) {
-    if let Err(e) = do_format(input, output, in_place) {
-        eprintln!("{e}");
-        process::exit(1);
-    }
+#[derive(clap::Parser, Debug)]
+pub struct FormatCommand {
+    /// Output file. Standard output by default.
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// Format in place, overwriting the input file.
+    #[arg(short, long, requires = "file")]
+    in_place: bool,
 }
 
-fn do_format(
-    input: Option<&Path>,
-    output: Option<&Path>,
-    in_place: bool,
-) -> Result<(), FormatError> {
-    let mut output: Output = match (output, input, in_place) {
-        (None, None, _) | (None, Some(_), false) => Output::new(None)?,
-        (None, Some(file), true) | (Some(file), _, _) => Output::new(Some(file))?,
-    };
-    let mut input: Box<dyn Read> = match input {
-        None => Box::new(stdin()),
-        Some(f) => Box::new(BufReader::new(File::open(f)?)),
-    };
-    let topiary_config = topiary::Configuration::parse_default_configuration()?;
-    let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
-    let grammar = tree_sitter_nickel::language().into();
-    topiary::formatter(
-        &mut input,
-        &mut output,
-        &TopiaryQuery::nickel(),
-        language,
-        &grammar,
-        topiary::Operation::Format {
-            skip_idempotence: true,
-            tolerate_parsing_errors: true,
-        },
-    )?;
-    output.persist();
-    Ok(())
+impl FormatCommand {
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut output: Output = match (&self.output, &global.file, self.in_place) {
+            (None, None, _) | (None, Some(_), false) => Output::Stdout,
+            (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
+        };
+        let mut input: Box<dyn Read> = match global.file {
+            None => Box::new(stdin()),
+            Some(f) => Box::new(BufReader::new(File::open(f)?)),
+        };
+        let topiary_config =
+            topiary::Configuration::parse_default_configuration().map_err(FormatError::from)?;
+        let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
+        let grammar = tree_sitter_nickel::language().into();
+        topiary::formatter(
+            &mut input,
+            &mut output,
+            &TopiaryQuery::nickel(),
+            language,
+            &grammar,
+            topiary::Operation::Format {
+                skip_idempotence: true,
+                tolerate_parsing_errors: true,
+            },
+        )
+        .map_err(FormatError::from)?;
+        output.persist();
+        Ok(())
+    }
 }
