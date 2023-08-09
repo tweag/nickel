@@ -72,8 +72,8 @@ impl CacheExt for Cache {
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)
                     .map_err(|err| vec![Error::TypecheckError(err)])?;
+            lin_registry.insert(file_id, linearized, term);
             self.update_state(file_id, EntryState::Typechecked);
-            lin_registry.map.insert(file_id, linearized);
             Ok(CacheOp::Done(()))
         } else {
             // This is unreachable because `EntryState::Parsed` is the first item of the enum, and

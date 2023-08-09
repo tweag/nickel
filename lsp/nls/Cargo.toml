@@ -37,6 +37,7 @@ derive_more.workspace = true
 lazy_static.workspace = true
 csv.workspace = true
 thiserror = "1.0.44"
+range-map = "0.2.0"
 
 [dev-dependencies]
 assert_cmd.workspace = true

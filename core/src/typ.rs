@@ -1142,7 +1142,13 @@ impl Traverse<RichTerm> for Type {
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         let mut f_on_type = |ty: &Type| match &ty.typ {
-            TypeF::Flat(t) => t.traverse_ref(f).into(),
+            TypeF::Flat(t) => {
+                if let Some(ret) = t.traverse_ref(f) {
+                    TraverseControl::Return(ret)
+                } else {
+                    TraverseControl::SkipBranch
+                }
+            }
             _ => TraverseControl::Continue,
         };
         self.traverse_ref(&mut f_on_type)

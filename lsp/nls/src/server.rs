@@ -21,7 +21,9 @@ use lsp_types::{
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
     identifier::Ident,
+    position::RawPos,
     stdlib::StdlibModule,
+    term::RichTerm,
 };
 use nickel_lang_core::{stdlib, typecheck::Context};
 
@@ -271,6 +273,19 @@ impl Server {
                 message: "File has not yet been parsed or cached.".to_owned(),
                 code: ErrorCode::ParseError as i32,
             })
+    }
+
+    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
+        Ok(self
+            .lin_registry
+            .position_lookups
+            .get(&pos.src_id)
+            .ok_or_else(|| ResponseError {
+                data: None,
+                message: "File has not yet been parsed or cached.".to_owned(),
+                code: ErrorCode::ParseError as i32,
+            })?
+            .get(pos.index))
     }
 
     pub fn issue_diagnostics(&mut self, file_id: FileId, diagnostics: Vec<Diagnostic<FileId>>) {
