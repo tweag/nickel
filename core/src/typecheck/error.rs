@@ -109,16 +109,6 @@ pub enum UnifError {
 
 impl UnifError {
     /// Convert a unification error to a typechecking error.
-    ///
-    /// Wrapper that calls [`Self::into_typecheck_err_`] with a [name registry][reporting::NameReg]
-    /// initialized from the current state.
-    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
-        let mut names = reporting::NameReg::new(state.names.clone());
-        self.into_typecheck_err_(state, &mut names, pos_opt)
-    }
-
-    /// Convert a unification error to a typechecking error.
-    ///
     /// There is a hierarchy between error types, from the most local/specific to the most high-level:
     /// - [`RowUnifError`]
     /// - [`UnifError`]
@@ -131,9 +121,15 @@ impl UnifError {
     ///
     /// - `state`: the state of unification. Used to access the unification table, and the original
     /// names of of unification variable or type constant.
-    /// - `names`: a [name registry][reporting::NameReg], structure used to assign
-    /// unique a humain-readable names to unification variables and type constants.
     /// - `pos_opt`: the position span of the expression that failed to typecheck.
+    pub fn into_typecheck_err(self, state: &State, pos_opt: TermPos) -> TypecheckError {
+        let mut names = reporting::NameReg::new(state.names.clone());
+        self.into_typecheck_err_(state, &mut names, pos_opt)
+    }
+
+    /// Convert a unification error to a typechecking error, given a populated [name
+    /// registry][reporting::NameReg]. Actual meat of the implementation of
+    /// [`Self::into_typecheck_err`].
     fn into_typecheck_err_(
         self,
         state: &State,
