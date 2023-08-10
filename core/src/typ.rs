@@ -1151,12 +1151,7 @@ impl Traverse<RichTerm> for Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use crate::pretty::*;
-
-        let allocator = pretty::BoxAllocator;
-
-        let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
-        doc.render_fmt(80, f)
+        crate::pretty::fmt_pretty(&self, f)
     }
 }
 

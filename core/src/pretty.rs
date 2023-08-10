@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::Ident;
 
@@ -64,6 +66,14 @@ fn ident_quoted(ident: &Ident) -> String {
     } else {
         format!("\"{}\"", escape(label))
     }
+}
+
+pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
+{
+    let doc: DocBuilder<_, ()> = value.clone().pretty(&pretty::BoxAllocator);
+    doc.render_fmt(80, f)
 }
 
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
