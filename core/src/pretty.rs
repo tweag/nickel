@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::Ident;
 
@@ -64,6 +66,14 @@ pub fn ident_quoted(ident: &Ident) -> String {
     } else {
         format!("\"{}\"", escape(label))
     }
+}
+
+pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
+{
+    let doc: DocBuilder<_, ()> = value.clone().pretty(&pretty::BoxAllocator);
+    doc.render_fmt(80, f)
 }
 
 impl<'a, A: Clone + 'a> NickelAllocatorExt<'a, A> for pretty::BoxAllocator {}
@@ -755,10 +765,7 @@ where
                 .append(allocator.hardline()),
             // TODO
             Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
-            Annotated(annot, rt) => allocator
-                .atom(rt)
-                .append(allocator.space())
-                .append(allocator.annot(annot)),
+            Annotated(annot, rt) => allocator.atom(rt).append(allocator.annot(annot)),
             Import(f) => allocator
                 .text("import")
                 .append(allocator.space())
@@ -790,9 +797,7 @@ where
                     .text("'")
                     .append(allocator.text(ident_quoted(row)));
                 let builder = if let EnumRowsF::Extend { .. } = tail.0 {
-                    builder
-                        .append(allocator.text(","))
-                        .append(allocator.space())
+                    builder.append(allocator.text(",")).append(allocator.line())
                 } else {
                     builder
                 };
@@ -833,9 +838,7 @@ where
                     .append(typ.pretty(allocator));
 
                 let builder = if let RecordRowsF::Extend { .. } = tail.0 {
-                    builder
-                        .append(allocator.text(","))
-                        .append(allocator.space())
+                    builder.append(allocator.text(",")).append(allocator.line())
                 } else {
                     builder
                 };
@@ -888,19 +891,31 @@ where
                     .group()
                     .append(allocator.intersperse(
                         foralls.iter().map(|i| allocator.as_string(i)),
-                        allocator.space(), //allocator.softline(),
+                        allocator.space(),
                     ))
                     .append(allocator.text("."))
-                    .append(allocator.line())
+                    .append(allocator.softline())
                     .append(curr.to_owned().pretty(allocator))
             }
-            Enum(erows) => erows.pretty(allocator).enclose("[|", "|]"),
-            Record(rrows) => rrows.pretty(allocator).braces(),
+            Enum(erows) => allocator
+                .line()
+                .append(erows.pretty(allocator))
+                .nest(2)
+                .append(allocator.line())
+                .group()
+                .enclose("[|", "|]"),
+            Record(rrows) => allocator
+                .line()
+                .append(rrows.pretty(allocator))
+                .nest(2)
+                .append(allocator.line())
+                .group()
+                .braces(),
             Dict {
                 type_fields: ty,
                 flavour: attrs,
             } => allocator
-                .line()
+                .softline()
                 .append(allocator.text("_"))
                 .append(allocator.space())
                 .append(match attrs {
@@ -909,7 +924,7 @@ where
                 })
                 .append(allocator.space())
                 .append(ty.pretty(allocator))
-                .append(allocator.line())
+                .append(allocator.softline())
                 .braces(),
             Arrow(dom, codom) => match dom.typ {
                 Arrow(..) | Forall { .. } => dom

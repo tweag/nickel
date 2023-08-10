@@ -2205,7 +2205,7 @@ impl IntoDiagnostics<FileId> for ExportError {
                 .with_message("non serializable term")
                 .with_labels(vec![primary_term(&rt, files)])
                 .with_notes(vec![
-                    "Nickel only supports serlializing to and from strings, booleans, numbers, \
+                    "Nickel only supports serializing to and from strings, booleans, numbers, \
                     enum tags, `null` (depending on the format), as well as records and arrays \
                     of serializable values."
                         .into(),

@@ -1795,12 +1795,7 @@ impl From<Term> for RichTerm {
 
 impl std::fmt::Display for RichTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        use crate::pretty::*;
-
-        let allocator = pretty::BoxAllocator;
-
-        let doc: DocBuilder<_, ()> = self.clone().pretty(&allocator);
-        doc.render_fmt(80, f)
+        crate::pretty::fmt_pretty(&self, f)
     }
 }
 

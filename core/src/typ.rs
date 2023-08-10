@@ -1045,7 +1045,7 @@ impl Type {
             | TypeF::Var(_)
             | TypeF::Record(_)
             | TypeF::Enum(_) => true,
-            TypeF::Flat(rt) if matches!(*rt.term, Term::Var(_)) => true,
+            TypeF::Flat(rt) if rt.as_ref().is_atom() => true,
             _ => false,
         }
     }
@@ -1149,89 +1149,9 @@ impl Traverse<RichTerm> for Type {
     }
 }
 
-impl Display for RecordRows {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            RecordRowsF::Extend { ref row, ref tail } => {
-                write!(f, "{}: {}", row.id, row.typ)?;
-
-                match tail.0 {
-                    RecordRowsF::Extend { .. } => write!(f, ", {tail}"),
-                    _ => write!(f, "{tail}"),
-                }
-            }
-            RecordRowsF::Empty => Ok(()),
-            RecordRowsF::TailVar(id) => write!(f, " ; {id}"),
-            RecordRowsF::TailDyn => write!(f, " ; Dyn"),
-        }
-    }
-}
-
-impl Display for EnumRows {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            EnumRowsF::Extend { ref row, ref tail } => {
-                write!(f, "'{row}")?;
-
-                match tail.0 {
-                    EnumRowsF::Extend { .. } => write!(f, ", {tail}"),
-                    _ => write!(f, "{tail}"),
-                }
-            }
-            EnumRowsF::Empty => Ok(()),
-            EnumRowsF::TailVar(id) => write!(f, " ; {id}"),
-        }
-    }
-}
-
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.typ {
-            TypeF::Dyn => write!(f, "Dyn"),
-            TypeF::Number => write!(f, "Number"),
-            TypeF::Bool => write!(f, "Bool"),
-            TypeF::String => write!(f, "String"),
-            TypeF::Array(ty) => {
-                write!(f, "Array ")?;
-
-                if ty.fmt_is_atom() {
-                    write!(f, "{ty}")
-                } else {
-                    write!(f, "({ty})")
-                }
-            }
-            TypeF::Symbol => write!(f, "Sym"),
-            TypeF::Flat(ref t) => write!(f, "{}", t.pretty_print_cap(32)),
-            TypeF::Var(var) => write!(f, "{var}"),
-            TypeF::Forall { var, ref body, .. } => {
-                let mut curr: &Type = body.as_ref();
-                write!(f, "forall {var}")?;
-                while let Type {
-                    typ: TypeF::Forall { var, ref body, .. },
-                    ..
-                } = curr
-                {
-                    write!(f, " {var}")?;
-                    curr = body;
-                }
-                write!(f, ". {curr}")
-            }
-            TypeF::Enum(row) => write!(f, "[| {row} |]"),
-            TypeF::Record(row) => write!(f, "{{ {row} }}"),
-            TypeF::Dict {
-                type_fields,
-                flavour: DictTypeFlavour::Type,
-            } => write!(f, "{{ _ : {type_fields} }}"),
-            TypeF::Dict {
-                type_fields,
-                flavour: DictTypeFlavour::Contract,
-            } => write!(f, "{{ _ | {type_fields} }}"),
-            TypeF::Arrow(dom, codom) => match dom.typ {
-                TypeF::Arrow(_, _) | TypeF::Forall { .. } => write!(f, "({dom}) -> {codom}"),
-                _ => write!(f, "{dom} -> {codom}"),
-            },
-            TypeF::Wildcard(_) => write!(f, "_"),
-        }
+        crate::pretty::fmt_pretty(&self, f)
     }
 }
 
