@@ -605,11 +605,8 @@ impl From<ExportError> for EvalError {
 /// messages, which can contain ASCII code sequences, and in particular ANSI escape codes, that
 /// could alter Nickel's error messages.
 pub fn escape(s: &str) -> String {
-    String::from_utf8(
-        strip_ansi_escapes::strip(s)
-            .expect("escape(): unexpected IO error when writing inside a in-memory buffer"),
-    )
-    .expect("escape(): converting from a string should give back a valid UTF8 string")
+    String::from_utf8(strip_ansi_escapes::strip(s))
+        .expect("escape(): converting from a string should give back a valid UTF8 string")
 }
 
 impl From<ReplError> for Error {
