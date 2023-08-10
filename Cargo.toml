@@ -81,10 +81,7 @@ sha-1 = "0.10.0"
 sha2 = "0.10.6"
 similar = "2.2.1"
 simple-counter = "0.1.0"
-# Temporary fix for https://github.com/luser/strip-ansi-escapes/issues/17
-# Pinning can be removed (and strip-ansi-escape be updated to 0.2.0, probably)
-# once 0.1.2 has been yanked.
-strip-ansi-escapes = "=0.1.1"
+strip-ansi-escapes = "0.2.0"
 termimad = "0.23.1"
 test-generator = "0.3.1"
 toml = "0.7.2"
