@@ -175,8 +175,11 @@ impl<EC: EvalCache> Program<EC> {
         Ok(self
             .vm
             .import_resolver()
-            .get(self.main_id)
-            .expect("File parsed and then immediately accessed doesn't exist"))
+            .terms()
+            .get(&self.main_id)
+            .expect("File parsed and then immediately accessed doesn't exist")
+            .term
+            .clone())
     }
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
