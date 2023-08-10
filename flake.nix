@@ -419,7 +419,7 @@
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.cargoDoc {
             inherit pname src version cargoArtifacts env;
-            inherit (cargoArtifactsDeps) buildInputs;
+            inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
             RUSTDOCFLAGS = "-D warnings";
 
