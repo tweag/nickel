@@ -5,6 +5,7 @@ use nickel_lang_core::{
 };
 use range_map::{Range, RangeMap};
 
+// A term that uses pointer equality to implement Eq.
 #[derive(Clone, Debug)]
 struct RichTermPtr(RichTerm);
 
@@ -16,12 +17,17 @@ impl PartialEq for RichTermPtr {
 
 impl Eq for RichTermPtr {}
 
+/// A lookup data structure, for looking up the term at a given position.
+///
+/// Overlapping positions are resolved in favor of the smaller one; i.e., lookups return the
+/// most specific term for a given position.
 #[derive(Clone, Debug)]
 pub struct PositionLookup {
     table: RangeMap<u32, RichTermPtr>,
 }
 
 impl PositionLookup {
+    /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(rt: &RichTerm) -> Self {
         let mut all_ranges = Vec::new();
 
@@ -32,14 +38,26 @@ impl PositionLookup {
             TraverseControl::<()>::Continue
         });
 
+        // We rely on the invariant that if two ranges overlap then one is contained in the
+        // other. That is, the ranges form a tree. This sort order corresponds to pre-order
+        // traversal of that tree.
+        //
+        // (It would be nice if we could build the lookup table directly from the traversal
+        // in traverse_ref, but (1) the state tracking is fiddly and (2) the traversal order
+        // in traverse_ref can be weird; for example, a `Term::Annotated` sometimes contains
+        // children whose position is outside the position of the parent.)
         all_ranges.sort_by_key(|range| (range.0, std::cmp::Reverse(range.1)));
         let mut all_ranges = all_ranges.into_iter().peekable();
 
+        // Now we iterate over the tree of ranges to make a disjoint set of ranges.
+        // `stack` is the path in the tree leading to the node that we are currently visiting.
         let mut stack = Vec::new();
         let mut disjoint = Vec::new();
         let mut maybe_cur = all_ranges.next();
         let mut pos = maybe_cur.as_ref().map(|range| range.0).unwrap_or_default();
 
+        // We accumulate ranges using this closure, which guarantees that they are non-overlapping.
+        // (This is important: RangeMap panics if they are not.)
         let mut push_range = |end: u32, term: RichTerm| {
             if pos < end {
                 // range_map::Range has inclusive ends for some reason.
@@ -70,6 +88,7 @@ impl PositionLookup {
         }
     }
 
+    /// Returns the subterm at the given location, if there is one.
     pub fn get(&self, index: ByteIndex) -> Option<&RichTerm> {
         self.table.get(index.0).map(|rt| &rt.0)
     }

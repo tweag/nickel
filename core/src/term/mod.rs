@@ -2063,13 +2063,7 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
-    use assert_matches::assert_matches;
-    use codespan::Files;
-
-    use crate::{
-        parser::{grammar, lexer, ErrorTolerantParser},
-        typ::TypeF,
-    };
+    use crate::typ::TypeF;
 
     use super::*;
 
@@ -2088,17 +2082,6 @@ mod tests {
         let outer = TypeAnnotation::default();
         let res = TypeAnnotation::combine(outer, inner);
         assert_ne!(res.typ, None);
-    }
-
-    fn parse(s: &str) -> (FileId, RichTerm) {
-        let id = Files::new().add("<test>", String::from(s));
-
-        (
-            id,
-            grammar::TermParser::new()
-                .parse_strict(id, lexer::Lexer::new(s))
-                .unwrap(),
-        )
     }
 
     #[test]
