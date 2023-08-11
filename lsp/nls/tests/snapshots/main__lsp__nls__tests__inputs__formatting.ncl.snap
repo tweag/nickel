@@ -1,0 +1,10 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[<0:0-1:8> {
+  foo = "bar",
+  baz = 7
+}
+]
+

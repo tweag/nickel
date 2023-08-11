@@ -1,9 +1,7 @@
-use std::process;
-
-use lsp_server::{ErrorCode, RequestId, Response, ResponseError};
+use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
 
-use crate::server::{self, Server};
+use crate::{error::Error, server::Server};
 
 /// Handle the LSP formatting request from a client using an external binary as a formatter.
 /// If this succeds, it sends a reponse to the server and returns `Ok(..)`, otherwise,
@@ -19,40 +17,18 @@ pub fn handle_format_document(
     let document_length = text.lines().count() as u32;
     let last_line_length = text.lines().next_back().unwrap().len() as u32;
 
-    let formatting_command = server::FORMATTING_COMMAND;
-    let Ok(mut topiary) = process::Command::new(formatting_command[0])
-        .args(&formatting_command[1..])
-        .stdin(process::Stdio::piped())
-        .stdout(process::Stdio::piped())
-        .stderr(process::Stdio::piped())
-        .spawn() else {
-	    let message = "Executing topiary failed";
-	    return Err(ResponseError {
-		code: ErrorCode::InternalError as i32,
-		message: String::from(message),
-		data: None,
-            });
-	};
+    let mut formatted: Vec<u8> = Vec::new();
+    nickel_lang_core::format::format(text.as_bytes(), &mut formatted).map_err(|err| {
+        Error::FormattingFailed {
+            details: format!("{err}"),
+            file: params.text_document.uri.clone(),
+        }
+    })?;
 
-    let mut stdin = topiary.stdin.take().unwrap();
-
-    std::thread::spawn(move || {
-        let mut text_bytes = text.as_bytes();
-        std::io::copy(&mut text_bytes, &mut stdin).unwrap();
-    });
-
-    let output = topiary.wait_with_output().unwrap();
-
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr);
-        return Err(ResponseError {
-            code: ErrorCode::InternalError as i32,
-            message: error.to_string(),
-            data: None,
-        });
-    }
-
-    let new_text = String::from_utf8(output.stdout).unwrap();
+    let formatted = String::from_utf8(formatted).map_err(|_err| Error::FormattingFailed {
+        details: "Topiary produced invalid UTF-8".to_owned(),
+        file: params.text_document.uri,
+    })?;
 
     let result = Some(vec![TextEdit {
         range: Range {
@@ -65,7 +41,7 @@ pub fn handle_format_document(
                 character: last_line_length,
             },
         },
-        new_text,
+        new_text: formatted,
     }]);
     server.reply(Response::new_ok(id, result));
     Ok(())

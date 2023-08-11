@@ -3,7 +3,7 @@ mod output;
 
 pub use jsonrpc::Server;
 use log::error;
-use lsp_types::{CompletionParams, GotoDefinitionParams, Url};
+use lsp_types::{CompletionParams, DocumentFormattingParams, GotoDefinitionParams, Url};
 pub use output::LspDebug;
 use serde::Deserialize;
 
@@ -29,6 +29,7 @@ pub struct TestFile {
 pub enum Request {
     GotoDefinition(GotoDefinitionParams),
     Completion(CompletionParams),
+    Formatting(DocumentFormattingParams),
 }
 
 #[derive(Deserialize, Debug, Default)]
