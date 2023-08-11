@@ -13,6 +13,5 @@ it in VSCode, (Neo)Vim and Emacs.
 ## Formatting Capabilities
 
 Formatting in `nls` is currently based on
-[Topiary](https://github.com/tweag/topiary). NLS exposes a formatting capability
-when compiled with the `format` Cargo feature, which is enabled by default. No
-configuration or external dependencies are necessary.
+[Topiary](https://github.com/tweag/topiary), used as a library. No configuration
+or external dependencies are necessary.

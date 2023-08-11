@@ -13,7 +13,6 @@ pub enum Error {
     #[error("Method not supported")]
     MethodNotFound,
 
-    #[cfg(feature = "format")]
     #[error("formatting failed for file {file}: {details}")]
     FormattingFailed { details: String, file: Url },
 }
@@ -24,7 +23,6 @@ impl From<Error> for ResponseError {
             Error::FileNotFound(_) => ErrorCode::InvalidParams,
             Error::InvalidPosition { .. } => ErrorCode::InvalidParams,
             Error::MethodNotFound => ErrorCode::MethodNotFound,
-            #[cfg(feature = "format")]
             Error::FormattingFailed { .. } => ErrorCode::InternalError,
         };
         ResponseError {

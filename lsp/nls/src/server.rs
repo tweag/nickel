@@ -12,10 +12,10 @@ use lsp_types::{
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
     CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
-    OneOf, PublishDiagnosticsParams, ReferenceParams, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
-    WorkDoneProgressOptions,
+    DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams, HoverOptions,
+    HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams, ReferenceParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    Url, WorkDoneProgressOptions,
 };
 
 use nickel_lang_core::{
@@ -29,14 +29,9 @@ use crate::{
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
     linearization::{completed::Completed, Environment, ItemId, LinRegistry},
-    requests::{completion, goto, hover, symbols},
+    requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
-
-#[cfg(feature = "format")]
-use crate::requests::formatting;
-#[cfg(feature = "format")]
-use lsp_types::DocumentFormattingParams;
 
 pub const DOT_COMPL_TRIGGER: &str = ".";
 
@@ -72,7 +67,6 @@ impl Server {
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
-            #[cfg(feature = "format")]
             document_formatting_provider: Some(OneOf::Left(true)),
             ..ServerCapabilities::default()
         }
@@ -248,15 +242,11 @@ impl Server {
                 symbols::handle_document_symbols(params, req.id.clone(), self)
             }
 
-            #[cfg(feature = "format")]
             Formatting::METHOD => {
                 debug!("handle formatting");
                 let params: DocumentFormattingParams = serde_json::from_value(req.params).unwrap();
                 formatting::handle_format_document(params, req.id.clone(), self)
             }
-
-            #[cfg(not(feature = "format"))]
-            Formatting::METHOD => Err(Error::MethodNotFound.into()),
 
             _ => Ok(()),
         };
