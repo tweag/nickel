@@ -11,6 +11,7 @@ mod error;
 mod field_walker;
 mod files;
 mod linearization;
+mod position;
 mod requests;
 mod server;
 use server::Server;

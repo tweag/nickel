@@ -704,10 +704,7 @@ pub fn handle_completion(
     let item = linearization.item_at(pos);
     Trace::enrich(&id, linearization);
 
-    let rt = server
-        .cache
-        .get_ref(pos.src_id)
-        .and_then(|rt| rt.find_pos(pos));
+    let rt = server.lookup_term_by_position(pos)?;
     let mut completions = match &rt {
         Some(rt) => term_based_completion(rt, linearization, server)?,
         None => Vec::new(),

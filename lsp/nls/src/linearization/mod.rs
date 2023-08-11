@@ -17,6 +17,8 @@ use nickel_lang_core::{
     },
 };
 
+use crate::position::PositionLookup;
+
 use self::{
     building::Building,
     completed::Completed,
@@ -38,11 +40,20 @@ pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>
 #[derive(Clone, Default, Debug)]
 pub struct LinRegistry {
     pub map: HashMap<FileId, Completed>,
+    // TODO: this is supposed to eventually *replace* part of the linearization, at
+    // which point we'll rename `LinRegistry`
+    pub position_lookups: HashMap<FileId, PositionLookup>,
 }
 
 impl LinRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn insert(&mut self, file_id: FileId, linearization: Completed, term: &RichTerm) {
+        self.map.insert(file_id, linearization);
+        self.position_lookups
+            .insert(file_id, PositionLookup::new(term));
     }
 
     /// Look for the linearization corresponding to an item's id, and return the corresponding item
