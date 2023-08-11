@@ -5,7 +5,7 @@ use nickel_lang_core::{
 };
 use range_map::{Range, RangeMap};
 
-// A term that uses pointer equality to implement Eq.
+// A term that uses pointer equality and source position to implement Eq.
 #[derive(Clone, Debug)]
 struct RichTermPtr(RichTerm);
 
