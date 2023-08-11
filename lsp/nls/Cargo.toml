@@ -27,7 +27,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 regex.workspace = true
 
-nickel-lang-core.workspace = true
+nickel-lang-core = { workspace = true, features = ["format"] }
 lsp-server.workspace = true
 lsp-types.workspace = true
 log.workspace = true

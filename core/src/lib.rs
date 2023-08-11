@@ -17,3 +17,6 @@ pub mod term;
 pub mod transform;
 pub mod typ;
 pub mod typecheck;
+
+#[cfg(feature = "format")]
+pub mod format;

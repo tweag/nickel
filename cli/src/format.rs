@@ -6,20 +6,13 @@ use std::{
 };
 
 use tempfile::NamedTempFile;
-use topiary::TopiaryQuery;
 
 use crate::{cli::GlobalOptions, error::CliResult};
 
 #[derive(Debug)]
 pub enum FormatError {
     NotAFile { path: PathBuf },
-    TopiaryError(topiary::FormatterError),
-}
-
-impl From<topiary::FormatterError> for FormatError {
-    fn from(e: topiary::FormatterError) -> Self {
-        Self::TopiaryError(e)
-    }
+    FormatError(nickel_lang_core::format::FormatError),
 }
 
 impl Display for FormatError {
@@ -32,7 +25,7 @@ impl Display for FormatError {
                     path.to_string_lossy()
                 )
             }
-            FormatError::TopiaryError(e) => write!(f, "{e}"),
+            FormatError::FormatError(e) => e.fmt(f),
         }
     }
 }
@@ -97,26 +90,11 @@ impl FormatCommand {
             (None, None, _) | (None, Some(_), false) => Output::Stdout,
             (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
         };
-        let mut input: Box<dyn Read> = match global.file {
+        let input: Box<dyn Read> = match global.file {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };
-        let topiary_config =
-            topiary::Configuration::parse_default_configuration().map_err(FormatError::from)?;
-        let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
-        let grammar = tree_sitter_nickel::language().into();
-        topiary::formatter(
-            &mut input,
-            &mut output,
-            &TopiaryQuery::nickel(),
-            language,
-            &grammar,
-            topiary::Operation::Format {
-                skip_idempotence: true,
-                tolerate_parsing_errors: true,
-            },
-        )
-        .map_err(FormatError::from)?;
+        nickel_lang_core::format::format(input, &mut output).map_err(FormatError::FormatError)?;
         output.persist();
         Ok(())
     }

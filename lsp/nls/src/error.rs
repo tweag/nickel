@@ -9,6 +9,12 @@ pub enum Error {
 
     #[error("position {pos:?} invalid for file {file}")]
     InvalidPosition { pos: Position, file: Url },
+
+    #[error("Method not supported")]
+    MethodNotFound,
+
+    #[error("formatting failed for file {file}: {details}")]
+    FormattingFailed { details: String, file: Url },
 }
 
 impl From<Error> for ResponseError {
@@ -16,6 +22,8 @@ impl From<Error> for ResponseError {
         let code = match value {
             Error::FileNotFound(_) => ErrorCode::InvalidParams,
             Error::InvalidPosition { .. } => ErrorCode::InvalidParams,
+            Error::MethodNotFound => ErrorCode::MethodNotFound,
+            Error::FormattingFailed { .. } => ErrorCode::InternalError,
         };
         ResponseError {
             code: code as i32,

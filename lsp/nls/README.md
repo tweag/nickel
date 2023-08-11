@@ -13,10 +13,5 @@ it in VSCode, (Neo)Vim and Emacs.
 ## Formatting Capabilities
 
 Formatting in `nls` is currently based on
-[topiary](https://github.com/tweag/topiary).
-
-To enable formatting in NLS, you have to make the `topiary` executable available
-in your `PATH`. Please follow [Topiary's setup
-instructions](https://github.com/tweag/topiary#installing) and ensure in
-particular that the environment variable `TOPIARY_LANGUAGE_DIR` is correctly set
-(this is covered in the setup instructions).
+[Topiary](https://github.com/tweag/topiary), used as a library. No configuration
+or external dependencies are necessary.
