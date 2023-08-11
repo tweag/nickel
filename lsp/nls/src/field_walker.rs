@@ -9,8 +9,39 @@ use nickel_lang_core::{
 
 use crate::{linearization::completed::Completed, server::Server};
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DefValue {
+    pub term: RichTerm,
+    pub path: Vec<Ident>,
+}
+
+impl DefValue {
+    fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<RichTerm> {
+        if self.path.is_empty() {
+            vec![self.term.clone()]
+        } else {
+            resolve_path(&self.term, &self.path, linearization, server)
+                .flat_map(|def| {
+                    def.value
+                        .into_iter()
+                        .flat_map(|val| val.resolve_terms(linearization, server).into_iter())
+                })
+                .collect()
+        }
+    }
+}
+
+impl From<RichTerm> for DefValue {
+    fn from(term: RichTerm) -> Self {
+        Self {
+            term,
+            path: Vec::new(),
+        }
+    }
+}
+
 /// The position at which something is defined.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     /// The identifier at the definition site.
     ///
@@ -21,7 +52,7 @@ pub struct Def {
     /// The value assigned by the definition, if there is one.
     ///
     /// For example, in `{ foo = 1 }`, this could point at the `1`.
-    pub value: Option<RichTerm>,
+    pub value: Option<DefValue>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
 }
@@ -70,7 +101,7 @@ struct FieldDefs {
 /// Resolve a record path iteratively, returning the names of all the fields defined on the final path element.
 pub fn resolve_path<'a>(
     rt: &'a RichTerm,
-    mut path: &'a [LocIdent],
+    mut path: &'a [Ident],
     linearization: &Completed,
     server: &Server,
 ) -> impl Iterator<Item = Def> {
@@ -78,11 +109,13 @@ pub fn resolve_path<'a>(
 
     while let Some((id, tail)) = path.split_first() {
         path = tail;
-        let defs = fields.fields.remove(&id.symbol()).unwrap_or_default();
+        let defs = fields.fields.remove(id).unwrap_or_default();
         fields.fields.clear();
 
-        for rt in defs.into_iter().filter_map(|d| d.value) {
-            fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+        for def in defs.into_iter().filter_map(|d| d.value) {
+            for rt in def.resolve_terms(linearization, server) {
+                fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+            }
         }
     }
 
@@ -109,7 +142,7 @@ impl FieldDefs {
                             ident.symbol(),
                             vec![Def {
                                 ident,
-                                value: field.value.clone(),
+                                value: field.value.clone().map(From::from),
                                 metadata: Some(field.metadata.clone()),
                             }],
                         )

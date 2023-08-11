@@ -658,12 +658,12 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
-fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<LocIdent>) {
+fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     let mut path = Vec::new();
 
     loop {
         if let Term::Op1(UnaryOp::StaticAccess(id), parent) = rt.term.as_ref() {
-            path.push(*id);
+            path.push(id.symbol());
             rt = parent.clone();
         } else {
             return (rt, path);

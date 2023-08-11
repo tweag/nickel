@@ -17,6 +17,7 @@ mod server;
 use server::Server;
 mod term;
 mod trace;
+mod usage;
 
 use crate::trace::Trace;
 

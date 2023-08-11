@@ -3,20 +3,10 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{RichTerm, SharedTerm, Traverse, TraverseControl},
+    term::{RichTerm, Traverse, TraverseControl},
 };
 
-// A term that uses pointer equality and source position to implement Eq.
-#[derive(Clone, Debug)]
-struct RichTermPtr(RichTerm);
-
-impl PartialEq for RichTermPtr {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.pos == other.0.pos && SharedTerm::ptr_eq(&self.0.term, &other.0.term)
-    }
-}
-
-impl Eq for RichTermPtr {}
+use crate::term::RichTermPtr;
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -119,8 +109,7 @@ impl PositionLookup {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(rt: &RichTerm) -> Self {
         let mut all_ranges = Vec::new();
-
-        rt.traverse_ref(&mut |term: &RichTerm| {
+        let mut fun = |term: &RichTerm| {
             if let TermPos::Original(pos) = &term.pos {
                 all_ranges.push((
                     Range {
@@ -131,7 +120,9 @@ impl PositionLookup {
                 ));
             }
             TraverseControl::<()>::Continue
-        });
+        };
+
+        rt.traverse_ref(&mut (&mut fun as &mut dyn FnMut(&RichTerm) -> _));
 
         PositionLookup {
             ranges: make_disjoint(all_ranges),
@@ -159,7 +150,7 @@ impl PositionLookup {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use assert_matches::assert_matches;
     use codespan::{ByteIndex, Files};
     use nickel_lang_core::{
@@ -169,7 +160,7 @@ mod tests {
 
     use super::PositionLookup;
 
-    fn parse(s: &str) -> RichTerm {
+    pub fn parse(s: &str) -> RichTerm {
         let id = Files::new().add("<test>", String::from(s));
 
         grammar::TermParser::new()
