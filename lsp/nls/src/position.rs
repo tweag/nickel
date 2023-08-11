@@ -18,6 +18,91 @@ impl PartialEq for RichTermPtr {
 
 impl Eq for RichTermPtr {}
 
+/// Turn a collection of "nested" ranges into a collection of disjoint ranges.
+///
+/// By "nested", I mean that if any two ranges intersect, then one of them contains the other.
+/// This means that we can think of them as forming a tree, where parents contain the children.
+/// Each of the input ranges is associated with a value. In determining the value for the output
+/// ranges, the smallest ranges "win". For example, the input
+///
+/// ```
+/// [
+///  [0, 10) -> a,
+///  [2, 4) -> b,
+///  [6, 8) -> c,
+/// ]
+/// ```
+///
+/// produces the output
+///
+/// ```
+/// [
+///  [0, 2) -> a,
+///  [2, 4) -> b,
+///  [4, 6) -> a,
+///  [6, 8) -> c,
+///  [8, 10) -> a,
+/// ]
+/// ```
+///
+/// Or, more graphically,
+///
+/// aaaaaaaaaa   --->   aabbaaccaa
+///   bb  cc
+///
+/// The algorithm traverses the inputs as if it were a tree and accumulates the outputs in
+/// order: we first traverse the "a" node
+/// and add the interval [0, 2) to the output. Then we go down to the "b" child and add
+/// its interval to the output. Then we return to its parent ("a") and add the part before
+/// the next child, and so on.
+fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u32>, T)> {
+    // This sort order corresponds to pre-order traversal of the tree.
+    all_ranges.sort_by_key(|(range, _term)| (range.start, std::cmp::Reverse(range.end)));
+    let mut all_ranges = all_ranges.into_iter().peekable();
+
+    // `stack` is the path in the tree leading to the node that we are currently visiting.
+    let mut stack = Vec::new();
+    let mut next = all_ranges.next();
+
+    let mut disjoint = Vec::new();
+    // The last position we've added to `disjoint`. Gets bumped automatically every time we
+    // push a new range.
+    let mut pos = next
+        .as_ref()
+        .map(|(range, _term)| range.start)
+        .unwrap_or_default();
+    // We accumulate ranges using this closure, which guarantees that they are non-overlapping.
+    // Note that `disjoint` and `pos` are only modified in here.
+    let mut push_range = |pos: &mut u32, end: u32, term| {
+        debug_assert!(*pos <= end);
+        if *pos < end {
+            disjoint.push((Range { start: *pos, end }, term));
+            *pos = end;
+        }
+    };
+
+    while let Some((cur, term)) = next {
+        // If the next interval overlaps us, then we must contain it and it is our child.
+        // Otherwise, we are a leaf and it is a sibling or a cousin or something.
+        let next_start = all_ranges.peek().map(|(r, _term)| r.start);
+        match next_start {
+            Some(next_start) if cur.end > next_start => {
+                // It is our child.
+                push_range(&mut pos, next_start, term.clone());
+                stack.push((cur, term));
+                next = all_ranges.next();
+            }
+            _ => {
+                // We are a leaf.
+                push_range(&mut pos, cur.end, term.clone());
+                next = stack.pop().or_else(|| all_ranges.next());
+            }
+        }
+    }
+
+    disjoint
+}
+
 /// A lookup data structure, for looking up the term at a given position.
 ///
 /// Overlapping positions are resolved in favor of the smaller one; i.e., lookups return the
@@ -40,65 +125,15 @@ impl PositionLookup {
                         start: pos.start.0,
                         end: pos.end.0,
                     },
-                    term.clone(),
+                    RichTermPtr(term.clone()),
                 ));
             }
             TraverseControl::<()>::Continue
         });
 
-        // We rely on the invariant that if two ranges overlap then one is contained in the
-        // other. That is, the ranges form a tree. This sort order corresponds to pre-order
-        // traversal of that tree.
-        //
-        // (It would be nice if we could build the lookup table directly from the traversal
-        // in traverse_ref, but (1) the state tracking is fiddly and (2) the traversal order
-        // in traverse_ref can be weird; for example, a `Term::Annotated` sometimes contains
-        // children whose position is outside the position of the parent.)
-        all_ranges.sort_by_key(|(range, _term)| (range.start, std::cmp::Reverse(range.end)));
-        let mut all_ranges = all_ranges.into_iter().peekable();
-
-        // Now we iterate over the tree of ranges to make a disjoint set of ranges.
-        // `stack` is the path in the tree leading to the node that we are currently visiting.
-        let mut stack = Vec::new();
-        let mut next = all_ranges.next();
-
-        // We accumulate ranges using this closure, which guarantees that they are non-overlapping.
-        // (This is important: RangeMap panics if they are not.)
-        let mut disjoint = Vec::new();
-        // The last position we've added to `disjoint`. Gets bumped automatically every time we
-        // push a new range.
-        let mut pos = next
-            .as_ref()
-            .map(|(range, _term)| range.start)
-            .unwrap_or_default();
-        let mut push_range = |pos: &mut u32, end: u32, term: RichTerm| {
-            debug_assert!(*pos <= end);
-            if *pos < end {
-                disjoint.push((Range { start: *pos, end }, RichTermPtr(term)));
-                *pos = end;
-            }
-        };
-
-        while let Some((cur, term)) = next {
-            // If the next interval overlaps us, then we must contain it and it is our child.
-            // Otherwise, we are a leaf and it is a sibling or a cousin or something.
-            let next_start = all_ranges.peek().map(|(r, _term)| r.start);
-            match next_start {
-                Some(next_start) if cur.end > next_start => {
-                    // It is our child.
-                    push_range(&mut pos, next_start, term.clone());
-                    stack.push((cur, term));
-                    next = all_ranges.next();
-                }
-                _ => {
-                    // It is a sibling/cousin
-                    push_range(&mut pos, cur.end, term.clone());
-                    next = stack.pop().or_else(|| all_ranges.next());
-                }
-            }
+        PositionLookup {
+            ranges: make_disjoint(all_ranges),
         }
-
-        PositionLookup { ranges: disjoint }
     }
 
     /// Returns the most specific subterm enclosing the given location, if there is one.
