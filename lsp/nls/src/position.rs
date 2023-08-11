@@ -25,7 +25,7 @@ impl Eq for RichTermPtr {}
 /// Each of the input ranges is associated with a value. In determining the value for the output
 /// ranges, the smallest ranges "win". For example, the input
 ///
-/// ```
+/// ```text
 /// [
 ///  [0, 10) -> a,
 ///  [2, 4) -> b,
@@ -35,7 +35,7 @@ impl Eq for RichTermPtr {}
 ///
 /// produces the output
 ///
-/// ```
+/// ```text
 /// [
 ///  [0, 2) -> a,
 ///  [2, 4) -> b,
@@ -47,8 +47,10 @@ impl Eq for RichTermPtr {}
 ///
 /// Or, more graphically,
 ///
+/// ```text
 /// aaaaaaaaaa   --->   aabbaaccaa
 ///   bb  cc
+/// ```
 ///
 /// The algorithm traverses the inputs as if it were a tree and accumulates the outputs in
 /// order: we first traverse the "a" node
