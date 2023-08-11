@@ -1,9 +1,10 @@
+use std::ops::Range;
+
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
     term::{RichTerm, SharedTerm, Traverse, TraverseControl},
 };
-use range_map::{Range, RangeMap};
 
 // A term that uses pointer equality and source position to implement Eq.
 #[derive(Clone, Debug)]
@@ -23,7 +24,8 @@ impl Eq for RichTermPtr {}
 /// most specific term for a given position.
 #[derive(Clone, Debug)]
 pub struct PositionLookup {
-    table: RangeMap<u32, RichTermPtr>,
+    // The intervals here are sorted and disjoint.
+    ranges: Vec<(Range<u32>, RichTermPtr)>,
 }
 
 impl PositionLookup {
@@ -33,7 +35,13 @@ impl PositionLookup {
 
         rt.traverse_ref(&mut |term: &RichTerm| {
             if let TermPos::Original(pos) = &term.pos {
-                all_ranges.push((pos.start.0, pos.end.0, term.clone()));
+                all_ranges.push((
+                    Range {
+                        start: pos.start.0,
+                        end: pos.end.0,
+                    },
+                    term.clone(),
+                ));
             }
             TraverseControl::<()>::Continue
         });
@@ -46,51 +54,70 @@ impl PositionLookup {
         // in traverse_ref, but (1) the state tracking is fiddly and (2) the traversal order
         // in traverse_ref can be weird; for example, a `Term::Annotated` sometimes contains
         // children whose position is outside the position of the parent.)
-        all_ranges.sort_by_key(|range| (range.0, std::cmp::Reverse(range.1)));
+        all_ranges.sort_by_key(|(range, _term)| (range.start, std::cmp::Reverse(range.end)));
         let mut all_ranges = all_ranges.into_iter().peekable();
 
         // Now we iterate over the tree of ranges to make a disjoint set of ranges.
         // `stack` is the path in the tree leading to the node that we are currently visiting.
         let mut stack = Vec::new();
-        let mut disjoint = Vec::new();
-        let mut maybe_cur = all_ranges.next();
-        let mut pos = maybe_cur.as_ref().map(|range| range.0).unwrap_or_default();
+        let mut next = all_ranges.next();
 
         // We accumulate ranges using this closure, which guarantees that they are non-overlapping.
         // (This is important: RangeMap panics if they are not.)
-        let mut push_range = |end: u32, term: RichTerm| {
-            if pos < end {
-                // range_map::Range has inclusive ends for some reason.
-                // This is overflow-safe because pos < end
-                disjoint.push((Range::new(pos, end - 1), RichTermPtr(term)));
-                pos = end;
+        let mut disjoint = Vec::new();
+        // The last position we've added to `disjoint`. Gets bumped automatically every time we
+        // push a new range.
+        let mut pos = next
+            .as_ref()
+            .map(|(range, _term)| range.start)
+            .unwrap_or_default();
+        let mut push_range = |pos: &mut u32, end: u32, term: RichTerm| {
+            debug_assert!(*pos <= end);
+            if *pos < end {
+                disjoint.push((Range { start: *pos, end }, RichTermPtr(term)));
+                *pos = end;
             }
         };
 
-        while let Some(cur) = maybe_cur {
+        while let Some((cur, term)) = next {
             // If the next interval overlaps us, then we must contain it and it is our child.
             // Otherwise, we are a leaf and it is a sibling or a cousin or something.
-            let next_start = all_ranges.peek().map(|r| r.0);
-            if let (Some(next_start), Some(true)) = (next_start, next_start.map(|x| cur.1 > x)) {
-                // It is our child.
-                push_range(next_start, cur.2.clone());
-                stack.push(cur);
-                maybe_cur = all_ranges.next();
-            } else {
-                // It is a sibling/cousin
-                push_range(cur.1, cur.2.clone());
-                maybe_cur = stack.pop().or_else(|| all_ranges.next());
+            let next_start = all_ranges.peek().map(|(r, _term)| r.start);
+            match next_start {
+                Some(next_start) if cur.end > next_start => {
+                    // It is our child.
+                    push_range(&mut pos, next_start, term.clone());
+                    stack.push((cur, term));
+                    next = all_ranges.next();
+                }
+                _ => {
+                    // It is a sibling/cousin
+                    push_range(&mut pos, cur.end, term.clone());
+                    next = stack.pop().or_else(|| all_ranges.next());
+                }
             }
         }
 
-        PositionLookup {
-            table: disjoint.into_iter().collect(),
-        }
+        PositionLookup { ranges: disjoint }
     }
 
-    /// Returns the subterm at the given location, if there is one.
+    /// Returns the most specific subterm enclosing the given location, if there is one.
+    ///
+    /// Note that some positions (for example, positions belonging to top-level comments)
+    /// may not be enclosed by any term.
     pub fn get(&self, index: ByteIndex) -> Option<&RichTerm> {
-        self.table.get(index.0).map(|rt| &rt.0)
+        self.ranges
+            .binary_search_by(|(range, _term)| {
+                if range.end <= index.0 {
+                    std::cmp::Ordering::Less
+                } else if range.start > index.0 {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
+            .ok()
+            .map(|idx| &self.ranges[idx].1 .0)
     }
 }
 
