@@ -71,6 +71,22 @@ Most aforementioned projects have their own bespoke configuration language. See
 general, application-specific languages might suffer from feature creep, lack of
 abstractions or just feel ad hoc. Nickel buys you more for less.
 
+## The Nickel ecosystem
+
+Related projects that are part of the Nickel ecosystem:
+
+- [Terraform-Nickel](https://github.com/tweag/tf-ncl): write Terraform
+    configuration with Nickel
+- [Nickel-Nix](https://github.com/nickel-lang/nickel-nix) (name subject to
+    change): batteries included environments with Nickel inside
+- [json-schema-to-nickel](https://github.com/nickel-lang/json-schema-to-nickel):
+    generate Nickel contracts from JSON schema specifications.
+- [rules_nickel](https://github.com/nickel-lang/rules_nickel): generate
+    configuration files using Nickel during a Bazel build
+- The [nickel-lang](https://github.com/nickel-lang) organization hosts various
+    smaller projects, including a tree-sitter grammar definition for Nickel and
+    editor plugins.
+
 ## Getting started
 
 Please follow the getting started guide for Nickel users on the [nickel-lang
@@ -144,15 +160,19 @@ highlighting and NLS.
 
 #### Formatting
 
-You can format Nickel source code using [Topiary](https://github.com/tweag/topiary/):
+To format a Nickel source file, use `nickel format` (`-i` is short for
+`--in-place`):
 
 ```console
-topiary -i -f my-config.ncl
+nickel format -i -f my-config.ncl
 ```
+
+Nickel uses [Topiary](https://github.com/tweag/topiary/) to format Nickel code
+under the hood.
 
 Please follow the Formatting Capabilities section of the [LSP
 documentation](https://github.com/tweag/nickel/tree/master/lsp) to know how to
-hook up the Nickel LSP and topiary in order to enable formatting inside your
+hook up the Nickel LSP and Topiary in order to enable formatting inside your
 code editor.
 
 ### Build
