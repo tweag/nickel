@@ -28,7 +28,6 @@ use nickel_lang_core::{stdlib, typecheck::Context};
 use crate::{
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
-    error::Error,
     linearization::{completed::Completed, Environment, ItemId, LinRegistry},
     requests::{completion, goto, hover, symbols},
     trace::Trace,
