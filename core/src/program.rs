@@ -302,11 +302,53 @@ impl<EC: EvalCache> Program<EC> {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
-    /// Evaluate a program into a form suitable for extracting documentation.
-    /// This needs to evaluate to WHNF, but then still descend into subfields
-    /// whose values are records.
+    /// Evaluate a program into a record spine, a form suitable for extracting the general
+    /// structure of a configuration, and in particular its interface (fields that might need to be
+    /// filled).
+    ///
+    /// This form is used to extract documentation through `nickel doc`, for example.
+    ///
+    /// ## Record spine
+    ///
+    /// By record spine, we mean that the result is a tree of evaluated nested records, and leafs
+    /// are either non-record values in WHNF or partial expressions left
+    /// unevaluated[^missing-field-def]. For example, the record spine of:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo = {bar = 1 + 1} & {baz.subbaz = [some_func "some_arg"] @ ["snd" ++ "_elt"]},
+    ///   input,
+    ///   depdt = input & {extension = 2},
+    /// }
+    /// ```
+    ///
+    /// is
+    ///
+    /// ```nickel
+    /// {
+    ///   foo = {
+    ///     bar = 2,
+    ///     baz = {
+    ///       subbaz = [some_func "some_arg", "snd" ++ "_elt"],
+    ///     },
+    ///   },
+    ///   input,
+    ///   depdt = input & {extension = 2},
+    /// }
+    /// ```
+    ///
+    /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
+    /// - If the result is a record, we recursively evaluates subfields to record spines
+    /// - If the result isn't a record, it is returned as it is
+    /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
+    /// term is returned unevaluated[^missing-field-def]
+    /// - If any other error occurs, the evaluation fails and returns the error.
+    ///
+    /// [^missing-field-def]: Because we want to handle partial configurations as well,
+    /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
+    /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
-    pub fn eval_for_doc(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
         use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
@@ -404,7 +446,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
-        let term = self.eval_for_doc()?;
+        let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
             ExportError::NoDocumentation(term.clone()),
         ))

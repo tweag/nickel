@@ -293,8 +293,7 @@ impl ExportCommand {
         let overrides = if self.freeform.is_empty() {
             None
         } else {
-            // TODO: rename eval_for_doc something more general. `.record_normal_form()`?
-            let evaled = program.eval_for_doc()?;
+            let evaled = program.eval_record_spine()?;
 
             let (cmd, paths) = build_clap(
                 Command::new("extra-args").no_binary_name(true),
