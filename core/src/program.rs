@@ -205,8 +205,20 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
-    /// Same as `eval`, but proceeds to a full evaluation.
-    /// Skips record fields marked `not_exported`
+    /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
+    /// are to be applied to the term (in practice, to be merged with).
+    ///
+    /// Skips record fields marked `not_exported`.
+    ///
+    /// # Arguments
+    ///
+    /// - `override` is a list of tuples where the first element is a field path represented as an
+    ///   array of strings, and the second is Nickel source code as string. Each override is imported
+    ///   in a separate in-memory source, for complete isolation (this way, overrides can't
+    ///   accidentally or intentionally capture other fields of the configuration). A stub record is
+    ///   then built, which has all fields defined by `overrides`, and values are an import referring
+    ///   to the corresponding isolated value. This stub is finally merged with the current program
+    ///   before being evaluated for import.
     pub fn eval_full_for_export(
         &mut self,
         overrides: Option<impl IntoIterator<Item = (Vec<String>, String)>>,

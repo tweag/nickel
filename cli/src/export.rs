@@ -76,7 +76,6 @@ impl Interface {
     fn new() -> Self {
         Self::default()
     }
-
 }
 
 impl Merge for Interface {
@@ -244,15 +243,18 @@ impl From<&TypeAnnotation> for InterfaceAnnotation {
 impl InterfaceField {
     /// Take a clap command and enrich it with all the input fields defined by this record
     /// (including subfields). See [build_clap].
+    ///
+    /// Doing so, `add_args` updates `paths`, which is mapping from clap argument ids to the
+    /// corresponding field path represented as an array of field names.
     fn add_args(
         &self,
         cmd: clap::Command,
         path: Vec<String>,
-        //paths: &mut HashMap<clap::Id, Vec<String>>,
+        paths: &mut HashMap<clap::Id, Vec<String>>,
     ) -> clap::Command {
         let id = path.join(".");
-        //let prev = paths.insert(clap::Id::from(&id), path.clone());
-        //debug_assert!(matches!(prev, None));
+        let prev = paths.insert(clap::Id::from(&id), path.clone());
+        debug_assert!(matches!(prev, None));
 
         let mut arg = clap::Arg::new(&id)
             .long(id)
@@ -273,7 +275,7 @@ impl InterfaceField {
         for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
             let mut path = path.clone();
             path.push(id.to_string());
-            cmd = field.add_args(cmd, path, /*paths*/);
+            cmd = field.add_args(cmd, path, paths);
         }
 
         cmd
@@ -320,6 +322,11 @@ fn get_value_name(_annotation: &InterfaceAnnotation) -> String {
 ///
 /// Non-inputs fields are still listed in the description of the `--override` command, which has
 /// the ability of setting any field.
+///
+/// # Return
+///
+/// In addition to the updated command, `build_clap` returns a mapping from clap argument ids to
+/// their corresponding full field path as an array of fields.
 fn build_clap(
     mut cmd: clap::Command,
     interface: &Interface,
@@ -327,7 +334,7 @@ fn build_clap(
     let mut paths = HashMap::new();
 
     for (id, field) in &interface.fields {
-        cmd = field.add_args(cmd, vec![id.to_string()] /* &mut paths */)
+        cmd = field.add_args(cmd, vec![id.to_string()], &mut paths)
     }
 
     (cmd, paths)
