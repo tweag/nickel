@@ -229,7 +229,15 @@ fn render_query_result<R: QueryPrinter>(
         renderer.write_metadata(
             out,
             "type",
-            &metadata.annotation.typ.as_ref().unwrap().typ.to_string(),
+            &metadata
+                .annotation
+                .typ
+                .as_ref()
+                .unwrap()
+                // We use the original type here, as well.
+                .label
+                .typ
+                .to_string(),
         )?;
         found = true;
     }
