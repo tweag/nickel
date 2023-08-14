@@ -259,8 +259,8 @@ impl InterfaceField {
             // TODO: Create clap argument groups
             .required(!self.field.metadata.opt);
 
-        if let Some(doc) = &self.field.metadata.doc {
-            arg = arg.help(doc);
+        if let Some(help) = &self.help() {
+            arg = arg.help(help);
         };
 
         if let Some(default) = self.default_value() {
@@ -299,14 +299,17 @@ impl InterfaceField {
         !self.is_defined() || self.is_default()
     }
 
+    /// Return `true` is the field has a value.
     fn is_defined(&self) -> bool {
         self.field.value.is_some()
     }
 
+    /// Return true is the field's merge priority is `default`.
     fn is_default(&self) -> bool {
         matches!(self.field.metadata.priority, MergePriority::Bottom)
     }
 
+    /// Return the default value, if any.
     fn default_value(&self) -> Option<String> {
         match (&self.field.metadata.priority, &self.field.value) {
             (MergePriority::Bottom, Some(value)) => Some(value.to_string()),
@@ -314,14 +317,27 @@ impl InterfaceField {
         }
     }
 
-    // /// Render the type application, contract and documentation of as a terminal string to be
-    // /// displayer in the corresponding `help` text. Render markdown if the corresponding feature
-    // /// flag is enabled.
-    // fn help(&self) -> String {
-    //     let mut output : Vec<u8> = Vec::new();
-    //     write_query_result(&mut output,
-    //     String::from_utf8(output).expect("the argument help renderer should always output valid utf8")
-    // }
+    /// Render an help message similar to the output of a metadata query to serve as an help text
+    /// for this argument.
+    fn help(&self) -> Option<String> {
+        let mut output: Vec<u8> = Vec::new();
+
+        let attributes = Attributes {
+            doc: true,
+            contract: true,
+            typ: true,
+            // Those are printed separately by clap
+            default: false,
+            value: false,
+        };
+
+        write_query_result(&mut output, &self.field, attributes)
+            .unwrap_or(false)
+            .then(|| {
+                String::from_utf8(output)
+                    .expect("the argument help renderer should always output valid utf8")
+            })
+    }
 }
 
 fn get_value_name(_annotation: &InterfaceAnnotation) -> String {

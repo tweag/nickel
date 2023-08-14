@@ -56,7 +56,7 @@ impl QueryCommand {
             program.report(Warning::EmptyQueryPath)
         }
 
-        program
+        let found = program
             .query(std::mem::take(&mut self.path))
             .map(|field| {
                 query_print::write_query_result(
@@ -66,6 +66,12 @@ impl QueryCommand {
                 )
                 .unwrap()
             })
-            .report_with_program(program)
+            .report_with_program(program)?;
+
+        if !found {
+            eprintln!("No metadata found for this field.")
+        }
+
+        Ok(())
     }
 }
