@@ -498,19 +498,23 @@ mod doc {
                         .map(|(ident, field)| {
                             let fields = field.value.as_ref().and_then(Self::extract_from_term);
 
+                            // We use the original user-written type stored
+                            // in the label. Using `lt.typ` instead is often
+                            // unreadable, since we evaluate terms to a record
+                            // spine before extracting documentation
                             let typ = field
                                 .metadata
                                 .annotation
                                 .typ
                                 .as_ref()
-                                .map(|lt| lt.typ.to_string());
+                                .map(|lt| lt.label.typ.to_string());
 
                             let contracts = field
                                 .metadata
                                 .annotation
                                 .contracts
                                 .iter()
-                                .map(|lt| lt.typ.to_string())
+                                .map(|lt| lt.label.typ.to_string())
                                 .collect();
 
                             let documentation = field.metadata.doc.clone();
