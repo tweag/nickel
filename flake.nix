@@ -20,6 +20,10 @@
       url = "github:tweag/topiary";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-input = {
+      url = "github:nixos/nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   nixConfig = {
@@ -35,6 +39,7 @@
     , rust-overlay
     , crane
     , topiary
+    , nix-input
     }:
     let
       SYSTEMS = [
@@ -301,7 +306,7 @@
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
             buildInputs = with pkgs; [
-              nixVersions.nix_2_16
+              nix-input.packages.${system}.default
               boost # implicit dependency of nix
             ];
 
