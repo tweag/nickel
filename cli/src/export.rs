@@ -16,7 +16,7 @@ use nickel_lang_core::{
     serialize::{self, ExportFormat},
     term::{
         record::{Field, FieldMetadata, RecordData},
-        IndexMap, LabeledType, MergePriority, Term, TypeAnnotation,
+        IndexMap, LabeledType, MergePriority, RuntimeContract, Term, TypeAnnotation,
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
@@ -220,7 +220,6 @@ impl ExtractInterface for Field {
 impl ExtractInterface for Type {
     fn extract_interface(&self) -> Option<TermInterface> {
         match &self.typ {
-            TypeF::Flat(rt) => rt.as_ref().extract_interface(),
             TypeF::Record(rrows) => Some(TermInterface {
                 fields: rrows
                     .iter()
@@ -233,8 +232,16 @@ impl ExtractInterface for Type {
                     })
                     .collect(),
             }),
+            // Contract information are already extracted from runtime contracts, which are
+            // evaluated. Here, we focus on pure type annotations and ignore even flat types
             _ => None,
         }
+    }
+}
+
+impl ExtractInterface for RuntimeContract {
+    fn extract_interface(&self) -> Option<TermInterface> {
+        self.contract.as_ref().extract_interface()
     }
 }
 
@@ -246,12 +253,26 @@ impl ExtractInterface for LabeledType {
 
 impl From<&Field> for FieldInterface {
     fn from(field: &Field) -> Self {
-        let subfields = field
+        // We collect field information from all the sources we can: static types and contracts
+        // (both either as type annotations or contract annotations), and the value of the field,
+        // if it's a record.
+
+        let subfields_from_types = field
+            .pending_contracts
+            .iter()
+            .map(ExtractInterface::extract_interface);
+
+        let subfields_from_contracts = field
             .metadata
             .annotation
             .iter()
-            .map(LabeledType::extract_interface)
-            .chain(std::iter::once(field.extract_interface()))
+            .map(ExtractInterface::extract_interface);
+
+        let subfields_from_value = std::iter::once(field.extract_interface());
+
+        let subfields = subfields_from_types
+            .chain(subfields_from_contracts)
+            .chain(subfields_from_value)
             .reduce(Merge::merge)
             .flatten();
 

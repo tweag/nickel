@@ -20,22 +20,27 @@
 //! exposes the standard library files as strings. The embedded strings are then parsed by the
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
-use crate::cache::*;
-use crate::error::{Error, IntoDiagnostics, ParseError};
-use crate::eval;
-use crate::eval::cache::Cache as EvalCache;
-use crate::eval::VirtualMachine;
-use crate::identifier::LocIdent;
-use crate::label::Label;
-use crate::term::make::builder;
-use crate::term::record::RecordData;
-use crate::term::{make as mk_term, record::Field, RichTerm};
-use crate::term::{BinaryOp, Term};
+use crate::{
+    cache::*,
+    error::{Error, IntoDiagnostics, ParseError},
+    eval,
+    eval::{cache::Cache as EvalCache, VirtualMachine},
+    identifier::LocIdent,
+    label::Label,
+    term::{
+        make as mk_term, make::builder, record::Field, record::RecordData, BinaryOp, RichTerm,
+        RuntimeContract, Term,
+    },
+};
+
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
-use std::ffi::OsString;
-use std::io::{self, stdout, Cursor, IsTerminal, Read, Write};
-use std::result::Result;
+
+use std::{
+    ffi::OsString,
+    io::{self, Cursor, Read, Write, IsTerminal},
+    result::Result,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ColorOpt(pub(crate) clap::ColorChoice);
@@ -364,25 +369,25 @@ impl<EC: EvalCache> Program<EC> {
         use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
-        use crate::term::record::FieldMetadata;
-        use crate::term::TypeAnnotation;
-        use crate::typ::TypeF;
 
         let (t, initial_env) = self.prepare_eval()?;
 
-        fn eval_annotation<EC: EvalCache>(
+        // Eval pending contracts as well, in order to extract more information from potential
+        // record contract fields.
+        fn eval_contracts<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
-            mut annotation: TypeAnnotation,
+            mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
             initial_env: &Environment,
-        ) -> Result<TypeAnnotation, Error> {
+        ) -> Result<Vec<RuntimeContract>, Error> {
             vm.reset();
-            for ann in annotation.iter_mut() {
-                if let TypeF::Flat(rt) = &mut ann.typ.typ {
-                    *rt = do_eval(vm, rt.clone(), current_env.clone(), initial_env)?;
-                }
+
+            for ctr in pending_contracts.iter_mut() {
+                let rt = ctr.contract.clone();
+                ctr.contract = do_eval(vm, rt, current_env.clone(), initial_env)?;
             }
-            Ok(annotation)
+
+            Ok(pending_contracts)
         }
 
         fn do_eval<EC: EvalCache>(
@@ -427,15 +432,7 @@ impl<EC: EvalCache> Program<EC> {
                                             .value
                                             .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
                                             .transpose()?,
-                                        metadata: FieldMetadata {
-                                            annotation: eval_annotation(
-                                                vm,
-                                                field.metadata.annotation,
-                                                env.clone(),
-                                                initial_env,
-                                            )?,
-                                            ..field.metadata
-                                        },
+                                        pending_contracts: eval_contracts(vm, field.pending_contracts, env.clone(), initial_env)?,
                                         ..field
                                     },
                                 ))
@@ -549,7 +546,7 @@ impl From<ColorOpt> for ColorChoice {
     fn from(c: ColorOpt) -> Self {
         match c.0 {
             clap::ColorChoice::Auto => {
-                if stdout().is_terminal() {
+                if io::stdout().is_terminal() {
                     ColorChoice::Auto
                 } else {
                     ColorChoice::Never
