@@ -24,6 +24,10 @@ use nickel_lang_core::{
 use crate::error::{CliResult, ResultErrorExt};
 use crate::{cli::GlobalOptions, eval::EvalCommand};
 
+/// The maximal number of overridable fields displayed. Because there might be a lot of them, we
+/// don't list them all by default.
+const OVERRIDES_LIST_MAX_COUNT: usize = 15;
+
 #[derive(clap::Parser, Debug)]
 pub struct ExportCommand {
     #[arg(long, value_enum, default_value_t)]
@@ -46,22 +50,15 @@ pub struct ExportCommand {
 /// Interface is used to derive a command-line interface from a configuration when using the
 /// `freeform` option.
 #[derive(Debug, Clone, Default)]
-struct Interface {
-    fields: BTreeMap<Ident, InterfaceField>,
+struct TermInterface {
+    fields: BTreeMap<Ident, FieldInterface>,
 }
 
 #[derive(Debug, Clone, Default)]
-struct InterfaceAnnotation {
-    typ: Option<Type>,
-    contracts: Vec<Type>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct InterfaceField {
+struct FieldInterface {
     /// The interface of the subfields of this field, if it's a record itself.
-    subfields: Option<Interface>,
+    subfields: Option<TermInterface>,
     field: Field,
-    annotation: InterfaceAnnotation,
 }
 
 /// A trait for things that can be merged.
@@ -69,16 +66,81 @@ trait Merge {
     fn merge(first: Self, second: Self) -> Self;
 }
 
-impl Interface {
+impl TermInterface {
     /// Create a new, empty interface.
     fn new() -> Self {
         Self::default()
     }
+
+    /// Build a command description from this interface.
+    ///
+    /// This method recursively lists all existing field paths, and reports input fields (as
+    /// defined per [Interface::is_input]) as stand-alone arguments. For example, if there the
+    /// configuration contains:
+    ///
+    /// ```nickel
+    /// foo.bar.baz | Number,
+    /// ```
+    ///
+    /// This will give rise to a corresponding `--foo.bar.baz` argument listed in the `help` message
+    /// which can be set.
+    ///
+    /// Non-inputs fields are still listed in the description of the `--override` command, which
+    /// has the ability of setting any field.
+    ///
+    /// # Return
+    ///
+    /// In addition to the updated command, `build_clap` returns a mapping from clap argument ids to
+    /// their corresponding full field path as an array of fields.
+    fn build_cmd(&self) -> TermCommand {
+        let mut paths = HashMap::new();
+        let mut overrides = HashMap::new();
+
+        let mut cmd = Command::new("extra-args").no_binary_name(true);
+
+        for (id, field) in &self.fields {
+            cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut overrides)
+        }
+
+        let mut overrides_list: Vec<String> = overrides
+            .keys()
+            .take(OVERRIDES_LIST_MAX_COUNT)
+            .map(|field_path| format!("- {field_path}"))
+            .collect();
+
+        if overrides_list.len() == OVERRIDES_LIST_MAX_COUNT {
+            overrides_list.push("- ...".into());
+        }
+
+        //TODO: what happens if there's a field named override?
+        let override_arg_label = "override";
+        let override_help = format!(
+            "Override any field of the configuration with a valid Nickel expression provided as \
+            a string. The new value will be merged with the configuration with a `force` \
+            priority.\
+            \n\nOverridable fields:\n{}",
+            overrides_list.join("\n")
+        );
+        let override_arg = clap::Arg::new(override_arg_label)
+            .long(override_arg_label)
+            .value_name("NICKEL".to_owned())
+            // TODO: Create clap argument groups
+            .required(false)
+            .help(override_help);
+
+        cmd = cmd.arg(override_arg);
+
+        TermCommand {
+            clap_cmd: cmd,
+            args: paths,
+            overrides,
+        }
+    }
 }
 
-impl Merge for Interface {
+impl Merge for TermInterface {
     fn merge(first: Self, second: Self) -> Self {
-        let Interface { mut fields } = first;
+        let TermInterface { mut fields } = first;
 
         for (id, field) in second.fields.into_iter() {
             if let Some(prev) = fields.remove(&id) {
@@ -88,7 +150,7 @@ impl Merge for Interface {
             }
         }
 
-        Interface { fields }
+        TermInterface { fields }
     }
 }
 
@@ -101,20 +163,9 @@ impl<T: Merge> Merge for Option<T> {
     }
 }
 
-impl Merge for InterfaceAnnotation {
-    fn merge(mut first: Self, second: Self) -> Self {
-        first.contracts.extend(second.contracts);
-
-        InterfaceAnnotation {
-            typ: first.typ.or(second.typ),
-            contracts: first.contracts,
-        }
-    }
-}
-
-impl Merge for InterfaceField {
+impl Merge for FieldInterface {
     fn merge(first: Self, second: Self) -> Self {
-        InterfaceField {
+        FieldInterface {
             subfields: Merge::merge(first.subfields, second.subfields),
             field: Field {
                 metadata: FieldMetadata::flatten(first.field.metadata, second.field.metadata),
@@ -124,14 +175,13 @@ impl Merge for InterfaceField {
                 value: first.field.value.or(second.field.value),
                 ..Default::default()
             },
-            annotation: Merge::merge(first.annotation, second.annotation),
         }
     }
 }
 
-impl From<&RecordData> for Interface {
+impl From<&RecordData> for TermInterface {
     fn from(value: &RecordData) -> Self {
-        Interface {
+        TermInterface {
             fields: value
                 .fields
                 .iter()
@@ -141,20 +191,20 @@ impl From<&RecordData> for Interface {
     }
 }
 
-impl From<&Term> for Interface {
+impl From<&Term> for TermInterface {
     fn from(term: &Term) -> Self {
-        term.extract_interface().unwrap_or_else(Interface::new)
+        term.extract_interface().unwrap_or_else(TermInterface::new)
     }
 }
 
 trait ExtractInterface {
-    fn extract_interface(&self) -> Option<Interface>;
+    fn extract_interface(&self) -> Option<TermInterface>;
 }
 
 impl ExtractInterface for &Term {
-    fn extract_interface(&self) -> Option<Interface> {
+    fn extract_interface(&self) -> Option<TermInterface> {
         if let Term::Record(rd) = self {
-            Some(Interface::from(rd))
+            Some(TermInterface::from(rd))
         } else {
             None
         }
@@ -162,21 +212,21 @@ impl ExtractInterface for &Term {
 }
 
 impl ExtractInterface for Field {
-    fn extract_interface(&self) -> Option<Interface> {
-        self.value.as_ref().map(|t| Interface::from(t.as_ref()))
+    fn extract_interface(&self) -> Option<TermInterface> {
+        self.value.as_ref().map(|t| TermInterface::from(t.as_ref()))
     }
 }
 
 impl ExtractInterface for Type {
-    fn extract_interface(&self) -> Option<Interface> {
+    fn extract_interface(&self) -> Option<TermInterface> {
         match &self.typ {
             TypeF::Flat(rt) => rt.as_ref().extract_interface(),
-            TypeF::Record(rrows) => Some(Interface {
+            TypeF::Record(rrows) => Some(TermInterface {
                 fields: rrows
                     .iter()
                     .filter_map(|item| {
                         if let RecordRowsIteratorItem::Row(rrow) = item {
-                            Some((rrow.id, InterfaceField::from(&rrow)))
+                            Some((rrow.id, FieldInterface::from(&rrow)))
                         } else {
                             None
                         }
@@ -189,12 +239,12 @@ impl ExtractInterface for Type {
 }
 
 impl ExtractInterface for LabeledType {
-    fn extract_interface(&self) -> Option<Interface> {
+    fn extract_interface(&self) -> Option<TermInterface> {
         self.typ.extract_interface()
     }
 }
 
-impl From<&Field> for InterfaceField {
+impl From<&Field> for FieldInterface {
     fn from(field: &Field) -> Self {
         let subfields = field
             .metadata
@@ -205,57 +255,64 @@ impl From<&Field> for InterfaceField {
             .reduce(Merge::merge)
             .flatten();
 
-        InterfaceField {
+        FieldInterface {
             subfields,
             field: field.clone(),
-            annotation: InterfaceAnnotation::from(&field.metadata.annotation),
         }
     }
 }
 
-impl From<&RecordRowF<&Type>> for InterfaceField {
+impl From<&RecordRowF<&Type>> for FieldInterface {
     fn from(rrow: &RecordRowF<&Type>) -> Self {
-        InterfaceField {
+        FieldInterface {
             subfields: rrow.typ.extract_interface(),
-            annotation: InterfaceAnnotation {
-                typ: Some(rrow.typ.clone()),
-                contracts: vec![],
-            },
             ..Default::default()
         }
     }
 }
 
-impl From<&TypeAnnotation> for InterfaceAnnotation {
-    fn from(ann: &TypeAnnotation) -> Self {
-        InterfaceAnnotation {
-            typ: ann.typ.as_ref().map(|t| t.typ.clone()),
-            contracts: ann.contracts.iter().map(|t| t.typ.clone()).collect(),
-        }
-    }
-}
-
-impl InterfaceField {
-    /// Take a clap command and enrich it with all the input fields defined by this record
-    /// (including subfields). Terminal fields (whose value isn't a record) are pushed to
-    /// `overrides`, together with potential documentation. See [build_clap].
+impl FieldInterface {
+    /// Take a clap command and enrich it with either one argument if this is an input field
+    /// subfields, or with all the subfields that are inputs. If this fields or some of its
+    /// subfields aren't inputs, they are pushed to `overrides`. See [build_clap].
     ///
-    /// Doing so, `add_args` updates `paths`, which is mapping from clap argument ids to the
-    /// corresponding field path represented as an array of field names.
+    /// `add_args` updates `paths` as well, which maps clap argument ids to the corresponding field
+    /// path represented as an array of string names.
     fn add_args(
         &self,
-        cmd: clap::Command,
+        mut cmd: clap::Command,
         path: Vec<String>,
         paths: &mut HashMap<clap::Id, Vec<String>>,
-        overrides: &mut HashMap<String, InterfaceField>,
+        overrides: &mut HashMap<String, Option<String>>,
     ) -> clap::Command {
         let id = path.join(".");
         let prev = paths.insert(clap::Id::from(&id), path.clone());
         debug_assert!(matches!(prev, None));
 
-        let mut arg = clap::Arg::new(&id)
-            .long(id)
-            .value_name(get_value_name(&self.annotation))
+        // this is a terminal field, which gives rise to an argument or an overridable value.
+        if !self.has_subfields() {
+            if self.is_input() {
+                cmd = self.add_arg(cmd, id);
+            } else {
+                overrides.insert(id, self.help());
+            }
+        }
+
+        for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
+            let mut path = path.clone();
+            path.push(id.to_string());
+            cmd = field.add_args(cmd, path, paths, overrides);
+        }
+
+        cmd
+    }
+
+    /// Add a single argument to the CLI `cmd`, based on the interface of this field, and return
+    /// the updated command.
+    fn add_arg(&self, cmd: clap::Command, path: String) -> clap::Command {
+        let mut arg = clap::Arg::new(&path)
+            .long(path)
+            .value_name(get_value_name(&self.field.metadata.annotation))
             // TODO: Create clap argument groups
             .required(!self.field.metadata.opt);
 
@@ -267,15 +324,7 @@ impl InterfaceField {
             arg = arg.default_value(default);
         }
 
-        let mut cmd = cmd.arg(arg);
-
-        for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
-            let mut path = path.clone();
-            path.push(id.to_string());
-            cmd = field.add_args(cmd, path, paths, overrides);
-        }
-
-        cmd
+        cmd.arg(arg)
     }
 
     /// Define if a field is an input of a configuration that is intended to be filled, and will be
@@ -309,6 +358,10 @@ impl InterfaceField {
         matches!(self.field.metadata.priority, MergePriority::Bottom)
     }
 
+    fn has_subfields(&self) -> bool {
+        matches!(&self.subfields, Some(ref intf) if !intf.fields.is_empty())
+    }
+
     /// Return the default value, if any.
     fn default_value(&self) -> Option<String> {
         match (&self.field.metadata.priority, &self.field.value) {
@@ -322,11 +375,12 @@ impl InterfaceField {
     fn help(&self) -> Option<String> {
         let mut output: Vec<u8> = Vec::new();
 
+        // We only need to render the documentation: the rest is printed separately as part of the
+        // clap command that is built.
         let attributes = Attributes {
             doc: true,
-            contract: true,
-            typ: true,
-            // Those are printed separately by clap
+            contract: false,
+            typ: false,
             default: false,
             value: false,
         };
@@ -335,47 +389,29 @@ impl InterfaceField {
             .unwrap_or(false)
             .then(|| {
                 String::from_utf8(output)
-                    .expect("the argument help renderer should always output valid utf8")
+                    .expect("the query printer should always output valid utf8")
             })
     }
 }
 
-fn get_value_name(_annotation: &InterfaceAnnotation) -> String {
-    "STRING".to_owned()
+fn get_value_name(annotation: &TypeAnnotation) -> String {
+    if annotation.is_empty() {
+        "NICKEL VALUE".into()
+    } else {
+        let anns: Vec<String> = annotation
+            .iter()
+            .map(|ctr| ctr.label.typ.to_string())
+            .collect();
+        anns.join(",")
+    }
 }
 
-/// Build a clap command description from the interface of a configuration.
-///
-/// This method recursively lists all existing field paths, and report input fields (as defined per
-/// [Interface::is_input]) as stand-alone arguments. For example, if there the configuration
-/// contains:
-///
-/// ```nickel
-/// foo.bar.baz | Number,
-/// ```
-///
-/// This will give rise to a corresponding `--foo.bar.baz` argument listed in the `help` message
-/// which can be set.
-///
-/// Non-inputs fields are still listed in the description of the `--override` command, which has
-/// the ability of setting any field.
-///
-/// # Return
-///
-/// In addition to the updated command, `build_clap` returns a mapping from clap argument ids to
-/// their corresponding full field path as an array of fields.
-fn build_clap(
-    mut cmd: clap::Command,
-    interface: &Interface,
-) -> (clap::Command, HashMap<clap::Id, Vec<String>>) {
-    let mut paths = HashMap::new();
-    let mut overrides = HashMap::new();
-
-    for (id, field) in &interface.fields {
-        cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut overrides)
-    }
-
-    (cmd, paths)
+/// A command dynamically built from a Nickel term.
+struct TermCommand {
+    /// The corresponding clap command
+    clap_cmd: clap::Command,
+    args: HashMap<clap::Id, Vec<String>>,
+    overrides: HashMap<String, Option<String>>,
 }
 
 impl ExportCommand {
@@ -394,12 +430,8 @@ impl ExportCommand {
             None
         } else {
             let evaled = program.eval_record_spine()?;
-
-            let (cmd, paths) = build_clap(
-                Command::new("extra-args").no_binary_name(true),
-                &Interface::from(evaled.as_ref()),
-            );
-            let arg_matches = cmd.get_matches_from(self.freeform);
+            let cmd = TermInterface::from(evaled.as_ref()).build_cmd();
+            let arg_matches = cmd.clap_cmd.get_matches_from(self.freeform);
 
             Some(
                 arg_matches
@@ -411,7 +443,7 @@ impl ExportCommand {
                         ))
                         .then(|| {
                             (
-                                paths.get(id).unwrap().clone(),
+                                cmd.args.get(id).unwrap().clone(),
                                 arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
                             )
                         })
