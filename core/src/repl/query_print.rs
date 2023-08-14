@@ -190,6 +190,7 @@ fn render_query_result<R: QueryPrinter>(
         value: &Term,
     ) -> io::Result<()> {
         writeln!(out)?;
+
         match value {
             Term::Record(record) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
@@ -283,9 +284,10 @@ fn render_query_result<R: QueryPrinter>(
         println!("Requested metadata were not found for this value.");
     }
 
-    if let Some(ref value) = field.value {
-        write_fields(out, renderer, value.as_ref())?;
-    }
+    match field.value {
+        Some(ref value) if selected_attrs.value => write_fields(out, renderer, value.as_ref())?,
+        _ => (),
+    };
 
     Ok(())
 }

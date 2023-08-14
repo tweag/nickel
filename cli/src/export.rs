@@ -1,21 +1,24 @@
-use std::collections::{BTreeMap, HashMap};
-use std::ffi::OsString;
-use std::io::Write;
-use std::{fs, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    ffi::OsString,
+    io::Write,
+    {fs, path::PathBuf},
+};
 
-use clap::parser::ValueSource;
-use clap::Command;
-use nickel_lang_core::error::Error;
-use nickel_lang_core::identifier::Ident;
-use nickel_lang_core::term::record::{Field, RecordData};
-use nickel_lang_core::term::{IndexMap, LabeledType, MergePriority, Term, TypeAnnotation};
-use nickel_lang_core::typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF};
+use clap::{parser::ValueSource, Command};
+
 use nickel_lang_core::{
-    error::IOError,
+    error::{Error, IOError},
     eval::cache::lazy::CBNCache,
+    identifier::Ident,
     program::Program,
+    repl::query_print::{write_query_result, Attributes},
     serialize::{self, ExportFormat},
-    term::RichTerm,
+    term::{
+        record::{Field, FieldMetadata, RecordData},
+        IndexMap, LabeledType, MergePriority, Term, TypeAnnotation,
+    },
+    typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
 
 use crate::error::{CliResult, ResultErrorExt};
@@ -57,12 +60,7 @@ struct InterfaceAnnotation {
 struct InterfaceField {
     /// The interface of the subfields of this field, if it's a record itself.
     subfields: Option<Interface>,
-    documentation: Option<String>,
-    /// A string representation of the default value for this field, if any.
-    default: Option<String>,
-    opt: bool,
-    /// If the corresponding record field has an attached value or not.
-    is_defined: bool,
+    field: Field,
     annotation: InterfaceAnnotation,
 }
 
@@ -118,10 +116,14 @@ impl Merge for InterfaceField {
     fn merge(first: Self, second: Self) -> Self {
         InterfaceField {
             subfields: Merge::merge(first.subfields, second.subfields),
-            documentation: first.documentation.or(second.documentation),
-            default: first.default.or(second.default),
-            opt: first.opt && second.opt,
-            is_defined: first.is_defined || second.is_defined,
+            field: Field {
+                metadata: FieldMetadata::flatten(first.field.metadata, second.field.metadata),
+                // Value is used only to show a default value, and to determine if a field has a
+                // definition. We don't bother actually merging the content, but just keep any
+                // side that is defined.
+                value: first.field.value.or(second.field.value),
+                ..Default::default()
+            },
             annotation: Merge::merge(first.annotation, second.annotation),
         }
     }
@@ -205,14 +207,7 @@ impl From<&Field> for InterfaceField {
 
         InterfaceField {
             subfields,
-            documentation: field.metadata.doc.clone(),
-            default: if let MergePriority::Bottom = field.metadata.priority {
-                field.value.as_ref().map(RichTerm::to_string)
-            } else {
-                None
-            },
-            opt: field.metadata.opt,
-            is_defined: field.value.is_some(),
+            field: field.clone(),
             annotation: InterfaceAnnotation::from(&field.metadata.annotation),
         }
     }
@@ -242,7 +237,8 @@ impl From<&TypeAnnotation> for InterfaceAnnotation {
 
 impl InterfaceField {
     /// Take a clap command and enrich it with all the input fields defined by this record
-    /// (including subfields). See [build_clap].
+    /// (including subfields). Terminal fields (whose value isn't a record) are pushed to
+    /// `overrides`, together with potential documentation. See [build_clap].
     ///
     /// Doing so, `add_args` updates `paths`, which is mapping from clap argument ids to the
     /// corresponding field path represented as an array of field names.
@@ -251,6 +247,7 @@ impl InterfaceField {
         cmd: clap::Command,
         path: Vec<String>,
         paths: &mut HashMap<clap::Id, Vec<String>>,
+        overrides: &mut HashMap<String, InterfaceField>,
     ) -> clap::Command {
         let id = path.join(".");
         let prev = paths.insert(clap::Id::from(&id), path.clone());
@@ -260,22 +257,22 @@ impl InterfaceField {
             .long(id)
             .value_name(get_value_name(&self.annotation))
             // TODO: Create clap argument groups
-            .required(!self.opt);
+            .required(!self.field.metadata.opt);
 
-        if let Some(doc) = &self.documentation {
+        if let Some(doc) = &self.field.metadata.doc {
             arg = arg.help(doc);
         };
 
-        if let Some(default) = &self.default {
+        if let Some(default) = self.default_value() {
             arg = arg.default_value(default);
-        };
+        }
 
         let mut cmd = cmd.arg(arg);
 
         for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
             let mut path = path.clone();
             path.push(id.to_string());
-            cmd = field.add_args(cmd, path, paths);
+            cmd = field.add_args(cmd, path, paths, overrides);
         }
 
         cmd
@@ -299,8 +296,32 @@ impl InterfaceField {
     /// first-class ([related issue](https://github.com/tweag/nickel/issues/1505)). For now, this
     /// logic seems to be a reasonable first approximation.
     fn is_input(&self) -> bool {
-        !self.is_defined || self.default.is_some()
+        !self.is_defined() || self.is_default()
     }
+
+    fn is_defined(&self) -> bool {
+        self.field.value.is_some()
+    }
+
+    fn is_default(&self) -> bool {
+        matches!(self.field.metadata.priority, MergePriority::Bottom)
+    }
+
+    fn default_value(&self) -> Option<String> {
+        match (&self.field.metadata.priority, &self.field.value) {
+            (MergePriority::Bottom, Some(value)) => Some(value.to_string()),
+            _ => None,
+        }
+    }
+
+    // /// Render the type application, contract and documentation of as a terminal string to be
+    // /// displayer in the corresponding `help` text. Render markdown if the corresponding feature
+    // /// flag is enabled.
+    // fn help(&self) -> String {
+    //     let mut output : Vec<u8> = Vec::new();
+    //     write_query_result(&mut output,
+    //     String::from_utf8(output).expect("the argument help renderer should always output valid utf8")
+    // }
 }
 
 fn get_value_name(_annotation: &InterfaceAnnotation) -> String {
@@ -332,9 +353,10 @@ fn build_clap(
     interface: &Interface,
 ) -> (clap::Command, HashMap<clap::Id, Vec<String>>) {
     let mut paths = HashMap::new();
+    let mut overrides = HashMap::new();
 
     for (id, field) in &interface.fields {
-        cmd = field.add_args(cmd, vec![id.to_string()], &mut paths)
+        cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut overrides)
     }
 
     (cmd, paths)
