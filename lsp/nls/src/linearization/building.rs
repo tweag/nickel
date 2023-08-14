@@ -4,7 +4,7 @@ use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
     cache::Cache,
-    identifier::Ident,
+    identifier::{Ident, Symbol},
     position::TermPos,
     term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
@@ -133,15 +133,14 @@ impl<'b> Building<'b> {
                 ty: UnifType::concrete(TypeF::Dyn),
                 kind: TermKind::RecordField {
                     record,
-                    ident: *ident,
+                    ident: (*ident).into(),
                     usages: Vec::new(),
                     value: ValueState::Unknown,
                 },
                 metadata: Some(field.metadata.clone()),
             });
-            let key = *ident;
-            env.insert(key, id);
-            self.add_record_field(current_file, record, (*ident, id))
+            env.insert(ident.symbol(), id);
+            self.add_record_field(current_file, record, (ident.symbol(), id))
         }
     }
 
@@ -149,7 +148,7 @@ impl<'b> Building<'b> {
         &mut self,
         current_file: FileId,
         record: ItemId,
-        (field_ident, reference_id): (Ident, ItemId),
+        (field_ident, reference_id): (Symbol, ItemId),
     ) {
         match self
             .get_item_kind_mut(current_file, record)
@@ -189,7 +188,7 @@ impl<'b> Building<'b> {
                 while let Some(id) = ids.pop() {
                     match curr_item {
                         TermKind::Record(ref fields) => {
-                            let item = fields.get(&id)?;
+                            let item = fields.get(&id.symbol())?;
                             let item_kind = self.get_item_kind(current_file, *item)?;
                             match item_kind {
                                 TermKind::RecordField {
@@ -275,9 +274,11 @@ impl<'b> Building<'b> {
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration {
                     TermKind::Record(fields) => {
-                        fields.get(child_ident).and_then(|child_declaration_id| {
-                            self.get_item_kind_with_id(current_file, *child_declaration_id)
-                        })
+                        fields
+                            .get(&child_ident.symbol())
+                            .and_then(|child_declaration_id| {
+                                self.get_item_kind_with_id(current_file, *child_declaration_id)
+                            })
                     }
                     _ => None,
                 });

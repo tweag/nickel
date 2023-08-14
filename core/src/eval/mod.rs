@@ -73,6 +73,7 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
+use crate::identifier::Symbol;
 use crate::term::record::FieldMetadata;
 use crate::term::string::NickelString;
 use crate::{
@@ -381,8 +382,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::Var(x) => {
                     let mut idx = env
-                        .get(x)
-                        .or_else(|| initial_env.get(x))
+                        .get(&x.symbol())
+                        .or_else(|| initial_env.get(&x.symbol()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
                     std::mem::drop(env); // idx may be a 1RC pointer
@@ -453,10 +454,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if *rec {
                         let idx_ = idx.clone();
                         self.cache
-                            .patch(idx_.clone(), |cl| cl.env.insert(*x, idx_.clone()));
+                            .patch(idx_.clone(), |cl| cl.env.insert(x.symbol(), idx_.clone()));
                     }
 
-                    env.insert(*x, idx);
+                    env.insert(x.symbol(), idx);
                     Closure {
                         body: t.clone(),
                         env,
@@ -734,7 +735,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Fun(x, t) => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(*x, idx);
+                        env.insert(x.symbol(), idx);
                         Closure {
                             body: t.clone(),
                             env,
@@ -876,7 +877,7 @@ impl Closure {
 }
 
 #[allow(type_alias_bounds)] // TODO: Look into this warning.
-pub type Environment = GenericEnvironment<Ident, CacheIndex>;
+pub type Environment = GenericEnvironment<Symbol, CacheIndex>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -896,7 +897,7 @@ pub fn env_add_record<C: Cache>(
                 let ext = record.fields.into_iter().filter_map(|(id, field)| {
                     field.value.map(|value|
                     (
-                        id,
+                        id.symbol(),
                         cache.add(
                             Closure { body: value, env: closure.env.clone() },
                             IdentKind::Record,
@@ -924,7 +925,10 @@ pub fn env_add<C: Cache>(
         body: rt,
         env: local_env,
     };
-    env.insert(id, cache.add(closure, IdentKind::Let, BindingType::Normal));
+    env.insert(
+        id.symbol(),
+        cache.add(closure, IdentKind::Let, BindingType::Normal),
+    );
 }
 
 /// Pop and update all the indices on the top of the stack with the given closure.
@@ -945,8 +949,8 @@ pub fn subst<C: Cache>(
 
     match term.into_owned() {
         Term::Var(id) => env
-            .get(&id)
-            .or_else(|| initial_env.get(&id))
+            .get(&id.symbol())
+            .or_else(|| initial_env.get(&id.symbol()))
             .map(|idx| {
                 let closure = cache.get(idx.clone());
                 subst(cache, closure.body, initial_env, &closure.env)

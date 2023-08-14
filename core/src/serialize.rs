@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 
 use crate::{
     error::ExportError,
+    identifier::Ident,
     term::{
         array::{Array, ArrayAttrs},
         record::RecordData,
@@ -133,7 +134,7 @@ pub fn deserialize_record<'de, D>(deserializer: D) -> Result<RecordData, D::Erro
 where
     D: Deserializer<'de>,
 {
-    let fields = IndexMap::deserialize(deserializer)?;
+    let fields = IndexMap::<Ident, _>::deserialize(deserializer)?;
     Ok(RecordData::with_field_values(fields))
 }
 

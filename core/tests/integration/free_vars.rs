@@ -1,5 +1,8 @@
-use nickel_lang_core::term::{record::FieldDeps, IndexMap};
-use nickel_lang_core::{identifier::Ident, term::Term, transform::free_vars};
+use nickel_lang_core::{
+    identifier::Symbol,
+    term::{record::FieldDeps, IndexMap, Term},
+    transform::free_vars,
+};
 
 use std::collections::HashSet;
 use std::iter::IntoIterator;
@@ -8,17 +11,17 @@ use std::rc::Rc;
 use nickel_lang_utils::test_program::parse;
 
 fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
-    let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
+    let expected_set: HashSet<Symbol> = expected.into_iter().map(Symbol::from).collect();
     *free_vars == FieldDeps::Known(Rc::new(expected_set))
 }
 
 fn stat_free_vars_incl(
-    stat_fields: &IndexMap<Ident, FieldDeps>,
+    stat_fields: &IndexMap<Symbol, FieldDeps>,
     mut expected: IndexMap<&str, Vec<&str>>,
 ) -> bool {
     stat_fields
         .iter()
-        .all(|(id, set)| free_vars_eq(set, expected.remove(id.as_ref()).unwrap()))
+        .all(|(id, set)| free_vars_eq(set, expected.remove(id.label()).unwrap()))
 }
 
 fn dyn_free_vars_incl(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {

@@ -24,6 +24,7 @@
 //! One can think of merge to be defined on metadata as well. When merging two fields, the
 //! resulting metadata is the result of merging the two original field's metadata. The semantics
 //! depend on each metadata.
+
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
@@ -237,8 +238,10 @@ pub fn merge<C: Cache>(
 
             match mode {
                 MergeMode::Contract(label) if !r2.attrs.open && !left.is_empty() => {
-                    let fields: Vec<String> =
-                        left.keys().map(|field| format!("`{field}`")).collect();
+                    let fields: Vec<String> = left
+                        .keys()
+                        .map(|field| format!("`{}`", field.symbol()))
+                        .collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
                     let fields_list = fields.join(",");
 
@@ -488,11 +491,13 @@ impl Saturate for RichTerm {
     ) -> Result<RichTerm, EvalError> {
         if let Term::Var(var_id) = &*self.term {
             let idx = local_env
-                .get(var_id)
+                .get(&var_id.symbol())
                 .cloned()
                 .ok_or(EvalError::UnboundIdentifier(*var_id, self.pos))?;
 
-            Ok(cache.saturate(idx, env, fields).with_pos(self.pos))
+            Ok(cache
+                .saturate(idx, env, fields.map(Ident::symbol))
+                .with_pos(self.pos))
         } else {
             Ok(self)
         }
@@ -507,7 +512,7 @@ fn field_deps<C: Cache>(
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         local_env
-            .get(var_id)
+            .get(&var_id.symbol())
             .map(|idx| cache.deps(idx).unwrap_or_else(FieldDeps::empty))
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
@@ -553,7 +558,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
 
     // new_rev takes care of not creating a revertible element in the cache if the dependencies are empty.
     env.insert(
-        fresh_var,
+        fresh_var.symbol(),
         cache.add(
             closure,
             IdentKind::Record,
@@ -584,9 +589,9 @@ impl RevertClosurize for RichTerm {
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original element
-            let reverted = cache.revert(with_env.get(id).unwrap());
+            let reverted = cache.revert(with_env.get(&id.symbol()).unwrap());
             let fresh_id = Ident::fresh();
-            env.insert(fresh_id, reverted);
+            env.insert(fresh_id.symbol(), reverted);
             RichTerm::new(Term::Var(fresh_id), self.pos)
         } else {
             // Otherwise, if it is not a variable after the share normal form transformations, it

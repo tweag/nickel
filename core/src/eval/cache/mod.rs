@@ -6,7 +6,7 @@
 /// An *index* into the cache points to a given element.
 use super::{Closure, Environment, IdentKind};
 use crate::{
-    identifier::Ident,
+    identifier::Symbol,
     term::{record::FieldDeps, BindingType, RichTerm},
 };
 
@@ -66,7 +66,7 @@ pub trait Cache: Clone {
     ) -> CacheIndex;
 
     /// Initializes the cached value of the element at index `idx` with the given `rec_env`.
-    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]);
+    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Symbol, CacheIndex)]);
 
     /// Returns the [IdentKind] of the element stored at index `idx`
     fn ident_kind(&self, idx: &CacheIndex) -> IdentKind;
@@ -75,7 +75,7 @@ pub trait Cache: Clone {
     /// and apply the function to the given variables. The function part is allocated in a new
     /// cache entry, stored as a generated variable, with the same environment as the original
     /// expression.
-    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+    fn saturate<I: DoubleEndedIterator<Item = Symbol> + Clone>(
         &mut self,
         idx: CacheIndex,
         env: &mut Environment,

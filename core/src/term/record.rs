@@ -1,5 +1,9 @@
 use super::*;
-use crate::{error::EvalError, identifier::Ident, label::Label};
+use crate::{
+    error::EvalError,
+    identifier::{Ident, Symbol},
+    label::Label,
+};
 use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
@@ -23,7 +27,7 @@ impl RecordAttrs {
 pub enum FieldDeps {
     /// The set of dependencies is fixed and has been computed. When attached to an element, an empty
     /// set of dependency means that the element isn't revertible, but standard.
-    Known(Rc<HashSet<Ident>>),
+    Known(Rc<HashSet<Symbol>>),
     /// The element is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
     /// in the content of the corresponding element.
@@ -40,7 +44,7 @@ impl FieldDeps {
             // fields), then the resulting fields has unknown dependencies as well
             (FieldDeps::Unknown, _) | (_, FieldDeps::Unknown) => FieldDeps::Unknown,
             (FieldDeps::Known(deps1), FieldDeps::Known(deps2)) => {
-                let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
+                let union: HashSet<Symbol> = deps1.union(&*deps2).cloned().collect();
                 FieldDeps::Known(Rc::new(union))
             }
         }
@@ -57,8 +61,8 @@ impl FieldDeps {
     }
 }
 
-impl From<HashSet<Ident>> for FieldDeps {
-    fn from(set: HashSet<Ident>) -> Self {
+impl From<HashSet<Symbol>> for FieldDeps {
+    fn from(set: HashSet<Symbol>) -> Self {
         FieldDeps::Known(Rc::new(set))
     }
 }
@@ -68,7 +72,7 @@ impl From<HashSet<Ident>> for FieldDeps {
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
     /// Must have exactly the same keys as the static fields map of the recursive record.
-    pub stat_fields: IndexMap<Ident, FieldDeps>,
+    pub stat_fields: IndexMap<Symbol, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
     pub dyn_fields: Vec<FieldDeps>,
 }
@@ -299,7 +303,7 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: IndexMap<Ident, RichTerm>) -> Self {
+    pub fn with_field_values(field_values: impl IntoIterator<Item = (Ident, RichTerm)>) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| {
@@ -326,7 +330,7 @@ impl RecordData {
     /// external state while iterating.
     pub fn map_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Ident, Option<RichTerm>) -> Option<RichTerm>,
+        F: FnMut(Symbol, Option<RichTerm>) -> Option<RichTerm>,
     {
         let fields = self
             .fields
@@ -335,7 +339,7 @@ impl RecordData {
                 (
                     id,
                     Field {
-                        value: f(id, field.value),
+                        value: f(id.symbol(), field.value),
                         ..field
                     },
                 )
@@ -348,7 +352,7 @@ impl RecordData {
     /// defined value. Fields without a value are left unchanged.
     pub fn map_defined_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Ident, RichTerm) -> RichTerm,
+        F: FnMut(Symbol, RichTerm) -> RichTerm,
     {
         self.map_values(|id, value| value.map(|v| f(id, v)))
     }
@@ -362,14 +366,14 @@ impl RecordData {
     /// error `MissingFieldDefError`.
     pub fn into_iter_without_opts(
         self,
-    ) -> impl Iterator<Item = Result<(Ident, RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Symbol, RichTerm), MissingFieldDefError>> {
         self.fields
             .into_iter()
             .filter_map(|(id, field)| match field.value {
                 Some(v) => {
                     let pos = v.pos;
                     Some(Ok((
-                        id,
+                        id.symbol(),
                         RuntimeContract::apply_all(v, field.pending_contracts.into_iter(), pos),
                     )))
                 }
@@ -387,11 +391,11 @@ impl RecordData {
     /// `MissingFieldDefError`.
     pub fn iter_serializable(
         &self,
-    ) -> impl Iterator<Item = Result<(&Ident, &RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Symbol, &RichTerm), MissingFieldDefError>> {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
-                Some(ref v) if !field.metadata.not_exported => Some(Ok((id, v))),
+                Some(ref v) if !field.metadata.not_exported => Some(Ok((id.symbol(), v))),
                 None if !field.metadata.opt && !field.metadata.not_exported => {
                     Some(Err(MissingFieldDefError {
                         id: *id,
@@ -459,11 +463,11 @@ pub struct SealedTail {
     // Since we only ever check whether the tail contains a specific field
     // when we already know we're going to raise an error, it's not really
     // an issue to have a linear lookup there, so we do that instead.
-    fields: Vec<Ident>,
+    fields: Vec<Symbol>,
 }
 
 impl SealedTail {
-    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Ident>) -> Self {
+    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Symbol>) -> Self {
         Self {
             sealing_key,
             label,
@@ -481,7 +485,7 @@ impl SealedTail {
         }
     }
 
-    pub fn has_field(&self, field: &Ident) -> bool {
+    pub fn has_field(&self, field: &Symbol) -> bool {
         self.fields.contains(field)
     }
 

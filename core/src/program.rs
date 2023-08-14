@@ -699,6 +699,7 @@ mod tests {
     use super::*;
     use crate::error::EvalError;
     use crate::eval::cache::CacheImpl;
+    use crate::identifier::Ident;
     use crate::position::TermPos;
     use crate::term::array::ArrayAttrs;
     use assert_matches::assert_matches;

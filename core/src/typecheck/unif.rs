@@ -892,7 +892,7 @@ impl UnifTable {
 /// `{ someId: SomeType ; r }`). It is a set of identifiers that said row must NOT contain, to
 /// forbid ill-formed types with multiple declaration of the same id, for example `{ a: Number, a:
 /// String}`.
-pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
+pub type RowConstr = HashMap<VarId, HashSet<Symbol>>;
 
 /// Check that unifying a variable with a type doesn't violate record rows constraints, and update
 /// the row constraints of the unified type accordingly if needed.
@@ -920,7 +920,7 @@ pub fn constr_unify_rrows(
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::Extend { row, .. },
                 ..
-            } if p_constr.contains(&row.id) => Err(RowUnifError::UnsatConstr(
+            } if p_constr.contains(&row.id.symbol()) => Err(RowUnifError::UnsatConstr(
                 row.id,
                 UnifType::concrete(TypeF::Record(rrows.clone())),
             )),
@@ -1077,7 +1077,7 @@ impl Unify for UnifType {
                     substd1.unify(substd2, state, ctxt)
                 }
                 (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
-                    Err(UnifError::UnboundTypeVariable(ident))
+                    Err(UnifError::UnboundTypeVariable(ident.into()))
                 }
                 (ty1, ty2) => Err(UnifError::TypeMismatch(
                     UnifType::concrete(ty1),
@@ -1371,7 +1371,7 @@ impl RemoveRow for UnifRecordRows {
                     row: next_row,
                     tail,
                 } => {
-                    if *target == next_row.id {
+                    if target.symbol() == next_row.id.symbol() {
                         Ok((*next_row.typ, *tail))
                     } else {
                         let (extracted_row, rest) = tail.remove_row(target, state, var_level)?;
@@ -1388,7 +1388,7 @@ impl RemoveRow for UnifRecordRows {
             UnifRecordRows::UnifVar { id: var_id, .. } => {
                 let excluded = state.constr.entry(var_id).or_default();
 
-                if !excluded.insert(*target) {
+                if !excluded.insert(target.symbol()) {
                     return Err(RemoveRRowError::Conflict);
                 }
 

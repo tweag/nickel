@@ -45,6 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
+    identifier::Ident,
     term::{self, record::Field, IndexMap, UnaryOp},
 };
 
@@ -62,7 +63,7 @@ pub const MAX_GAS: u8 = 8;
 /// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
 /// do with the result instead of merely returning it.
 pub trait TermEnvironment: Clone {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    fn get_then<F, T>(&self, id: Symbol, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
 }
@@ -70,7 +71,7 @@ pub trait TermEnvironment: Clone {
 /// A simple term environment, as a mapping from identifiers to a tuple of a term and an
 /// environment (i.e. a closure), sufficient for the needs of typechecking.
 #[derive(PartialEq, Clone, Debug)]
-pub struct SimpleTermEnvironment(pub GenericEnvironment<Ident, (RichTerm, SimpleTermEnvironment)>);
+pub struct SimpleTermEnvironment(pub GenericEnvironment<Symbol, (RichTerm, SimpleTermEnvironment)>);
 
 impl SimpleTermEnvironment {
     pub fn new() -> Self {
@@ -79,22 +80,25 @@ impl SimpleTermEnvironment {
 }
 
 impl TermEnvironment for SimpleTermEnvironment {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    fn get_then<F, T>(&self, id: Symbol, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
-        f(self.0.get(id).map(|(rt, env)| (rt, env)))
+        f(self.0.get(&id).map(|(rt, env)| (rt, env)))
     }
 }
 
-impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for SimpleTermEnvironment {
+impl std::iter::FromIterator<(Symbol, (RichTerm, SimpleTermEnvironment))>
+    for SimpleTermEnvironment
+{
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = (Ident, (RichTerm, SimpleTermEnvironment))>,
+        T: IntoIterator<Item = (Symbol, (RichTerm, SimpleTermEnvironment))>,
     {
-        SimpleTermEnvironment(
-            GenericEnvironment::<Ident, (RichTerm, SimpleTermEnvironment)>::from_iter(iter),
-        )
+        SimpleTermEnvironment(GenericEnvironment::<
+            Symbol,
+            (RichTerm, SimpleTermEnvironment),
+        >::from_iter(iter))
     }
 }
 
@@ -240,8 +244,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
-            env1.get_then(id1, |binding1| {
-                env2.get_then(id2, |binding2| {
+            env1.get_then(id1.symbol(), |binding1| {
+                env2.get_then(id2.symbol(), |binding2| {
                     match (binding1, binding2) {
                         (None, None) => id1 == id2,
                         (Some((t1, env1)), Some((t2, env2))) => {
@@ -259,7 +263,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (Var(id), _) => {
             state.use_gas()
-                && env1.get_then(id, |binding| {
+                && env1.get_then(id.symbol(), |binding| {
                     binding
                         .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)
@@ -267,7 +271,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (_, Var(id)) => {
             state.use_gas()
-                && env2.get_then(id, |binding| {
+                && env2.get_then(id.symbol(), |binding| {
                     binding
                         .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)

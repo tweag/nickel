@@ -278,7 +278,6 @@ fn record_terms() {
                     (Ident::from("c"), mk_term::integer(3)),
                 ]
                 .into_iter()
-                .collect()
             ),
             Vec::new(),
             None,
@@ -295,7 +294,6 @@ fn record_terms() {
                     (Ident::from("d"), mk_term::integer(42)),
                 ]
                 .into_iter()
-                .collect()
             ),
             vec![(
                 StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
@@ -319,7 +317,6 @@ fn record_terms() {
                     (Ident::from("\"%}%"), mk_term::integer(2)),
                 ]
                 .into_iter()
-                .collect()
             ),
             Vec::new(),
             None,

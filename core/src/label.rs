@@ -192,8 +192,8 @@ pub mod ty_path {
                 }
 
                 panic!(
-                    "span: current type path element indicates to go to field `{}`,\
-but this field doesn't exist in {}",
+                    "span: current type path element indicates to go to field `{}`, \
+                     but this field doesn't exist in {}",
                     ident,
                     Type::from(TypeF::Record(rows.clone())),
                 )

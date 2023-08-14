@@ -42,7 +42,7 @@
 //! only be equated with itself.
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
-    identifier::Ident,
+    identifier::{Ident, Symbol},
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
@@ -132,7 +132,7 @@ pub enum VarKind {
     /// cannot appear in the tail. For instance `forall r. { ; r } -> { x : Number ; r }` assumes
     /// `r` does not already contain an `x` field.
     RecordRows {
-        excluded: HashSet<Ident>,
+        excluded: HashSet<Symbol>,
     },
 }
 
@@ -270,7 +270,7 @@ pub enum TypeF<Ty, RRows, ERows> {
     /// A function.
     Arrow(Ty, Ty),
     /// A type variable.
-    Var(Ident),
+    Var(Symbol),
     /// A forall binder.
     Forall {
         var: Ident,
@@ -736,10 +736,14 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
 /// Retrieve the contract corresponding to a type variable occurrence in a type as a `RichTerm`.
 /// Helper used by the `subcontract` functions.
 fn get_var_contract(
-    vars: &HashMap<Ident, RichTerm>,
-    id: &Ident,
+    vars: &HashMap<Symbol, RichTerm>,
+    sym: Symbol,
+    pos: TermPos,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
-    Ok(vars.get(id).ok_or(UnboundTypeVariableError(*id))?.clone())
+    Ok(vars
+        .get(&sym)
+        .ok_or(UnboundTypeVariableError(Ident::from(sym).with_pos(pos)))?
+        .clone())
 }
 
 impl EnumRows {
@@ -806,7 +810,7 @@ impl RecordRows {
     /// Construct the subcontract corresponding to a record type
     fn subcontract(
         &self,
-        vars: HashMap<Ident, RichTerm>,
+        vars: HashMap<Symbol, RichTerm>,
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -831,7 +835,7 @@ impl RecordRows {
         let tail = match &rrows.0 {
             RecordRowsF::Empty => internals::empty_tail(),
             RecordRowsF::TailDyn => internals::dyn_tail(),
-            RecordRowsF::TailVar(id) => get_var_contract(&vars, id)?,
+            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.symbol(), id.pos)?,
             // Safety: the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
         };
@@ -849,13 +853,13 @@ impl RecordRows {
     /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<Type> {
+    pub fn row_find_path(&self, path: &[Symbol]) -> Option<Type> {
         if path.is_empty() {
             return None;
         }
 
         let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id == path[0] => Some(row.typ.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id.symbol() == path[0] => Some(row.typ.clone()),
             _ => None,
         });
 
@@ -948,7 +952,7 @@ impl Type {
     /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
-        mut vars: HashMap<Ident, RichTerm>,
+        mut vars: HashMap<Symbol, RichTerm>,
         pol: Polarity,
         sy: &mut i32,
     ) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -969,7 +973,7 @@ impl Type {
                 t.subcontract(vars, pol, sy)?
             ),
             TypeF::Flat(ref t) => t.clone(),
-            TypeF::Var(ref id) => get_var_contract(&vars, id)?,
+            TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
             TypeF::Forall {
                 ref var,
                 ref body,
@@ -997,7 +1001,7 @@ impl Type {
                         mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
                     }
                 };
-                vars.insert(*var, contract);
+                vars.insert(var.symbol(), contract);
 
                 *sy += 1;
                 mk_app!(

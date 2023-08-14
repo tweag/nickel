@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use nickel_lang_core::{identifier::Ident, typ::Type, typecheck::UnifType};
+use nickel_lang_core::{
+    identifier::{Ident, Symbol},
+    typ::Type,
+    typecheck::UnifType,
+};
 
 use super::ItemId;
 
@@ -36,7 +40,7 @@ pub enum TermKind {
         path: Option<Vec<Ident>>,
     },
     Usage(UsageState),
-    Record(HashMap<Ident, ItemId>),
+    Record(HashMap<Symbol, ItemId>),
     RecordField {
         ident: Ident,
         record: ItemId,

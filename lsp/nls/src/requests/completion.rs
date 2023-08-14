@@ -5,7 +5,7 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
 use nickel_lang_core::{
-    identifier::Ident,
+    identifier::{Ident, Symbol},
     term::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
@@ -35,13 +35,13 @@ use crate::{
 
 #[derive(Debug)]
 struct IdentWithType {
-    ident: Ident,
+    ident: Symbol,
     ty: Type,
     meta: Option<FieldMetadata>,
 }
 
-impl From<Ident> for IdentWithType {
-    fn from(ident: Ident) -> Self {
+impl From<Symbol> for IdentWithType {
+    fn from(ident: Symbol) -> Self {
         IdentWithType {
             ident,
             ty: Type::from(TypeF::Dyn),
@@ -53,7 +53,7 @@ impl From<Ident> for IdentWithType {
 impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
-            ident: Ident::from(ident),
+            ident: Symbol::from(ident),
             ty: Type::from(TypeF::Dyn),
             meta: None,
         }
@@ -150,7 +150,7 @@ fn find_fields_from_term_kind(
                     })
                     .collect()
             } else {
-                let id = path.pop().and_then(|name| fields.get(&name));
+                let id = path.pop().and_then(|name| fields.get(&name.symbol()));
                 match id {
                     Some(id) => find_fields_from_term_kind(
                         *id,
@@ -287,7 +287,7 @@ fn find_fields_from_rrows(
                 _ => None,
             })
             .map(|(ident, types)| IdentWithType {
-                ident,
+                ident: ident.symbol(),
                 meta: None,
                 ty: types.clone(),
             })
@@ -331,7 +331,7 @@ fn find_fields_from_term(
                 .fields
                 .iter()
                 .map(|(ident, field)| IdentWithType {
-                    ident: *ident,
+                    ident: ident.symbol(),
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
                     ty: Type::from(TypeF::Dyn),
@@ -340,7 +340,7 @@ fn find_fields_from_term(
                 .collect(),
             Some(name) => data
                 .fields
-                .get(&name)
+                .get(&Ident::from(name))
                 .map(|field| find_fields_from_field(field, path, info))
                 .unwrap_or_default(),
         },
@@ -551,7 +551,7 @@ fn get_completion_identifiers(
         server: &Server,
         path: &mut Vec<Ident>,
     ) -> Vec<IdentWithType> {
-        let Some(item_id) = item.env.get(&name) else {
+        let Some(item_id) = item.env.get(&name.symbol()) else {
             return Vec::new()
         };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
@@ -639,7 +639,7 @@ fn get_completion_identifiers(
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration { id: ident, .. }
                         | TermKind::RecordField { ident, .. } => Some(IdentWithType {
-                            ident,
+                            ident: ident.symbol(),
                             meta: item.metadata.clone(),
                             ty: ty.clone(),
                         }),
@@ -970,9 +970,9 @@ mod tests {
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("foo"), ItemId { file_id, index: 2 }),
-                (Ident::from("bar"), ItemId { file_id, index: 2 }),
-                (Ident::from("baz"), ItemId { file_id, index: 2 }),
+                (Symbol::from("foo"), ItemId { file_id, index: 2 }),
+                (Symbol::from("bar"), ItemId { file_id, index: 2 }),
+                (Symbol::from("baz"), ItemId { file_id, index: 2 }),
             ])),
             None,
         );
@@ -1017,10 +1017,10 @@ mod tests {
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("one"), ItemId { file_id, index: 2 }),
-                (Ident::from("two"), ItemId { file_id, index: 2 }),
-                (Ident::from("three"), ItemId { file_id, index: 2 }),
-                (Ident::from("four"), ItemId { file_id, index: 2 }),
+                (Symbol::from("one"), ItemId { file_id, index: 2 }),
+                (Symbol::from("two"), ItemId { file_id, index: 2 }),
+                (Symbol::from("three"), ItemId { file_id, index: 2 }),
+                (Symbol::from("four"), ItemId { file_id, index: 2 }),
             ])),
             None,
         );
@@ -1120,15 +1120,15 @@ mod tests {
         let b = make_lin_item(
             ItemId { file_id, index: 1 },
             TermKind::Record(HashMap::from([
-                (Ident::from("one"), ItemId { file_id, index: 2 }),
-                (Ident::from("two"), ItemId { file_id, index: 2 }),
+                (Symbol::from("one"), ItemId { file_id, index: 2 }),
+                (Symbol::from("two"), ItemId { file_id, index: 2 }),
             ])),
             Some(meta),
         );
         let lin = make_completed(vec![a, b, c]);
 
         let actual = collect_record_info(&lin, id, &mut Vec::new(), &LinRegistry::new());
-        let mut expected = vec![Ident::from("one"), Ident::from("two")];
+        let mut expected = vec![Symbol::from("one"), Symbol::from("two")];
         let mut actual = actual.iter().map(|iwm| iwm.ident).collect::<Vec<_>>();
         expected.sort();
         actual.sort();

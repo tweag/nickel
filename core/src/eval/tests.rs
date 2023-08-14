@@ -256,7 +256,7 @@ fn initial_env() {
     let mut initial_env = Environment::new();
     let mut eval_cache = CacheImpl::new();
     initial_env.insert(
-        Ident::from("g"),
+        Symbol::from("g"),
         eval_cache.add(
             Closure::atomic_closure(mk_term::integer(1)),
             IdentKind::Let,

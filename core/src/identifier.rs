@@ -1,35 +1,107 @@
 //! Define the type of an identifier.
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Debug};
-use std::hash::Hash;
+use std::{
+    fmt::{self, Debug},
+    hash::Hash,
+};
 
 use crate::{position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+/// An interned string.
+//
+// Implementation-wise, this is just a wrapper around interner::Symbol that uses a hard-coded,
+// static `Interner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", from = "String")]
-pub struct Ident {
-    symbol: interner::Symbol,
-    pub pos: TermPos,
-    generated: bool,
+pub struct Symbol(interner::Symbol);
+
+impl Symbol {
+    pub fn new(s: impl AsRef<str>) -> Self {
+        Self(INTERNER.intern(s.as_ref()))
+    }
+
+    /// Return the string representation of this symbol.
+    pub fn label(&self) -> &str {
+        INTERNER.lookup(self.0)
+    }
+
+    pub fn into_label(self) -> String {
+        self.label().to_owned()
+    }
 }
 
-impl Debug for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Ident")
-            .field("label", &self.label())
-            .finish()
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.label())
     }
+}
+
+impl From<Symbol> for Ident {
+    fn from(symbol: Symbol) -> Self {
+        Ident {
+            symbol,
+            pos: TermPos::None,
+            generated: symbol.label().starts_with(GEN_PREFIX),
+        }
+    }
+}
+
+impl PartialOrd for Symbol {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.label().partial_cmp(other.label())
+    }
+}
+
+impl Ord for Symbol {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.label().cmp(other.label())
+    }
+}
+
+impl From<Symbol> for NickelString {
+    fn from(sym: Symbol) -> Self {
+        sym.to_string().into()
+    }
+}
+
+impl<F> From<F> for Symbol
+where
+    String: From<F>,
+{
+    fn from(val: F) -> Self {
+        Self(INTERNER.intern(String::from(val)))
+    }
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<String> for Symbol {
+    fn into(self) -> String {
+        self.into_label()
+    }
+}
+
+/// An identifier is a [`Symbol`] together with a position.
+///
+/// The position is ignored for equality comparison and hashing; it's mainly
+/// intended for error messages. If you want to combine a symbol with a semantically
+/// meaningful position, use [`RichIdent`] instead.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(into = "String", from = "String")]
+pub struct Ident {
+    symbol: Symbol,
+    pub pos: TermPos,
+    generated: bool,
 }
 
 impl Ident {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
         let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            symbol: INTERNER.intern(label),
+            symbol: Symbol::new(label),
             pos,
             generated,
         }
@@ -37,14 +109,6 @@ impl Ident {
 
     pub fn new(label: impl AsRef<str>) -> Self {
         Self::new_with_pos(label, TermPos::None)
-    }
-
-    /// Create an identifier with the same label as this one, but no position.
-    pub fn without_pos(self) -> Ident {
-        Ident {
-            pos: TermPos::None,
-            ..self
-        }
     }
 
     /// Create an identifier with the same label as this one, but a specified position.
@@ -59,9 +123,14 @@ impl Ident {
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 
+    /// Return this identifier's symbol.
+    pub fn symbol(&self) -> Symbol {
+        self.symbol
+    }
+
     /// Return the string representation of this identifier.
     pub fn label(&self) -> &str {
-        INTERNER.lookup(self.symbol)
+        self.symbol.label()
     }
 
     pub fn into_label(self) -> String {
@@ -95,7 +164,7 @@ impl Eq for Ident {}
 
 impl Hash for Ident {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol.hash(state);
+        self.symbol.hash(state)
     }
 }
 

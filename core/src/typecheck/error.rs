@@ -216,7 +216,7 @@ impl UnifError {
                 constant_id,
                 var_kind,
             } => TypecheckError::VarLevelMismatch {
-                type_var: names_reg.gen_cst_name(constant_id, var_kind),
+                type_var: names_reg.gen_cst_name(constant_id, var_kind).into(),
                 pos: pos_opt,
             },
         }

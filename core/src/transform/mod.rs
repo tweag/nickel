@@ -146,11 +146,13 @@ impl Closurizable for RichTerm {
         let pos = self.pos;
 
         let idx = match self.as_ref() {
-            Term::Var(id) if id.is_generated() => with_env.get(id).cloned().unwrap_or_else(|| {
-                panic!(
+            Term::Var(id) if id.is_generated() => {
+                with_env.get(&id.symbol()).cloned().unwrap_or_else(|| {
+                    panic!(
                 "Internal error(closurize) : generated identifier {id} not found in the environment"
             )
-            }),
+                })
+            }
             _ => {
                 let closure: Closure = Closure {
                     body: self,
@@ -160,7 +162,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var, idx);
+        env.insert(var.symbol(), idx);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }

@@ -538,14 +538,7 @@ where
     });
 
     Term::RecRecord(
-        RecordData::new(
-            static_fields
-                .into_iter()
-                .map(|(id, value)| (id, value))
-                .collect(),
-            attrs,
-            None,
-        ),
+        RecordData::new(static_fields, attrs, None),
         dynamic_fields,
         None,
     )

@@ -1395,12 +1395,15 @@ impl RichTerm {
         }
     }
 
-    /// Erase recursively the positional information.
+    /// Erase recursively (most of) the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     ///
     /// This is currently only used in test code, but because it's used from integration
     /// tests we cannot hide it behind cfg(test).
+    ///
+    /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
+    /// good enough for the tests.
     pub fn without_pos(self) -> Self {
         self.traverse::<_, _, ()>(
             &|t: Type, _| {
@@ -1882,7 +1885,7 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = indexmap::IndexMap::new();
+                let mut fields = indexmap::IndexMap::<Ident, RichTerm>::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*

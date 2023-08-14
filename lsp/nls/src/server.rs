@@ -103,7 +103,7 @@ impl Server {
             let file_id = self.cache.get_submodule_file_id(module)?;
             // We're using the ID 0 to get the top-level value, which is the body of the module.
             let content_id = ItemId { file_id, index: 0 };
-            self.initial_env.insert(name, content_id);
+            self.initial_env.insert(name.symbol(), content_id);
         }
         Some(())
     }

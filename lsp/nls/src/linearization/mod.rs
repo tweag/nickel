@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
-    identifier::Ident,
+    identifier::{Ident, Symbol},
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
@@ -29,7 +29,7 @@ pub mod building;
 pub mod completed;
 pub mod interface;
 
-pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>;
+pub type Environment = nickel_lang_core::environment::Environment<Symbol, ItemId>;
 
 /// A registry mapping file ids to their corresponding linearization. The registry stores the
 /// linearization of every file that has been imported and analyzed, including the main open
@@ -251,7 +251,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
                     };
-                    self.env.insert(ident.to_owned(), id);
+                    self.env.insert(ident.symbol(), id);
 
                     let kind = TermKind::Declaration {
                         id: ident.to_owned(),
@@ -294,7 +294,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                     let_pattern_bindings.push(id);
                     let new_ident = bind_ident.unwrap_or(*ident);
-                    self.env.insert(new_ident, id);
+                    self.env.insert(new_ident.symbol(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
@@ -343,7 +343,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     _ => unreachable!(),
                 };
                 self.env.insert(
-                    ident.to_owned(),
+                    ident.symbol(),
                     ItemId {
                         file_id: self.file,
                         index: id_gen.get(),
@@ -380,8 +380,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     ident, self.access
                 );
 
-                let key = ident.to_owned();
-                let pointed = self.env.get(&key).copied();
+                let pointed = self.env.get(&ident.symbol()).copied();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
@@ -683,7 +682,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     ) {
         if let Some(item) = self
             .env
-            .get(&ident.to_owned())
+            .get(&ident.symbol())
             .and_then(|item_id| lin.linearization.get_mut(item_id.index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);

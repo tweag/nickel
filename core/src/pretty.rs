@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::Ident;
-
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},

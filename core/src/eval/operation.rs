@@ -450,7 +450,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Ok(Closure { body: value, env })
                         }
                         None => match record.sealed_tail.as_ref() {
-                            Some(t) if t.has_field(&id) => {
+                            Some(t) if t.has_field(&id.symbol()) => {
                                 Err(EvalError::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::FieldAccess {
                                         field: id.to_string(),
@@ -505,10 +505,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .collect::<Result<Vec<_>, _>>()
                             .map_err(|missing_def_err| missing_def_err.into_eval_err(pos, pos_op))?;
 
-                        // Although it seems that sort_by_key would be easier here, it would actually
-                        // require to copy the identifiers because of the lack of HKT. See
-                        // https://github.com/rust-lang/rust/issues/34162.
-                        values.sort_by(|(id1, _), (id2, _)| id1.cmp(id2));
+                        values.sort_by_key(|(id, _)| *id);
                         let terms = values.into_iter().map(|(_, value)| value).collect();
 
                         Ok(Closure {
@@ -2419,7 +2416,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().cloned().collect();
+                        let fields = tail.fields.keys().map(|s| s.symbol()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
@@ -2846,7 +2843,7 @@ impl RecPriority {
 
                 field.value = field.value.take().map(|value| {
                     if let Term::Var(id_inner) = value.as_ref() {
-                        let idx = env.get(id_inner).unwrap();
+                        let idx = env.get(&id_inner.symbol()).unwrap();
 
                         let new_idx =
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
@@ -2864,7 +2861,7 @@ impl RecPriority {
                             });
 
                         let fresh_id = Ident::fresh();
-                        new_env.insert(fresh_id, new_idx);
+                        new_env.insert(fresh_id.symbol(), new_idx);
                         RichTerm::new(Term::Var(fresh_id), pos)
                     } else {
                         // A record field that doesn't contain a variable is a constant (a number,
