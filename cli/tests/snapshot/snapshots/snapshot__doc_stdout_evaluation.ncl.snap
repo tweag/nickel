@@ -1,0 +1,5 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{"foo":{"fields":null,"type":null,"contracts":["{ x | Dyn, y, }"],"documentation":null}}
