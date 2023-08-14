@@ -28,6 +28,10 @@ use crate::{cli::GlobalOptions, eval::EvalCommand};
 /// don't list them all by default.
 const OVERRIDES_LIST_MAX_COUNT: usize = 15;
 
+/// The value name used through the CLI to indicate that an option take any Nickel expression as a
+/// value.
+const NICKEL_VALUE_NAME: &str = "NICKEL EXPRESSION";
+
 #[derive(clap::Parser, Debug)]
 pub struct ExportCommand {
     #[arg(long, value_enum, default_value_t)]
@@ -118,12 +122,12 @@ impl TermInterface {
             "Override any field of the configuration with a valid Nickel expression provided as \
             a string. The new value will be merged with the configuration with a `force` \
             priority.\
-            \n\nOverridable fields:\n{}",
+            \n\nOverridable fields:\n{}\n",
             overrides_list.join("\n")
         );
         let override_arg = clap::Arg::new(override_arg_label)
             .long(override_arg_label)
-            .value_name("NICKEL".to_owned())
+            .value_name(NICKEL_VALUE_NAME.to_owned())
             // TODO: Create clap argument groups
             .required(false)
             .help(override_help);
@@ -417,7 +421,7 @@ impl FieldInterface {
 
 fn get_value_name(annotation: &TypeAnnotation) -> String {
     if annotation.is_empty() {
-        "NICKEL VALUE".into()
+        NICKEL_VALUE_NAME.into()
     } else {
         let anns: Vec<String> = annotation
             .iter()
