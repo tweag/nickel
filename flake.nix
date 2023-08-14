@@ -205,7 +205,7 @@
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
             pname = "nickel-lang";
-            inherit src version;
+            inherit src;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
@@ -367,10 +367,7 @@
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
             pname = "nickel-lang-wasm";
-            inherit
-              src
-              version
-              cargoExtraArgs;
+            inherit src cargoExtraArgs;
             doCheck = false;
           };
 
