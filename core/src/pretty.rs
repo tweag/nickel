@@ -944,3 +944,65 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::parser::lexer::Lexer;
+    use crate::parser::{grammar::FixedTypeParser, ErrorTolerantParser};
+    use codespan::Files;
+
+    use super::*;
+
+    /// Parse a type represented as a string.
+    fn parse_type(s: &str) -> Type {
+        let id = Files::new().add("<test>", s);
+
+        FixedTypeParser::new()
+            .parse_strict(id, Lexer::new(s))
+            .unwrap()
+    }
+
+    /// Take a string representation of a type, parse it, and assert that formatting it gives the
+    /// same string as the original argument.
+    ///
+    /// Note that there are infinitely many string representations of the same type since, for
+    /// example, spaces are ignored: for the outcome of this function to be meaningful, the
+    /// original type must be written in the same way as types are formatted.
+    #[track_caller]
+    fn assert_format_eq(s: &str) {
+        let ty = parse_type(s);
+        assert_eq!(s, &format!("{ty}"));
+    }
+
+    #[test]
+    fn types_pretty_printing() {
+        assert_format_eq("Number");
+        assert_format_eq("Number -> Number");
+        assert_format_eq("(Number -> Number) -> (Number -> Number) -> Number -> Number");
+        assert_format_eq("((Number -> Number) -> Number) -> Number");
+        assert_format_eq("Number -> (forall a. a -> String) -> String");
+
+        assert_format_eq("{ _ : String }");
+        assert_format_eq("{ _ : (String -> String) -> String }");
+        assert_format_eq("{ _ | String }");
+        assert_format_eq("{ _ | (String -> String) -> String }");
+
+        assert_format_eq("{ x: (Bool -> Bool) -> Bool, y: Bool }");
+        assert_format_eq("forall r. { x: Bool, y: Bool, z: Bool ; r }");
+        assert_format_eq("{ x: Bool, y: Bool, z: Bool }");
+
+        assert_format_eq("[| 'a, 'b, 'c, 'd |]");
+        assert_format_eq("forall r. [| 'tag1, 'tag2, 'tag3 ; r |]");
+
+        assert_format_eq("Array Number");
+        assert_format_eq("Array (Array Number)");
+        assert_format_eq("Number -> Array (Array String) -> Number");
+        assert_format_eq("Array (Number -> Number)");
+        assert_format_eq("Array (Array (Array Dyn) -> Number)");
+
+        assert_format_eq("_");
+        assert_format_eq("_ -> _");
+        assert_format_eq("{ x: _, y: Bool }");
+        assert_format_eq("{ _ : _ }");
+    }
+}
