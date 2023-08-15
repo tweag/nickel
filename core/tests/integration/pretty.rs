@@ -76,9 +76,9 @@ fn str_vs_strchunks() {
 
 #[test]
 fn negative_numbers() {
-    eval(pretty(&mk_app!(
+    eval(dbg!(pretty(&mk_app!(
         Term::Op1(UnaryOp::StaticAccess("is_number".into()), make::var("std")),
         Term::Num((-5).into())
-    )))
+    ))))
     .unwrap();
 }

@@ -299,10 +299,21 @@ where
     }
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
-        if rt.as_ref().is_atom() {
-            rt.to_owned().pretty(self)
+        rt.to_owned().pretty(self).parens_if(!rt.as_ref().is_atom())
+    }
+}
+
+trait NickelDocBuilderExt<'a, D, A> {
+    /// Call `self.parens()` but only if `parens` is `true`.
+    fn parens_if(self, parens: bool) -> Self;
+}
+
+impl<'a, D: DocAllocator<'a, A>, A> NickelDocBuilderExt<'a, D, A> for DocBuilder<'a, D, A> {
+    fn parens_if(self, parens: bool) -> Self {
+        if parens {
+            self.parens()
         } else {
-            rt.to_owned().pretty(self).parens()
+            self
         }
     }
 }
@@ -817,34 +828,23 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match &self.0 {
             RecordRowsF::Empty => allocator.nil(),
-            RecordRowsF::TailDyn => allocator
-                .space()
-                .append(allocator.text(";"))
-                .append(allocator.space())
-                .append(allocator.text("Dyn")),
-            RecordRowsF::TailVar(id) => allocator
-                .space()
-                .append(allocator.text(";"))
-                .append(allocator.space())
-                .append(allocator.as_string(id)),
+            RecordRowsF::TailDyn => docs![allocator, ";", allocator.line(), "Dyn"],
+            RecordRowsF::TailVar(id) => docs![allocator, ";", allocator.line(), id.to_string()],
             RecordRowsF::Extend {
                 row: RecordRowF { id, typ },
                 tail,
-            } => {
-                let builder = allocator
-                    .text(ident_quoted(id))
-                    .append(allocator.text(":"))
-                    .append(allocator.space())
-                    .append(typ.pretty(allocator));
-
-                let builder = if let RecordRowsF::Extend { .. } = tail.0 {
-                    builder.append(allocator.text(",")).append(allocator.line())
+            } => docs![
+                allocator,
+                ident_quoted(id),
+                " : ",
+                typ.pretty(allocator),
+                if let RecordRowsF::Extend { .. } = tail.0 {
+                    docs![allocator, ",", allocator.line()]
                 } else {
-                    builder
-                };
-
-                builder.append(tail.pretty(allocator))
-            }
+                    allocator.nil()
+                },
+                tail.pretty(allocator)
+            ],
         }
     }
 }
@@ -918,43 +918,39 @@ where
                 .append(allocator.line())
                 .group()
                 .enclose("[|", "|]"),
-            Record(rrows) => allocator
-                .line()
-                .append(rrows.pretty(allocator))
+            Record(rrows) => docs![allocator, allocator.line(), rrows.pretty(allocator)]
                 .nest(2)
                 .append(allocator.line())
-                .group()
-                .braces(),
+                .braces()
+                .group(),
             Dict {
                 type_fields: ty,
                 flavour: attrs,
-            } => allocator
-                .softline()
-                .append(allocator.text("_"))
-                .append(allocator.space())
-                .append(match attrs {
-                    DictTypeFlavour::Type => allocator.text(":"),
-                    DictTypeFlavour::Contract => allocator.text("|"),
-                })
-                .append(allocator.space())
-                .append(ty.pretty(allocator))
-                .append(allocator.softline())
-                .braces(),
-            Arrow(dom, codom) => match dom.typ {
-                Arrow(..) | Forall { .. } => dom
-                    .pretty(allocator)
-                    .parens()
-                    .append(allocator.softline())
-                    .append(allocator.text("->"))
-                    .append(allocator.space())
-                    .append(codom.pretty(allocator)),
-                _ => dom
-                    .pretty(allocator)
-                    .append(allocator.softline())
-                    .append(allocator.text("->"))
-                    .append(allocator.space())
-                    .append(codom.pretty(allocator)),
-            },
+            } => docs![
+                allocator,
+                allocator.line(),
+                "_ ",
+                match attrs {
+                    DictTypeFlavour::Type => ":",
+                    DictTypeFlavour::Contract => "|",
+                },
+                " ",
+                ty.pretty(allocator),
+            ]
+            .nest(2)
+            .append(allocator.line())
+            .braces()
+            .group(),
+            Arrow(dom, codom) => docs![
+                allocator,
+                dom.pretty(allocator)
+                    .parens_if(matches!(dom.typ, Arrow(..) | Forall { .. }))
+                    .nest(2),
+                allocator.line(),
+                "-> ",
+                codom.pretty(allocator)
+            ]
+            .group(),
             Wildcard(_) => allocator.text("_"),
         }
     }
@@ -969,6 +965,7 @@ mod tests {
     use codespan::Files;
 
     use super::*;
+    use indoc::indoc;
 
     /// Parse a type represented as a string.
     fn parse_type(s: &str) -> Type {
@@ -979,28 +976,88 @@ mod tests {
             .unwrap()
     }
 
-    /// Parse a string representation of a type, and assert that formatting it
-    /// results in the strings `long` or `short`:
-    /// - `long`, when the line length is set to `80`
-    /// - `short`, when the line length is set to `5`
+    /// Parse a string representation `long` of a type, and assert that
+    /// formatting it gives back `long`, if the line length is set to `80`, or
+    /// alternatively results in `short`, if the line length is set to `0`
     #[track_caller]
-    fn assert_long_short_type(s: &str, long: &str, short: &str) {
-        let ty = parse_type(s);
-        let doc: DocBuilder<'_, BoxAllocator, ()> = dbg!(ty.pretty(&BoxAllocator));
+    fn assert_long_short_type(long: &str, short: &str) {
+        let ty = parse_type(long);
+        let doc: DocBuilder<'_, BoxAllocator, ()> = ty.pretty(&BoxAllocator);
 
         let mut long_lines = String::new();
         doc.render_fmt(80, &mut long_lines).unwrap();
 
         let mut short_lines = String::new();
-        doc.render_fmt(5, &mut short_lines).unwrap();
+        doc.render_fmt(0, &mut short_lines).unwrap();
 
         assert_eq!(long_lines, long);
         assert_eq!(short_lines, short);
     }
 
     #[test]
-    fn pretty_array_atom() {
-        assert_long_short_type("Array String", "Array String", "Array\n  String");
+    fn pretty_array_type() {
+        assert_long_short_type("Array String", "Array\n  String");
+        assert_long_short_type(
+            "Array (Number -> Array Dyn)",
+            indoc! {"
+                Array (
+                  Number
+                  -> Array
+                    Dyn
+                )"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_arrow_type() {
+        assert_long_short_type("Number -> Number", "Number\n-> Number");
+        assert_long_short_type(
+            "(Number -> Number -> Dyn) -> Number",
+            indoc! {"
+                (Number
+                  -> Number
+                  -> Dyn)
+                -> Number"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_dict_type() {
+        assert_long_short_type(
+            "{ _ : Number }",
+            indoc! {"
+                {
+                  _ : Number
+                }"
+            },
+        );
+        assert_long_short_type(
+            "{ _ : { x : Number, y : String } }",
+            indoc! {"
+                {
+                  _ : {
+                    x : Number,
+                    y : String
+                  }
+                }"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_record_type() {
+        assert_long_short_type(
+            "{ x : Number, y : String ; Dyn }",
+            indoc! {"
+                {
+                  x : Number,
+                  y : Number;
+                  Dyn
+                }" 
+            },
+        )
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
@@ -1028,9 +1085,9 @@ mod tests {
         assert_format_eq("{ _ | String }");
         assert_format_eq("{ _ | (String -> String) -> String }");
 
-        assert_format_eq("{ x: (Bool -> Bool) -> Bool, y: Bool }");
-        assert_format_eq("forall r. { x: Bool, y: Bool, z: Bool ; r }");
-        assert_format_eq("{ x: Bool, y: Bool, z: Bool }");
+        assert_format_eq("{ x : (Bool -> Bool) -> Bool, y : Bool }");
+        assert_format_eq("forall r. { x : Bool, y : Bool, z : Bool ; r }");
+        assert_format_eq("{ x : Bool, y : Bool, z : Bool }");
 
         assert_format_eq("[| 'a, 'b, 'c, 'd |]");
         assert_format_eq("forall r. [| 'tag1, 'tag2, 'tag3 ; r |]");
@@ -1043,7 +1100,7 @@ mod tests {
 
         assert_format_eq("_");
         assert_format_eq("_ -> _");
-        assert_format_eq("{ x: _, y: Bool }");
+        assert_format_eq("{ x : _, y : Bool }");
         assert_format_eq("{ _ : _ }");
     }
 }
