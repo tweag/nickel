@@ -11,6 +11,7 @@ mod error;
 mod field_walker;
 mod files;
 mod identifier;
+mod incomplete;
 mod linearization;
 mod position;
 mod requests;
