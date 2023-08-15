@@ -11,6 +11,7 @@ use crate::typ::*;
 
 use malachite::num::{basic::traits::Zero, conversion::traits::ToSci};
 use once_cell::sync::Lazy;
+use pretty::docs;
 pub use pretty::{DocAllocator, DocBuilder, Pretty};
 use regex::Regex;
 
@@ -861,15 +862,29 @@ where
             Number => allocator.text("Number"),
             Bool => allocator.text("Bool"),
             String => allocator.text("String"),
-            Array(ty) => allocator
-                .text("Array")
+            Array(ty) => {
+                let parens = !ty.fmt_is_atom();
+                docs![
+                    allocator,
+                    docs![
+                        allocator,
+                        "Array",
+                        if parens {
+                            docs![allocator, " (", allocator.line_()]
+                        } else {
+                            allocator.line()
+                        },
+                        ty.pretty(allocator)
+                    ]
+                    .nest(2),
+                    if parens {
+                        docs![allocator, allocator.line_(), ")"]
+                    } else {
+                        allocator.nil()
+                    }
+                ]
                 .group()
-                .append(allocator.space())
-                .append(if ty.fmt_is_atom() {
-                    ty.pretty(allocator)
-                } else {
-                    ty.pretty(allocator).nest(2).parens()
-                }),
+            }
             Symbol => allocator.text("Symbol"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
@@ -947,6 +962,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use pretty::BoxAllocator;
+
     use crate::parser::lexer::Lexer;
     use crate::parser::{grammar::FixedTypeParser, ErrorTolerantParser};
     use codespan::Files;
@@ -960,6 +977,30 @@ mod tests {
         FixedTypeParser::new()
             .parse_strict(id, Lexer::new(s))
             .unwrap()
+    }
+
+    /// Parse a string representation of a type, and assert that formatting it
+    /// results in the strings `long` or `short`:
+    /// - `long`, when the line length is set to `80`
+    /// - `short`, when the line length is set to `5`
+    #[track_caller]
+    fn assert_long_short_type(s: &str, long: &str, short: &str) {
+        let ty = parse_type(s);
+        let doc: DocBuilder<'_, BoxAllocator, ()> = dbg!(ty.pretty(&BoxAllocator));
+
+        let mut long_lines = String::new();
+        doc.render_fmt(80, &mut long_lines).unwrap();
+
+        let mut short_lines = String::new();
+        doc.render_fmt(5, &mut short_lines).unwrap();
+
+        assert_eq!(long_lines, long);
+        assert_eq!(short_lines, short);
+    }
+
+    #[test]
+    fn pretty_array_atom() {
+        assert_long_short_type("Array String", "Array String", "Array\n  String");
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
