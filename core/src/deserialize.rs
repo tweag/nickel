@@ -8,7 +8,7 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::term::array::{self, Array};
 use crate::term::record::Field;
 use crate::term::{IndexMap, RichTerm, Term};
@@ -386,12 +386,12 @@ where
 }
 
 struct RecordDeserializer {
-    iter: <IndexMap<Ident, Field> as IntoIterator>::IntoIter,
+    iter: <IndexMap<LocIdent, Field> as IntoIterator>::IntoIter,
     field: Option<Field>,
 }
 
 impl RecordDeserializer {
-    fn new(map: IndexMap<Ident, Field>) -> Self {
+    fn new(map: IndexMap<LocIdent, Field>) -> Self {
         RecordDeserializer {
             iter: map.into_iter(),
             field: None,
@@ -443,7 +443,7 @@ impl<'de> MapAccess<'de> for RecordDeserializer {
 }
 
 fn visit_record<'de, V>(
-    record: IndexMap<Ident, Field>,
+    record: IndexMap<LocIdent, Field>,
     visitor: V,
 ) -> Result<V::Value, RustDeserializationError>
 where

@@ -26,7 +26,7 @@ use std::ops::{Deref, DerefMut};
 
 use super::UnifType;
 use crate::term::RichTerm;
-use crate::{identifier::Ident, term::record::Field};
+use crate::{identifier::LocIdent, term::record::Field};
 
 /// Holds the state of a linearization, either in progress or finalized
 /// Restricts the possible states of a linearization to entities marked
@@ -110,7 +110,7 @@ pub trait Linearizer {
     fn retype_ident(
         &mut self,
         _lin: &mut Linearization<Self::Building>,
-        _ident: &Ident,
+        _ident: &LocIdent,
         _new_type: UnifType,
     ) {
     }

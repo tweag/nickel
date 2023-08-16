@@ -5,7 +5,7 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
 use nickel_lang_core::{
-    identifier::Ident,
+    identifier::{Ident, LocIdent},
     term::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
@@ -120,7 +120,7 @@ pub struct ComplCtx<'a> {
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
     id: ItemId,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info @ ComplCtx {
         linearization,
         lin_registry,
@@ -150,7 +150,7 @@ fn find_fields_from_term_kind(
                     })
                     .collect()
             } else {
-                let id = path.pop().and_then(|name| fields.get(&name));
+                let id = path.pop().and_then(|name| fields.get(&name.symbol()));
                 match id {
                     Some(id) => find_fields_from_term_kind(
                         *id,
@@ -195,7 +195,7 @@ fn find_fields_from_term_kind(
 /// its contract information.
 fn find_fields_from_contract(
     id: ItemId,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info @ ComplCtx {
         linearization,
         lin_registry: lin_cache,
@@ -227,7 +227,7 @@ fn find_fields_from_contract(
 /// contracts.
 fn find_fields_from_contracts(
     annot: &TypeAnnotation,
-    path: &[Ident],
+    path: &[LocIdent],
     info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     annot
@@ -242,7 +242,7 @@ fn find_fields_from_contracts(
 /// Find the fields that can be found from a type.
 fn find_fields_from_type(
     ty: &Type,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     match &ty.typ {
@@ -259,7 +259,7 @@ fn find_fields_from_type(
 /// Extract the fields from a given record type.
 fn find_fields_from_rrows(
     rrows: &RecordRows,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info @ ComplCtx { .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     if let Some(current) = path.pop() {
@@ -287,7 +287,7 @@ fn find_fields_from_rrows(
                 _ => None,
             })
             .map(|(ident, types)| IdentWithType {
-                ident,
+                ident: ident.symbol(),
                 meta: None,
                 ty: types.clone(),
             })
@@ -297,7 +297,7 @@ fn find_fields_from_rrows(
 
 fn find_fields_from_field(
     field: &Field,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     find_fields_from_term_with_annot(&field.metadata.annotation, field.value.as_ref(), path, info)
@@ -307,7 +307,7 @@ fn find_fields_from_field(
 fn find_fields_from_term_with_annot(
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
@@ -322,7 +322,7 @@ fn find_fields_from_term_with_annot(
 /// Extract record fields from a record term.
 fn find_fields_from_term(
     term: &RichTerm,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     info @ ComplCtx { lin_registry, .. }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     match term.as_ref() {
@@ -331,7 +331,7 @@ fn find_fields_from_term(
                 .fields
                 .iter()
                 .map(|(ident, field)| IdentWithType {
-                    ident: *ident,
+                    ident: ident.symbol(),
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
                     ty: Type::from(TypeF::Dyn),
@@ -440,7 +440,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
 fn collect_record_info(
     linearization: &Completed,
     id: ItemId,
-    path: &mut Vec<Ident>,
+    path: &mut Vec<LocIdent>,
     lin_registry: &LinRegistry,
 ) -> Vec<IdentWithType> {
     let info = ComplCtx {
@@ -505,8 +505,8 @@ fn accumulate_record_meta_data<'a>(
         linearization,
         lin_registry,
     }: ComplCtx<'a>,
-    mut path: Vec<Ident>,
-    result: &mut Vec<(&'a LinearizationItem<Type>, Vec<Ident>)>,
+    mut path: Vec<LocIdent>,
+    result: &mut Vec<(&'a LinearizationItem<Type>, Vec<LocIdent>)>,
 ) {
     // This unwrap is safe: we know a `RecordField` must have a containing `Record`.
     let parent = linearization
@@ -547,11 +547,11 @@ fn get_completion_identifiers(
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     fn complete(
         item: &LinearizationItem<Type>,
-        name: Ident,
+        name: LocIdent,
         server: &Server,
-        path: &mut Vec<Ident>,
+        path: &mut Vec<LocIdent>,
     ) -> Vec<IdentWithType> {
-        let Some(item_id) = item.env.get(&name) else {
+        let Some(item_id) = item.env.get(&name.symbol()) else {
             return Vec::new()
         };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
@@ -561,7 +561,7 @@ fn get_completion_identifiers(
     fn context_complete(
         item: &LinearizationItem<Type>,
         info: ComplCtx<'_>,
-        path: Vec<Ident>,
+        path: Vec<LocIdent>,
     ) -> Vec<IdentWithType> {
         if let (&TermKind::RecordField { record, .. }, _) | (TermKind::Record(..), record) =
             (&item.kind, item.id)
@@ -595,7 +595,7 @@ fn get_completion_identifiers(
             let Some(path) = get_identifier_path(source) else {
                 return Ok(Vec::new())
             };
-            let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+            let mut path: Vec<_> = path.iter().rev().cloned().map(LocIdent::from).collect();
 
             let context_path = path.clone();
             let contextual_result = context_complete(item, info, context_path);
@@ -613,7 +613,7 @@ fn get_completion_identifiers(
                 // This is also record completion, but it is in the form
                 // <record path>.<partially-typed-field>
                 // we also want to give completion based on <record path> in this case.
-                let mut path: Vec<_> = path.iter().rev().cloned().map(Ident::from).collect();
+                let mut path: Vec<_> = path.iter().rev().cloned().map(LocIdent::from).collect();
 
                 // TODO: We need to adjust the linearization item here.
                 // Say we have: `config.dat`, this parses as a nested record.
@@ -639,7 +639,7 @@ fn get_completion_identifiers(
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration { id: ident, .. }
                         | TermKind::RecordField { ident, .. } => Some(IdentWithType {
-                            ident,
+                            ident: ident.symbol(),
                             meta: item.metadata.clone(),
                             ty: ty.clone(),
                         }),
@@ -658,7 +658,7 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
-fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
+fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<LocIdent>) {
     let mut path = Vec::new();
 
     loop {
@@ -851,7 +851,7 @@ mod tests {
         let b_record_type = mk_uty_record!(("b", c_record_type));
         let a_record_type = mk_uty_row!(("a", b_record_type));
 
-        let mut path = vec![Ident::from("b"), Ident::from("a")];
+        let mut path = vec![LocIdent::from("b"), LocIdent::from("a")];
         // unwrap: the conversion must succeed because we built a type without unification variable
         // nor type constants
         let info = ComplCtx {
@@ -960,7 +960,7 @@ mod tests {
         let a = make_lin_item(
             ItemId { file_id, index: 0 },
             TermKind::Declaration {
-                id: Ident::from("a"),
+                id: LocIdent::from("a"),
                 usages: vec![ItemId { file_id, index: 3 }],
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
                 path: None,
@@ -980,7 +980,7 @@ mod tests {
         let d = make_lin_item(
             ItemId { file_id, index: 3 },
             TermKind::Declaration {
-                id: Ident::from("d"),
+                id: LocIdent::from("d"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 4 }),
                 path: None,
@@ -1007,7 +1007,7 @@ mod tests {
         let a = make_lin_item(
             ItemId { file_id, index: 0 },
             TermKind::Declaration {
-                id: Ident::from("a"),
+                id: LocIdent::from("a"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
                 path: None,
@@ -1028,7 +1028,7 @@ mod tests {
         let d = make_lin_item(
             ItemId { file_id, index: 3 },
             TermKind::Declaration {
-                id: Ident::from("d"),
+                id: LocIdent::from("d"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 13 }),
                 path: None,
@@ -1038,7 +1038,7 @@ mod tests {
         let e = make_lin_item(
             ItemId { file_id, index: 4 },
             TermKind::Declaration {
-                id: Ident::from("e"),
+                id: LocIdent::from("e"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 14 }),
                 path: None,
@@ -1048,7 +1048,7 @@ mod tests {
         let f = make_lin_item(
             ItemId { file_id, index: 5 },
             TermKind::Declaration {
-                id: Ident::from("f"),
+                id: LocIdent::from("f"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 15 }),
                 path: None,
@@ -1097,7 +1097,7 @@ mod tests {
         let a = make_lin_item(
             id,
             TermKind::Declaration {
-                id: Ident::from("a"),
+                id: LocIdent::from("a"),
                 usages: Vec::new(),
                 value: ValueState::Known(ItemId { file_id, index: 1 }),
                 path: None,

@@ -1,7 +1,7 @@
 use codespan::FileId;
 use codespan_reporting::diagnostic::Label;
 
-use crate::{identifier::Ident, position::RawSpan};
+use crate::{identifier::LocIdent, position::RawSpan};
 use std::ops::Range;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -86,7 +86,7 @@ pub enum ParseError {
     /// A specific lexical error
     Lexical(LexicalError),
     /// Unbound type variable(s)
-    UnboundTypeVariables(Vec<Ident>),
+    UnboundTypeVariables(Vec<LocIdent>),
     /// Illegal record type literal.
     ///
     /// This occurs when failing to convert from the uniterm syntax to a record type literal.
@@ -102,9 +102,9 @@ pub enum ParseError {
     /// A duplicate binding was encountered in a record destructuring pattern.
     DuplicateIdentInRecordPattern {
         /// The duplicate identifier.
-        ident: Ident,
+        ident: LocIdent,
         /// The previous instance of the duplicated identifier.
-        prev_ident: Ident,
+        prev_ident: LocIdent,
     },
     /// A type variable is used in ways that imply it has muiltiple different kinds.
     ///
@@ -113,7 +113,7 @@ pub enum ParseError {
     ///   e.g. in the signature `forall r. { ; r } -> r`,
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
-    TypeVariableKindMismatch { ty_var: Ident, span: RawSpan },
+    TypeVariableKindMismatch { ty_var: LocIdent, span: RawSpan },
     /// A record literal, which isn't a record type, has a field with a type annotation but without
     /// a definition. While we could technically handle this situation, this is most probably an
     /// error from the user, because this type annotation is useless and, maybe non-intuitively,

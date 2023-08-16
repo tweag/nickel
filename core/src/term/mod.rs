@@ -20,7 +20,7 @@ use string::NickelString;
 use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
-    identifier::Ident,
+    identifier::LocIdent,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
@@ -82,29 +82,29 @@ pub enum Term {
     StrChunks(Vec<StrChunk<RichTerm>>),
     /// A standard function.
     #[serde(skip)]
-    Fun(Ident, RichTerm),
+    Fun(LocIdent, RichTerm),
     /// A function able to destruct its arguments.
     #[serde(skip)]
-    FunPattern(Option<Ident>, RecordPattern, RichTerm),
+    FunPattern(Option<LocIdent>, RecordPattern, RichTerm),
     /// A blame label.
     #[serde(skip)]
     Lbl(Label),
 
     /// A let binding.
     #[serde(skip)]
-    Let(Ident, RichTerm, RichTerm, LetAttrs),
+    Let(LocIdent, RichTerm, RichTerm, LetAttrs),
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Option<Ident>, RecordPattern, RichTerm, RichTerm),
+    LetPattern(Option<LocIdent>, RecordPattern, RichTerm, RichTerm),
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
     /// A variable.
     #[serde(skip)]
-    Var(Ident),
+    Var(LocIdent),
 
     /// An enum variant.
-    Enum(Ident),
+    Enum(LocIdent),
 
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
@@ -123,7 +123,7 @@ pub enum Term {
     /// able to handle yet unapplied match expressions.
     #[serde(skip)]
     Match {
-        cases: IndexMap<Ident, RichTerm>,
+        cases: IndexMap<LocIdent, RichTerm>,
         default: Option<RichTerm>,
     },
 
@@ -434,7 +434,7 @@ pub struct LabeledType {
 
 impl LabeledType {
     /// Modify the label's `field_name` field.
-    pub fn with_field_name(self, ident: Option<Ident>) -> Self {
+    pub fn with_field_name(self, ident: Option<LocIdent>) -> Self {
         LabeledType {
             label: self.label.with_field_name(ident),
             ..self
@@ -522,7 +522,7 @@ impl TypeAnnotation {
     }
 
     /// Set the `field_name` attribute of the labels of the type and contracts annotations.
-    pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
+    pub fn with_field_name(self, field_name: Option<LocIdent>) -> Self {
         TypeAnnotation {
             typ: self.typ.map(|t| t.with_field_name(field_name)),
             contracts: self
@@ -915,14 +915,14 @@ pub enum UnaryOp {
     /// `Embed` is used to upcast enums. For example, if a value `x` has enum type `a | b`, then
     /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
     /// `embed someId` act like the identity.
-    Embed(Ident),
+    Embed(LocIdent),
     /// Evaluate a match block applied to an argument.
     Match { has_default: bool },
 
     /// Static access to a record field.
     ///
     /// Static means that the field identifier is a statically known string inside the source.
-    StaticAccess(Ident),
+    StaticAccess(LocIdent),
 
     /// Map a function on each element of an array.
     ArrayMap(),
@@ -1395,12 +1395,15 @@ impl RichTerm {
         }
     }
 
-    /// Erase recursively the positional information.
+    /// Erase recursively (most of) the positional information.
     ///
     /// It allows to use rust `Eq` trait to compare the values of the underlying terms.
     ///
     /// This is currently only used in test code, but because it's used from integration
     /// tests we cannot hide it behind cfg(test).
+    ///
+    /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
+    /// good enough for the tests.
     pub fn without_pos(self) -> Self {
         self.traverse::<_, _, ()>(
             &|t: Type, _| {
@@ -1547,7 +1550,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Match { cases, default } => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_result : Result<IndexMap<Ident, RichTerm>, E> = cases
+                let cases_result : Result<IndexMap<LocIdent, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
@@ -1594,7 +1597,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
+                let fields_res: Result<IndexMap<LocIdent, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
@@ -1607,7 +1610,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<IndexMap<Ident, Field>, E> = record.fields
+                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record.fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
@@ -1867,10 +1870,10 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
-            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::Ident::from($id), $crate::term::RichTerm::from($body)))
+            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::LocIdent::from($id), $crate::term::RichTerm::from($body)))
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
-            mk_fun!($crate::identifier::Ident::from($id1), mk_fun!($id2, $( $rest ),+))
+            mk_fun!($crate::identifier::LocIdent::from($id1), mk_fun!($id2, $( $rest ),+))
         };
     }
 
@@ -1882,7 +1885,7 @@ pub mod make {
     macro_rules! mk_record {
         ( $( ($id:expr, $body:expr) ),* ) => {
             {
-                let mut fields = indexmap::IndexMap::new();
+                let mut fields = indexmap::IndexMap::<LocIdent, RichTerm>::new();
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
@@ -1936,7 +1939,7 @@ pub mod make {
 
     pub fn var<I>(v: I) -> RichTerm
     where
-        I: Into<Ident>,
+        I: Into<LocIdent>,
     {
         Term::Var(v.into()).into()
     }
@@ -1945,7 +1948,7 @@ pub mod make {
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        I: Into<Ident>,
+        I: Into<LocIdent>,
     {
         let attrs = LetAttrs {
             binding_type: BindingType::Normal,
@@ -1958,7 +1961,7 @@ pub mod make {
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        I: Into<Ident>,
+        I: Into<LocIdent>,
     {
         let_in_(false, id, t1, t2)
     }
@@ -1967,7 +1970,7 @@ pub mod make {
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        I: Into<Ident>,
+        I: Into<LocIdent>,
     {
         let_in_(true, id, t1, t2)
     }
@@ -1977,7 +1980,7 @@ pub mod make {
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
         D: Into<RecordPattern>,
-        I: Into<Ident>,
+        I: Into<LocIdent>,
     {
         Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()
     }
@@ -2050,7 +2053,7 @@ pub mod make {
     where
         I: IntoIterator<Item = S>,
         I::IntoIter: DoubleEndedIterator,
-        S: Into<Ident>,
+        S: Into<LocIdent>,
         T: Into<RichTerm>,
     {
         let mut term = record.into();

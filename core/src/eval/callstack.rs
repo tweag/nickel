@@ -3,7 +3,7 @@
 //! stored in a call stack solely for better error reporting.
 use super::IdentKind;
 use crate::{
-    identifier::Ident,
+    identifier::LocIdent,
     position::{RawSpan, TermPos},
 };
 use codespan::FileId;
@@ -15,7 +15,7 @@ pub struct CallStack(pub Vec<StackElem>);
 /// Basic description of a function call. Used for error reporting.
 pub struct CallDescr {
     /// The name of the called function, if any.
-    pub head: Option<Ident>,
+    pub head: Option<LocIdent>,
     /// The position of the application.
     pub span: RawSpan,
 }
@@ -30,12 +30,12 @@ pub enum StackElem {
     /// A variable was entered.
     Var {
         kind: IdentKind,
-        id: Ident,
+        id: LocIdent,
         pos: TermPos,
     },
     /// A record field was entered.
     Field {
-        id: Ident,
+        id: LocIdent,
         pos_record: TermPos,
         pos_field: TermPos,
         pos_access: TermPos,
@@ -48,7 +48,7 @@ impl CallStack {
     }
 
     /// Push a marker to indicate that a var was entered.
-    pub fn enter_var(&mut self, kind: IdentKind, id: Ident, pos: TermPos) {
+    pub fn enter_var(&mut self, kind: IdentKind, id: LocIdent, pos: TermPos) {
         self.0.push(StackElem::Var { kind, id, pos });
     }
 
@@ -73,7 +73,7 @@ impl CallStack {
     /// Push a marker to indicate that a record field was entered.
     pub fn enter_field(
         &mut self,
-        id: Ident,
+        id: LocIdent,
         pos_record: TermPos,
         pos_field: TermPos,
         pos_access: TermPos,

@@ -24,6 +24,7 @@
 //! One can think of merge to be defined on metadata as well. When merging two fields, the
 //! resulting metadata is the result of merging the two original field's metadata. The semantics
 //! depend on each metadata.
+
 use super::*;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
@@ -349,7 +350,7 @@ Append `, ..` at the end of the record contract, as in `{some_field | SomeContra
 /// values. Apply the required saturate, revert or closurize operation, including on the final
 /// field returned.
 #[allow(clippy::too_many_arguments)]
-fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
+fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone>(
     cache: &mut C,
     merge_label: MergeLabel,
     field1: Field,
@@ -469,7 +470,7 @@ trait Saturate: Sized {
     /// If the expression is not a variable referring to an element in the cache
     ///  (this can happen e.g. for numeric constants), we just return the term as it is, which
     /// falls into the zero dependencies special case.
-    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
@@ -479,7 +480,7 @@ trait Saturate: Sized {
 }
 
 impl Saturate for RichTerm {
-    fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+    fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
         env: &mut Environment,
@@ -488,11 +489,13 @@ impl Saturate for RichTerm {
     ) -> Result<RichTerm, EvalError> {
         if let Term::Var(var_id) = &*self.term {
             let idx = local_env
-                .get(var_id)
+                .get(&var_id.symbol())
                 .cloned()
                 .ok_or(EvalError::UnboundIdentifier(*var_id, self.pos))?;
 
-            Ok(cache.saturate(idx, env, fields).with_pos(self.pos))
+            Ok(cache
+                .saturate(idx, env, fields.map(LocIdent::symbol))
+                .with_pos(self.pos))
         } else {
             Ok(self)
         }
@@ -507,7 +510,7 @@ fn field_deps<C: Cache>(
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         local_env
-            .get(var_id)
+            .get(&var_id.symbol())
             .map(|idx| cache.deps(idx).unwrap_or_else(FieldDeps::empty))
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
@@ -525,7 +528,7 @@ fn field_deps<C: Cache>(
 /// The fields are saturated (see [saturate]) to properly propagate recursive dependencies down to
 /// `t1` and `t2` in the final, merged record.
 #[allow(clippy::too_many_arguments)]
-fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, C: Cache>(
+fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
     cache: &mut C,
     merge_label: MergeLabel,
     env: &mut Environment,
@@ -549,11 +552,11 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone, 
         body,
         env: local_env,
     };
-    let fresh_var = Ident::fresh();
+    let fresh_var = LocIdent::fresh();
 
     // new_rev takes care of not creating a revertible element in the cache if the dependencies are empty.
     env.insert(
-        fresh_var,
+        fresh_var.symbol(),
         cache.add(
             closure,
             IdentKind::Record,
@@ -584,9 +587,9 @@ impl RevertClosurize for RichTerm {
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original element
-            let reverted = cache.revert(with_env.get(id).unwrap());
-            let fresh_id = Ident::fresh();
-            env.insert(fresh_id, reverted);
+            let reverted = cache.revert(with_env.get(&id.symbol()).unwrap());
+            let fresh_id = LocIdent::fresh();
+            env.insert(fresh_id.symbol(), reverted);
             RichTerm::new(Term::Var(fresh_id), self.pos)
         } else {
             // Otherwise, if it is not a variable after the share normal form transformations, it

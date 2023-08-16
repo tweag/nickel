@@ -18,7 +18,7 @@ fn patch_term<C: Cache>(
     if let Term::Var(var_id) = &*term.term {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
         let mut idx = env
-            .get(var_id)
+            .get(&var_id.symbol())
             .cloned()
             .ok_or(EvalError::UnboundIdentifier(*var_id, term.pos))?;
 
@@ -51,7 +51,7 @@ fn patch_term<C: Cache>(
 /// happen, we have to ensure the pending contract `Schema` is applied to the recursive occurrence
 /// `foo` used in the definition `baz = foo.bar`. That is, we must apply pending contracts to their
 /// corresponding field when building the recursive environment.
-pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
+pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
     env: &Environment,
@@ -62,7 +62,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
             if let Some(ref value) = field.value {
                 let idx = match value.as_ref() {
                     Term::Var(ref var_id) => env
-                        .get(var_id)
+                        .get(&var_id.symbol())
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?,
                     _ => {
@@ -82,8 +82,8 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 // Pending contracts might use identifiers from the current record's environment,
                 // so we start from in the environment of the original record.
                 let mut final_env = env.clone();
-                let id_value = Ident::fresh();
-                final_env.insert(id_value, idx);
+                let id_value = LocIdent::fresh();
+                final_env.insert(id_value.symbol(), idx);
 
                 let with_ctr_applied = RuntimeContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
@@ -132,7 +132,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 };
 
                 Ok((
-                    *id,
+                    id.symbol(),
                     cache.add(final_closure, IdentKind::Record, BindingType::Normal),
                 ))
             } else {
@@ -154,7 +154,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 };
 
                 Ok((
-                    *id,
+                    id.symbol(),
                     cache.add(closure, IdentKind::Record, BindingType::Normal),
                 ))
             }

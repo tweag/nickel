@@ -4,7 +4,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{
-    identifier::Ident,
+    identifier::LocIdent,
     label::Label,
     parser::error::ParseError,
     position::{RawSpan, TermPos},
@@ -18,12 +18,12 @@ use crate::{
 #[derive(Debug, PartialEq, Clone)]
 pub enum FieldPattern {
     /// An assignment match like `{ ..., a = b, ... }`
-    Ident(Ident),
+    Ident(LocIdent),
     /// A nested record pattern like `{ ..., a = { b, c }, ... }`
     RecordPattern(RecordPattern),
     /// An aliased nested record pattern like `{ ..., a = b @ { c, d }, ... }`
     AliasedRecordPattern {
-        alias: Ident,
+        alias: LocIdent,
         pattern: RecordPattern,
     },
 }
@@ -35,13 +35,13 @@ pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant and `b` the optional one. The last field can actualy be a
     /// nested destruct pattern.
-    Assign(Ident, Field, FieldPattern),
+    Assign(LocIdent, Field, FieldPattern),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
-    Simple(Ident, Field),
+    Simple(LocIdent, Field),
 }
 
 impl Match {
-    fn ident(&self) -> Ident {
+    fn ident(&self) -> LocIdent {
         match self {
             Match::Assign(ident, ..) | Match::Simple(ident, ..) => *ident,
         }
@@ -56,7 +56,7 @@ pub enum LastMatch {
     Match(Box<Match>),
     /// The pattern is "open" `, ..}`. Optionally you can bind a record containing the remaining
     /// fields to an `Identifier` using the syntax `, ..y}`.
-    Ellipsis(Option<Ident>),
+    Ellipsis(Option<LocIdent>),
 }
 
 /// A destructured record pattern
@@ -64,7 +64,7 @@ pub enum LastMatch {
 pub struct RecordPattern {
     pub matches: Vec<Match>,
     pub open: bool,
-    pub rest: Option<Ident>,
+    pub rest: Option<LocIdent>,
     pub span: RawSpan,
 }
 
@@ -158,7 +158,7 @@ impl RecordPattern {
 impl Match {
     /// Convert the `Match` to a field binding with metadata. It's used to generate the record
     /// contract representing a record pattern destructuring.
-    pub fn as_binding(self) -> (Ident, Field) {
+    pub fn as_binding(self) -> (LocIdent, Field) {
         match self {
             Match::Assign(id, field, FieldPattern::Ident(_)) | Match::Simple(id, field) => {
                 (id, field)
@@ -191,17 +191,17 @@ impl Match {
     /// Returns info about each variable bound in a particular pattern.
     /// It also tells the "path" to the bound variable; this is just the
     /// record field names traversed to get to a pattern.
-    pub fn as_flattened_bindings(self) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
-        fn get_label(id: &Ident, pattern: &RecordPattern) -> Label {
+    pub fn as_flattened_bindings(self) -> Vec<(Vec<LocIdent>, Option<LocIdent>, Field)> {
+        fn get_label(id: &LocIdent, pattern: &RecordPattern) -> Label {
             let mut label = pattern.label();
             label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
             label
         }
 
         fn flatten_matches(
-            id: &Ident,
+            id: &LocIdent,
             matches: &[Match],
-        ) -> Vec<(Vec<Ident>, Option<Ident>, Field)> {
+        ) -> Vec<(Vec<LocIdent>, Option<LocIdent>, Field)> {
             matches
                 .iter()
                 .flat_map(|m| m.clone().as_flattened_bindings())

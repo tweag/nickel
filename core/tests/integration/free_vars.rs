@@ -1,5 +1,8 @@
-use nickel_lang_core::term::{record::FieldDeps, IndexMap};
-use nickel_lang_core::{identifier::Ident, term::Term, transform::free_vars};
+use nickel_lang_core::{
+    identifier::Ident,
+    term::{record::FieldDeps, IndexMap, Term},
+    transform::free_vars,
+};
 
 use std::collections::HashSet;
 use std::iter::IntoIterator;
@@ -18,7 +21,7 @@ fn stat_free_vars_incl(
 ) -> bool {
     stat_fields
         .iter()
-        .all(|(id, set)| free_vars_eq(set, expected.remove(id.as_ref()).unwrap()))
+        .all(|(id, set)| free_vars_eq(set, expected.remove(id.label()).unwrap()))
 }
 
 fn dyn_free_vars_incl(dyn_fields: &[FieldDeps], mut expected: Vec<Vec<&str>>) -> bool {

@@ -179,7 +179,10 @@ fn imports() {
     let mk_import_lib = mk_import(
         "x",
         "lib",
-        mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
+        mk_term::op1(
+            UnaryOp::StaticAccess(LocIdent::from("f")),
+            mk_term::var("x"),
+        ),
         &mut vm,
     );
     vm.reset();

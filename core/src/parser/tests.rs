@@ -3,7 +3,7 @@ use std::rc::Rc;
 use super::lexer::{Lexer, MultiStringToken, NormalToken, StringToken, SymbolicStringStart, Token};
 use super::utils::{build_record, FieldPathElem};
 use crate::error::ParseError;
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::parser::{error::ParseError as InternalParseError, ErrorTolerantParser};
 use crate::term::array::Array;
 use crate::term::Number;
@@ -209,23 +209,23 @@ fn enum_terms() {
         (
             "simple raw enum tag",
             "'foo",
-            Enum(Ident::from("foo")).into(),
+            Enum(LocIdent::from("foo")).into(),
         ),
         (
             "raw enum tag with keyword ident",
             "'if",
-            Enum(Ident::from("if")).into(),
+            Enum(LocIdent::from("if")).into(),
         ),
-        ("empty string tag", "'\"\"", Enum(Ident::from("")).into()),
+        ("empty string tag", "'\"\"", Enum(LocIdent::from("")).into()),
         (
             "string tag with non-ident chars",
             "'\"foo:bar\"",
-            Enum(Ident::from("foo:bar")).into(),
+            Enum(LocIdent::from("foo:bar")).into(),
         ),
         (
             "string with spaces",
             "'\"this works!\"",
-            Enum(Ident::from("this works!")).into(),
+            Enum(LocIdent::from("this works!")).into(),
         ),
         (
             "match with raw tags",
@@ -273,12 +273,11 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), mk_term::integer(1)),
-                    (Ident::from("b"), mk_term::integer(2)),
-                    (Ident::from("c"), mk_term::integer(3)),
+                    (LocIdent::from("a"), mk_term::integer(1)),
+                    (LocIdent::from("b"), mk_term::integer(2)),
+                    (LocIdent::from("c"), mk_term::integer(3)),
                 ]
                 .into_iter()
-                .collect()
             ),
             Vec::new(),
             None,
@@ -291,11 +290,10 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), mk_term::integer(1)),
-                    (Ident::from("d"), mk_term::integer(42)),
+                    (LocIdent::from("a"), mk_term::integer(1)),
+                    (LocIdent::from("d"), mk_term::integer(42)),
                 ]
                 .into_iter()
-                .collect()
             ),
             vec![(
                 StrChunks(vec![StrChunk::expr(mk_term::integer(123))]).into(),
@@ -315,11 +313,10 @@ fn record_terms() {
         RecRecord(
             record::RecordData::with_field_values(
                 vec![
-                    (Ident::from("a"), mk_term::integer(1)),
-                    (Ident::from("\"%}%"), mk_term::integer(2)),
+                    (LocIdent::from("a"), mk_term::integer(1)),
+                    (LocIdent::from("\"%}%"), mk_term::integer(2)),
                 ]
                 .into_iter()
-                .collect()
             ),
             Vec::new(),
             None,

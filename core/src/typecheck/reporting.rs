@@ -91,9 +91,9 @@ impl NameReg {
             }
         }
 
-        let ident = Ident::from(name);
-        self.insert(id, kind, ident);
-        ident
+        let sym = Ident::from(name);
+        self.insert(id, kind, sym);
+        sym
     }
 
     /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
@@ -139,10 +139,10 @@ impl NameReg {
 
             match rrows {
                 UnifRecordRows::UnifVar { id, .. } => RecordRows(RecordRowsF::TailVar(
-                    reg.gen_var_name(id, VarKindDiscriminant::RecordRows),
+                    reg.gen_var_name(id, VarKindDiscriminant::RecordRows).into(),
                 )),
                 UnifRecordRows::Constant(id) => RecordRows(RecordRowsF::TailVar(
-                    reg.gen_cst_name(id, VarKindDiscriminant::RecordRows),
+                    reg.gen_cst_name(id, VarKindDiscriminant::RecordRows).into(),
                 )),
                 UnifRecordRows::Concrete { rrows, .. } => {
                     let mapped = rrows.map_state(
@@ -160,10 +160,10 @@ impl NameReg {
 
             match erows {
                 UnifEnumRows::UnifVar { id, .. } => EnumRows(EnumRowsF::TailVar(
-                    reg.gen_var_name(id, VarKindDiscriminant::EnumRows),
+                    reg.gen_var_name(id, VarKindDiscriminant::EnumRows).into(),
                 )),
                 UnifEnumRows::Constant(id) => EnumRows(EnumRowsF::TailVar(
-                    reg.gen_cst_name(id, VarKindDiscriminant::EnumRows),
+                    reg.gen_cst_name(id, VarKindDiscriminant::EnumRows).into(),
                 )),
                 UnifEnumRows::Concrete { erows, .. } => {
                     let mapped = erows.map(|erows| Box::new(erows_to_type(reg, table, *erows)));

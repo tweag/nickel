@@ -34,7 +34,7 @@ macro_rules! mk_uty_enum_row {
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::UnifEnumRows::concrete(
             $crate::typ::EnumRowsF::Extend {
-                row: Ident::from($id),
+                row: LocIdent::from($id),
                 tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))
             }
         )
@@ -59,7 +59,7 @@ macro_rules! mk_uty_row {
         $crate::typecheck::UnifRecordRows::concrete(
             $crate::typ::RecordRowsF::Extend {
                 row: $crate::typ::RecordRowF {
-                    id: Ident::from($id),
+                    id: LocIdent::from($id),
                     typ: Box::new($ty.into()),
                 },
                 tail: Box::new($crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),

@@ -2,7 +2,7 @@
 use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
-    identifier::Ident,
+    identifier::LocIdent,
     term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,
@@ -142,15 +142,17 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never
         // user-supplied variables.
-        let var = Ident::fresh();
+        let var = LocIdent::fresh();
         let pos = self.pos;
 
         let idx = match self.as_ref() {
-            Term::Var(id) if id.is_generated() => with_env.get(id).cloned().unwrap_or_else(|| {
-                panic!(
+            Term::Var(id) if id.is_generated() => {
+                with_env.get(&id.symbol()).cloned().unwrap_or_else(|| {
+                    panic!(
                 "Internal error(closurize) : generated identifier {id} not found in the environment"
             )
-            }),
+                })
+            }
             _ => {
                 let closure: Closure = Closure {
                     body: self,
@@ -160,7 +162,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var, idx);
+        env.insert(var.symbol(), idx);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }

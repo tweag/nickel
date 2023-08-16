@@ -45,6 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
+    identifier::LocIdent,
     term::{self, record::Field, IndexMap, UnaryOp},
 };
 
@@ -62,7 +63,7 @@ pub const MAX_GAS: u8 = 8;
 /// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
 /// do with the result instead of merely returning it.
 pub trait TermEnvironment: Clone {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
 }
@@ -79,11 +80,11 @@ impl SimpleTermEnvironment {
 }
 
 impl TermEnvironment for SimpleTermEnvironment {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+    fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
-        f(self.0.get(id).map(|(rt, env)| (rt, env)))
+        f(self.0.get(&id).map(|(rt, env)| (rt, env)))
     }
 }
 
@@ -240,8 +241,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
-            env1.get_then(id1, |binding1| {
-                env2.get_then(id2, |binding2| {
+            env1.get_then(id1.symbol(), |binding1| {
+                env2.get_then(id2.symbol(), |binding2| {
                     match (binding1, binding2) {
                         (None, None) => id1 == id2,
                         (Some((t1, env1)), Some((t2, env2))) => {
@@ -259,7 +260,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (Var(id), _) => {
             state.use_gas()
-                && env1.get_then(id, |binding| {
+                && env1.get_then(id.symbol(), |binding| {
                     binding
                         .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)
@@ -267,7 +268,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (_, Var(id)) => {
             state.use_gas()
-                && env2.get_then(id, |binding| {
+                && env2.get_then(id.symbol(), |binding| {
                     binding
                         .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)
@@ -351,9 +352,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
 fn map_eq<V, F, E>(
     mut f: F,
     state: &mut State,
-    map1: &IndexMap<Ident, V>,
+    map1: &IndexMap<LocIdent, V>,
     env1: &E,
-    map2: &IndexMap<Ident, V>,
+    map2: &IndexMap<LocIdent, V>,
     env2: &E,
 ) -> bool
 where
@@ -373,8 +374,8 @@ where
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
     erows: &GenericUnifRecordRows<E>,
-) -> Option<IndexMap<Ident, &GenericUnifType<E>>> {
-    let map: Option<IndexMap<Ident, _>> = erows
+) -> Option<IndexMap<LocIdent, &GenericUnifType<E>>> {
+    let map: Option<IndexMap<LocIdent, _>> = erows
         .iter()
         .map(|item| match item {
             GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, typ: types }) => {
@@ -392,7 +393,7 @@ fn rows_as_map<E: TermEnvironment>(
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
+fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<LocIdent>> {
     let set: Option<HashSet<_>> = erows
         .iter()
         .map(|item| match item {

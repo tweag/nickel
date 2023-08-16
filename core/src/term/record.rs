@@ -1,5 +1,9 @@
 use super::*;
-use crate::{error::EvalError, identifier::Ident, label::Label};
+use crate::{
+    error::EvalError,
+    identifier::{Ident, LocIdent},
+    label::Label,
+};
 use std::{collections::HashSet, rc::Rc};
 
 /// Additional attributes for record.
@@ -194,7 +198,7 @@ impl Field {
         }
     }
 
-    pub fn with_name(self, field_name: Option<Ident>) -> Self {
+    pub fn with_name(self, field_name: Option<LocIdent>) -> Self {
         Field {
             metadata: FieldMetadata {
                 annotation: self.metadata.annotation.with_field_name(field_name),
@@ -254,7 +258,7 @@ impl Traverse<RichTerm> for Field {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RecordData {
     /// Fields whose names are known statically.
-    pub fields: IndexMap<Ident, Field>,
+    pub fields: IndexMap<LocIdent, Field>,
     /// Attributes which may be applied to a record.
     pub attrs: RecordAttrs,
     /// The hidden part of a record under a polymorphic contract.
@@ -265,7 +269,7 @@ pub struct RecordData {
 /// definition and isn't optional.
 #[derive(Clone, Debug)]
 pub struct MissingFieldDefError {
-    pub id: Ident,
+    pub id: LocIdent,
     pub metadata: FieldMetadata,
 }
 
@@ -282,7 +286,7 @@ impl MissingFieldDefError {
 
 impl RecordData {
     pub fn new(
-        fields: IndexMap<Ident, Field>,
+        fields: IndexMap<LocIdent, Field>,
         attrs: RecordAttrs,
         sealed_tail: Option<SealedTail>,
     ) -> Self {
@@ -299,7 +303,7 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: IndexMap<Ident, RichTerm>) -> Self {
+    pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, RichTerm)>) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| {
@@ -326,7 +330,7 @@ impl RecordData {
     /// external state while iterating.
     pub fn map_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Ident, Option<RichTerm>) -> Option<RichTerm>,
+        F: FnMut(LocIdent, Option<RichTerm>) -> Option<RichTerm>,
     {
         let fields = self
             .fields
@@ -348,7 +352,7 @@ impl RecordData {
     /// defined value. Fields without a value are left unchanged.
     pub fn map_defined_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Ident, RichTerm) -> RichTerm,
+        F: FnMut(LocIdent, RichTerm) -> RichTerm,
     {
         self.map_values(|id, value| value.map(|v| f(id, v)))
     }
@@ -369,7 +373,7 @@ impl RecordData {
                 Some(v) => {
                     let pos = v.pos;
                     Some(Ok((
-                        id,
+                        id.symbol(),
                         RuntimeContract::apply_all(v, field.pending_contracts.into_iter(), pos),
                     )))
                 }
@@ -387,11 +391,11 @@ impl RecordData {
     /// `MissingFieldDefError`.
     pub fn iter_serializable(
         &self,
-    ) -> impl Iterator<Item = Result<(&Ident, &RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Ident, &RichTerm), MissingFieldDefError>> {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
-                Some(ref v) if !field.metadata.not_exported => Some(Ok((id, v))),
+                Some(ref v) if !field.metadata.not_exported => Some(Ok((id.symbol(), v))),
                 None if !field.metadata.opt && !field.metadata.not_exported => {
                     Some(Err(MissingFieldDefError {
                         id: *id,
@@ -410,7 +414,7 @@ impl RecordData {
     /// This method automatically applies the potential pending contracts
     pub fn get_value_with_ctrs(
         &self,
-        id: &Ident,
+        id: &LocIdent,
     ) -> Result<Option<RichTerm>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {

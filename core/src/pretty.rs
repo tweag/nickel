@@ -1,8 +1,7 @@
 use std::fmt;
 
 use crate::destructuring::{self, FieldPattern, RecordPattern};
-use crate::identifier::Ident;
-
+use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -59,7 +58,7 @@ static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_?[a-zA-Z][_a-zA-Z
 /// Return the string representation of an identifier, and add enclosing double quotes if the
 /// label isn't a valid identifier according to the parser, for example if it contains a
 /// special character like a space.
-pub fn ident_quoted(ident: &Ident) -> String {
+pub fn ident_quoted(ident: &LocIdent) -> String {
     let label = ident.label();
     if QUOTING_REGEX.is_match(label) && !KEYWORDS.contains(&label) {
         String::from(label)
@@ -205,7 +204,7 @@ where
             .group()
     }
 
-    fn field(&'a self, id: &Ident, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
+    fn field(&'a self, id: &LocIdent, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
         self.text(ident_quoted(id))
             .append(self.field_body(field, with_doc))
     }
@@ -246,7 +245,7 @@ where
 
     fn fields(
         &'a self,
-        fields: &IndexMap<Ident, Field>,
+        fields: &IndexMap<LocIdent, Field>,
         with_doc: bool,
     ) -> DocBuilder<'a, Self, A> {
         self.intersperse(

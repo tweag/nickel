@@ -57,7 +57,7 @@ use crate::{
     cache::ImportResolver,
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
-    identifier::Ident,
+    identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
         record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
@@ -495,23 +495,23 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
 // A type which contains variables that can be substituted with values of type `T`.
 trait Subst<T: Clone>: Sized {
     // Substitute all variables of identifier `id` with `to`.
-    fn subst(self, id: &Ident, to: &T) -> Self {
+    fn subst(self, id: &LocIdent, to: &T) -> Self {
         self.subst_levels(id, to).0
     }
 
     // Must be implemented by implementers of this trait.
     // In addition to performing substitution, this method threads variable levels upper bounds to
     // compute new upper bounds efficiently.
-    fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevel);
+    fn subst_levels(self, id: &LocIdent, to: &T) -> (Self, VarLevel);
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ: TypeF::Var(var_id),
                 var_levels_data,
-            } if var_id == *id => {
+            } if var_id == id.symbol() => {
                 debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
                 (to.clone(), to.var_level_upper_bound())
             }
@@ -553,7 +553,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows,
@@ -594,7 +594,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ,
@@ -633,7 +633,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows: RecordRowsF::TailVar(var_id),
@@ -681,7 +681,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ,
@@ -727,7 +727,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows,
@@ -769,7 +769,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
 }
 
 impl Subst<UnifEnumRows> for UnifEnumRows {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             UnifEnumRows::Concrete {
                 erows: EnumRowsF::TailVar(var_id),
@@ -987,7 +987,7 @@ impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
 /// Iterator items produced by [RecordRowsIterator] on [GenericUnifRecordRows].
 pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailDyn,
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(RecordRowF<&'a GenericUnifType<E>>),
@@ -1041,7 +1041,7 @@ impl<'a, E: TermEnvironment> Iterator
 
 /// Iterator items produced by [`EnumRowsIterator`].
 pub enum UnifEnumRowsIteratorItem<'a> {
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(&'a EnumRow),
@@ -1152,14 +1152,14 @@ pub fn mk_initial_ctxt(
     let term_env = bindings
         .iter()
         .cloned()
-        .map(|(id, rt)| (id, (rt, SimpleTermEnvironment::new())))
+        .map(|(id, rt)| (id.symbol(), (rt, SimpleTermEnvironment::new())))
         .collect();
 
     let type_env = bindings
         .into_iter()
         .map(|(id, rt)| {
             (
-                id,
+                id.symbol(),
                 infer_record_type(&rt, &term_env, INFER_RECORD_MAX_DEPTH),
             )
         })
@@ -1190,7 +1190,7 @@ pub fn env_add_term(
                     field_apparent_type(field, Some(env), Some(resolver)),
                     term_env,
                 );
-                env.insert(*id, uty);
+                env.insert(id.symbol(), uty);
             }
 
             Ok(())
@@ -1202,13 +1202,13 @@ pub fn env_add_term(
 /// Bind one term in a typing environment.
 pub fn env_add(
     env: &mut Environment,
-    id: Ident,
+    id: LocIdent,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
     resolver: &dyn ImportResolver,
 ) {
     env.insert(
-        id,
+        id.symbol(),
         UnifType::from_apparent_type(
             apparent_type(rt.as_ref(), Some(env), Some(resolver)),
             term_env,
@@ -1347,7 +1347,7 @@ fn walk<L: Linearizer>(
         | Term::Import(_)
         | Term::ResolvedImport(_) => Ok(()),
         Term::Var(x) => ctxt.type_env
-            .get(x)
+            .get(&x.symbol())
             .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))
             .map(|_| ()),
         Term::StrChunks(chunks) => {
@@ -1364,13 +1364,13 @@ fn walk<L: Linearizer>(
         }
         Term::Fun(id, t) => {
             // The parameter of an unannotated function is always assigned type `Dyn`.
-            ctxt.type_env.insert(*id, mk_uniftype::dynamic());
+            ctxt.type_env.insert(id.symbol(), mk_uniftype::dynamic());
             walk(state, ctxt, lin, linearizer, t)
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
                 // The parameter of an unannotated function is always assigned type `Dyn`.
-                ctxt.type_env.insert(*id, mk_uniftype::dynamic());
+                ctxt.type_env.insert(id.symbol(), mk_uniftype::dynamic());
             }
 
             let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
@@ -1392,17 +1392,17 @@ fn walk<L: Linearizer>(
             // allocate all the term environments inside an arena, local to each statically typed
             // block, and use bare references to represent cycles. Then everything would be cleaned
             // at the end of the block.
-            ctxt.term_env.0.insert(*x, (re.clone(), ctxt.term_env.clone()));
+            ctxt.term_env.0.insert(x.symbol(), (re.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(*x, ty_let.clone());
+                ctxt.type_env.insert(x.symbol(), ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
             walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
 
             if !attrs.rec {
-                ctxt.type_env.insert(*x, ty_let);
+                ctxt.type_env.insert(x.symbol(), ty_let);
             }
 
             walk(state, ctxt, lin, linearizer, rt)
@@ -1413,7 +1413,7 @@ fn walk<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(*x, ty_let);
+                ctxt.type_env.insert(x.symbol(), ty_let);
             }
 
             let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
@@ -1438,7 +1438,7 @@ fn walk<L: Linearizer>(
                     &ctxt,
                     false,
                 );
-                ctxt.type_env.insert(*id, field_type.clone());
+                ctxt.type_env.insert(id.symbol(), field_type.clone());
                 linearizer.retype_ident(lin, id, field_type);
             }
 
@@ -1723,7 +1723,7 @@ fn check<L: Linearizer>(
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
-            ctxt.type_env.insert(*x, src);
+            ctxt.type_env.insert(x.symbol(), src);
             check(state, ctxt, lin, linearizer, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
@@ -1734,7 +1734,7 @@ fn check<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, src.clone());
-                ctxt.type_env.insert(*x, src);
+                ctxt.type_env.insert(x.symbol(), src);
             }
 
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src_rows_ty);
@@ -1773,10 +1773,10 @@ fn check<L: Linearizer>(
             // `Let` case in `walk`.
             ctxt.term_env
                 .0
-                .insert(*x, (re.clone(), ctxt.term_env.clone()));
+                .insert(x.symbol(), (re.clone(), ctxt.term_env.clone()));
 
             if attrs.rec {
-                ctxt.type_env.insert(*x, ty_let.clone());
+                ctxt.type_env.insert(x.symbol(), ty_let.clone());
             }
 
             linearizer.retype_ident(lin, x, ty_let.clone());
@@ -1790,7 +1790,7 @@ fn check<L: Linearizer>(
             )?;
 
             if !attrs.rec {
-                ctxt.type_env.insert(*x, ty_let);
+                ctxt.type_env.insert(x.symbol(), ty_let);
             }
             check(state, ctxt, lin, linearizer, rt, ty)
         }
@@ -1818,7 +1818,7 @@ fn check<L: Linearizer>(
 
             if let Some(x) = x {
                 linearizer.retype_ident(lin, x, ty_let.clone());
-                ctxt.type_env.insert(*x, ty_let);
+                ctxt.type_env.insert(x.symbol(), ty_let);
             }
 
             destructuring::inject_pattern_variables(
@@ -1908,7 +1908,7 @@ fn check<L: Linearizer>(
 
             //TODO: should we insert in the environment the checked type, or the actual type?
             for id in record.fields.keys() {
-                ctxt.type_env.insert(*id, ty_dict.clone());
+                ctxt.type_env.insert(id.symbol(), ty_dict.clone());
                 linearizer.retype_ident(lin, id, ty_dict.clone())
             }
 
@@ -1938,7 +1938,7 @@ fn check<L: Linearizer>(
             if let Term::RecRecord(..) = t.as_ref() {
                 for (id, field) in &record.fields {
                     let uty = field_type(state, field, &ctxt, true);
-                    ctxt.type_env.insert(*id, uty.clone());
+                    ctxt.type_env.insert(id.symbol(), uty.clone());
                     linearizer.retype_ident(lin, id, uty);
                 }
             }
@@ -1971,7 +1971,7 @@ fn check<L: Linearizer>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: HashMap<Ident, UnifType> = record
+                let mut field_types: HashMap<LocIdent, UnifType> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
@@ -1987,7 +1987,7 @@ fn check<L: Linearizer>(
 
                 for (id, field) in record.fields.iter() {
                     if let Term::RecRecord(..) = t.as_ref() {
-                        let affected_type = ctxt.type_env.get(id).cloned().unwrap();
+                        let affected_type = ctxt.type_env.get(&id.symbol()).cloned().unwrap();
 
                         field_types
                             .get(id)
@@ -2081,7 +2081,7 @@ fn check_field<L: Linearizer>(
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
-    id: Ident,
+    id: LocIdent,
     field: &Field,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
@@ -2219,7 +2219,7 @@ fn infer<L: Linearizer>(
         Term::Var(x) => {
             let x_ty = ctxt
                 .type_env
-                .get(x)
+                .get(&x.symbol())
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
@@ -2495,7 +2495,7 @@ pub fn apparent_type(
                 Type::from(TypeF::Dyn),
             )))),
             Term::Var(id) => env
-                .and_then(|envs| envs.get(id).cloned())
+                .and_then(|envs| envs.get(&id.symbol()).cloned())
                 .map(ApparentType::FromEnv)
                 .unwrap_or(ApparentType::Approximated(Type::from(TypeF::Dyn))),
             Term::ResolvedImport(file_id) => match resolver {
@@ -2647,7 +2647,7 @@ fn instantiate_foralls(
                         init_level: ctxt.var_level,
                     },
                 };
-                state.names.insert((fresh_uid, kind), var);
+                state.names.insert((fresh_uid, kind), var.symbol());
                 ty = body.subst(&var, &uvar);
             }
             VarKind::RecordRows { excluded } => {
@@ -2659,7 +2659,7 @@ fn instantiate_foralls(
                         init_level: ctxt.var_level,
                     },
                 };
-                state.names.insert((fresh_uid, kind), var);
+                state.names.insert((fresh_uid, kind), var.symbol());
                 ty = body.subst(&var, &uvar);
 
                 if inst == ForallInst::UnifVar {
@@ -2675,7 +2675,7 @@ fn instantiate_foralls(
                         init_level: ctxt.var_level,
                     },
                 };
-                state.names.insert((fresh_uid, kind), var);
+                state.names.insert((fresh_uid, kind), var.symbol());
                 ty = body.subst(&var, &uvar);
             }
         };

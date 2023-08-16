@@ -11,7 +11,7 @@ use super::error::ParseError;
 use crate::{
     destructuring::FieldPattern,
     eval::operation::RecPriority,
-    identifier::Ident,
+    identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
@@ -72,7 +72,7 @@ pub enum StringEndDelimiter {
 /// Distinguish between a normal case `id => exp` and a default case `_ => exp`.
 #[derive(Clone, Debug)]
 pub enum MatchCase {
-    Normal(Ident, RichTerm),
+    Normal(LocIdent, RichTerm),
     Default(RichTerm),
 }
 
@@ -80,7 +80,7 @@ pub enum MatchCase {
 #[derive(Clone, Debug)]
 pub enum FieldPathElem {
     /// A static field declaration: `{ foo = .. }`
-    Ident(Ident),
+    Ident(LocIdent),
     /// A quoted field declaration: `{ "%{protocol}" = .. }`
     ///
     /// In practice, the argument must always be `StrChunks`, but since we also need to keep track
@@ -165,7 +165,7 @@ impl FieldDef {
                         let static_access = exp.term.as_ref().try_str_chunk_as_static_str();
 
                         if let Some(static_access) = static_access {
-                            let id = Ident::new_with_pos(static_access, exp.pos);
+                            let id = LocIdent::new_with_pos(static_access, exp.pos);
                             let mut fields = IndexMap::new();
                             fields.insert(id, acc);
                             Field::from(RichTerm::new(
@@ -192,7 +192,7 @@ impl FieldDef {
     }
 
     /// Returns the identifier corresponding to this definition if the path is composed of exactly one element which is a static identifier. Returns `None` otherwise.
-    pub fn path_as_ident(&self) -> Option<Ident> {
+    pub fn path_as_ident(&self) -> Option<LocIdent> {
         if self.path.len() > 1 {
             return None;
         }
@@ -459,7 +459,7 @@ pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
 
     if let Some(label) = label {
         mk_term::op1(
-            UnaryOp::StaticAccess(Ident::new_with_pos(label, access.pos)),
+            UnaryOp::StaticAccess(LocIdent::new_with_pos(label, access.pos)),
             root,
         )
     } else {
@@ -476,7 +476,11 @@ where
     let mut static_fields = IndexMap::new();
     let mut dynamic_fields = Vec::new();
 
-    fn insert_static_field(static_fields: &mut IndexMap<Ident, Field>, id: Ident, field: Field) {
+    fn insert_static_field(
+        static_fields: &mut IndexMap<LocIdent, Field>,
+        id: LocIdent,
+        field: Field,
+    ) {
         match static_fields.entry(id) {
             Entry::Occupied(mut occpd) => {
                 // temporarily putting an empty field in the entry to take the previous value.
@@ -523,7 +527,7 @@ where
                     if is_static {
                         insert_static_field(
                             &mut static_fields,
-                            Ident::new_with_pos(buffer, e.pos),
+                            LocIdent::new_with_pos(buffer, e.pos),
                             t,
                         )
                     } else {
@@ -538,14 +542,7 @@ where
     });
 
     Term::RecRecord(
-        RecordData::new(
-            static_fields
-                .into_iter()
-                .map(|(id, value)| (id, value))
-                .collect(),
-            attrs,
-            None,
-        ),
+        RecordData::new(static_fields, attrs, None),
         dynamic_fields,
         None,
     )
@@ -624,7 +621,7 @@ pub fn mk_let(
         FieldPattern::Ident(id) => Ok(mk_term::let_in(id, t1, t2)),
         _ if rec => Err(ParseError::RecursiveLetPattern(span)),
         FieldPattern::RecordPattern(pat) => {
-            let id: Option<Ident> = None;
+            let id: Option<LocIdent> = None;
             Ok(mk_term::let_pat(id, pat, t1, t2))
         }
         FieldPattern::AliasedRecordPattern { alias, pattern } => {

@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
-    identifier::Ident,
+    identifier::{Ident, LocIdent},
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
@@ -108,7 +108,7 @@ pub struct AnalysisHost<'a> {
     /// in their own scope immediately after the record, which
     /// gives the corresponding record field _term_ to the ident
     /// useable to construct a vale declaration.
-    record_fields: Option<(ItemId, Vec<(ItemId, Ident)>)>,
+    record_fields: Option<(ItemId, Vec<(ItemId, LocIdent)>)>,
     bindings: Option<Vec<ItemId>>,
     /// Accesses to nested records are recorded recursively.
     ///
@@ -119,7 +119,7 @@ pub struct AnalysisHost<'a> {
     /// To resolve those inner fields, accessors (`inner`, `middle`)
     /// are recorded first until a variable (`outer`). is found.
     /// Then, access to all nested records are resolved at once.
-    access: Option<Vec<Ident>>,
+    access: Option<Vec<LocIdent>>,
 }
 
 impl<'a> AnalysisHost<'a> {
@@ -251,7 +251,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
                     };
-                    self.env.insert(ident.to_owned(), id);
+                    self.env.insert(ident.symbol(), id);
 
                     let kind = TermKind::Declaration {
                         id: ident.to_owned(),
@@ -294,7 +294,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
                     let_pattern_bindings.push(id);
                     let new_ident = bind_ident.unwrap_or(*ident);
-                    self.env.insert(new_ident, id);
+                    self.env.insert(new_ident.symbol(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
@@ -343,7 +343,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     _ => unreachable!(),
                 };
                 self.env.insert(
-                    ident.to_owned(),
+                    ident.symbol(),
                     ItemId {
                         file_id: self.file,
                         index: id_gen.get(),
@@ -380,8 +380,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     ident, self.access
                 );
 
-                let key = ident.to_owned();
-                let pointed = self.env.get(&key).copied();
+                let pointed = self.env.get(&ident.symbol()).copied();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
@@ -567,7 +566,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         let mut name_reg = NameReg::new(reported_names);
 
         // TODO: Storing defers while linearizing?
-        let mut defers: Vec<(ItemId, ItemId, Ident)> = lin
+        let mut defers: Vec<(ItemId, ItemId, LocIdent)> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
@@ -678,12 +677,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     fn retype_ident(
         &mut self,
         lin: &mut Linearization<Building>,
-        ident: &Ident,
+        ident: &LocIdent,
         new_type: UnifType,
     ) {
         if let Some(item) = self
             .env
-            .get(&ident.to_owned())
+            .get(&ident.symbol())
             .and_then(|item_id| lin.linearization.get_mut(item_id.index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);

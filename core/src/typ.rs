@@ -42,7 +42,7 @@
 //! only be equated with itself.
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
-    identifier::Ident,
+    identifier::{Ident, LocIdent},
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
@@ -67,7 +67,7 @@ use std::{
 /// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RecordRowF<Ty> {
-    pub id: Ident,
+    pub id: LocIdent,
     pub typ: Ty,
 }
 
@@ -77,7 +77,7 @@ pub struct RecordRowF<Ty> {
 /// `EnumRowF` is the same as `EnumRow` and doesn't have any type parameter. We introduce the alias
 /// nonetheless for consistency with other parametrized type definitions. See [`TypeF`] for more
 /// details.
-pub type EnumRowF = Ident;
+pub type EnumRowF = LocIdent;
 pub type EnumRow = EnumRowF;
 
 /// Generic sequence of record rows potentially with a type variable or `Dyn` in tail position.
@@ -95,7 +95,7 @@ pub type EnumRow = EnumRowF;
 pub enum RecordRowsF<Ty, RRows> {
     Empty,
     Extend { row: RecordRowF<Ty>, tail: RRows },
-    TailVar(Ident),
+    TailVar(LocIdent),
     TailDyn,
 }
 
@@ -112,7 +112,7 @@ pub enum RecordRowsF<Ty, RRows> {
 pub enum EnumRowsF<ERows> {
     Empty,
     Extend { row: EnumRowF, tail: ERows },
-    TailVar(Ident),
+    TailVar(LocIdent),
 }
 
 /// The kind of a quantified type variable.
@@ -273,7 +273,7 @@ pub enum TypeF<Ty, RRows, ERows> {
     Var(Ident),
     /// A forall binder.
     Forall {
-        var: Ident,
+        var: LocIdent,
         var_kind: VarKind,
         body: Ty,
     },
@@ -636,7 +636,7 @@ impl Traverse<Type> for RecordRows {
 }
 
 #[derive(Clone, Debug)]
-pub struct UnboundTypeVariableError(pub Ident);
+pub struct UnboundTypeVariableError(pub LocIdent);
 
 impl From<UnboundTypeVariableError> for EvalError {
     fn from(err: UnboundTypeVariableError) -> Self {
@@ -671,7 +671,7 @@ pub struct RecordRowsIterator<'a, Ty, RRows> {
 
 pub enum RecordRowsIteratorItem<'a, Ty> {
     TailDyn,
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     Row(RecordRowF<&'a Ty>),
 }
 
@@ -708,7 +708,7 @@ pub struct EnumRowsIterator<'a, ERows> {
 }
 
 pub enum EnumRowsIteratorItem<'a> {
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     Row(&'a EnumRowF),
 }
 
@@ -737,9 +737,13 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
 /// Helper used by the `subcontract` functions.
 fn get_var_contract(
     vars: &HashMap<Ident, RichTerm>,
-    id: &Ident,
+    sym: Ident,
+    pos: TermPos,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
-    Ok(vars.get(id).ok_or(UnboundTypeVariableError(*id))?.clone())
+    Ok(vars
+        .get(&sym)
+        .ok_or(UnboundTypeVariableError(LocIdent::from(sym).with_pos(pos)))?
+        .clone())
 }
 
 impl EnumRows {
@@ -748,8 +752,8 @@ impl EnumRows {
 
         let mut cases = IndexMap::new();
         let mut has_tail = false;
-        let value_arg = Ident::from("x");
-        let label_arg = Ident::from("l");
+        let value_arg = LocIdent::from("x");
+        let label_arg = LocIdent::from("l");
 
         for row in self.iter() {
             match row {
@@ -831,7 +835,7 @@ impl RecordRows {
         let tail = match &rrows.0 {
             RecordRowsF::Empty => internals::empty_tail(),
             RecordRowsF::TailDyn => internals::dyn_tail(),
-            RecordRowsF::TailVar(id) => get_var_contract(&vars, id)?,
+            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.symbol(), id.pos)?,
             // Safety: the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
         };
@@ -855,7 +859,7 @@ impl RecordRows {
         }
 
         let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id == path[0] => Some(row.typ.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id.symbol() == path[0] => Some(row.typ.clone()),
             _ => None,
         });
 
@@ -969,7 +973,7 @@ impl Type {
                 t.subcontract(vars, pol, sy)?
             ),
             TypeF::Flat(ref t) => t.clone(),
-            TypeF::Var(ref id) => get_var_contract(&vars, id)?,
+            TypeF::Var(id) => get_var_contract(&vars, id, self.pos)?,
             TypeF::Forall {
                 ref var,
                 ref body,
@@ -997,7 +1001,7 @@ impl Type {
                         mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
                     }
                 };
-                vars.insert(*var, contract);
+                vars.insert(var.symbol(), contract);
 
                 *sy += 1;
                 mk_app!(

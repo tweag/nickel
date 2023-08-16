@@ -1,67 +1,32 @@
 //! Define the type of an identifier.
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Debug};
-use std::hash::Hash;
+use std::{
+    fmt::{self, Debug},
+    hash::Hash,
+};
 
 use crate::{position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
+/// An interned string.
+//
+// Implementation-wise, this is just a wrapper around interner::Symbol that uses a hard-coded,
+// static `Interner`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", from = "String")]
-pub struct Ident {
-    symbol: interner::Symbol,
-    pub pos: TermPos,
-    generated: bool,
-}
-
-impl Debug for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Ident")
-            .field("label", &self.label())
-            .finish()
-    }
-}
+pub struct Ident(interner::Symbol);
 
 impl Ident {
-    pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
-        let generated = label.as_ref().starts_with(GEN_PREFIX);
-        Self {
-            symbol: INTERNER.intern(label),
-            pos,
-            generated,
-        }
+    pub fn new(s: impl AsRef<str>) -> Self {
+        Self(INTERNER.intern(s.as_ref()))
     }
 
-    pub fn new(label: impl AsRef<str>) -> Self {
-        Self::new_with_pos(label, TermPos::None)
-    }
-
-    /// Create an identifier with the same label as this one, but no position.
-    pub fn without_pos(self) -> Ident {
-        Ident {
-            pos: TermPos::None,
-            ..self
-        }
-    }
-
-    /// Create an identifier with the same label as this one, but a specified position.
-    pub fn with_pos(self, pos: TermPos) -> Ident {
-        Ident { pos, ..self }
-    }
-
-    /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
-    /// with any identifier defined before. Generated identifiers start with a special prefix that
-    /// can't be used by normal, user-defined identifiers.
-    pub fn fresh() -> Self {
-        Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
-    }
-
-    /// Return the string representation of this identifier.
+    /// Return the string representation of this symbol.
     pub fn label(&self) -> &str {
-        INTERNER.lookup(self.symbol)
+        INTERNER.lookup(self.0)
     }
 
     pub fn into_label(self) -> String {
@@ -69,9 +34,21 @@ impl Ident {
     }
 }
 
-/// Special character used for generating fresh identifiers. It must be syntactically impossible to
-/// use to write in a standard Nickel program, to avoid name clashes.
-pub const GEN_PREFIX: char = '%';
+impl fmt::Display for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
+impl From<Ident> for LocIdent {
+    fn from(symbol: Ident) -> Self {
+        LocIdent {
+            symbol,
+            pos: TermPos::None,
+            generated: symbol.label().starts_with(GEN_PREFIX),
+        }
+    }
+}
 
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -85,27 +62,118 @@ impl Ord for Ident {
     }
 }
 
-impl PartialEq for Ident {
+impl From<Ident> for NickelString {
+    fn from(sym: Ident) -> Self {
+        sym.to_string().into()
+    }
+}
+
+impl<F> From<F> for Ident
+where
+    String: From<F>,
+{
+    fn from(val: F) -> Self {
+        Self(INTERNER.intern(String::from(val)))
+    }
+}
+
+#[allow(clippy::from_over_into)]
+impl Into<String> for Ident {
+    fn into(self) -> String {
+        self.into_label()
+    }
+}
+
+/// An identifier with a location.
+///
+/// The location is ignored for equality comparison and hashing; it's mainly
+/// intended for error messages.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(into = "String", from = "String")]
+pub struct LocIdent {
+    symbol: Ident,
+    pub pos: TermPos,
+    generated: bool,
+}
+
+impl LocIdent {
+    pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
+        let generated = label.as_ref().starts_with(GEN_PREFIX);
+        Self {
+            symbol: Ident::new(label),
+            pos,
+            generated,
+        }
+    }
+
+    pub fn new(label: impl AsRef<str>) -> Self {
+        Self::new_with_pos(label, TermPos::None)
+    }
+
+    /// Create an identifier with the same label as this one, but a specified position.
+    pub fn with_pos(self, pos: TermPos) -> LocIdent {
+        LocIdent { pos, ..self }
+    }
+
+    /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
+    /// with any identifier defined before. Generated identifiers start with a special prefix that
+    /// can't be used by normal, user-defined identifiers.
+    pub fn fresh() -> Self {
+        Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
+    }
+
+    /// Return this identifier's symbol.
+    pub fn symbol(&self) -> Ident {
+        self.symbol
+    }
+
+    /// Return the string representation of this identifier.
+    pub fn label(&self) -> &str {
+        self.symbol.label()
+    }
+
+    pub fn into_label(self) -> String {
+        self.label().to_owned()
+    }
+}
+
+/// Special character used for generating fresh identifiers. It must be syntactically impossible to
+/// use to write in a standard Nickel program, to avoid name clashes.
+pub const GEN_PREFIX: char = '%';
+
+impl PartialOrd for LocIdent {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.label().partial_cmp(other.label())
+    }
+}
+
+impl Ord for LocIdent {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.label().cmp(other.label())
+    }
+}
+
+impl PartialEq for LocIdent {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
     }
 }
 
-impl Eq for Ident {}
+impl Eq for LocIdent {}
 
-impl Hash for Ident {
+impl Hash for LocIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol.hash(state);
+        self.symbol.hash(state)
     }
 }
 
-impl fmt::Display for Ident {
+impl fmt::Display for LocIdent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.label())
     }
 }
 
-impl<F> From<F> for Ident
+impl<F> From<F> for LocIdent
 where
     String: From<F>,
 {
@@ -120,25 +188,25 @@ where
 // `From<Ident> for Ident` which is incoherent with the
 // blanket implementation of `From<T> for T`.
 #[allow(clippy::from_over_into)]
-impl Into<String> for Ident {
+impl Into<String> for LocIdent {
     fn into(self) -> String {
         self.into_label()
     }
 }
 
-impl From<Ident> for NickelString {
-    fn from(id: Ident) -> Self {
+impl From<LocIdent> for NickelString {
+    fn from(id: LocIdent) -> Self {
         id.to_string().into()
     }
 }
 
-impl Ident {
+impl LocIdent {
     pub fn is_generated(&self) -> bool {
         self.generated
     }
 }
 
-impl AsRef<str> for Ident {
+impl AsRef<str> for LocIdent {
     fn as_ref(&self) -> &str {
         self.label()
     }

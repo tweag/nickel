@@ -30,7 +30,7 @@ impl CollectFreeVars for RichTerm {
     fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
         match SharedTerm::make_mut(&mut self.term) {
             Term::Var(id) => {
-                free_vars.insert(*id);
+                free_vars.insert(id.symbol());
             }
             Term::ParseError(_)
             | Term::RuntimeError(_)
@@ -47,7 +47,7 @@ impl CollectFreeVars for RichTerm {
                 let mut fresh = HashSet::new();
 
                 t.collect_free_vars(&mut fresh);
-                fresh.remove(id);
+                fresh.remove(&id.symbol());
 
                 free_vars.extend(fresh);
             }
@@ -57,7 +57,7 @@ impl CollectFreeVars for RichTerm {
                 body.collect_free_vars(&mut fresh);
                 bind_pattern(dest_pat, &mut fresh);
                 if let Some(id) = id {
-                    fresh.remove(id);
+                    fresh.remove(&id.symbol());
                 }
 
                 free_vars.extend(fresh);
@@ -72,7 +72,7 @@ impl CollectFreeVars for RichTerm {
                 }
 
                 t2.collect_free_vars(&mut fresh);
-                fresh.remove(id);
+                fresh.remove(&id.symbol());
 
                 free_vars.extend(fresh);
             }
@@ -83,7 +83,7 @@ impl CollectFreeVars for RichTerm {
                 t2.collect_free_vars(&mut fresh);
                 bind_pattern(dest_pat, &mut fresh);
                 if let Some(id) = id {
-                    fresh.remove(id);
+                    fresh.remove(&id.symbol());
                 }
 
                 free_vars.extend(fresh);
@@ -114,7 +114,8 @@ impl CollectFreeVars for RichTerm {
                 }
             }
             Term::RecRecord(record, dyn_fields, deps) => {
-                let rec_fields: HashSet<Ident> = record.fields.keys().cloned().collect();
+                let rec_fields: HashSet<Ident> =
+                    record.fields.keys().map(|id| id.symbol()).collect();
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
                     stat_fields: IndexMap::with_capacity(record.fields.len()),
@@ -127,7 +128,7 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(&mut fresh);
                     new_deps
                         .stat_fields
-                        .insert(*id, FieldDeps::from(&fresh & &rec_fields));
+                        .insert(id.symbol(), FieldDeps::from(&fresh & &rec_fields));
 
                     free_vars.extend(&fresh - &rec_fields);
                 }
@@ -241,7 +242,7 @@ fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
     }
 
     if let Some(rest) = rest {
-        free_vars.remove(rest);
+        free_vars.remove(&rest.symbol());
     }
 }
 
@@ -250,7 +251,7 @@ fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
 fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
     match m {
         Match::Assign(_, _, FieldPattern::Ident(ident)) => {
-            free_vars.remove(ident);
+            free_vars.remove(&ident.symbol());
         }
         Match::Assign(_, _, FieldPattern::RecordPattern(sub_pattern)) => {
             bind_pattern(sub_pattern, free_vars);
@@ -263,11 +264,11 @@ fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
                 pattern: sub_pattern,
             },
         ) => {
-            free_vars.remove(alias);
+            free_vars.remove(&alias.symbol());
             bind_pattern(sub_pattern, free_vars);
         }
         Match::Simple(id, _) => {
-            free_vars.remove(id);
+            free_vars.remove(&id.symbol());
         }
     }
 }

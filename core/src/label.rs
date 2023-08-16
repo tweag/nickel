@@ -6,7 +6,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     eval::cache::{Cache as EvalCache, CacheIndex},
-    identifier::Ident,
+    identifier::LocIdent,
     mk_uty_enum, mk_uty_record,
     position::{RawSpan, TermPos},
     term::{
@@ -53,7 +53,7 @@ pub mod ty_path {
     //! particular field.
 
     use crate::{
-        identifier::Ident,
+        identifier::LocIdent,
         position::RawSpan,
         typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
     };
@@ -63,7 +63,7 @@ pub mod ty_path {
     pub enum Elem {
         Domain,
         Codomain,
-        Field(Ident),
+        Field(LocIdent),
         Array,
         Dict,
     }
@@ -192,8 +192,8 @@ pub mod ty_path {
                 }
 
                 panic!(
-                    "span: current type path element indicates to go to field `{}`,\
-but this field doesn't exist in {}",
+                    "span: current type path element indicates to go to field `{}`, \
+                     but this field doesn't exist in {}",
                     ident,
                     Type::from(TypeF::Record(rows.clone())),
                 )
@@ -302,7 +302,7 @@ pub struct Label {
     /// The name of the record field to report in blame errors. This is set
     /// while first transforming a record as part of the pending contract generation.
     /// Contract applications outside of records will have this field set to `None`.
-    pub field_name: Option<Ident>,
+    pub field_name: Option<LocIdent>,
 }
 
 /// Data about type variables that is needed for polymorphic contracts to decide which actions to take.
@@ -315,7 +315,7 @@ impl From<&TypeVarData> for Term {
     fn from(value: &TypeVarData) -> Self {
         Term::Record(RecordData {
             fields: [(
-                Ident::new("polarity"),
+                LocIdent::new("polarity"),
                 Field::from(RichTerm::from(Term::from(value.polarity))),
             )]
             .into(),
@@ -355,8 +355,8 @@ impl Polarity {
 impl From<Polarity> for Term {
     fn from(value: Polarity) -> Self {
         match value {
-            Polarity::Positive => Term::Enum(Ident::new("Positive")),
-            Polarity::Negative => Term::Enum(Ident::new("Negative")),
+            Polarity::Positive => Term::Enum(LocIdent::new("Positive")),
+            Polarity::Negative => Term::Enum(LocIdent::new("Negative")),
         }
     }
 }
@@ -494,7 +494,7 @@ impl Label {
         }
     }
 
-    pub fn with_field_name(self, field_name: Option<Ident>) -> Self {
+    pub fn with_field_name(self, field_name: Option<LocIdent>) -> Self {
         Label { field_name, ..self }
     }
 }
