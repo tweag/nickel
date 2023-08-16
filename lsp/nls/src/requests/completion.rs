@@ -340,7 +340,7 @@ fn find_fields_from_term(
                 .collect(),
             Some(name) => data
                 .fields
-                .get(&Ident::from(name))
+                .get(&name)
                 .map(|field| find_fields_from_field(field, path, info))
                 .unwrap_or_default(),
         },

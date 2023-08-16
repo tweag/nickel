@@ -133,7 +133,7 @@ impl<'b> Building<'b> {
                 ty: UnifType::concrete(TypeF::Dyn),
                 kind: TermKind::RecordField {
                     record,
-                    ident: (*ident).into(),
+                    ident: *ident,
                     usages: Vec::new(),
                     value: ValueState::Unknown,
                 },
