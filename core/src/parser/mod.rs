@@ -1,5 +1,5 @@
 use crate::error::{ParseError, ParseErrors};
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::term::RichTerm;
 use crate::typ::Type;
 use codespan::FileId;
@@ -31,7 +31,7 @@ mod tests;
 /// ```
 pub enum ExtendedTerm {
     RichTerm(RichTerm),
-    ToplevelLet(Ident, RichTerm),
+    ToplevelLet(LocIdent, RichTerm),
 }
 
 // The interface of LALRPOP-generated parsers, for each public rule. This trait is used as a facade

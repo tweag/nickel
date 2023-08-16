@@ -6,7 +6,7 @@ use utils::{build_record, FieldDef, FieldPathElem};
 
 use crate::{
     environment::Environment,
-    identifier::Symbol,
+    identifier::Ident,
     position::{RawSpan, TermPos},
     term::{
         record::{Field, FieldMetadata, RecordAttrs},
@@ -50,7 +50,7 @@ use std::{
 /// `UniTermNode::Term(Term::Op2(..))`.
 pub enum UniTermNode {
     /// A variable. Can refer both to a term variable or a type variable.
-    Var(Ident),
+    Var(LocIdent),
     /// A record. Can refer both to a record literal or a record type.
     Record(UniRecord),
     /// A uniterm that has been determined to be a term.
@@ -322,7 +322,7 @@ impl UniRecord {
     /// `{foo.bar.baz : Type}.into_type_strict()` returns an `Err`.
     pub fn into_type_strict(self) -> Result<Type, InvalidRecordTypeError> {
         fn term_to_record_rows(
-            id: Ident,
+            id: LocIdent,
             field_def: FieldDef,
             tail: RecordRows,
         ) -> Result<RecordRows, InvalidRecordTypeError> {
@@ -415,7 +415,7 @@ impl UniRecord {
                                         field_def.pos.unwrap(),
                                     ),
                                 )?;
-                                Ident::new_with_pos(name, expr.pos)
+                                LocIdent::new_with_pos(name, expr.pos)
                             }
                         };
                         if let Some(prev_id) = fields_seen.insert(id.symbol(), id) {
@@ -540,7 +540,7 @@ pub(super) struct VarKindMismatch;
 /// is bound by an enclosing forall (if `env.get(var_id).is_some()`), and to provide a shared
 /// mutable variable kind that can be modified depending on the location of type variable
 /// occurrences.
-pub(super) type BoundVarEnv = Environment<Symbol, VarKindCell>;
+pub(super) type BoundVarEnv = Environment<Ident, VarKindCell>;
 
 impl VarKindCell {
     /// Create a new unset `VarKindCell` at resolution time, this will default to `VarKind::Type`,
@@ -683,9 +683,9 @@ impl FixTypeVars for Type {
             TypeF::Var(sym) => {
                 if let Some(cell) = bound_vars.get(&sym) {
                     cell.try_set(VarKind::Type)
-                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: Ident::from(sym).with_pos(self.pos), span })?;
+                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: LocIdent::from(sym).with_pos(self.pos), span })?;
                 } else {
-                    let id = Ident::from(sym).with_pos(self.pos);
+                    let id = LocIdent::from(sym).with_pos(self.pos);
                     self.typ = TypeF::Flat(RichTerm::new(Term::Var(id), id.pos));
                 }
                 Ok(())
@@ -730,7 +730,7 @@ impl FixTypeVars for RecordRows {
             rrows: &mut RecordRows,
             bound_vars: BoundVarEnv,
             span: RawSpan,
-            mut maybe_excluded: HashSet<Symbol>,
+            mut maybe_excluded: HashSet<Ident>,
         ) -> Result<(), ParseError> {
             match rrows.0 {
                 RecordRowsF::Empty => Ok(()),

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     error::EvalError,
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     label::Label,
 };
 use std::{collections::HashSet, rc::Rc};
@@ -27,7 +27,7 @@ impl RecordAttrs {
 pub enum FieldDeps {
     /// The set of dependencies is fixed and has been computed. When attached to an element, an empty
     /// set of dependency means that the element isn't revertible, but standard.
-    Known(Rc<HashSet<Symbol>>),
+    Known(Rc<HashSet<Ident>>),
     /// The element is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
     /// in the content of the corresponding element.
@@ -44,7 +44,7 @@ impl FieldDeps {
             // fields), then the resulting fields has unknown dependencies as well
             (FieldDeps::Unknown, _) | (_, FieldDeps::Unknown) => FieldDeps::Unknown,
             (FieldDeps::Known(deps1), FieldDeps::Known(deps2)) => {
-                let union: HashSet<Symbol> = deps1.union(&*deps2).cloned().collect();
+                let union: HashSet<Ident> = deps1.union(&*deps2).cloned().collect();
                 FieldDeps::Known(Rc::new(union))
             }
         }
@@ -61,8 +61,8 @@ impl FieldDeps {
     }
 }
 
-impl From<HashSet<Symbol>> for FieldDeps {
-    fn from(set: HashSet<Symbol>) -> Self {
+impl From<HashSet<Ident>> for FieldDeps {
+    fn from(set: HashSet<Ident>) -> Self {
         FieldDeps::Known(Rc::new(set))
     }
 }
@@ -72,7 +72,7 @@ impl From<HashSet<Symbol>> for FieldDeps {
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct RecordDeps {
     /// Must have exactly the same keys as the static fields map of the recursive record.
-    pub stat_fields: IndexMap<Symbol, FieldDeps>,
+    pub stat_fields: IndexMap<Ident, FieldDeps>,
     /// Must have exactly the same length as the dynamic fields list of the recursive record.
     pub dyn_fields: Vec<FieldDeps>,
 }
@@ -198,7 +198,7 @@ impl Field {
         }
     }
 
-    pub fn with_name(self, field_name: Option<Ident>) -> Self {
+    pub fn with_name(self, field_name: Option<LocIdent>) -> Self {
         Field {
             metadata: FieldMetadata {
                 annotation: self.metadata.annotation.with_field_name(field_name),
@@ -258,7 +258,7 @@ impl Traverse<RichTerm> for Field {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RecordData {
     /// Fields whose names are known statically.
-    pub fields: IndexMap<Ident, Field>,
+    pub fields: IndexMap<LocIdent, Field>,
     /// Attributes which may be applied to a record.
     pub attrs: RecordAttrs,
     /// The hidden part of a record under a polymorphic contract.
@@ -269,7 +269,7 @@ pub struct RecordData {
 /// definition and isn't optional.
 #[derive(Clone, Debug)]
 pub struct MissingFieldDefError {
-    pub id: Ident,
+    pub id: LocIdent,
     pub metadata: FieldMetadata,
 }
 
@@ -286,7 +286,7 @@ impl MissingFieldDefError {
 
 impl RecordData {
     pub fn new(
-        fields: IndexMap<Ident, Field>,
+        fields: IndexMap<LocIdent, Field>,
         attrs: RecordAttrs,
         sealed_tail: Option<SealedTail>,
     ) -> Self {
@@ -303,7 +303,7 @@ impl RecordData {
     }
 
     /// A record with the provided fields and the default set of attributes.
-    pub fn with_field_values(field_values: impl IntoIterator<Item = (Ident, RichTerm)>) -> Self {
+    pub fn with_field_values(field_values: impl IntoIterator<Item = (LocIdent, RichTerm)>) -> Self {
         let fields = field_values
             .into_iter()
             .map(|(id, value)| {
@@ -330,7 +330,7 @@ impl RecordData {
     /// external state while iterating.
     pub fn map_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Symbol, Option<RichTerm>) -> Option<RichTerm>,
+        F: FnMut(LocIdent, Option<RichTerm>) -> Option<RichTerm>,
     {
         let fields = self
             .fields
@@ -339,7 +339,7 @@ impl RecordData {
                 (
                     id,
                     Field {
-                        value: f(id.symbol(), field.value),
+                        value: f(id, field.value),
                         ..field
                     },
                 )
@@ -352,7 +352,7 @@ impl RecordData {
     /// defined value. Fields without a value are left unchanged.
     pub fn map_defined_values<F>(self, mut f: F) -> Self
     where
-        F: FnMut(Symbol, RichTerm) -> RichTerm,
+        F: FnMut(LocIdent, RichTerm) -> RichTerm,
     {
         self.map_values(|id, value| value.map(|v| f(id, v)))
     }
@@ -366,7 +366,7 @@ impl RecordData {
     /// error `MissingFieldDefError`.
     pub fn into_iter_without_opts(
         self,
-    ) -> impl Iterator<Item = Result<(Symbol, RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Ident, RichTerm), MissingFieldDefError>> {
         self.fields
             .into_iter()
             .filter_map(|(id, field)| match field.value {
@@ -391,7 +391,7 @@ impl RecordData {
     /// `MissingFieldDefError`.
     pub fn iter_serializable(
         &self,
-    ) -> impl Iterator<Item = Result<(Symbol, &RichTerm), MissingFieldDefError>> {
+    ) -> impl Iterator<Item = Result<(Ident, &RichTerm), MissingFieldDefError>> {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
@@ -414,7 +414,7 @@ impl RecordData {
     /// This method automatically applies the potential pending contracts
     pub fn get_value_with_ctrs(
         &self,
-        id: &Ident,
+        id: &LocIdent,
     ) -> Result<Option<RichTerm>, MissingFieldDefError> {
         match self.fields.get(id) {
             Some(Field {
@@ -463,11 +463,11 @@ pub struct SealedTail {
     // Since we only ever check whether the tail contains a specific field
     // when we already know we're going to raise an error, it's not really
     // an issue to have a linear lookup there, so we do that instead.
-    fields: Vec<Symbol>,
+    fields: Vec<Ident>,
 }
 
 impl SealedTail {
-    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Symbol>) -> Self {
+    pub fn new(sealing_key: SealingKey, label: Label, term: RichTerm, fields: Vec<Ident>) -> Self {
         Self {
             sealing_key,
             label,
@@ -485,7 +485,7 @@ impl SealedTail {
         }
     }
 
-    pub fn has_field(&self, field: &Symbol) -> bool {
+    pub fn has_field(&self, field: &Ident) -> bool {
         self.fields.contains(field)
     }
 

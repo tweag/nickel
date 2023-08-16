@@ -20,7 +20,7 @@ use lsp_types::{
 
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
-    identifier::Ident,
+    identifier::LocIdent,
     position::RawPos,
     stdlib::StdlibModule,
     term::RichTerm,
@@ -99,7 +99,7 @@ impl Server {
             }
 
             // The module is bound to its name in the environment.
-            let name: Ident = Ident::from(module.name());
+            let name: LocIdent = LocIdent::from(module.name());
             let file_id = self.cache.get_submodule_file_id(module)?;
             // We're using the ID 0 to get the top-level value, which is the body of the module.
             let content_id = ItemId { file_id, index: 0 };

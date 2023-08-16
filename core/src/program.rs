@@ -25,7 +25,7 @@ use crate::error::{Error, IntoDiagnostics, ParseError};
 use crate::eval;
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::term::{record::Field, RichTerm};
 use atty;
 use codespan::FileId;
@@ -45,7 +45,7 @@ impl From<clap::ColorChoice> for ColorOpt {
 
 /// Attribute path provided when querying metadata.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
-pub struct QueryPath(pub Vec<Ident>);
+pub struct QueryPath(pub Vec<LocIdent>);
 
 impl QueryPath {
     pub fn new() -> Self {
@@ -82,7 +82,7 @@ impl QueryPath {
                 )
             })?;
 
-        let path_as_idents: Result<Vec<Ident>, ParseError> = field_path
+        let path_as_idents: Result<Vec<LocIdent>, ParseError> = field_path
             .into_iter()
             .map(|elem| match elem {
                 FieldPathElem::Ident(ident) => Ok(ident),
@@ -93,7 +93,7 @@ impl QueryPath {
                             pos_path_elem: expr.pos,
                         },
                     )?;
-                    Ok(Ident::from(as_string))
+                    Ok(LocIdent::from(as_string))
                 }
             })
             .collect();
@@ -699,7 +699,7 @@ mod tests {
     use super::*;
     use crate::error::EvalError;
     use crate::eval::cache::CacheImpl;
-    use crate::identifier::Ident;
+    use crate::identifier::LocIdent;
     use crate::position::TermPos;
     use crate::term::array::ArrayAttrs;
     use assert_matches::assert_matches;

@@ -1,5 +1,5 @@
 use nickel_lang_core::{
-    identifier::Symbol,
+    identifier::Ident,
     term::{record::FieldDeps, IndexMap, Term},
     transform::free_vars,
 };
@@ -11,12 +11,12 @@ use std::rc::Rc;
 use nickel_lang_utils::test_program::parse;
 
 fn free_vars_eq(free_vars: &FieldDeps, expected: Vec<&str>) -> bool {
-    let expected_set: HashSet<Symbol> = expected.into_iter().map(Symbol::from).collect();
+    let expected_set: HashSet<Ident> = expected.into_iter().map(Ident::from).collect();
     *free_vars == FieldDeps::Known(Rc::new(expected_set))
 }
 
 fn stat_free_vars_incl(
-    stat_fields: &IndexMap<Symbol, FieldDeps>,
+    stat_fields: &IndexMap<Ident, FieldDeps>,
     mut expected: IndexMap<&str, Vec<&str>>,
 ) -> bool {
     stat_fields

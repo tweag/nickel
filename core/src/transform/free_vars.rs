@@ -5,7 +5,7 @@
 //! fixpoint.
 use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
-    identifier::Symbol,
+    identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
         IndexMap, RichTerm, SharedTerm, StrChunk, Term,
@@ -23,11 +23,11 @@ pub fn transform(rt: &mut RichTerm) {
 pub trait CollectFreeVars {
     /// Collect the free variables of a term or type inside the provided hashset. Doing so, fill
     /// the recursive record dependencies data accordingly.
-    fn collect_free_vars(&mut self, working_set: &mut HashSet<Symbol>);
+    fn collect_free_vars(&mut self, working_set: &mut HashSet<Ident>);
 }
 
 impl CollectFreeVars for RichTerm {
-    fn collect_free_vars(&mut self, free_vars: &mut HashSet<Symbol>) {
+    fn collect_free_vars(&mut self, free_vars: &mut HashSet<Ident>) {
         match SharedTerm::make_mut(&mut self.term) {
             Term::Var(id) => {
                 free_vars.insert(id.symbol());
@@ -114,7 +114,7 @@ impl CollectFreeVars for RichTerm {
                 }
             }
             Term::RecRecord(record, dyn_fields, deps) => {
-                let rec_fields: HashSet<Symbol> =
+                let rec_fields: HashSet<Ident> =
                     record.fields.keys().map(|id| id.symbol()).collect();
                 let mut fresh = HashSet::new();
                 let mut new_deps = RecordDeps {
@@ -181,7 +181,7 @@ impl CollectFreeVars for RichTerm {
 }
 
 impl CollectFreeVars for Type {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Symbol>) {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         match &mut self.typ {
             TypeF::Dyn
             | TypeF::Number
@@ -208,7 +208,7 @@ impl CollectFreeVars for Type {
 }
 
 impl CollectFreeVars for RecordRows {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Symbol>) {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         match &mut self.0 {
             RecordRowsF::Empty | RecordRowsF::TailDyn | RecordRowsF::TailVar(_) => (),
             RecordRowsF::Extend {
@@ -223,7 +223,7 @@ impl CollectFreeVars for RecordRows {
 }
 
 impl CollectFreeVars for Field {
-    fn collect_free_vars(&mut self, set: &mut HashSet<Symbol>) {
+    fn collect_free_vars(&mut self, set: &mut HashSet<Ident>) {
         for labeled_ty in self.metadata.annotation.iter_mut() {
             labeled_ty.typ.collect_free_vars(set)
         }
@@ -235,7 +235,7 @@ impl CollectFreeVars for Field {
 }
 
 /// Remove the variables bound by a destructuring pattern from a set of free variables.
-fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Symbol>) {
+fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
     let RecordPattern { matches, rest, .. } = dest_pat;
     for m in matches {
         bind_match(m, free_vars);
@@ -248,7 +248,7 @@ fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Symbol>) {
 
 /// Remove the variables bound by a match expression (constituents of a destructuring pattern) from
 /// a set of free variables.
-fn bind_match(m: &Match, free_vars: &mut HashSet<Symbol>) {
+fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
     match m {
         Match::Assign(_, _, FieldPattern::Ident(ident)) => {
             free_vars.remove(&ident.symbol());

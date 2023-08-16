@@ -10,7 +10,7 @@ use crate::cache::{Cache, Envs, ErrorTolerance};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::QueryPath;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
@@ -43,7 +43,7 @@ pub enum EvalResult {
     /// The input has been evaluated to a term.
     Evaluated(RichTerm),
     /// The input was a toplevel let, which has been bound in the environment.
-    Bound(Ident),
+    Bound(LocIdent),
 }
 
 impl From<RichTerm> for EvalResult {
@@ -107,7 +107,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
     // `id` must be set to `None` for normal expressions and to `Some(id_)` for top-level lets. In the
     // latter case, we need to update the current type environment before doing program
     // transformations in the case of a top-level let.
-    fn prepare(&mut self, id: Option<Ident>, t: RichTerm) -> Result<RichTerm, Error> {
+    fn prepare(&mut self, id: Option<LocIdent>, t: RichTerm) -> Result<RichTerm, Error> {
         let import_resolution::strict::ResolveResult {
             transformed_term: t,
             resolved_ids: pending,

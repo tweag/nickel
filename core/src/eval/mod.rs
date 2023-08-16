@@ -73,14 +73,14 @@
 //! appear inside recursive records in the future. An adapted garbage collector is probably
 //! something to consider at some point.
 
-use crate::identifier::Symbol;
+use crate::identifier::Ident;
 use crate::term::record::FieldMetadata;
 use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
-    identifier::Ident,
+    identifier::LocIdent,
     match_sharedterm,
     position::TermPos,
     program::QueryPath,
@@ -877,7 +877,7 @@ impl Closure {
 }
 
 #[allow(type_alias_bounds)] // TODO: Look into this warning.
-pub type Environment = GenericEnvironment<Symbol, CacheIndex>;
+pub type Environment = GenericEnvironment<Ident, CacheIndex>;
 
 /// Raised when trying to build an environment from a term which is not a record.
 #[derive(Clone, Debug)]
@@ -917,7 +917,7 @@ pub fn env_add_record<C: Cache>(
 pub fn env_add<C: Cache>(
     cache: &mut C,
     env: &mut Environment,
-    id: Ident,
+    id: LocIdent,
     rt: RichTerm,
     local_env: Environment,
 ) {

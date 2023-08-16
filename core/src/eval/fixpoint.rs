@@ -12,7 +12,7 @@ use crate::{label::Label, position::TermPos};
 fn patch_term<C: Cache>(
     cache: &mut C,
     term: &RichTerm,
-    rec_env: &[(Symbol, CacheIndex)],
+    rec_env: &[(Ident, CacheIndex)],
     env: &Environment,
 ) -> Result<(), EvalError> {
     if let Term::Var(var_id) = &*term.term {
@@ -51,12 +51,12 @@ fn patch_term<C: Cache>(
 /// happen, we have to ensure the pending contract `Schema` is applied to the recursive occurrence
 /// `foo` used in the definition `baz = foo.bar`. That is, we must apply pending contracts to their
 /// corresponding field when building the recursive environment.
-pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
+pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
     env: &Environment,
     pos_record: TermPos,
-) -> Result<Vec<(Symbol, CacheIndex)>, EvalError> {
+) -> Result<Vec<(Ident, CacheIndex)>, EvalError> {
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
@@ -82,7 +82,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
                 // Pending contracts might use identifiers from the current record's environment,
                 // so we start from in the environment of the original record.
                 let mut final_env = env.clone();
-                let id_value = Ident::fresh();
+                let id_value = LocIdent::fresh();
                 final_env.insert(id_value.symbol(), idx);
 
                 let with_ctr_applied = RuntimeContract::apply_all(
@@ -174,7 +174,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a Ident, &'a Field)>, C: Cache>(
 pub fn patch_field<C: Cache>(
     cache: &mut C,
     field: &Field,
-    rec_env: &[(Symbol, CacheIndex)],
+    rec_env: &[(Ident, CacheIndex)],
     env: &Environment,
 ) -> Result<(), EvalError> {
     if let Some(ref value) = field.value {

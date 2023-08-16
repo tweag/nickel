@@ -14,7 +14,7 @@ use super::{
 
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
-    identifier::Ident,
+    identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
     parser::utils::parse_number,
@@ -235,7 +235,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     _ => "Other",
                 };
                 Ok(Closure::atomic_closure(RichTerm::new(
-                    Term::Enum(Ident::from(result)),
+                    Term::Enum(LocIdent::from(result)),
                     pos_op_inh,
                 )))
             }
@@ -893,7 +893,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::EnumFromStr() => {
                 if let Term::Str(s) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Enum(Ident::from(s)),
+                        Term::Enum(LocIdent::from(s)),
                         pos_op_inh,
                     )))
                 } else {
@@ -905,7 +905,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let re = regex::Regex::new(s)
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                    let param = Ident::fresh();
+                    let param = LocIdent::fresh();
                     let matcher = Term::Fun(
                         param,
                         RichTerm::new(
@@ -927,7 +927,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let re = regex::Regex::new(s)
                         .map_err(|err| EvalError::Other(err.to_string(), pos_op))?;
 
-                    let param = Ident::fresh();
+                    let param = LocIdent::fresh();
                     let matcher = Term::Fun(
                         param,
                         RichTerm::new(
@@ -1552,7 +1552,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // and again, which is not optimal. The same thing happens with array
                             // contracts. There are several way to improve this, but this is left
                             // as future work.
-                            let ident = Ident::from(&id);
+                            let ident = LocIdent::from(&id);
                             match record.get_value_with_ctrs(&ident).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
                                 Some(value) => {
                                     self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
@@ -1625,7 +1625,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     None
                                 };
 
-                                match fields.insert(Ident::from(id), Field {value, metadata, pending_contracts }) {
+                                match fields.insert(LocIdent::from(id), Field {value, metadata, pending_contracts }) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
                                     Some(t) => Err(EvalError::Other(format!("record_insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
@@ -1647,7 +1647,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(id) => match_sharedterm! {t2, with {
                             Term::Record(record) => {
                                 let mut fields = record.fields;
-                                let fetched = fields.remove(&Ident::from(&id));
+                                let fetched = fields.remove(&LocIdent::from(&id));
                                 match fetched {
                                     None
                                     | Some(Field {
@@ -1693,7 +1693,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(record.fields.get(&Ident::from(id.into_inner())), Some(field) if !field.is_empty_optional())),
+                                Term::Bool(matches!(record.fields.get(&LocIdent::from(id.into_inner())), Some(field) if !field.is_empty_optional())),
                                 pos_op_inh,
                             )))
                         } else {
@@ -2032,7 +2032,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // documentation
                             let mut record_data = record_data;
 
-                            let mut contract_at_field = |id: Ident| {
+                            let mut contract_at_field = |id: LocIdent| {
                                 let pos = contract_term.pos;
                                 mk_app!(
                                     contract_term.clone(),
@@ -2416,7 +2416,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().map(Ident::symbol).collect();
+                        let fields = tail.fields.keys().map(|s| s.symbol()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
@@ -2860,7 +2860,7 @@ impl RecPriority {
                                 _ => panic!("rec_priority: expected an evaluated form"),
                             });
 
-                        let fresh_id = Ident::fresh();
+                        let fresh_id = LocIdent::fresh();
                         new_env.insert(fresh_id.symbol(), new_idx);
                         RichTerm::new(Term::Var(fresh_id), pos)
                     } else {
@@ -3143,14 +3143,14 @@ trait MapValuesClosurize: Sized {
         shared_env: &mut Environment,
         env: &Environment,
         f: F,
-    ) -> Result<IndexMap<Ident, Field>, record::MissingFieldDefError>
+    ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
     where
-        F: FnMut(Ident, RichTerm) -> RichTerm;
+        F: FnMut(LocIdent, RichTerm) -> RichTerm;
 }
 
 impl<Iter> MapValuesClosurize for Iter
 where
-    Iter: IntoIterator<Item = (Ident, Field)>,
+    Iter: IntoIterator<Item = (LocIdent, Field)>,
 {
     fn map_values_closurize<F, C: Cache>(
         self,
@@ -3158,9 +3158,9 @@ where
         shared_env: &mut Environment,
         env: &Environment,
         mut f: F,
-    ) -> Result<IndexMap<Ident, Field>, record::MissingFieldDefError>
+    ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
     where
-        F: FnMut(Ident, RichTerm) -> RichTerm,
+        F: FnMut(LocIdent, RichTerm) -> RichTerm,
     {
         self.into_iter()
             .map(|(id, field)| {

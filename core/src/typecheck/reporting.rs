@@ -10,7 +10,7 @@ pub struct NameReg {
     names: NameTable,
     /// A reverse name table, always kept in sync with `names`, in order to efficiently check if a
     /// name is already taken.
-    taken: HashSet<Symbol>,
+    taken: HashSet<Ident>,
     /// Counter used to generate fresh letters for unification variables.
     var_count: usize,
     /// Counter used to generate fresh letters for type constants.
@@ -34,7 +34,7 @@ impl NameReg {
         self.taken.contains(&name.into())
     }
 
-    fn insert(&mut self, var_id: VarId, discriminant: VarKindDiscriminant, name: Symbol) {
+    fn insert(&mut self, var_id: VarId, discriminant: VarKindDiscriminant, name: Ident) {
         self.names.insert((var_id, discriminant), name);
         self.taken.insert(name);
     }
@@ -79,7 +79,7 @@ impl NameReg {
     ///
     /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and so
     /// on until a free name is found. See `var_to_type` and `cst_to_type`.
-    fn select_uniq(&mut self, mut name: String, id: VarId, kind: VarKindDiscriminant) -> Symbol {
+    fn select_uniq(&mut self, mut name: String, id: VarId, kind: VarKindDiscriminant) -> Ident {
         // To avoid clashing with already picked names, we add a numeric suffix to the picked
         // letter.
         if self.taken(&name) {
@@ -91,7 +91,7 @@ impl NameReg {
             }
         }
 
-        let sym = Symbol::from(name);
+        let sym = Ident::from(name);
         self.insert(id, kind, sym);
         sym
     }
@@ -99,7 +99,7 @@ impl NameReg {
     /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
     /// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`, ..
     /// and so on.
-    pub fn gen_var_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Symbol {
+    pub fn gen_var_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
         self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
             // Select a candidate name and add a "_" prefix
             let candidate = format!(
@@ -113,7 +113,7 @@ impl NameReg {
 
     /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
     /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
-    pub fn gen_cst_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Symbol {
+    pub fn gen_cst_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
         self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
             // Select a candidate name
             let candidate = Self::gen_candidate_name(&self.names, &mut self.cst_count, id, kind);

@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     pretty::ident_quoted,
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
@@ -17,7 +17,7 @@ pub struct Def {
     /// Remember that an `Ident` has a position; this one points to the identifier
     /// at the position where it is bound. For example, in `{ foo = 1 }`, this ident
     /// might point at the `foo`.
-    pub ident: Ident,
+    pub ident: LocIdent,
     /// The value assigned by the definition, if there is one.
     ///
     /// For example, in `{ foo = 1 }`, this could point at the `1`.
@@ -64,13 +64,13 @@ impl Def {
 /// A map from identifiers to the defs that they refer to.
 #[derive(Clone, Debug, Default)]
 struct FieldDefs {
-    fields: HashMap<Symbol, Vec<Def>>,
+    fields: HashMap<Ident, Vec<Def>>,
 }
 
 /// Resolve a record path iteratively, returning the names of all the fields defined on the final path element.
 pub fn resolve_path<'a>(
     rt: &'a RichTerm,
-    mut path: &'a [Ident],
+    mut path: &'a [LocIdent],
     linearization: &Completed,
     server: &Server,
 ) -> impl Iterator<Item = Def> {

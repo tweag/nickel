@@ -2,7 +2,7 @@
 use crate::{
     cache::ImportResolver,
     eval::{cache::Cache, Closure, Environment, IdentKind},
-    identifier::Ident,
+    identifier::LocIdent,
     term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,
@@ -142,7 +142,7 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never
         // user-supplied variables.
-        let var = Ident::fresh();
+        let var = LocIdent::fresh();
         let pos = self.pos;
 
         let idx = match self.as_ref() {

@@ -57,7 +57,7 @@ use crate::{
     cache::ImportResolver,
     environment::Environment as GenericEnvironment,
     error::TypecheckError,
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     stdlib as nickel_stdlib,
     term::{
         record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
@@ -98,13 +98,13 @@ use unif::*;
 const INFER_RECORD_MAX_DEPTH: u8 = 4;
 
 /// The typing environment.
-pub type Environment = GenericEnvironment<Symbol, UnifType>;
+pub type Environment = GenericEnvironment<Ident, UnifType>;
 
 /// Mapping from wildcard ID to inferred type
 pub type Wildcards = Vec<Type>;
 
 /// A table mapping variable IDs with their kind to names.
-pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Symbol>;
+pub type NameTable = HashMap<(VarId, VarKindDiscriminant), Ident>;
 
 /// A unifiable record row.
 pub type GenericUnifRecordRow<E> = RecordRowF<Box<GenericUnifType<E>>>;
@@ -495,18 +495,18 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
 // A type which contains variables that can be substituted with values of type `T`.
 trait Subst<T: Clone>: Sized {
     // Substitute all variables of identifier `id` with `to`.
-    fn subst(self, id: &Ident, to: &T) -> Self {
+    fn subst(self, id: &LocIdent, to: &T) -> Self {
         self.subst_levels(id, to).0
     }
 
     // Must be implemented by implementers of this trait.
     // In addition to performing substitution, this method threads variable levels upper bounds to
     // compute new upper bounds efficiently.
-    fn subst_levels(self, id: &Ident, to: &T) -> (Self, VarLevel);
+    fn subst_levels(self, id: &LocIdent, to: &T) -> (Self, VarLevel);
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ: TypeF::Var(var_id),
@@ -553,7 +553,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows,
@@ -594,7 +594,7 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ,
@@ -633,7 +633,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
 }
 
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows: RecordRowsF::TailVar(var_id),
@@ -681,7 +681,7 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ,
@@ -727,7 +727,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
 }
 
 impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows,
@@ -769,7 +769,7 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
 }
 
 impl Subst<UnifEnumRows> for UnifEnumRows {
-    fn subst_levels(self, id: &Ident, to: &UnifEnumRows) -> (Self, VarLevel) {
+    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
         match self {
             UnifEnumRows::Concrete {
                 erows: EnumRowsF::TailVar(var_id),
@@ -987,7 +987,7 @@ impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
 /// Iterator items produced by [RecordRowsIterator] on [GenericUnifRecordRows].
 pub enum GenericUnifRecordRowsIteratorItem<'a, E: TermEnvironment> {
     TailDyn,
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(RecordRowF<&'a GenericUnifType<E>>),
@@ -1041,7 +1041,7 @@ impl<'a, E: TermEnvironment> Iterator
 
 /// Iterator items produced by [`EnumRowsIterator`].
 pub enum UnifEnumRowsIteratorItem<'a> {
-    TailVar(&'a Ident),
+    TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
     Row(&'a EnumRow),
@@ -1202,7 +1202,7 @@ pub fn env_add_term(
 /// Bind one term in a typing environment.
 pub fn env_add(
     env: &mut Environment,
-    id: Ident,
+    id: LocIdent,
     rt: &RichTerm,
     term_env: &SimpleTermEnvironment,
     resolver: &dyn ImportResolver,
@@ -1971,7 +1971,7 @@ fn check<L: Linearizer>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: HashMap<Ident, UnifType> = record
+                let mut field_types: HashMap<LocIdent, UnifType> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
@@ -2081,7 +2081,7 @@ fn check_field<L: Linearizer>(
     ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
-    id: Ident,
+    id: LocIdent,
     field: &Field,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {

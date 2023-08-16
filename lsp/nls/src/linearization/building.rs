@@ -4,7 +4,7 @@ use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
     cache::Cache,
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     position::TermPos,
     term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
@@ -115,7 +115,7 @@ impl<'b> Building<'b> {
         &mut self,
         current_file: FileId,
         record_term: &RichTerm,
-        record_fields: &IndexMap<Ident, Field>,
+        record_fields: &IndexMap<LocIdent, Field>,
         record: ItemId,
         env: &mut Environment,
     ) {
@@ -148,7 +148,7 @@ impl<'b> Building<'b> {
         &mut self,
         current_file: FileId,
         record: ItemId,
-        (field_ident, reference_id): (Symbol, ItemId),
+        (field_ident, reference_id): (Ident, ItemId),
     ) {
         match self
             .get_item_kind_mut(current_file, record)
@@ -235,9 +235,9 @@ impl<'b> Building<'b> {
     pub(super) fn resolve_record_references(
         &mut self,
         current_file: FileId,
-        mut defers: Vec<(ItemId, ItemId, Ident)>,
-    ) -> Vec<(ItemId, ItemId, Ident)> {
-        let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
+        mut defers: Vec<(ItemId, ItemId, LocIdent)>,
+    ) -> Vec<(ItemId, ItemId, LocIdent)> {
+        let mut unresolved: Vec<(ItemId, ItemId, LocIdent)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
             // child_item: current deferred usage item

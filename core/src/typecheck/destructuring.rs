@@ -1,7 +1,7 @@
 use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
     error::TypecheckError,
-    identifier::Ident,
+    identifier::LocIdent,
     mk_uty_row,
     term::{IndexMap, LabeledType},
     typ::{RecordRowF, RecordRowsF, TypeF},
@@ -204,7 +204,7 @@ pub fn inject_pattern_variables(
 /// have already been "used" in the pattern, to ensure that we can
 /// correctly construct the type of a `..rest` match, if it exists.
 struct RecordTypes {
-    known_types: IndexMap<Ident, UnifType>,
+    known_types: IndexMap<LocIdent, UnifType>,
     tail: UnifRecordRows,
 }
 
@@ -243,7 +243,7 @@ impl RecordTypes {
     /// In the case of `RecordTypes::Rows`, `id` is also removed from the
     /// map, so that it won't be considered as part of the "tail type"
     /// when `rest` is called.
-    fn get_type(&mut self, id: &Ident) -> UnifType {
+    fn get_type(&mut self, id: &LocIdent) -> UnifType {
         self.known_types
             .remove(id)
             .expect("Scopes of identifiers in destruct patterns should be checked already")

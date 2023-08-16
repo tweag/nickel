@@ -1,7 +1,7 @@
 //! Thunks and associated devices used to implement lazy evaluation.
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
 use crate::{
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
@@ -153,7 +153,7 @@ impl ThunkData {
     /// from `rec_env`. The major difference is that `init_cached` avoids the creation of the
     /// intermediate redex `(fun id1 .. id n => orig) %1 .. %n` as well as the intermediate thunks
     /// and terms, because we can compute the result application right away, in-place.
-    pub fn init_cached(&mut self, rec_env: &[(Symbol, Thunk)]) {
+    pub fn init_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         match self.inner {
             InnerThunkData::Standard(_) => (),
             InnerThunkData::Revertible {
@@ -200,7 +200,7 @@ impl ThunkData {
     /// standard thunk containing `fun bar foo => foo + bar + a`.
     fn revthunk_as_explicit_fun<I>(self, args: I) -> Self
     where
-        I: DoubleEndedIterator<Item = Symbol>,
+        I: DoubleEndedIterator<Item = Ident>,
     {
         match self.inner {
             InnerThunkData::Standard(_) => self,
@@ -445,7 +445,7 @@ impl Thunk {
         }
     }
 
-    pub fn build_cached(&mut self, rec_env: &[(Symbol, Thunk)]) {
+    pub fn build_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         self.data.borrow_mut().init_cached(rec_env)
     }
 
@@ -500,7 +500,7 @@ impl Thunk {
     ///   `self` (in particular, `a` is bound)
     /// - allocates a fresh variable, say `%1`, and binds it to the previous thunk in `env`
     /// - returns the term `%1 foo bar`
-    pub fn saturate<I: DoubleEndedIterator<Item = Symbol> + Clone>(
+    pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(
         self,
         env: &mut Environment,
         fields: I,
@@ -510,9 +510,9 @@ impl Thunk {
             .map(RefCell::into_inner)
             .unwrap_or_else(|rc| rc.borrow().clone());
 
-        let mut deps_filter: Box<dyn FnMut(&Symbol) -> bool> = match deps {
-            FieldDeps::Known(deps) => Box::new(move |id: &Symbol| deps.contains(id)),
-            FieldDeps::Unknown => Box::new(|_: &Symbol| true),
+        let mut deps_filter: Box<dyn FnMut(&Ident) -> bool> = match deps {
+            FieldDeps::Known(deps) => Box::new(move |id: &Ident| deps.contains(id)),
+            FieldDeps::Unknown => Box::new(|_: &Ident| true),
         };
 
         let thunk_as_function = Thunk {
@@ -522,7 +522,7 @@ impl Thunk {
             ident_kind: self.ident_kind,
         };
 
-        let fresh_var = Ident::fresh();
+        let fresh_var = LocIdent::fresh();
         env.insert(fresh_var.symbol(), thunk_as_function);
 
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
@@ -663,7 +663,7 @@ impl Cache for CBNCache {
         idx.map(|v| f(self, v))
     }
 
-    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Symbol, CacheIndex)]) {
+    fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         idx.build_cached(rec_env)
     }
 
@@ -671,7 +671,7 @@ impl Cache for CBNCache {
         idx.ident_kind()
     }
 
-    fn saturate<'a, I: DoubleEndedIterator<Item = Symbol> + Clone>(
+    fn saturate<'a, I: DoubleEndedIterator<Item = Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
         env: &mut Environment,

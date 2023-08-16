@@ -54,7 +54,7 @@ use crate::{
     mk_app,
     mk_opn,
     mk_fun,
-    identifier::Ident,
+    identifier::LocIdent,
     destructuring::{Match, FieldPattern, LastMatch, RecordPattern},
     term::{
         *,
@@ -511,8 +511,8 @@ DefaultAnnot: Field = "?" <t: Term> => Field {
     ..Default::default()
 };
 
-Ident: Ident = <l:@L> <i: "identifier"> <r:@R> =>
-    Ident::new_with_pos(i, mk_pos(src_id, l, r));
+Ident: LocIdent = <l:@L> <i: "identifier"> <r:@R> =>
+    LocIdent::new_with_pos(i, mk_pos(src_id, l, r));
 
 Bool: bool = {
     "true" => true,
@@ -624,7 +624,7 @@ StaticString : String = {
 
 StringEnumTag = DelimitedStaticString<"'\"", "\"">;
 
-EnumTag: Ident = {
+EnumTag: LocIdent = {
   "raw enum tag" => <>.into(),
   <StringEnumTag> => <>.into(),
 };

@@ -179,7 +179,10 @@ fn imports() {
     let mk_import_lib = mk_import(
         "x",
         "lib",
-        mk_term::op1(UnaryOp::StaticAccess(Ident::from("f")), mk_term::var("x")),
+        mk_term::op1(
+            UnaryOp::StaticAccess(LocIdent::from("f")),
+            mk_term::var("x"),
+        ),
         &mut vm,
     );
     vm.reset();
@@ -256,7 +259,7 @@ fn initial_env() {
     let mut initial_env = Environment::new();
     let mut eval_cache = CacheImpl::new();
     initial_env.insert(
-        Symbol::from("g"),
+        Ident::from("g"),
         eval_cache.add(
             Closure::atomic_closure(mk_term::integer(1)),
             IdentKind::Let,

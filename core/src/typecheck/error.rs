@@ -2,7 +2,7 @@
 use super::{reporting, State, UnifType, VarId};
 use crate::{
     error::TypecheckError,
-    identifier::Ident,
+    identifier::LocIdent,
     label::ty_path,
     position::TermPos,
     term::RichTerm,
@@ -13,23 +13,23 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum RowUnifError {
     /// The LHS had a binding that was missing in the RHS.
-    MissingRow(Ident),
+    MissingRow(LocIdent),
     /// The LHS had a `Dyn` tail that was missing in the RHS.
     MissingDynTail(),
     /// The RHS had a binding that was not in the LHS.
-    ExtraRow(Ident),
+    ExtraRow(LocIdent),
     /// The RHS had a additional `Dyn` tail.
     ExtraDynTail(),
     /// There were two incompatible definitions for the same row.
-    RowMismatch(Ident, Box<UnifError>),
+    RowMismatch(LocIdent, Box<UnifError>),
     /// A [row constraint][super::RowConstr] was violated.
-    UnsatConstr(Ident, UnifType),
+    UnsatConstr(LocIdent, UnifType),
     /// Tried to unify a type constant with another different type.
     WithConst(VarKindDiscriminant, usize, UnifType),
     /// Tried to unify two distinct type constants.
     ConstMismatch(VarKindDiscriminant, usize, usize),
     /// An unbound type variable was referenced.
-    UnboundTypeVariable(Ident),
+    UnboundTypeVariable(LocIdent),
     /// Tried to unify a constant with a unification variable with a strictly lower level.
     VarLevelMismatch {
         constant_id: VarId,
@@ -75,27 +75,27 @@ pub enum UnifError {
     /// Tried to unify two incompatible types.
     TypeMismatch(UnifType, UnifType),
     /// There are two incompatible definitions for the same row.
-    RowMismatch(Ident, UnifType, UnifType, Box<UnifError>),
+    RowMismatch(LocIdent, UnifType, UnifType, Box<UnifError>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(VarKindDiscriminant, usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
-    MissingRow(Ident, UnifType, UnifType),
+    MissingRow(LocIdent, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
     MissingDynTail(UnifType, UnifType),
     /// Tried to unify two rows, but an identifier of the RHS was absent from the LHS.
-    ExtraRow(Ident, UnifType, UnifType),
+    ExtraRow(LocIdent, UnifType, UnifType),
     /// Tried to unify two rows, but the `Dyn` tail of the RHS was absent from the LHS.
     ExtraDynTail(UnifType, UnifType),
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
-    RowConflict(Ident, UnifType, UnifType, UnifType),
+    RowConflict(LocIdent, UnifType, UnifType, UnifType),
     /// Tried to unify a type constant with another different type.
     WithConst(VarKindDiscriminant, usize, UnifType),
     /// A flat type, which is an opaque type corresponding to custom contracts, contained a Nickel
     /// term different from a variable. Only a variables is a legal inner term of a flat type.
     IncomparableFlatTypes(RichTerm, RichTerm),
     /// An unbound type variable was referenced.
-    UnboundTypeVariable(Ident),
+    UnboundTypeVariable(LocIdent),
     /// An error occurred when unifying the domains of two arrows.
     DomainMismatch(UnifType, UnifType, Box<UnifError>),
     /// An error occurred when unifying the codomains of two arrows.

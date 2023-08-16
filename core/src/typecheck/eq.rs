@@ -45,7 +45,7 @@
 use super::*;
 use crate::{
     eval::{self, cache::Cache},
-    identifier::Ident,
+    identifier::LocIdent,
     term::{self, record::Field, IndexMap, UnaryOp},
 };
 
@@ -63,7 +63,7 @@ pub const MAX_GAS: u8 = 8;
 /// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
 /// do with the result instead of merely returning it.
 pub trait TermEnvironment: Clone {
-    fn get_then<F, T>(&self, id: Symbol, f: F) -> T
+    fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
 }
@@ -71,7 +71,7 @@ pub trait TermEnvironment: Clone {
 /// A simple term environment, as a mapping from identifiers to a tuple of a term and an
 /// environment (i.e. a closure), sufficient for the needs of typechecking.
 #[derive(PartialEq, Clone, Debug)]
-pub struct SimpleTermEnvironment(pub GenericEnvironment<Symbol, (RichTerm, SimpleTermEnvironment)>);
+pub struct SimpleTermEnvironment(pub GenericEnvironment<Ident, (RichTerm, SimpleTermEnvironment)>);
 
 impl SimpleTermEnvironment {
     pub fn new() -> Self {
@@ -80,7 +80,7 @@ impl SimpleTermEnvironment {
 }
 
 impl TermEnvironment for SimpleTermEnvironment {
-    fn get_then<F, T>(&self, id: Symbol, f: F) -> T
+    fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
@@ -88,17 +88,14 @@ impl TermEnvironment for SimpleTermEnvironment {
     }
 }
 
-impl std::iter::FromIterator<(Symbol, (RichTerm, SimpleTermEnvironment))>
-    for SimpleTermEnvironment
-{
+impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for SimpleTermEnvironment {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = (Symbol, (RichTerm, SimpleTermEnvironment))>,
+        T: IntoIterator<Item = (Ident, (RichTerm, SimpleTermEnvironment))>,
     {
-        SimpleTermEnvironment(GenericEnvironment::<
-            Symbol,
-            (RichTerm, SimpleTermEnvironment),
-        >::from_iter(iter))
+        SimpleTermEnvironment(
+            GenericEnvironment::<Ident, (RichTerm, SimpleTermEnvironment)>::from_iter(iter),
+        )
     }
 }
 
@@ -355,9 +352,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
 fn map_eq<V, F, E>(
     mut f: F,
     state: &mut State,
-    map1: &IndexMap<Ident, V>,
+    map1: &IndexMap<LocIdent, V>,
     env1: &E,
-    map2: &IndexMap<Ident, V>,
+    map2: &IndexMap<LocIdent, V>,
     env2: &E,
 ) -> bool
 where
@@ -377,8 +374,8 @@ where
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
 fn rows_as_map<E: TermEnvironment>(
     erows: &GenericUnifRecordRows<E>,
-) -> Option<IndexMap<Ident, &GenericUnifType<E>>> {
-    let map: Option<IndexMap<Ident, _>> = erows
+) -> Option<IndexMap<LocIdent, &GenericUnifType<E>>> {
+    let map: Option<IndexMap<LocIdent, _>> = erows
         .iter()
         .map(|item| match item {
             GenericUnifRecordRowsIteratorItem::Row(RecordRowF { id, typ: types }) => {
@@ -396,7 +393,7 @@ fn rows_as_map<E: TermEnvironment>(
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<Ident>> {
+fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<LocIdent>> {
     let set: Option<HashSet<_>> = erows
         .iter()
         .map(|item| match item {

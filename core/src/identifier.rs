@@ -17,9 +17,9 @@ static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 // static `Interner`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", from = "String")]
-pub struct Symbol(interner::Symbol);
+pub struct Ident(interner::Symbol);
 
-impl Symbol {
+impl Ident {
     pub fn new(s: impl AsRef<str>) -> Self {
         Self(INTERNER.intern(s.as_ref()))
     }
@@ -34,15 +34,15 @@ impl Symbol {
     }
 }
 
-impl fmt::Display for Symbol {
+impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.label())
     }
 }
 
-impl From<Symbol> for Ident {
-    fn from(symbol: Symbol) -> Self {
-        Ident {
+impl From<Ident> for LocIdent {
+    fn from(symbol: Ident) -> Self {
+        LocIdent {
             symbol,
             pos: TermPos::None,
             generated: symbol.label().starts_with(GEN_PREFIX),
@@ -50,25 +50,25 @@ impl From<Symbol> for Ident {
     }
 }
 
-impl PartialOrd for Symbol {
+impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.label().partial_cmp(other.label())
     }
 }
 
-impl Ord for Symbol {
+impl Ord for Ident {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.label().cmp(other.label())
     }
 }
 
-impl From<Symbol> for NickelString {
-    fn from(sym: Symbol) -> Self {
+impl From<Ident> for NickelString {
+    fn from(sym: Ident) -> Self {
         sym.to_string().into()
     }
 }
 
-impl<F> From<F> for Symbol
+impl<F> From<F> for Ident
 where
     String: From<F>,
 {
@@ -78,30 +78,29 @@ where
 }
 
 #[allow(clippy::from_over_into)]
-impl Into<String> for Symbol {
+impl Into<String> for Ident {
     fn into(self) -> String {
         self.into_label()
     }
 }
 
-/// An identifier is a [`Symbol`] together with a position.
+/// An identifier with a location.
 ///
-/// The position is ignored for equality comparison and hashing; it's mainly
-/// intended for error messages. If you want to combine a symbol with a semantically
-/// meaningful position, use [`RichIdent`] instead.
+/// The location is ignored for equality comparison and hashing; it's mainly
+/// intended for error messages.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
-pub struct Ident {
-    symbol: Symbol,
+pub struct LocIdent {
+    symbol: Ident,
     pub pos: TermPos,
     generated: bool,
 }
 
-impl Ident {
+impl LocIdent {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
         let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            symbol: Symbol::new(label),
+            symbol: Ident::new(label),
             pos,
             generated,
         }
@@ -112,8 +111,8 @@ impl Ident {
     }
 
     /// Create an identifier with the same label as this one, but a specified position.
-    pub fn with_pos(self, pos: TermPos) -> Ident {
-        Ident { pos, ..self }
+    pub fn with_pos(self, pos: TermPos) -> LocIdent {
+        LocIdent { pos, ..self }
     }
 
     /// Create a new fresh identifier. This identifier is unique and is guaranteed not to collide
@@ -124,7 +123,7 @@ impl Ident {
     }
 
     /// Return this identifier's symbol.
-    pub fn symbol(&self) -> Symbol {
+    pub fn symbol(&self) -> Ident {
         self.symbol
     }
 
@@ -142,39 +141,39 @@ impl Ident {
 /// use to write in a standard Nickel program, to avoid name clashes.
 pub const GEN_PREFIX: char = '%';
 
-impl PartialOrd for Ident {
+impl PartialOrd for LocIdent {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.label().partial_cmp(other.label())
     }
 }
 
-impl Ord for Ident {
+impl Ord for LocIdent {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.label().cmp(other.label())
     }
 }
 
-impl PartialEq for Ident {
+impl PartialEq for LocIdent {
     fn eq(&self, other: &Self) -> bool {
         self.symbol == other.symbol
     }
 }
 
-impl Eq for Ident {}
+impl Eq for LocIdent {}
 
-impl Hash for Ident {
+impl Hash for LocIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.symbol.hash(state)
     }
 }
 
-impl fmt::Display for Ident {
+impl fmt::Display for LocIdent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.label())
     }
 }
 
-impl<F> From<F> for Ident
+impl<F> From<F> for LocIdent
 where
     String: From<F>,
 {
@@ -189,25 +188,25 @@ where
 // `From<Ident> for Ident` which is incoherent with the
 // blanket implementation of `From<T> for T`.
 #[allow(clippy::from_over_into)]
-impl Into<String> for Ident {
+impl Into<String> for LocIdent {
     fn into(self) -> String {
         self.into_label()
     }
 }
 
-impl From<Ident> for NickelString {
-    fn from(id: Ident) -> Self {
+impl From<LocIdent> for NickelString {
+    fn from(id: LocIdent) -> Self {
         id.to_string().into()
     }
 }
 
-impl Ident {
+impl LocIdent {
     pub fn is_generated(&self) -> bool {
         self.generated
     }
 }
 
-impl AsRef<str> for Ident {
+impl AsRef<str> for LocIdent {
     fn as_ref(&self) -> &str {
         self.label()
     }

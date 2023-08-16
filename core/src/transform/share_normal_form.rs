@@ -28,7 +28,7 @@
 //! Newly introduced variables begin with a special character to avoid clashing with user-defined
 //! variables.
 use crate::{
-    identifier::Ident,
+    identifier::LocIdent,
     match_sharedterm,
     position::TermPos,
     term::{
@@ -38,7 +38,7 @@ use crate::{
 };
 
 struct Binding {
-    fresh_var: Ident,
+    fresh_var: LocIdent,
     term: RichTerm,
     binding_type: BindingType,
 }
@@ -100,7 +100,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .into_iter()
                     .map(|t| {
                         if should_share(&t.term) {
-                            let fresh_var = Ident::fresh();
+                            let fresh_var = LocIdent::fresh();
                             let pos_t = t.pos;
                             bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
                             RichTerm::new(Term::Var(fresh_var), pos_t)
@@ -113,7 +113,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 with_bindings(Term::Array(ts, attrs), bindings, pos)
             },
             Term::Annotated(annot, t) if should_share(&t.term) => {
-                let fresh_var = Ident::fresh();
+                let fresh_var = LocIdent::fresh();
                 let shared = RichTerm::new(Term::Var(fresh_var), t.pos);
                 let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
                 RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
@@ -146,7 +146,7 @@ fn transform_rec_field(
         // CHANGE THIS CONDITION CAREFULLY. Doing so can break the post-condition
         // explained in this method's documentation above.
         if !rt.as_ref().is_constant() {
-            let fresh_var = Ident::fresh();
+            let fresh_var = LocIdent::fresh();
             let pos_contract = rt.pos;
             let binding_type = mk_binding_type(field_deps.clone());
             bindings.push(Binding {

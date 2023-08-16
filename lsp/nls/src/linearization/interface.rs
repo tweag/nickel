@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use nickel_lang_core::{
-    identifier::{Ident, Symbol},
+    identifier::{Ident, LocIdent},
     typ::Type,
     typecheck::UnifType,
 };
@@ -28,7 +28,7 @@ impl ResolutionState for Resolved {}
 #[derive(Debug, Clone, PartialEq)]
 pub enum TermKind {
     Declaration {
-        id: Ident,
+        id: LocIdent,
         usages: Vec<ItemId>,
         value: ValueState,
         // This is the path to a bound variable. If we have
@@ -37,12 +37,12 @@ pub enum TermKind {
         // If we have `let { a = {b = {c = somevar, ..}, ..}, ..} = ...`
         // instead, the `path` remains the same, but the ident will be `somevar`
         // If there is no pattern variable bound, the `path` is `None`
-        path: Option<Vec<Ident>>,
+        path: Option<Vec<LocIdent>>,
     },
     Usage(UsageState),
-    Record(HashMap<Symbol, ItemId>),
+    Record(HashMap<Ident, ItemId>),
     RecordField {
-        ident: Ident,
+        ident: LocIdent,
         record: ItemId,
         usages: Vec<ItemId>,
         value: ValueState,
@@ -71,7 +71,7 @@ impl ValueState {
 pub enum UsageState {
     Unbound,
     Resolved(ItemId),
-    Deferred { parent: ItemId, child: Ident },
+    Deferred { parent: ItemId, child: LocIdent },
 }
 
 impl From<Option<ItemId>> for UsageState {

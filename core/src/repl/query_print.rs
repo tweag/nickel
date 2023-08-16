@@ -1,5 +1,5 @@
 //! Rendering of the results of a metadata query.
-use crate::identifier::{Ident, Symbol};
+use crate::identifier::{Ident, LocIdent};
 use crate::term::{
     record::{Field, FieldMetadata},
     MergePriority, Term,
@@ -16,7 +16,7 @@ pub trait QueryPrinter {
     /// Print the list of fields of a record.
     fn write_fields<I>(&self, out: &mut impl Write, fields: I) -> io::Result<()>
     where
-        I: Iterator<Item = Symbol>;
+        I: Iterator<Item = Ident>;
 }
 
 #[cfg(feature = "markdown")]
@@ -43,7 +43,7 @@ impl QueryPrinter for SimpleRenderer {
 
     fn write_fields<I>(&self, out: &mut impl Write, fields: I) -> io::Result<()>
     where
-        I: Iterator<Item = Symbol>,
+        I: Iterator<Item = Ident>,
     {
         writeln!(out, "Available fields:")?;
 
@@ -113,7 +113,7 @@ impl QueryPrinter for MarkdownRenderer {
 
     fn write_fields<I>(&self, out: &mut impl Write, fields: I) -> io::Result<()>
     where
-        I: Iterator<Item = Symbol>,
+        I: Iterator<Item = Ident>,
     {
         use minimad::*;
         use termimad::*;
@@ -194,12 +194,12 @@ fn render_query_result<R: QueryPrinter>(
             Term::Record(record) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
                 fields.sort();
-                renderer.write_fields(out, fields.into_iter().map(Ident::symbol))
+                renderer.write_fields(out, fields.into_iter().map(LocIdent::symbol))
             }
             Term::RecRecord(record, dyn_fields, ..) if !record.fields.is_empty() => {
-                let mut fields: Vec<_> = record.fields.keys().map(Ident::symbol).collect();
+                let mut fields: Vec<_> = record.fields.keys().map(LocIdent::symbol).collect();
                 fields.sort();
-                let dynamic = Symbol::from("<dynamic>");
+                let dynamic = Ident::from("<dynamic>");
                 fields.extend(dyn_fields.iter().map(|_| dynamic));
                 renderer.write_fields(out, fields.into_iter())
             }

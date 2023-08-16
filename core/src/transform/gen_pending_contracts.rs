@@ -12,7 +12,7 @@
 //! The `gen_pending_contracts` phase implemented by this module must be run before
 //! `share_normal_form` so that newly generated pending contracts are transformed as well.
 use crate::{
-    identifier::Ident,
+    identifier::LocIdent,
     match_sharedterm,
     term::{
         record::{Field, RecordData},
@@ -48,8 +48,8 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     }
 
     fn attach_to_fields(
-        fields: IndexMap<Ident, Field>,
-    ) -> Result<IndexMap<Ident, Field>, UnboundTypeVariableError> {
+        fields: IndexMap<LocIdent, Field>,
+    ) -> Result<IndexMap<LocIdent, Field>, UnboundTypeVariableError> {
         fields
             .into_iter()
             .map(|(id, field)| Ok((id, attach_to_field(field)?)))

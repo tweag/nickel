@@ -892,7 +892,7 @@ impl UnifTable {
 /// `{ someId: SomeType ; r }`). It is a set of identifiers that said row must NOT contain, to
 /// forbid ill-formed types with multiple declaration of the same id, for example `{ a: Number, a:
 /// String}`.
-pub type RowConstr = HashMap<VarId, HashSet<Symbol>>;
+pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 
 /// Check that unifying a variable with a type doesn't violate record rows constraints, and update
 /// the row constraints of the unified type accordingly if needed.
@@ -1335,7 +1335,7 @@ trait RemoveRow: Sized {
     // - Otherwise, raise a missing row error.
     fn remove_row(
         self,
-        row_id: &Ident,
+        row_id: &LocIdent,
         state: &mut State,
         var_level: VarLevel,
     ) -> Result<(Self::RowContent, Self), Self::Error>;
@@ -1356,7 +1356,7 @@ impl RemoveRow for UnifRecordRows {
 
     fn remove_row(
         self,
-        target: &Ident,
+        target: &LocIdent,
         state: &mut State,
         var_level: VarLevel,
     ) -> Result<(UnifType, UnifRecordRows), RemoveRRowError> {
@@ -1423,7 +1423,7 @@ impl RemoveRow for UnifEnumRows {
 
     fn remove_row(
         self,
-        target: &Ident,
+        target: &LocIdent,
         state: &mut State,
         var_level: VarLevel,
     ) -> Result<((), UnifEnumRows), RowUnifError> {

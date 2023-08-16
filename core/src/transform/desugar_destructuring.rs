@@ -31,7 +31,7 @@
 //! ) in ...
 //! ```
 use crate::destructuring::{FieldPattern, Match, RecordPattern};
-use crate::identifier::Ident;
+use crate::identifier::LocIdent;
 use crate::match_sharedterm;
 use crate::term::make::{op1, op2};
 use crate::term::{BinaryOp::DynRemove, RichTerm, Term, TypeAnnotation, UnaryOp::StaticAccess};
@@ -58,7 +58,7 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
     match_sharedterm! { rt.term,
         with {
             Term::FunPattern(x, pat, t_) => {
-                let x = x.unwrap_or_else(Ident::fresh);
+                let x = x.unwrap_or_else(LocIdent::fresh);
                 let t_pos = t_.pos;
                 RichTerm::new(
                     Term::Fun(
@@ -109,7 +109,7 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
         with {
             Term::LetPattern(x, pat, t_, body) => {
                 let pos = body.pos;
-                let x = x.unwrap_or_else(Ident::fresh);
+                let x = x.unwrap_or_else(LocIdent::fresh);
                 RichTerm::new(
                     Term::Let(
                         x,
@@ -129,7 +129,7 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
 /// `x` is the identifier pointing to the full record. If having `val @ {...} = ... in ...` the
 /// variable x should be `Ident("val")` but if we have a `@` binding less form, you will probably
 /// generate a fresh variable.
-fn bind_open_field(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
+fn bind_open_field(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let (matches, var) = match pat {
         RecordPattern {
             matches,
@@ -142,7 +142,7 @@ fn bind_open_field(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             open: true,
             rest: None,
             ..
-        } => (matches, Ident::fresh()),
+        } => (matches, LocIdent::fresh()),
         RecordPattern {
             open: false,
             rest: None,
@@ -165,7 +165,7 @@ fn bind_open_field(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
 
 /// Core of the destructuring. Bind all the variables of the pattern except the "open" (`..y`)
 /// part. For that, see `bind_open_field`.
-fn destruct_term(x: Ident, pat: &RecordPattern, body: RichTerm) -> RichTerm {
+fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let pos = body.pos;
     let RecordPattern { matches, .. } = pat;
     matches.iter().fold(body, move |t, m| match m {
