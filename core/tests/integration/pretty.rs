@@ -8,18 +8,6 @@ use nickel_lang_utils::{
 use std::io::Read;
 use test_generator::test_resources;
 
-// Exclude list for tests that aren't yet handled correctly by the pretty printer. The pretty
-// printer should ideally be fixed to make them pass, but since we automatically try the pretty
-// printer on each and every passing test, we need an escape hatch to make the CI pass in the
-// meantime (also, the pretty printer isn't a critical part of the interpreter).
-const EXCLUDE_LIST: &[&str] = &[
-    "pass/merging/multiple_overrides.ncl",
-    "pass/merging/priorities.ncl",
-    "pass/contracts/contracts.ncl",
-    "pass/merging/metavalues.ncl",
-    "pass/contracts/types_dont_propagate.ncl",
-];
-
 #[track_caller]
 fn diff(s1: &str, s2: &str) {
     use similar::*;
@@ -38,10 +26,6 @@ fn diff(s1: &str, s2: &str) {
 
 #[track_caller]
 fn check_idempotent(path: &str) {
-    if EXCLUDE_LIST.iter().any(|suffix| path.ends_with(suffix)) {
-        return;
-    }
-
     let mut buffer = String::new();
     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
 
@@ -57,6 +41,11 @@ fn check_idempotent(path: &str) {
 
 #[test_resources("core/tests/integration/pass/**/*.ncl")]
 fn pretty_integration_tests(path: &str) {
+    check_idempotent(path)
+}
+
+#[test_resources("core/stdlib/*.ncl")]
+fn pretty_standard_library(path: &str) {
     check_idempotent(path)
 }
 
