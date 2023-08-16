@@ -28,8 +28,8 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        make as mk_term, make::builder, record::Field, record::RecordData, BinaryOp, RichTerm,
-        RuntimeContract, Term,
+        make as mk_term, make::builder, record::Field, record::RecordData, BinaryOp, MergePriority,
+        RichTerm, RuntimeContract, Term,
     },
 };
 
@@ -108,6 +108,17 @@ impl QueryPath {
             .transpose()?
             .unwrap_or_default())
     }
+}
+
+/// Several CLI commands accept additional overrides specified directly on the command line. They
+/// are represented by this structure.
+pub struct FieldOverride {
+    /// The field path identifying the (potentially nested) field to override.
+    pub path: Vec<String>,
+    /// The overriding value.
+    pub value: String,
+    /// The priority associated with this override.
+    pub priority: MergePriority,
 }
 
 /// A Nickel program.
@@ -208,7 +219,7 @@ impl<EC: EvalCache> Program<EC> {
     ///
     /// # Arguments
     ///
-    /// - `override` is a list of tuples where the first element is a field path represented as an
+    /// - `override` is a list of overrides, where the first element is a field path represented as an
     ///   array of strings, and the second is Nickel source code as string. Each override is imported
     ///   in a separate in-memory source, for complete isolation (this way, overrides can't
     ///   accidentally or intentionally capture other fields of the configuration). A stub record is
@@ -217,20 +228,23 @@ impl<EC: EvalCache> Program<EC> {
     ///   before being evaluated for import.
     pub fn eval_full_for_export(
         &mut self,
-        overrides: Option<impl IntoIterator<Item = (Vec<String>, String)>>,
+        overrides: Option<impl IntoIterator<Item = FieldOverride>>,
     ) -> Result<RichTerm, Error> {
         let (t, initial_env) = match overrides {
             None => self.prepare_eval()?,
             Some(overrides) => {
                 let mut record = builder::Record::new();
 
-                for (path, value) in overrides {
+                for ovd in overrides {
                     let value_file_id = self
                         .vm
                         .import_resolver_mut()
-                        .add_string(format!("<override {}>", path.join(".")), value);
+                        .add_string(format!("<override {}>", ovd.path.join(".")), ovd.value);
                     self.vm.prepare_eval(value_file_id)?;
-                    record = record.path(path).value(Term::ResolvedImport(value_file_id));
+                    record = record
+                        .path(ovd.path)
+                        .priority(ovd.priority)
+                        .value(Term::ResolvedImport(value_file_id));
                 }
 
                 let (t, initial_env) = self.prepare_eval()?;

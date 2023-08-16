@@ -11,7 +11,7 @@ use nickel_lang_core::{
     error::{Error, IOError},
     eval::cache::lazy::CBNCache,
     identifier::Ident,
-    program::Program,
+    program::{FieldOverride, Program},
     repl::query_print::{write_query_result, Attributes},
     serialize::{self, ExportFormat},
     term::{
@@ -488,7 +488,11 @@ impl ExportCommand {
 
                         cmd.overrides
                             .get(path)
-                            .map(|intf| (intf.path.clone(), value.clone()))
+                            .map(|intf| FieldOverride {
+                                path: intf.path.clone(),
+                                value: value.clone(),
+                                priority: MergePriority::Top,
+                            })
                             .ok_or_else(|| super::error::CliUsageError::InvalidOverride {
                                 path: path.clone(),
                             })
@@ -506,16 +510,15 @@ impl ExportCommand {
             Some(
                 arg_matches
                     .ids()
-                    .filter_map(|id| -> Option<(Vec<String>, String)> {
+                    .filter_map(|id| -> Option<FieldOverride> {
                         (!matches!(
                             arg_matches.value_source(id.as_str()),
                             Some(ValueSource::DefaultValue)
                         ) && id.as_str() != "override")
-                            .then(|| {
-                                (
-                                    cmd.args.get(id).unwrap().clone(),
-                                    arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
-                                )
+                            .then(|| FieldOverride {
+                                path: cmd.args.get(id).unwrap().clone(),
+                                value: arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
+                                priority: MergePriority::default(),
                             })
                     })
                     .chain(force_overrides.into_iter())
@@ -534,7 +537,7 @@ impl ExportCommand {
     fn export(
         self,
         program: &mut Program<CBNCache>,
-        overrides: Option<Vec<(Vec<String>, String)>>,
+        overrides: Option<Vec<FieldOverride>>,
     ) -> Result<(), Error> {
         let rt = program.eval_full_for_export(overrides)?;
 
