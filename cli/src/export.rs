@@ -5,7 +5,7 @@ use std::{
     {fs, path::PathBuf},
 };
 
-use clap::{parser::ValueSource, Command};
+use clap::{parser::ValueSource, ArgAction, Command};
 
 use nickel_lang_core::{
     error::{Error, IOError},
@@ -16,7 +16,7 @@ use nickel_lang_core::{
     serialize::{self, ExportFormat},
     term::{
         record::{Field, FieldMetadata, RecordData},
-        IndexMap, LabeledType, MergePriority, RuntimeContract, Term, TypeAnnotation,
+        LabeledType, MergePriority, RuntimeContract, Term, TypeAnnotation,
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
@@ -65,6 +65,15 @@ struct FieldInterface {
     field: Field,
 }
 
+#[derive(Debug, Clone, Default)]
+struct OverrideInterface {
+    /// The path of the overridable field.
+    path: Vec<String>,
+    /// An optional description, built from the field's metadata, and inserted into the general
+    /// help message of the `--override` flag.
+    help: Option<String>,
+}
+
 /// A trait for things that can be merged.
 trait Merge {
     fn merge(first: Self, second: Self) -> Self;
@@ -98,15 +107,15 @@ impl TermInterface {
     /// their corresponding full field path as an array of fields.
     fn build_cmd(&self) -> TermCommand {
         let mut paths = HashMap::new();
-        let mut overrides = HashMap::new();
+        let mut ovd_interfaces = HashMap::new();
 
         let mut cmd = Command::new("extra-args").no_binary_name(true);
 
         for (id, field) in &self.fields {
-            cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut overrides)
+            cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut ovd_interfaces)
         }
 
-        let mut overrides_list: Vec<String> = overrides
+        let mut overrides_list: Vec<String> = ovd_interfaces
             .keys()
             .take(OVERRIDES_LIST_MAX_COUNT)
             .map(|field_path| format!("- {field_path}"))
@@ -128,7 +137,10 @@ impl TermInterface {
         let override_arg = clap::Arg::new(override_arg_label)
             .long(override_arg_label)
             .value_name(NICKEL_VALUE_NAME.to_owned())
-            // TODO: Create clap argument groups
+            .number_of_values(2)
+            .value_delimiter('=')
+            .value_names(&["field", "value"])
+            .action(ArgAction::Append)
             .required(false)
             .help(override_help);
 
@@ -137,7 +149,7 @@ impl TermInterface {
         TermCommand {
             clap_cmd: cmd,
             args: paths,
-            overrides,
+            overrides: ovd_interfaces,
         }
     }
 }
@@ -308,7 +320,7 @@ impl FieldInterface {
         mut cmd: clap::Command,
         path: Vec<String>,
         paths: &mut HashMap<clap::Id, Vec<String>>,
-        overrides: &mut HashMap<String, Option<String>>,
+        ovd_interfaces: &mut HashMap<String, OverrideInterface>,
     ) -> clap::Command {
         let id = path.join(".");
         let prev = paths.insert(clap::Id::from(&id), path.clone());
@@ -319,14 +331,20 @@ impl FieldInterface {
             if self.is_input() {
                 cmd = self.add_arg(cmd, id);
             } else {
-                overrides.insert(id, self.help());
+                ovd_interfaces.insert(
+                    id,
+                    OverrideInterface {
+                        path: path.clone(),
+                        help: self.help(),
+                    },
+                );
             }
         }
 
         for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
             let mut path = path.clone();
             path.push(id.to_string());
-            cmd = field.add_args(cmd, path, paths, overrides);
+            cmd = field.add_args(cmd, path, paths, ovd_interfaces);
         }
 
         cmd
@@ -339,7 +357,7 @@ impl FieldInterface {
             .long(path)
             .value_name(get_value_name(&self.field.metadata.annotation))
             // TODO: Create clap argument groups
-            .required(!self.field.metadata.opt);
+            .required(!self.is_default());
 
         if let Some(help) = &self.help() {
             arg = arg.help(help);
@@ -436,27 +454,54 @@ struct TermCommand {
     /// The corresponding clap command
     clap_cmd: clap::Command,
     args: HashMap<clap::Id, Vec<String>>,
-    overrides: HashMap<String, Option<String>>,
+    /// A map between a field path and the corresponding override data.
+    overrides: HashMap<String, OverrideInterface>,
 }
 
 impl ExportCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+    pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
-        self.export(&mut program).report_with_program(program)
-    }
-
-    // XXX: do we want this attached specifically to the `export` command?
-    // XXX: we should give a nice error message when someone tries to evaluate some
-    //      expression that has unset values, telling them they can set them using
-    //      this method
-    fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {
         let overrides = if self.freeform.is_empty() {
             None
         } else {
-            let evaled = program.eval_record_spine()?;
+            let evaled = match program.eval_record_spine() {
+                Ok(evaled) => evaled,
+                // We need a `return` control-flow to be able to take `program` out
+                Err(error) => {
+                    return CliResult::Err(crate::error::Error::Program { error, program })
+                }
+            };
+
             let cmd = TermInterface::from(evaled.as_ref()).build_cmd();
-            let arg_matches = cmd.clap_cmd.get_matches_from(self.freeform);
+            let arg_matches = cmd
+                .clap_cmd
+                .get_matches_from(std::mem::take(&mut self.freeform));
+
+            let force_overrides: Result<Vec<_>, super::error::CliUsageError> = arg_matches
+                .get_occurrences("override")
+                .into_iter()
+                .flat_map(|occurs| {
+                    occurs.map(|mut pair| {
+                        let (path, value): (&String, &String) =
+                            (pair.next().unwrap(), pair.next().unwrap());
+
+                        cmd.overrides
+                            .get(path)
+                            .map(|intf| (intf.path.clone(), value.clone()))
+                            .ok_or_else(|| super::error::CliUsageError::InvalidOverride {
+                                path: path.clone(),
+                            })
+                    })
+                })
+                .collect();
+
+            let force_overrides = match force_overrides {
+                Ok(force_overrides) => force_overrides,
+                Err(error) => {
+                    return CliResult::Err(crate::error::Error::CliUsage { error, program })
+                }
+            };
 
             Some(
                 arg_matches
@@ -465,18 +510,32 @@ impl ExportCommand {
                         (!matches!(
                             arg_matches.value_source(id.as_str()),
                             Some(ValueSource::DefaultValue)
-                        ))
-                        .then(|| {
-                            (
-                                cmd.args.get(id).unwrap().clone(),
-                                arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
-                            )
-                        })
+                        ) && id.as_str() != "override")
+                            .then(|| {
+                                (
+                                    cmd.args.get(id).unwrap().clone(),
+                                    arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
+                                )
+                            })
                     })
-                    .collect::<IndexMap<_, _>>(),
+                    .chain(force_overrides.into_iter())
+                    .collect::<Vec<_>>(),
             )
         };
 
+        self.export(&mut program, overrides)
+            .report_with_program(program)
+    }
+
+    // XXX: do we want this attached specifically to the `export` command?
+    // XXX: we should give a nice error message when someone tries to evaluate some
+    //      expression that has unset values, telling them they can set them using
+    //      this method
+    fn export(
+        self,
+        program: &mut Program<CBNCache>,
+        overrides: Option<Vec<(Vec<String>, String)>>,
+    ) -> Result<(), Error> {
         let rt = program.eval_full_for_export(overrides)?;
 
         // We only add a trailing newline for JSON exports. Both YAML and TOML

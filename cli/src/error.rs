@@ -4,6 +4,11 @@ use nickel_lang_core::{
     program::Program,
 };
 
+/// Errors related to mishandling the CLI.
+pub enum CliUsageError {
+    InvalidOverride { path: String },
+}
+
 pub enum Error {
     Program {
         program: Program<CBNCache>,
@@ -20,6 +25,30 @@ pub enum Error {
     Format {
         error: crate::format::FormatError,
     },
+    /// A invalid invocation of the CLI that couldn't catch by the simple parsing provided by clap.
+    CliUsage {
+        program: Program<CBNCache>,
+        error: CliUsageError,
+    },
+}
+
+impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
+    fn into_diagnostics(
+        self,
+        _files: &mut Files<String>,
+        _stdlib_ids: Option<&Vec<FileId>>,
+    ) -> Vec<Diagnostic<FileId>> {
+        match self {
+            CliUsageError::InvalidOverride { path } => {
+                vec![Diagnostic::error()
+                    .with_message(format!("invalid override: unknown field `{path}`"))
+                    .with_notes(vec![format!(
+                        "`{path}` doesn't refer to a known record field and thus can't be \
+                        used with `--override`."
+                    )])]
+            }
+        }
+    }
 }
 
 /// Warning emitted by the CLI.
@@ -103,6 +132,7 @@ impl Error {
             }
             #[cfg(feature = "format")]
             Error::Format { error } => eprintln!("{error}"),
+            Error::CliUsage { error, mut program } => program.report(error),
         }
     }
 }
