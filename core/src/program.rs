@@ -22,7 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
-    error::{Error, IntoDiagnostics, ParseError},
+    error::{report, ColorOpt, Error, IntoDiagnostics, ParseError},
     eval,
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
@@ -34,22 +34,13 @@ use crate::{
 };
 
 use codespan::FileId;
-use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
+use codespan_reporting::term::termcolor::Ansi;
 
 use std::{
     ffi::OsString,
-    io::{self, Cursor, Read, Write, IsTerminal},
+    io::{self, Cursor, Read, Write},
     result::Result,
 };
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ColorOpt(pub(crate) clap::ColorChoice);
-
-impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color_choice: clap::ColorChoice) -> Self {
-        Self(color_choice)
-    }
-}
 
 /// Attribute path provided when querying metadata.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
@@ -129,7 +120,7 @@ pub struct Program<EC: EvalCache> {
     /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
-    color_opt: ColorOpt,
+    pub color_opt: ColorOpt,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -466,10 +457,6 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.import_resolver_mut().skip_stdlib = true;
     }
 
-    pub fn set_color(&mut self, c: ColorOpt) {
-        self.color_opt = c;
-    }
-
     pub fn pprint_ast(
         &mut self,
         out: &mut impl std::io::Write,
@@ -516,46 +503,6 @@ pub fn query<EC: EvalCache>(
 
     let rt = vm.import_resolver().get_owned(file_id).unwrap();
     Ok(vm.query(rt, path, &initial_env.eval_env)?)
-}
-
-/// Pretty-print an error.
-///
-/// This function is located here in `Program` because errors need a reference to `files` in order
-/// to produce a diagnostic (see `crate::error::label_alt`).
-//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn report<E>(cache: &mut Cache, error: E, color_opt: ColorOpt)
-where
-    E: IntoDiagnostics<FileId>,
-{
-    let writer = StandardStream::stderr(color_opt.into());
-    let config = codespan_reporting::term::Config::default();
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-    let diagnostics = error.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
-
-    let result = diagnostics.iter().try_for_each(|d| {
-        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
-    });
-    match result {
-        Ok(()) => (),
-        Err(err) => panic!("Program::report: could not print an error on stderr: {err}"),
-    };
-}
-
-impl From<ColorOpt> for ColorChoice {
-    fn from(c: ColorOpt) -> Self {
-        match c.0 {
-            clap::ColorChoice::Auto => {
-                if io::stdout().is_terminal() {
-                    ColorChoice::Auto
-                } else {
-                    ColorChoice::Never
-                }
-            }
-            clap::ColorChoice::Always => ColorChoice::Always,
-            clap::ColorChoice::Never => ColorChoice::Never,
-        }
-    }
 }
 
 #[cfg(feature = "doc")]
