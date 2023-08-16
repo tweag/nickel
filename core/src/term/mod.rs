@@ -1783,8 +1783,14 @@ impl From<Term> for RichTerm {
     }
 }
 
-impl std::fmt::Display for RichTerm {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        crate::pretty::fmt_pretty(&self, f)
+    }
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         crate::pretty::fmt_pretty(&self, f)
     }
 }
