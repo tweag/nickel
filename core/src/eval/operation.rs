@@ -2416,7 +2416,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().map(|s| s.symbol()).collect();
+                        let fields = tail.fields.keys().map(Ident::symbol).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
