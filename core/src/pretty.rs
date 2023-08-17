@@ -1250,7 +1250,7 @@ mod tests {
                   4
                 ]"
             },
-        )
+        );
     }
 
     #[test]
@@ -1267,7 +1267,7 @@ mod tests {
                     c,
                 }"
             },
-        )
+        );
     }
 
     #[test]
@@ -1305,7 +1305,27 @@ mod tests {
                   ..
                 }"#
             },
-        )
+        );
+        assert_long_short_term(
+            r#"{ "=" = a, }"#,
+            indoc! {r#"
+                {
+                  "=" =
+                    a,
+                }"#
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_let() {
+        assert_long_short_term(r#"let foo | doc "" = c in {}"#, "");
+        assert_long_short_term(r#"let foo = c in {}"#, "");
+    }
+
+    #[test]
+    fn pretty_let_pattern() {
+        assert_long_short_term(r#"let foo @ { a = a', b } | doc "" = c in {}"#, "");
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
