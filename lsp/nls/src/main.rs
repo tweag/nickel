@@ -10,6 +10,7 @@ mod diagnostic;
 mod error;
 mod field_walker;
 mod files;
+mod identifier;
 mod linearization;
 mod position;
 mod requests;

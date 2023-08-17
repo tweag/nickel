@@ -2,20 +2,27 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     pretty::ident_quoted,
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
-use crate::{linearization::completed::Completed, server::Server};
+use crate::{identifier::LocIdent, linearization::completed::Completed, server::Server};
 
+/// A term and a path.
+///
+/// This is morally equivalent to (but a more convenient representation than)
+/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct DefValue {
+pub struct TermAtPath {
     pub term: RichTerm,
+    /// A path of identifiers, in left-to-right order.
+    ///
+    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
     pub path: Vec<Ident>,
 }
 
-impl DefValue {
+impl TermAtPath {
     fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<RichTerm> {
         if self.path.is_empty() {
             vec![self.term.clone()]
@@ -31,7 +38,7 @@ impl DefValue {
     }
 }
 
-impl From<RichTerm> for DefValue {
+impl From<RichTerm> for TermAtPath {
     fn from(term: RichTerm) -> Self {
         Self {
             term,
@@ -44,15 +51,20 @@ impl From<RichTerm> for DefValue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     /// The identifier at the definition site.
-    ///
-    /// Remember that an `Ident` has a position; this one points to the identifier
-    /// at the position where it is bound. For example, in `{ foo = 1 }`, this ident
-    /// might point at the `foo`.
     pub ident: LocIdent,
     /// The value assigned by the definition, if there is one.
     ///
     /// For example, in `{ foo = 1 }`, this could point at the `1`.
-    pub value: Option<DefValue>,
+    ///
+    /// Because of pattern bindings, there could also be a path associated with
+    /// the value. For example, in
+    ///
+    /// ```text
+    /// let { a = { b } } = val in ...
+    /// ```
+    ///
+    /// the name `b` is bound to the term `val` at the path `[a, b]`.
+    pub value: Option<TermAtPath>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
 }
@@ -83,7 +95,7 @@ impl Def {
     /// Creates a completion item from this definition.
     pub fn to_completion_item(&self) -> CompletionItem {
         CompletionItem {
-            label: ident_quoted(&self.ident),
+            label: ident_quoted(&self.ident.into()),
             detail: self.detail(),
             kind: Some(CompletionItemKind::Property),
             documentation: self.doc(),
@@ -141,7 +153,7 @@ impl FieldDefs {
                         (
                             ident.symbol(),
                             vec![Def {
-                                ident,
+                                ident: ident.into(),
                                 value: field.value.clone().map(From::from),
                                 metadata: Some(field.metadata.clone()),
                             }],

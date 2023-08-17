@@ -152,7 +152,7 @@ impl PositionLookup {
 #[cfg(test)]
 pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use codespan::{ByteIndex, Files};
+    use codespan::{ByteIndex, FileId, Files};
     use nickel_lang_core::{
         parser::{grammar, lexer, ErrorTolerantParser},
         term::{RichTerm, Term, UnaryOp},
@@ -160,17 +160,18 @@ pub(crate) mod tests {
 
     use super::PositionLookup;
 
-    pub fn parse(s: &str) -> RichTerm {
+    pub fn parse(s: &str) -> (FileId, RichTerm) {
         let id = Files::new().add("<test>", String::from(s));
 
-        grammar::TermParser::new()
+        let term = grammar::TermParser::new()
             .parse_strict(id, lexer::Lexer::new(s))
-            .unwrap()
+            .unwrap();
+        (id, term)
     }
 
     #[test]
     fn find_pos() {
-        let rt = parse("let x = { y = 1 } in x.y");
+        let (_, rt) = parse("let x = { y = 1 } in x.y");
         let table = PositionLookup::new(&rt);
 
         // Index 14 points to the 1 in { y = 1 }
@@ -187,7 +188,7 @@ pub(crate) mod tests {
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let rt = parse(
+        let (_, rt) = parse(
             "{ range_step\
                 | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)\
                 = fun a b c => []\
@@ -201,7 +202,7 @@ pub(crate) mod tests {
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let rt = parse("let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y");
+        let (_, rt) = parse("let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y");
         let table = PositionLookup::new(&rt);
         assert_matches!(
             table.get(ByteIndex(8)).unwrap().term.as_ref(),
