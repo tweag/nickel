@@ -3,6 +3,7 @@ use std::fmt;
 use crate::destructuring::{self, FieldPattern, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
+use crate::term::record::RecordData;
 use crate::term::{
     record::{Field, FieldMetadata},
     *,
@@ -270,32 +271,61 @@ where
         )
     }
 
+    fn record(
+        &'a self,
+        record_data: &RecordData,
+        dyn_fields: &[(RichTerm, Field)],
+    ) -> DocBuilder<'a, Self, A> {
+        // Print empty non-open records specially to avoid double newlines and extra spaces
+        if record_data.fields.is_empty() && dyn_fields.is_empty() && !record_data.attrs.open {
+            return docs![self, "{}"];
+        }
+        docs![
+            self,
+            self.line(),
+            self.fields(&record_data.fields, true),
+            if !dyn_fields.is_empty() {
+                docs![self, self.line(), self.dyn_fields(dyn_fields, true)]
+            } else {
+                self.nil()
+            },
+            if record_data.attrs.open {
+                docs![self, self.line(), ".."]
+            } else {
+                self.nil()
+            }
+        ]
+        .nest(2)
+        .append(self.line())
+        .braces()
+        .group()
+    }
+
     fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
         self.annot_part(annot).nest(2).group()
     }
 
     fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        if let Some(typ) = &annot.typ {
-            self.line()
-                .append(self.text(":"))
-                .append(self.space())
-                .append(typ.typ.clone().pretty(self))
-        } else {
-            self.nil()
-        }
-        .append(if !annot.contracts.is_empty() {
-            self.line()
-        } else {
-            self.nil()
-        })
-        .append(self.intersperse(
-            annot.contracts.iter().map(|c| {
-                self.text("|")
-                    .append(self.space())
-                    .append(c.to_owned().typ.pretty(self))
-            }),
-            self.line(),
-        ))
+        docs![
+            self,
+            if let Some(typ) = &annot.typ {
+                docs![self, self.line(), ": ", typ.typ.clone().pretty(self)]
+            } else {
+                self.nil()
+            },
+            if !annot.contracts.is_empty() {
+                self.line()
+            } else {
+                self.nil()
+            },
+            self.intersperse(
+                annot
+                    .contracts
+                    .iter()
+                    .map(|c| { docs![self, "| ", c.typ.pretty(self)] }),
+                self.line(),
+            )
+        ]
     }
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
@@ -327,24 +357,16 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         use UnaryOp::*;
         match self {
-            ArrayGen() => allocator.text("%gen%").append(allocator.space()),
-            ArrayMap() => allocator.text("%map%").append(allocator.space()),
-            ArrayLength() => allocator.text("%length%").append(allocator.space()),
-            DeepSeq() => allocator.text("%deep_seq%").append(allocator.space()),
-            Typeof() => allocator.text("%typeof%").append(allocator.space()),
             BoolNot() => allocator.text("!"),
-            BoolAnd() => allocator.space().append(allocator.text("&&")),
-            BoolOr() => allocator.space().append(allocator.text("||")),
-            StaticAccess(id) => allocator.text(".").append(allocator.text(ident_quoted(id))),
-            Embed(id) => allocator
-                .text("%embed%")
-                .append(allocator.space())
-                .append(allocator.as_string(id))
-                .append(allocator.space()),
-            Force { .. } => allocator.text("%force%").append(allocator.space()),
-            op => allocator
-                .text(format!("%{op:?}%").to_lowercase())
-                .append(allocator.space()),
+            BoolAnd() | BoolOr() | StaticAccess(_) => {
+                unreachable!("needs to be handled specially")
+            }
+            Embed(id) => docs![
+                allocator,
+                "%embed%",
+                docs![allocator, allocator.line(), id.to_string()].nest(2)
+            ],
+            op => allocator.text(format!("%{op}%")).append(allocator.space()),
         }
     }
 }
@@ -377,10 +399,20 @@ where
             ArrayConcat() => allocator.text("@"),
 
             DynAccess() => allocator.text("."),
-            ArrayElemAt() => allocator.text("%elem_at%"),
 
-            op => allocator.as_string(format!("%{op:?}%").to_lowercase()),
+            op => allocator.as_string(format!("%{op}%")),
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &NAryOp
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        allocator.as_string(format!("%{self}%"))
     }
 }
 
@@ -632,154 +664,158 @@ where
                 .append(body.to_owned().pretty(allocator))
                 .group(),
             App(rt1, rt2) => match rt1.as_ref() {
-                Op1(crate::term::UnaryOp::Ite(), _) => rt1
-                    .to_owned()
-                    .pretty(allocator)
-                    .append(allocator.space())
-                    .append(allocator.text("then"))
-                    .append(allocator.line())
-                    .append(rt2.to_owned().pretty(allocator).nest(2))
-                    .append(allocator.line())
-                    .append(allocator.text("else"))
+                App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::Ite(), _)) => match iop.as_ref()
+                {
+                    Op1(UnaryOp::Ite(), i) => docs![
+                        allocator,
+                        "if ",
+                        i.pretty(allocator),
+                        " then",
+                        docs![allocator, allocator.line(), t.pretty(allocator)].nest(2),
+                        allocator.line(),
+                        "else",
+                        docs![allocator, allocator.line(), rt2.pretty(allocator)].nest(2)
+                    ]
                     .group(),
+                    _ => unreachable!(),
+                },
+                Op1(op @ (UnaryOp::BoolAnd() | UnaryOp::BoolOr()), rt1) => docs![
+                    allocator,
+                    allocator.atom(rt1),
+                    allocator.line(),
+                    match op {
+                        UnaryOp::BoolAnd() => "&& ",
+                        UnaryOp::BoolOr() => "|| ",
+                        _ => unreachable!(),
+                    },
+                    allocator.atom(rt2)
+                ]
+                .group(),
                 App(..) => rt1
                     .to_owned()
                     .pretty(allocator)
                     .append(allocator.line())
                     .append(allocator.atom(rt2))
                     .group(),
-                _ => allocator
-                    .atom(rt1)
-                    .append(allocator.line())
-                    .append(allocator.atom(rt2))
-                    .group(),
+                _ => docs![
+                    allocator,
+                    allocator.atom(rt1),
+                    docs![allocator, allocator.line(), allocator.atom(rt2)]
+                        .nest(2)
+                        .group()
+                ],
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
-            Record(record) => allocator
-                .line()
-                .append(allocator.fields(&record.fields, true))
-                .append(if record.attrs.open {
-                    allocator.line().append(allocator.text(".."))
-                } else {
-                    allocator.nil()
-                })
+            Record(record_data) => allocator.record(record_data, &[]),
+            RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
+            Match { cases, default } => docs![
+                allocator,
+                "match ",
+                docs![
+                    allocator,
+                    allocator.line(),
+                    allocator.intersperse(
+                        sorted_map(cases)
+                            .iter()
+                            .map(|&(id, t)| (format!("'{}", ident_quoted(id)), t))
+                            .chain(default.iter().map(|d| ("_".to_owned(), d)))
+                            .map(|(pattern, t)| docs![
+                                allocator,
+                                pattern,
+                                " =>",
+                                allocator.line(),
+                                t.pretty(allocator),
+                                ","
+                            ]
+                            .nest(2)),
+                        allocator.line()
+                    ),
+                ]
                 .nest(2)
                 .append(allocator.line())
-                .group()
-                .braces(),
-            RecRecord(record_data, dyn_fields, _) => allocator
-                .line()
-                .append(allocator.fields(&record_data.fields, true))
-                .append(allocator.dyn_fields(dyn_fields, true))
-                .append(if record_data.attrs.open {
-                    allocator.line().append(allocator.text(".."))
-                } else {
-                    allocator.nil()
-                })
+                .braces()
+            ]
+            .group(),
+            Array(fields, _) =>
+            // NOTE: the Array attributes are ignored here. They contain only
+            // information that has no surface syntax.
+            {
+                docs![
+                    allocator,
+                    allocator.line(),
+                    allocator.intersperse(
+                        fields.iter().map(|rt| rt.pretty(allocator)),
+                        allocator.text(",").append(allocator.line()),
+                    ),
+                ]
                 .nest(2)
                 .append(allocator.line())
+                .brackets()
                 .group()
-                .braces(),
-            Match { cases, default } => allocator.text("match").append(allocator.space()).append(
-                allocator
-                    .intersperse(
-                        sorted_map(cases).iter().map(|&(id, t)| {
-                            allocator
-                                .text("'")
-                                .append(allocator.text(ident_quoted(id)))
-                                .append(allocator.space())
-                                .append(allocator.text("=>"))
-                                .append(allocator.space())
-                                .append(t.to_owned().pretty(allocator))
-                                .append(allocator.text(","))
-                        }),
-                        allocator.line(),
-                    )
-                    .append(default.clone().map_or(allocator.nil(), |d| {
-                        allocator
-                            .line()
-                            .append(allocator.text("_"))
-                            .append(allocator.space())
-                            .append(allocator.text("=>"))
-                            .append(allocator.space())
-                            .append(d.pretty(allocator))
-                    }))
-                    .nest(2)
-                    .append(allocator.line_())
-                    .braces()
-                    .group(),
-            ),
-            Array(fields, _) => allocator
-                // NOTE: the Array attributes are ignored here.
-                .line()
-                .append(allocator.intersperse(
-                    fields.iter().map(|rt| rt.to_owned().pretty(allocator)),
-                    allocator.text(",").append(allocator.line()),
-                ))
-                .nest(2)
-                .append(allocator.line())
-                .group()
-                .brackets(),
+            }
 
+            Op1(UnaryOp::StaticAccess(id), rt) => {
+                docs![allocator, allocator.atom(rt), ".", ident_quoted(id)]
+            }
+            Op1(UnaryOp::BoolNot(), rt) => docs![allocator, "!", allocator.atom(rt)],
+
+            Op1(UnaryOp::BoolAnd() | UnaryOp::BoolOr() | UnaryOp::Ite(), _) => unreachable!(),
             Op1(op, rt) => match op.pos() {
-                crate::term::OpPos::Prefix => op.pretty(allocator).append(allocator.atom(rt)),
-                crate::term::OpPos::Postfix => allocator.atom(rt).append(op.pretty(allocator)),
-                crate::term::OpPos::Infix => unreachable!(),
-                crate::term::OpPos::Special => {
-                    use UnaryOp::*;
-                    match op {
-                        Ite() => allocator
-                            .text("if")
-                            .append(allocator.space())
-                            .append(rt.to_owned().pretty(allocator)),
-                        op => panic!("pretty print is not impleented for {op:?}"),
-                    }
+                OpPos::Prefix => docs![
+                    allocator,
+                    op.pretty(allocator),
+                    docs![allocator, allocator.line(), allocator.atom(rt)].nest(2)
+                ]
+                .group(),
+                OpPos::Special | OpPos::Postfix | OpPos::Infix => {
+                    panic!("pretty print is not implemented for {op:?}")
                 }
             },
-            Op2(op, rtl, rtr) => if op == &BinaryOp::DynAccess() {
-                rtr.to_owned()
-                    .pretty(allocator)
-                    .append(op.pretty(allocator))
-                    .append(rtl.to_owned().pretty(allocator))
-            } else {
+            Op2(BinaryOp::DynAccess(), rtl, rtr) => {
+                docs![allocator, rtr.pretty(allocator), ".", rtl.pretty(allocator)]
+            }
+            Op2(op, rtl, rtr) => docs![
+                allocator,
                 if (&BinaryOp::Sub(), &Num(Number::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
-                } else if let crate::term::OpPos::Prefix = op.pos() {
-                    op.pretty(allocator)
-                        .append(allocator.space())
-                        .append(allocator.atom(rtl))
-                        .append(allocator.line())
+                } else if let OpPos::Prefix = op.pos() {
+                    op.pretty(allocator).append(docs![
+                        allocator,
+                        allocator.line(),
+                        allocator.atom(rtl),
+                        allocator.line()
+                    ])
                 } else {
-                    allocator
-                        .atom(rtl)
-                        .append(allocator.space())
-                        .append(op.pretty(allocator))
-                        .append(allocator.line())
-                }
-                .append(allocator.atom(rtr))
-                .nest(2)
-            }
+                    docs![
+                        allocator,
+                        allocator.atom(rtl),
+                        " ",
+                        op.pretty(allocator),
+                        allocator.line()
+                    ]
+                },
+                allocator.atom(rtr)
+            ]
+            .nest(2)
             .group(),
-            OpN(op, rts) => allocator
-                .as_string(op)
-                .append(allocator.line())
-                .append(
+            OpN(op, rts) => docs![
+                allocator,
+                op.pretty(allocator),
+                docs![
+                    allocator,
+                    allocator.line(),
                     allocator
                         .intersperse(rts.iter().map(|rt| allocator.atom(rt)), allocator.line())
-                        .nest(2),
-                )
-                .group(),
-
-            SealingKey(sym) => allocator
-                .text(format!("#<sealing key: {sym}>"))
-                .append(allocator.hardline()),
-            // TODO
-            Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>").append(allocator.hardline()),
+                ]
+                .nest(2)
+            ]
+            .group(),
+            SealingKey(sym) => allocator.text(format!("#<sealing key: {sym}>")),
+            Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(allocator.annot(annot)),
             Import(f) => allocator
-                .text("import")
-                .append(allocator.space())
+                .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
             Type(ty) => ty.pretty(allocator),
@@ -798,23 +834,18 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match &self.0 {
             EnumRowsF::Empty => allocator.nil(),
-            EnumRowsF::TailVar(id) => allocator
-                .space()
-                .append(allocator.text(";"))
-                .append(allocator.space())
-                .append(allocator.as_string(id)),
-            EnumRowsF::Extend { row, tail } => {
-                let builder = allocator
-                    .text("'")
-                    .append(allocator.text(ident_quoted(row)));
-                let builder = if let EnumRowsF::Extend { .. } = tail.0 {
-                    builder.append(allocator.text(",")).append(allocator.line())
+            EnumRowsF::TailVar(id) => docs![allocator, ";", allocator.line(), id.to_string()],
+            EnumRowsF::Extend { row, tail } => docs![
+                allocator,
+                "'",
+                ident_quoted(row),
+                if let EnumRowsF::Extend { .. } = tail.0 {
+                    docs![allocator, ",", allocator.line()]
                 } else {
-                    builder
-                };
-
-                builder.append(tail.pretty(allocator))
-            }
+                    allocator.nil()
+                },
+                tail.pretty(allocator)
+            ],
         }
     }
 }
@@ -899,25 +930,26 @@ where
                     foralls.push(var);
                     curr = body;
                 }
-                allocator
-                    .text("forall")
-                    .append(allocator.line())
-                    .group()
-                    .append(allocator.intersperse(
+                docs![
+                    allocator,
+                    "forall",
+                    allocator.line(),
+                    allocator.intersperse(
                         foralls.iter().map(|i| allocator.as_string(i)),
-                        allocator.space(),
-                    ))
-                    .append(allocator.text("."))
-                    .append(allocator.softline())
-                    .append(curr.to_owned().pretty(allocator))
+                        allocator.line(),
+                    ),
+                    ".",
+                    allocator.line(),
+                    curr.pretty(allocator)
+                ]
+                .nest(2)
+                .group()
             }
-            Enum(erows) => allocator
-                .line()
-                .append(erows.pretty(allocator))
+            Enum(erows) => docs![allocator, allocator.line(), erows.pretty(allocator)]
                 .nest(2)
                 .append(allocator.line())
-                .group()
-                .enclose("[|", "|]"),
+                .enclose("[|", "|]")
+                .group(),
             Record(rrows) => docs![allocator, allocator.line(), rrows.pretty(allocator)]
                 .nest(2)
                 .append(allocator.line())
@@ -961,7 +993,10 @@ mod tests {
     use pretty::BoxAllocator;
 
     use crate::parser::lexer::Lexer;
-    use crate::parser::{grammar::FixedTypeParser, ErrorTolerantParser};
+    use crate::parser::{
+        grammar::{FixedTypeParser, TermParser},
+        ErrorTolerantParser,
+    };
     use codespan::Files;
 
     use super::*;
@@ -976,6 +1011,13 @@ mod tests {
             .unwrap()
     }
 
+    /// Parse a term represented as a string.
+    fn parse_term(s: &str) -> RichTerm {
+        let id = Files::new().add("<test>", s);
+
+        TermParser::new().parse_strict(id, Lexer::new(s)).unwrap()
+    }
+
     /// Parse a string representation `long` of a type, and assert that
     /// formatting it gives back `long`, if the line length is set to `80`, or
     /// alternatively results in `short`, if the line length is set to `0`
@@ -983,6 +1025,24 @@ mod tests {
     fn assert_long_short_type(long: &str, short: &str) {
         let ty = parse_type(long);
         let doc: DocBuilder<'_, BoxAllocator, ()> = ty.pretty(&BoxAllocator);
+
+        let mut long_lines = String::new();
+        doc.render_fmt(80, &mut long_lines).unwrap();
+
+        let mut short_lines = String::new();
+        doc.render_fmt(0, &mut short_lines).unwrap();
+
+        assert_eq!(long_lines, long);
+        assert_eq!(short_lines, short);
+    }
+
+    /// Parse a string representation `long` of a Nickel term, and assert that
+    /// formatting it gives back `long`, if the line length is set to `80`, or
+    /// alternatively results in `short`, if the line length is set to `0`
+    #[track_caller]
+    fn assert_long_short_term(long: &str, short: &str) {
+        let term = parse_term(long);
+        let doc: DocBuilder<'_, BoxAllocator, ()> = term.pretty(&BoxAllocator);
 
         let mut long_lines = String::new();
         doc.render_fmt(80, &mut long_lines).unwrap();
@@ -1049,13 +1109,201 @@ mod tests {
     #[test]
     fn pretty_record_type() {
         assert_long_short_type(
-            "{ x : Number, y : String ; Dyn }",
+            "{ x : Number, y : String; Dyn }",
             indoc! {"
                 {
                   x : Number,
-                  y : Number;
+                  y : String;
                   Dyn
                 }" 
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_enum_type() {
+        assert_long_short_type(
+            "forall r. [| 'tag1, 'tag2, 'tag3; r |]",
+            indoc! {"
+                forall
+                  r.
+                  [|
+                    'tag1,
+                    'tag2,
+                    'tag3;
+                    r
+                  |]"
+            },
+        )
+    }
+
+    #[test]
+    fn pretty_forall_type() {
+        assert_long_short_type(
+            "forall a r. a -> { foo : a; r }",
+            indoc! {"
+                forall
+                  a
+                  r.
+                  a
+                  -> {
+                    foo : a;
+                    r
+                  }"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_opn() {
+        assert_long_short_term(
+            "%str_replace% string pattern replace",
+            indoc! {"
+                %str_replace%
+                  string
+                  pattern
+                  replace"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_binop() {
+        assert_long_short_term(
+            "a + b",
+            indoc! {"
+                a +
+                  b"
+            },
+        );
+        assert_long_short_term(
+            "%str_split% string sep",
+            indoc! {"
+                %str_split%
+                  string
+                  sep"
+            },
+        );
+        assert_long_short_term("-5", "-5");
+        assert_long_short_term(
+            "a - (-b)",
+            indoc! {"
+                a -
+                  (-b)"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_unop() {
+        assert_long_short_term("!xyz", "!xyz");
+        assert_long_short_term(
+            "a && b",
+            indoc! {"
+                a
+                && b"
+            },
+        );
+        assert_long_short_term(
+            "(a && b) && c",
+            indoc! {"
+                (a
+                && b)
+                && c"
+            },
+        );
+        assert_long_short_term(
+            "a || b",
+            indoc! {"
+                a
+                || b"
+            },
+        );
+        assert_long_short_term(
+            "if true then false else not",
+            indoc! {"
+                if true then
+                  false
+                else
+                  not"
+            },
+        );
+        assert_long_short_term(
+            "%embed% foo bar",
+            indoc! {"
+                %embed%
+                  foo
+                  bar"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_arrays() {
+        assert_long_short_term(
+            "[ 1, 2, 3, 4 ]",
+            indoc! {"
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ]"
+            },
+        )
+    }
+
+    #[test]
+    fn pretty_match() {
+        assert_long_short_term(
+            "match { 'A => a, 'B => b, 'C => c, }",
+            indoc! {"
+                match {
+                  'A =>
+                    a,
+                  'B =>
+                    b,
+                  'C =>
+                    c,
+                }"
+            },
+        )
+    }
+
+    #[test]
+    fn pretty_record() {
+        assert_long_short_term("{}", "{}");
+        assert_long_short_term(
+            "{ a = b, c = d, }",
+            indoc! {"
+                {
+                  a =
+                    b,
+                  c =
+                    d,
+                }"
+            },
+        );
+        assert_long_short_term(
+            "{ a = b, .. }",
+            indoc! {"
+                {
+                  a =
+                    b,
+                  ..
+                }"
+            },
+        );
+        assert_long_short_term(
+            r#"{ a = b, "%{a}" = c, .. }"#,
+            indoc! {r#"
+                {
+                  a =
+                    b,
+                  "%{a}" =
+                    c,
+                  ..
+                }"#
             },
         )
     }
@@ -1086,11 +1334,11 @@ mod tests {
         assert_format_eq("{ _ | (String -> String) -> String }");
 
         assert_format_eq("{ x : (Bool -> Bool) -> Bool, y : Bool }");
-        assert_format_eq("forall r. { x : Bool, y : Bool, z : Bool ; r }");
+        assert_format_eq("forall r. { x : Bool, y : Bool, z : Bool; r }");
         assert_format_eq("{ x : Bool, y : Bool, z : Bool }");
 
         assert_format_eq("[| 'a, 'b, 'c, 'd |]");
-        assert_format_eq("forall r. [| 'tag1, 'tag2, 'tag3 ; r |]");
+        assert_format_eq("forall r. [| 'tag1, 'tag2, 'tag3; r |]");
 
         assert_format_eq("Array Number");
         assert_format_eq("Array (Array Number)");
