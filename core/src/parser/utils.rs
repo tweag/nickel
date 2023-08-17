@@ -329,6 +329,10 @@ impl Annot for TypeAnnotation {
 
 impl AttachTerm<RichTerm> for TypeAnnotation {
     fn attach_term(self, rt: RichTerm) -> RichTerm {
+        if self.is_empty() {
+            return rt;
+        }
+
         let pos = rt.pos;
         RichTerm::new(Term::Annotated(self, rt), pos)
     }
