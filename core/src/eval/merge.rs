@@ -241,7 +241,7 @@ pub fn merge<C: Cache>(
                     let fields: Vec<String> =
                         left.keys().map(|field| format!("`{field}`")).collect();
                     let plural = if fields.len() == 1 { "" } else { "s" };
-                    let fields_list = fields.join(",");
+                    let fields_list = fields.join(", ");
 
                     let label = label
                         .with_diagnostic_message(format!("extra field{plural} {fields_list}"))

@@ -91,6 +91,7 @@ pub mod unif;
 
 use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
+use indexmap::IndexMap;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
 use unif::*;
 
@@ -1971,7 +1972,7 @@ fn check<L: Linearizer>(
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
-                let mut field_types: HashMap<LocIdent, UnifType> = record
+                let mut field_types: IndexMap<LocIdent, UnifType> = record
                     .fields
                     .keys()
                     .map(|id| (*id, state.table.fresh_type_uvar(ctxt.var_level)))
