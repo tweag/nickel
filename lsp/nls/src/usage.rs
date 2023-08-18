@@ -45,6 +45,16 @@ impl EnvExt for Environment {
     }
 }
 
+/// A lookup table for finding variable usages and variable definitions.
+///
+/// Variable usages come from `Term::Var`, while variable definitions come
+/// from `let` bindings and function definitions.
+///
+/// Note that this is not (on its own) an implementation of the "goto definition"
+/// functionality, as it only resolves variable references. For example, going
+/// to the definition of `foo` in `x.foo` involves two steps: finding the definition
+/// of the variable `x`, and then looking for the definition of its "foo" field.
+/// This lookup table is for the first step.
 #[derive(Clone, Debug, Default)]
 pub struct UsageLookup {
     def_table: HashMap<LocIdent, DefWithPath>,
@@ -52,12 +62,15 @@ pub struct UsageLookup {
 }
 
 impl UsageLookup {
+    /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
     pub fn new(rt: &RichTerm) -> Self {
         let mut table = Self::default();
         table.fill(rt, &Environment::new());
         table
     }
 
+    /// Return all the usages of `ident`.
+    #[allow(dead_code)] // Not used yet...
     pub fn usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
         self.usage_table
             .get(ident)
@@ -65,15 +78,12 @@ impl UsageLookup {
             .unwrap_or([].iter())
     }
 
+    /// Return the definition site of `ident`.
     pub fn def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
         self.def_table.get(ident)
     }
 
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
-        // Static accesses count as usage (but probably not for us?)
-        // Resolved imports count as usage
-        // Let and Fun count as declarations
-        // LetPattern and FunPattern count as declarations
         rt.traverse_ref(&mut |term: &RichTerm| match term.term.as_ref() {
             Term::Fun(id, body) => {
                 let mut new_env = env.clone();

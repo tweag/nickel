@@ -18,10 +18,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::{Def, DefWithPath},
-    identifier::LocIdent,
-    position::PositionLookup,
-    usage::UsageLookup,
+    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, usage::UsageLookup,
 };
 
 use self::{

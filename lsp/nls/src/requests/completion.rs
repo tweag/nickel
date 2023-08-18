@@ -15,7 +15,7 @@ use nickel_lang_core::{
 
 use crate::{
     cache::CacheExt,
-    field_walker,
+    field_walker::{Def, FieldDefs},
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -687,8 +687,8 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(parent.clone());
 
-    let defs = field_walker::resolve_path(&start_term, &path, linearization, server);
-    Ok(defs.map(|d| d.to_completion_item()).collect())
+    let defs = FieldDefs::resolve_path(&start_term, &path, linearization, server);
+    Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
 pub fn handle_completion(
