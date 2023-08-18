@@ -666,6 +666,7 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
             path.push(id.symbol());
             rt = parent.clone();
         } else {
+            path.reverse();
             return (rt, path);
         }
     }

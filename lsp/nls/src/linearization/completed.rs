@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 use codespan::FileId;
 use nickel_lang_core::{
     position::{RawPos, TermPos},
-    term::{record::FieldMetadata, RichTerm, SharedTerm, Term},
+    term::{record::FieldMetadata, SharedTerm, Term},
     typecheck::linearization::LinearizationState,
 };
 
@@ -34,10 +34,6 @@ pub struct Completed {
     pub linearization: Vec<LinearizationItem<Resolved>>,
     pub import_locations: HashMap<FileId, TermPos>,
     id_to_index: HashMap<ItemId, usize>,
-    // A map from terms to the index of the first linearization item that points to it.
-    // The first linearization item is the "largest" one: the one that starts earliest
-    // and ends latest.
-    term_to_index: HashMap<SharedTermPtr, usize>,
 }
 
 impl Completed {
@@ -46,42 +42,11 @@ impl Completed {
         id_to_index: HashMap<ItemId, usize>,
         import_locations: HashMap<FileId, TermPos>,
     ) -> Self {
-        let mut term_to_index = HashMap::new();
-
-        for (idx, item) in linearization.iter().enumerate() {
-            let term = SharedTermPtr(item.term.term.clone());
-            term_to_index.entry(term).or_insert(idx);
-        }
         Self {
             linearization,
             import_locations,
             id_to_index,
-            term_to_index,
         }
-    }
-
-    pub fn lookup_usage(&self, rt: &RichTerm) -> Option<RichTerm> {
-        let ptr = SharedTermPtr(rt.term.clone());
-        log::info!("looking up {rt:?}");
-        if let Some(item) = self
-            .term_to_index
-            .get(&ptr)
-            .and_then(|idx| self.linearization.get(*idx))
-        {
-            if let TermKind::Usage(UsageState::Resolved(id)) = item.kind {
-                log::info!("found item {item:?} for term {rt:?}");
-                if let Some(def) = self.get_item(id) {
-                    if let TermKind::Declaration {
-                        value: ValueState::Known(id),
-                        ..
-                    } = def.kind
-                    {
-                        return self.get_item(id).map(|it| it.term.clone());
-                    }
-                }
-            }
-        }
-        None
     }
 
     /// Returns the closest item to the left (if any) and to the right (if any) of

@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
@@ -17,7 +17,12 @@ use nickel_lang_core::{
     },
 };
 
-use crate::{position::PositionLookup, usage::UsageLookup};
+use crate::{
+    field_walker::{Def, DefWithPath},
+    identifier::LocIdent,
+    position::PositionLookup,
+    usage::UsageLookup,
+};
 
 use self::{
     building::Building,
@@ -63,6 +68,11 @@ impl LinRegistry {
     pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
         let lin = self.map.get(&id.file_id).unwrap();
         lin.get_item(id)
+    }
+
+    pub fn get_def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
+        let file = ident.pos.as_opt_ref()?.src_id;
+        self.usage_lookups.get(&file)?.def(ident)
     }
 }
 
@@ -410,7 +420,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                     file_id: self.file,
                                     index: id.index - 1,
                                 },
-                                child: accessor.to_owned(),
+                                child: accessor.to_owned().into(),
                             }),
                             metadata: self.meta.take(),
                         });
@@ -446,7 +456,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                     file_id: self.file,
                                     index: id,
                                 },
-                                ident,
+                                ident.into(),
                             )
                         })
                         .rev()
@@ -455,7 +465,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             }
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
-                x.push(ident.to_owned())
+                x.push(ident.to_owned().into())
             }
             Term::Annotated(annot, _) => {
                 // Notice 1: No push to lin for the `FieldMetadata` itself
@@ -561,12 +571,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         let mut name_reg = NameReg::new(reported_names);
 
         // TODO: Storing defers while linearizing?
-        let mut defers: Vec<(ItemId, ItemId, LocIdent)> = lin
+        let mut defers: Vec<_> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, *child))
+                    Some((item.id, *parent, (*child).symbol()))
                 }
                 _ => None,
             })
@@ -672,7 +682,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     fn retype_ident(
         &mut self,
         lin: &mut Linearization<Building>,
-        ident: &LocIdent,
+        ident: &nickel_lang_core::identifier::LocIdent,
         new_type: UnifType,
     ) {
         if let Some(item) = self

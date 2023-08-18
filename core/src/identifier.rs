@@ -15,7 +15,7 @@ static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 //
 // Implementation-wise, this is just a wrapper around interner::Symbol that uses a hard-coded,
 // static `Interner`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(into = "String", from = "String")]
 pub struct Ident(interner::Symbol);
 
@@ -37,6 +37,12 @@ impl Ident {
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.label())
+    }
+}
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "`{}`", self.label())
     }
 }
 

@@ -7,11 +7,11 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::{Def, TermAtPath},
+    field_walker::{DefWithPath, TermAtPath},
     identifier::LocIdent,
 };
 
-type Environment = GenericEnvironment<Ident, Def>;
+type Environment = GenericEnvironment<Ident, DefWithPath>;
 
 trait EnvExt {
     fn def(
@@ -36,7 +36,7 @@ impl EnvExt for Environment {
         let ident = id.into();
         self.insert(
             ident.symbol,
-            Def {
+            DefWithPath {
                 ident,
                 value: val.map(Into::into),
                 metadata: meta,
@@ -47,7 +47,7 @@ impl EnvExt for Environment {
 
 #[derive(Clone, Debug, Default)]
 pub struct UsageLookup {
-    def_table: HashMap<LocIdent, Def>,
+    def_table: HashMap<LocIdent, DefWithPath>,
     usage_table: HashMap<LocIdent, Vec<LocIdent>>,
 }
 
@@ -65,7 +65,7 @@ impl UsageLookup {
             .unwrap_or([].iter())
     }
 
-    pub fn def(&self, ident: &LocIdent) -> Option<&Def> {
+    pub fn def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
         self.def_table.get(ident)
     }
 

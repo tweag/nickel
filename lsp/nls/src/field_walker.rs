@@ -22,21 +22,7 @@ pub struct TermAtPath {
     pub path: Vec<Ident>,
 }
 
-impl TermAtPath {
-    fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<RichTerm> {
-        if self.path.is_empty() {
-            vec![self.term.clone()]
-        } else {
-            resolve_path(&self.term, &self.path, linearization, server)
-                .flat_map(|def| {
-                    def.value
-                        .into_iter()
-                        .flat_map(|val| val.resolve_terms(linearization, server).into_iter())
-                })
-                .collect()
-        }
-    }
-}
+impl TermAtPath {}
 
 impl From<RichTerm> for TermAtPath {
     fn from(term: RichTerm) -> Self {
@@ -55,16 +41,7 @@ pub struct Def {
     /// The value assigned by the definition, if there is one.
     ///
     /// For example, in `{ foo = 1 }`, this could point at the `1`.
-    ///
-    /// Because of pattern bindings, there could also be a path associated with
-    /// the value. For example, in
-    ///
-    /// ```text
-    /// let { a = { b } } = val in ...
-    /// ```
-    ///
-    /// the name `b` is bound to the term `val` at the path `[a, b]`.
-    pub value: Option<TermAtPath>,
+    pub value: Option<RichTerm>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
 }
@@ -104,6 +81,50 @@ impl Def {
     }
 }
 
+/// The position at which something is defined.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DefWithPath {
+    /// The identifier at the definition site.
+    pub ident: LocIdent,
+    /// The value assigned by the definition, if there is one.
+    ///
+    /// For example, in `{ foo = 1 }`, this could point at the `1`.
+    ///
+    /// Because of pattern bindings, there could also be a path associated with
+    /// the value. For example, in
+    ///
+    /// ```text
+    /// let { a = { b } } = val in ...
+    /// ```
+    ///
+    /// the name `b` is bound to the term `val` at the path `[a, b]`.
+    pub value: Option<TermAtPath>,
+    /// Field metadata.
+    pub metadata: Option<FieldMetadata>,
+}
+
+impl DefWithPath {
+    fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<Def> {
+        match &self.value {
+            Some(val) if !val.path.is_empty() => {
+                // unwrap: we just checked the path is non-empty
+                // TODO: explain and/or refactor
+                let (last, path) = val.path.split_last().unwrap();
+                resolve_path(&val.term, path, linearization, server)
+                    .filter(|def| def.ident.symbol == *last)
+                    .collect()
+            }
+            _ => {
+                vec![Def {
+                    ident: self.ident,
+                    value: self.value.as_ref().map(|tp| tp.term.clone()),
+                    metadata: self.metadata.clone(),
+                }]
+            }
+        }
+    }
+}
+
 /// A map from identifiers to the defs that they refer to.
 #[derive(Clone, Debug, Default)]
 struct FieldDefs {
@@ -117,20 +138,26 @@ pub fn resolve_path<'a>(
     linearization: &Completed,
     server: &Server,
 ) -> impl Iterator<Item = Def> {
+    log::info!("entering with path {:?}", path);
     let mut fields = FieldDefs::resolve(rt, linearization, server);
+    log::info!("resolved {:?}, path {:?}", fields.fields.keys(), path);
 
     while let Some((id, tail)) = path.split_first() {
         path = tail;
         let defs = fields.fields.remove(id).unwrap_or_default();
         fields.fields.clear();
 
-        for def in defs.into_iter().filter_map(|d| d.value) {
-            for rt in def.resolve_terms(linearization, server) {
-                fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
-            }
+        for rt in defs.into_iter().filter_map(|d| d.value) {
+            log::info!("expanding term {rt:?}");
+            fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+            log::info!(
+                "after expanding, {rt:?}, have fields {:?}",
+                fields.fields.keys()
+            );
         }
     }
 
+    log::info!("returning values {:?}", fields.fields.keys());
     fields
         .fields
         .into_values()
@@ -162,9 +189,15 @@ impl FieldDefs {
                     .collect();
                 FieldDefs { fields }
             }
-            Term::Var(_) => linearization
-                .lookup_usage(rt)
-                .map(|def| FieldDefs::resolve(&def, linearization, server))
+            Term::Var(id) => server
+                .lin_registry
+                .get_def(&(*id).into())
+                .map(|def| {
+                    log::info!("got def {def:?}");
+                    let defs = def.resolve_terms(linearization, server);
+                    let terms = defs.iter().filter_map(|def| def.value.as_ref());
+                    FieldDefs::resolve_all(terms, linearization, server)
+                })
                 .unwrap_or_default(),
             Term::ResolvedImport(file_id) => server
                 .cache
@@ -189,5 +222,15 @@ impl FieldDefs {
             }
         }
         self
+    }
+
+    fn resolve_all<'a>(
+        terms: impl Iterator<Item = &'a RichTerm>,
+        linearization: &Completed,
+        server: &Server,
+    ) -> FieldDefs {
+        terms.fold(FieldDefs::default(), |acc, term| {
+            acc.merge_from(FieldDefs::resolve(term, linearization, server))
+        })
     }
 }
