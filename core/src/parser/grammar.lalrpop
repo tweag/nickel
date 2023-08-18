@@ -492,24 +492,17 @@ RecordPattern: RecordPattern = {
 // A binding `ident = <pattern>` inside a destructuring pattern.
 Match: Match = {
     <left:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> "=" <right: Pattern> => {
-        let field = combine_match_annots(anns, default, left.pos.unwrap());
+        let field = metadata_with_default(anns, default);
         Match::Assign(left, field, right)
     },
     <id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> => {
-        let field = combine_match_annots(anns, default, id.pos.unwrap());
+        let field = metadata_with_default(anns, default);
         Match::Simple(id, field)
     },
 };
 
 // A default annotation in a pattern.
-DefaultAnnot: Field = "?" <t: Term> => Field {
-    metadata: FieldMetadata {
-        priority: MergePriority::Bottom,
-        ..Default::default()
-    },
-    value: Some(t),
-    ..Default::default()
-};
+DefaultAnnot: RichTerm = "?" <t: Term> => t;
 
 Ident: LocIdent = <l:@L> <i: "identifier"> <r:@R> =>
     LocIdent::new_with_pos(i, mk_pos(src_id, l, r));
