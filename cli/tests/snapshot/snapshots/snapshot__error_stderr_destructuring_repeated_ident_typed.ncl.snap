@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: duplicated binding `a` in record pattern
+  ┌─ [INPUTS_PATH]/errors/destructuring_repeated_ident_typed.ncl:4:12
+  │
+4 │   let { a, a, .. } = { a = 1, b = 2 } in
+  │         -  ^ duplicated binding here
+  │         │   
+  │         previous binding here
+
+

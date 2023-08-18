@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: incompatible types
+  ┌─ [INPUTS_PATH]/errors/destructuring_type_mismatch_nested_destructuring_fail.ncl:3:50
+  │
+3 │ (let { a : { b : Number } = { b }} = { a = { b = "no" }} in
+  │                                                  ^^^^ this expression
+  │
+  = Expected an expression of type `Number`
+  = Found an expression of type `String`
+  = These types are not compatible
+
+

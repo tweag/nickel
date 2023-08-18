@@ -1,0 +1,18 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: non mergeable terms
+  ┌─ [INPUTS_PATH]/errors/destructuring_default_merge.ncl:3:11
+  │
+3 │ let { x ? true } = { x | default = false } in x
+  │     ------^^^^--                   ^^^^^ cannot merge this expression
+  │     │     │                         
+  │     │     with this expression
+  │     originally merged here
+  │
+  = Both values have the same merge priority but they can't be combined.
+  = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
+  = Functions can never be merged.
+
+

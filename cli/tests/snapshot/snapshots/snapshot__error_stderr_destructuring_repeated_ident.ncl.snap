@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: duplicated binding `duped` in record pattern
+  ┌─ [INPUTS_PATH]/errors/destructuring_repeated_ident.ncl:3:22
+  │
+3 │ let f = fun { duped, duped, .. } => duped
+  │               -----  ^^^^^ duplicated binding here
+  │               │       
+  │               previous binding here
+
+

@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing field `a`
+  ┌─ [INPUTS_PATH]/errors/destructuring_rest_fail.ncl:4:1
+  │
+4 │ y.a
+  │ ^^^ this requires the field `a` to exist
+
+
