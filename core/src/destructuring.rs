@@ -199,7 +199,7 @@ impl Match {
         ) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
             matches
                 .iter()
-                .flat_map(|m| m.clone().to_flattened_bindings())
+                .flat_map(|m| m.to_flattened_bindings())
                 .map(|(mut path, bind, field)| {
                     path.push(*id);
                     (path, bind, field)
