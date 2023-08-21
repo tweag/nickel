@@ -122,7 +122,7 @@ impl PositionLookup {
             TraverseControl::<()>::Continue
         };
 
-        rt.traverse_ref(&mut (&mut fun as &mut dyn FnMut(&RichTerm) -> _));
+        rt.traverse_ref(&mut fun);
 
         PositionLookup {
             ranges: make_disjoint(all_ranges),
