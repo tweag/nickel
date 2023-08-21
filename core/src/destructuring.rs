@@ -217,7 +217,7 @@ impl Match {
                 field,
                 FieldPattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
             ) => {
-                let span = get_span(&id, pattern);
+                let span = get_span(id, pattern);
                 let pattern = pattern.clone();
                 let mut field = field.clone();
                 field
@@ -236,7 +236,7 @@ impl Match {
                     pattern: ref pattern @ RecordPattern { ref matches, .. },
                 },
             ) => {
-                let span = get_span(&id, pattern);
+                let span = get_span(id, pattern);
                 let pattern = pattern.clone();
                 let mut field = field.clone();
                 field
