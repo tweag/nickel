@@ -48,7 +48,7 @@ impl EnvExt for Environment {
 /// A lookup table for finding variable usages and variable definitions.
 ///
 /// Variable usages come from `Term::Var`, while variable definitions come
-/// from `let` bindings and function definitions.
+/// from `let` bindings, function definitions, and bindings in records.
 ///
 /// Note that this is not (on its own) an implementation of the "goto definition"
 /// functionality, as it only resolves variable references. For example, going
@@ -133,6 +133,20 @@ impl UsageLookup {
                 self.fill(body, &new_env);
                 TraverseControl::SkipBranch
             }
+            Term::RecRecord(data, _interp_fields, _deps) => {
+                let mut new_env = env.clone();
+
+                // Records are recursive and the order of fields is unimportant, so define
+                // all the fields in the environment and then recurse into their values.
+                for (id, field) in &data.fields {
+                    new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
+                }
+
+                for val in data.fields.values().filter_map(|fld| fld.value.as_ref()) {
+                    self.fill(val, &new_env);
+                }
+                TraverseControl::SkipBranch
+            }
             Term::Var(id) => {
                 let id = LocIdent::from(*id);
                 if let Some(def) = env.get(&id.symbol) {
@@ -213,5 +227,26 @@ mod tests {
             baz_def.value.as_ref().unwrap().path,
             vec!["foo".into(), "bar".into()]
         );
+    }
+
+    #[test]
+    fn record_bindings() {
+        let (file, rt) =
+            parse("{ foo = 1, sub.field = 2, bar = foo, baz = sub.field, child = { bar = foo } }");
+        let foo0 = locced("foo", file, 2..5);
+        let foo1 = locced("foo", file, 32..35);
+        let foo2 = locced("foo", file, 70..73);
+        let sub0 = locced("sub", file, 11..14);
+        let sub1 = locced("sub", file, 43..46);
+        let field1 = locced("field", file, 47..52);
+        let table = UsageLookup::new(&rt);
+
+        assert_eq!(table.def(&foo1).unwrap().ident, foo0);
+        assert_eq!(table.def(&foo2).unwrap().ident, foo0);
+        assert_eq!(table.def(&sub1).unwrap().ident, sub0);
+
+        // We don't see "baz = sub.field" as a "usage" of field, because it's
+        // a static access and not a var.
+        assert!(table.def(&field1).is_none());
     }
 }
