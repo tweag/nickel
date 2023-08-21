@@ -10,6 +10,7 @@ mod diagnostic;
 mod error;
 mod field_walker;
 mod files;
+mod identifier;
 mod linearization;
 mod position;
 mod requests;
@@ -17,6 +18,7 @@ mod server;
 use server::Server;
 mod term;
 mod trace;
+mod usage;
 
 use crate::trace::Trace;
 

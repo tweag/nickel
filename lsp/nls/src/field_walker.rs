@@ -2,25 +2,47 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     pretty::ident_quoted,
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
-use crate::{linearization::completed::Completed, server::Server};
+use crate::{identifier::LocIdent, linearization::completed::Completed, server::Server};
 
-/// The position at which something is defined.
-#[derive(Clone, Debug)]
+/// A term and a path.
+///
+/// This is morally equivalent to (but a more convenient representation than)
+/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermAtPath {
+    pub term: RichTerm,
+    /// A path of identifiers, in left-to-right order.
+    ///
+    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
+    pub path: Vec<Ident>,
+}
+
+impl TermAtPath {}
+
+impl From<RichTerm> for TermAtPath {
+    fn from(term: RichTerm) -> Self {
+        Self {
+            term,
+            path: Vec::new(),
+        }
+    }
+}
+
+/// The position at which a name is defined (possibly also with a value).
+#[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     /// The identifier at the definition site.
-    ///
-    /// Remember that an `Ident` has a position; this one points to the identifier
-    /// at the position where it is bound. For example, in `{ foo = 1 }`, this ident
-    /// might point at the `foo`.
     pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one.
+    /// The value assigned by the definition, if there is one. If the definition
+    /// was made by a `let` binding, there will be a value; if it was made in a
+    /// function definition, there will not be a value.
     ///
-    /// For example, in `{ foo = 1 }`, this could point at the `1`.
+    /// For example, in `{ foo = 1 }`, this will point at the `1`.
     pub value: Option<RichTerm>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
@@ -52,7 +74,7 @@ impl Def {
     /// Creates a completion item from this definition.
     pub fn to_completion_item(&self) -> CompletionItem {
         CompletionItem {
-            label: ident_quoted(&self.ident),
+            label: ident_quoted(&self.ident.into()),
             detail: self.detail(),
             kind: Some(CompletionItemKind::Property),
             documentation: self.doc(),
@@ -61,38 +83,98 @@ impl Def {
     }
 }
 
+/// A definition whose value might need to be accessed through a path.
+///
+/// This arises because of pattern bindings.
+///  For example, in
+///
+/// ```text
+/// let { a = { b } } = val in ...
+/// ```
+///
+/// the name `b` is bound to the term `val` at the path `[a, b]`.
+///
+/// Semantically, a definition with a path is pretty much the same as
+/// a definition whose value is a `Op1(StaticAccess, Op1(StaticAccess, ...))`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DefWithPath {
+    /// The identifier at the definition site.
+    pub ident: LocIdent,
+    /// The value assigned by the definition, if there is one.
+    ///
+    /// For example, in `{ foo = 1 }`, this could point at the `1`.
+    ///
+    /// Because of pattern bindings, there could also be a path associated with
+    /// the value. For example, in
+    ///
+    /// ```text
+    /// let { a = { b } } = val in ...
+    /// ```
+    ///
+    /// the name `b` is bound to the term `val` at the path `[a, b]`.
+    pub value: Option<TermAtPath>,
+    /// Field metadata.
+    pub metadata: Option<FieldMetadata>,
+}
+
+impl DefWithPath {
+    fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<Def> {
+        match &self.value {
+            Some(val) if !val.path.is_empty() => {
+                // Calling `resolve_path` on x with path [foo, bar] returns all
+                // the fields *in* x.foo.bar. We want the value(s) of x.foo.bar,
+                // so use `resolve_path` to get x.foo and then find the bars in it.
+                // unwrap: we just checked the path is non-empty
+                let (last, path) = val.path.split_last().unwrap();
+                FieldDefs::resolve_path(&val.term, path, linearization, server)
+                    .fields
+                    .remove(last)
+                    .unwrap_or_default()
+            }
+            _ => {
+                vec![Def {
+                    ident: self.ident,
+                    value: self.value.as_ref().map(|tp| tp.term.clone()),
+                    metadata: self.metadata.clone(),
+                }]
+            }
+        }
+    }
+}
+
 /// A map from identifiers to the defs that they refer to.
 #[derive(Clone, Debug, Default)]
-struct FieldDefs {
+pub struct FieldDefs {
     fields: HashMap<Ident, Vec<Def>>,
 }
 
-/// Resolve a record path iteratively, returning the names of all the fields defined on the final path element.
-pub fn resolve_path<'a>(
-    rt: &'a RichTerm,
-    mut path: &'a [LocIdent],
-    linearization: &Completed,
-    server: &Server,
-) -> impl Iterator<Item = Def> {
-    let mut fields = FieldDefs::resolve(rt, linearization, server);
+impl FieldDefs {
+    /// Resolve a record path iteratively, returning all the fields defined on the final path element.
+    pub fn resolve_path<'a>(
+        rt: &'a RichTerm,
+        mut path: &'a [Ident],
+        linearization: &Completed,
+        server: &Server,
+    ) -> Self {
+        let mut fields = FieldDefs::resolve(rt, linearization, server);
 
-    while let Some((id, tail)) = path.split_first() {
-        path = tail;
-        let defs = fields.fields.remove(&id.symbol()).unwrap_or_default();
-        fields.fields.clear();
+        while let Some((id, tail)) = path.split_first() {
+            path = tail;
+            let defs = fields.fields.remove(id).unwrap_or_default();
+            fields.fields.clear();
 
-        for rt in defs.into_iter().filter_map(|d| d.value) {
-            fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+            for rt in defs.into_iter().filter_map(|d| d.value) {
+                fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+            }
         }
+
+        fields
     }
 
-    fields
-        .fields
-        .into_values()
-        .flat_map(|defs| defs.into_iter())
-}
+    pub fn defs(&self) -> impl Iterator<Item = &Def> {
+        self.fields.values().flat_map(|defs| defs.iter())
+    }
 
-impl FieldDefs {
     /// Find all the fields that are defined on a term.
     ///
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
@@ -108,8 +190,8 @@ impl FieldDefs {
                         (
                             ident.symbol(),
                             vec![Def {
-                                ident,
-                                value: field.value.clone(),
+                                ident: ident.into(),
+                                value: field.value.clone().map(From::from),
                                 metadata: Some(field.metadata.clone()),
                             }],
                         )
@@ -117,9 +199,15 @@ impl FieldDefs {
                     .collect();
                 FieldDefs { fields }
             }
-            Term::Var(_) => linearization
-                .lookup_usage(rt)
-                .map(|def| FieldDefs::resolve(&def, linearization, server))
+            Term::Var(id) => server
+                .lin_registry
+                .get_def(&(*id).into())
+                .map(|def| {
+                    log::info!("got def {def:?}");
+                    let defs = def.resolve_terms(linearization, server);
+                    let terms = defs.iter().filter_map(|def| def.value.as_ref());
+                    FieldDefs::resolve_all(terms, linearization, server)
+                })
                 .unwrap_or_default(),
             Term::ResolvedImport(file_id) => server
                 .cache
@@ -144,5 +232,15 @@ impl FieldDefs {
             }
         }
         self
+    }
+
+    fn resolve_all<'a>(
+        terms: impl Iterator<Item = &'a RichTerm>,
+        linearization: &Completed,
+        server: &Server,
+    ) -> FieldDefs {
+        terms.fold(FieldDefs::default(), |acc, term| {
+            acc.merge_from(FieldDefs::resolve(term, linearization, server))
+        })
     }
 }

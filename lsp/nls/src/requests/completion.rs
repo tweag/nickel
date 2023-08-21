@@ -15,7 +15,7 @@ use nickel_lang_core::{
 
 use crate::{
     cache::CacheExt,
-    field_walker,
+    field_walker::{Def, FieldDefs},
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -658,14 +658,15 @@ fn get_completion_identifiers(
     Ok(remove_duplicates(&in_scope))
 }
 
-fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<LocIdent>) {
+fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     let mut path = Vec::new();
 
     loop {
         if let Term::Op1(UnaryOp::StaticAccess(id), parent) = rt.term.as_ref() {
-            path.push(*id);
+            path.push(id.symbol());
             rt = parent.clone();
         } else {
+            path.reverse();
             return (rt, path);
         }
     }
@@ -686,8 +687,8 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(parent.clone());
 
-    let defs = field_walker::resolve_path(&start_term, &path, linearization, server);
-    Ok(defs.map(|d| d.to_completion_item()).collect())
+    let defs = FieldDefs::resolve_path(&start_term, &path, linearization, server);
+    Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
 pub fn handle_completion(

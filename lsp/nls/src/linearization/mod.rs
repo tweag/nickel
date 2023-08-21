@@ -3,7 +3,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
@@ -17,7 +17,9 @@ use nickel_lang_core::{
     },
 };
 
-use crate::position::PositionLookup;
+use crate::{
+    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, usage::UsageLookup,
+};
 
 use self::{
     building::Building,
@@ -40,9 +42,10 @@ pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>
 #[derive(Clone, Default, Debug)]
 pub struct LinRegistry {
     pub map: HashMap<FileId, Completed>,
-    // TODO: this is supposed to eventually *replace* part of the linearization, at
-    // which point we'll rename `LinRegistry`
+    // TODO: these are supposed to eventually *replace* part of the linearization, at
+    // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId, everything>)
     pub position_lookups: HashMap<FileId, PositionLookup>,
+    pub usage_lookups: HashMap<FileId, UsageLookup>,
 }
 
 impl LinRegistry {
@@ -54,6 +57,7 @@ impl LinRegistry {
         self.map.insert(file_id, linearization);
         self.position_lookups
             .insert(file_id, PositionLookup::new(term));
+        self.usage_lookups.insert(file_id, UsageLookup::new(term));
     }
 
     /// Look for the linearization corresponding to an item's id, and return the corresponding item
@@ -61,6 +65,11 @@ impl LinRegistry {
     pub fn get_item(&self, id: ItemId) -> Option<&LinearizationItem<Resolved>> {
         let lin = self.map.get(&id.file_id).unwrap();
         lin.get_item(id)
+    }
+
+    pub fn get_def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
+        let file = ident.pos.as_opt_ref()?.src_id;
+        self.usage_lookups.get(&file)?.def(ident)
     }
 }
 
@@ -279,31 +288,24 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     .to_owned()
                     .inner()
                     .into_iter()
-                    .flat_map(|matched| matched.as_flattened_bindings())
+                    .flat_map(|matched| matched.to_flattened_bindings())
                 {
-                    // We cannot have an empty vector because a bound variable inside
-                    // a record pattern must have at least one item in it's path,
-                    // namely, the record field. i.e if we have: `let {a = value, ..} = ... in ...`
-                    // the path will be `vec![a]`, and this is the smallest possible case for a
-                    // record pattern which binds variables.
-                    let ident = path.first().unwrap();
                     let id = ItemId {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
                     };
 
                     let_pattern_bindings.push(id);
-                    let new_ident = bind_ident.unwrap_or(*ident);
-                    self.env.insert(new_ident.symbol(), id);
+                    self.env.insert(bind_ident.symbol(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
                         id,
                         // TODO: get type from pattern
                         ty: UnifType::concrete(TypeF::Dyn),
-                        pos: new_ident.pos,
+                        pos: bind_ident.pos,
                         kind: TermKind::Declaration {
-                            id: new_ident.to_owned(),
+                            id: bind_ident,
                             usages: Vec::new(),
                             value: ValueState::Unknown,
                             path: Some(path),
@@ -415,7 +417,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                     file_id: self.file,
                                     index: id.index - 1,
                                 },
-                                child: accessor.to_owned(),
+                                child: accessor.to_owned().into(),
                             }),
                             metadata: self.meta.take(),
                         });
@@ -451,7 +453,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                                     file_id: self.file,
                                     index: id,
                                 },
-                                ident,
+                                ident.into(),
                             )
                         })
                         .rev()
@@ -460,7 +462,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             }
             Term::Op1(UnaryOp::StaticAccess(ident), _) => {
                 let x = self.access.get_or_insert(Vec::with_capacity(1));
-                x.push(ident.to_owned())
+                x.push(ident.to_owned().into())
             }
             Term::Annotated(annot, _) => {
                 // Notice 1: No push to lin for the `FieldMetadata` itself
@@ -566,12 +568,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         let mut name_reg = NameReg::new(reported_names);
 
         // TODO: Storing defers while linearizing?
-        let mut defers: Vec<(ItemId, ItemId, LocIdent)> = lin
+        let mut defers: Vec<_> = lin
             .linearization
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, *child))
+                    Some((item.id, *parent, child.symbol()))
                 }
                 _ => None,
             })
@@ -677,7 +679,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     fn retype_ident(
         &mut self,
         lin: &mut Linearization<Building>,
-        ident: &LocIdent,
+        ident: &nickel_lang_core::identifier::LocIdent,
         new_type: UnifType,
     ) {
         if let Some(item) = self

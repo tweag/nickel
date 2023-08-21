@@ -33,7 +33,8 @@ pub enum FieldPattern {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Match {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
-    /// first field of this variant and `b` the optional one. The last field can actualy be a
+    /// first field of this variant. Any annotations or metadata associated with `a` go into
+    /// the `Field` field, and `b` goes into the `FieldPattern` field, which can actually be a
     /// nested destruct pattern.
     Assign(LocIdent, Field, FieldPattern),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
@@ -187,7 +188,7 @@ impl Match {
     /// Returns info about each variable bound in a particular pattern.
     /// It also tells the "path" to the bound variable; this is just the
     /// record field names traversed to get to a pattern.
-    pub fn as_flattened_bindings(self) -> Vec<(Vec<LocIdent>, Option<LocIdent>, Field)> {
+    pub fn to_flattened_bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
         fn get_span(id: &LocIdent, pattern: &RecordPattern) -> RawSpan {
             RawSpan::fuse(id.pos.unwrap(), pattern.span).unwrap()
         }
@@ -195,10 +196,10 @@ impl Match {
         fn flatten_matches(
             id: &LocIdent,
             matches: &[Match],
-        ) -> Vec<(Vec<LocIdent>, Option<LocIdent>, Field)> {
+        ) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
             matches
                 .iter()
-                .flat_map(|m| m.clone().as_flattened_bindings())
+                .flat_map(|m| m.to_flattened_bindings())
                 .map(|(mut path, bind, field)| {
                     path.push(*id);
                     (path, bind, field)
@@ -207,43 +208,45 @@ impl Match {
         }
 
         match self {
-            Match::Simple(id, field) => vec![(vec![id], None, field)],
+            Match::Simple(id, field) => vec![(vec![*id], *id, field.clone())],
             Match::Assign(id, field, FieldPattern::Ident(bind_id)) => {
-                vec![(vec![id], Some(bind_id), field)]
+                vec![(vec![*id], *bind_id, field.clone())]
             }
             Match::Assign(
                 id,
-                mut field,
+                field,
                 FieldPattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
             ) => {
-                let span = get_span(&id, pattern);
+                let span = get_span(id, pattern);
                 let pattern = pattern.clone();
+                let mut field = field.clone();
                 field
                     .metadata
                     .annotation
                     .contracts
                     .push(pattern.into_contract_with_span(span));
 
-                flatten_matches(&id, matches)
+                flatten_matches(id, matches)
             }
             Match::Assign(
                 id,
-                mut field,
+                field,
                 FieldPattern::AliasedRecordPattern {
                     alias: bind_id,
                     pattern: ref pattern @ RecordPattern { ref matches, .. },
                 },
             ) => {
-                let span = get_span(&id, pattern);
+                let span = get_span(id, pattern);
                 let pattern = pattern.clone();
+                let mut field = field.clone();
                 field
                     .metadata
                     .annotation
                     .contracts
                     .push(pattern.into_contract_with_span(span));
 
-                let mut flattened = flatten_matches(&id, matches);
-                flattened.push((vec![id], Some(bind_id), field));
+                let mut flattened = flatten_matches(id, matches);
+                flattened.push((vec![*id], *bind_id, field));
                 flattened
             }
         }

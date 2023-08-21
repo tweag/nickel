@@ -4,7 +4,7 @@ use codespan::FileId;
 use log::debug;
 use nickel_lang_core::{
     cache::Cache,
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     position::TermPos,
     term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
@@ -115,7 +115,7 @@ impl<'b> Building<'b> {
         &mut self,
         current_file: FileId,
         record_term: &RichTerm,
-        record_fields: &IndexMap<LocIdent, Field>,
+        record_fields: &IndexMap<nickel_lang_core::identifier::LocIdent, Field>,
         record: ItemId,
         env: &mut Environment,
     ) {
@@ -235,9 +235,9 @@ impl<'b> Building<'b> {
     pub(super) fn resolve_record_references(
         &mut self,
         current_file: FileId,
-        mut defers: Vec<(ItemId, ItemId, LocIdent)>,
-    ) -> Vec<(ItemId, ItemId, LocIdent)> {
-        let mut unresolved: Vec<(ItemId, ItemId, LocIdent)> = Vec::new();
+        mut defers: Vec<(ItemId, ItemId, Ident)>,
+    ) -> Vec<(ItemId, ItemId, Ident)> {
+        let mut unresolved: Vec<(ItemId, ItemId, Ident)> = Vec::new();
 
         while let Some(deferred) = defers.pop() {
             // child_item: current deferred usage item
@@ -274,11 +274,9 @@ impl<'b> Building<'b> {
                 // get record field
                 .and_then(|parent_declaration| match &parent_declaration {
                     TermKind::Record(fields) => {
-                        fields
-                            .get(&child_ident.symbol())
-                            .and_then(|child_declaration_id| {
-                                self.get_item_kind_with_id(current_file, *child_declaration_id)
-                            })
+                        fields.get(child_ident).and_then(|child_declaration_id| {
+                            self.get_item_kind_with_id(current_file, *child_declaration_id)
+                        })
                     }
                     _ => None,
                 });

@@ -3,20 +3,10 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{RichTerm, SharedTerm, Traverse, TraverseControl},
+    term::{RichTerm, Traverse, TraverseControl},
 };
 
-// A term that uses pointer equality and source position to implement Eq.
-#[derive(Clone, Debug)]
-struct RichTermPtr(RichTerm);
-
-impl PartialEq for RichTermPtr {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.pos == other.0.pos && SharedTerm::ptr_eq(&self.0.term, &other.0.term)
-    }
-}
-
-impl Eq for RichTermPtr {}
+use crate::term::RichTermPtr;
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -119,8 +109,7 @@ impl PositionLookup {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(rt: &RichTerm) -> Self {
         let mut all_ranges = Vec::new();
-
-        rt.traverse_ref(&mut |term: &RichTerm| {
+        let mut fun = |term: &RichTerm| {
             if let TermPos::Original(pos) = &term.pos {
                 all_ranges.push((
                     Range {
@@ -131,7 +120,9 @@ impl PositionLookup {
                 ));
             }
             TraverseControl::<()>::Continue
-        });
+        };
+
+        rt.traverse_ref(&mut fun);
 
         PositionLookup {
             ranges: make_disjoint(all_ranges),
@@ -159,9 +150,9 @@ impl PositionLookup {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use assert_matches::assert_matches;
-    use codespan::{ByteIndex, Files};
+    use codespan::{ByteIndex, FileId, Files};
     use nickel_lang_core::{
         parser::{grammar, lexer, ErrorTolerantParser},
         term::{RichTerm, Term, UnaryOp},
@@ -169,17 +160,18 @@ mod tests {
 
     use super::PositionLookup;
 
-    fn parse(s: &str) -> RichTerm {
+    pub fn parse(s: &str) -> (FileId, RichTerm) {
         let id = Files::new().add("<test>", String::from(s));
 
-        grammar::TermParser::new()
+        let term = grammar::TermParser::new()
             .parse_strict(id, lexer::Lexer::new(s))
-            .unwrap()
+            .unwrap();
+        (id, term)
     }
 
     #[test]
     fn find_pos() {
-        let rt = parse("let x = { y = 1 } in x.y");
+        let (_, rt) = parse("let x = { y = 1 } in x.y");
         let table = PositionLookup::new(&rt);
 
         // Index 14 points to the 1 in { y = 1 }
@@ -196,7 +188,7 @@ mod tests {
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let rt = parse(
+        let (_, rt) = parse(
             "{ range_step\
                 | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)\
                 = fun a b c => []\
@@ -210,7 +202,7 @@ mod tests {
 
         // This case has some mutual recursion between types and terms, which hit a bug in our
         // initial version.
-        let rt = parse("let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y");
+        let (_, rt) = parse("let x | { _ : { foo : Number | default = 1 } } = {} in x.PATH.y");
         let table = PositionLookup::new(&rt);
         assert_matches!(
             table.get(ByteIndex(8)).unwrap().term.as_ref(),
