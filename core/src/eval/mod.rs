@@ -382,8 +382,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::Var(x) => {
                     let mut idx = env
-                        .get(&x.symbol())
-                        .or_else(|| initial_env.get(&x.symbol()))
+                        .get(&x.ident())
+                        .or_else(|| initial_env.get(&x.ident()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
                     std::mem::drop(env); // idx may be a 1RC pointer
@@ -454,10 +454,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if *rec {
                         let idx_ = idx.clone();
                         self.cache
-                            .patch(idx_.clone(), |cl| cl.env.insert(x.symbol(), idx_.clone()));
+                            .patch(idx_.clone(), |cl| cl.env.insert(x.ident(), idx_.clone()));
                     }
 
-                    env.insert(x.symbol(), idx);
+                    env.insert(x.ident(), idx);
                     Closure {
                         body: t.clone(),
                         env,
@@ -735,7 +735,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Fun(x, t) => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
-                        env.insert(x.symbol(), idx);
+                        env.insert(x.ident(), idx);
                         Closure {
                             body: t.clone(),
                             env,
@@ -897,7 +897,7 @@ pub fn env_add_record<C: Cache>(
                 let ext = record.fields.into_iter().filter_map(|(id, field)| {
                     field.value.map(|value|
                     (
-                        id.symbol(),
+                        id.ident(),
                         cache.add(
                             Closure { body: value, env: closure.env.clone() },
                             IdentKind::Record,
@@ -926,7 +926,7 @@ pub fn env_add<C: Cache>(
         env: local_env,
     };
     env.insert(
-        id.symbol(),
+        id.ident(),
         cache.add(closure, IdentKind::Let, BindingType::Normal),
     );
 }
@@ -949,8 +949,8 @@ pub fn subst<C: Cache>(
 
     match term.into_owned() {
         Term::Var(id) => env
-            .get(&id.symbol())
-            .or_else(|| initial_env.get(&id.symbol()))
+            .get(&id.ident())
+            .or_else(|| initial_env.get(&id.ident()))
             .map(|idx| {
                 let closure = cache.get(idx.clone());
                 subst(cache, closure.body, initial_env, &closure.env)

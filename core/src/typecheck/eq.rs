@@ -241,8 +241,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
-            env1.get_then(id1.symbol(), |binding1| {
-                env2.get_then(id2.symbol(), |binding2| {
+            env1.get_then(id1.ident(), |binding1| {
+                env2.get_then(id2.ident(), |binding2| {
                     match (binding1, binding2) {
                         (None, None) => id1 == id2,
                         (Some((t1, env1)), Some((t2, env2))) => {
@@ -260,7 +260,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (Var(id), _) => {
             state.use_gas()
-                && env1.get_then(id.symbol(), |binding| {
+                && env1.get_then(id.ident(), |binding| {
                     binding
                         .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)
@@ -268,7 +268,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         }
         (_, Var(id)) => {
             state.use_gas()
-                && env2.get_then(id.symbol(), |binding| {
+                && env2.get_then(id.ident(), |binding| {
                     binding
                         .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
                         .unwrap_or(false)

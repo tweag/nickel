@@ -122,7 +122,7 @@ impl UsageLookup {
 
                 for m in &pat.matches {
                     for (path, id, field) in m.to_flattened_bindings() {
-                        let path = path.iter().map(|i| i.symbol()).rev().collect();
+                        let path = path.iter().map(|i| i.ident()).rev().collect();
                         let term = TermAtPath {
                             term: val.clone(),
                             path,

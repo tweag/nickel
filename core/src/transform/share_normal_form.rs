@@ -78,7 +78,7 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 let mut bindings = Vec::with_capacity(record_data.fields.len());
 
                 let fields = record_data.fields.into_iter().map(|(id, field)| {
-                    let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id.symbol())).cloned();
+                    let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id.ident())).cloned();
                     (id, transform_rec_field(field, field_deps, &mut bindings))
                 }).collect();
 

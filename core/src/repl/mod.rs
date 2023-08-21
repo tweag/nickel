@@ -132,10 +132,11 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 &self.env.type_ctxt.term_env,
                 self.vm.import_resolver(),
             );
-            self.env.type_ctxt.term_env.0.insert(
-                id.symbol(),
-                (t.clone(), self.env.type_ctxt.term_env.clone()),
-            );
+            self.env
+                .type_ctxt
+                .term_env
+                .0
+                .insert(id.ident(), (t.clone(), self.env.type_ctxt.term_env.clone()));
         }
 
         for id in &pending {

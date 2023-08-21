@@ -150,7 +150,7 @@ fn find_fields_from_term_kind(
                     })
                     .collect()
             } else {
-                let id = path.pop().and_then(|name| fields.get(&name.symbol()));
+                let id = path.pop().and_then(|name| fields.get(&name.ident()));
                 match id {
                     Some(id) => find_fields_from_term_kind(
                         *id,
@@ -287,7 +287,7 @@ fn find_fields_from_rrows(
                 _ => None,
             })
             .map(|(ident, types)| IdentWithType {
-                ident: ident.symbol(),
+                ident: ident.ident(),
                 meta: None,
                 ty: types.clone(),
             })
@@ -331,7 +331,7 @@ fn find_fields_from_term(
                 .fields
                 .iter()
                 .map(|(ident, field)| IdentWithType {
-                    ident: ident.symbol(),
+                    ident: ident.ident(),
                     // This Dyn type is only displayed if the metadata's
                     // contract or type annotation is not present.
                     ty: Type::from(TypeF::Dyn),
@@ -551,7 +551,7 @@ fn get_completion_identifiers(
         server: &Server,
         path: &mut Vec<LocIdent>,
     ) -> Vec<IdentWithType> {
-        let Some(item_id) = item.env.get(&name.symbol()) else {
+        let Some(item_id) = item.env.get(&name.ident()) else {
             return Vec::new()
         };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
@@ -639,7 +639,7 @@ fn get_completion_identifiers(
                     .filter_map(|i| match i.kind {
                         TermKind::Declaration { id: ident, .. }
                         | TermKind::RecordField { ident, .. } => Some(IdentWithType {
-                            ident: ident.symbol(),
+                            ident: ident.ident(),
                             meta: item.metadata.clone(),
                             ty: ty.clone(),
                         }),
@@ -663,7 +663,7 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
 
     loop {
         if let Term::Op1(UnaryOp::StaticAccess(id), parent) = rt.term.as_ref() {
-            path.push(id.symbol());
+            path.push(id.ident());
             rt = parent.clone();
         } else {
             path.reverse();

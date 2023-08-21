@@ -147,7 +147,7 @@ impl Closurizable for RichTerm {
 
         let idx = match self.as_ref() {
             Term::Var(id) if id.is_generated() => {
-                with_env.get(&id.symbol()).cloned().unwrap_or_else(|| {
+                with_env.get(&id.ident()).cloned().unwrap_or_else(|| {
                     panic!(
                 "Internal error(closurize) : generated identifier {id} not found in the environment"
             )
@@ -162,7 +162,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var.symbol(), idx);
+        env.insert(var.ident(), idx);
         RichTerm::new(Term::Var(var), pos.into_inherited())
     }
 }

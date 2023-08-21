@@ -920,7 +920,7 @@ pub fn constr_unify_rrows(
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::Extend { row, .. },
                 ..
-            } if p_constr.contains(&row.id.symbol()) => Err(RowUnifError::UnsatConstr(
+            } if p_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
                 row.id,
                 UnifType::concrete(TypeF::Record(rrows.clone())),
             )),
@@ -1371,7 +1371,7 @@ impl RemoveRow for UnifRecordRows {
                     row: next_row,
                     tail,
                 } => {
-                    if target.symbol() == next_row.id.symbol() {
+                    if target.ident() == next_row.id.ident() {
                         Ok((*next_row.typ, *tail))
                     } else {
                         let (extracted_row, rest) = tail.remove_row(target, state, var_level)?;
@@ -1388,7 +1388,7 @@ impl RemoveRow for UnifRecordRows {
             UnifRecordRows::UnifVar { id: var_id, .. } => {
                 let excluded = state.constr.entry(var_id).or_default();
 
-                if !excluded.insert(target.symbol()) {
+                if !excluded.insert(target.ident()) {
                     return Err(RemoveRRowError::Conflict);
                 }
 

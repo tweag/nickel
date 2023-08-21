@@ -489,12 +489,12 @@ impl Saturate for RichTerm {
     ) -> Result<RichTerm, EvalError> {
         if let Term::Var(var_id) = &*self.term {
             let idx = local_env
-                .get(&var_id.symbol())
+                .get(&var_id.ident())
                 .cloned()
                 .ok_or(EvalError::UnboundIdentifier(*var_id, self.pos))?;
 
             Ok(cache
-                .saturate(idx, env, fields.map(LocIdent::symbol))
+                .saturate(idx, env, fields.map(LocIdent::ident))
                 .with_pos(self.pos))
         } else {
             Ok(self)
@@ -510,7 +510,7 @@ fn field_deps<C: Cache>(
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Var(var_id) = &*rt.term {
         local_env
-            .get(&var_id.symbol())
+            .get(&var_id.ident())
             .map(|idx| cache.deps(idx).unwrap_or_else(FieldDeps::empty))
             .ok_or(EvalError::UnboundIdentifier(*var_id, rt.pos))
     } else {
@@ -556,7 +556,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
     // new_rev takes care of not creating a revertible element in the cache if the dependencies are empty.
     env.insert(
-        fresh_var.symbol(),
+        fresh_var.ident(),
         cache.add(
             closure,
             IdentKind::Record,
@@ -587,9 +587,9 @@ impl RevertClosurize for RichTerm {
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
             // This create a fresh variable which is bound to a reverted copy of the original element
-            let reverted = cache.revert(with_env.get(&id.symbol()).unwrap());
+            let reverted = cache.revert(with_env.get(&id.ident()).unwrap());
             let fresh_id = LocIdent::fresh();
-            env.insert(fresh_id.symbol(), reverted);
+            env.insert(fresh_id.ident(), reverted);
             RichTerm::new(Term::Var(fresh_id), self.pos)
         } else {
             // Otherwise, if it is not a variable after the share normal form transformations, it

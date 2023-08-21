@@ -139,8 +139,8 @@ impl<'b> Building<'b> {
                 },
                 metadata: Some(field.metadata.clone()),
             });
-            env.insert(ident.symbol(), id);
-            self.add_record_field(current_file, record, (ident.symbol(), id))
+            env.insert(ident.ident(), id);
+            self.add_record_field(current_file, record, (ident.ident(), id))
         }
     }
 
@@ -188,7 +188,7 @@ impl<'b> Building<'b> {
                 while let Some(id) = ids.pop() {
                     match curr_item {
                         TermKind::Record(ref fields) => {
-                            let item = fields.get(&id.symbol())?;
+                            let item = fields.get(&id.ident())?;
                             let item_kind = self.get_item_kind(current_file, *item)?;
                             match item_kind {
                                 TermKind::RecordField {

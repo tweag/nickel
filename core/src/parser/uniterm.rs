@@ -90,7 +90,7 @@ impl TryFrom<UniTerm> for Type {
 
     fn try_from(ut: UniTerm) -> Result<Self, ParseError> {
         let ty_without_pos = match ut.node {
-            UniTermNode::Var(id) => Type::from(TypeF::Var(id.symbol())),
+            UniTermNode::Var(id) => Type::from(TypeF::Var(id.ident())),
             UniTermNode::Record(r) => Type::try_from(r)?,
             UniTermNode::Type(ty) => ty,
             UniTermNode::Term(rt) => Type::from(TypeF::Flat(rt)),
@@ -237,7 +237,7 @@ impl UniRecord {
                     // we might already have found a definition for this field, or might do later
                     // in the loop.
                     if let Some(ident) = path_as_ident {
-                        match candidate_fields.entry(ident.symbol()) {
+                        match candidate_fields.entry(ident.ident()) {
                             // If the hashmap is occupied, we've met this field before. Either
                             // there is another definition without annotation, in which case
                             // there's no need to replace it, or there is a `Defined` element,
@@ -260,7 +260,7 @@ impl UniRecord {
                 }
                 field => {
                     if let (Some(ident), Some(_)) = (path_as_ident, &field.value) {
-                        candidate_fields.insert(ident.symbol(), FieldState::Defined);
+                        candidate_fields.insert(ident.ident(), FieldState::Defined);
                     }
 
                     None
@@ -418,7 +418,7 @@ impl UniRecord {
                                 LocIdent::new_with_pos(name, expr.pos)
                             }
                         };
-                        if let Some(prev_id) = fields_seen.insert(id.symbol(), id) {
+                        if let Some(prev_id) = fields_seen.insert(id.ident(), id) {
                             return Err(InvalidRecordTypeError::RepeatedField {
                                 // Because we're iterating backwards, `id` came first.
                                 orig: id.pos.unwrap(),
@@ -698,7 +698,7 @@ impl FixTypeVars for Type {
                 // We span a new VarKindCell and put it in the environment. The recursive calls to
                 // fix_type_vars will fill this cell with the correct kind, which we get afterwards
                 // to set the right value for `var_kind`.
-                bound_vars.insert(var.symbol(), VarKindCell::new());
+                bound_vars.insert(var.ident(), VarKindCell::new());
 // let x : forall a. { _foo: forall a. a, bar: { ; a } }
                 (*body).fix_type_vars_env(bound_vars.clone(), span)?;
                 // unwrap(): We just inserted a value for `var` above, and environment can never
@@ -707,7 +707,7 @@ impl FixTypeVars for Type {
                 // access to this VarKindCell in bound_vars. We can avoid a clone by taking
                 // the var_kind out. We could also take the whole key value pair out of the
                 // `Environment`, but ownership there is trickier.
-                *var_kind = bound_vars.get(&var.symbol()).unwrap().take_var_kind().unwrap_or_default();
+                *var_kind = bound_vars.get(&var.ident()).unwrap().take_var_kind().unwrap_or_default();
 
                 Ok(())
             }
@@ -738,7 +738,7 @@ impl FixTypeVars for RecordRows {
                 // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
                 // have to set the correct kind for the corresponding forall binder.
                 RecordRowsF::TailVar(ref id) => {
-                    if let Some(cell) = bound_vars.get(&id.symbol()) {
+                    if let Some(cell) = bound_vars.get(&id.ident()) {
                         cell.try_set(VarKind::RecordRows {
                             excluded: maybe_excluded,
                         })
@@ -750,7 +750,7 @@ impl FixTypeVars for RecordRows {
                     ref mut row,
                     ref mut tail,
                 } => {
-                    maybe_excluded.insert(row.id.symbol());
+                    maybe_excluded.insert(row.id.ident());
                     row.typ.fix_type_vars_env(bound_vars.clone(), span)?;
                     helper(tail, bound_vars, span, maybe_excluded)
                 }
@@ -777,7 +777,7 @@ impl FixTypeVars for EnumRows {
             .skip_while(|item| matches!(item, EnumRowsIteratorItem::Row(_)));
         match iter.next() {
             Some(EnumRowsIteratorItem::TailVar(id)) => {
-                if let Some(cell) = bound_vars.get(&id.symbol()) {
+                if let Some(cell) = bound_vars.get(&id.ident()) {
                     cell.try_set(VarKind::EnumRows)
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
                 }

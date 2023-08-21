@@ -188,7 +188,7 @@ impl FieldDefs {
                     .iter()
                     .map(|(&ident, field)| {
                         (
-                            ident.symbol(),
+                            ident.ident(),
                             vec![Def {
                                 ident: ident.into(),
                                 value: field.value.clone().map(From::from),
