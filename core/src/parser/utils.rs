@@ -20,7 +20,7 @@ use crate::{
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
         *,
     },
-    typ::{Type, TypeF},
+    typ::Type,
 };
 
 use malachite::num::conversion::traits::FromSciString;
@@ -276,6 +276,16 @@ impl Annot for FieldMetadata {
     }
 }
 
+impl<T: Annot> Annot for Option<T> {
+    fn combine(outer: Self, inner: Self) -> Self {
+        match (outer, inner) {
+            (None, None) => None,
+            (None, Some(x)) | (Some(x), None) => Some(x),
+            (Some(outer), Some(inner)) => Some(Annot::combine(outer, inner)),
+        }
+    }
+}
+
 impl AttachTerm<Field> for FieldMetadata {
     fn attach_term(self, rt: RichTerm) -> Field {
         Field {
@@ -324,54 +334,23 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
     }
 }
 
-/// Used to combine annotations in a pattern. If at least one annotation is not `None`, then this
-/// just calls [`Annot::combine`] and substitute a potential `None` by the default value.
-///
-/// If both arguments are `None`, we still need a label to report useful error diagnostics. In this
-/// case, `combine_match_annots` returns a value with a dummy `Dyn` contract and a label with the
-/// position set to `span`.
-pub fn combine_match_annots(
-    anns: Option<FieldMetadata>,
-    default: Option<Field>,
-    span: RawSpan,
-) -> Field {
-    match (anns, default) {
-        (anns @ Some(_), default) | (anns, default @ Some(_)) => {
-            let Field {
-                value: default_value,
-                metadata: default_metadata,
-                pending_contracts,
-            } = default.unwrap_or_default();
+/// Combine annotations in a pattern. If at least one annotation is not `None`,
+/// then this just calls [`Annot::combine`] and substitutes a potential `None`
+/// by the default value.
+pub fn metadata_with_default(anns: Option<FieldMetadata>, default: Option<RichTerm>) -> Field {
+    let metadata = Annot::combine(
+        anns,
+        default.is_some().then_some(FieldMetadata {
+            priority: MergePriority::Bottom,
+            ..Default::default()
+        }),
+    )
+    .unwrap_or_default();
 
-            Field {
-                value: default_value,
-                metadata: Annot::combine(anns.unwrap_or_default(), default_metadata),
-                pending_contracts,
-            }
-        }
-        (None, None) => {
-            let dummy_annot = TypeAnnotation {
-                contracts: vec![LabeledType {
-                    typ: Type {
-                        typ: TypeF::Dyn,
-                        pos: TermPos::Original(span),
-                    },
-                    label: Label {
-                        span,
-                        ..Default::default()
-                    },
-                }],
-                ..Default::default()
-            };
-
-            Field {
-                metadata: FieldMetadata {
-                    annotation: dummy_annot,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-        }
+    Field {
+        value: default,
+        metadata,
+        ..Default::default()
     }
 }
 

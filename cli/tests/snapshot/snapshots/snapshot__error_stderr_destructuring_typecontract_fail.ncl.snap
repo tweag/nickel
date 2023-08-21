@@ -1,0 +1,13 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: contract broken by a value
+  ┌─ [INPUTS_PATH]/errors/destructuring_typecontract_fail.ncl:3:23
+  │
+3 │ let {a | String} = {a=1} in
+  │          ------       ^ applied to this expression
+  │          │             
+  │          expected type
+
+

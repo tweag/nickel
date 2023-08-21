@@ -113,40 +113,37 @@ impl RecordPattern {
 
     /// Generate the contract elaborated from this pattern.
     pub fn into_contract(self) -> LabeledType {
-        let label = self.label();
-        self.into_contract_with_lbl(label)
+        let span = self.span;
+        self.into_contract_with_span(span)
     }
 
-    fn into_contract_with_lbl(self, label: Label) -> LabeledType {
+    fn into_contract_with_span(self, span: RawSpan) -> LabeledType {
         let is_open = self.is_open();
-        let pos = TermPos::Original(self.span);
+        let pos = TermPos::Original(span);
+        let typ = Type {
+            typ: TypeF::Flat(
+                Term::Record(RecordData::new(
+                    self.inner().into_iter().map(Match::as_binding).collect(),
+                    RecordAttrs { open: is_open },
+                    None,
+                ))
+                .into(),
+            ),
+            pos,
+        };
         LabeledType {
-            typ: Type {
-                typ: TypeF::Flat(
-                    Term::Record(RecordData::new(
-                        self.inner().into_iter().map(Match::as_binding).collect(),
-                        RecordAttrs { open: is_open },
-                        None,
-                    ))
-                    .into(),
-                ),
-                pos,
+            typ: typ.clone(),
+            label: Label {
+                typ: typ.into(),
+                span,
+                ..Default::default()
             },
-            label,
         }
     }
 
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
     pub fn inner(self) -> Vec<Match> {
         self.matches
-    }
-
-    // Generate a label for this `Destruct`. if `Empty`, return default label.
-    fn label(&self) -> Label {
-        Label {
-            span: self.span,
-            ..Default::default()
-        }
     }
 
     /// Is this pattern open? Does it finish with `, ..}` form?
@@ -175,13 +172,12 @@ impl Match {
                 FieldPattern::RecordPattern(pattern)
                 | FieldPattern::AliasedRecordPattern { pattern, .. },
             ) => {
-                let mut label = pattern.label();
-                label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
+                let span = RawSpan::fuse(id.pos.unwrap(), pattern.span).unwrap();
                 field
                     .metadata
                     .annotation
                     .contracts
-                    .push(pattern.into_contract_with_lbl(label));
+                    .push(pattern.into_contract_with_span(span));
 
                 (id, field)
             }
@@ -192,10 +188,8 @@ impl Match {
     /// It also tells the "path" to the bound variable; this is just the
     /// record field names traversed to get to a pattern.
     pub fn as_flattened_bindings(self) -> Vec<(Vec<LocIdent>, Option<LocIdent>, Field)> {
-        fn get_label(id: &LocIdent, pattern: &RecordPattern) -> Label {
-            let mut label = pattern.label();
-            label.span = RawSpan::fuse(id.pos.unwrap(), label.span).unwrap();
-            label
+        fn get_span(id: &LocIdent, pattern: &RecordPattern) -> RawSpan {
+            RawSpan::fuse(id.pos.unwrap(), pattern.span).unwrap()
         }
 
         fn flatten_matches(
@@ -222,13 +216,13 @@ impl Match {
                 mut field,
                 FieldPattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
             ) => {
-                let label = get_label(&id, pattern);
+                let span = get_span(&id, pattern);
                 let pattern = pattern.clone();
                 field
                     .metadata
                     .annotation
                     .contracts
-                    .push(pattern.into_contract_with_lbl(label));
+                    .push(pattern.into_contract_with_span(span));
 
                 flatten_matches(&id, matches)
             }
@@ -240,13 +234,13 @@ impl Match {
                     pattern: ref pattern @ RecordPattern { ref matches, .. },
                 },
             ) => {
-                let label = get_label(&id, pattern);
+                let span = get_span(&id, pattern);
                 let pattern = pattern.clone();
                 field
                     .metadata
                     .annotation
                     .contracts
-                    .push(pattern.into_contract_with_lbl(label));
+                    .push(pattern.into_contract_with_span(span));
 
                 let mut flattened = flatten_matches(&id, matches);
                 flattened.push((vec![id], Some(bind_id), field));

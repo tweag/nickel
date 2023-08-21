@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unbound identifier `a`
+  ┌─ [INPUTS_PATH]/errors/destructuring_assign_fail.ncl:4:4
+  │
+4 │ in a == 1
+  │    ^ this identifier is unbound
+
+
