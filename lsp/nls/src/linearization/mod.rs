@@ -573,7 +573,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, (*child).symbol()))
+                    Some((item.id, *parent, child.symbol()))
                 }
                 _ => None,
             })
