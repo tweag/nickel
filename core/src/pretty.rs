@@ -217,45 +217,39 @@ where
         metadata: &FieldMetadata,
         with_doc: bool,
     ) -> DocBuilder<'a, Self, A> {
-        self.annot_part(&metadata.annotation)
-            .append(if with_doc {
+        docs![
+            self,
+            self.annot_part(&metadata.annotation),
+            if with_doc {
                 metadata
                     .doc
                     .clone()
                     .map(|doc| {
-                        self.line()
-                            .append(self.text("|"))
-                            .append(self.space())
-                            .append(self.text("doc"))
-                            .append(self.space())
-                            .append(
-                                self.chunks(
-                                    &[StrChunk::Literal(doc)],
-                                    StringRenderStyle::Multiline,
-                                ),
-                            )
+                        docs![
+                            self,
+                            self.line(),
+                            "| doc ",
+                            self.chunks(&[StrChunk::Literal(doc)], StringRenderStyle::Multiline),
+                        ]
                     })
                     .unwrap_or_else(|| self.nil())
             } else {
                 self.nil()
-            })
-            .append(if metadata.opt {
-                self.line().append(self.text("| optional"))
+            },
+            if metadata.opt {
+                docs![self, self.line(), "| optional"]
             } else {
                 self.nil()
-            })
-            .append(match &metadata.priority {
+            },
+            match &metadata.priority {
                 MergePriority::Bottom => self.line().append(self.text("| default")),
                 MergePriority::Neutral => self.nil(),
-                MergePriority::Numeral(p) => self
-                    .line()
-                    .append(self.text("| priority"))
-                    .append(self.space())
-                    .append(self.as_string(p.to_sci())),
+                MergePriority::Numeral(p) =>
+                    docs![self, self.line(), "| priority ", p.to_sci().to_string()],
                 MergePriority::Top => self.line().append(self.text("| force")),
-            })
-            .nest(2)
-            .group()
+            }
+        ]
+        .group()
     }
 
     fn field(&'a self, id: &LocIdent, field: &Field) -> DocBuilder<'a, Self, A> {
@@ -297,12 +291,12 @@ where
                     },
                     docs![self, "=", self.line(), value.pretty(self).nest(2)]
                 ]
-                .nest(2)
             } else {
                 self.nil()
             },
             ","
         ]
+        .nest(2)
     }
 
     fn fields(&'a self, fields: &IndexMap<LocIdent, Field>) -> DocBuilder<'a, Self, A> {
@@ -502,8 +496,10 @@ where
             rest,
             ..
         } = self;
-        allocator
-            .intersperse(
+        docs![
+            allocator,
+            allocator.line(),
+            allocator.intersperse(
                 matches.iter().map(|m| {
                     let (id, field, pattern_opt) = match m {
                         destructuring::Match::Simple(id, field) => (id, field, None),
@@ -511,10 +507,10 @@ where
                             (id, field, Some(pattern))
                         }
                     };
-                    allocator
-                        .as_string(id)
-                        .append(allocator.space())
-                        .append(match field {
+                    docs![
+                        allocator,
+                        id.to_string(),
+                        match field {
                             Field {
                                 value: Some(value),
                                 metadata:
@@ -524,44 +520,50 @@ where
                                         ..
                                     },
                                 ..
-                            } => allocator
-                                .text("?")
-                                .append(allocator.space())
-                                .append(allocator.atom(value))
-                                .append(allocator.field_metadata(
+                            } => docs![
+                                allocator,
+                                allocator.field_metadata(
                                     &FieldMetadata {
                                         annotation: annotation.clone(),
                                         ..Default::default()
                                     },
-                                    false,
-                                )),
-                            field => allocator.field_metadata(&field.metadata, false),
-                        })
-                        .append(match pattern_opt {
-                            Some(pattern) => allocator
-                                .space()
-                                .append(allocator.text("="))
-                                .append(allocator.space())
-                                .append(pattern),
-                            None => allocator.nil(),
-                        })
+                                    false
+                                ),
+                                allocator.line(),
+                                "? ",
+                                allocator.atom(value),
+                            ],
+                            _ => allocator.field_metadata(&field.metadata, false),
+                        },
+                        match pattern_opt {
+                            Some(pattern) => docs![allocator, allocator.line(), "= ", pattern],
+                            _ => allocator.nil(),
+                        },
+                        ","
+                    ]
+                    .nest(2)
                 }),
-                allocator.text(",").append(allocator.space()),
-            )
-            .append(if *open {
-                allocator
-                    .text(",")
-                    .append(allocator.space())
-                    .append(allocator.text(".."))
-                    .append(if let Some(rest) = rest {
+                allocator.line()
+            ),
+            if *open {
+                docs![
+                    allocator,
+                    allocator.line(),
+                    "..",
+                    if let Some(rest) = rest {
                         allocator.as_string(rest)
                     } else {
                         allocator.nil()
-                    })
+                    },
+                ]
             } else {
                 allocator.nil()
-            })
-            .braces()
+            },
+        ]
+        .nest(2)
+        .append(allocator.line())
+        .braces()
+        .group()
     }
 }
 
@@ -690,47 +692,6 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            // LetPattern(opt_id, dst, rt, body) => allocator
-            //     .text("let")
-            //     .append(allocator.space())
-            //     .append(
-            //         (*opt_id)
-            //             .map(|id| {
-            //                 allocator.as_string(id).append(
-            //                     allocator
-            //                         .space()
-            //                         .append(allocator.text("@"))
-            //                         .append(allocator.space()),
-            //                 )
-            //             })
-            //             .unwrap_or_else(|| allocator.nil()),
-            //     )
-            //     .append(dst.pretty(allocator))
-            //     .append(if let Annotated(ref annot, _) = rt.as_ref() {
-            //         allocator.space().append(allocator.annot(annot))
-            //     } else {
-            //         allocator.nil()
-            //     })
-            //     .append(allocator.space())
-            //     .append(allocator.text("="))
-            //     .append(allocator.line())
-            //     .append(
-            //         if let Annotated(_, inner) = rt.as_ref() {
-            //             inner
-            //         } else {
-            //             rt
-            //         }
-            //         .to_owned()
-            //         .pretty(allocator)
-            //         .nest(2),
-            //     )
-            //     .append(allocator.line())
-            //     .append(allocator.text("in"))
-            //     .append(allocator.line_())
-            //     .group()
-            //     .append(allocator.line())
-            //     .append(body.to_owned().pretty(allocator))
-            //     .group(),
             App(rt1, rt2) => match rt1.as_ref() {
                 App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::Ite(), _)) => match iop.as_ref()
                 {
@@ -1454,11 +1415,55 @@ mod tests {
         );
     }
 
-    #[ignore]
     #[test]
     fn pretty_let_pattern() {
-        assert_long_short_term(r#"let foo @ { a = a', b } = c in {}"#, "");
-        assert_long_short_term(r#"let foo @ { a = a', b } | String = c in {}"#, "");
+        assert_long_short_term(
+            r#"let foo @ { a | Bool ? true = a', b ? false, } = c in {}"#,
+            indoc! {"
+                let foo @ {
+                    a
+                      | Bool
+                      ? true
+                      = a',
+                    b
+                      ? false,
+                  }
+                  = c
+                  in
+                {}"
+            },
+        );
+        assert_long_short_term(
+            r#"let foo @ { a = a', b = e @ { foo, .. }, } = c in {}"#,
+            indoc! {"
+                let foo @ {
+                    a
+                      = a',
+                    b
+                      = e @ {
+                        foo,
+                        ..
+                      },
+                  }
+                  = c
+                  in
+                {}"
+            },
+        );
+        assert_long_short_term(
+            r#"let foo @ { a = a', b, } | String = c in {}"#,
+            indoc! {"
+                let foo @ {
+                    a
+                      = a',
+                    b,
+                  }
+                  | String
+                  = c
+                  in
+                {}"
+            },
+        );
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
