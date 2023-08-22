@@ -185,18 +185,25 @@ where
                     StrChunk::Literal(s) => {
                         if multiline {
                             self.concat(
-                                s.lines()
-                                    .map(|s| self.text(s.to_owned()).append(self.hardline())),
+                                // We do this manually instead of using
+                                // `str::lines` because we need to be careful
+                                // about whether a trailing newline appears at
+                                // the end of the last line.
+                                s.split_inclusive('\n').map(|line| {
+                                    if let Some(s) = line.strip_suffix("\r\n") {
+                                        self.text(s.to_owned()).append(self.hardline())
+                                    } else if let Some(s) = line.strip_suffix('\n') {
+                                        self.text(s.to_owned()).append(self.hardline())
+                                    } else {
+                                        self.text(line.to_owned())
+                                    }
+                                }),
                             )
                         } else {
                             self.escaped_string(s)
                         }
                     }
-                    StrChunk::Expr(e, _i) => self
-                        .text(interp.clone())
-                        .append(self.text("{"))
-                        .append(e.pretty(self))
-                        .append(self.text("}")),
+                    StrChunk::Expr(e, _i) => docs![self, interp.clone(), "{", e.pretty(self), "}"],
                 }
             })))
             .nest(if multiline { 2 } else { 0 })
@@ -1429,6 +1436,21 @@ mod tests {
                   in
                 {}"
             },
+        );
+    }
+
+    #[test]
+    fn pretty_multiline_strings() {
+        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
+        assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
+
+        let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal(
+            "a multiline string\n\n\n\n".to_owned(),
+        )])
+        .into();
+        assert_eq!(
+            format!("{t}"),
+            "m%\"\n  a multiline string\n  \n  \n  \n  \n\"%"
         );
     }
 
