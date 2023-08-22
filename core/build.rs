@@ -20,7 +20,7 @@ fn main() {
 
         cxx_build::bridge("src/nix_ffi/mod.rs")
             .file("src/nix_ffi/cpp/nix.cc")
-            .flag_if_supported("-std=c++17")
+            .flag_if_supported("-std=c++20")
             .flag_if_supported("-U_FORTIFY_SOURCE") // Otherwise builds with `-O0` raise a lot of warnings
             .compile("nickel-lang");
 
