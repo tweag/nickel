@@ -373,7 +373,7 @@ impl RecordData {
                 Some(v) => {
                     let pos = v.pos;
                     Some(Ok((
-                        id.symbol(),
+                        id.ident(),
                         RuntimeContract::apply_all(v, field.pending_contracts.into_iter(), pos),
                     )))
                 }
@@ -395,7 +395,7 @@ impl RecordData {
         self.fields.iter().filter_map(|(id, field)| {
             debug_assert!(field.pending_contracts.is_empty());
             match field.value {
-                Some(ref v) if !field.metadata.not_exported => Some(Ok((id.symbol(), v))),
+                Some(ref v) if !field.metadata.not_exported => Some(Ok((id.ident(), v))),
                 None if !field.metadata.opt && !field.metadata.not_exported => {
                     Some(Err(MissingFieldDefError {
                         id: *id,

@@ -1945,10 +1945,10 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // showing a cascade of similar error messages, we determine the full path of the
                 // nested field (e.g. `pkg.subpkg1.meta.url`) and only show once the row mismatch
                 // error followed by the underlying error.
-                let mut path = vec![ident.symbol()];
+                let mut path = vec![ident.ident()];
 
                 while let TypecheckError::RowMismatch(id_next, _, _, next, _) = *err {
-                    path.push(id_next.symbol());
+                    path.push(id_next.ident());
                     err = next;
                 }
 

@@ -523,7 +523,7 @@ impl Thunk {
         };
 
         let fresh_var = LocIdent::fresh();
-        env.insert(fresh_var.symbol(), thunk_as_function);
+        env.insert(fresh_var.ident(), thunk_as_function);
 
         let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
         let args =

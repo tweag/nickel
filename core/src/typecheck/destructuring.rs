@@ -151,11 +151,11 @@ pub fn inject_pattern_variables(
     pat.matches.iter().for_each(|m| match m {
         Match::Simple(id, ..) => {
             let ty = type_map.get_type(id);
-            env.insert(id.symbol(), ty);
+            env.insert(id.ident(), ty);
         }
         Match::Assign(id, _, FieldPattern::Ident(bind_id)) => {
             let ty = type_map.get_type(id);
-            env.insert(bind_id.symbol(), ty);
+            env.insert(bind_id.ident(), ty);
         }
         Match::Assign(id, _, FieldPattern::RecordPattern(pat)) => {
             let ty = type_map.get_type(id);
@@ -180,7 +180,7 @@ pub fn inject_pattern_variables(
         Match::Assign(id, _, FieldPattern::AliasedRecordPattern { alias, pattern }) => {
             let ty = type_map.get_type(id);
 
-            env.insert(alias.symbol(), ty.clone());
+            env.insert(alias.ident(), ty.clone());
 
             let UnifType::Concrete{ typ: TypeF::Record(rs), .. } = ty else {
                 unreachable!("since this is a destructured record, \
@@ -193,7 +193,7 @@ pub fn inject_pattern_variables(
 
     if let Some(id) = pat.rest {
         let rest_ty = type_map.rest();
-        env.insert(id.symbol(), rest_ty);
+        env.insert(id.ident(), rest_ty);
     }
 }
 

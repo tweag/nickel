@@ -18,7 +18,7 @@ fn patch_term<C: Cache>(
     if let Term::Var(var_id) = &*term.term {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
         let mut idx = env
-            .get(&var_id.symbol())
+            .get(&var_id.ident())
             .cloned()
             .ok_or(EvalError::UnboundIdentifier(*var_id, term.pos))?;
 
@@ -62,7 +62,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
             if let Some(ref value) = field.value {
                 let idx = match value.as_ref() {
                     Term::Var(ref var_id) => env
-                        .get(&var_id.symbol())
+                        .get(&var_id.ident())
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?,
                     _ => {
@@ -83,7 +83,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 // so we start from in the environment of the original record.
                 let mut final_env = env.clone();
                 let id_value = LocIdent::fresh();
-                final_env.insert(id_value.symbol(), idx);
+                final_env.insert(id_value.ident(), idx);
 
                 let with_ctr_applied = RuntimeContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
@@ -132,7 +132,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 };
 
                 Ok((
-                    id.symbol(),
+                    id.ident(),
                     cache.add(final_closure, IdentKind::Record, BindingType::Normal),
                 ))
             } else {
@@ -154,7 +154,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 };
 
                 Ok((
-                    id.symbol(),
+                    id.ident(),
                     cache.add(closure, IdentKind::Record, BindingType::Normal),
                 ))
             }

@@ -260,7 +260,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         file_id: self.file,
                         index: id_gen.get_and_advance(),
                     };
-                    self.env.insert(ident.symbol(), id);
+                    self.env.insert(ident.ident(), id);
 
                     let kind = TermKind::Declaration {
                         id: ident.to_owned(),
@@ -296,7 +296,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     };
 
                     let_pattern_bindings.push(id);
-                    self.env.insert(bind_ident.symbol(), id);
+                    self.env.insert(bind_ident.ident(), id);
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
@@ -345,7 +345,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     _ => unreachable!(),
                 };
                 self.env.insert(
-                    ident.symbol(),
+                    ident.ident(),
                     ItemId {
                         file_id: self.file,
                         index: id_gen.get(),
@@ -382,7 +382,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     ident, self.access
                 );
 
-                let pointed = self.env.get(&ident.symbol()).copied();
+                let pointed = self.env.get(&ident.ident()).copied();
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
@@ -573,7 +573,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             .iter()
             .filter_map(|item| match &item.kind {
                 TermKind::Usage(UsageState::Deferred { parent, child }) => {
-                    Some((item.id, *parent, child.symbol()))
+                    Some((item.id, *parent, child.ident()))
                 }
                 _ => None,
             })
@@ -684,7 +684,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     ) {
         if let Some(item) = self
             .env
-            .get(&ident.symbol())
+            .get(&ident.ident())
             .and_then(|item_id| lin.linearization.get_mut(item_id.index))
         {
             debug!("retyping {:?} to {:?}", ident, new_type);

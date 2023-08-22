@@ -835,7 +835,7 @@ impl RecordRows {
         let tail = match &rrows.0 {
             RecordRowsF::Empty => internals::empty_tail(),
             RecordRowsF::TailDyn => internals::dyn_tail(),
-            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.symbol(), id.pos)?,
+            RecordRowsF::TailVar(id) => get_var_contract(&vars, id.ident(), id.pos)?,
             // Safety: the while above excludes that `tail` can have the form `Extend`.
             RecordRowsF::Extend { .. } => unreachable!(),
         };
@@ -859,7 +859,7 @@ impl RecordRows {
         }
 
         let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id.symbol() == path[0] => Some(row.typ.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => Some(row.typ.clone()),
             _ => None,
         });
 
@@ -1001,7 +1001,7 @@ impl Type {
                         mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
                     }
                 };
-                vars.insert(var.symbol(), contract);
+                vars.insert(var.ident(), contract);
 
                 *sy += 1;
                 mk_app!(

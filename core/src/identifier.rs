@@ -24,7 +24,7 @@ impl Ident {
         Self(INTERNER.intern(s.as_ref()))
     }
 
-    /// Return the string representation of this symbol.
+    /// Return the string representation of this identifier.
     pub fn label(&self) -> &str {
         INTERNER.lookup(self.0)
     }
@@ -47,11 +47,11 @@ impl fmt::Debug for Ident {
 }
 
 impl From<Ident> for LocIdent {
-    fn from(symbol: Ident) -> Self {
+    fn from(ident: Ident) -> Self {
         LocIdent {
-            symbol,
+            ident,
             pos: TermPos::None,
-            generated: symbol.label().starts_with(GEN_PREFIX),
+            generated: ident.label().starts_with(GEN_PREFIX),
         }
     }
 }
@@ -97,7 +97,7 @@ impl Into<String> for Ident {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(into = "String", from = "String")]
 pub struct LocIdent {
-    symbol: Ident,
+    ident: Ident,
     pub pos: TermPos,
     generated: bool,
 }
@@ -106,7 +106,7 @@ impl LocIdent {
     pub fn new_with_pos(label: impl AsRef<str>, pos: TermPos) -> Self {
         let generated = label.as_ref().starts_with(GEN_PREFIX);
         Self {
-            symbol: Ident::new(label),
+            ident: Ident::new(label),
             pos,
             generated,
         }
@@ -128,14 +128,14 @@ impl LocIdent {
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 
-    /// Return this identifier's symbol.
-    pub fn symbol(&self) -> Ident {
-        self.symbol
+    /// Return the identifier without its position.
+    pub fn ident(&self) -> Ident {
+        self.ident
     }
 
     /// Return the string representation of this identifier.
     pub fn label(&self) -> &str {
-        self.symbol.label()
+        self.ident.label()
     }
 
     pub fn into_label(self) -> String {
@@ -161,7 +161,7 @@ impl Ord for LocIdent {
 
 impl PartialEq for LocIdent {
     fn eq(&self, other: &Self) -> bool {
-        self.symbol == other.symbol
+        self.ident == other.ident
     }
 }
 
@@ -169,7 +169,7 @@ impl Eq for LocIdent {}
 
 impl Hash for LocIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.symbol.hash(state)
+        self.ident.hash(state)
     }
 }
 

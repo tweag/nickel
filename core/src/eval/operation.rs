@@ -450,7 +450,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Ok(Closure { body: value, env })
                         }
                         None => match record.sealed_tail.as_ref() {
-                            Some(t) if t.has_field(&id.symbol()) => {
+                            Some(t) if t.has_field(&id.ident()) => {
                                 Err(EvalError::IllegalPolymorphicTailAccess {
                                     action: IllegalPolymorphicTailAction::FieldAccess {
                                         field: id.to_string(),
@@ -2416,7 +2416,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             &mut env,
                             env4,
                         );
-                        let fields = tail.fields.keys().map(|s| s.symbol()).collect();
+                        let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
@@ -2843,7 +2843,7 @@ impl RecPriority {
 
                 field.value = field.value.take().map(|value| {
                     if let Term::Var(id_inner) = value.as_ref() {
-                        let idx = env.get(&id_inner.symbol()).unwrap();
+                        let idx = env.get(&id_inner.ident()).unwrap();
 
                         let new_idx =
                             cache.map_at_index(idx, |cache, inner| match inner.body.as_ref() {
@@ -2861,7 +2861,7 @@ impl RecPriority {
                             });
 
                         let fresh_id = LocIdent::fresh();
-                        new_env.insert(fresh_id.symbol(), new_idx);
+                        new_env.insert(fresh_id.ident(), new_idx);
                         RichTerm::new(Term::Var(fresh_id), pos)
                     } else {
                         // A record field that doesn't contain a variable is a constant (a number,

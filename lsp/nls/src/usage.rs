@@ -35,7 +35,7 @@ impl EnvExt for Environment {
     ) {
         let ident = id.into();
         self.insert(
-            ident.symbol,
+            ident.ident,
             DefWithPath {
                 ident,
                 value: val.map(Into::into),
@@ -122,7 +122,7 @@ impl UsageLookup {
 
                 for m in &pat.matches {
                     for (path, id, field) in m.to_flattened_bindings() {
-                        let path = path.iter().map(|i| i.symbol()).rev().collect();
+                        let path = path.iter().map(|i| i.ident()).rev().collect();
                         let term = TermAtPath {
                             term: val.clone(),
                             path,
@@ -149,7 +149,7 @@ impl UsageLookup {
             }
             Term::Var(id) => {
                 let id = LocIdent::from(*id);
-                if let Some(def) = env.get(&id.symbol) {
+                if let Some(def) = env.get(&id.ident) {
                     self.def_table.insert(id, def.clone());
                     self.usage_table.entry(def.ident).or_default().push(id);
                 }
@@ -170,7 +170,7 @@ mod tests {
 
     fn locced(ident: impl Into<Ident>, src_id: FileId, range: std::ops::Range<u32>) -> LocIdent {
         LocIdent {
-            symbol: ident.into(),
+            ident: ident.into(),
             pos: RawSpan {
                 src_id,
                 start: range.start.into(),
