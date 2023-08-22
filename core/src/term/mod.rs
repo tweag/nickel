@@ -1328,23 +1328,8 @@ impl BinaryOp {
     pub fn pos(&self) -> OpPos {
         use BinaryOp::*;
         match self {
-            Plus()
-            | Sub()
-            | Mult()
-            | Div()
-            | Modulo()
-            | Pow()
-            | StrConcat()
-            | Eq()
-            | LessThan()
-            | LessOrEq()
-            | GreaterThan()
-            | GreaterOrEq()
-            | DynExtend { .. }
-            | DynRemove()
-            | DynAccess()
-            | ArrayConcat()
-            | Merge(_) => OpPos::Infix,
+            Plus() | Sub() | Mult() | Div() | Modulo() | StrConcat() | Eq() | LessThan()
+            | LessOrEq() | GreaterThan() | GreaterOrEq() | ArrayConcat() | Merge(_) => OpPos::Infix,
             _ => OpPos::Prefix,
         }
     }
@@ -1369,8 +1354,8 @@ impl fmt::Display for BinaryOp {
             Assume() => write!(f, "assume"),
             Unseal() => write!(f, "unseal"),
             GoField() => write!(f, "go_field"),
-            DynExtend { .. } => write!(f, "dyn_extend"),
-            DynRemove() => write!(f, "dyn_remove"),
+            DynExtend { .. } => write!(f, "record_insert"),
+            DynRemove() => write!(f, "record_remove"),
             DynAccess() => write!(f, "dyn_access"),
             HasField() => write!(f, "has_field"),
             ArrayConcat() => write!(f, "array_concat"),
@@ -1457,7 +1442,7 @@ impl fmt::Display for NAryOp {
         match self {
             StrReplace() => write!(f, "str_replace"),
             StrReplaceRegex() => write!(f, "str_replace_regex"),
-            StrSubstr() => write!(f, "substring"),
+            StrSubstr() => write!(f, "str_substr"),
             MergeContract() => write!(f, "merge_contract"),
             RecordSealTail() => write!(f, "record_seal_tail"),
             RecordUnsealTail() => write!(f, "record_unseal_tail"),

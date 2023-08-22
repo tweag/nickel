@@ -18,7 +18,9 @@ use regex::Regex;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum StringRenderStyle {
-    Monoline,
+    /// Never allow rendering as a multiline string
+    ForceMonoline,
+    /// Render as a multiline string if the string contains a newline
     Multiline,
 }
 
@@ -69,6 +71,51 @@ pub fn ident_quoted(ident: &LocIdent) -> String {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+enum RecursivePriority {
+    Default,
+    Force,
+    None,
+}
+
+impl RecursivePriority {
+    fn is_present(&self) -> bool {
+        !matches!(self, RecursivePriority::None)
+    }
+}
+
+/// We need the field's value to inspect it for an application of
+/// `$rec_default` or `$rec_force`. The recursive priority metadata
+/// annotations `rec default` and `rec force` are converted at parsing
+/// time into applications of the internal symbols `$rec_default` and
+/// `$rec_force` respectively. These symbols are not valid identifiers in
+/// Nickel's surface syntax, so we need to handle them specially.
+///
+/// If we find a recursive priority annotation we return the field's value
+/// with the internal application removed.
+fn split_recursive_priority(value: &RichTerm) -> (RecursivePriority, RichTerm) {
+    if let Term::App(f, x) = value.as_ref() {
+        match f.as_ref() {
+            Term::Var(id) if id.label() == "$rec_default" => {
+                return (RecursivePriority::Default, x.clone());
+            }
+            Term::Var(id) if id.label() == "$rec_force" => {
+                return (RecursivePriority::Force, x.clone());
+            }
+            _ => (),
+        }
+    };
+    (RecursivePriority::None, value.clone())
+}
+
+/// Does a sequence of `StrChunk`s contain a literal newline?
+fn contains_newline<T>(chunks: &[StrChunk<T>]) -> bool {
+    chunks.iter().any(|chunk| match chunk {
+        StrChunk::Literal(str) => str.contains('\n'),
+        StrChunk::Expr(_, _) => false,
+    })
+}
+
 pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
 where
     T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
@@ -96,7 +143,7 @@ where
         chunks: &[StrChunk<RichTerm>],
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self, A> {
-        let multiline = string_style == StringRenderStyle::Multiline;
+        let multiline = string_style == StringRenderStyle::Multiline && contains_newline(chunks);
         let nb_perc = chunks
             .iter()
             .map(
@@ -133,28 +180,26 @@ where
 
         line_maybe
             .clone()
-            .append(self.intersperse(
-                chunks.iter().cloned().rev().map(|c| {
-                    match c {
-                        StrChunk::Literal(s) => {
-                            if multiline {
-                                self.intersperse(
-                                    s.lines().map(|s| self.text(s.to_owned())),
-                                    self.hardline().clone(),
-                                )
-                            } else {
-                                self.escaped_string(&s)
-                            }
+            .append(self.concat(chunks.iter().rev().map(|c| {
+                match c {
+                    StrChunk::Literal(s) => {
+                        if multiline {
+                            self.concat(
+                                s.lines()
+                                    .map(|s| self.text(s.to_owned()).append(self.hardline())),
+                            )
+                        } else {
+                            self.escaped_string(s)
                         }
-                        StrChunk::Expr(e, _i) => self
-                            .text(interp.clone())
-                            .append(self.text("{"))
-                            .append(e.pretty(self))
-                            .append(self.text("}")),
                     }
-                }),
-                self.nil(),
-            ))
+                    StrChunk::Expr(e, _i) => self
+                        .text(interp.clone())
+                        .append(self.text("{"))
+                        .append(e.pretty(self))
+                        .append(self.text("}")),
+                }
+            })))
+            .nest(if multiline { 2 } else { 0 })
             .append(line_maybe)
             .double_quotes()
             .enclose(start_delimiter, end_delimiter)
@@ -199,74 +244,74 @@ where
                     .line()
                     .append(self.text("| priority"))
                     .append(self.space())
-                    .append(self.as_string(p)),
+                    .append(self.as_string(p.to_sci())),
                 MergePriority::Top => self.line().append(self.text("| force")),
             })
             .nest(2)
             .group()
     }
 
-    fn field(&'a self, id: &LocIdent, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        self.text(ident_quoted(id))
-            .append(self.field_body(field, with_doc))
+    fn field(&'a self, id: &LocIdent, field: &Field) -> DocBuilder<'a, Self, A> {
+        self.text(ident_quoted(id)).append(self.field_body(field))
     }
 
-    fn dyn_field(
-        &'a self,
-        id_expr: &RichTerm,
-        field: &Field,
-        with_doc: bool,
-    ) -> DocBuilder<'a, Self, A> {
-        id_expr
-            .clone()
-            .pretty(self)
-            .append(self.field_body(field, with_doc))
+    fn dyn_field(&'a self, id_expr: &RichTerm, field: &Field) -> DocBuilder<'a, Self, A> {
+        match id_expr.as_ref() {
+            // Nickel will not parse a multiline string literal in this position
+            Term::StrChunks(chunks) => self.chunks(chunks, StringRenderStyle::ForceMonoline),
+            _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
+        }
+        .append(self.field_body(field))
     }
 
-    fn field_body(&'a self, field: &Field, with_doc: bool) -> DocBuilder<'a, Self, A> {
-        self.field_metadata(&field.metadata, with_doc)
-            .append(if let Some(ref value) = field.value {
-                let has_metadata = field.metadata != FieldMetadata::default();
+    fn recursive_priority(&'a self, priority: RecursivePriority) -> DocBuilder<'a, Self, A> {
+        match priority {
+            RecursivePriority::Default => self.text("| rec default"),
+            RecursivePriority::Force => self.text("| rec force"),
+            RecursivePriority::None => self.nil(),
+        }
+    }
 
-                if has_metadata {
-                    self.line()
-                } else {
-                    self.space()
-                }
-                .append(
-                    self.text("=")
-                        .append(self.softline())
-                        .append(value.to_owned().pretty(self).nest(2)),
-                )
+    fn field_body(&'a self, field: &Field) -> DocBuilder<'a, Self, A> {
+        docs![
+            self,
+            self.field_metadata(&field.metadata, true),
+            if let Some((priority, value)) = field.value.as_ref().map(split_recursive_priority) {
+                let has_metadata =
+                    field.metadata != FieldMetadata::default() || priority.is_present();
+
+                docs![
+                    self,
+                    self.recursive_priority(priority),
+                    if has_metadata {
+                        self.line()
+                    } else {
+                        self.space()
+                    },
+                    docs![self, "=", self.line(), value.pretty(self).nest(2)]
+                ]
                 .nest(2)
             } else {
                 self.nil()
-            })
-            .append(self.text(","))
+            },
+            ","
+        ]
     }
 
-    fn fields(
-        &'a self,
-        fields: &IndexMap<LocIdent, Field>,
-        with_doc: bool,
-    ) -> DocBuilder<'a, Self, A> {
+    fn fields(&'a self, fields: &IndexMap<LocIdent, Field>) -> DocBuilder<'a, Self, A> {
         self.intersperse(
             sorted_map(fields)
                 .iter()
-                .map(|&(id, field)| self.field(id, field, with_doc)),
+                .map(|(id, field)| self.field(id, field)),
             self.line(),
         )
     }
 
-    fn dyn_fields(
-        &'a self,
-        fields: &[(RichTerm, Field)],
-        with_doc: bool,
-    ) -> DocBuilder<'a, Self, A> {
+    fn dyn_fields(&'a self, fields: &[(RichTerm, Field)]) -> DocBuilder<'a, Self, A> {
         self.intersperse(
             fields
                 .iter()
-                .map(|(ref id_term, ref field)| self.dyn_field(id_term, field, with_doc)),
+                .map(|(id_term, field)| self.dyn_field(id_term, field)),
             self.line(),
         )
     }
@@ -278,14 +323,15 @@ where
     ) -> DocBuilder<'a, Self, A> {
         // Print empty non-open records specially to avoid double newlines and extra spaces
         if record_data.fields.is_empty() && dyn_fields.is_empty() && !record_data.attrs.open {
-            return docs![self, "{}"];
+            return self.text("{}");
         }
+
         docs![
             self,
             self.line(),
-            self.fields(&record_data.fields, true),
+            self.fields(&record_data.fields),
             if !dyn_fields.is_empty() {
-                docs![self, self.line(), self.dyn_fields(dyn_fields, true)]
+                docs![self, self.line(), self.dyn_fields(dyn_fields)]
             } else {
                 self.nil()
             },
@@ -302,7 +348,7 @@ where
     }
 
     fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        self.annot_part(annot).nest(2).group()
+        self.annot_part(annot).group()
     }
 
     fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
@@ -537,14 +583,7 @@ where
             Bool(v) => allocator.as_string(v),
             Num(n) => allocator.as_string(format!("{}", n.to_sci())),
             Str(v) => allocator.escaped_string(v).double_quotes(),
-            StrChunks(chunks) => allocator.chunks(
-                chunks,
-                if chunks.len() > 1 {
-                    StringRenderStyle::Multiline
-                } else {
-                    StringRenderStyle::Monoline
-                },
-            ),
+            StrChunks(chunks) => allocator.chunks(chunks, StringRenderStyle::Multiline),
             Fun(id, rt) => {
                 let mut params = vec![id];
                 let mut rt = rt;
@@ -587,82 +626,104 @@ where
                     .append(allocator.softline())
                     .append(rt.to_owned().pretty(allocator).nest(2))
             }
-            Lbl(_lbl) => allocator.text("# <label>").append(allocator.hardline()),
-            Let(id, rt, body, attrs) => allocator
-                .text("let")
-                .append(allocator.space())
-                .append(if attrs.rec {
-                    allocator.text("rec").append(allocator.space())
+            Lbl(_lbl) => allocator.text("# <label>").append(allocator.line()),
+            Let(id, rt, body, attrs) => docs![
+                allocator,
+                "let ",
+                if attrs.rec {
+                    allocator.text("rec ")
                 } else {
                     allocator.nil()
-                })
-                .append(allocator.as_string(id))
-                .append(if let Annotated(ref annot, _) = rt.as_ref() {
-                    allocator.space().append(allocator.annot(annot))
+                },
+                id.to_string(),
+                if let Annotated(annot, _) = rt.as_ref() {
+                    allocator.annot(annot)
                 } else {
                     allocator.nil()
-                })
-                .append(allocator.space())
-                .append(allocator.text("="))
-                .append(allocator.line())
-                .append(
-                    if let Annotated(_, inner) = rt.as_ref() {
-                        inner
-                    } else {
-                        rt
-                    }
-                    .to_owned()
-                    .pretty(allocator)
-                    .nest(2),
-                )
-                .append(allocator.line())
-                .append(allocator.text("in"))
-                .append(allocator.line_())
-                .group()
-                .append(allocator.line())
-                .append(body.to_owned().pretty(allocator))
-                .group(),
-            LetPattern(opt_id, dst, rt, body) => allocator
-                .text("let")
-                .append(allocator.space())
-                .append(
-                    (*opt_id)
-                        .map(|id| {
-                            allocator.as_string(id).append(
-                                allocator
-                                    .space()
-                                    .append(allocator.text("@"))
-                                    .append(allocator.space()),
-                            )
-                        })
-                        .unwrap_or_else(|| allocator.nil()),
-                )
-                .append(dst.pretty(allocator))
-                .append(if let Annotated(ref annot, _) = rt.as_ref() {
-                    allocator.space().append(allocator.annot(annot))
+                },
+                allocator.line(),
+                "= ",
+                if let Annotated(_, inner) = rt.as_ref() {
+                    inner.pretty(allocator)
+                } else {
+                    rt.pretty(allocator)
+                },
+                allocator.line(),
+                "in",
+            ]
+            .nest(2)
+            .append(allocator.line())
+            .append(body.pretty(allocator).nest(2))
+            .group(),
+            LetPattern(opt_id, pattern, rt, body) => docs![
+                allocator,
+                "let ",
+                if let Some(id) = opt_id {
+                    docs![allocator, id.to_string(), " @ "]
                 } else {
                     allocator.nil()
-                })
-                .append(allocator.space())
-                .append(allocator.text("="))
-                .append(allocator.line())
-                .append(
-                    if let Annotated(_, inner) = rt.as_ref() {
-                        inner
-                    } else {
-                        rt
-                    }
-                    .to_owned()
-                    .pretty(allocator)
-                    .nest(2),
-                )
-                .append(allocator.line())
-                .append(allocator.text("in"))
-                .append(allocator.line_())
-                .group()
-                .append(allocator.line())
-                .append(body.to_owned().pretty(allocator))
-                .group(),
+                },
+                pattern.pretty(allocator),
+                if let Annotated(annot, _) = rt.as_ref() {
+                    allocator.annot(annot)
+                } else {
+                    allocator.nil()
+                },
+                allocator.line(),
+                "= ",
+                if let Annotated(_, inner) = rt.as_ref() {
+                    inner.pretty(allocator)
+                } else {
+                    rt.pretty(allocator)
+                },
+                allocator.line(),
+                "in",
+            ]
+            .nest(2)
+            .append(allocator.line())
+            .append(body.pretty(allocator).nest(2))
+            .group(),
+            // LetPattern(opt_id, dst, rt, body) => allocator
+            //     .text("let")
+            //     .append(allocator.space())
+            //     .append(
+            //         (*opt_id)
+            //             .map(|id| {
+            //                 allocator.as_string(id).append(
+            //                     allocator
+            //                         .space()
+            //                         .append(allocator.text("@"))
+            //                         .append(allocator.space()),
+            //                 )
+            //             })
+            //             .unwrap_or_else(|| allocator.nil()),
+            //     )
+            //     .append(dst.pretty(allocator))
+            //     .append(if let Annotated(ref annot, _) = rt.as_ref() {
+            //         allocator.space().append(allocator.annot(annot))
+            //     } else {
+            //         allocator.nil()
+            //     })
+            //     .append(allocator.space())
+            //     .append(allocator.text("="))
+            //     .append(allocator.line())
+            //     .append(
+            //         if let Annotated(_, inner) = rt.as_ref() {
+            //             inner
+            //         } else {
+            //             rt
+            //         }
+            //         .to_owned()
+            //         .pretty(allocator)
+            //         .nest(2),
+            //     )
+            //     .append(allocator.line())
+            //     .append(allocator.text("in"))
+            //     .append(allocator.line_())
+            //     .group()
+            //     .append(allocator.line())
+            //     .append(body.to_owned().pretty(allocator))
+            //     .group(),
             App(rt1, rt2) => match rt1.as_ref() {
                 App(iop, t) if matches!(iop.as_ref(), Op1(UnaryOp::Ite(), _)) => match iop.as_ref()
                 {
@@ -980,7 +1041,9 @@ where
                     .nest(2),
                 allocator.line(),
                 "-> ",
-                codom.pretty(allocator)
+                codom
+                    .pretty(allocator)
+                    .parens_if(matches!(codom.typ, Forall { .. }))
             ]
             .group(),
             Wildcard(_) => allocator.text("_"),
@@ -1027,7 +1090,7 @@ mod tests {
         let doc: DocBuilder<'_, BoxAllocator, ()> = ty.pretty(&BoxAllocator);
 
         let mut long_lines = String::new();
-        doc.render_fmt(80, &mut long_lines).unwrap();
+        doc.render_fmt(usize::MAX, &mut long_lines).unwrap();
 
         let mut short_lines = String::new();
         doc.render_fmt(0, &mut short_lines).unwrap();
@@ -1045,7 +1108,7 @@ mod tests {
         let doc: DocBuilder<'_, BoxAllocator, ()> = term.pretty(&BoxAllocator);
 
         let mut long_lines = String::new();
-        doc.render_fmt(80, &mut long_lines).unwrap();
+        doc.render_fmt(160, &mut long_lines).unwrap();
 
         let mut short_lines = String::new();
         doc.render_fmt(0, &mut short_lines).unwrap();
@@ -1285,6 +1348,23 @@ mod tests {
             },
         );
         assert_long_short_term(
+            r#"{ a | String | force = b, c | Number | doc "" = d, }"#,
+            indoc! {r#"
+                {
+                  a
+                    | String
+                    | force
+                    =
+                    b,
+                  c
+                    | Number
+                    | doc ""
+                    =
+                    d,
+                }"#
+            },
+        );
+        assert_long_short_term(
             "{ a = b, .. }",
             indoc! {"
                 {
@@ -1319,13 +1399,44 @@ mod tests {
 
     #[test]
     fn pretty_let() {
-        assert_long_short_term(r#"let foo | doc "" = c in {}"#, "");
-        assert_long_short_term(r#"let foo = c in {}"#, "");
+        assert_long_short_term(
+            "let rec foo | String = c in {}",
+            indoc! {"
+                let rec foo
+                  | String
+                  = c
+                  in
+                {}"
+            },
+        );
+        assert_long_short_term(
+            "let foo = c bar in {}",
+            indoc! {"
+                let foo
+                  = c
+                    bar
+                  in
+                {}"
+            },
+        );
+        assert_long_short_term(
+            "let foo | String = c bar in {}",
+            indoc! {"
+                let foo
+                  | String
+                  = c
+                    bar
+                  in
+                {}"
+            },
+        );
     }
 
+    #[ignore]
     #[test]
     fn pretty_let_pattern() {
-        assert_long_short_term(r#"let foo @ { a = a', b } | doc "" = c in {}"#, "");
+        assert_long_short_term(r#"let foo @ { a = a', b } = c in {}"#, "");
+        assert_long_short_term(r#"let foo @ { a = a', b } | String = c in {}"#, "");
     }
 
     /// Take a string representation of a type, parse it, and assert that formatting it gives the
