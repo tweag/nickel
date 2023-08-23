@@ -694,7 +694,6 @@ fn sanitize_term_for_completion(
 fn term_based_completion(
     term: RichTerm,
     initial_env: &Environment,
-    linearization: &Completed,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     log::info!("term based completion path: {term:?}");
@@ -702,7 +701,7 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, linearization, server);
+    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, server);
     Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
@@ -720,9 +719,6 @@ pub fn handle_completion(
     let sanitized_term = term
         .as_ref()
         .and_then(|rt| sanitize_term_for_completion(rt, pos, server));
-
-    let linearization = server.lin_cache_get(&pos.src_id)?;
-    Trace::enrich(&id, linearization);
     let mut completions = match term.zip(sanitized_term) {
         Some((term, sanitized)) => {
             let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
@@ -734,12 +730,15 @@ pub fn handle_completion(
             } else {
                 Environment::new()
             };
-            term_based_completion(sanitized, &env, linearization, server)?
+            term_based_completion(sanitized, &env, server)?
         }
         None => Vec::new(),
     };
 
     log::info!("term-based completion provided {completions:?}");
+
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    Trace::enrich(&id, linearization);
 
     let item = linearization.item_at(pos);
     let text = server.cache.files().source(pos.src_id);

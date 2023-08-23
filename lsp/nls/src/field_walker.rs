@@ -7,9 +7,7 @@ use nickel_lang_core::{
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
-use crate::{
-    identifier::LocIdent, linearization::completed::Completed, server::Server, usage::Environment,
-};
+use crate::{identifier::LocIdent, server::Server, usage::Environment};
 
 /// A term and a path.
 ///
@@ -120,12 +118,7 @@ pub struct DefWithPath {
 }
 
 impl DefWithPath {
-    fn resolve_terms(
-        &self,
-        env: &Environment,
-        linearization: &Completed,
-        server: &Server,
-    ) -> Vec<Def> {
+    fn resolve_terms(&self, env: &Environment, server: &Server) -> Vec<Def> {
         match &self.value {
             Some(val) if !val.path.is_empty() => {
                 // Calling `resolve_path` on x with path [foo, bar] returns all
@@ -133,7 +126,7 @@ impl DefWithPath {
                 // so use `resolve_path` to get x.foo and then find the bars in it.
                 // unwrap: we just checked the path is non-empty
                 let (last, path) = val.path.split_last().unwrap();
-                FieldDefs::resolve_path(&val.term, path, env, linearization, server)
+                FieldDefs::resolve_path(&val.term, path, env, server)
                     .fields
                     .remove(last)
                     .unwrap_or_default()
@@ -161,10 +154,9 @@ impl FieldDefs {
         rt: &'a RichTerm,
         mut path: &'a [Ident],
         env: &Environment,
-        linearization: &Completed,
         server: &Server,
     ) -> Self {
-        let mut fields = FieldDefs::resolve(rt, env, linearization, server);
+        let mut fields = FieldDefs::resolve(rt, env, server);
 
         while let Some((id, tail)) = path.split_first() {
             path = tail;
@@ -172,7 +164,7 @@ impl FieldDefs {
             fields.fields.clear();
 
             for rt in defs.into_iter().filter_map(|d| d.value) {
-                fields = fields.merge_from(FieldDefs::resolve(&rt, env, linearization, server));
+                fields = fields.merge_from(FieldDefs::resolve(&rt, env, server));
             }
         }
 
@@ -188,12 +180,7 @@ impl FieldDefs {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    fn resolve(
-        rt: &RichTerm,
-        env: &Environment,
-        linearization: &Completed,
-        server: &Server,
-    ) -> FieldDefs {
+    fn resolve(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
         match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 let fields = data
@@ -218,23 +205,20 @@ impl FieldDefs {
                 .or_else(|| env.get(&id.ident()))
                 .map(|def| {
                     log::info!("got def {def:?}");
-                    let defs = def.resolve_terms(env, linearization, server);
+                    let env = Environment::new();
+                    let defs = def.resolve_terms(&env, server);
                     let terms = defs.iter().filter_map(|def| def.value.as_ref());
-                    FieldDefs::resolve_all(terms, env, linearization, server)
+                    FieldDefs::resolve_all(terms, &env, server)
                 })
                 .unwrap_or_default(),
             Term::ResolvedImport(file_id) => server
                 .cache
                 .get_ref(*file_id)
-                .map(|term| FieldDefs::resolve(term, env, linearization, server))
+                .map(|term| FieldDefs::resolve(term, env, server))
                 .unwrap_or_default(),
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => FieldDefs::resolve(
-                t1,
-                env,
-                linearization,
-                server,
-            )
-            .merge_from(FieldDefs::resolve(t2, env, linearization, server)),
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
+                FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
+            }
             _ => Default::default(),
         }
     }
@@ -256,11 +240,10 @@ impl FieldDefs {
     fn resolve_all<'a>(
         terms: impl Iterator<Item = &'a RichTerm>,
         env: &Environment,
-        linearization: &Completed,
         server: &Server,
     ) -> FieldDefs {
         terms.fold(FieldDefs::default(), |acc, term| {
-            acc.merge_from(FieldDefs::resolve(term, env, linearization, server))
+            acc.merge_from(FieldDefs::resolve(term, env, server))
         })
     }
 }
