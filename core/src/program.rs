@@ -27,11 +27,10 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::VirtualMachine;
 use crate::identifier::LocIdent;
 use crate::term::{record::Field, RichTerm};
-use atty;
 use codespan::FileId;
 use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
 use std::ffi::OsString;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, stdout, Cursor, IsTerminal, Read, Write};
 use std::result::Result;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -444,7 +443,7 @@ impl From<ColorOpt> for ColorChoice {
     fn from(c: ColorOpt) -> Self {
         match c.0 {
             clap::ColorChoice::Auto => {
-                if atty::is(atty::Stream::Stdout) {
+                if stdout().is_terminal() {
                     ColorChoice::Auto
                 } else {
                     ColorChoice::Never

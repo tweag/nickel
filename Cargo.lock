@@ -1646,7 +1646,6 @@ version = "0.1.0"
 dependencies = [
  "ansi_term",
  "assert_matches",
- "atty",
  "clap 4.3.0",
  "codespan",
  "codespan-reporting",
