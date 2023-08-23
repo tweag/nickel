@@ -616,7 +616,6 @@ where
                 .nest(2)
                 .group()
             }
-            // TODO Pattern destructuring to implement.
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = self;
