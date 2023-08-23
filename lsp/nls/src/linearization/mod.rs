@@ -71,6 +71,11 @@ impl LinRegistry {
         let file = ident.pos.as_opt_ref()?.src_id;
         self.usage_lookups.get(&file)?.def(ident)
     }
+
+    pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
+        let file = rt.pos.as_opt_ref()?.src_id;
+        self.usage_lookups.get(&file)?.env(rt)
+    }
 }
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]

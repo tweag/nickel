@@ -25,6 +25,7 @@ use crate::{
     },
     server::{self, Server},
     trace::{Enrich, Trace},
+    usage::Environment,
 };
 
 // General idea:
@@ -692,14 +693,16 @@ fn sanitize_term_for_completion(
 
 fn term_based_completion(
     term: RichTerm,
+    initial_env: &Environment,
     linearization: &Completed,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     log::info!("term based completion path: {term:?}");
+    log::info!("initial env: {initial_env:?}");
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldDefs::resolve_path(&start_term, &path, linearization, server);
+    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, linearization, server);
     Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
@@ -713,15 +716,26 @@ pub fn handle_completion(
     let mut pos = server.cache.position(&params.text_document_position)?;
     pos.index.0 -= 1;
 
-    let rt = server
-        .lookup_term_by_position(pos)?
-        .cloned()
-        .and_then(|rt| sanitize_term_for_completion(&rt, pos, server));
+    let term = server.lookup_term_by_position(pos)?.cloned();
+    let sanitized_term = term
+        .as_ref()
+        .and_then(|rt| sanitize_term_for_completion(rt, pos, server));
 
     let linearization = server.lin_cache_get(&pos.src_id)?;
     Trace::enrich(&id, linearization);
-    let mut completions = match &rt {
-        Some(rt) => term_based_completion(rt.clone(), linearization, server)?,
+    let mut completions = match term.zip(sanitized_term) {
+        Some((term, sanitized)) => {
+            let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
+                server
+                    .lin_registry
+                    .get_env(&term)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Environment::new()
+            };
+            term_based_completion(sanitized, &env, linearization, server)?
+        }
         None => Vec::new(),
     };
 
