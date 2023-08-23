@@ -6,6 +6,7 @@ use lsp_types::{
 };
 use nickel_lang_core::{
     identifier::{Ident, LocIdent},
+    position::RawPos,
     term::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
@@ -16,6 +17,7 @@ use nickel_lang_core::{
 use crate::{
     cache::CacheExt,
     field_walker::{Def, FieldDefs},
+    incomplete,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -672,20 +674,30 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     }
 }
 
-fn term_based_completion(
+fn sanitize_term_for_completion(
     term: &RichTerm,
+    cursor: RawPos,
+    server: &mut Server,
+) -> Option<RichTerm> {
+    if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
+        incomplete::parse_path_from_incomplete_input(*range, cursor, server)
+    } else if let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() {
+        // For completing record paths, we discard the last path element: if we're
+        // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
+        Some(parent.clone())
+    } else {
+        None
+    }
+}
+
+fn term_based_completion(
+    term: RichTerm,
     linearization: &Completed,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     log::info!("term based completion path: {term:?}");
 
-    // For completing record paths, we discard the last path element: if we're
-    // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
-    let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() else {
-        return Ok(Vec::new());
-    };
-
-    let (start_term, path) = extract_static_path(parent.clone());
+    let (start_term, path) = extract_static_path(term);
 
     let defs = FieldDefs::resolve_path(&start_term, &path, linearization, server);
     Ok(defs.defs().map(Def::to_completion_item).collect())
@@ -700,20 +712,24 @@ pub fn handle_completion(
     // so we try to get the item just before the cursor.
     let mut pos = server.cache.position(&params.text_document_position)?;
     pos.index.0 -= 1;
-    let start = pos.index.to_usize();
-    let linearization = server.lin_cache_get(&pos.src_id)?;
-    let item = linearization.item_at(pos);
-    Trace::enrich(&id, linearization);
 
-    let rt = server.lookup_term_by_position(pos)?;
+    let rt = server
+        .lookup_term_by_position(pos)?
+        .cloned()
+        .and_then(|rt| sanitize_term_for_completion(&rt, pos, server));
+
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    Trace::enrich(&id, linearization);
     let mut completions = match &rt {
-        Some(rt) => term_based_completion(rt, linearization, server)?,
+        Some(rt) => term_based_completion(rt.clone(), linearization, server)?,
         None => Vec::new(),
     };
 
     log::info!("term-based completion provided {completions:?}");
 
+    let item = linearization.item_at(pos);
     let text = server.cache.files().source(pos.src_id);
+    let start = pos.index.to_usize();
     if let Some(item) = item {
         debug!("found closest item: {:?}", item);
 

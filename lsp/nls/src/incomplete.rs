@@ -1,152 +1,118 @@
-use nickel_lang_core::parser::lexer::{self, SpannedToken, SymbolicStringStart, Token};
+use nickel_lang_core::{
+    parser::lexer::{self, NormalToken, SpannedToken, Token},
+    position::{RawPos, RawSpan},
+    term::RichTerm,
+};
 
-fn make_static<'a>(tok: Token<'a>) -> Token<'static> {
-    use nickel_lang_core::parser::lexer::NormalToken::*;
+use crate::server::Server;
 
-    match tok {
-        Token::Normal(t) => Token::Normal(match t {
-            Identifier(_) => Identifier(""),
-            RawEnumTag(_) => RawEnumTag(""),
-            SymbolicStringStart(s) => SymbolicStringStart(lexer::SymbolicStringStart {
-                prefix: "",
-                length: s.length,
-            }),
-            Error => Error,
-            NumLiteral(n) => NumLiteral(n),
-            StrEnumTagBegin => StrEnumTagBegin,
-            Dyn => Dyn,
-            Number => Number,
-            Bool => Bool,
-            String => String,
-            Array => Array,
-            If => If,
-            Then => Then,
-            Else => Else,
-            Forall => Forall,
-            In => In,
-            Let => Let,
-            Rec => Rec,
-            Match => Match,
-            Null => Null,
-            True => True,
-            False => False,
-            QuestionMark => QuestionMark,
-            Comma => Comma,
-            Semicolon => Semicolon,
-            Colon => Colon,
-            Dollar => Dollar,
-            Equals => Equals,
-            NotEquals => NotEquals,
-            Ampersand => Ampersand,
-            Dot => Dot,
-            DoubleQuote => DoubleQuote,
-            Plus => Plus,
-            Minus => Minus,
-            Times => Times,
-            Div => Div,
-            Percent => Percent,
-            DoublePlus => DoublePlus,
-            DoubleEq => DoubleEq,
-            At => At,
-            DoubleAnd => DoubleAnd,
-            DoublePipe => DoublePipe,
-            Bang => Bang,
-            Ellipsis => Ellipsis,
-            Fun => Fun,
-            Import => Import,
-            Pipe => Pipe,
-            RightPipe => RightPipe,
-            SimpleArrow => SimpleArrow,
-            DoubleArrow => DoubleArrow,
-            Underscore => Underscore,
-            MultiStringStart(s) => MultiStringStart(s),
-            Typeof => Typeof,
-            Assume => Assume,
-            ArrayLazyAssume => ArrayLazyAssume,
-            RecordLazyAssume => RecordLazyAssume,
-            Blame => Blame,
-            ChangePol => ChangePol,
-            Polarity => Polarity,
-            GoDom => GoDom,
-            GoCodom => GoCodom,
-            GoField => GoField,
-            GoArray => GoArray,
-            GoDict => GoDict,
-            InsertTypeVar => InsertTypeVar,
-            LookupTypeVar => LookupTypeVar,
-            Dualize => Dualize,
-            Seal => Seal,
-            Unseal => Unseal,
-            Embed => Embed,
-            RecordMap => RecordMap,
-            RecordInsert => RecordInsert,
-            RecordRemove => RecordRemove,
-            RecordEmptyWithTail => RecordEmptyWithTail,
-            RecordSealTail => RecordSealTail,
-            RecordUnsealTail => RecordUnsealTail,
-            Seq => Seq,
-            DeepSeq => DeepSeq,
-            OpForce => OpForce,
-            Length => Length,
-            FieldsOf => FieldsOf,
-            ValuesOf => ValuesOf,
-            Pow => Pow,
-            Trace => Trace,
-            HasField => HasField,
-            Map => Map,
-            ElemAt => ElemAt,
-            ArrayGen => ArrayGen,
-            RecForceOp => RecForceOp,
-            RecDefaultOp => RecDefaultOp,
-            Merge => Merge,
-            Default => Default,
-            Doc => Doc,
-            Optional => Optional,
-            Priority => Priority,
-            Force => Force,
-            NotExported => NotExported,
-            OpHash => OpHash,
-            Serialize => Serialize,
-            Deserialize => Deserialize,
-            StrSplit => StrSplit,
-            StrTrim => StrTrim,
-            StrChars => StrChars,
-            StrUppercase => StrUppercase,
-            StrLowercase => StrLowercase,
-            StrContains => StrContains,
-            StrReplace => StrReplace,
-            StrReplaceRegex => StrReplaceRegex,
-            StrIsMatch => StrIsMatch,
-            StrFind => StrFind,
-            StrLength => StrLength,
-            StrSubstr => StrSubstr,
-            ToStr => ToStr,
-            NumFromStr => NumFromStr,
-            EnumFromStr => EnumFromStr,
-            LabelWithMessage => LabelWithMessage,
-            LabelWithNotes => LabelWithNotes,
-            LabelAppendNote => LabelAppendNote,
-            LabelPushDiag => LabelPushDiag,
-            ArraySlice => ArraySlice,
-            LBrace => LBrace,
-            RBrace => RBrace,
-            LBracket => LBracket,
-            RBracket => RBracket,
-            LParen => LParen,
-            RParen => RParen,
-            LAngleBracket => LAngleBracket,
-            LessOrEq => LessOrEq,
-            RAngleBracket => RAngleBracket,
-            GreaterOrEq => GreaterOrEq,
-            EnumOpen => EnumOpen,
-            EnumClose => EnumClose,
-            LineComment => LineComment,
-        }),
-        Token::Str(_) => todo!(),
-        Token::MultiStr(_) => todo!(),
+// Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
+// index of the beginning of the possibly-delimited sequence. The sequence might not
+// actually be delimited, which counts as a sequence of length 1.
+//
+// This is somewhat overly-permissive as it doesn't ensure that delimiters are
+// correctly nested. For example, it won't report any errors on '[(])'.
+fn delimited_start(toks: &[SpannedToken], mut idx: usize) -> Option<usize> {
+    #[derive(Default)]
+    struct DelimCounts {
+        paren: i32,
+        brace: i32,
+        bracket: i32,
+        enm: i32,
+    }
+
+    impl DelimCounts {
+        fn is_zero(&self) -> bool {
+            self.paren == 0 && self.brace == 0 && self.bracket == 0 && self.enm == 0
+        }
+
+        fn is_err(&self) -> bool {
+            self.paren < 0 || self.brace < 0 || self.bracket < 0 || self.enm < 0
+        }
+
+        fn update(&mut self, tok: &Token) {
+            match tok {
+                // The signs look wrong here, but it's because we read through the tokens
+                // right-to-left.
+                Token::Normal(NormalToken::LBrace) => self.brace -= 1,
+                Token::Normal(NormalToken::RBrace) => self.brace += 1,
+                Token::Normal(NormalToken::LParen) => self.paren -= 1,
+                Token::Normal(NormalToken::RParen) => self.paren += 1,
+                Token::Normal(NormalToken::LBracket) => self.bracket -= 1,
+                Token::Normal(NormalToken::RBracket) => self.bracket += 1,
+                Token::Normal(NormalToken::EnumOpen) => self.enm -= 1,
+                Token::Normal(NormalToken::EnumClose) => self.enm += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let mut counts = DelimCounts::default();
+    loop {
+        counts.update(&toks[idx].1);
+        if counts.is_zero() {
+            return Some(idx);
+        } else if counts.is_err() || idx == 0 {
+            return None;
+        }
+
+        idx -= 1;
     }
 }
 
-pub struct IncompleteParser {
-    lexed: Vec<SpannedToken<'static>>,
+fn path_start(toks: &[SpannedToken]) -> Option<usize> {
+    let mut idx = toks.len().checked_sub(1)?;
+
+    loop {
+        idx = delimited_start(toks, idx)?;
+
+        if idx == 0 || toks[idx - 1].1 != Token::Normal(NormalToken::Dot) {
+            return Some(idx);
+        }
+
+        // Skip over the '.' to the end of the preceding token.
+        idx = idx.checked_sub(2)?;
+    }
+}
+
+pub fn parse_path_from_incomplete_input(
+    range: RawSpan,
+    cursor: RawPos,
+    server: &mut Server,
+) -> Option<RichTerm> {
+    if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
+        return None;
+    }
+
+    let text = server.cache.files().source(range.src_id);
+    let subtext = &text[range.start.to_usize()..cursor.index.to_usize()];
+
+    let lexer = lexer::Lexer::new(subtext);
+    let mut tokens: Vec<_> = lexer.collect::<Result<_, _>>().ok()?;
+
+    // If the cursor is container in a token, ignore that token. If after doing that, the last
+    // token is a '.', ignore that one too.
+    // The idea is that on the inputs `expr.a.path.foo` or `expr.a.path.`, we want to complete
+    // based on the fields in `expr.a.path`
+    if let Some(last) = tokens.last() {
+        if last.2 >= subtext.len() {
+            tokens.pop();
+        }
+    }
+    if let Some(last) = tokens.last() {
+        if last.1 == Token::Normal(NormalToken::Dot) {
+            tokens.pop();
+        }
+    }
+
+    let start = path_start(&tokens)?;
+    let to_parse = subtext[tokens[start].0..tokens.last().unwrap().2].to_owned();
+    log::info!("extracted (hopefully) reparseable input `{to_parse}`");
+
+    let file_id = server.cache.replace_string("<incomplete-input>", to_parse);
+
+    match server.cache.parse_nocache(file_id) {
+        Ok((rt, _errors)) => Some(rt),
+        Err(_) => None,
+    }
 }
