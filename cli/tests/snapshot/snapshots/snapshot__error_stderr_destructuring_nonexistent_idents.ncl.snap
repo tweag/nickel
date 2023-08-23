@@ -8,7 +8,7 @@ error: type error: missing row `b`
 4 │   let { a, b } = { a = 1, c = 2 } in
   │                  ^^^^^^^^^^^^^^^^ this expression
   │
-  = Expected an expression of type `{ b: _a, a: _b }`, which contains the field `b`
-  = Found an expression of type `{ c: _c, a: _d }`, which does not contain the field `b`
+  = Expected an expression of type `{ b : _a, a : _b }`, which contains the field `b`
+  = Found an expression of type `{ c : _c, a : _d }`, which does not contain the field `b`
 
 

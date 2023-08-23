@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: multiple rows declaration
@@ -8,7 +8,7 @@ error: multiple rows declaration
 3 │ let f | forall r. { ; r } -> { x: Number; r } = fun r => %record_insert% "x" r 1 in (f { x = 0 } : _)
   │                                                                                        ^^^^^^^^^ this expression
   │
-  = Found an expression of a record type `{ x: _a }` with the row `x`
+  = Found an expression of a record type `{ x : _a }` with the row `x`
   = But this type appears inside another row type, which already has a declaration for the field `x`
   = A type cannot have two conflicting declarations for the same row
 
