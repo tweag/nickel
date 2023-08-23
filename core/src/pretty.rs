@@ -600,17 +600,21 @@ where
                     params.push(id);
                     rt = t
                 }
-                allocator
-                    .text("fun")
-                    .append(allocator.space())
-                    .append(allocator.intersperse(
+                docs![
+                    allocator,
+                    "fun",
+                    allocator.line(),
+                    allocator.intersperse(
                         params.iter().map(|p| allocator.as_string(p)),
-                        allocator.space(),
-                    ))
-                    .append(allocator.space())
-                    .append(allocator.text("=>"))
-                    .append(allocator.softline())
-                    .append(rt.to_owned().pretty(allocator).nest(2))
+                        allocator.line()
+                    ),
+                    allocator.line(),
+                    "=>",
+                    allocator.line(),
+                    rt
+                ]
+                .nest(2)
+                .group()
             }
             // TODO Pattern destructuring to implement.
             FunPattern(..) => {
@@ -618,22 +622,24 @@ where
                 let mut rt = self;
                 while let FunPattern(id, dst, t) = rt {
                     params.push(if let Some(id) = id {
-                        allocator
-                            .as_string(id)
-                            .append(allocator.text("@").append(dst.pretty(allocator)))
+                        docs![allocator, id.to_string(), " @ ", dst]
                     } else {
                         dst.pretty(allocator)
                     });
                     rt = t.as_ref();
                 }
-                allocator
-                    .text("fun")
-                    .append(allocator.space())
-                    .append(allocator.intersperse(params, allocator.space()))
-                    .append(allocator.space())
-                    .append(allocator.text("=>"))
-                    .append(allocator.softline())
-                    .append(rt.to_owned().pretty(allocator).nest(2))
+                docs![
+                    allocator,
+                    "fun",
+                    allocator.line(),
+                    allocator.intersperse(params, allocator.line()),
+                    allocator.line(),
+                    "=>",
+                    allocator.line(),
+                    rt
+                ]
+                .nest(2)
+                .group()
             }
             Lbl(_lbl) => allocator.text("# <label>").append(allocator.line()),
             Let(id, rt, body, attrs) => docs![
@@ -720,12 +726,13 @@ where
                     allocator.atom(rt2)
                 ]
                 .group(),
-                App(..) => rt1
-                    .to_owned()
-                    .pretty(allocator)
-                    .append(allocator.line())
-                    .append(allocator.atom(rt2))
-                    .group(),
+                App(..) => docs![
+                    allocator,
+                    rt1,
+                    docs![allocator, allocator.line(), allocator.atom(rt2)]
+                        .nest(2)
+                        .group()
+                ],
                 _ => docs![
                     allocator,
                     allocator.atom(rt1),
@@ -1418,7 +1425,7 @@ mod tests {
     #[test]
     fn pretty_let_pattern() {
         assert_long_short_term(
-            r#"let foo @ { a | Bool ? true = a', b ? false, } = c in {}"#,
+            "let foo @ { a | Bool ? true = a', b ? false, } = c in {}",
             indoc! {"
                 let foo @ {
                     a
@@ -1434,7 +1441,7 @@ mod tests {
             },
         );
         assert_long_short_term(
-            r#"let foo @ { a = a', b = e @ { foo, .. }, } = c in {}"#,
+            "let foo @ { a = a', b = e @ { foo, .. }, } = c in {}",
             indoc! {"
                 let foo @ {
                     a
@@ -1451,7 +1458,7 @@ mod tests {
             },
         );
         assert_long_short_term(
-            r#"let foo @ { a = a', b, } | String = c in {}"#,
+            "let foo @ { a = a', b, } | String = c in {}",
             indoc! {"
                 let foo @ {
                     a
@@ -1462,6 +1469,53 @@ mod tests {
                   = c
                   in
                 {}"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_fun() {
+        assert_long_short_term(
+            "fun x y z => x y z",
+            indoc! {"
+                fun
+                  x
+                  y
+                  z
+                  =>
+                  x
+                    y
+                    z"
+            },
+        );
+        assert_long_short_term(
+            "fun x @ { foo, bar ? true, } y @ { baz, } => x y z",
+            indoc! {"
+                fun
+                  x @ {
+                    foo,
+                    bar
+                      ? true,
+                  }
+                  y @ {
+                    baz,
+                  }
+                  =>
+                  x
+                    y
+                    z"
+            },
+        );
+    }
+
+    #[test]
+    fn pretty_app() {
+        assert_long_short_term(
+            "x y z",
+            indoc! {"
+                x
+                  y
+                  z"
             },
         );
     }
