@@ -26,11 +26,16 @@ fn delimited_start(toks: &[SpannedToken], mut idx: usize) -> Option<usize> {
         brace: i32,
         bracket: i32,
         enm: i32,
+        double_quote: bool,
     }
 
     impl DelimCounts {
         fn is_zero(&self) -> bool {
-            self.paren == 0 && self.brace == 0 && self.bracket == 0 && self.enm == 0
+            self.paren == 0
+                && self.brace == 0
+                && self.bracket == 0
+                && self.enm == 0
+                && !self.double_quote
         }
 
         fn is_err(&self) -> bool {
@@ -49,6 +54,7 @@ fn delimited_start(toks: &[SpannedToken], mut idx: usize) -> Option<usize> {
                 Token::Normal(NormalToken::RBracket) => self.bracket += 1,
                 Token::Normal(NormalToken::EnumOpen) => self.enm -= 1,
                 Token::Normal(NormalToken::EnumClose) => self.enm += 1,
+                Token::Normal(NormalToken::DoubleQuote) => self.double_quote = !self.double_quote,
                 _ => {}
             }
         }
