@@ -1404,6 +1404,18 @@ mod tests {
 
     #[test]
     fn pretty_multiline_strings() {
+        // The string `"\n1."` contains a newline, so it will be pretty-printed using Nickel's multiline string syntax. The result looks like
+        // ```
+        // m%"
+        //
+        //   1.
+        // "%
+        // ```
+        // The newline after `m%"` and the newline before `"%` are removed
+        // by the parser, as is the indentation. Unfortunately, we can't use
+        // `indoc!` in this test because `pretty.rs` insists on putting two
+        // spaces after every newline, even if the line is otherwise empty. But
+        // `indoc!` would rightfully strip those empty spaces.
         let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
 
