@@ -811,7 +811,7 @@ where
                 allocator,
                 if (&BinaryOp::Sub(), &Num(Number::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
-                } else if let OpPos::Prefix = op.pos() {
+                } else if op.pos() == OpPos::Prefix {
                     op.pretty(allocator).append(docs![
                         allocator,
                         allocator.line(),
