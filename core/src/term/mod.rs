@@ -1188,6 +1188,7 @@ impl From<regex::Regex> for CompiledRegex {
 }
 
 /// Position of a unary operator
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpPos {
     Infix,
     Postfix,
