@@ -1,8 +1,8 @@
 # capture = 'stdout'
 # command = ['pprint-ast']
 { 
-  a | Number | default = 1, 
-  b : String | force = "some long string that goes past the 80 character line limit for pretty printing", 
-  c : { x : Number, y: Number } = { x = 999.8979, y = 500 },
-  d | Array std.string.NonEmpty = ["a", "list", "of", "non", "empty", "strings"],
+  aaaaa | Number | default = 1, 
+  bbbbb : String | force = "some long string that goes past the 80 character line limit for pretty printing", 
+  ccccc : { x : Number, y: Number } = { x = 999.8979, y = 500 },
+  ddddd | Array std.string.NonEmpty = ["a", "list", "of", "non", "empty", "strings"],
 }

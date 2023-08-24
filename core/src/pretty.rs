@@ -219,7 +219,7 @@ where
     ) -> DocBuilder<'a, Self, A> {
         docs![
             self,
-            self.annot_part(&metadata.annotation),
+            &metadata.annotation,
             if with_doc {
                 metadata
                     .doc
@@ -242,18 +242,19 @@ where
                 self.nil()
             },
             match &metadata.priority {
-                MergePriority::Bottom => self.line().append(self.text("| default")),
+                MergePriority::Bottom => docs![self, self.line(), "| default"],
                 MergePriority::Neutral => self.nil(),
                 MergePriority::Numeral(p) =>
                     docs![self, self.line(), "| priority ", p.to_sci().to_string()],
-                MergePriority::Top => self.line().append(self.text("| force")),
+                MergePriority::Top => docs![self, self.line(), "| force"],
             }
         ]
-        .group()
     }
 
     fn field(&'a self, id: &LocIdent, field: &Field) -> DocBuilder<'a, Self, A> {
-        self.text(ident_quoted(id)).append(self.field_body(field))
+        self.text(ident_quoted(id))
+            .append(self.field_body(field))
+            .group()
     }
 
     fn dyn_field(&'a self, id_expr: &RichTerm, field: &Field) -> DocBuilder<'a, Self, A> {
@@ -263,14 +264,7 @@ where
             _ => unimplemented!("Dynamic record fields must be StrChunks currently"),
         }
         .append(self.field_body(field))
-    }
-
-    fn recursive_priority(&'a self, priority: RecursivePriority) -> DocBuilder<'a, Self, A> {
-        match priority {
-            RecursivePriority::Default => self.text("| rec default"),
-            RecursivePriority::Force => self.text("| rec force"),
-            RecursivePriority::None => self.nil(),
-        }
+        .group()
     }
 
     fn field_body(&'a self, field: &Field) -> DocBuilder<'a, Self, A> {
@@ -283,7 +277,7 @@ where
 
                 docs![
                     self,
-                    self.recursive_priority(priority),
+                    priority,
                     if has_metadata {
                         docs![self, self.line(), "= "]
                     } else {
@@ -348,33 +342,6 @@ where
         .group()
     }
 
-    fn annot(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        self.annot_part(annot).group()
-    }
-
-    fn annot_part(&'a self, annot: &TypeAnnotation) -> DocBuilder<'a, Self, A> {
-        docs![
-            self,
-            if let Some(typ) = &annot.typ {
-                docs![self, self.line(), ": ", &typ.typ]
-            } else {
-                self.nil()
-            },
-            if !annot.contracts.is_empty() {
-                self.line()
-            } else {
-                self.nil()
-            },
-            self.intersperse(
-                annot
-                    .contracts
-                    .iter()
-                    .map(|c| { docs![self, "| ", &c.typ] }),
-                self.line(),
-            )
-        ]
-    }
-
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
         rt.pretty(self).parens_if(!rt.as_ref().is_atom())
     }
@@ -392,6 +359,50 @@ impl<'a, D: DocAllocator<'a, A>, A> NickelDocBuilderExt<'a, D, A> for DocBuilder
         } else {
             self
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for RecursivePriority
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        match self {
+            RecursivePriority::Default => allocator.text("| rec default"),
+            RecursivePriority::Force => allocator.text("| rec force"),
+            RecursivePriority::None => allocator.nil(),
+        }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &TypeAnnotation
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        docs![
+            allocator,
+            if let Some(typ) = &self.typ {
+                docs![allocator, allocator.line(), ": ", &typ.typ]
+            } else {
+                allocator.nil()
+            },
+            if !self.contracts.is_empty() {
+                allocator.line()
+            } else {
+                allocator.nil()
+            },
+            allocator.intersperse(
+                self.contracts
+                    .iter()
+                    .map(|c| { docs![allocator, "| ", &c.typ] }),
+                allocator.line(),
+            )
+        ]
     }
 }
 
@@ -653,7 +664,7 @@ where
                 },
                 id.to_string(),
                 if let Annotated(annot, _) = rt.as_ref() {
-                    allocator.annot(annot)
+                    annot.pretty(allocator)
                 } else {
                     allocator.nil()
                 },
@@ -681,7 +692,7 @@ where
                 },
                 pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
-                    allocator.annot(annot)
+                    annot.pretty(allocator)
                 } else {
                     allocator.nil()
                 },
@@ -846,7 +857,7 @@ where
             .group(),
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
-            Annotated(annot, rt) => allocator.atom(rt).append(allocator.annot(annot)),
+            Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
             Import(f) => allocator
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
