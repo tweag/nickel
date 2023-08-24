@@ -9,9 +9,10 @@ use nickel_lang_core::{
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
     term::RichTerm,
+    transform::import_resolution,
 };
 
-use crate::server::Server;
+use crate::{files::typecheck, server::Server};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -90,6 +91,24 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
     }
 }
 
+fn resolve_imports(rt: RichTerm, server: &mut Server) -> RichTerm {
+    let import_resolution::tolerant::ResolveResult {
+        transformed_term,
+        resolved_ids,
+        ..
+    } = import_resolution::tolerant::resolve_imports(rt, &mut server.cache);
+
+    for id in resolved_ids {
+        if server.cache.parse(id).is_ok() {
+            // If a new input got imported in an incomplete term, try to typecheck
+            // (and build lookup tables etc.) for it, but don't issue diagnostics.
+            let _ = typecheck(server, id);
+        }
+    }
+
+    transformed_term
+}
+
 /// Given a range of input that we don't expect will fully parse, try to find
 /// a record access path at the end of the input, parse it, and return the
 /// resulting term.
@@ -125,7 +144,7 @@ pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> 
     let file_id = server.cache.replace_string("<incomplete-input>", to_parse);
 
     match server.cache.parse_nocache(file_id) {
-        Ok((rt, _errors)) => Some(rt),
+        Ok((rt, _errors)) => Some(resolve_imports(rt, server)),
         Err(_) => None,
     }
 }

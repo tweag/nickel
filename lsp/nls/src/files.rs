@@ -81,7 +81,10 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     Ok(())
 }
 
-fn typecheck(server: &mut Server, file_id: FileId) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
+pub(crate) fn typecheck(
+    server: &mut Server,
+    file_id: FileId,
+) -> Result<CacheOp<()>, Vec<Diagnostic<FileId>>> {
     server
         .cache
         .typecheck_with_analysis(
