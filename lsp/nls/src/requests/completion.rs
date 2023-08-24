@@ -6,6 +6,7 @@ use lsp_types::{
 };
 use nickel_lang_core::{
     identifier::{Ident, LocIdent},
+    position::RawPos,
     term::{
         record::{Field, FieldMetadata},
         RichTerm, Term, TypeAnnotation, UnaryOp,
@@ -16,6 +17,7 @@ use nickel_lang_core::{
 use crate::{
     cache::CacheExt,
     field_walker::{Def, FieldDefs},
+    incomplete,
     linearization::{
         completed::Completed,
         interface::{TermKind, UsageState, ValueState},
@@ -23,6 +25,7 @@ use crate::{
     },
     server::{self, Server},
     trace::{Enrich, Trace},
+    usage::Environment,
 };
 
 // General idea:
@@ -672,22 +675,39 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     }
 }
 
-fn term_based_completion(
+fn sanitize_term_for_completion(
     term: &RichTerm,
-    linearization: &Completed,
+    cursor: RawPos,
+    server: &mut Server,
+) -> Option<RichTerm> {
+    if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
+        let mut range = *range;
+        if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
+            return None;
+        }
+
+        range.end = cursor.index;
+        incomplete::parse_path_from_incomplete_input(range, server)
+    } else if let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() {
+        // For completing record paths, we discard the last path element: if we're
+        // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
+        Some(parent.clone())
+    } else {
+        None
+    }
+}
+
+fn term_based_completion(
+    term: RichTerm,
+    initial_env: &Environment,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     log::info!("term based completion path: {term:?}");
+    log::info!("initial env: {initial_env:?}");
 
-    // For completing record paths, we discard the last path element: if we're
-    // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
-    let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() else {
-        return Ok(Vec::new());
-    };
+    let (start_term, path) = extract_static_path(term);
 
-    let (start_term, path) = extract_static_path(parent.clone());
-
-    let defs = FieldDefs::resolve_path(&start_term, &path, linearization, server);
+    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, server);
     Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
@@ -700,20 +720,35 @@ pub fn handle_completion(
     // so we try to get the item just before the cursor.
     let mut pos = server.cache.position(&params.text_document_position)?;
     pos.index.0 -= 1;
-    let start = pos.index.to_usize();
-    let linearization = server.lin_cache_get(&pos.src_id)?;
-    let item = linearization.item_at(pos);
-    Trace::enrich(&id, linearization);
 
-    let rt = server.lookup_term_by_position(pos)?;
-    let mut completions = match &rt {
-        Some(rt) => term_based_completion(rt, linearization, server)?,
+    let term = server.lookup_term_by_position(pos)?.cloned();
+    let sanitized_term = term
+        .as_ref()
+        .and_then(|rt| sanitize_term_for_completion(rt, pos, server));
+    let mut completions = match term.zip(sanitized_term) {
+        Some((term, sanitized)) => {
+            let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
+                server
+                    .lin_registry
+                    .get_env(&term)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                Environment::new()
+            };
+            term_based_completion(sanitized, &env, server)?
+        }
         None => Vec::new(),
     };
 
     log::info!("term-based completion provided {completions:?}");
 
+    let linearization = server.lin_cache_get(&pos.src_id)?;
+    Trace::enrich(&id, linearization);
+
+    let item = linearization.item_at(pos);
     let text = server.cache.files().source(pos.src_id);
+    let start = pos.index.to_usize();
     if let Some(item) = item {
         debug!("found closest item: {:?}", item);
 

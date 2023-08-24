@@ -445,7 +445,7 @@ pub enum Token<'input> {
     MultiStr(MultiStringToken<'input>),
 }
 
-type SpannedToken<'input> = (usize, Token<'input>, usize);
+pub type SpannedToken<'input> = (usize, Token<'input>, usize);
 type NormalLexer<'input> = logos::Lexer<'input, NormalToken<'input>>;
 type StringLexer<'input> = logos::Lexer<'input, StringToken<'input>>;
 type MultiStringLexer<'input> = logos::Lexer<'input, MultiStringToken<'input>>;

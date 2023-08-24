@@ -7,7 +7,7 @@ use nickel_lang_core::{
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
 };
 
-use crate::{identifier::LocIdent, linearization::completed::Completed, server::Server};
+use crate::{identifier::LocIdent, server::Server, usage::Environment};
 
 /// A term and a path.
 ///
@@ -118,7 +118,7 @@ pub struct DefWithPath {
 }
 
 impl DefWithPath {
-    fn resolve_terms(&self, linearization: &Completed, server: &Server) -> Vec<Def> {
+    fn resolve_terms(&self, env: &Environment, server: &Server) -> Vec<Def> {
         match &self.value {
             Some(val) if !val.path.is_empty() => {
                 // Calling `resolve_path` on x with path [foo, bar] returns all
@@ -126,7 +126,7 @@ impl DefWithPath {
                 // so use `resolve_path` to get x.foo and then find the bars in it.
                 // unwrap: we just checked the path is non-empty
                 let (last, path) = val.path.split_last().unwrap();
-                FieldDefs::resolve_path(&val.term, path, linearization, server)
+                FieldDefs::resolve_path(&val.term, path, env, server)
                     .fields
                     .remove(last)
                     .unwrap_or_default()
@@ -150,13 +150,23 @@ pub struct FieldDefs {
 
 impl FieldDefs {
     /// Resolve a record path iteratively, returning all the fields defined on the final path element.
+    ///
+    /// `env` is an environment that only gets used (and even then, only
+    /// as a fallback) for the first layer of variable resolutions. After
+    /// that, variables are resolved using the precomputed usage tables. This
+    /// mechanism allows providing an initial environment for input that doesn't
+    /// parse, and hence doesn't exist in the precomputed usage tables.
+    ///
+    /// For example, in `let x = ... in let y = x in [ y.` we will rely on the
+    /// initial environment to resolve the `y` in `[ y.`, and after that we will
+    /// use the precomputed tables to resolve the `x`.
     pub fn resolve_path<'a>(
         rt: &'a RichTerm,
         mut path: &'a [Ident],
-        linearization: &Completed,
+        env: &Environment,
         server: &Server,
     ) -> Self {
-        let mut fields = FieldDefs::resolve(rt, linearization, server);
+        let mut fields = FieldDefs::resolve(rt, env, server);
 
         while let Some((id, tail)) = path.split_first() {
             path = tail;
@@ -164,7 +174,7 @@ impl FieldDefs {
             fields.fields.clear();
 
             for rt in defs.into_iter().filter_map(|d| d.value) {
-                fields = fields.merge_from(FieldDefs::resolve(&rt, linearization, server));
+                fields = fields.merge_from(FieldDefs::resolve(&rt, env, server));
             }
         }
 
@@ -180,7 +190,9 @@ impl FieldDefs {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    fn resolve(rt: &RichTerm, linearization: &Completed, server: &Server) -> FieldDefs {
+    ///
+    /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
+    fn resolve(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
         match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 let fields = data
@@ -202,20 +214,31 @@ impl FieldDefs {
             Term::Var(id) => server
                 .lin_registry
                 .get_def(&(*id).into())
+                .or_else(|| env.get(&id.ident()))
                 .map(|def| {
                     log::info!("got def {def:?}");
-                    let defs = def.resolve_terms(linearization, server);
+
+                    // The definition of this identifier is unlikely to belong to the
+                    // environment we started with, especially because the enviroment
+                    // mechanism is only used for providing definitions to incompletely
+                    // parsed input.
+                    let env = Environment::new();
+                    let defs = def.resolve_terms(&env, server);
                     let terms = defs.iter().filter_map(|def| def.value.as_ref());
-                    FieldDefs::resolve_all(terms, linearization, server)
+                    FieldDefs::resolve_all(terms, &env, server)
                 })
                 .unwrap_or_default(),
-            Term::ResolvedImport(file_id) => server
-                .cache
-                .get_ref(*file_id)
-                .map(|term| FieldDefs::resolve(term, linearization, server))
-                .unwrap_or_default(),
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => FieldDefs::resolve(t1, linearization, server)
-                .merge_from(FieldDefs::resolve(t2, linearization, server)),
+            Term::ResolvedImport(file_id) => {
+                let env = Environment::new();
+                server
+                    .cache
+                    .get_ref(*file_id)
+                    .map(|term| FieldDefs::resolve(term, &env, server))
+                    .unwrap_or_default()
+            }
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
+                FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
+            }
             _ => Default::default(),
         }
     }
@@ -236,11 +259,11 @@ impl FieldDefs {
 
     fn resolve_all<'a>(
         terms: impl Iterator<Item = &'a RichTerm>,
-        linearization: &Completed,
+        env: &Environment,
         server: &Server,
     ) -> FieldDefs {
         terms.fold(FieldDefs::default(), |acc, term| {
-            acc.merge_from(FieldDefs::resolve(term, linearization, server))
+            acc.merge_from(FieldDefs::resolve(term, env, server))
         })
     }
 }
