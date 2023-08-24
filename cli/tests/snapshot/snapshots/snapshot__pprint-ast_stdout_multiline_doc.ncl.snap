@@ -18,6 +18,5 @@ expression: out
           error
       ```
     "%%
-    =
-    1,
+    = 1,
 }

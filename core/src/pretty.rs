@@ -285,11 +285,11 @@ where
                     self,
                     self.recursive_priority(priority),
                     if has_metadata {
-                        self.line()
+                        docs![self, self.line(), "= "]
                     } else {
-                        self.space()
+                        docs![self, " =", self.line()]
                     },
-                    docs![self, "=", self.line(), value.pretty(self).nest(2)]
+                    value.pretty(self).nest(2)
                 ]
             } else {
                 self.nil()
@@ -1328,13 +1328,11 @@ mod tests {
                   a
                     | String
                     | force
-                    =
-                    b,
+                    = b,
                   c
                     | Number
                     | doc ""
-                    =
-                    d,
+                    = d,
                 }"#
             },
         );
