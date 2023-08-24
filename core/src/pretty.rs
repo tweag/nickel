@@ -203,7 +203,7 @@ where
                             self.escaped_string(s)
                         }
                     }
-                    StrChunk::Expr(e, _i) => docs![self, interp.clone(), "{", e.pretty(self), "}"],
+                    StrChunk::Expr(e, _i) => docs![self, interp.clone(), "{", e, "}"],
                 }
             })))
             .nest(if multiline { 2 } else { 0 })
@@ -356,7 +356,7 @@ where
         docs![
             self,
             if let Some(typ) = &annot.typ {
-                docs![self, self.line(), ": ", typ.typ.clone().pretty(self)]
+                docs![self, self.line(), ": ", &typ.typ]
             } else {
                 self.nil()
             },
@@ -369,14 +369,14 @@ where
                 annot
                     .contracts
                     .iter()
-                    .map(|c| { docs![self, "| ", c.typ.pretty(self)] }),
+                    .map(|c| { docs![self, "| ", &c.typ] }),
                 self.line(),
             )
         ]
     }
 
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
-        rt.to_owned().pretty(self).parens_if(!rt.as_ref().is_atom())
+        rt.pretty(self).parens_if(!rt.as_ref().is_atom())
     }
 }
 
@@ -473,12 +473,9 @@ where
         match self {
             FieldPattern::Ident(id) => allocator.as_string(id),
             FieldPattern::RecordPattern(rp) => rp.pretty(allocator),
-            FieldPattern::AliasedRecordPattern { alias, pattern } => allocator
-                .as_string(alias)
-                .append(allocator.space())
-                .append(allocator.text("@"))
-                .append(allocator.space())
-                .append(pattern.pretty(allocator)),
+            FieldPattern::AliasedRecordPattern { alias, pattern } => {
+                docs![allocator, alias.to_string(), " @ ", pattern]
+            }
         }
     }
 }
@@ -677,7 +674,7 @@ where
                 } else {
                     allocator.nil()
                 },
-                pattern.pretty(allocator),
+                pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     allocator.annot(annot)
                 } else {
@@ -686,9 +683,9 @@ where
                 allocator.line(),
                 "= ",
                 if let Annotated(_, inner) = rt.as_ref() {
-                    inner.pretty(allocator)
+                    inner
                 } else {
-                    rt.pretty(allocator)
+                    rt
                 },
                 allocator.line(),
                 "in",
@@ -703,12 +700,12 @@ where
                     Op1(UnaryOp::Ite(), i) => docs![
                         allocator,
                         "if ",
-                        i.pretty(allocator),
+                        i,
                         " then",
-                        docs![allocator, allocator.line(), t.pretty(allocator)].nest(2),
+                        docs![allocator, allocator.line(), t].nest(2),
                         allocator.line(),
                         "else",
-                        docs![allocator, allocator.line(), rt2.pretty(allocator)].nest(2)
+                        docs![allocator, allocator.line(), rt2].nest(2)
                     ]
                     .group(),
                     _ => unreachable!(),
@@ -760,7 +757,7 @@ where
                                 pattern,
                                 " =>",
                                 allocator.line(),
-                                t.pretty(allocator),
+                                t,
                                 ","
                             ]
                             .nest(2)),
@@ -799,7 +796,7 @@ where
             Op1(op, rt) => match op.pos() {
                 OpPos::Prefix => docs![
                     allocator,
-                    op.pretty(allocator),
+                    op,
                     docs![allocator, allocator.line(), allocator.atom(rt)].nest(2)
                 ]
                 .group(),
@@ -808,7 +805,7 @@ where
                 }
             },
             Op2(BinaryOp::DynAccess(), rtl, rtr) => {
-                docs![allocator, rtr.pretty(allocator), ".", rtl.pretty(allocator)]
+                docs![allocator, rtr, ".", rtl]
             }
             Op2(op, rtl, rtr) => docs![
                 allocator,
@@ -822,13 +819,7 @@ where
                         allocator.line()
                     ])
                 } else {
-                    docs![
-                        allocator,
-                        allocator.atom(rtl),
-                        " ",
-                        op.pretty(allocator),
-                        allocator.line()
-                    ]
+                    docs![allocator, allocator.atom(rtl), " ", op, allocator.line()]
                 },
                 allocator.atom(rtr)
             ]
@@ -836,7 +827,7 @@ where
             .group(),
             OpN(op, rts) => docs![
                 allocator,
-                op.pretty(allocator),
+                op,
                 docs![
                     allocator,
                     allocator.line(),
@@ -879,7 +870,7 @@ where
                 } else {
                     allocator.nil()
                 },
-                tail.pretty(allocator)
+                tail.as_ref()
             ],
         }
     }
@@ -903,13 +894,13 @@ where
                 allocator,
                 ident_quoted(id),
                 " : ",
-                typ.pretty(allocator),
+                typ.as_ref(),
                 if let RecordRowsF::Extend { .. } = tail.0 {
                     docs![allocator, ",", allocator.line()]
                 } else {
                     allocator.nil()
                 },
-                tail.pretty(allocator)
+                tail.as_ref()
             ],
         }
     }
@@ -940,7 +931,7 @@ where
                         } else {
                             allocator.line()
                         },
-                        ty.pretty(allocator)
+                        ty.as_ref()
                     ]
                     .nest(2),
                     if parens {
@@ -975,17 +966,17 @@ where
                     ),
                     ".",
                     allocator.line(),
-                    curr.pretty(allocator)
+                    curr
                 ]
                 .nest(2)
                 .group()
             }
-            Enum(erows) => docs![allocator, allocator.line(), erows.pretty(allocator)]
+            Enum(erows) => docs![allocator, allocator.line(), erows]
                 .nest(2)
                 .append(allocator.line())
                 .enclose("[|", "|]")
                 .group(),
-            Record(rrows) => docs![allocator, allocator.line(), rrows.pretty(allocator)]
+            Record(rrows) => docs![allocator, allocator.line(), rrows]
                 .nest(2)
                 .append(allocator.line())
                 .braces()
@@ -1002,7 +993,7 @@ where
                     DictTypeFlavour::Contract => "|",
                 },
                 " ",
-                ty.pretty(allocator),
+                ty.as_ref(),
             ]
             .nest(2)
             .append(allocator.line())
