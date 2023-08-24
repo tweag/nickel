@@ -937,29 +937,18 @@ where
             Number => allocator.text("Number"),
             Bool => allocator.text("Bool"),
             String => allocator.text("String"),
-            Array(ty) => {
-                let parens = !ty.fmt_is_atom();
+            Array(ty) => if ty.fmt_is_atom() {
+                docs![allocator, "Array", allocator.line(), ty.as_ref()].nest(2)
+            } else {
                 docs![
                     allocator,
-                    docs![
-                        allocator,
-                        "Array",
-                        if parens {
-                            docs![allocator, " (", allocator.line_()]
-                        } else {
-                            allocator.line()
-                        },
-                        ty.as_ref()
-                    ]
-                    .nest(2),
-                    if parens {
-                        docs![allocator, allocator.line_(), ")"]
-                    } else {
-                        allocator.nil()
-                    }
+                    "Array (",
+                    docs![allocator, allocator.line_(), ty.as_ref()].nest(2),
+                    allocator.line_(),
+                    ")"
                 ]
-                .group()
             }
+            .group(),
             Symbol => allocator.text("Symbol"),
             Flat(t) => t.pretty(allocator),
             Var(var) => allocator.as_string(var),
