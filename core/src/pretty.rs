@@ -812,18 +812,20 @@ where
                 if (&BinaryOp::Sub(), &Num(Number::ZERO)) == (op, rtl.as_ref()) {
                     allocator.text("-")
                 } else if op.pos() == OpPos::Prefix {
-                    op.pretty(allocator).append(docs![
-                        allocator,
-                        allocator.line(),
-                        allocator.atom(rtl),
-                        allocator.line()
-                    ])
+                    op.pretty(allocator).append(
+                        docs![
+                            allocator,
+                            allocator.line(),
+                            allocator.atom(rtl),
+                            allocator.line()
+                        ]
+                        .nest(2),
+                    )
                 } else {
-                    docs![allocator, allocator.atom(rtl), " ", op, allocator.line()]
+                    docs![allocator, allocator.atom(rtl), allocator.line(), op, " "]
                 },
                 allocator.atom(rtr)
             ]
-            .nest(2)
             .group(),
             OpN(op, rts) => docs![
                 allocator,
@@ -1200,8 +1202,8 @@ mod tests {
         assert_long_short_term(
             "a + b",
             indoc! {"
-                a +
-                  b"
+                a
+                + b"
             },
         );
         assert_long_short_term(
@@ -1216,8 +1218,8 @@ mod tests {
         assert_long_short_term(
             "a - (-b)",
             indoc! {"
-                a -
-                  (-b)"
+                a
+                - (-b)"
             },
         );
     }
