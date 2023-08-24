@@ -637,7 +637,7 @@ where
                 .nest(2)
                 .group()
             }
-            Lbl(_lbl) => allocator.text("# <label>").append(allocator.line()),
+            Lbl(_lbl) => allocator.text("%<label>").append(allocator.line()),
             Let(id, rt, body, attrs) => docs![
                 allocator,
                 "let ",
@@ -837,8 +837,8 @@ where
                 .nest(2)
             ]
             .group(),
-            SealingKey(sym) => allocator.text(format!("#<sealing key: {sym}>")),
-            Sealed(_i, _rt, _lbl) => allocator.text("#<sealed>"),
+            SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
+            Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(allocator.annot(annot)),
             Import(f) => allocator
                 .text("import ")
