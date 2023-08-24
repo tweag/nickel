@@ -150,6 +150,16 @@ pub struct FieldDefs {
 
 impl FieldDefs {
     /// Resolve a record path iteratively, returning all the fields defined on the final path element.
+    ///
+    /// `env` is an environment that only gets used (and even then, only
+    /// as a fallback) for the first layer of variable resolutions. After
+    /// that, variables are resolved using the precomputed usage tables. This
+    /// mechanism allows providing an initial environment for input that doesn't
+    /// parse, and hence doesn't exist in the precomputed usage tables.
+    ///
+    /// For example, in `let x = ... in let y = x in [ y.` we will rely on the
+    /// initial environment to resolve the `y` in `[ y.`, and after that we will
+    /// use the precomputed tables to resolve the `x`.
     pub fn resolve_path<'a>(
         rt: &'a RichTerm,
         mut path: &'a [Ident],
@@ -180,6 +190,8 @@ impl FieldDefs {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
+    ///
+    /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
     fn resolve(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
         match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
