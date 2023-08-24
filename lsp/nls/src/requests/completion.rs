@@ -681,7 +681,13 @@ fn sanitize_term_for_completion(
     server: &mut Server,
 ) -> Option<RichTerm> {
     if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
-        incomplete::parse_path_from_incomplete_input(*range, cursor, server)
+        let mut range = *range;
+        if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
+            return None;
+        }
+
+        range.end = cursor.index;
+        incomplete::parse_path_from_incomplete_input(range, server)
     } else if let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.

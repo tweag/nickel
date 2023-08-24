@@ -205,17 +205,25 @@ impl FieldDefs {
                 .or_else(|| env.get(&id.ident()))
                 .map(|def| {
                     log::info!("got def {def:?}");
+
+                    // The definition of this identifier is unlikely to belong to the
+                    // environment we started with, especially because the enviroment
+                    // mechanism is only used for providing definitions to incompletely
+                    // parsed input.
                     let env = Environment::new();
                     let defs = def.resolve_terms(&env, server);
                     let terms = defs.iter().filter_map(|def| def.value.as_ref());
                     FieldDefs::resolve_all(terms, &env, server)
                 })
                 .unwrap_or_default(),
-            Term::ResolvedImport(file_id) => server
-                .cache
-                .get_ref(*file_id)
-                .map(|term| FieldDefs::resolve(term, env, server))
-                .unwrap_or_default(),
+            Term::ResolvedImport(file_id) => {
+                let env = Environment::new();
+                server
+                    .cache
+                    .get_ref(*file_id)
+                    .map(|term| FieldDefs::resolve(term, &env, server))
+                    .unwrap_or_default()
+            }
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
                 FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
             }

@@ -1,6 +1,13 @@
+//! Utilities for dealing with unparseable input.
+//!
+//! We try to use the nickel parser when we can, but the input file is just
+//! not completely parseable. Here we collect utilities for extracting some
+//! information from the unparseable part. This is necessarily somewhat
+//! heuristic.
+
 use nickel_lang_core::{
     parser::lexer::{self, NormalToken, SpannedToken, Token},
-    position::{RawPos, RawSpan},
+    position::RawSpan,
     term::RichTerm,
 };
 
@@ -60,6 +67,8 @@ fn delimited_start(toks: &[SpannedToken], mut idx: usize) -> Option<usize> {
     }
 }
 
+// Given tokens that hopefully end in a record path, return the index of the
+// token that starts the record path.
 fn path_start(toks: &[SpannedToken]) -> Option<usize> {
     let mut idx = toks.len().checked_sub(1)?;
 
@@ -75,22 +84,20 @@ fn path_start(toks: &[SpannedToken]) -> Option<usize> {
     }
 }
 
-pub fn parse_path_from_incomplete_input(
-    range: RawSpan,
-    cursor: RawPos,
-    server: &mut Server,
-) -> Option<RichTerm> {
-    if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
-        return None;
-    }
-
+/// Given a range of input that we don't expect will fully parse, try to find
+/// a record access path at the end of the input, parse it, and return the
+/// resulting term.
+///
+/// For example, if the input is `let foo = bar.something.`, we will return
+/// `bar.something` (but parsed, of course).
+pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> Option<RichTerm> {
     let text = server.cache.files().source(range.src_id);
-    let subtext = &text[range.start.to_usize()..cursor.index.to_usize()];
+    let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
     let lexer = lexer::Lexer::new(subtext);
     let mut tokens: Vec<_> = lexer.collect::<Result<_, _>>().ok()?;
 
-    // If the cursor is container in a token, ignore that token. If after doing that, the last
+    // If the cursor is contained in a token, ignore that token. If after doing that, the last
     // token is a '.', ignore that one too.
     // The idea is that on the inputs `expr.a.path.foo` or `expr.a.path.`, we want to complete
     // based on the fields in `expr.a.path`

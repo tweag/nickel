@@ -58,6 +58,9 @@ impl EnvExt for Environment {
 /// This lookup table is for the first step.
 #[derive(Clone, Debug, Default)]
 pub struct UsageLookup {
+    // Maps from spans (of terms) to the environments that those spans belong to.
+    // This could be made more general (we might want to map arbitrary positions to
+    // environments) but its enough for us now.
     def_table: HashMap<RawSpan, Environment>,
     usage_table: HashMap<LocIdent, Vec<LocIdent>>,
 }
@@ -88,6 +91,7 @@ impl UsageLookup {
             .and_then(|env| env.get(&ident.ident))
     }
 
+    /// Return the enviroment that a term belongs to.
     pub fn env(&self, term: &RichTerm) -> Option<&Environment> {
         term.pos
             .as_opt_ref()
