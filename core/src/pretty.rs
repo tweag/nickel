@@ -406,7 +406,12 @@ where
         match self {
             BoolNot() => allocator.text("!"),
             BoolAnd() | BoolOr() | StaticAccess(_) => {
-                unreachable!("needs to be handled specially")
+                unreachable!(
+                    "These are handled specially since they are actually encodings \
+                    of binary operators (`BoolAnd` and `BoolOr`) or need special \
+                    formatting (`StaticAccess`). This currently happens in the `App` \
+                    branch of `Term::pretty`"
+                )
             }
             Embed(id) => docs![
                 allocator,
