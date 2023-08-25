@@ -93,53 +93,6 @@ impl FieldMetadata {
     pub fn new() -> Self {
         Default::default()
     }
-
-    /// Flatten two nested metadata into one. If data that can't be combined (typically, the
-    /// documentation or the type annotation) are set by both, the outer's one are kept.
-    ///
-    /// Note that no environment management operation such as closurization of contracts takes
-    /// place, because this function is expected to be used on the AST before the evaluation (in
-    /// the parser or during program transformation).
-    pub fn flatten(mut outer: FieldMetadata, mut inner: FieldMetadata) -> FieldMetadata {
-        // Keep the outermost value for non-mergeable information, such as documentation, type annotation,
-        // and so on, which is the one that is accessible from the outside anyway (by queries, by the typechecker, and
-        // so on).
-        // Keep the inner value.
-
-        if outer.annotation.typ.is_some() {
-            // If both have type annotations, the result will have the outer one as a type annotation.
-            // However we still need to enforce the corresponding contract to preserve the operational
-            // semantics. Thus, the inner type annotation is derelicted to a contract.
-            if let Some(ctr) = inner.annotation.typ.take() {
-                outer.annotation.contracts.push(ctr)
-            }
-        }
-
-        outer
-            .annotation
-            .contracts
-            .extend(inner.annotation.contracts.into_iter());
-
-        let priority = match (outer.priority, inner.priority) {
-            // Neutral corresponds to the case where no priority was specified. In that case, the
-            // other priority takes precedence.
-            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
-            // Otherwise, we keep the maximum of both priorities, as we would do when merging
-            // values.
-            (p1, p2) => std::cmp::max(p1, p2),
-        };
-
-        FieldMetadata {
-            doc: outer.doc.or(inner.doc),
-            annotation: TypeAnnotation {
-                typ: outer.annotation.typ.or(inner.annotation.typ),
-                contracts: outer.annotation.contracts,
-            },
-            opt: outer.opt || inner.opt,
-            not_exported: outer.not_exported || inner.not_exported,
-            priority,
-        }
-    }
 }
 
 /// A record field with its metadata.
