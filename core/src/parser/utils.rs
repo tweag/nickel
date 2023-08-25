@@ -257,10 +257,10 @@ impl InfixOp {
 }
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
-/// Pedantically, `Annot` is just a monoid.
-pub trait Annot: Default {
+/// Pedantically, `Combine` is just a monoid.
+pub trait Combine: Default {
     /// Combine two annotations.
-    fn combine(outer: Self, inner: Self) -> Self;
+    fn combine(left: Self, right: Self) -> Self;
 }
 
 /// Trait for structures representing annotations which can be combined with a term to build
@@ -270,18 +270,39 @@ pub trait AttachTerm<T> {
     fn attach_term(self, rt: RichTerm) -> T;
 }
 
-impl Annot for FieldMetadata {
-    fn combine(outer: Self, inner: Self) -> Self {
-        Self::flatten(outer, inner)
+impl<T: Combine> Combine for Option<T> {
+    fn combine(left: Self, right: Self) -> Self {
+        match (left, right) {
+            (None, None) => None,
+            (None, Some(x)) | (Some(x), None) => Some(x),
+            (Some(left), Some(right)) => Some(Combine::combine(left, right)),
+        }
     }
 }
 
-impl<T: Annot> Annot for Option<T> {
-    fn combine(outer: Self, inner: Self) -> Self {
-        match (outer, inner) {
-            (None, None) => None,
-            (None, Some(x)) | (Some(x), None) => Some(x),
-            (Some(outer), Some(inner)) => Some(Annot::combine(outer, inner)),
+impl Combine for FieldMetadata {
+    /// Combine two field metadata into one. If data that can't be combined (typically, the
+    /// documentation or the type annotation) are set by both, the left one's are kept.
+    ///
+    /// Note that no environment management operation such as closurization of contracts takes
+    /// place, because this function is expected to be used on the AST before the evaluation (in
+    /// the parser or during program transformation).
+    fn combine(left: Self, right: Self) -> Self {
+        let priority = match (left.priority, right.priority) {
+            // Neutral corresponds to the case where no priority was specified. In that case, the
+            // other priority takes precedence.
+            (MergePriority::Neutral, p) | (p, MergePriority::Neutral) => p,
+            // Otherwise, we keep the maximum of both priorities, as we would do when merging
+            // values.
+            (p1, p2) => std::cmp::max(p1, p2),
+        };
+
+        FieldMetadata {
+            doc: left.doc.or(right.doc),
+            annotation: Combine::combine(left.annotation, right.annotation),
+            opt: left.opt || right.opt,
+            not_exported: left.not_exported || right.not_exported,
+            priority,
         }
     }
 }
@@ -296,31 +317,36 @@ impl AttachTerm<Field> for FieldMetadata {
     }
 }
 
-impl Annot for LetMetadata {
-    // Flatten two nested let metadata into one. If `doc` is set by both, the outer's documentation
+impl Combine for LetMetadata {
+    // Combine two let metadata into one. If `doc` is set by both, the left one's documentation
     // is kept.
-    fn combine(outer: Self, inner: Self) -> Self {
+    fn combine(left: Self, right: Self) -> Self {
         LetMetadata {
-            doc: outer.doc.or(inner.doc),
-            annotation: Annot::combine(outer.annotation, inner.annotation),
+            doc: left.doc.or(right.doc),
+            annotation: Combine::combine(left.annotation, right.annotation),
         }
     }
 }
 
-impl Annot for TypeAnnotation {
-    /// Combine two type annotations. If both have `types` set, the final type is the one of outer,
-    /// while inner's type is put inside the final `contracts`.
-    fn combine(outer: Self, inner: Self) -> Self {
-        let (typ, leftover) = match (inner.typ, outer.typ) {
-            (outer_ty @ Some(_), inner_ty @ Some(_)) => (outer_ty, inner_ty),
-            (outer_ty, inner_ty) => (outer_ty.or(inner_ty), None),
+impl Combine for TypeAnnotation {
+    /// Combine two type annotations. If both have `types` set, the final type
+    /// is the one of the left annotation, while the right one's type is put
+    /// inside the final `contracts`.
+    ///
+    /// Contracts are combined from left to right; the left one's are put first,
+    /// then maybe the right one's type annotation and then the right one's
+    /// contracts.
+    fn combine(left: Self, right: Self) -> Self {
+        let (typ, leftover) = match (left.typ, right.typ) {
+            (left_ty @ Some(_), right_ty @ Some(_)) => (left_ty, right_ty),
+            (left_ty, right_ty) => (left_ty.or(right_ty), None),
         };
 
-        let contracts = inner
+        let contracts = left
             .contracts
             .into_iter()
             .chain(leftover.into_iter())
-            .chain(outer.contracts.into_iter())
+            .chain(right.contracts.into_iter())
             .collect();
 
         TypeAnnotation { typ, contracts }
@@ -339,10 +365,10 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
 }
 
 /// Combine annotations in a pattern. If at least one annotation is not `None`,
-/// then this just calls [`Annot::combine`] and substitutes a potential `None`
+/// then this just calls [`Combine::combine`] and substitutes a potential `None`
 /// by the default value.
 pub fn metadata_with_default(anns: Option<FieldMetadata>, default: Option<RichTerm>) -> Field {
-    let metadata = Annot::combine(
+    let metadata = Combine::combine(
         anns,
         default.is_some().then_some(FieldMetadata {
             priority: MergePriority::Bottom,
@@ -400,11 +426,11 @@ impl AttachTerm<Field> for FieldExtAnnot {
     }
 }
 
-impl Annot for FieldExtAnnot {
-    fn combine(outer: Self, inner: Self) -> Self {
-        let metadata = FieldMetadata::flatten(outer.metadata, inner.metadata);
-        let rec_force = outer.rec_force || inner.rec_force;
-        let rec_default = outer.rec_default || inner.rec_default;
+impl Combine for FieldExtAnnot {
+    fn combine(left: Self, right: Self) -> Self {
+        let metadata = FieldMetadata::combine(left.metadata, right.metadata);
+        let rec_force = left.rec_force || right.rec_force;
+        let rec_default = left.rec_default || right.rec_default;
 
         FieldExtAnnot {
             metadata,
@@ -547,7 +573,7 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
         (None, None) => None,
     };
 
-    let metadata = FieldMetadata::flatten(field1.metadata, field2.metadata);
+    let metadata = FieldMetadata::combine(field1.metadata, field2.metadata);
 
     // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
     debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
@@ -846,4 +872,49 @@ pub fn strip_indent_doc(doc: String) -> String {
         })
         .next()
         .expect("expected non-empty chunks after indentation of documentation")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::typ::TypeF;
+
+    use super::*;
+
+    #[test]
+    fn contract_annotation_order() {
+        let ty1 = LabeledType {
+            typ: TypeF::Number.into(),
+            label: Label::dummy(),
+        };
+        let annot1 = TypeAnnotation {
+            typ: None,
+            contracts: vec![ty1.clone()],
+        };
+
+        let ty2 = LabeledType {
+            typ: TypeF::Bool.into(),
+            label: Label::dummy(),
+        };
+        let annot2 = TypeAnnotation {
+            typ: None,
+            contracts: vec![ty2.clone()],
+        };
+
+        assert_eq!(Combine::combine(annot1, annot2).contracts, vec![ty1, ty2])
+    }
+
+    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
+    #[test]
+    fn type_annotation_combine() {
+        let inner = TypeAnnotation {
+            typ: Some(LabeledType {
+                typ: Type::from(TypeF::Number),
+                label: Label::dummy(),
+            }),
+            ..Default::default()
+        };
+        let outer = TypeAnnotation::default();
+        let res = TypeAnnotation::combine(outer, inner);
+        assert_ne!(res.typ, None);
+    }
 }

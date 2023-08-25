@@ -88,7 +88,7 @@ AsType<Rule>: Type = <ut: WithPos<Rule>> =>?
 AsUniTerm<Rule>: UniTerm = <ut: WithPos<Rule>> => UniTerm::from(ut);
 
 AnnotSeries<AnnotAtom>: AnnotAtom = <AnnotAtom+> =>
-    <>.into_iter().fold(Default::default(), Annot::combine);
+    <>.into_iter().fold(Default::default(), Combine::combine);
 
 // A single type or contract annotation. The `Type` rule forbids the use of
 // constructs that can themselves have annotation on the right, such as a `let`.

@@ -330,7 +330,7 @@ pub struct LetAttrs {
 }
 
 /// The metadata that can be attached to a let.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct LetMetadata {
     pub doc: Option<String>,
     pub annotation: TypeAnnotation,
@@ -2152,26 +2152,7 @@ pub mod make {
 
 #[cfg(test)]
 mod tests {
-    use crate::typ::TypeF;
-
     use super::*;
-
-    /// Regression test for issue [#548](https://github.com/tweag/nickel/issues/548)
-    #[test]
-    fn annot_flatten() {
-        use crate::parser::utils::Annot;
-
-        let inner = TypeAnnotation {
-            typ: Some(LabeledType {
-                typ: Type::from(TypeF::Number),
-                label: Label::dummy(),
-            }),
-            ..Default::default()
-        };
-        let outer = TypeAnnotation::default();
-        let res = TypeAnnotation::combine(outer, inner);
-        assert_ne!(res.typ, None);
-    }
 
     #[test]
     fn make_static_access() {
