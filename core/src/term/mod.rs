@@ -1111,6 +1111,57 @@ pub enum UnaryOp {
     Dualize(),
 }
 
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use UnaryOp::*;
+        match self {
+            Ite() => write!(f, "if_then_else"),
+            Typeof() => write!(f, "typeof"),
+            BoolAnd() => write!(f, "bool_and"),
+            BoolOr() => write!(f, "bool_or"),
+            BoolNot() => write!(f, "bool_not"),
+            Blame() => write!(f, "blame"),
+            Embed(_) => write!(f, "embed"),
+            Match { .. } => write!(f, "match"),
+            StaticAccess(_) => write!(f, "static_access"),
+            ArrayMap() => write!(f, "map"),
+            RecordMap() => write!(f, "record_map"),
+            ChangePolarity() => write!(f, "chng_pol"),
+            Pol() => write!(f, "polarity"),
+            GoDom() => write!(f, "go_dom"),
+            GoCodom() => write!(f, "go_codom"),
+            GoArray() => write!(f, "go_array"),
+            GoDict() => write!(f, "go_dict"),
+            Seq() => write!(f, "seq"),
+            DeepSeq() => write!(f, "deep_seq"),
+            ArrayLength() => write!(f, "length"),
+            ArrayGen() => write!(f, "generate"),
+            ChunksConcat() => write!(f, "chunks_concat"),
+            FieldsOf() => write!(f, "fields"),
+            ValuesOf() => write!(f, "values"),
+            StrTrim() => write!(f, "str_trim"),
+            StrChars() => write!(f, "str_chars"),
+            StrUppercase() => write!(f, "str_uppercase"),
+            StrLowercase() => write!(f, "str_lowercase"),
+            StrLength() => write!(f, "str_length"),
+            ToStr() => write!(f, "to_str"),
+            NumFromStr() => write!(f, "num_from_str"),
+            EnumFromStr() => write!(f, "enum_from_str"),
+            StrIsMatch() => write!(f, "str_is_match"),
+            StrFind() => write!(f, "str_find"),
+            StrIsMatchCompiled(_) => write!(f, "str_is_match_compiled"),
+            StrFindCompiled(_) => write!(f, "str_find_compiled"),
+            Force { .. } => write!(f, "force"),
+            RecDefault() => write!(f, "rec_default"),
+            RecForce() => write!(f, "rec_force"),
+            RecordEmptyWithTail() => write!(f, "record_empty_with_tail"),
+            Trace() => write!(f, "trace"),
+            LabelPushDiag() => write!(f, "label_push_diag"),
+            Dualize() => write!(f, "dualize"),
+        }
+    }
+}
+
 // See: https://github.com/rust-lang/regex/issues/178
 /// [`regex::Regex`] which implements [`PartialEq`].
 #[derive(Debug, Clone)]
@@ -1137,6 +1188,7 @@ impl From<regex::Regex> for CompiledRegex {
 }
 
 /// Position of a unary operator
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpPos {
     Infix,
     Postfix,
@@ -1277,24 +1329,51 @@ impl BinaryOp {
     pub fn pos(&self) -> OpPos {
         use BinaryOp::*;
         match self {
-            Plus()
-            | Sub()
-            | Mult()
-            | Div()
-            | Modulo()
-            | Pow()
-            | StrConcat()
-            | Eq()
-            | LessThan()
-            | LessOrEq()
-            | GreaterThan()
-            | GreaterOrEq()
-            | DynExtend { .. }
-            | DynRemove()
-            | DynAccess()
-            | ArrayConcat()
-            | Merge(_) => OpPos::Infix,
+            Plus() | Sub() | Mult() | Div() | Modulo() | StrConcat() | Eq() | LessThan()
+            | LessOrEq() | GreaterThan() | GreaterOrEq() | ArrayConcat() | Merge(_) => OpPos::Infix,
             _ => OpPos::Prefix,
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use BinaryOp::*;
+        match self {
+            Plus() => write!(f, "plus"),
+            Sub() => write!(f, "sub"),
+            Mult() => write!(f, "mult"),
+            Div() => write!(f, "div"),
+            Modulo() => write!(f, "modulo"),
+            Pow() => write!(f, "pow"),
+            StrConcat() => write!(f, "str_concat"),
+            Eq() => write!(f, "eq"),
+            LessThan() => write!(f, "less_than"),
+            LessOrEq() => write!(f, "less_or_eq"),
+            GreaterThan() => write!(f, "greater_than"),
+            GreaterOrEq() => write!(f, "greater_or_eq"),
+            Assume() => write!(f, "assume"),
+            Unseal() => write!(f, "unseal"),
+            GoField() => write!(f, "go_field"),
+            DynExtend { .. } => write!(f, "record_insert"),
+            DynRemove() => write!(f, "record_remove"),
+            DynAccess() => write!(f, "dyn_access"),
+            HasField() => write!(f, "has_field"),
+            ArrayConcat() => write!(f, "array_concat"),
+            ArrayElemAt() => write!(f, "elem_at"),
+            Merge(_) => write!(f, "merge"),
+            Hash() => write!(f, "hash"),
+            Serialize() => write!(f, "serialize"),
+            Deserialize() => write!(f, "deserialize"),
+            StrSplit() => write!(f, "str_split"),
+            StrContains() => write!(f, "str_contains"),
+            Seal() => write!(f, "seal"),
+            ArrayLazyAssume() => write!(f, "array_lazy_assume"),
+            RecordLazyAssume() => write!(f, "record_lazy_assume"),
+            LabelWithMessage() => write!(f, "label_with_message"),
+            LabelWithNotes() => write!(f, "label_with_notes"),
+            LabelAppendNote() => write!(f, "label_append_note"),
+            LookupTypeVar() => write!(f, "lookup_type_variable"),
         }
     }
 }
@@ -1360,15 +1439,16 @@ impl NAryOp {
 
 impl fmt::Display for NAryOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use NAryOp::*;
         match self {
-            NAryOp::StrReplace() => write!(f, "str_replace"),
-            NAryOp::StrReplaceRegex() => write!(f, "str_replace_regex"),
-            NAryOp::StrSubstr() => write!(f, "substring"),
-            NAryOp::MergeContract() => write!(f, "merge_contract"),
-            NAryOp::RecordSealTail() => write!(f, "record_seal_tail"),
-            NAryOp::RecordUnsealTail() => write!(f, "record_unseal_tail"),
-            NAryOp::InsertTypeVar() => write!(f, "insert_type_variable"),
-            NAryOp::ArraySlice() => write!(f, "array_slice"),
+            StrReplace() => write!(f, "str_replace"),
+            StrReplaceRegex() => write!(f, "str_replace_regex"),
+            StrSubstr() => write!(f, "str_substr"),
+            MergeContract() => write!(f, "merge_contract"),
+            RecordSealTail() => write!(f, "record_seal_tail"),
+            RecordUnsealTail() => write!(f, "record_unseal_tail"),
+            InsertTypeVar() => write!(f, "insert_type_variable"),
+            ArraySlice() => write!(f, "array_slice"),
         }
     }
 }
@@ -1783,8 +1863,14 @@ impl From<Term> for RichTerm {
     }
 }
 
-impl std::fmt::Display for RichTerm {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for RichTerm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        crate::pretty::fmt_pretty(&self, f)
+    }
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         crate::pretty::fmt_pretty(&self, f)
     }
 }

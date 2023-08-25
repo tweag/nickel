@@ -5,7 +5,7 @@
 # error = 'TypecheckError::TypeMismatch'
 #
 # [test.metadata.expectation]
-# expected = '{ bla: _a ; _rrows_b }'
+# expected = '{ bla : _a; _rrows_b }'
 # found = '{ _ : _c }'
 ({
   "%{if true then "foo" else "bar"}" = 2,

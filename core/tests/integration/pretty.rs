@@ -1,25 +1,12 @@
-use nickel_lang_core::term::{make, RichTerm, StrChunk, Term, UnaryOp};
-use nickel_lang_core::{mk_app, pretty::*};
+use nickel_lang_core::mk_app;
+use nickel_lang_core::term::{make, StrChunk, Term, UnaryOp};
 use nickel_lang_utils::{
     project_root::project_root,
     test_program::{eval, parse},
 };
 
-use pretty::BoxAllocator;
-use std::io::{Cursor, Read};
+use std::io::Read;
 use test_generator::test_resources;
-
-// Exclude list for tests that aren't yet handled correctly by the pretty printer. The pretty
-// printer should ideally be fixed to make them pass, but since we automatically try the pretty
-// printer on each and every passing test, we need an escape hatch to make the CI pass in the
-// meantime (also, the pretty printer isn't a critical part of the interpreter).
-const EXCLUDE_LIST: &[&str] = &[
-    "pass/merging/multiple_overrides.ncl",
-    "pass/merging/priorities.ncl",
-    "pass/contracts/contracts.ncl",
-    "pass/merging/metavalues.ncl",
-    "pass/contracts/types_dont_propagate.ncl",
-];
 
 #[track_caller]
 fn diff(s1: &str, s2: &str) {
@@ -37,12 +24,8 @@ fn diff(s1: &str, s2: &str) {
     assert!(nb_diff == 0);
 }
 
-#[test_resources("core/tests/integration/pass/**/*.ncl")]
+#[track_caller]
 fn check_idempotent(path: &str) {
-    if EXCLUDE_LIST.iter().any(|suffix| path.ends_with(suffix)) {
-        return;
-    }
-
     let mut buffer = String::new();
     let mut file = std::fs::File::open(project_root().join(path)).expect("Failed to open file");
 
@@ -50,35 +33,41 @@ fn check_idempotent(path: &str) {
         .expect("Fail to read content of test file");
 
     let rt = parse(&buffer).unwrap();
-    let pretty_rt = pretty(&rt);
-    let double_pretty = pretty(&parse(&pretty_rt).unwrap());
+    let pretty_rt = format!("{}", &rt);
+    let double_pretty = format!("{}", &parse(&pretty_rt).unwrap());
 
     diff(&pretty_rt, &double_pretty);
 }
 
-fn pretty(rt: &RichTerm) -> String {
-    let allocator = BoxAllocator;
-    let mut ret = Vec::new();
-    let mut rt_pretty = Cursor::new(&mut ret);
+#[test_resources("core/tests/integration/pass/**/*.ncl")]
+fn pretty_integration_tests(path: &str) {
+    check_idempotent(path)
+}
 
-    let doc: DocBuilder<_, ()> = rt.clone().pretty(&allocator);
-    doc.render(80, &mut rt_pretty).unwrap();
-    String::from_utf8_lossy(&ret).into_owned()
+#[test_resources("core/stdlib/*.ncl")]
+fn pretty_standard_library(path: &str) {
+    check_idempotent(path)
 }
 
 #[test]
 fn str_vs_strchunks() {
     assert_eq!(
-        pretty(&Term::Str("string".into()).into()),
-        pretty(&Term::StrChunks(vec![StrChunk::Literal("string".to_string())]).into())
+        format!("{}", Term::Str("string".into())),
+        format!(
+            "{}",
+            Term::StrChunks(vec![StrChunk::Literal("string".to_string())])
+        )
     );
 }
 
 #[test]
 fn negative_numbers() {
-    eval(pretty(&mk_app!(
-        Term::Op1(UnaryOp::StaticAccess("is_number".into()), make::var("std")),
-        Term::Num((-5).into())
-    )))
+    eval(format!(
+        "{}",
+        mk_app!(
+            Term::Op1(UnaryOp::StaticAccess("is_number".into()), make::var("std")),
+            Term::Num((-5).into())
+        )
+    ))
     .unwrap();
 }
