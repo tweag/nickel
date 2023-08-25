@@ -257,7 +257,7 @@ impl InfixOp {
 }
 
 /// Trait for structures representing a series of annotation that can be combined (flattened).
-/// Pedantically, `Annot` is just a monoid.
+/// Pedantically, `Combine` is just a monoid.
 pub trait Combine: Default {
     /// Combine two annotations.
     fn combine(left: Self, right: Self) -> Self;
@@ -365,7 +365,7 @@ impl AttachTerm<RichTerm> for TypeAnnotation {
 }
 
 /// Combine annotations in a pattern. If at least one annotation is not `None`,
-/// then this just calls [`Annot::combine`] and substitutes a potential `None`
+/// then this just calls [`Combine::combine`] and substitutes a potential `None`
 /// by the default value.
 pub fn metadata_with_default(anns: Option<FieldMetadata>, default: Option<RichTerm>) -> Field {
     let metadata = Combine::combine(
