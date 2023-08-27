@@ -25,6 +25,8 @@ use std::result::Result;
 use std::str::FromStr;
 
 #[cfg(feature = "repl")]
+use ansi_term::{Colour, Style};
+#[cfg(feature = "repl")]
 use rustyline::validate::{ValidationContext, ValidationResult};
 
 generate_counter!(InputNameCounter, usize);
@@ -342,7 +344,6 @@ pub enum InputStatus {
     derive(
         rustyline_derive::Completer,
         rustyline_derive::Helper,
-        rustyline_derive::Highlighter,
         rustyline_derive::Hinter
     )
 )]
@@ -384,6 +385,18 @@ impl InputParser {
             Err(e) if partial(&e) => InputStatus::Partial,
             Err(err) => InputStatus::Failed(err.into()),
         }
+    }
+}
+
+#[cfg(feature = "repl")]
+impl rustyline::highlight::Highlighter for InputParser {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        prompt: &'p str,
+        _default: bool,
+    ) -> std::borrow::Cow<'b, str> {
+        let style = Style::new().fg(Colour::Green);
+        std::borrow::Cow::Owned(style.paint(prompt).to_string())
     }
 }
 
