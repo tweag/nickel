@@ -8,7 +8,7 @@ use crate::{
     eval::cache::CacheImpl,
 };
 
-use ansi_term::{Colour, Style};
+use ansi_term::Style;
 use rustyline::{error::ReadlineError, Config, EditMode, Editor};
 
 /// The config of rustyline's editor.
