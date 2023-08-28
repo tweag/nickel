@@ -218,11 +218,10 @@
             NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
           };
 
-          buildPackage = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+          buildPackage = { pname, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
-                pnameSuffix
                 src
                 version
                 cargoArtifacts
@@ -233,9 +232,9 @@
         in
         rec {
           inherit cargoArtifacts;
-          nickel-lang-core = buildPackage { pnameSuffix = "core"; };
-          nickel-lang-cli = buildPackage { pnameSuffix = "cli"; };
-          lsp-nls = buildPackage { pnameSuffix = "lsp"; };
+          nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
+          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
+          lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -246,7 +245,7 @@
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
               buildPackage {
-                pnameSuffix = "cli-static";
+                pname = "nickel-lang-cli-static";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   # For some reason, the rust build doesn't pick up the paths
@@ -268,7 +267,7 @@
           benchmarks = craneLib.mkCargoDerivation {
             inherit pname src version cargoArtifacts env;
 
-            pnameSuffix = "bench";
+            pnameSuffix = "-bench";
 
             buildPhaseCargoCommand = ''
               cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
