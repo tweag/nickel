@@ -90,7 +90,7 @@ impl FormatCommand {
             (None, None, _) | (None, Some(_), false) => Output::Stdout,
             (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
         };
-        let input: Box<dyn Read> = match global.file {
+        let input: Box<dyn Read> = match global.nickel_file()? {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };

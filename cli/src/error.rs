@@ -12,6 +12,10 @@ pub enum Error {
     Io {
         error: std::io::Error,
     },
+    FileType {
+        extension: String,
+        allowed: Vec<String>,
+    },
     #[cfg(feature = "repl")]
     Repl {
         error: nickel_lang_core::repl::InitError,
@@ -90,6 +94,10 @@ impl Error {
             Error::Program { mut program, error } => program.report(error),
             Error::Io { error } => {
                 eprintln!("{error}")
+            }
+            Error::FileType { extension, allowed } => {
+                let allowed: Vec<String> = allowed.iter().map(|s| format!(".{s}")).collect();
+                eprintln!("Expected the input file type to be {allowed:?}, but instead found type \".{extension}\".")
             }
             #[cfg(feature = "repl")]
             Error::Repl { error } => {
