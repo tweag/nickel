@@ -316,7 +316,7 @@ fn find_fields_from_term_with_annot(
     let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
 
     if let Some(value) = value {
-        info_from_metadata.extend(find_fields_from_term(value, path, info).into_iter());
+        info_from_metadata.extend(find_fields_from_term(value, path, info));
     }
 
     info_from_metadata
@@ -846,13 +846,13 @@ mod tests {
             ),
             (
                 "Record binding with unicode string names for fields",
-                r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
+                r#"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"#,
                 Some(vec!["x", "fo京o", "foo"]),
             ),
             (
                 "Typed record binding with nested record indexing",
-                r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
-                    me.ca.cb"##,
+                r#"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
+                    me.ca.cb"#,
                 Some(vec!["me", "ca", "cb"]),
             ),
             ("Single quote", "\"", None),

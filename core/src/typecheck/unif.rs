@@ -930,7 +930,7 @@ pub fn constr_unify_rrows(
             } => constr_unify_rrows(constr, var_id, tail),
             UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
                 if let Some(u_constr) = constr.get_mut(id) {
-                    u_constr.extend(p_constr.into_iter());
+                    u_constr.extend(p_constr);
                 } else {
                     constr.insert(*id, p_constr);
                 }

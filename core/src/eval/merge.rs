@@ -405,11 +405,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     };
 
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
-    pending_contracts.extend(
-        pending_contracts2
-            .revert_closurize(cache, env_final, env2.clone())
-            .into_iter(),
-    );
+    pending_contracts.extend(pending_contracts2.revert_closurize(cache, env_final, env2.clone()));
 
     // Annotation aren't used anymore at runtime. We still accumulate them to answer metadata
     // queries, but we don't need to e.g. closurize or revert them.
@@ -429,7 +425,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     let contracts: Vec<_> = annot1
         .contracts
         .into_iter()
-        .chain(annot2.contracts.into_iter())
+        .chain(annot2.contracts)
         .collect();
 
     let metadata = FieldMetadata {

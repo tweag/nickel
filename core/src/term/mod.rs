@@ -818,8 +818,8 @@ impl Term {
             Term::StrChunks(chunks) => {
                 chunks
                     .iter()
-                    .fold(Some(String::new()), |acc, next| match (acc, next) {
-                        (Some(mut acc), StrChunk::Literal(lit)) => {
+                    .try_fold(String::new(), |mut acc, next| match next {
+                        StrChunk::Literal(lit) => {
                             acc.push_str(lit);
                             Some(acc)
                         }
