@@ -54,7 +54,15 @@ jobs:
 
     - name: Run all checks
       run: |
-        nix flake check --print-build-logs
+        # this is just `nix flake check --print-build-logs`
+        # everything else is to buffer the output for speed
+        (
+          set +e
+          nix flake check --print-build-logs >out 2>&1
+          errcode=$?
+          cat out
+          exit $errcode
+        )
 
     - name: Typecheck benchmarks
       run: find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- -f file typecheck
