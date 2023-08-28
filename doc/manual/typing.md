@@ -220,7 +220,7 @@ The following type constructors are available:
   ```
 
 - **Enum**: ``[| 'tag1, .., 'tagn |]``: an enumeration comprised of alternatives
-  `tag1`, .., `tagn`. An enumeration literal is prefixed with a backtick and
+  `tag1`, .., `tagn`. An enumeration literal is prefixed with a single quote and
   serialized as a string. It is useful to encode finite alternatives. The
   advantage over strings is that the typechecker handles them more finely: it is
   able to detect incomplete matches, for example.
