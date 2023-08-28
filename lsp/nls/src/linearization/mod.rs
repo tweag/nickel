@@ -493,7 +493,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 }
 
                 let Some(linearization) = lin.lin_registry.map.get(file) else {
-                    return
+                    return;
                 };
 
                 // This is safe because the import file is resolved before we linearize the
@@ -505,7 +505,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // happens if the `RichTerm` has been transformed or evaluated. None of these
                 // happen before linearization.
                 let Some(term_id) = linearization.item_at(position.unwrap().start_pos()) else {
-                    return
+                    return;
                 };
                 let term_id = term_id.id;
 

@@ -29,7 +29,7 @@ pub fn handle_to_definition(
 
     let Some(item) = linearization.item_at(pos) else {
         server.reply(Response::new_ok(id, Value::Null));
-        return Ok(())
+        return Ok(());
     };
 
     debug!("found referencing item: {:?}", item);

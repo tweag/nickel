@@ -170,10 +170,16 @@ pub fn inject_pattern_variables(
             // ```
             //
             // As such, we don't need to add it to the environment.
-            let UnifType::Concrete { typ: TypeF::Record(rs), .. } = ty else {
-                unreachable!("since this is a destructured record, \
+            let UnifType::Concrete {
+                typ: TypeF::Record(rs),
+                ..
+            } = ty
+            else {
+                unreachable!(
+                    "since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
-                              which means it must be a concrete record type")
+                              which means it must be a concrete record type"
+                )
             };
             inject_pattern_variables(state, env, pat, rs)
         }
@@ -182,10 +188,16 @@ pub fn inject_pattern_variables(
 
             env.insert(alias.ident(), ty.clone());
 
-            let UnifType::Concrete{ typ: TypeF::Record(rs), .. } = ty else {
-                unreachable!("since this is a destructured record, \
+            let UnifType::Concrete {
+                typ: TypeF::Record(rs),
+                ..
+            } = ty
+            else {
+                unreachable!(
+                    "since this is a destructured record, \
                               its type was constructed by build_pattern_ty, \
-                              which means it must be a concrete record type")
+                              which means it must be a concrete record type"
+                )
             };
             inject_pattern_variables(state, env, pattern, rs)
         }

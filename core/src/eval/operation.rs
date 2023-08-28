@@ -563,7 +563,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("generate"), pos_op))?;
 
                 let Term::Num(ref n) = *t else {
-                    return Err(mk_type_error!("generate", "Number"))
+                    return Err(mk_type_error!("generate", "Number"));
                 };
 
                 if n < &Number::ZERO {
@@ -576,12 +576,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
 
                 let Ok(n_int) = u32::try_from(n) else {
-                  return Err(EvalError::Other(
+                    return Err(EvalError::Other(
                     format!(
                       "generate expects its first argument to be an integer smaller than {}, got {n}", u32::MAX,
                     ),
                     pos_op,
-                  ))
+                  ));
                 };
 
                 let mut shared_env = Environment::new();
@@ -1268,11 +1268,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::Modulo() => {
                 let Term::Num(ref n1) = *t1 else {
-                    return Err(mk_type_error!("(%)", "Number", 1, t1, pos1))
+                    return Err(mk_type_error!("(%)", "Number", 1, t1, pos1));
                 };
 
                 let Term::Num(ref n2) = *t2 else {
-                    return Err(mk_type_error!("(%)", "Number", 2, t2, pos2))
+                    return Err(mk_type_error!("(%)", "Number", 2, t2, pos2));
                 };
 
                 if n2 == &Number::ZERO {
@@ -1779,7 +1779,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let Ok(n_as_usize) = usize::try_from(n) else {
-                        return Err(EvalError::Other(format!("elem_at expects its second argument to be a positive integer smaller than {}, got {n}", usize::MAX), pos_op))
+                        return Err(EvalError::Other(format!("elem_at expects its second argument to be a positive integer smaller than {}, got {n}", usize::MAX), pos_op));
                     };
 
                     if n_as_usize >= ts.len() {
@@ -2078,11 +2078,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(message) = t1 else {
-                    return Err(mk_type_error!("label_with_message", "String", 1, t1.into(), pos1))
+                    return Err(mk_type_error!(
+                        "label_with_message",
+                        "String",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!("label_with_message", "String", 2, t2.into(), pos2))
+                    return Err(mk_type_error!(
+                        "label_with_message",
+                        "String",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2108,7 +2120,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t1 = t1_subst.term.into_owned();
 
                 let Term::Array(array, _) = t1 else {
-                    return Err(mk_type_error!("label_with_notes", "Array String", 1, t1.into(), pos1));
+                    return Err(mk_type_error!(
+                        "label_with_notes",
+                        "Array String",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
                 };
 
                 let notes = array
@@ -2131,7 +2149,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!("label_with_notes", "Label", 2, t2.into(), pos2))
+                    return Err(mk_type_error!(
+                        "label_with_notes",
+                        "Label",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2144,11 +2168,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::Str(note) = t1 else {
-                    return Err(mk_type_error!("label_append_note", "String", 1, t1.into(), pos1));
+                    return Err(mk_type_error!(
+                        "label_append_note",
+                        "String",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!("label_append_note", "Label", 2, t2.into(), pos2));
+                    return Err(mk_type_error!(
+                        "label_append_note",
+                        "Label",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(
@@ -2161,11 +2197,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let t2 = t2.into_owned();
 
                 let Term::SealingKey(key) = t1 else {
-                    return Err(mk_type_error!("lookup_type_variable", "SealingKey", 1, t1.into(), pos1));
+                    return Err(mk_type_error!(
+                        "lookup_type_variable",
+                        "SealingKey",
+                        1,
+                        t1.into(),
+                        pos1
+                    ));
                 };
 
                 let Term::Lbl(label) = t2 else {
-                    return Err(mk_type_error!("lookup_type_variable", "Label", 2, t2.into(), pos2));
+                    return Err(mk_type_error!(
+                        "lookup_type_variable",
+                        "Label",
+                        2,
+                        t2.into(),
+                        pos2
+                    ));
                 };
 
                 Ok(Closure::atomic_closure(RichTerm::new(

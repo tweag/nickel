@@ -237,7 +237,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         let mut path = path.0.into_iter().peekable();
 
         let Some(mut prev_id) = path.peek().cloned() else {
-            return Ok(field)
+            return Ok(field);
         };
 
         for id in path {
