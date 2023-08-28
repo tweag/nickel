@@ -196,6 +196,9 @@
         let
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
+          # suffixes get added via pnameSuffix
+          pname = "nickel-lang";
+
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
           src = filterNickelSrc craneLib.filterCargoSources;
 
@@ -204,8 +207,7 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            pname = "nickel-lang";
-            inherit src;
+            inherit pname src;
             cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
@@ -216,10 +218,11 @@
             NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
           };
 
-          buildPackage = { pname, extraBuildArgs ? "", extraArgs ? { } }:
+          buildPackage = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
+                pnameSuffix
                 src
                 version
                 cargoArtifacts
@@ -230,9 +233,9 @@
         in
         rec {
           inherit cargoArtifacts;
-          nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
-          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
-          lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
+          nickel-lang-core = buildPackage { pnameSuffix = "core"; };
+          nickel-lang-cli = buildPackage { pnameSuffix = "cli"; };
+          lsp-nls = buildPackage { pnameSuffix = "lsp"; };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -243,7 +246,7 @@
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
               buildPackage {
-                pname = "nickel-lang-cli";
+                pnameSuffix = "cli-static";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   # For some reason, the rust build doesn't pick up the paths
@@ -263,9 +266,9 @@
               };
 
           benchmarks = craneLib.mkCargoDerivation {
-            inherit src version cargoArtifacts env;
+            inherit pname src version cargoArtifacts env;
 
-            pname = "nickel-lang-bench";
+            pnameSuffix = "bench";
 
             buildPhaseCargoCommand = ''
               cargo bench -p nickel-lang-core ${pkgs.lib.optionalString noRunBench "--no-run"}
@@ -276,10 +279,8 @@
 
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.cargoDoc {
-            inherit src version cargoArtifacts env;
+            inherit pname src version cargoArtifacts env;
             inherit (cargoArtifacts) buildInputs;
-
-            pname = "nickel-lang-doc";
 
             RUSTDOCFLAGS = "-D warnings";
 
@@ -290,8 +291,7 @@
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
-            inherit src env;
-            pname = "nickel-lang-rustfmt";
+            inherit pname src env;
 
             cargoExtraArgs = "--all";
 
@@ -300,12 +300,7 @@
           };
 
           clippy = craneLib.cargoClippy {
-            inherit
-              src
-              cargoArtifacts
-              env;
-            pname = "nickel-lang-clippy";
-
+            inherit pname src cargoArtifacts env;
             inherit (cargoArtifacts) buildInputs;
 
             cargoExtraArgs = cargoBuildExtraArgs;
@@ -352,6 +347,9 @@
           # Build the various Crane artifacts (dependencies, packages, rustfmt, clippy) for a given Rust toolchain
           craneLib = crane.lib.${system}.overrideToolchain rust;
 
+          # suffixes get added via pnameSuffix
+          pname = "nickel-lang-wasm";
+
           # Customize source filtering as Nickel uses non-standard-Rust files like `*.lalrpop`.
           src = filterNickelSrc craneLib.filterCargoSources;
 
@@ -366,15 +364,13 @@
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
-            pname = "nickel-lang-wasm";
-            inherit src cargoExtraArgs;
+            inherit pname src cargoExtraArgs;
             doCheck = false;
           };
 
         in
         craneLib.mkCargoDerivation {
-          pname = "nickel-lang-wasm";
-          inherit cargoArtifacts src;
+          inherit pname cargoArtifacts src;
 
           buildPhaseCargoCommand = ''
             WASM_PACK_CACHE=.wasm-pack-cache wasm-pack build wasm-repl ${wasmPackExtraArgs}
