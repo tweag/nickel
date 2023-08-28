@@ -8,14 +8,15 @@ use std::{
 use clap::{parser::ValueSource, ArgAction, Command};
 
 use nickel_lang_core::{
+    parser::utils::Combine,
     error::{Error, IOError},
     eval::cache::lazy::CBNCache,
-    identifier::Ident,
+    identifier::LocIdent,
     program::{FieldOverride, Program},
     repl::query_print::{write_query_result, Attributes},
     serialize::{self, ExportFormat},
     term::{
-        record::{Field, FieldMetadata, RecordData},
+        record::{Field, RecordData},
         LabeledType, MergePriority, RuntimeContract, Term, TypeAnnotation,
     },
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
@@ -55,7 +56,7 @@ pub struct ExportCommand {
 /// `freeform` option.
 #[derive(Debug, Clone, Default)]
 struct TermInterface {
-    fields: BTreeMap<Ident, FieldInterface>,
+    fields: BTreeMap<LocIdent, FieldInterface>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,12 +72,9 @@ struct OverrideInterface {
     path: Vec<String>,
     /// An optional description, built from the field's metadata, and inserted into the general
     /// help message of the `--override` flag.
-    help: Option<String>,
-}
-
-/// A trait for things that can be merged.
-trait Merge {
-    fn merge(first: Self, second: Self) -> Self;
+    // help isn't used yet, hence the leading underscore. We need to think first about how to
+    // display it without cluttering the freeform CLI's help message.
+    _help: Option<String>,
 }
 
 impl TermInterface {
@@ -121,6 +119,8 @@ impl TermInterface {
             .map(|field_path| format!("- {field_path}"))
             .collect();
 
+        overrides_list.sort();
+
         if overrides_list.len() == OVERRIDES_LIST_MAX_COUNT {
             overrides_list.push("- ...".into());
         }
@@ -154,13 +154,13 @@ impl TermInterface {
     }
 }
 
-impl Merge for TermInterface {
-    fn merge(first: Self, second: Self) -> Self {
+impl Combine for TermInterface {
+    fn combine(first: Self, second: Self) -> Self {
         let TermInterface { mut fields } = first;
 
         for (id, field) in second.fields.into_iter() {
             if let Some(prev) = fields.remove(&id) {
-                fields.insert(id, Merge::merge(prev, field));
+                fields.insert(id, Combine::combine(prev, field));
             } else {
                 fields.insert(id, field);
             }
@@ -170,21 +170,12 @@ impl Merge for TermInterface {
     }
 }
 
-impl<T: Merge> Merge for Option<T> {
-    fn merge(first: Self, second: Self) -> Self {
-        match (first, second) {
-            (None, maybe_defn) | (maybe_defn, None) => maybe_defn,
-            (Some(defn1), Some(defn2)) => Some(Merge::merge(defn1, defn2)),
-        }
-    }
-}
-
-impl Merge for FieldInterface {
-    fn merge(first: Self, second: Self) -> Self {
+impl Combine for FieldInterface {
+    fn combine(first: Self, second: Self) -> Self {
         FieldInterface {
-            subfields: Merge::merge(first.subfields, second.subfields),
+            subfields: Combine::combine(first.subfields, second.subfields),
             field: Field {
-                metadata: FieldMetadata::flatten(first.field.metadata, second.field.metadata),
+                metadata: Combine::combine(first.field.metadata, second.field.metadata),
                 // Value is used only to show a default value, and to determine if a field has a
                 // definition. We don't bother actually merging the content, but just keep any
                 // side that is defined.
@@ -289,7 +280,7 @@ impl From<&Field> for FieldInterface {
         let subfields = subfields_from_types
             .chain(subfields_from_contracts)
             .chain(subfields_from_value)
-            .reduce(Merge::merge)
+            .reduce(Combine::combine)
             .flatten();
 
         FieldInterface {
@@ -335,7 +326,7 @@ impl FieldInterface {
                     id,
                     OverrideInterface {
                         path: path.clone(),
-                        help: self.help(),
+                        _help: self.help(),
                     },
                 );
             }
