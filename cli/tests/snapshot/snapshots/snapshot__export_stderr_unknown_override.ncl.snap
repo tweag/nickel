@@ -1,0 +1,8 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid override: unknown field `unkonwn.field.path`
+ = `unkonwn.field.path` doesn't refer to a known record field and thus can't be used with `--override`.
+
+

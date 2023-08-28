@@ -1,0 +1,25 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+Usage: extra-args [OPTIONS] --input.foo.bar <String> --input.foo.baz <Array Number>
+
+Options:
+      --input.defaulted.subfield <NICKEL EXPRESSION>
+          • documentation: Some documentation
+           [default: 2]
+      --input.foo.bar <String>
+          
+      --input.foo.baz <Array Number>
+          
+      --override <field> <value>
+          Override any field of the configuration with a valid Nickel expression provided as a
+          string. The new value will be merged with the configuration with a `force` priority.
+          
+          Overridable fields:
+          - override.first
+          - override.second.subsecond.other
+          - override.second.subsecond.subsubsecond
+  -h, --help
+          Print help
+

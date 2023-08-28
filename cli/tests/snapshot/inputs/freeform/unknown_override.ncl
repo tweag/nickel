@@ -1,5 +1,15 @@
 # capture = 'stderr'
-# command = ['export', '--', '--override', 'unkonwn.field.path', 'null']
+# command = [
+#  'export',
+#  '--',
+#  '--input.foo.bar',
+#  '"hello"',
+#  '--input.foo.baz',
+#  '[]',
+#  '--override',
+#  'unkonwn.field.path',
+#  'null'
+# ]
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,

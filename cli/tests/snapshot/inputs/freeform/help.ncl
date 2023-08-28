@@ -1,4 +1,4 @@
-# capture = 'stderr'
+# capture = 'stdout'
 # command = ['export', '--', '--help']
 {
   input.foo.bar | String,
