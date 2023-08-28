@@ -4,7 +4,8 @@ use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent
 use nickel_lang_core::{
     identifier::Ident,
     pretty::ident_quoted,
-    term::{record::FieldMetadata, BinaryOp, RichTerm, Term},
+    term::{record::FieldMetadata, BinaryOp, RichTerm, Term, UnaryOp},
+    typ::TypeF,
 };
 
 use crate::{identifier::LocIdent, server::Server, usage::Environment};
@@ -238,6 +239,30 @@ impl FieldDefs {
             }
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
                 FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
+            }
+            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
+                FieldDefs::resolve(body, env, server)
+            }
+            Term::Op1(UnaryOp::StaticAccess(id), term) => {
+                FieldDefs::resolve_path(term, &[id.ident()], env, server)
+            }
+            Term::Annotated(annot, term) => {
+                // We only check the annotated contracts, not the annotated type.
+                // (Type-based information comes from the inferred types, which
+                // already account for annotated types.)
+                let terms = annot.contracts.iter().filter_map(|ty| {
+                    // TODO: support Dict and Record types also. For now, this is
+                    // enough for completion on basic contract annotations like
+                    // (x | { foo | Number }).fo
+                    if let TypeF::Flat(rt) = &ty.typ.typ {
+                        Some(rt)
+                    } else {
+                        None
+                    }
+                });
+                terms.fold(FieldDefs::resolve(term, env, server), |acc, rt| {
+                    acc.merge_from(FieldDefs::resolve(rt, env, server))
+                })
             }
             _ => Default::default(),
         }
