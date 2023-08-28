@@ -513,7 +513,7 @@ fn ascii_escape() {
 #[test]
 fn multiline_str_escape() {
     assert_eq!(
-        parse_without_pos(r##"m%"%Hel%%lo%%%"%"##),
+        parse_without_pos(r#"m%"%Hel%%lo%%%"%"#),
         mk_single_chunk("%Hel%%lo%%%"),
     );
 }

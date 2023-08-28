@@ -962,7 +962,7 @@ impl Cache {
     /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {
         let Some(table) = &self.stdlib_ids else {
-            return false
+            return false;
         };
         table.values().any(|stdlib_file| *stdlib_file == file)
     }

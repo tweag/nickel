@@ -19,8 +19,8 @@ fn test_creates_output_files(command: &[&str]) {
         .spawn()
         .expect("Nickel should be runnable");
     let Some(mut stdin) = nickel.stdin.take() else {
-            panic!("couldn't retrieve stdin handle to Nickel")
-        };
+        panic!("couldn't retrieve stdin handle to Nickel")
+    };
     stdin
         .write_all(b"{foo=1}")
         .expect("writing into Nickel stdin should work");

@@ -60,7 +60,7 @@ impl Completed {
         Option<&LinearizationItem<Resolved>>,
     ) {
         let Some(index) = self.id_to_index.get(&id).copied() else {
-            return (None, None)
+            return (None, None);
         };
         let (left_index, right_index) = (index - 1, index + 1);
         let left = self.linearization.get(left_index);

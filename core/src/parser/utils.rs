@@ -345,8 +345,8 @@ impl Combine for TypeAnnotation {
         let contracts = left
             .contracts
             .into_iter()
-            .chain(leftover.into_iter())
-            .chain(right.contracts.into_iter())
+            .chain(leftover)
+            .chain(right.contracts)
             .collect();
 
         TypeAnnotation { typ, contracts }
@@ -451,22 +451,7 @@ impl From<FieldMetadata> for FieldExtAnnot {
 
 /// Turn dynamic accesses using literal chunks only into static accesses
 pub fn mk_access(access: RichTerm, root: RichTerm) -> RichTerm {
-    let label = match *access.term {
-        Term::StrChunks(ref chunks) => {
-            chunks
-                .iter()
-                .fold(Some(String::new()), |acc, next| match (acc, next) {
-                    (Some(mut acc), StrChunk::Literal(lit)) => {
-                        acc.push_str(lit);
-                        Some(acc)
-                    }
-                    _ => None,
-                })
-        }
-        _ => None,
-    };
-
-    if let Some(label) = label {
+    if let Some(label) = access.as_ref().try_str_chunk_as_static_str() {
         mk_term::op1(
             UnaryOp::StaticAccess(LocIdent::new_with_pos(label, access.pos)),
             root,

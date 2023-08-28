@@ -127,7 +127,7 @@ impl NickelString {
                 }
             });
 
-            Array::from_iter(result.into_iter())
+            Array::from_iter(result)
         }
     }
 

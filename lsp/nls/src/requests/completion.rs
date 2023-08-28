@@ -130,7 +130,7 @@ fn find_fields_from_term_kind(
     }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item_with_reg(id, lin_registry) else {
-        return Vec::new()
+        return Vec::new();
     };
     let mut path_clone = path.clone();
     let contract_result = find_fields_from_contract(item.id, &mut path_clone, info);
@@ -205,7 +205,7 @@ fn find_fields_from_contract(
     }: ComplCtx<'_>,
 ) -> Vec<IdentWithType> {
     let Some(item) = linearization.get_item_with_reg(id, lin_cache) else {
-        return Vec::new()
+        return Vec::new();
     };
     match &item.metadata {
         Some(metadata) => find_fields_from_contracts(&metadata.annotation, path, info),
@@ -316,7 +316,7 @@ fn find_fields_from_term_with_annot(
     let mut info_from_metadata = find_fields_from_contracts(annot, path, info);
 
     if let Some(value) = value {
-        info_from_metadata.extend(find_fields_from_term(value, path, info).into_iter());
+        info_from_metadata.extend(find_fields_from_term(value, path, info));
     }
 
     info_from_metadata
@@ -555,7 +555,7 @@ fn get_completion_identifiers(
         path: &mut Vec<LocIdent>,
     ) -> Vec<IdentWithType> {
         let Some(item_id) = item.env.get(&name.ident()) else {
-            return Vec::new()
+            return Vec::new();
         };
         let lin = server.lin_cache_get(&item_id.file_id).unwrap();
         collect_record_info(lin, *item_id, path, &server.lin_registry)
@@ -596,7 +596,7 @@ fn get_completion_identifiers(
         Some(server::DOT_COMPL_TRIGGER) => {
             // Record completion
             let Some(path) = get_identifier_path(source) else {
-                return Ok(Vec::new())
+                return Ok(Vec::new());
             };
             let mut path: Vec<_> = path.iter().rev().cloned().map(LocIdent::from).collect();
 
@@ -846,13 +846,13 @@ mod tests {
             ),
             (
                 "Record binding with unicode string names for fields",
-                r##"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"##,
+                r#"let x = {"fo京o" = {bar = 42}} in x."fo京o".foo"#,
                 Some(vec!["x", "fo京o", "foo"]),
             ),
             (
                 "Typed record binding with nested record indexing",
-                r##"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
-                    me.ca.cb"##,
+                r#"let me : _ = { name = "foo", time = 1800, a.b.c.d = 10 } in
+                    me.ca.cb"#,
                 Some(vec!["me", "ca", "cb"]),
             ),
             ("Single quote", "\"", None),
