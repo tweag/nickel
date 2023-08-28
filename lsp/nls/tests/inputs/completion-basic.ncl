@@ -18,6 +18,9 @@ in
   (config & config.verified).real,
   (import "included.ncl").lala
   (import "included.ncl")."has a space".fala
+  ({} | { field = 1 }).fiel
+  ({} | (let x = { field = 1 } in x)).fiel
+  ({} | { field = { subfield = 1 } }.field).subfiel
 ]
 ### [[request]]
 ### type = "Completion"
@@ -66,3 +69,18 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///completion-basic.ncl"
 ### position = { line = 13, character = 44 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 14, character = 27 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 15, character = 42 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 16, character = 51 }

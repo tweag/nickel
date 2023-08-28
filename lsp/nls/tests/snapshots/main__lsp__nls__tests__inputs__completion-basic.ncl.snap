@@ -11,4 +11,7 @@ expression: output
 [foo, really, verified, version]
 ["has a space", lalala]
 [falala]
+[config, field]
+[field]
+[config, subfield]
 
