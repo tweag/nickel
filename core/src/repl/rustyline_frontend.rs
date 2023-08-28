@@ -6,7 +6,7 @@ use super::*;
 
 use crate::eval::cache::CacheImpl;
 use crate::program::{self, ColorOpt};
-use ansi_term::{Colour, Style};
+use ansi_term::Style;
 use rustyline::error::ReadlineError;
 use rustyline::{Config, EditMode, Editor};
 
@@ -53,18 +53,8 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
     let _ = editor.load_history(&histfile);
     editor.set_helper(Some(validator));
 
-    let prompt = {
-        let style = Style::new();
-        let style = if color_opt.0 != clap::ColorChoice::Never {
-            style.fg(Colour::Green)
-        } else {
-            style
-        };
-        style.paint("nickel> ").to_string()
-    };
-
     let result = loop {
-        let line = editor.readline(&prompt);
+        let line = editor.readline("nickel> ");
         let mut stdout = std::io::stdout();
 
         match line {
