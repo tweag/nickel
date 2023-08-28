@@ -54,7 +54,7 @@
       cargoTOML = builtins.fromTOML (builtins.readFile ./Cargo.toml);
       cargoLock = builtins.fromTOML (builtins.readFile ./Cargo.lock);
 
-      version = "${cargoTOML.workspace.package.version}_${builtins.substring 0 8 self.lastModifiedDate}_${self.shortRev or "dirty"}";
+      inherit (cargoTOML.workspace.package) version;
 
     in
     flake-utils.lib.eachSystem SYSTEMS (system:
