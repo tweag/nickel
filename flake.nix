@@ -206,7 +206,7 @@
           cargoArtifacts = craneLib.buildDepsOnly {
             pname = "nickel-lang";
             inherit src;
-            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace";
+            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
@@ -275,15 +275,15 @@
           };
 
           # Check that documentation builds without warnings or errors
-          checkRustDoc = craneLib.mkCargoDerivation {
+          checkRustDoc = craneLib.cargoDoc {
             inherit src version cargoArtifacts env;
             inherit (cargoArtifacts) buildInputs;
 
             pname = "nickel-lang-doc";
 
-            buildPhaseCargoCommand = ''
-              RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --workspace --all-features
-            '';
+            RUSTDOCFLAGS = "-D warnings";
+
+            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
 
             doInstallCargoArtifacts = false;
           };
