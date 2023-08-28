@@ -602,7 +602,7 @@ Here are some examples of type annotations in Nickel:
 error: incompatible types
 [..]
 
-> (1 + 1 : Number) + ((`foo |> match { `foo => 1, _ => 2 }) : Number)
+> (1 + 1 : Number) + (('foo |> match { 'foo => 1, _ => 2 }) : Number)
 3
 
 > let x : Number = "a" in x
