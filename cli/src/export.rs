@@ -323,7 +323,7 @@ impl FieldInterface {
     ) -> clap::Command {
         let id = path.join(".");
         let prev = paths.insert(clap::Id::from(&id), path.clone());
-        debug_assert!(matches!(prev, None));
+        debug_assert!(prev.is_none());
 
         // this is a terminal field, which gives rise to an argument or an overridable value.
         if !self.has_subfields() {
@@ -521,7 +521,7 @@ impl ExportCommand {
                                 priority: MergePriority::default(),
                             })
                     })
-                    .chain(force_overrides.into_iter())
+                    .chain(force_overrides)
                     .collect::<Vec<_>>(),
             )
         };
