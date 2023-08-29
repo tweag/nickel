@@ -25,7 +25,8 @@ pub enum Error {
     Format {
         error: crate::format::FormatError,
     },
-    /// A invalid invocation of the CLI that couldn't catch by the simple parsing provided by clap.
+    /// An invalid invocation of the CLI that couldn't be caught by the simple parsing provided by
+    /// clap.
     CliUsage {
         program: Program<CBNCache>,
         error: CliUsageError,
@@ -43,8 +44,8 @@ impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
                 vec![Diagnostic::error()
                     .with_message(format!("invalid override: unknown field `{path}`"))
                     .with_notes(vec![format!(
-                        "`{path}` doesn't refer to a known record field and thus can't be \
-                        used with `--override`."
+                        "`{path}` doesn't refer to record field accessible from the root of the \
+                        configuration and thus can't be the target of `--override`."
                     )])]
             }
         }

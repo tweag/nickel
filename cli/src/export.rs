@@ -22,15 +22,18 @@ use nickel_lang_core::{
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::error::{CliResult, ResultErrorExt};
-use crate::{cli::GlobalOptions, eval::EvalCommand};
+use crate::{
+    cli::GlobalOptions,
+    error::{CliResult, ResultErrorExt},
+    eval::EvalCommand,
+};
 
 /// The maximal number of overridable fields displayed. Because there might be a lot of them, we
 /// don't list them all by default.
 const OVERRIDES_LIST_MAX_COUNT: usize = 15;
 
-/// The value name used through the CLI to indicate that an option take any Nickel expression as a
-/// value.
+/// The value name used through the CLI to indicate that an option accepts any Nickel expression as
+/// a value.
 const NICKEL_VALUE_NAME: &str = "NICKEL EXPRESSION";
 
 #[derive(clap::Parser, Debug)]
@@ -45,20 +48,26 @@ pub struct ExportCommand {
     #[command(flatten)]
     pub evaluation: EvalCommand,
 
+    /// Enters customize mode. This turns the nickel invocation into a new CLI based on the
+    /// configuration to be exported, where the value of fields can be set directly through CLI
+    /// arguments. Print the corresponding help (`nickel export -f <file.ncl> -- --help`) to see
+    /// available options.
     #[arg(last = true)]
-    pub freeform: Vec<OsString>,
+    pub customize_mode: Vec<OsString>,
 }
 
-/// Interface of a configuration (in practice, a Nickel program), representing all nested fields
-/// that can be reached with a field path from the root together with their associated metadata.
+/// The interface of a configuration (a Nickel program) which represents all nested field paths
+/// that are accessible from the root term together with their associated metadata.
 ///
 /// Interface is used to derive a command-line interface from a configuration when using the
-/// `freeform` option.
+/// `customize_mod` option.
 #[derive(Debug, Clone, Default)]
 struct TermInterface {
+    // We use a BTreeMap so that the end result is being sorted as we build the interface.
     fields: BTreeMap<LocIdent, FieldInterface>,
 }
 
+/// The interface of a specific input field.
 #[derive(Debug, Clone, Default)]
 struct FieldInterface {
     /// The interface of the subfields of this field, if it's a record itself.
@@ -66,6 +75,7 @@ struct FieldInterface {
     field: Field,
 }
 
+/// The interface of a non-input field (overridable).
 #[derive(Debug, Clone, Default)]
 struct OverrideInterface {
     /// The path of the overridable field.
@@ -73,7 +83,7 @@ struct OverrideInterface {
     /// An optional description, built from the field's metadata, and inserted into the general
     /// help message of the `--override` flag.
     // help isn't used yet, hence the leading underscore. We need to think first about how to
-    // display it without cluttering the freeform CLI's help message.
+    // display it without cluttering the customize mode's help message.
     _help: Option<String>,
 }
 
@@ -105,9 +115,9 @@ impl TermInterface {
     /// their corresponding full field path as an array of fields.
     fn build_cmd(&self) -> TermCommand {
         let mut paths = HashMap::new();
-        let mut ovd_interfaces = HashMap::new();
+        let mut ovd_interfaces = BTreeMap::new();
 
-        let mut cmd = Command::new("extra-args").no_binary_name(true);
+        let mut cmd = Command::new("customize-mode").no_binary_name(true);
 
         for (id, field) in &self.fields {
             cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut ovd_interfaces)
@@ -118,8 +128,6 @@ impl TermInterface {
             .take(OVERRIDES_LIST_MAX_COUNT)
             .map(|field_path| format!("- {field_path}"))
             .collect();
-
-        overrides_list.sort();
 
         if overrides_list.len() == OVERRIDES_LIST_MAX_COUNT {
             overrides_list.push("- ...".into());
@@ -138,8 +146,7 @@ impl TermInterface {
             .long(override_arg_label)
             .value_name(NICKEL_VALUE_NAME.to_owned())
             .number_of_values(2)
-            .value_delimiter('=')
-            .value_names(&["field", "value"])
+            .value_names(["field", "value"])
             .action(ArgAction::Append)
             .required(false)
             .help(override_help);
@@ -239,8 +246,9 @@ impl ExtractInterface for Type {
                     })
                     .collect(),
             }),
-            // Contract information are already extracted from runtime contracts, which are
-            // evaluated. Here, we focus on pure type annotations and ignore even flat types
+            // Contract information is already extracted from runtime contracts, which are
+            // evaluated. Here, we focus on pure static type annotations and ignore flat types as
+            // well
             _ => None,
         }
     }
@@ -261,8 +269,8 @@ impl ExtractInterface for LabeledType {
 impl From<&Field> for FieldInterface {
     fn from(field: &Field) -> Self {
         // We collect field information from all the sources we can: static types and contracts
-        // (both either as type annotations or contract annotations), and the value of the field,
-        // if it's a record.
+        // (both either as type annotations or contract annotations), and the value of the field if
+        // it's a record.
 
         let subfields_from_types = field
             .pending_contracts
@@ -300,9 +308,9 @@ impl From<&RecordRowF<&Type>> for FieldInterface {
 }
 
 impl FieldInterface {
-    /// Take a clap command and enrich it with either one argument if this is an input field
-    /// subfields, or with all the subfields that are inputs. If this fields or some of its
-    /// subfields aren't inputs, they are pushed to `overrides`. See [build_clap].
+    /// Take a clap command and enrich it with either one argument if this subfield is an input
+    /// field, or with all the subfields that are inputs. If this fields or some of its subfields
+    /// aren't inputs, they are pushed to `overrides`. See [build_clap].
     ///
     /// `add_args` updates `paths` as well, which maps clap argument ids to the corresponding field
     /// path represented as an array of string names.
@@ -311,7 +319,7 @@ impl FieldInterface {
         mut cmd: clap::Command,
         path: Vec<String>,
         paths: &mut HashMap<clap::Id, Vec<String>>,
-        ovd_interfaces: &mut HashMap<String, OverrideInterface>,
+        ovd_interfaces: &mut BTreeMap<String, OverrideInterface>,
     ) -> clap::Command {
         let id = path.join(".");
         let prev = paths.insert(clap::Id::from(&id), path.clone());
@@ -404,7 +412,7 @@ impl FieldInterface {
         }
     }
 
-    /// Render an help message similar to the output of a metadata query to serve as an help text
+    /// Render a help message similar to the output of a metadata query to serve as an help text
     /// for this argument.
     fn help(&self) -> Option<String> {
         let mut output: Vec<u8> = Vec::new();
@@ -444,16 +452,17 @@ fn get_value_name(annotation: &TypeAnnotation) -> String {
 struct TermCommand {
     /// The corresponding clap command
     clap_cmd: clap::Command,
+    /// A mapping between clap argument ids and the corresponding field path (for inputs).
     args: HashMap<clap::Id, Vec<String>>,
-    /// A map between a field path and the corresponding override data.
-    overrides: HashMap<String, OverrideInterface>,
+    /// A maping between a field path and the corresponding override data.
+    overrides: BTreeMap<String, OverrideInterface>,
 }
 
 impl ExportCommand {
     pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.evaluation.prepare(&global)?;
 
-        let overrides = if self.freeform.is_empty() {
+        let overrides = if self.customize_mode.is_empty() {
             None
         } else {
             let evaled = match program.eval_record_spine() {
@@ -467,7 +476,7 @@ impl ExportCommand {
             let cmd = TermInterface::from(evaled.as_ref()).build_cmd();
             let arg_matches = cmd
                 .clap_cmd
-                .get_matches_from(std::mem::take(&mut self.freeform));
+                .get_matches_from(std::mem::take(&mut self.customize_mode));
 
             let force_overrides: Result<Vec<_>, super::error::CliUsageError> = arg_matches
                 .get_occurrences("override")

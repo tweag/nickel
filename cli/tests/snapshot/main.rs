@@ -40,7 +40,7 @@ fn check_snapshots(path: &str) {
         .to_string();
 
     // We set the `-f somefile.ncl` argument before the others, because it can't come after
-    // freeform delimiter `--`.
+    // customize mode's delimiter `--`.
     let invocation = NickelInvocation::new().file(&file).args(annotation.command);
 
     match annotation.capture {
