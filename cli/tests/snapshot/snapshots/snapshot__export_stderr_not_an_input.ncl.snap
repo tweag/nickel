@@ -6,7 +6,7 @@ error: unexpected argument '--override.first' found
 
   tip: a similar argument exists: '--override'
 
-Usage: extra-args --input.foo.bar <String> --input.foo.baz <Array Number> --override <field> <value>
+Usage: customize-mode --input.foo.bar <String> --input.foo.baz <Array Number> --override <field> <value>
 
 For more information, try '--help'.
 

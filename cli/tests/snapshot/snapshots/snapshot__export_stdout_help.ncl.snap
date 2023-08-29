@@ -2,7 +2,7 @@
 source: cli/tests/snapshot/main.rs
 expression: out
 ---
-Usage: extra-args [OPTIONS] --input.foo.bar <String> --input.foo.baz <Array Number>
+Usage: customize-mode [OPTIONS] --input.foo.bar <String> --input.foo.baz <Array Number>
 
 Options:
       --input.defaulted.subfield <NICKEL EXPRESSION>
