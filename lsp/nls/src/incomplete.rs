@@ -5,6 +5,8 @@
 //! information from the unparseable part. This is necessarily somewhat
 //! heuristic.
 
+use std::path::PathBuf;
+
 use nickel_lang_core::{
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
@@ -141,7 +143,12 @@ pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> 
     let to_parse = subtext[tokens[start].0..tokens.last().unwrap().2].to_owned();
     log::info!("extracted (hopefully) reparseable input `{to_parse}`");
 
-    let file_id = server.cache.replace_string("<incomplete-input>", to_parse);
+    // In order to help the input resolver find relative imports, we add a fake input whose parent
+    // is the same as the real file.
+    let mut path = PathBuf::from(server.cache.files().name(range.src_id));
+    path.pop();
+    path.push("<incomplete-input>");
+    let file_id = server.cache.replace_string(&path, to_parse);
 
     match server.cache.parse_nocache(file_id) {
         Ok((rt, _errors)) => Some(resolve_imports(rt, server)),

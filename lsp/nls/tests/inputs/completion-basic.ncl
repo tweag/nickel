@@ -63,7 +63,7 @@ in
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///completion-basic.ncl"
-### position = { line = 12, character = 30 }
+### position = { line = 12, character = 26 }
 ###
 ### [[request]]
 ### type = "Completion"

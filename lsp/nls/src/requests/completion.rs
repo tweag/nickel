@@ -716,15 +716,24 @@ pub fn handle_completion(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    // -1 because at the current cursor position, there is no linearization item there,
-    // so we try to get the item just before the cursor.
-    let mut pos = server.cache.position(&params.text_document_position)?;
-    pos.index.0 -= 1;
+    // The way indexing works here is that if the input file is
+    //
+    // foo‸
+    //
+    // then the cursor (denoted by ‸) is at index 3 and the span of foo is [0,
+    // 3), which does not contain the cursor. For most purposes we're interested
+    // in querying information about foo, so to do that we use the position just
+    // *before* the cursor.
+    let cursor = server.cache.position(&params.text_document_position)?;
+    let pos = RawPos {
+        index: (cursor.index.0.saturating_sub(1)).into(),
+        ..cursor
+    };
 
     let term = server.lookup_term_by_position(pos)?.cloned();
     let sanitized_term = term
         .as_ref()
-        .and_then(|rt| sanitize_term_for_completion(rt, pos, server));
+        .and_then(|rt| sanitize_term_for_completion(rt, cursor, server));
     let mut completions = match term.zip(sanitized_term) {
         Some((term, sanitized)) => {
             let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
