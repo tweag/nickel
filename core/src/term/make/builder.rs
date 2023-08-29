@@ -340,7 +340,7 @@ impl Record {
         self
     }
 
-    /// Finalize the record and turn it into a [`nickel_lang_core::term::RichTerm`]
+    /// Finalize the record and turn it into a [`crate::term::RichTerm`]
     pub fn build(self) -> RichTerm {
         let elaborated = self
             .fields

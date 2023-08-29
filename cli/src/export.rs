@@ -96,7 +96,7 @@ impl TermInterface {
     /// Build a command description from this interface.
     ///
     /// This method recursively lists all existing field paths, and reports input fields (as
-    /// defined per [Interface::is_input]) as stand-alone arguments. For example, if there the
+    /// defined per [FieldInterface::is_input]) as stand-alone arguments. For example, if there the
     /// configuration contains:
     ///
     /// ```nickel
@@ -111,7 +111,7 @@ impl TermInterface {
     ///
     /// # Return
     ///
-    /// In addition to the updated command, `build_clap` returns a mapping from clap argument ids to
+    /// In addition to the updated command, `build_cmd` returns a mapping from clap argument ids to
     /// their corresponding full field path as an array of fields.
     fn build_cmd(&self) -> TermCommand {
         let mut paths = HashMap::new();
@@ -310,7 +310,7 @@ impl From<&RecordRowF<&Type>> for FieldInterface {
 impl FieldInterface {
     /// Take a clap command and enrich it with either one argument if this subfield is an input
     /// field, or with all the subfields that are inputs. If this fields or some of its subfields
-    /// aren't inputs, they are pushed to `overrides`. See [build_clap].
+    /// aren't inputs, they are pushed to `overrides`. See [TermInterface::build_cmd].
     ///
     /// `add_args` updates `paths` as well, which maps clap argument ids to the corresponding field
     /// path represented as an array of string names.
