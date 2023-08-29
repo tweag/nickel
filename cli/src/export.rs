@@ -8,10 +8,10 @@ use std::{
 use clap::{parser::ValueSource, ArgAction, Command};
 
 use nickel_lang_core::{
+    combine::Combine,
     error::{Error, IOError},
     eval::cache::lazy::CBNCache,
     identifier::LocIdent,
-    parser::utils::Combine,
     program::{FieldOverride, Program},
     repl::query_print::{write_query_result, Attributes},
     serialize::{self, ExportFormat},

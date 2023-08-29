@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod combine;
 pub mod deserialize;
 pub mod destructuring;
 pub mod environment;

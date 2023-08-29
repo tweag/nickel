@@ -23,9 +23,9 @@
 use indexmap::IndexMap;
 
 use crate::{
+    combine::Combine,
     identifier::{Ident, LocIdent},
     label::Label,
-    parser::utils::Combine,
     term::{
         make::op2,
         record::{self, FieldMetadata, RecordAttrs, RecordData},
