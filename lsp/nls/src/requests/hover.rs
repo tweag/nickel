@@ -3,6 +3,7 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
 use nickel_lang_core::position::TermPos;
 use serde_json::Value;
+use unindent::Unindent;
 
 use crate::{
     cache::CacheExt,
@@ -59,8 +60,13 @@ pub fn handle(
                 }),
                 MarkedString::String(
                     meta.iter()
-                        .flat_map(|s| s.lines())
-                        .map(|s| s.trim())
+                        .map(|s| {
+                            s.lines()
+                                .map(|s| if s.is_empty() { " " } else { s })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                                .unindent()
+                        })
                         .collect::<Vec<_>>()
                         .join("\n"),
                 ),
