@@ -38,7 +38,11 @@
         "extensions": [
           ".ncl"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "dark": "./images/nickel-logo-256.png",
+          "light": "./images/nickel-logo-256.png"
+        }
       }
     ],
     "grammars": [
