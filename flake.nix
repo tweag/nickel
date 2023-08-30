@@ -218,23 +218,24 @@
             NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
           };
 
-          buildPackage = { pname, extraBuildArgs ? "", extraArgs ? { } }:
+          buildPackage = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
+                pnameSuffix
                 src
                 version
                 cargoArtifacts
                 env;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}${pnameSuffix}";
             } // extraArgs);
         in
         rec {
           inherit cargoArtifacts;
-          nickel-lang-core = buildPackage { pname = "nickel-lang-core"; };
-          nickel-lang-cli = buildPackage { pname = "nickel-lang-cli"; };
-          lsp-nls = buildPackage { pname = "nickel-lang-lsp"; };
+          nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
+          nickel-lang-cli = buildPackage { pnameSuffix = "-cli"; };
+          lsp-nls = buildPackage { pnameSuffix = "-lsp"; };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -245,7 +246,7 @@
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
               buildPackage {
-                pname = "nickel-lang-cli-static";
+                pnameSuffix = "-static";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
                   # For some reason, the rust build doesn't pick up the paths
