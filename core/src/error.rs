@@ -2318,7 +2318,7 @@ impl From<ColorOpt> for ColorChoice {
 /// # Arguments
 ///
 /// - `cache` is the file cache used during the evaluation, which is required by the reporting
-/// infrastructure to print point at specific locations and print snippet when needed.
+/// infrastructure to point at specific locations and print snippets when needed.
 pub fn report<E: IntoDiagnostics<FileId>>(cache: &mut Cache, error: E, color_opt: ColorOpt) {
     let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(cache.files_mut(), stdlib_ids.as_ref(), error, color_opt)

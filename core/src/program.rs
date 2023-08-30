@@ -219,8 +219,7 @@ impl<EC: EvalCache> Program<EC> {
     ///
     /// # Arguments
     ///
-    /// - `override` is a list of overrides, where the first element is a field path represented as an
-    ///   array of strings, and the second is Nickel source code as string. Each override is imported
+    /// - `override` is a list of overrides in the form of an iterator of [`FieldOverride`]s. Each override is imported
     ///   in a separate in-memory source, for complete isolation (this way, overrides can't
     ///   accidentally or intentionally capture other fields of the configuration). A stub record is
     ///   then built, which has all fields defined by `overrides`, and values are an import referring
@@ -360,7 +359,7 @@ impl<EC: EvalCache> Program<EC> {
     /// ```
     ///
     /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
-    /// - If the result is a record, we recursively evaluates subfields to record spines
+    /// - If the result is a record, we recursively evaluate subfields to record spines
     /// - If the result isn't a record, it is returned as it is
     /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
     /// term is returned unevaluated[^missing-field-def]
