@@ -57,10 +57,13 @@ pub fn handle(
                     language: "nickel".into(),
                     value: ty.to_string(),
                 }),
-                MarkedString::LanguageString(LanguageString {
-                    language: "plain".into(),
-                    value: meta.join("\n"),
-                }),
+                MarkedString::String(
+                    meta.iter()
+                        .flat_map(|s| s.lines())
+                        .map(|s| s.trim())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ),
             ]),
 
             range: Some(range),
