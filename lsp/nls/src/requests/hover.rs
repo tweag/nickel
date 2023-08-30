@@ -50,28 +50,29 @@ pub fn handle(
         server.cache.files(),
     );
 
+    let mut contents = Vec::new();
+    contents.push(MarkedString::LanguageString(LanguageString {
+        language: "nickel".into(),
+        value: ty.to_string(),
+    }));
+
+    let meta = meta
+        .iter()
+        .map(|s| {
+            s.lines()
+                .map(|s| if s.is_empty() { " " } else { s })
+                .collect::<Vec<_>>()
+                .join("\n")
+                .unindent()
+        })
+        .map(MarkedString::String)
+        .collect::<Vec<_>>();
+    contents.extend(meta);
+
     server.reply(Response::new_ok(
         id,
         Hover {
-            contents: HoverContents::Array(vec![
-                MarkedString::LanguageString(LanguageString {
-                    language: "nickel".into(),
-                    value: ty.to_string(),
-                }),
-                MarkedString::String(
-                    meta.iter()
-                        .map(|s| {
-                            s.lines()
-                                .map(|s| if s.is_empty() { " " } else { s })
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                                .unindent()
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                ),
-            ]),
-
+            contents: HoverContents::Array(contents),
             range: Some(range),
         },
     ));
