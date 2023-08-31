@@ -252,6 +252,13 @@ impl<EC: EvalCache> Program<EC> {
 
                 let (t, initial_env) = self.prepare_eval()?;
                 let built_record = record.build();
+                // For now, we can't do much better than using `Label::default`, but this is
+                // hazardous. `Label::default` was originally written for tests, and although it
+                // doesn't happen in practice as of today, it could theoretically generate invalid
+                // codespan file ids (because it creates a new file database on the spot just to
+                // generate a dummy file id).
+                // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
+                // without referring to any source position.
                 let wrapper =
                     mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
                 (wrapper, initial_env)

@@ -544,9 +544,9 @@ pub enum MergeKind {
 /// allows to at least remember the original position of the merge, as written somewhere in a
 /// Nickel source.
 ///
-/// Additionally, the merging arrays currently generates a contract and its associated label for
-/// which we don't necessarily have a defined span at hand. The merge label makes it possible to
-/// fallback to the original position of the merge.
+/// Additionally, merging arrays currently generates a contract and its associated label for which
+/// we don't necessarily have a defined span at hand. The merge label makes it possible to fallback
+/// to the original position of the merge.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct MergeLabel {
     /// The span of the original merge (which might then decompose into many others).
