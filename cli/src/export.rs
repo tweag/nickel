@@ -463,7 +463,7 @@ impl ExportCommand {
         let mut program = self.evaluation.prepare(&global)?;
 
         let overrides = if self.customize_mode.is_empty() {
-            None
+            Vec::new()
         } else {
             let evaled = match program.eval_record_spine() {
                 Ok(evaled) => evaled,
@@ -507,23 +507,21 @@ impl ExportCommand {
                 }
             };
 
-            Some(
-                arg_matches
-                    .ids()
-                    .filter_map(|id| -> Option<FieldOverride> {
-                        (!matches!(
-                            arg_matches.value_source(id.as_str()),
-                            Some(ValueSource::DefaultValue)
-                        ) && id.as_str() != "override")
-                            .then(|| FieldOverride {
-                                path: cmd.args.get(id).unwrap().clone(),
-                                value: arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
-                                priority: MergePriority::default(),
-                            })
-                    })
-                    .chain(force_overrides)
-                    .collect::<Vec<_>>(),
-            )
+            arg_matches
+                .ids()
+                .filter_map(|id| -> Option<FieldOverride> {
+                    (!matches!(
+                        arg_matches.value_source(id.as_str()),
+                        Some(ValueSource::DefaultValue)
+                    ) && id.as_str() != "override")
+                        .then(|| FieldOverride {
+                            path: cmd.args.get(id).unwrap().clone(),
+                            value: arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
+                            priority: MergePriority::default(),
+                        })
+                })
+                .chain(force_overrides)
+                .collect::<Vec<_>>()
         };
 
         self.export(&mut program, overrides)
@@ -537,7 +535,7 @@ impl ExportCommand {
     fn export(
         self,
         program: &mut Program<CBNCache>,
-        overrides: Option<Vec<FieldOverride>>,
+        overrides: Vec<FieldOverride>,
     ) -> Result<(), Error> {
         let rt = program.eval_full_for_export(overrides)?;
 

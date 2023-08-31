@@ -227,11 +227,15 @@ impl<EC: EvalCache> Program<EC> {
     ///   before being evaluated for import.
     pub fn eval_full_for_export(
         &mut self,
-        overrides: Option<impl IntoIterator<Item = FieldOverride>>,
+        overrides: impl IntoIterator<Item = FieldOverride>,
     ) -> Result<RichTerm, Error> {
-        let (t, initial_env) = match overrides {
+        let mut overrides = overrides.into_iter().peekable();
+
+        let (t, initial_env) = match overrides.peek() {
+            // If there are no overrides, we avoid the boilerplate of creating an empty record and
+            // merging it with the current program
             None => self.prepare_eval()?,
-            Some(overrides) => {
+            Some(_) => {
                 let mut record = builder::Record::new();
 
                 for ovd in overrides {
