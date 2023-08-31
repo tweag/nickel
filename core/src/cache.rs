@@ -237,7 +237,7 @@ pub enum SourcePath {
     /// A file at the given path.
     ///
     /// Note that this does not need to be a real file on the filesystem: it could still
-    /// have [`SourceKind::Memory`].
+    /// be loaded from memory by, e.g, [`Cache::add_string`].
     Path(PathBuf),
     /// A subrange of a file at the given path.
     ///
