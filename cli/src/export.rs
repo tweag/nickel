@@ -96,7 +96,7 @@ impl TermInterface {
     /// Build a command description from this interface.
     ///
     /// This method recursively lists all existing field paths, and reports input fields (as
-    /// defined per [FieldInterface::is_input]) as stand-alone arguments. For example, if there the
+    /// defined per [FieldInterface::is_input]) as stand-alone arguments. For example, if the
     /// configuration contains:
     ///
     /// ```nickel
@@ -106,7 +106,7 @@ impl TermInterface {
     /// This will give rise to a corresponding `--foo.bar.baz` argument listed in the `help` message
     /// which can be set.
     ///
-    /// Non-inputs fields are still listed in the description of the `--override` command, which
+    /// Non-input fields are still listed in the description of the `--override` command, which
     /// has the ability of setting any field.
     ///
     /// # Return
@@ -129,7 +129,7 @@ impl TermInterface {
             .map(|field_path| format!("- {field_path}"))
             .collect();
 
-        if overrides_list.len() == OVERRIDES_LIST_MAX_COUNT {
+        if ovd_interfaces.len() > OVERRIDES_LIST_MAX_COUNT {
             overrides_list.push("- ...".into());
         }
 
@@ -454,7 +454,7 @@ struct TermCommand {
     clap_cmd: clap::Command,
     /// A mapping between clap argument ids and the corresponding field path (for inputs).
     args: HashMap<clap::Id, Vec<String>>,
-    /// A maping between a field path and the corresponding override data.
+    /// A mapping between a field path and the corresponding override data.
     overrides: BTreeMap<String, OverrideInterface>,
 }
 
