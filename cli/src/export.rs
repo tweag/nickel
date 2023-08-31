@@ -309,7 +309,7 @@ impl From<&RecordRowF<&Type>> for FieldInterface {
 
 impl FieldInterface {
     /// Take a clap command and enrich it with either one argument if this subfield is an input
-    /// field, or with all the subfields that are inputs. If this fields or some of its subfields
+    /// field, or with all the subfields that are inputs. If this field or some of its subfields
     /// aren't inputs, they are pushed to `overrides`. See [TermInterface::build_cmd].
     ///
     /// `add_args` updates `paths` as well, which maps clap argument ids to the corresponding field
