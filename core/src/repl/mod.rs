@@ -6,7 +6,7 @@
 //! Dually, the frontend is the user-facing part, which may be a CLI, a web application, a
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
-use crate::cache::{Cache, Envs, ErrorTolerance};
+use crate::cache::{Cache, Envs, ErrorTolerance, SourcePath};
 use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
@@ -171,7 +171,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
         };
 
         let file_id = self.vm.import_resolver_mut().add_string(
-            format!("repl-input-{}", InputNameCounter::next()),
+            SourcePath::ReplInput(InputNameCounter::next()),
             String::from(exp),
         );
 
@@ -256,7 +256,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
-            .replace_string("<repl-typecheck>", String::from(exp));
+            .replace_string(SourcePath::ReplTypecheck, String::from(exp));
         // We ignore non fatal errors while type checking.
         let (term, _) = self.vm.import_resolver().parse_nocache(file_id)?;
         let import_resolution::strict::ResolveResult {
@@ -305,7 +305,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         let file_id = self
             .vm
             .import_resolver_mut()
-            .replace_string("<repl-query>", target.label().into());
+            .replace_string(SourcePath::ReplQuery, target.label().into());
 
         program::query(&mut self.vm, file_id, &self.env, query_path)
     }

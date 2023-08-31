@@ -35,6 +35,7 @@ use crate::{
 
 use codespan::FileId;
 use codespan_reporting::term::termcolor::Ansi;
+use std::path::PathBuf;
 
 use std::{
     ffi::OsString,
@@ -66,8 +67,7 @@ impl QueryPath {
             grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
         };
 
-        let format_name = "query-path";
-        let input_id = cache.replace_string(format_name, input);
+        let input_id = cache.replace_string(SourcePath::Query, input);
         let s = cache.source(input_id);
 
         let parser = FieldPathParser::new();
@@ -166,7 +166,8 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString> + Clone,
     {
         let mut cache = Cache::new(ErrorTolerance::Strict);
-        let main_id = cache.add_source(source_name, source)?;
+        let path = PathBuf::from(source_name.into());
+        let main_id = cache.add_source(SourcePath::Path(path), source)?;
         let vm = VirtualMachine::new(cache, trace);
 
         Ok(Self {
@@ -242,7 +243,7 @@ impl<EC: EvalCache> Program<EC> {
                     let value_file_id = self
                         .vm
                         .import_resolver_mut()
-                        .add_string(format!("<override {}>", ovd.path.join(".")), ovd.value);
+                        .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
                     self.vm.prepare_eval(value_file_id)?;
                     record = record
                         .path(ovd.path)

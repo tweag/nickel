@@ -66,8 +66,9 @@ impl InputFormat {
 pub struct Cache {
     /// The content of the program sources plus imports.
     files: Files<String>,
+    file_paths: HashMap<FileId, SourcePath>,
     /// The name-id table, holding file ids stored in the database indexed by source names.
-    file_ids: HashMap<OsString, NameIdEntry>,
+    file_ids: HashMap<SourcePath, NameIdEntry>,
     /// Map containing for each FileId a list of files they import (directly).
     imports: HashMap<FileId, HashSet<FileId>>,
     /// Map containing for each FileId a list of files importing them (directly).
@@ -129,7 +130,7 @@ pub struct TermEntry {
 /// are not auto-refreshed. If an in-memory buffer has a path that also exists in the
 /// filesystem, we will not even check that file to see if it has changed.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
-enum Source {
+enum SourceKind {
     Filesystem(SystemTime),
     Memory,
 }
@@ -150,7 +151,7 @@ enum Source {
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub struct NameIdEntry {
     id: FileId,
-    source: Source,
+    source: SourceKind,
 }
 
 /// The state of an entry of the term cache.
@@ -221,6 +222,67 @@ impl<E> CacheError<E> {
     }
 }
 
+/// Input data usually comes from files on the file system, but there are also
+/// lots of cases where we want to synthesize other kinds of inputs.
+///
+/// Note that a `SourcePath` does not uniquely identify a cached input:
+/// - Some functions (like [`Cache::add_file`]) add a new cached input unconditionally.
+/// - [`Cache::get_or_add_file`] will add a new cached input at the same `SourcePath` if
+///   the file on disk was updated.
+///
+/// The equality checking of `SourcePath` only affects [`Cache::replace_string`], which
+/// overwrites any previous cached input with the same `SourcePath`.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum SourcePath {
+    /// A file at the given path.
+    ///
+    /// Note that this does not need to be a real file on the filesystem: it could still
+    /// have [`SourceKind::Memory`].
+    Path(PathBuf),
+    /// A subrange of a file at the given path.
+    ///
+    /// This is used by nls to analyze small parts of files that don't fully parse. The
+    /// original file path is preserved, because it's needed for resolving imports.
+    Snippet(PathBuf),
+    Std(StdlibModule),
+    Query,
+    ReplInput(usize),
+    ReplTypecheck,
+    ReplQuery,
+    Override(Vec<String>),
+}
+
+impl SourcePath {
+    /// Return this import's path if it has one.
+    ///
+    /// The path is important for resolving relative imports. Note that different
+    /// `SourcePath`s may have the same path.
+    fn as_path(&self) -> Option<&OsStr> {
+        match self {
+            SourcePath::Path(p) | SourcePath::Snippet(p) => Some(p.as_os_str()),
+            _ => None,
+        }
+    }
+}
+
+// [`Files`] needs to have an OsString for each file, so we synthesize names even for
+// sources that don't have them. They don't need to be unique; they're just used for
+// diagnostics.
+impl From<SourcePath> for OsString {
+    fn from(source_path: SourcePath) -> Self {
+        match source_path {
+            SourcePath::Path(p) | SourcePath::Snippet(p) => p.into(),
+            SourcePath::Std(StdlibModule::Std) => "<stdlib/std.ncl>".into(),
+            SourcePath::Std(StdlibModule::Internals) => "<stdlib/internals.ncl>".into(),
+            SourcePath::Query => "<query>".into(),
+            SourcePath::ReplInput(idx) => format!("<repl-input-{idx}").into(),
+            SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
+            SourcePath::ReplQuery => "<repl-query>".into(),
+            SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
+        }
+    }
+}
+
 /// Return status indicating if an import has been resolved from a file (first encounter), or was
 /// retrieved from the cache.
 ///
@@ -246,6 +308,7 @@ impl Cache {
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
+            file_paths: HashMap::new(),
             terms: HashMap::new(),
             wildcards: HashMap::new(),
             imports: HashMap::new(),
@@ -258,29 +321,18 @@ impl Cache {
         }
     }
 
-    /// Load a file in the file database. Do not insert an entry in the name-id table.
-    fn load_file(&mut self, path: impl Into<OsString>) -> io::Result<FileId> {
-        let path = path.into();
-        let mut buffer = String::new();
-        fs::File::open(&path)
-            .and_then(|mut file| file.read_to_string(&mut buffer))
-            .map(|_| self.files.add(path, buffer))
-    }
-
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
     /// timestamp as a parameter.
-    fn add_file_(
-        &mut self,
-        path: impl Into<OsString>,
-        timestamp: SystemTime,
-    ) -> io::Result<FileId> {
-        let path = path.into();
-        let file_id = self.load_file(path.clone())?;
+    fn add_file_(&mut self, path: PathBuf, timestamp: SystemTime) -> io::Result<FileId> {
+        let contents = std::fs::read_to_string(&path)?;
+        let file_id = self.files.add(&path, contents);
+        self.file_paths
+            .insert(file_id, SourcePath::Path(path.clone()));
         self.file_ids.insert(
-            path,
+            SourcePath::Path(path),
             NameIdEntry {
                 id: file_id,
-                source: Source::Filesystem(timestamp),
+                source: SourceKind::Filesystem(timestamp),
             },
         );
         Ok(file_id)
@@ -303,7 +355,7 @@ impl Cache {
     pub fn get_or_add_file(&mut self, path: impl Into<OsString>) -> io::Result<CacheOp<FileId>> {
         let path = path.into();
         let normalized = normalize_path(&path)?;
-        match self.id_or_new_timestamp_of(&path)? {
+        match self.id_or_new_timestamp_of(path.as_ref())? {
             SourceState::UpToDate(id) => Ok(CacheOp::Cached(id)),
             SourceState::Stale(timestamp) => {
                 self.add_file_(normalized, timestamp).map(CacheOp::Done)
@@ -315,10 +367,9 @@ impl Cache {
     ///
     /// Do not check if a source with the same name already exists: if it is the
     /// case, this one will override the old entry in the name-id table.
-    pub fn add_source<T, S>(&mut self, source_name: S, mut source: T) -> io::Result<FileId>
+    pub fn add_source<T>(&mut self, source_name: SourcePath, mut source: T) -> io::Result<FileId>
     where
         T: Read,
-        S: Into<OsString>,
     {
         let mut buffer = String::new();
         source.read_to_string(&mut buffer)?;
@@ -333,14 +384,14 @@ impl Cache {
     ///
     /// Do not check if a source with the same name already exists: if it is the case, this one
     /// will override the old entry in the name-id table but the old `FileId` will remain valid.
-    pub fn add_string(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
-        let source_name = source_name.into();
+    pub fn add_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         let id = self.files.add(source_name.clone(), s);
+        self.file_paths.insert(id, source_name.clone());
         self.file_ids.insert(
             source_name,
             NameIdEntry {
                 id,
-                source: Source::Memory,
+                source: SourceKind::Memory,
             },
         );
         id
@@ -353,19 +404,19 @@ impl Cache {
     ///
     /// Used to store intermediate short-lived generated snippets that needs to have a
     /// corresponding `FileId`, such as when querying or reporting errors.
-    pub fn replace_string(&mut self, source_name: impl Into<OsString>, s: String) -> FileId {
-        let source_name = source_name.into();
+    pub fn replace_string(&mut self, source_name: SourcePath, s: String) -> FileId {
         if let Some(file_id) = self.id_of(&source_name) {
             self.files.update(file_id, s);
             self.terms.remove(&file_id);
             file_id
         } else {
             let file_id = self.files.add(source_name.clone(), s);
+            self.file_paths.insert(file_id, source_name.clone());
             self.file_ids.insert(
                 source_name,
                 NameIdEntry {
                     id: file_id,
-                    source: Source::Memory,
+                    source: SourceKind::Memory,
                 },
             );
             file_id
@@ -878,10 +929,13 @@ impl Cache {
     ///
     /// Note that files added via [Self::add_file] are indexed by their full normalized path (cf
     /// [normalize_path]).
-    pub fn id_of(&self, name: impl AsRef<OsStr>) -> Option<FileId> {
-        match self.id_or_new_timestamp_of(name).ok()? {
-            SourceState::UpToDate(id) => Some(id),
-            SourceState::Stale(_) => None,
+    pub fn id_of(&self, name: &SourcePath) -> Option<FileId> {
+        match name {
+            SourcePath::Path(p) => match self.id_or_new_timestamp_of(p).ok()? {
+                SourceState::UpToDate(id) => Some(id),
+                SourceState::Stale(_) => None,
+            },
+            name => Some(self.file_ids.get(name)?.id),
         }
     }
 
@@ -893,13 +947,12 @@ impl Cache {
     ///
     /// The main point of this awkward signature is to minimize I/O operations: if we accessed
     /// the timestamp, keep it around.
-    fn id_or_new_timestamp_of(&self, name: impl AsRef<OsStr>) -> io::Result<SourceState> {
-        let name = name.as_ref();
-        match self.file_ids.get(name) {
+    fn id_or_new_timestamp_of(&self, name: &Path) -> io::Result<SourceState> {
+        match self.file_ids.get(&SourcePath::Path(name.to_owned())) {
             None => Ok(SourceState::Stale(timestamp(name)?)),
             Some(NameIdEntry {
                 id,
-                source: Source::Filesystem(ts),
+                source: SourceKind::Filesystem(ts),
             }) => {
                 let new_timestamp = timestamp(name)?;
                 if ts == &new_timestamp {
@@ -910,7 +963,7 @@ impl Cache {
             }
             Some(NameIdEntry {
                 id,
-                source: Source::Memory,
+                source: SourceKind::Memory,
             }) => Ok(SourceState::UpToDate(*id)),
         }
     }
@@ -1023,11 +1076,10 @@ impl Cache {
         let file_ids: HashMap<StdlibModule, FileId> = nickel_stdlib::modules()
             .into_iter()
             .map(|module| {
-                let name = module.file_name();
                 let content = module.content();
                 (
                     module,
-                    self.add_string(OsString::from(name), String::from(content)),
+                    self.add_string(SourcePath::Std(module), String::from(content)),
                 )
             })
             .collect();
@@ -1212,7 +1264,7 @@ pub trait ImportResolver {
     /// Get a resolved import from the term cache.
     fn get(&self, file_id: FileId) -> Option<RichTerm>;
     /// Return the (potentially normalized) file path corresponding to the ID of a resolved import.
-    fn get_path(&self, file_id: FileId) -> &OsStr;
+    fn get_path(&self, file_id: FileId) -> Option<&OsStr>;
 }
 
 impl ImportResolver for Cache {
@@ -1236,8 +1288,7 @@ impl ImportResolver for Cache {
             CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
         };
 
-        if let Some(parent) = parent {
-            let parent_id = self.id_of(parent).unwrap();
+        if let Some(parent_id) = parent.and_then(|p| self.id_of(&SourcePath::Path(p))) {
             self.imports.entry(parent_id).or_default().insert(file_id);
             self.rev_imports
                 .entry(file_id)
@@ -1260,8 +1311,8 @@ impl ImportResolver for Cache {
             })
     }
 
-    fn get_path(&self, file_id: FileId) -> &OsStr {
-        self.files.name(file_id)
+    fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
+        self.file_paths.get(&file_id).and_then(|p| p.as_path())
     }
 }
 
@@ -1350,7 +1401,7 @@ pub mod resolvers {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
 
-        fn get_path(&self, _file_id: FileId) -> &OsStr {
+        fn get_path(&self, _file_id: FileId) -> Option<&OsStr> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
         }
     }
@@ -1417,8 +1468,8 @@ pub mod resolvers {
             self.term_cache.get(&file_id).cloned()
         }
 
-        fn get_path(&self, file_id: FileId) -> &OsStr {
-            self.files.name(file_id)
+        fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
+            Some(self.files.name(file_id))
         }
     }
 }

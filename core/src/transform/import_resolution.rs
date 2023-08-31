@@ -115,9 +115,9 @@ pub mod tolerant {
         let mut stack = Vec::new();
         let mut import_errors = Vec::new();
 
-        let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
+        let source_file: Option<PathBuf> = rt.pos.as_opt_ref().and_then(|x| {
             let path = resolver.get_path(x.src_id);
-            PathBuf::from(path)
+            path.map(PathBuf::from)
         });
 
         let mut state = ImportsResolutionState {
