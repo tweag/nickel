@@ -60,7 +60,7 @@ pub struct ExportCommand {
 /// that are accessible from the root term together with their associated metadata.
 ///
 /// Interface is used to derive a command-line interface from a configuration when using the
-/// `customize_mod` option.
+/// `customize_mode` option.
 #[derive(Debug, Clone, Default)]
 struct TermInterface {
     // We use a BTreeMap so that the end result is being sorted as we build the interface.
