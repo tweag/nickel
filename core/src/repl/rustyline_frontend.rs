@@ -46,7 +46,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
 
     let validator = InputParser::new(
         repl.cache_mut()
-            .replace_string("<repl-input>", String::new()),
+            .replace_string(SourcePath::ReplInput(0), String::new()),
     );
 
     let mut editor = Editor::with_config(config(color_opt))

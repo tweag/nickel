@@ -4,7 +4,6 @@
 use super::ImportResolver;
 use crate::error::ImportError;
 use codespan::FileId;
-use std::path::PathBuf;
 
 /// The state passed around during the imports resolution.
 struct ImportsResolutionState<'a, R> {
@@ -12,7 +11,7 @@ struct ImportsResolutionState<'a, R> {
     /// Pending imported terms to be transformed.
     stack: &'a mut Vec<FileId>,
     /// Path of the import being currently processed, if any.
-    parent: Option<PathBuf>,
+    parent: Option<FileId>,
     /// Errors of imports that couldn't be resolved correctly.
     import_errors: &'a mut Vec<ImportError>,
 }
@@ -23,7 +22,6 @@ pub mod strict {
     use crate::error::ImportError;
     use crate::term::RichTerm;
     use codespan::FileId;
-    use std::path::PathBuf;
 
     /// The result of an import resolution transformation.
     pub struct ResolveResult {
@@ -73,7 +71,7 @@ pub mod strict {
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
-        parent: &Option<PathBuf>,
+        parent: Option<FileId>,
     ) -> Result<RichTerm, ImportError>
     where
         R: ImportResolver,
@@ -94,7 +92,6 @@ pub mod tolerant {
     use crate::error::ImportError;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
     use codespan::FileId;
-    use std::path::PathBuf;
 
     /// The result of an error tolerant import resolution.
     pub struct ResolveResult {
@@ -115,10 +112,7 @@ pub mod tolerant {
         let mut stack = Vec::new();
         let mut import_errors = Vec::new();
 
-        let source_file: Option<PathBuf> = rt.pos.as_opt_ref().map(|x| {
-            let path = resolver.get_path(x.src_id);
-            PathBuf::from(path)
-        });
+        let source_file = rt.pos.as_opt_ref().map(|x| x.src_id);
 
         let mut state = ImportsResolutionState {
             resolver,
@@ -133,7 +127,7 @@ pub mod tolerant {
                 &|rt: RichTerm,
                   state: &mut ImportsResolutionState<R>|
                  -> Result<RichTerm, ImportError> {
-                    let (rt, err) = transform_one(rt, state.resolver, &state.parent);
+                    let (rt, err) = transform_one(rt, state.resolver, state.parent);
                     if let Some(err) = err {
                         state.import_errors.push(err);
                     }
@@ -164,14 +158,14 @@ pub mod tolerant {
     pub fn transform_one<R>(
         rt: RichTerm,
         resolver: &mut R,
-        parent: &Option<PathBuf>,
+        parent: Option<FileId>,
     ) -> (RichTerm, Option<ImportError>)
     where
         R: ImportResolver,
     {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match resolver.resolve(path, parent.clone(), &rt.pos) {
+            Term::Import(path) => match resolver.resolve(path, parent, &rt.pos) {
                 Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },

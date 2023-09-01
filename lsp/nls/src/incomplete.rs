@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
+    cache::SourcePath,
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
     term::RichTerm,
@@ -145,10 +146,10 @@ pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> 
 
     // In order to help the input resolver find relative imports, we add a fake input whose parent
     // is the same as the real file.
-    let mut path = PathBuf::from(server.cache.files().name(range.src_id));
-    path.pop();
-    path.push("<incomplete-input>");
-    let file_id = server.cache.replace_string(&path, to_parse);
+    let path = PathBuf::from(server.cache.files().name(range.src_id));
+    let file_id = server
+        .cache
+        .replace_string(SourcePath::Snippet(path), to_parse);
 
     match server.cache.parse_nocache(file_id) {
         Ok((rt, _errors)) => Some(resolve_imports(rt, server)),

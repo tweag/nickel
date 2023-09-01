@@ -1,10 +1,12 @@
 use crate::{
+    files::uri_to_path,
     linearization::interface::TermKind,
     term::RawSpanExt,
     trace::{Enrich, Trace},
 };
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
+use nickel_lang_core::cache::SourcePath;
 use serde_json::Value;
 
 use crate::server::Server;
@@ -14,10 +16,8 @@ pub fn handle_document_symbols(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let file_id = server
-        .cache
-        .id_of(params.text_document.uri.to_file_path().unwrap())
-        .unwrap();
+    let path = uri_to_path(&params.text_document.uri)?;
+    let file_id = server.cache.id_of(&SourcePath::Path(path)).unwrap();
 
     if let Some(completed) = server.lin_registry.map.get(&file_id) {
         Trace::enrich(&id, completed);

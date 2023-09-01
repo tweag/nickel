@@ -4,7 +4,7 @@ use codespan::{ByteIndex, FileId};
 use lsp_types::TextDocumentPositionParams;
 use nickel_lang_core::position::TermPos;
 use nickel_lang_core::{
-    cache::{Cache, CacheError, CacheOp, EntryState, TermEntry},
+    cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     position::RawPos,
     typecheck::{self, linearization::Linearization},
@@ -111,11 +111,11 @@ impl CacheExt for Cache {
         lsp_pos: &TextDocumentPositionParams,
     ) -> Result<RawPos, crate::error::Error> {
         let uri = &lsp_pos.text_document.uri;
+        let path = uri
+            .to_file_path()
+            .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
         let file_id = self
-            .id_of(
-                uri.to_file_path()
-                    .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?,
-            )
+            .id_of(&SourcePath::Path(path))
             .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
 
         let pos = lsp_pos.position;
