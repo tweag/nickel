@@ -429,7 +429,7 @@ pub enum ParseError {
     InvalidAsciiEscapeCode(RawSpan),
     /// A multiline string was closed with a delimiter which has a `%` count higher than the
     /// opening delimiter.
-    StringEndMismatch {
+    StringDelimiterMismatch {
         opening_delimiter: RawSpan,
         closing_delimiter: RawSpan,
     },
@@ -654,10 +654,10 @@ impl ParseError {
                 InternalParseError::Lexical(LexicalError::InvalidAsciiEscapeCode(location)) => {
                     ParseError::InvalidAsciiEscapeCode(mk_span(file_id, location, location + 2))
                 }
-                InternalParseError::Lexical(LexicalError::StringEndMismatch {
+                InternalParseError::Lexical(LexicalError::StringDelimiterMismatch {
                     opening_delimiter,
                     closing_delimiter,
-                }) => ParseError::StringEndMismatch {
+                }) => ParseError::StringDelimiterMismatch {
                     opening_delimiter: mk_span(
                         file_id,
                         opening_delimiter.start,
@@ -1705,7 +1705,7 @@ impl IntoDiagnostics<FileId> for ParseError {
             ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
                 .with_message("invalid ascii escape code")
                 .with_labels(vec![primary(&span)]),
-            ParseError::StringEndMismatch { opening_delimiter, closing_delimiter } => Diagnostic::error()
+            ParseError::StringDelimiterMismatch { opening_delimiter, closing_delimiter } => Diagnostic::error()
                 .with_message("string closing delimiter has too many `%`")
                 .with_labels(vec![
                     primary(&closing_delimiter).with_message("the closing delimiter"),

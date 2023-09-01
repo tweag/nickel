@@ -466,9 +466,11 @@ pub enum ModalLexer<'input> {
     },
     MultiString {
         mode_data: MultiStrData,
-        /// A token that has been buffered and must be returned at the next call to `next()`. This is
-        /// made necessary by an issue of Logos (<https://github.com/maciejhirsz/logos/issues/200>). See
-        /// [`MultiStringToken::QuotesCandidateInterpolation`].
+        /// A token that has been buffered and must be returned at the next call to `next()`.
+        /// Related to lexing a possible interpolation sequence, such as `%%%{`, which requires to
+        /// split a candidate interpolation token in two. In this case, we need to emit the first
+        /// token on the spot, and bufferize the second one, to be emitted on the following call to
+        /// `next()`.
         buffer: Option<(MultiStringToken<'input>, Range<usize>)>,
         logos_lexer: MultiStringLexer<'input>,
     },
@@ -830,13 +832,13 @@ impl<'input> Lexer<'input> {
             // If we encounter a `QuotesCandidateInterpolation` token with as much `%` characters
             // as the current count or more, we need to split it into two tokens:
             //
-            // - a string end delimiter corresponding to the `"` followed by `(s.len() - self.count)`
+            // - a string literal corresponding to the `"` followed by `(s.len() - self.count)`
             // `%`s
             // - an interpolation token
-            // The interpolation token is put in the buffer such that it will be returned next
-            // time.
             //
-            // For example, in `m%%%""%%{exp}"%%%`, the `"%%{` is a `QuotesCandidateInterpolation`
+            // The interpolation token is put in the buffer to returned next time.
+            //
+            // For example, in `m%""%%{exp}"%`, the `"%%{` is a `QuotesCandidateInterpolation`
             // which is split as a `"%` literal followed by an interpolation token.
             MultiStringToken::QuotesCandidateInterpolation(s) if s.len() > data.percent_count => {
                 let (token_fst, span_fst) =
@@ -859,10 +861,12 @@ impl<'input> Lexer<'input> {
             // modulo operator `%` - which will fail anyway at runtime with a type error).
             // Thus, we prefer to emit a proper error right here.
             MultiStringToken::CandidateEnd(s) if s.len() > data.percent_count => {
-                return Some(Err(ParseError::Lexical(LexicalError::StringEndMismatch {
-                    opening_delimiter: data.opening_delimiter.clone(),
-                    closing_delimiter: span,
-                })))
+                return Some(Err(ParseError::Lexical(
+                    LexicalError::StringDelimiterMismatch {
+                        opening_delimiter: data.opening_delimiter.clone(),
+                        closing_delimiter: span,
+                    },
+                )))
             }
             // If we encounter a `CandidateEnd` token with the same number of `%`s as the
             // starting token then it is the end of a multiline string
