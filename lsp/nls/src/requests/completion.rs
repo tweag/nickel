@@ -28,6 +28,7 @@ use nickel_lang_core::{
     },
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::io;
 use std::iter::Extend;
@@ -814,41 +815,13 @@ fn handle_import_completion(
     current_path.pop();
     current_path.push(import);
 
+    #[derive(Eq, PartialEq, Hash)]
     struct Entry {
         path: PathBuf,
         file: bool,
     }
 
-    let create_completions = move |entries: Vec<Entry>| {
-        entries
-            .iter()
-            .filter(|Entry { path, file }| {
-                // don't try to import a file into itself
-                cache::normalize_path(path).unwrap_or_default() != current_file
-                    // check that file is importable
-                    && (!*file || InputFormat::from_path(path).is_some())
-            })
-            .map(|entry| {
-                let kind = if entry.file {
-                    CompletionItemKind::File
-                } else {
-                    CompletionItemKind::Folder
-                };
-                CompletionItem {
-                    label: entry
-                        .path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
-                    kind: Some(kind),
-                    ..Default::default()
-                }
-            })
-            .collect::<Vec<_>>()
-    };
-
-    let mut completions = Vec::new();
+    let mut entries = HashSet::new();
 
     let dir = std::fs::read_dir(&current_path)?;
     let dir_entries = dir
@@ -856,21 +829,44 @@ fn handle_import_completion(
         .map(|(file_type, entry)| Entry {
             path: entry.path(),
             file: file_type.is_file(),
-        })
-        .collect();
+        });
 
     let cached_entries = server
         .file_uris
         .values()
         .filter_map(|uri| uri.to_file_path().ok())
         .filter(|path| path.starts_with(&current_path))
-        .map(|path| Entry { path, file: true })
-        .collect();
+        .map(|path| Entry { path, file: true });
 
-    completions.extend(create_completions(dir_entries));
-    completions.extend(create_completions(cached_entries));
-    completions.dedup();
+    entries.extend(dir_entries);
+    entries.extend(cached_entries);
 
+    let completions = entries
+        .iter()
+        .filter(|Entry { path, file }| {
+            // don't try to import a file into itself
+            cache::normalize_path(path).unwrap_or_default() != current_file
+                // check that file is importable
+                && (!*file || InputFormat::from_path(path).is_some())
+        })
+        .map(|entry| {
+            let kind = if entry.file {
+                CompletionItemKind::File
+            } else {
+                CompletionItemKind::Folder
+            };
+            CompletionItem {
+                label: entry
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                kind: Some(kind),
+                ..Default::default()
+            }
+        })
+        .collect::<Vec<_>>();
     Ok(completions)
 }
 
