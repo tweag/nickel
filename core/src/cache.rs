@@ -238,6 +238,9 @@ pub enum SourcePath {
     ///
     /// Note that this does not need to be a real file on the filesystem: it could still
     /// be loaded from memory by, e.g, [`Cache::add_string`].
+    ///
+    /// This is the only `SourcePath` variant that can be resolved as the target
+    /// of an import statement.
     Path(PathBuf),
     /// A subrange of a file at the given path.
     ///
