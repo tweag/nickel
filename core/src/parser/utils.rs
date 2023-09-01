@@ -839,20 +839,6 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     chunks
 }
 
-/// Strip the indentation of a doc metadata. Wrap it as a literal string chunk and call
-/// [`strip_indent`].
-pub fn strip_indent_doc(doc: String) -> String {
-    let chunk = vec![StrChunk::Literal(doc)];
-    strip_indent(chunk)
-        .into_iter()
-        .map(|chunk| match chunk {
-            StrChunk::Literal(s) => s,
-            _ => panic!("expected literal string after indentation of documentation"),
-        })
-        .next()
-        .expect("expected non-empty chunks after indentation of documentation")
-}
-
 #[cfg(test)]
 mod tests {
     use crate::typ::TypeF;
