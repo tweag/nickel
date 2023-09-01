@@ -10,6 +10,7 @@ use nickel_lang_core::{
     typecheck::{self, linearization::Linearization},
 };
 
+use crate::linearization::TypeCollector;
 use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
 
 pub trait CacheExt {
@@ -73,7 +74,18 @@ impl CacheExt for Cache {
             let (_, linearized) =
                 typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)
                     .map_err(|err| vec![Error::TypecheckError(err)])?;
-            lin_registry.insert(file_id, linearized, term);
+
+            // Urg. We're linearizing twice...
+            let (_, type_lookups) = typecheck::type_check_linearize(
+                term,
+                initial_ctxt.clone(),
+                self,
+                TypeCollector {},
+                Linearization::new(HashMap::new()),
+            )
+            .map_err(|err| vec![Error::TypecheckError(err)])?;
+
+            lin_registry.insert(file_id, linearized, type_lookups, term);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {

@@ -18,7 +18,8 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, usage::UsageLookup,
+    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, term::RichTermPtr,
+    usage::UsageLookup,
 };
 
 use self::{
@@ -46,6 +47,7 @@ pub struct LinRegistry {
     // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId, everything>)
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
+    pub type_lookups: HashMap<RichTermPtr, Type>,
 }
 
 impl LinRegistry {
@@ -53,11 +55,19 @@ impl LinRegistry {
         Self::default()
     }
 
-    pub fn insert(&mut self, file_id: FileId, linearization: Completed, term: &RichTerm) {
+    pub fn insert(
+        &mut self,
+        file_id: FileId,
+        linearization: Completed,
+        type_lookups: HashMap<RichTermPtr, Type>,
+        term: &RichTerm,
+    ) {
         self.map.insert(file_id, linearization);
         self.position_lookups
             .insert(file_id, PositionLookup::new(term));
         self.usage_lookups.insert(file_id, UsageLookup::new(term));
+
+        self.type_lookups.extend(type_lookups);
     }
 
     /// Look for the linearization corresponding to an item's id, and return the corresponding item
@@ -695,6 +705,53 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;
         }
+    }
+}
+
+pub struct TypeCollector {}
+
+impl Linearizer for TypeCollector {
+    type Building = HashMap<RichTermPtr, UnifType>;
+    type Completed = HashMap<RichTermPtr, Type>;
+    type CompletionExtra = Extra;
+
+    fn scope(&mut self) -> Self {
+        TypeCollector {}
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        TypeCollector {}
+    }
+
+    fn add_term(&mut self, lin: &mut Linearization<Self::Building>, rt: &RichTerm, ty: UnifType) {
+        lin.insert(RichTermPtr(rt.clone()), ty);
+    }
+
+    fn complete(
+        self,
+        lin: Linearization<Self::Building>,
+        Extra {
+            table,
+            names,
+            wildcards,
+        }: Extra,
+    ) -> Linearization<Self::Completed> {
+        let mut name_reg = NameReg::new(names);
+
+        let mut transform_type = |uty: UnifType| -> Type {
+            let ty = name_reg.to_type(&table, uty);
+            match ty.typ {
+                TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&ty).clone(),
+                _ => ty,
+            }
+        };
+
+        Linearization::new(
+            lin.into_inner()
+                .into_iter()
+                .map(|(rt, uty)| (rt, transform_type(uty)))
+                .collect(),
+        )
     }
 }
 
