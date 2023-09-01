@@ -826,7 +826,7 @@ fn handle_import_completion(
                 // don't try to import a file into itself
                 cache::normalize_path(path).unwrap_or_default() != current_file
                     // check that file is importable
-                    && (!*file || InputFormat::from_path_buf(path).is_some())
+                    && (!*file || InputFormat::from_path(path).is_some())
             })
             .map(|entry| {
                 let kind = if entry.file {
