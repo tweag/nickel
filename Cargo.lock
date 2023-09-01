@@ -1719,7 +1719,6 @@ dependencies = [
  "serde_json",
  "test-generator",
  "thiserror",
- "unindent 0.2.2",
 ]
 
 [[package]]
@@ -2112,7 +2111,7 @@ dependencies = [
  "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
- "unindent 0.1.11",
+ "unindent",
 ]
 
 [[package]]
@@ -3183,12 +3182,6 @@ name = "unindent"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1766d682d402817b5ac4490b3c3002d91dfa0d22812f341609f97b08757359c"
-
-[[package]]
-name = "unindent"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f86d931b9d0b666761dcfcbac3ec5e9daff8a2becfff93a8fce2591ae297b95"
 
 [[package]]
 name = "unsafe-libyaml"
