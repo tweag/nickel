@@ -37,8 +37,9 @@ pub enum InputFormat {
 }
 
 impl InputFormat {
-    fn from_path_buf(path_buf: &Path) -> Option<InputFormat> {
-        match path_buf.extension().and_then(OsStr::to_str) {
+    /// Returns an [InputFormat] based on the file extension of a path.
+    pub fn from_path(path: &Path) -> Option<InputFormat> {
+        match path.extension().and_then(OsStr::to_str) {
             Some("ncl") => Some(InputFormat::Nickel),
             Some("json") => Some(InputFormat::Json),
             Some("yaml") | Some("yml") => Some(InputFormat::Yaml),
@@ -1222,7 +1223,7 @@ impl ImportResolver for Cache {
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let path_buf = with_parent(path, parent.clone());
-        let format = InputFormat::from_path_buf(&path_buf).unwrap_or(InputFormat::Nickel);
+        let format = InputFormat::from_path(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
                 path_buf.to_string_lossy().into_owned(),

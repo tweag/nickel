@@ -35,7 +35,7 @@ use crate::{
     trace::Trace,
 };
 
-pub const DOT_COMPL_TRIGGER: &str = ".";
+pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
 
 pub struct Server {
     pub connection: Connection,
@@ -65,7 +65,9 @@ impl Server {
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             completion_provider: Some(CompletionOptions {
-                trigger_characters: Some(vec![String::from(DOT_COMPL_TRIGGER)]),
+                trigger_characters: Some(
+                    COMPLETIONS_TRIGGERS.iter().map(|s| s.to_string()).collect(),
+                ),
                 ..Default::default()
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
@@ -239,7 +241,7 @@ impl Server {
             }
 
             DocumentSymbolRequest::METHOD => {
-                debug!("handle completion");
+                debug!("handle document symbols");
                 let params: DocumentSymbolParams = serde_json::from_value(req.params).unwrap();
                 symbols::handle_document_symbols(params, req.id.clone(), self)
             }
