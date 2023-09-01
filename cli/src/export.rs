@@ -558,8 +558,13 @@ impl ExportCommand {
 
                         cmd.overrides
                             .get(path)
-                            .map(|intf| FieldOverride {
-                                path: intf.path.clone(),
+                            .map(|intf| intf.path.clone())
+                            // We allow --override to set inputs as well, in particular as an
+                            // escape mechanism to set an input field named `override` or `help`,
+                            // which would conflict with the corresponding builtin flags.
+                            .or(cmd.inputs.get(path).cloned())
+                            .map(|path| FieldOverride {
+                                path,
                                 value: value.clone(),
                                 priority: MergePriority::Top,
                             })
