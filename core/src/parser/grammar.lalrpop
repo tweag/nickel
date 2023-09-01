@@ -524,10 +524,10 @@ StrChunks: RichTerm = {
         );
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
-            .map(mk_strchunk_literal)
+            .map(StrChunk::normalized_literal)
             .chain(chunks.into_iter()
                 .map(|(mut es, s)| {
-                    es.push(mk_strchunk_literal(s));
+                    es.push(StrChunk::normalized_literal(s));
                     es
                 })
                 .flatten())
@@ -603,7 +603,7 @@ StandardStaticString = DelimitedStaticString<"\"", "\"">;
 
 MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
     // strip the common indentation prefix
-    let chunks: Vec<StrChunk<RichTerm>> = vec![mk_strchunk_literal(<>)];
+    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::normalized_literal(<>)];
     match strip_indent(chunks).pop().unwrap() {
         StrChunk::Literal(s) => s,
         // We build

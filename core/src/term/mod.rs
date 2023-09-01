@@ -589,10 +589,14 @@ pub enum StrChunk<E> {
     ),
 }
 
-#[cfg(test)]
 impl<E> StrChunk<E> {
+    #[cfg(test)]
     pub fn expr(e: E) -> Self {
         StrChunk::Expr(e, 0)
+    }
+
+    pub fn normalized_literal(s: impl AsRef<str>) -> StrChunk<E> {
+        StrChunk::Literal(s.as_ref().replace("\r\n", "\n"))
     }
 }
 
