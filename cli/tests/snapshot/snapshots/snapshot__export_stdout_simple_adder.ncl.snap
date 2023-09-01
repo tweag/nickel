@@ -1,0 +1,9 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+{
+  "input": 5,
+  "output": 6
+}
+

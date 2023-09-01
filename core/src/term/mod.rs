@@ -1929,6 +1929,8 @@ macro_rules! match_sharedterm {
 pub mod make {
     use super::*;
 
+    pub mod builder;
+
     /// Multi-ary application for types implementing `Into<RichTerm>`.
     #[macro_export]
     macro_rules! mk_app {

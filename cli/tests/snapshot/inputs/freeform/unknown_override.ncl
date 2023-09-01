@@ -1,0 +1,27 @@
+# capture = 'stderr'
+# command = [
+#  'export',
+#  '--',
+#  '--input.foo.bar',
+#  '"hello"',
+#  '--input.foo.baz',
+#  '[]',
+#  '--override',
+#  'unkonwn.field.path',
+#  'null'
+# ]
+{
+  input.foo.bar | String,
+  input.foo.baz | Array Number,
+  input.defaulted.subfield
+    | doc "Some documentation"
+    | default = 2,
+
+  override.first = 1,
+  override.second = {
+    subsecond = {
+      subsubsecond = "a",
+      other = [],
+    }
+  }
+}

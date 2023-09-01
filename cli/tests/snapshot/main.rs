@@ -39,7 +39,9 @@ fn check_snapshots(path: &str) {
         .unwrap_or("error")
         .to_string();
 
-    let invocation = NickelInvocation::new().args(annotation.command).file(&file);
+    // We set the `-f somefile.ncl` argument before the others, because it can't come after
+    // customize mode's delimiter `--`.
+    let invocation = NickelInvocation::new().file(&file).args(annotation.command);
 
     match annotation.capture {
         SnapshotCapture::Stderr => {

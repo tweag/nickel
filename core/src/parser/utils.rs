@@ -9,6 +9,7 @@ use codespan::FileId;
 use super::error::ParseError;
 
 use crate::{
+    combine::Combine,
     destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::LocIdent,
@@ -254,13 +255,6 @@ impl InfixOp {
             ),
         }
     }
-}
-
-/// Trait for structures representing a series of annotation that can be combined (flattened).
-/// Pedantically, `Combine` is just a monoid.
-pub trait Combine: Default {
-    /// Combine two annotations.
-    fn combine(left: Self, right: Self) -> Self;
 }
 
 /// Trait for structures representing annotations which can be combined with a term to build

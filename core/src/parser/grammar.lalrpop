@@ -65,6 +65,7 @@ use crate::{
     typ::*,
     position::{TermPos, RawSpan},
     label::Label,
+    combine::Combine,
 };
 
 use malachite::num::basic::traits::Zero;
