@@ -51,7 +51,7 @@ pub struct ExportCommand {
     #[command(flatten)]
     pub evaluation: EvalCommand,
 
-    /// [WARNING] Customize mode is experimental. Its interface is subject to breaking changes.
+    /// \[WARNING\] Customize mode is experimental. Its interface is subject to breaking changes.
     ///
     /// Customize mode turns the nickel invocation into a new CLI based on the configuration to be
     /// exported, where the value of fields can be set directly through CLI arguments. Print the
