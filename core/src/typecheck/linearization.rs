@@ -68,6 +68,7 @@ pub struct Uninit;
 pub trait LinearizationState {}
 impl LinearizationState for () {}
 impl LinearizationState for Uninit {}
+impl<K, V> LinearizationState for std::collections::HashMap<K, V> {}
 
 /// The linearizer trait is what is referred to during typechecking.
 /// It is the interface to recording terms (while tracking their scope)
