@@ -15,10 +15,5 @@ error: contract broken by a function
   │
 1 │ "string"
   │ -------- evaluated to this value
-  │
-  = This error may happen in the following situation:
-        1. A function `f` is bound by a contract: e.g. `Bool -> Number`.
-        2. `f` returns a value of the wrong type: e.g. `f = fun c => "string"` while `Number` is expected.
-  = Either change the contract accordingly, or change the return value of `f`
 
 
