@@ -18,12 +18,20 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
 use nickel_lang_core::cache::InputFormat;
-use nickel_lang_core::{cache, identifier::{Ident, LocIdent}, position::RawPos, term::{
-    record::{Field, FieldMetadata},
-    RichTerm, Term, TypeAnnotation, UnaryOp,
-}, typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF}};
+use nickel_lang_core::{
+    cache,
+    identifier::{Ident, LocIdent},
+    position::RawPos,
+    term::{
+        record::{Field, FieldMetadata},
+        RichTerm, Term, TypeAnnotation, UnaryOp,
+    },
+    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
+};
 use std::ffi::OsString;
 use std::io;
+use std::iter::Extend;
+use std::path::PathBuf;
 
 // General idea:
 // A path is the reverse of the list of identifiers that make up a record indexing operation.
@@ -737,7 +745,7 @@ pub fn handle_completion(
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {
-            let completions = handle_import_completion(import, &params).unwrap_or_default();
+            let completions = handle_import_completion(import, &params, server).unwrap_or_default();
             server.reply(Response::new_ok(id.clone(), completions));
         }
         return Ok(());
@@ -790,6 +798,7 @@ pub fn handle_completion(
 fn handle_import_completion(
     import: &OsString,
     params: &CompletionParams,
+    server: &mut Server,
 ) -> io::Result<Vec<CompletionItem>> {
     debug!("handle import completion");
 
@@ -799,34 +808,69 @@ fn handle_import_completion(
         .uri
         .to_file_path()
         .unwrap();
-
     let current_file = cache::normalize_path(current_file)?;
+
     let mut current_path = current_file.clone();
     current_path.pop();
     current_path.push(import);
-    let dir = std::fs::read_dir(&current_path)?;
 
-    let completions = dir
+    struct Entry {
+        path: PathBuf,
+        file: bool,
+    }
+
+    let create_completions = move |entries: Vec<Entry>| {
+        entries
+            .iter()
+            .filter(|Entry { path, file }| {
+                // don't try to import a file into itself
+                cache::normalize_path(path).unwrap_or_default() != current_file
+                    // check that file is importable
+                    && (!*file || InputFormat::from_path_buf(path).is_some())
+            })
+            .map(|entry| {
+                let kind = if entry.file {
+                    CompletionItemKind::File
+                } else {
+                    CompletionItemKind::Folder
+                };
+                CompletionItem {
+                    label: entry
+                        .path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    kind: Some(kind),
+                    ..Default::default()
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut completions = Vec::new();
+
+    let dir = std::fs::read_dir(&current_path)?;
+    let dir_entries = dir
         .filter_map(|i| i.ok().and_then(|d| d.file_type().ok().zip(Some(d))))
-        .filter(|(file_type, d)| {
-            // don't try to import a file into itself
-            d.path().canonicalize().unwrap_or_default() != current_file
-                // check that file is importable
-                && (file_type.is_dir() || InputFormat::from_path_buf(d.path().as_path()).is_some())
+        .map(|(file_type, entry)| Entry {
+            path: entry.path(),
+            file: file_type.is_file(),
         })
-        .map(|(file_type, d)| {
-            let kind = if file_type.is_file() {
-                CompletionItemKind::File
-            } else {
-                CompletionItemKind::Folder
-            };
-            CompletionItem {
-                label: d.file_name().to_string_lossy().to_string(),
-                kind: Some(kind),
-                ..Default::default()
-            }
-        })
-        .collect::<Vec<_>>();
+        .collect();
+
+    let cached_entries = server
+        .file_uris
+        .values()
+        .filter_map(|uri| uri.to_file_path().ok())
+        .filter(|path| path.starts_with(&current_path))
+        .map(|path| Entry { path, file: true })
+        .collect();
+
+    completions.extend(create_completions(dir_entries));
+    completions.extend(create_completions(cached_entries));
+    completions.dedup();
+
     Ok(completions)
 }
 
