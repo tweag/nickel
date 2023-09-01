@@ -839,6 +839,10 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     chunks
 }
 
+pub fn mk_strchunk_literal<E>(s: impl AsRef<str>) -> StrChunk<E> {
+    StrChunk::Literal(s.as_ref().replace("\r\n", "\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::typ::TypeF;
