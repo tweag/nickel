@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use codespan::{ByteIndex, FileId};
 use lsp_types::TextDocumentPositionParams;
+use nickel_lang_core::position::TermPos;
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, TermEntry},
     error::{Error, ImportError},
@@ -93,7 +94,7 @@ impl CacheExt for Cache {
                 // The unwrap is safe here because (1) we have linearized `file_id` and it must be
                 // in the `lin_registry` and (2) every resolved import has a corresponding position in
                 // the linearization of the file that imports it.
-                let pos = lin_registry.map.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap();
+                let pos = lin_registry.map.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap_or(&TermPos::None);
                 let name: String = self.name(id).to_str().unwrap().into();
                 ImportError::IOError(name, String::from(message), *pos)
             });
