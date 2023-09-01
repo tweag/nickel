@@ -18,15 +18,10 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
 use nickel_lang_core::cache::InputFormat;
-use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
-    position::RawPos,
-    term::{
-        record::{Field, FieldMetadata},
-        RichTerm, Term, TypeAnnotation, UnaryOp,
-    },
-    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
-};
+use nickel_lang_core::{cache, identifier::{Ident, LocIdent}, position::RawPos, term::{
+    record::{Field, FieldMetadata},
+    RichTerm, Term, TypeAnnotation, UnaryOp,
+}, typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF}};
 use std::ffi::OsString;
 use std::io;
 
@@ -742,7 +737,7 @@ pub fn handle_completion(
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {
-            let completions = handle_import_completion(&import, &params).unwrap_or_default();
+            let completions = handle_import_completion(import, &params).unwrap_or_default();
             server.reply(Response::new_ok(id.clone(), completions));
         }
         return Ok(());
@@ -803,8 +798,9 @@ fn handle_import_completion(
         .text_document
         .uri
         .to_file_path()
-        .unwrap()
-        .canonicalize()?;
+        .unwrap();
+
+    let current_file = cache::normalize_path(current_file)?;
     let mut current_path = current_file.clone();
     current_path.pop();
     current_path.push(import);
@@ -831,7 +827,7 @@ fn handle_import_completion(
             }
         })
         .collect::<Vec<_>>();
-    return Ok(completions);
+    Ok(completions)
 }
 
 #[cfg(test)]
