@@ -252,15 +252,13 @@ pub enum SourcePath {
     Override(Vec<String>),
 }
 
-impl SourcePath {
-    /// Return this import's path if it has one.
-    ///
-    /// The path is important for resolving relative imports. Note that different
-    /// `SourcePath`s may have the same path.
-    fn as_path(&self) -> Option<&OsStr> {
-        match self {
-            SourcePath::Path(p) | SourcePath::Snippet(p) => Some(p.as_os_str()),
-            _ => None,
+impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
+    type Error = ();
+
+    fn try_from(value: &'a SourcePath) -> Result<Self, Self::Error> {
+        match value {
+            SourcePath::Path(p) | SourcePath::Snippet(p) => Ok(p.as_os_str()),
+            _ => Err(()),
         }
     }
 }
@@ -1257,7 +1255,7 @@ pub trait ImportResolver {
     fn resolve(
         &mut self,
         path: &OsStr,
-        parent: Option<PathBuf>,
+        parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError>;
 
@@ -1271,10 +1269,11 @@ impl ImportResolver for Cache {
     fn resolve(
         &mut self,
         path: &OsStr,
-        parent: Option<PathBuf>,
+        parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let path_buf = with_parent(path, parent.clone());
+        let parent_path = parent.and_then(|p| self.get_path(p)).map(PathBuf::from);
+        let path_buf = with_parent(path, parent_path);
         let format = InputFormat::from_path(&path_buf).unwrap_or(InputFormat::Nickel);
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
@@ -1288,12 +1287,9 @@ impl ImportResolver for Cache {
             CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
         };
 
-        if let Some(parent_id) = parent.and_then(|p| self.id_of(&SourcePath::Path(p))) {
-            self.imports.entry(parent_id).or_default().insert(file_id);
-            self.rev_imports
-                .entry(file_id)
-                .or_default()
-                .insert(parent_id);
+        if let Some(parent) = parent {
+            self.imports.entry(parent).or_default().insert(file_id);
+            self.rev_imports.entry(file_id).or_default().insert(parent);
         }
 
         self.parse_multi(file_id, format)
@@ -1312,7 +1308,9 @@ impl ImportResolver for Cache {
     }
 
     fn get_path(&self, file_id: FileId) -> Option<&OsStr> {
-        self.file_paths.get(&file_id).and_then(|p| p.as_path())
+        self.file_paths
+            .get(&file_id)
+            .and_then(|p| p.try_into().ok())
     }
 }
 
@@ -1391,7 +1389,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             _path: &OsStr,
-            _parent: Option<PathBuf>,
+            _parent: Option<FileId>,
             _pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             panic!("cache::resolvers: dummy resolver should not have been invoked");
@@ -1432,7 +1430,7 @@ pub mod resolvers {
         fn resolve(
             &mut self,
             path: &OsStr,
-            _parent: Option<PathBuf>,
+            _parent: Option<FileId>,
             pos: &TermPos,
         ) -> Result<(ResolvedTerm, FileId), ImportError> {
             let file_id = self

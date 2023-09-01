@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use codespan::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
 use log::trace;
@@ -45,9 +45,6 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
             content: &params.text_document.text,
         },
     );
-    if params.text_document.uri.scheme() != "file" {
-        bail!("nls only supports file:// schemes");
-    }
     let path = uri_to_path(&params.text_document.uri)?;
     let file_id = server
         .cache
