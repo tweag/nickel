@@ -87,6 +87,8 @@ jobs:
           - runs-on: [EC2, ARM64, Linux]
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
+    needs:
+      - start-runner
     steps:
       - uses: actions/checkout@v4
         with:
@@ -151,6 +153,8 @@ jobs:
           - runs-on: [EC2, ARM64, Linux]
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
+    needs:
+      - start-runner
     steps:
       - uses: actions/checkout@v4
         with:
