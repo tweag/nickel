@@ -63,6 +63,18 @@
         inherit system;
         overlays = [
           (import rust-overlay)
+          # gnulib tests in diffutils fail for musl arm64, cf. https://github.com/NixOS/nixpkgs/pull/241281
+          (final: prev: {
+            diffutils =
+              if !(final.stdenv.hostPlatform.isMusl && final.stdenv.hostPlatform.isAarch64) then
+                prev.diffutils
+              else
+                prev.diffutils.overrideAttrs (old: {
+                  postPatch = ''
+                    sed -i 's:gnulib-tests::g' Makefile.in
+                  '';
+                });
+          })
         ];
       };
 

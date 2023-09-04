@@ -7,8 +7,6 @@ in
   imports = [ <nixpkgs/nixos/modules/virtualisation/amazon-image.nix> ];
   ec2.hvm = true;
 
-
-
   services.github-runner = {
     enable = true;
     replace = true;
@@ -41,6 +39,8 @@ in
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
+    substituters = [ "https://tweag-nickel.cachix.org" ];
+    trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
     accept-flake-config = true;
   };
 
