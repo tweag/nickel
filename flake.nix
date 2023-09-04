@@ -234,7 +234,7 @@
             NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
           };
 
-          buildPackage = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+          buildPackage = { pnameSuffix, cargoPackage ? "${pname}${pnameSuffix}", extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
@@ -244,7 +244,7 @@
                 cargoArtifacts
                 env;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}${pnameSuffix}";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
         in
         rec {
@@ -262,6 +262,7 @@
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
               buildPackage {
+                cargoPackage = "nickel-lang-cli";
                 pnameSuffix = "-static";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
