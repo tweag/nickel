@@ -1,29 +1,36 @@
 # GitHub Runner Infrastructure
 
-To redeploy and update GitHub variables, make sure you are logged into AWS and
-GitHub using the `awscli2` and `gh` tools:
+If you make any changes to the infrastructure code in this directory, you will
+have to redeploy it. Do the following:
 
-```console
-> nix run nixpkgs#awscli2 -- sts get-caller-identity
-{
-  # CENSORED
-}
-❯ nix run github:nixos/nixpkgs#gh -- auth status
-github.com
-  # CENSORED
-  ✓ Token scopes: gist, read:org, repo
-```
+1. Make sure you're logged into AWS. You can check using `awscli2`:
 
-To log in with AWS SSO credentials, follow [their guide][aws-sso-guide]. To
-log into GitHub, you can use `nix run nixpkgs#gh -- auth login` and follow the
-instructions.
+   ```console
+   ❯ nix run nixpkgs#awscli2 -- sts get-caller-identity
+   {
+     # CENSORED
+   }
+   ```
 
-Note that for updating the GitHub variables, you need the requisite permissions
-on the Nickel repository. Then run
+   If this fails, log in with AWS SSO credentials, following [their guide][aws-sso-guide].
 
-```console
-nix develop ..#infra -c update-infra
-```
+2. Make sure you're logged into GitHub. You can check using `gh`:
+
+   ```console
+   ❯ nix run github:nixos/nixpkgs#gh -- auth status
+   github.com
+     # CENSORED
+     ✓ Token scopes: gist, read:org, repo
+   ```
+
+   If this fails, log in using `nix run nixpkgs#gh -- auth login` and follow
+   the instructions.
+
+3. Update the infrastructure using
+
+   ```console
+   nix develop ..#infra -c update-infra
+   ```
 
 ## Architecture
 
@@ -46,4 +53,4 @@ artifacts is as follows:
 - when the jobs building the release artifact have finished, the workflow
   invokes the `$EC2_STOP` AWS Lambda which terminates the EC2 instance
 
-[aws-sso-guide]:  https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html
+[aws-sso-guide]: https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html
