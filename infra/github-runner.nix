@@ -7,6 +7,8 @@ in
   imports = [ <nixpkgs/nixos/modules/virtualisation/amazon-image.nix> ];
   ec2.hvm = true;
 
+
+
   services.github-runner = {
     enable = true;
     replace = true;
@@ -35,6 +37,11 @@ in
     extraLabels = [
       "EC2"
     ];
+  };
+
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    accept-flake-config = true;
   };
 
   systemd.services.github-runner-init = {
