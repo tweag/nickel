@@ -103,7 +103,7 @@ jobs:
       - id: build-image
         name: "Build docker image"
         run: |
-          nix build --print-build-logs .#dockerImage
+          nix build --log-format raw-with-logs .#dockerImage
           cp ./result nickel-${{ matrix.os.architecture }}-docker-image.tar.gz
           echo "imageName=$(nix eval --raw .#dockerImage.imageName)" >> "$GITHUB_OUTPUT"
           echo "imageTag=$(nix eval --raw .#dockerImage.imageTag)" >> "$GITHUB_OUTPUT"
@@ -168,7 +168,7 @@ jobs:
           nix_path: "nixpkgs=channel:nixos-unstable"
       - name: "Build static binary"
         run: |
-          nix build --print-build-logs .#nickel-static
+          nix build --log-format raw-with-logs .#nickel-static
           cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
       - name: "Upload static binary as release asset"
         env:
