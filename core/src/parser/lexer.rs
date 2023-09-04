@@ -991,10 +991,6 @@ fn escape_ascii(code: &str) -> Option<char> {
 /// for lone `\r` without an accompanying `\n`.
 pub fn normalize_line_endings(s: impl AsRef<str>) -> String {
     let normalized = s.as_ref().replace("\r\n", "\n");
-
-    if !normalized.find('\r').is_none() {
-        dbg!(&normalized);
-    }
     debug_assert!(
         normalized.find('\r').is_none(),
         "The lexer throws an error when it finds a lone carriage return"
