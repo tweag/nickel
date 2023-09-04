@@ -524,10 +524,10 @@ StrChunks: RichTerm = {
         );
 
         let chunks: Vec<StrChunk<RichTerm>> = fst.into_iter()
-            .map(StrChunk::normalized_literal)
+            .map(StrChunk::Literal)
             .chain(chunks.into_iter()
                 .map(|(mut es, s)| {
-                    es.push(StrChunk::normalized_literal(s));
+                    es.push(StrChunk::Literal(s));
                     es
                 })
                 .flatten())
@@ -583,7 +583,7 @@ ChunkLiteral : String =
     <parts: ChunkLiteralPart+> => {
         parts.into_iter().fold(String::new(), |mut acc, part| {
             match part {
-                ChunkLiteralPart::Str(s) => acc.push_str(s),
+                ChunkLiteralPart::Str(s) => acc.push_str(&s),
                 ChunkLiteralPart::Char(c) => acc.push(c),
             };
 
@@ -603,7 +603,7 @@ StandardStaticString = DelimitedStaticString<"\"", "\"">;
 
 MultilineStaticString: String = DelimitedStaticString<"m%\"","\"%"> => {
     // strip the common indentation prefix
-    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::normalized_literal(<>)];
+    let chunks: Vec<StrChunk<RichTerm>> = vec![StrChunk::Literal(<>)];
     match strip_indent(chunks).pop().unwrap() {
         StrChunk::Literal(s) => s,
         // We build
@@ -623,7 +623,7 @@ EnumTag: LocIdent = {
   <StringEnumTag> => <>.into(),
 };
 
-ChunkLiteralPart: ChunkLiteralPart<'input> = {
+ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
     "str esc char" => ChunkLiteralPart::Char(<>),
@@ -946,9 +946,9 @@ extern {
 
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
-        "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
+        "str literal" => Token::Str(StringToken::Literal(<String>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
-        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
+        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<String>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<Number>)),
 
         "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),

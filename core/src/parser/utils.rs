@@ -96,8 +96,8 @@ pub type FieldPath = Vec<FieldPathElem>;
 /// Because of the way the lexer handles escaping and interpolation, a contiguous static string
 /// `"Some \\ \%{escaped} string"` will be lexed as a sequence of such atoms.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ChunkLiteralPart<'input> {
-    Str(&'input str),
+pub enum ChunkLiteralPart {
+    Str(String),
     Char(char),
 }
 
