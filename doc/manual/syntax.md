@@ -144,7 +144,7 @@ error: Type error
 Multiline strings are useful for writing indented lines. The first and last
 lines are ignored if they are empty or contain only spaces. Indentation that is
 present on all lines of the string is stripped. This way, multiline strings can
-be indented for nicer code formatting without producing unwanted whitespace in
+be indented for nicer code formatting without producing unwanted whitespaces in
 the output. For example:
 
 ```nickel
@@ -171,11 +171,11 @@ The only special sequence in a multiline string is the string interpolation:
 String"
 ```
 
-A multiline string can be introduced and closed with multiple `%` signs, as
-long as the number of `%` signs in the start delimiter equals the number in the
-closing delimiter. If you want to use string interpolation, you must use the
-same amount of `%` signs as in the delimiters. This can be useful for escaping
-`"%` or `%{` sequences in a string:
+A multiline string can be opened and closed with multiple `%` signs, as long as
+the number of `%` signs in the start delimiter equals the number in the closing
+delimiter. If you want to use string interpolation, you must use the same amount
+of `%` signs as in the delimiters. This can be useful for writing a literal `"%`
+or `%{` sequence in a string without escaping:
 
 ```nickel
 > m%%"Hello World"%%
@@ -214,6 +214,27 @@ interpolate a string with indentation and the result will be as expected:
     res.append(s)
   return res"
 ```
+
+Inside a multiline string, an interpolation sequence immediately preceded by a
+double quote - that is of the form `"%..%{` - is always interpreted as a
+potential string literal prefix `"%..%` followed by an interpolation sequence
+opening delimiter, **even if the leading `"%..%` could also act as a string end
+delimiter**:
+
+```nickel
+> let msg = "Hello, world!" in m%"
+    echo "%{msg}"
+  "%
+"echo \"Hello, world!\""
+```
+
+Strictly speaking, the `"%` prefix of `"%{msg}` could be interpreted as the end
+of the multiline string. However, doing so makes the common case of interpolating
+a variable enclosed in double quotes annoying. Moreover, when such an ambiguity
+arises, choosing to eagerly interpret `"%` as a closing delimiter never produces
+a meaningful expression. Hence, multiline string ending which is followed by
+zero or more `%` and an opening brace `{` is never interpreted as a string
+ending.
 
 #### Symbolic Strings
 

@@ -144,19 +144,24 @@ where
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self, A> {
         let multiline = string_style == StringRenderStyle::Multiline && contains_newline(chunks);
-        let nb_perc = chunks
-            .iter()
-            .map(
-                |c| {
-                    if let StrChunk::Literal(s) = c {
-                        min_interpolate_sign(s)
-                    } else {
-                        1
-                    }
-                }, // be sure we have at least 1 `%` sign when an interpolation is present
-            )
-            .max()
-            .unwrap_or(1);
+
+        let nb_perc = if multiline {
+            chunks
+                .iter()
+                .map(
+                    |c| {
+                        if let StrChunk::Literal(s) = c {
+                            min_interpolate_sign(s)
+                        } else {
+                            1
+                        }
+                    }, // be sure we have at least 1 `%` sign when an interpolation is present
+                )
+                .max()
+                .unwrap_or(1)
+        } else {
+            1
+        };
 
         let interp: String = "%".repeat(nb_perc);
 
@@ -1150,7 +1155,7 @@ mod tests {
                   x : Number,
                   y : String;
                   Dyn
-                }" 
+                }"
             },
         );
     }
