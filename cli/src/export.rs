@@ -36,6 +36,9 @@ const OVERRIDES_LIST_MAX_COUNT: usize = 15;
 /// a value.
 const NICKEL_VALUE_NAME: &str = "NICKEL EXPRESSION";
 
+const EXPERIMENTAL_MSG: &str =
+    "[WARNING] Customize mode is experimental. Its interface is subject to breaking changes.";
+
 #[derive(clap::Parser, Debug)]
 pub struct ExportCommand {
     #[arg(long, value_enum, default_value_t)]
@@ -48,10 +51,11 @@ pub struct ExportCommand {
     #[command(flatten)]
     pub evaluation: EvalCommand,
 
-    /// Enters customize mode. This turns the nickel invocation into a new CLI based on the
-    /// configuration to be exported, where the value of fields can be set directly through CLI
-    /// arguments. Print the corresponding help (`nickel export -f <file.ncl> -- --help`) to see
-    /// available options.
+    /// \[WARNING\] Customize mode is experimental. Its interface is subject to breaking changes.
+    ///
+    /// Customize mode turns the nickel invocation into a new CLI based on the configuration to be
+    /// exported, where the value of fields can be set directly through CLI arguments. Print the
+    /// corresponding help (`nickel export -f <file.ncl> -- --help`) to see available options.
     #[arg(last = true)]
     pub customize_mode: Vec<OsString>,
 }
@@ -114,32 +118,37 @@ impl TermInterface {
     /// In addition to the updated command, `build_cmd` returns a mapping from clap argument ids to
     /// their corresponding full field path as an array of fields.
     fn build_cmd(&self) -> TermCommand {
-        let mut paths = HashMap::new();
-        let mut ovd_interfaces = BTreeMap::new();
+        let clap_cmd = Command::new("customize-mode")
+            .about("Customize a Nickel configuration through the command line before exporting")
+            .after_help(EXPERIMENTAL_MSG)
+            .no_binary_name(true);
 
-        let mut cmd = Command::new("customize-mode").no_binary_name(true);
+        let mut term_cmd = TermCommand::new(clap_cmd);
 
         for (id, field) in &self.fields {
-            cmd = field.add_args(cmd, vec![id.to_string()], &mut paths, &mut ovd_interfaces)
+            term_cmd = field.add_args(term_cmd, vec![id.to_string()])
         }
 
-        let mut overrides_list: Vec<String> = ovd_interfaces
+        let mut overrides_list: Vec<String> = term_cmd
+            .overrides
             .keys()
             .take(OVERRIDES_LIST_MAX_COUNT)
             .map(|field_path| format!("- {field_path}"))
             .collect();
 
-        if ovd_interfaces.len() > OVERRIDES_LIST_MAX_COUNT {
+        if term_cmd.overrides.len() > OVERRIDES_LIST_MAX_COUNT {
             overrides_list.push("- ...".into());
         }
 
-        //TODO: what happens if there's a field named override?
+        let has_override = term_cmd.inputs.contains_key("override");
+        let has_help = term_cmd.inputs.contains_key("help");
+
         let override_arg_label = "override";
         let override_help = format!(
             "Override any field of the configuration with a valid Nickel expression provided as \
             a string. The new value will be merged with the configuration with a `force` \
-            priority.\
-            \n\nOverridable fields:\n{}\n",
+            priority.\n\n\
+            Overridable fields:\n{}\n\n",
             overrides_list.join("\n")
         );
         let override_arg = clap::Arg::new(override_arg_label)
@@ -151,13 +160,35 @@ impl TermInterface {
             .required(false)
             .help(override_help);
 
-        cmd = cmd.arg(override_arg);
+        term_cmd.clap_cmd = term_cmd.clap_cmd.arg(override_arg);
 
-        TermCommand {
-            clap_cmd: cmd,
-            args: paths,
-            overrides: ovd_interfaces,
+        if has_help || has_override {
+            let conflict_field = if has_override {
+                "override"
+            } else if has_help {
+                "help"
+            } else {
+                // We tested in the parent `if` that one of those two booleans must be set
+                unreachable!()
+            };
+
+            let extra = if has_help && has_override {
+                ". The same applies to the conflicting `help` field"
+            } else {
+                ""
+            };
+
+            term_cmd.clap_cmd = term_cmd.clap_cmd.after_long_help(format!(
+                "\
+            [CONFLICT] This configuration has a field named `{conflict_field}` which conflicts \
+            with the built-in `--{conflict_field}` argument. To set this field to e.g. \"some_value\", \
+            use `--override {conflict_field} \"some_value\"` instead of `--{conflict_field} \"some_value\"`\
+            {extra}\n\n\
+            {EXPERIMENTAL_MSG}"
+            ));
         }
+
+        term_cmd
     }
 }
 
@@ -314,39 +345,32 @@ impl FieldInterface {
     ///
     /// `add_args` updates `paths` as well, which maps clap argument ids to the corresponding field
     /// path represented as an array of string names.
-    fn add_args(
-        &self,
-        mut cmd: clap::Command,
-        path: Vec<String>,
-        paths: &mut HashMap<clap::Id, Vec<String>>,
-        ovd_interfaces: &mut BTreeMap<String, OverrideInterface>,
-    ) -> clap::Command {
-        let id = path.join(".");
-        let prev = paths.insert(clap::Id::from(&id), path.clone());
-        debug_assert!(prev.is_none());
-
-        // this is a terminal field, which gives rise to an argument or an overridable value.
+    fn add_args(&self, mut term_cmd: TermCommand, path: Vec<String>) -> TermCommand {
+        // This is a terminal field, which gives rise to an argument or an overridable value.
         if !self.has_subfields() {
             if self.is_input() {
-                cmd = self.add_arg(cmd, id);
+                match path.as_slice() {
+                    [ref field] if field == "override" || field == "help" => {
+                        term_cmd.register_input(path.clone())
+                    }
+                    _ => {
+                        term_cmd.register_arg(path.clone());
+                        term_cmd.clap_cmd = self.add_arg(term_cmd.clap_cmd, path.join("."))
+                    }
+                };
             } else {
-                ovd_interfaces.insert(
-                    id,
-                    OverrideInterface {
-                        path: path.clone(),
-                        _help: self.help(),
-                    },
-                );
+                term_cmd.register_override(path.clone(), self.help());
             }
         }
 
         for (id, field) in self.subfields.iter().flat_map(|intf| intf.fields.iter()) {
             let mut path = path.clone();
             path.push(id.to_string());
-            cmd = field.add_args(cmd, path, paths, ovd_interfaces);
+
+            term_cmd = field.add_args(term_cmd, path);
         }
 
-        cmd
+        term_cmd
     }
 
     /// Add a single argument to the CLI `cmd`, based on the interface of this field, and return
@@ -454,8 +478,54 @@ struct TermCommand {
     clap_cmd: clap::Command,
     /// A mapping between clap argument ids and the corresponding field path (for inputs).
     args: HashMap<clap::Id, Vec<String>>,
+    /// Mapping between existing input fields (as a dot-separated path string) and their path
+    /// represented as a vector. This is used both as a `HashSet` to check the existence of an
+    /// input field, and to sidestep the issue of parsing a path again when reading an input
+    /// argument.
+    inputs: HashMap<String, Vec<String>>,
     /// A mapping between a field path and the corresponding override data.
     overrides: BTreeMap<String, OverrideInterface>,
+}
+
+impl TermCommand {
+    fn new(command: clap::Command) -> Self {
+        TermCommand {
+            clap_cmd: command,
+            overrides: BTreeMap::new(),
+            inputs: HashMap::new(),
+            args: HashMap::new(),
+        }
+    }
+
+    /// Register a new argument corresponding to an input. Add the paths and the argument's id to
+    /// the relevant maps.
+    fn register_arg(&mut self, path: Vec<String>) {
+        let path_string = path.join(".");
+        let arg_id = clap::Id::from(path_string.clone());
+
+        debug_assert!(!self.args.contains_key(&arg_id));
+        debug_assert!(!self.inputs.contains_key(&path_string));
+
+        self.args.insert(arg_id, path.clone());
+        self.inputs.insert(path_string, path);
+    }
+
+    /// Register an input, but don't register the corresponding CLI argument. Used for `override`
+    /// and `help` which conflict with the built-in `--override` and `--help` arguments.
+    fn register_input(&mut self, path: Vec<String>) {
+        let path_string = path.join(".");
+
+        debug_assert!(!self.inputs.contains_key(&path_string));
+
+        self.inputs.insert(path_string, path);
+    }
+
+    fn register_override(&mut self, path: Vec<String>, help: Option<String>) {
+        let path_string = path.join(".");
+
+        self.overrides
+            .insert(path_string, OverrideInterface { path, _help: help });
+    }
 }
 
 impl ExportCommand {
@@ -488,8 +558,13 @@ impl ExportCommand {
 
                         cmd.overrides
                             .get(path)
-                            .map(|intf| FieldOverride {
-                                path: intf.path.clone(),
+                            .map(|intf| intf.path.clone())
+                            // We allow --override to set inputs as well, in particular as an
+                            // escape mechanism to set an input field named `override` or `help`,
+                            // which would conflict with the corresponding builtin flags.
+                            .or(cmd.inputs.get(path).cloned())
+                            .map(|path| FieldOverride {
+                                path,
                                 value: value.clone(),
                                 priority: MergePriority::Top,
                             })
