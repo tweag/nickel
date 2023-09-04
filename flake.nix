@@ -172,6 +172,8 @@
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
           importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
+
+          infraFilter = mkFilter ".*/infra/.*$";
         in
         pkgs.lib.cleanSourceWith {
           src = pkgs.lib.cleanSource ./.;
@@ -187,7 +189,9 @@
               scmFilter
               filterCargoSources
               importsFilter
-            ];
+            ] && !(builtins.any (filter: filter path type) [
+              infraFilter
+            ]);
         };
 
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
@@ -470,6 +474,44 @@
           '';
         };
 
+      infraShell = nickel:
+        let
+          terraform = pkgs.terraform.withPlugins (p: with p; [
+            archive
+            aws
+            github
+          ]);
+          ec2-region = "eu-north-1";
+          ec2-ami = (import "${nixpkgs}/nixos/modules/virtualisation/amazon-ec2-amis.nix").latest.${ec2-region}.aarch64-linux.hvm-ebs;
+          run-terraform = pkgs.writeShellScriptBin "run-terraform" ''
+            set -e
+            ${nickel}/bin/nickel export > main.tf.json <<EOF
+              ((import "main.ncl") & {
+                region = "${ec2-region}",
+                nixos-ami = "${ec2-ami}",
+              }).config
+            EOF
+            ${terraform}/bin/terraform "$@"
+          '';
+
+          update-github = pkgs.writeShellScriptBin "update-github" ''
+            set -e
+            OUTPUTS=$(${run-terraform}/bin/run-terraform output -json)
+            for var in $(${pkgs.jq}/bin/jq -r 'keys | .[]' <<<"$OUTPUTS"); do
+              ${pkgs.jq}/bin/jq --arg var "$var" '{ name: $var, value: .[$var].value }' <<<"$OUTPUTS" | \
+                ${pkgs.gh}/bin/gh api -X PATCH --input - /repos/vkleen/runner-test/actions/variables/"$var"
+            done
+          '';
+
+          update-infra = pkgs.writeShellScriptBin "update-infra" ''
+            set -e
+            ${run-terraform}/bin/run-terraform init
+            GITHUB_TOKEN="$(${pkgs.gh}/bin/gh auth token)" ${run-terraform}/bin/run-terraform apply
+          '';
+        in
+        pkgs.mkShell {
+          buildInputs = [ terraform run-terraform update-github update-infra ];
+        };
     in
     rec {
       packages = {
@@ -506,6 +548,7 @@
         value = makeDevShell { rust = mkRust { inherit channel; rustProfile = "default"; targets = [ "wasm32-unknown-unknown" ]; }; };
       })) // {
         default = devShells.stable;
+        infra = infraShell packages.nickel-lang-cli;
       };
 
       checks = {
