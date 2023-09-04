@@ -494,15 +494,6 @@
             ${terraform}/bin/terraform "$@"
           '';
 
-          update-github = pkgs.writeShellScriptBin "update-github" ''
-            set -e
-            OUTPUTS=$(${run-terraform}/bin/run-terraform output -json)
-            for var in $(${pkgs.jq}/bin/jq -r 'keys | .[]' <<<"$OUTPUTS"); do
-              ${pkgs.jq}/bin/jq --arg var "$var" '{ name: $var, value: .[$var].value }' <<<"$OUTPUTS" | \
-                ${pkgs.gh}/bin/gh api -X PATCH --input - /repos/vkleen/runner-test/actions/variables/"$var"
-            done
-          '';
-
           update-infra = pkgs.writeShellScriptBin "update-infra" ''
             set -e
             ${run-terraform}/bin/run-terraform init
@@ -510,7 +501,7 @@
           '';
         in
         pkgs.mkShell {
-          buildInputs = [ terraform run-terraform update-github update-infra ];
+          buildInputs = [ terraform run-terraform update-infra ];
         };
     in
     rec {
