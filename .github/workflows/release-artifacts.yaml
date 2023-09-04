@@ -47,6 +47,7 @@ jobs:
   stop-runner:
     name: Stop EC2 runner
     runs-on: ubuntu-latest
+    # Ensure that `stop-runner` will always stop the EC2 instance, even if other jobs failed or were canceled
     if: ${{ always() }}
     needs:
       - start-runner
