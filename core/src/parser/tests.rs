@@ -347,10 +347,10 @@ fn string_lexing() {
             r#""Good" "strings""#,
             vec![
                 Token::Normal(NormalToken::DoubleQuote),
-                Token::Str(StringToken::Literal("Good")),
+                Token::Str(StringToken::Literal("Good".to_owned())),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Normal(NormalToken::DoubleQuote),
-                Token::Str(StringToken::Literal("strings")),
+                Token::Str(StringToken::Literal("strings".to_owned())),
                 Token::Normal(NormalToken::DoubleQuote),
             ],
         ),
@@ -359,9 +359,9 @@ fn string_lexing() {
             r#""Good\nEscape\t\"""#,
             vec![
                 Token::Normal(NormalToken::DoubleQuote),
-                Token::Str(StringToken::Literal("Good")),
+                Token::Str(StringToken::Literal("Good".to_owned())),
                 Token::Str(StringToken::EscapedChar('\n')),
-                Token::Str(StringToken::Literal("Escape")),
+                Token::Str(StringToken::Literal("Escape".to_owned())),
                 Token::Str(StringToken::EscapedChar('\t')),
                 Token::Str(StringToken::EscapedChar('\"')),
                 Token::Normal(NormalToken::DoubleQuote),
@@ -372,11 +372,11 @@ fn string_lexing() {
             r#""1 + %{ 1 } + 2""#,
             vec![
                 Token::Normal(NormalToken::DoubleQuote),
-                Token::Str(StringToken::Literal("1 + ")),
+                Token::Str(StringToken::Literal("1 + ".to_owned())),
                 Token::Str(StringToken::Interpolation),
                 Token::Normal(NormalToken::NumLiteral(Number::from(1))),
                 Token::Normal(NormalToken::RBrace),
-                Token::Str(StringToken::Literal(" + 2")),
+                Token::Str(StringToken::Literal(" + 2".to_owned())),
                 Token::Normal(NormalToken::DoubleQuote),
             ],
         ),
@@ -385,7 +385,7 @@ fn string_lexing() {
             r#""1 + %{ "%{ 1 }" } + 2""#,
             vec![
                 Token::Normal(NormalToken::DoubleQuote),
-                Token::Str(StringToken::Literal("1 + ")),
+                Token::Str(StringToken::Literal("1 + ".to_owned())),
                 Token::Str(StringToken::Interpolation),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Str(StringToken::Interpolation),
@@ -393,7 +393,7 @@ fn string_lexing() {
                 Token::Normal(NormalToken::RBrace),
                 Token::Normal(NormalToken::DoubleQuote),
                 Token::Normal(NormalToken::RBrace),
-                Token::Str(StringToken::Literal(" + 2")),
+                Token::Str(StringToken::Literal(" + 2".to_owned())),
                 Token::Normal(NormalToken::DoubleQuote),
             ],
         ),
@@ -402,7 +402,7 @@ fn string_lexing() {
             r#"m%%""%"%%"#,
             vec![
                 Token::Normal(NormalToken::MultiStringStart(4)),
-                Token::MultiStr(MultiStringToken::Literal("\"%")),
+                Token::MultiStr(MultiStringToken::Literal("\"%".to_owned())),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),
@@ -425,11 +425,11 @@ fn string_lexing() {
                     prefix: "foo",
                     length: 3,
                 })),
-                Token::MultiStr(MultiStringToken::Literal("text ")),
+                Token::MultiStr(MultiStringToken::Literal("text ".to_owned())),
                 Token::MultiStr(MultiStringToken::Interpolation),
                 Token::Normal(NormalToken::NumLiteral(Number::from(1))),
                 Token::Normal(NormalToken::RBrace),
-                Token::MultiStr(MultiStringToken::Literal(" etc.")),
+                Token::MultiStr(MultiStringToken::Literal(" etc.".to_owned())),
                 Token::MultiStr(MultiStringToken::End),
             ],
         ),
@@ -467,6 +467,12 @@ fn str_escape() {
         parse_without_pos("\"%a%b%c\\%{d%\""),
         mk_single_chunk("%a%b%c%{d%"),
     );
+}
+
+#[test]
+fn carriage_returns() {
+    assert_eq!(parse_without_pos("\"\\r\""), mk_single_chunk("\r"),);
+    assert_matches!(parse("foo\rbar"), Err(ParseError::UnexpectedToken(..)))
 }
 
 #[test]
