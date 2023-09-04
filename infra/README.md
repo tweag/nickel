@@ -13,6 +13,9 @@ have to redeploy it. Do the following:
    ```
 
    If this fails, log in with AWS SSO credentials, following [their guide][aws-sso-guide].
+   You will likely hit [a bug in the AWS provider][aws-provider-bug]. Apply the
+   [workaround mentioned in a comment][aws-provider-workaround] and log in again
+   using `aws sso login` to resolve this.
 
 2. Make sure you're logged into GitHub. You can check using `gh`:
 
@@ -54,3 +57,5 @@ artifacts is as follows:
   invokes the `$EC2_STOP` AWS Lambda which terminates the EC2 instance
 
 [aws-sso-guide]: https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html
+[aws-provider-bug]: https://github.com/aws/aws-cli/issues/7632
+[aws-provider-workaround]: https://github.com/aws/aws-cli/issues/7632#issuecomment-1568458315
