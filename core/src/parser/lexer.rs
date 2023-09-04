@@ -829,7 +829,7 @@ impl<'input> Lexer<'input> {
                 self.enter_normal();
                 Token::MultiStr(tok)
             }
-            // If we encounter a `QuotesCandidateInterpolation` token with as much `%` characters
+            // If we encounter a `QuotesCandidateInterpolation` token with as many `%` characters
             // as the current count or more, we need to split it into two tokens:
             //
             // - a string literal corresponding to the `"` followed by `(s.len() - self.count)`
