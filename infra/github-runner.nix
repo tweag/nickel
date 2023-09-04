@@ -25,6 +25,7 @@ in
           };
       });
     };
+    nodeRuntimes = [ "node16" "node20" ];
     extraPackages = with pkgs; [
       gawk
       nix
