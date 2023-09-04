@@ -165,10 +165,10 @@ jobs:
       - name: "Build static binary"
         run: |
           nix build --print-build-logs .#nickel-static
-          cp ./result/bin/nickel nickel-${{ os.matrix.architecture }}-linux
+          cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
       - name: "Upload static binary as release asset"
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
-          gh release upload --clobber $RELEASE_TAG nickel-${{ os.matrix.architecture }}-linux
+          gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
