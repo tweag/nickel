@@ -1223,9 +1223,9 @@ checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
 name = "indoc"
-version = "2.0.1"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f2cb48b81b1dc9f39676bf99f5499babfec7cd8fe14307f7b3d747208fb5690"
+checksum = "2c785eefb63ebd0e33416dfcb8d6da0bf27ce752843a45632a67bf10d4d4b5c4"
 
 [[package]]
 name = "inferno"
@@ -1652,7 +1652,7 @@ dependencies = [
  "comrak",
  "criterion",
  "indexmap 1.9.3",
- "indoc 2.0.1",
+ "indoc 2.0.3",
  "js-sys",
  "lalrpop",
  "lalrpop-util",

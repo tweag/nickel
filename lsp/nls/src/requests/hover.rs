@@ -49,20 +49,18 @@ pub fn handle(
         server.cache.files(),
     );
 
+    let mut contents = Vec::new();
+    contents.push(MarkedString::LanguageString(LanguageString {
+        language: "nickel".into(),
+        value: ty.to_string(),
+    }));
+
+    contents.extend(meta.iter().cloned().map(MarkedString::String));
+
     server.reply(Response::new_ok(
         id,
         Hover {
-            contents: HoverContents::Array(vec![
-                MarkedString::LanguageString(LanguageString {
-                    language: "nickel".into(),
-                    value: ty.to_string(),
-                }),
-                MarkedString::LanguageString(LanguageString {
-                    language: "plain".into(),
-                    value: meta.join("\n"),
-                }),
-            ]),
-
+            contents: HoverContents::Array(contents),
             range: Some(range),
         },
     ));
