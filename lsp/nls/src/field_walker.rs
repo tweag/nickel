@@ -305,21 +305,13 @@ impl FieldDefs {
                 FieldDefs::resolve_term_path(term, &[id.ident()], env, server)
             }
             Term::Annotated(annot, term) => {
-                // We only check the annotated contracts, not the annotated type.
-                // (Type-based information comes from the inferred types, which
-                // already account for annotated types.)
-                let terms = annot.contracts.iter().filter_map(|ty| {
-                    // TODO: support Dict and Record types also. For now, this is
-                    // enough for completion on basic contract annotations like
-                    // (x | { foo | Number }).fo
-                    if let TypeF::Flat(rt) = &ty.typ.typ {
-                        Some(rt)
-                    } else {
-                        None
-                    }
-                });
-                terms.fold(FieldDefs::resolve_term(term, env, server), |acc, rt| {
-                    acc.merge_from(FieldDefs::resolve_term(rt, env, server))
+                let defs = annot
+                    .contracts
+                    .iter()
+                    .chain(annot.typ.iter())
+                    .map(|lty| FieldDefs::resolve_type(&lty.typ, env, server));
+                defs.fold(FieldDefs::resolve_term(term, env, server), |acc, def| {
+                    acc.merge_from(def)
                 })
             }
             _ => Default::default(),
