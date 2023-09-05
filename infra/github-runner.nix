@@ -37,6 +37,9 @@ in
     extraLabels = [
       "EC2"
     ];
+    serviceOverrides = {
+      Group = "docker";
+    };
   };
 
   virtualisation.docker.enable = true;
