@@ -25,6 +25,7 @@ in
     let f | Number -> { foo : Number } = fun x => { foo : x } in
     (f 1).foo : _
   )
+  ({} | { field : Number }).fiel
 ]
 ### [[request]]
 ### type = "Completion"
@@ -93,3 +94,8 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///completion-basic.ncl"
 ### position = { line = 19, character = 13 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 21, character = 32 }
