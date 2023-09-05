@@ -8,7 +8,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::{DefWithPath, TermAtPath},
+    field_walker::{Def, DefWithPath, TermAtPath},
     identifier::LocIdent,
 };
 
@@ -35,12 +35,19 @@ impl EnvExt for Environment {
         meta: Option<FieldMetadata>,
     ) {
         let ident = id.into();
+        let (term, path) = val
+            .map(Into::into)
+            .map(|term_at_path| (term_at_path.term, term_at_path.path))
+            .unzip();
         self.insert(
             ident.ident,
             DefWithPath {
-                ident,
-                value: val.map(Into::into),
-                metadata: meta,
+                def: Def {
+                    ident,
+                    value: term.map(Into::into),
+                    metadata: meta,
+                },
+                path: path.unwrap_or_default(),
             },
         );
     }
@@ -170,7 +177,7 @@ impl UsageLookup {
                 Term::Var(id) => {
                     let id = LocIdent::from(*id);
                     if let Some(def) = env.get(&id.ident) {
-                        self.usage_table.entry(def.ident).or_default().push(id);
+                        self.usage_table.entry(def.def.ident).or_default().push(id);
                     }
                     TraverseControl::Continue
                 }
@@ -214,8 +221,11 @@ mod tests {
         assert_eq!(table.def(&x0), None);
 
         let def = table.def(&x1).unwrap();
-        assert_eq!(def.ident, x0);
-        assert_matches!(def.value.as_ref().unwrap().term.as_ref(), &Term::Num(_));
+        assert_eq!(def.ident(), x0);
+        assert_matches!(
+            def.value().unwrap().as_term().unwrap().term.as_ref(),
+            Term::Num(_)
+        );
     }
 
     #[test]
@@ -234,19 +244,16 @@ mod tests {
         assert_eq!(table.usages(&baz0).cloned().collect::<Vec<_>>(), vec![baz1]);
 
         let x_def = table.def(&x1).unwrap();
-        assert_eq!(x_def.ident, x0);
-        assert!(x_def.value.as_ref().unwrap().path.is_empty());
+        assert_eq!(x_def.ident(), x0);
+        assert!(x_def.path().is_empty());
 
         let a_def = table.def(&a1).unwrap();
-        assert_eq!(a_def.ident, a0);
-        assert_eq!(a_def.value.as_ref().unwrap().path, vec!["foo".into()]);
+        assert_eq!(a_def.ident(), a0);
+        assert_eq!(a_def.path(), &["foo".into()]);
 
         let baz_def = table.def(&baz1).unwrap();
-        assert_eq!(baz_def.ident, baz0);
-        assert_eq!(
-            baz_def.value.as_ref().unwrap().path,
-            vec!["foo".into(), "bar".into()]
-        );
+        assert_eq!(baz_def.ident(), baz0);
+        assert_eq!(baz_def.path(), vec!["foo".into(), "bar".into()]);
     }
 
     #[test]
@@ -261,9 +268,9 @@ mod tests {
         let field1 = locced("field", file, 47..52);
         let table = UsageLookup::new(&rt);
 
-        assert_eq!(table.def(&foo1).unwrap().ident, foo0);
-        assert_eq!(table.def(&foo2).unwrap().ident, foo0);
-        assert_eq!(table.def(&sub1).unwrap().ident, sub0);
+        assert_eq!(table.def(&foo1).unwrap().ident(), foo0);
+        assert_eq!(table.def(&foo2).unwrap().ident(), foo0);
+        assert_eq!(table.def(&sub1).unwrap().ident(), sub0);
 
         // We don't see "baz = sub.field" as a "usage" of field, because it's
         // a static access and not a var.

@@ -21,6 +21,10 @@ in
   ({} | { field = 1 }).fiel
   ({} | (let x = { field = 1 } in x)).fiel
   ({} | { field = { subfield = 1 } }.field).subfiel
+  (
+    let f | Number -> { foo : Number } = fun x => { foo : x } in
+    (f 1).foo : _
+  )
 ]
 ### [[request]]
 ### type = "Completion"
@@ -84,3 +88,8 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///completion-basic.ncl"
 ### position = { line = 16, character = 51 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 19, character = 13 }
