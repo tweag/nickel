@@ -88,7 +88,7 @@ jobs:
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: cachix/install-nix-action@v23
@@ -152,7 +152,7 @@ jobs:
             architecture: arm64
     runs-on: ${{ matrix.os.runs-on }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
       - uses: cachix/install-nix-action@v23
