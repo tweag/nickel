@@ -52,7 +52,6 @@ jobs:
     needs:
       - start-runner
       - docker-multiplatform-image
-      - static-binary
     steps:
       - uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -77,8 +76,8 @@ jobs:
             response.json
           cat response.json
 
-  static-binary:
-    name: "Build Nickel release binary"
+  release-artifacts:
+    name: "Build Nickel binary and Docker image"
     strategy:
       matrix:
         os:
@@ -110,31 +109,6 @@ jobs:
           RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
         run: |
           gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
-
-  docker-image:
-    name: "Build docker image"
-    strategy:
-      matrix:
-        os:
-          - runs-on: ubuntu-latest
-            architecture: x86_64
-          - runs-on: [EC2, ARM64, Linux]
-            architecture: arm64
-    runs-on: ${{ matrix.os.runs-on }}
-    needs:
-      - start-runner
-      - static-binary
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
-      - uses: cachix/install-nix-action@v23
-        name: "Installing Nix"
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-          nix_path: "nixpkgs=channel:nixos-unstable"
       - id: build-image
         name: "Build docker image"
         run: |
@@ -163,7 +137,7 @@ jobs:
   docker-multiplatform-image:
     name: "Assemble multi-platform Docker image"
     runs-on: ubuntu-latest
-    needs: docker-image
+    needs: release-artifacts
     steps:
       - name: Log in to registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
