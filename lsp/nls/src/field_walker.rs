@@ -5,7 +5,7 @@ use nickel_lang_core::{
     identifier::Ident,
     pretty::ident_quoted,
     term::{record::FieldMetadata, BinaryOp, RichTerm, Term, UnaryOp},
-    typ::TypeF,
+    typ::{RecordRowsIteratorItem, Type, TypeF},
 };
 
 use crate::{identifier::LocIdent, server::Server, usage::Environment};
@@ -34,6 +34,42 @@ impl From<RichTerm> for TermAtPath {
     }
 }
 
+/// The things that can appear as the right hand side of a `Def`
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    /// In `let foo = value`, the term `value` is the right hand side of the `Def`.
+    Term(RichTerm),
+    /// If type inference has determined that `x` is of type
+    ///
+    /// `{ foo: Number }`
+    ///     ^-----------------------------------------------------------|
+    /// then in the expression `x.foo`, the definition of `foo` is here | and the
+    /// value of its definition is `Number`.
+    Type(Type),
+}
+
+#[cfg(test)]
+impl Value {
+    pub fn as_term(&self) -> Option<&RichTerm> {
+        match self {
+            Value::Term(rt) => Some(rt),
+            Value::Type(_) => None,
+        }
+    }
+}
+
+impl From<RichTerm> for Value {
+    fn from(rt: RichTerm) -> Self {
+        Value::Term(rt)
+    }
+}
+
+impl From<Type> for Value {
+    fn from(typ: Type) -> Self {
+        Value::Type(typ)
+    }
+}
+
 /// The position at which a name is defined (possibly also with a value).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
@@ -44,7 +80,7 @@ pub struct Def {
     /// function definition, there will not be a value.
     ///
     /// For example, in `{ foo = 1 }`, this will point at the `1`.
-    pub value: Option<RichTerm>,
+    pub value: Option<Value>,
     /// Field metadata.
     pub metadata: Option<FieldMetadata>,
 }
@@ -99,47 +135,42 @@ impl Def {
 /// a definition whose value is a `Op1(StaticAccess, Op1(StaticAccess, ...))`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DefWithPath {
-    /// The identifier at the definition site.
-    pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one.
-    ///
-    /// For example, in `{ foo = 1 }`, this could point at the `1`.
-    ///
-    /// Because of pattern bindings, there could also be a path associated with
-    /// the value. For example, in
-    ///
-    /// ```text
-    /// let { a = { b } } = val in ...
-    /// ```
-    ///
-    /// the name `b` is bound to the term `val` at the path `[a, b]`.
-    pub value: Option<TermAtPath>,
-    /// Field metadata.
-    pub metadata: Option<FieldMetadata>,
+    pub def: Def,
+    pub path: Vec<Ident>,
 }
 
 impl DefWithPath {
     fn resolve_terms(&self, env: &Environment, server: &Server) -> Vec<Def> {
-        match &self.value {
-            Some(val) if !val.path.is_empty() => {
-                // Calling `resolve_path` on x with path [foo, bar] returns all
-                // the fields *in* x.foo.bar. We want the value(s) of x.foo.bar,
-                // so use `resolve_path` to get x.foo and then find the bars in it.
-                // unwrap: we just checked the path is non-empty
-                let (last, path) = val.path.split_last().unwrap();
-                FieldDefs::resolve_path(&val.term, path, env, server)
+        // Calling `resolve_path` on x with path [foo, bar] returns all
+        // the fields *in* x.foo.bar. We want the value(s) of x.foo.bar,
+        // so use `resolve_path` to get x.foo and then find the bars in it.
+        if let Some((last, path)) = self.path.split_last() {
+            match &self.def.value {
+                Some(val) => FieldDefs::resolve_path(val, path, env, server)
                     .fields
                     .remove(last)
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                None => vec![],
             }
-            _ => {
-                vec![Def {
-                    ident: self.ident,
-                    value: self.value.as_ref().map(|tp| tp.term.clone()),
-                    metadata: self.metadata.clone(),
-                }]
-            }
+        } else {
+            // The path is empty.
+            vec![self.def.clone()]
         }
+    }
+}
+
+#[cfg(test)]
+impl DefWithPath {
+    pub fn ident(&self) -> LocIdent {
+        self.def.ident
+    }
+
+    pub fn path(&self) -> &[Ident] {
+        &self.path
+    }
+
+    pub fn value(&self) -> Option<&Value> {
+        self.def.value.as_ref()
     }
 }
 
@@ -147,9 +178,22 @@ impl DefWithPath {
 #[derive(Clone, Debug, Default)]
 pub struct FieldDefs {
     fields: HashMap<Ident, Vec<Def>>,
+    // A dict defines all possible fields, and they all have the same type.
+    // When we encounter a Dict, we (obviously) don't insert all those fields into
+    // the field map above. Instead we store the field type here.
+    dicts: Vec<Type>,
 }
 
 impl FieldDefs {
+    pub fn resolve_term_path<'a>(
+        rt: &'a RichTerm,
+        path: &'a [Ident],
+        env: &Environment,
+        server: &Server,
+    ) -> Self {
+        FieldDefs::resolve_path(&rt.clone().into(), path, env, server)
+    }
+
     /// Resolve a record path iteratively, returning all the fields defined on the final path element.
     ///
     /// `env` is an environment that only gets used (and even then, only
@@ -162,7 +206,7 @@ impl FieldDefs {
     /// initial environment to resolve the `y` in `[ y.`, and after that we will
     /// use the precomputed tables to resolve the `x`.
     pub fn resolve_path<'a>(
-        rt: &'a RichTerm,
+        rt: &'a Value,
         mut path: &'a [Ident],
         env: &Environment,
         server: &Server,
@@ -172,10 +216,15 @@ impl FieldDefs {
         while let Some((id, tail)) = path.split_first() {
             path = tail;
             let defs = fields.fields.remove(id).unwrap_or_default();
+            let dicts = std::mem::take(&mut fields.dicts);
             fields.fields.clear();
 
             for rt in defs.into_iter().filter_map(|d| d.value) {
                 fields = fields.merge_from(FieldDefs::resolve(&rt, env, server));
+            }
+
+            for dict_value in dicts {
+                fields = fields.merge_from(FieldDefs::resolve_type(&dict_value, env, server));
             }
         }
 
@@ -186,6 +235,13 @@ impl FieldDefs {
         self.fields.values().flat_map(|defs| defs.iter())
     }
 
+    fn resolve(v: &Value, env: &Environment, server: &Server) -> FieldDefs {
+        match v {
+            Value::Term(rt) => FieldDefs::resolve_term(rt, env, server),
+            Value::Type(typ) => FieldDefs::resolve_type(typ, env, server),
+        }
+    }
+
     /// Find all the fields that are defined on a term.
     ///
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
@@ -193,8 +249,8 @@ impl FieldDefs {
     /// are the fields defined on either record.
     ///
     /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
-    fn resolve(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
-        match rt.term.as_ref() {
+    fn resolve_term(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
+        let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 let fields = data
                     .fields
@@ -210,7 +266,10 @@ impl FieldDefs {
                         )
                     })
                     .collect();
-                FieldDefs { fields }
+                FieldDefs {
+                    fields,
+                    dicts: Default::default(),
+                }
             }
             Term::Var(id) => server
                 .lin_registry
@@ -234,17 +293,16 @@ impl FieldDefs {
                 server
                     .cache
                     .get_ref(*file_id)
-                    .map(|term| FieldDefs::resolve(term, &env, server))
+                    .map(|term| FieldDefs::resolve_term(term, &env, server))
                     .unwrap_or_default()
             }
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
-                FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
-            }
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => FieldDefs::resolve_term(t1, env, server)
+                .merge_from(FieldDefs::resolve_term(t2, env, server)),
             Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
-                FieldDefs::resolve(body, env, server)
+                FieldDefs::resolve_term(body, env, server)
             }
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                FieldDefs::resolve_path(term, &[id.ident()], env, server)
+                FieldDefs::resolve_term_path(term, &[id.ident()], env, server)
             }
             Term::Annotated(annot, term) => {
                 // We only check the annotated contracts, not the annotated type.
@@ -260,10 +318,50 @@ impl FieldDefs {
                         None
                     }
                 });
-                terms.fold(FieldDefs::resolve(term, env, server), |acc, rt| {
-                    acc.merge_from(FieldDefs::resolve(rt, env, server))
+                terms.fold(FieldDefs::resolve_term(term, env, server), |acc, rt| {
+                    acc.merge_from(FieldDefs::resolve_term(rt, env, server))
                 })
             }
+            _ => Default::default(),
+        };
+
+        let typ_fields = if let Some(typ) = server.lin_registry.get_type(rt) {
+            log::info!("got inferred type {typ:?}");
+            FieldDefs::resolve_type(typ, env, server)
+        } else {
+            FieldDefs::default()
+        };
+
+        term_fields.merge_from(typ_fields)
+    }
+
+    fn resolve_type(typ: &Type, env: &Environment, server: &Server) -> FieldDefs {
+        match &typ.typ {
+            TypeF::Record(rows) => {
+                let fields = rows.iter().filter_map(|row| {
+                    if let RecordRowsIteratorItem::Row(row) = row {
+                        Some((
+                            row.id.ident(),
+                            vec![Def {
+                                ident: row.id.into(),
+                                value: Some(row.typ.clone().into()),
+                                metadata: None,
+                            }],
+                        ))
+                    } else {
+                        None
+                    }
+                });
+                FieldDefs {
+                    fields: fields.collect(),
+                    dicts: Vec::new(),
+                }
+            }
+            TypeF::Dict { type_fields, .. } => FieldDefs {
+                fields: HashMap::new(),
+                dicts: vec![type_fields.as_ref().clone()],
+            },
+            TypeF::Flat(rt) => FieldDefs::resolve_term(rt, env, server),
             _ => Default::default(),
         }
     }
@@ -279,11 +377,12 @@ impl FieldDefs {
                 }
             }
         }
+        self.dicts.extend_from_slice(&other.dicts);
         self
     }
 
     fn resolve_all<'a>(
-        terms: impl Iterator<Item = &'a RichTerm>,
+        terms: impl Iterator<Item = &'a Value>,
         env: &Environment,
         server: &Server,
     ) -> FieldDefs {

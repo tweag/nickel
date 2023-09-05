@@ -86,6 +86,10 @@ impl LinRegistry {
         let file = rt.pos.as_opt_ref()?.src_id;
         self.usage_lookups.get(&file)?.env(rt)
     }
+
+    pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
+        self.type_lookups.get(&RichTermPtr(rt.clone()))
+    }
 }
 
 #[derive(PartialEq, Copy, Debug, Clone, Eq, Hash)]

@@ -713,7 +713,7 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, server);
+    let defs = FieldDefs::resolve_term_path(&start_term, &path, initial_env, server);
     Ok(defs.defs().map(Def::to_completion_item).collect())
 }
 
@@ -773,23 +773,26 @@ pub fn handle_completion(
     };
 
     log::info!("term-based completion provided {completions:?}");
-    let linearization = server.lin_cache_get(&pos.src_id)?;
-    Trace::enrich(&id, linearization);
+    #[cfg(feature = "old-completer")]
+    {
+        let linearization = server.lin_cache_get(&pos.src_id)?;
+        Trace::enrich(&id, linearization);
 
-    let item = linearization.item_at(pos);
-    let text = server.cache.files().source(pos.src_id);
-    let start = pos.index.to_usize();
-    if let Some(item) = item {
-        debug!("found closest item: {:?}", item);
+        let item = linearization.item_at(pos);
+        let text = server.cache.files().source(pos.src_id);
+        let start = pos.index.to_usize();
+        if let Some(item) = item {
+            debug!("found closest item: {:?}", item);
 
-        completions.extend_from_slice(&get_completion_identifiers(
-            &text[..start],
-            trigger,
-            linearization,
-            item,
-            server,
-        )?);
-    };
+            completions.extend_from_slice(&get_completion_identifiers(
+                &text[..start],
+                trigger,
+                linearization,
+                item,
+                server,
+            )?);
+        };
+    }
     let completions = remove_duplicates(&completions);
 
     server.reply(Response::new_ok(id.clone(), completions));

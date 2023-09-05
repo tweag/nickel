@@ -14,6 +14,10 @@ version.workspace = true
 name = "nls"
 path = "src/main.rs"
 
+[features]
+default = ["old-completer"]
+old-completer = []
+
 [build-dependencies]
 lalrpop.workspace = true
 

@@ -14,4 +14,5 @@ expression: output
 [config, field]
 [field]
 [config, subfield]
+[config, f, foo]
 
