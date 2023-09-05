@@ -91,6 +91,7 @@ Other crates carry the version number of the Nickel language. These are
    dropped later. Do not push**.
 2. Check that a dry run of `cargo publish` succeeds on the crates to be
    published (`nickel-lang-core`, `nickel-lang-cli` and `nickel-lang-lsp`):
+
    - `cargo publish -p nickel-lang-core --dry-run`
    - `cargo publish -p nickel-lang-cli --dry-run`
    - `cargo publish -p nickel-lang-lsp --dry-run`
@@ -108,26 +109,15 @@ Other crates carry the version number of the Nickel language. These are
 
 ### Release on GitHub
 
-1. Build a Docker image and a static binary for ARM64 manually, using
-
-   ```console
-   nix build --out-link nickel-arm64-docker-image.tar.gz .#packages.aarch64-linux.dockerImage
-   nix build --out-link nickel-arm64-linux .#packages.aarch64-linux.dockerImage
-   ```
-
-   on an ARM64 Linux machine (x86_64 assets are automatically handled by a
-   workflow, see 3).
-
-2. Do the [release on
+1. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
-   and include the docker image built in 1. Make sure that you set `X.Y.Z-release`
-   as the target branch and have GitHub create the `X.Y.Z` tag on release.
-   Upload `nickel-arm64-docker-image.tar.gz` and `nickel-arm64-linux` as release
-   assets from the last step.
+   Make sure that you set `X.Y.Z-release` as the target branch and have GitHub
+   create the `X.Y.Z` tag on release. Upload `nickel-arm64-docker-image.tar.gz`
+   and `nickel-arm64-linux` as release assets from the last step.
 
-3. Verify that the "Upload release artifacts" GitHub action is getting triggered
-   and completes successfully, uploading a static Nickel binary for x86_64 Linux
-   and a Docker image.
+2. Verify that the "Upload release artifacts" GitHub action is getting triggered
+   and completes successfully, uploading a static Nickel binary and a Docker
+   image for both x86-64 Linux and arm64 MacOS platforms.
 
 ### Redeploy nickel-lang.org with the new release
 
@@ -152,6 +142,5 @@ Other crates carry the version number of the Nickel language. These are
 1. Cherry-pick the following commits into separate PRs to `master`:
      - Bumping the version numbers done in Preparation 2.
      - Updating release notes done in Preparation 5.
-     - Fixes that you made locally for `nix flake check`, `cargo
-       doc` or any other command.
+     - Fixes that you made locally for `nix flake check` or other commands.
 2. Profit!
