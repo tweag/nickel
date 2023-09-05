@@ -76,7 +76,41 @@ jobs:
             --payload '{"instance_id":"${{ needs.start-runner.outputs.instance_id }}"}' \
             response.json
           cat response.json
-  
+
+  static-binary:
+    name: "Build Nickel release binary"
+    strategy:
+      matrix:
+        os:
+          - runs-on: ubuntu-latest
+            architecture: x86_64
+          - runs-on: [EC2, ARM64, Linux]
+            architecture: arm64
+    runs-on: ${{ matrix.os.runs-on }}
+    needs:
+      - start-runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
+      - uses: cachix/install-nix-action@v23
+        name: "Installing Nix"
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+          nix_path: "nixpkgs=channel:nixos-unstable"
+      - name: "Build static binary"
+        run: |
+          nix build --log-format raw-with-logs .#nickel-static
+          cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
+      - name: "Upload static binary as release asset"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
+        run: |
+          gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
+
   docker-image:
     name: "Build docker image"
     strategy:
@@ -89,6 +123,7 @@ jobs:
     runs-on: ${{ matrix.os.runs-on }}
     needs:
       - start-runner
+      - static-binary
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,38 +176,4 @@ jobs:
             --amend ghcr.io/tweag/nickel:$RELEASE_TAG-x86_64 \
             --amend ghcr.io/tweag/nickel:$RELEASE_TAG-arm64 \
           docker manifest push ghcr.io/tweag/nickel:$RELEASE_TAG
-        
-
-  static-binary:
-    name: "Build Nickel release binary"
-    strategy:
-      matrix:
-        os:
-          - runs-on: ubuntu-latest
-            architecture: x86_64
-          - runs-on: [EC2, ARM64, Linux]
-            architecture: arm64
-    runs-on: ${{ matrix.os.runs-on }}
-    needs:
-      - start-runner
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'release' && '' || github.event.inputs.release_tag }}
-      - uses: cachix/install-nix-action@v23
-        name: "Installing Nix"
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-          nix_path: "nixpkgs=channel:nixos-unstable"
-      - name: "Build static binary"
-        run: |
-          nix build --log-format raw-with-logs .#nickel-static
-          cp ./result/bin/nickel nickel-${{ matrix.os.architecture }}-linux
-      - name: "Upload static binary as release asset"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.release_tag }}
-        run: |
-          gh release upload --clobber $RELEASE_TAG nickel-${{ matrix.os.architecture }}-linux
+       

@@ -27,6 +27,8 @@ in
     };
     nodeRuntimes = [ "node16" "node20" ];
     extraPackages = with pkgs; [
+      gh
+      docker
       gawk
       nix
     ];
@@ -36,6 +38,8 @@ in
       "EC2"
     ];
   };
+
+  virtualisation.docker.enable = true;
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
