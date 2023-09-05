@@ -271,7 +271,9 @@
                   # them explicitly. Also, `libcxx` expects to be linked with
                   # `libcxxabi` at the end, and we need to make the rust linker
                   # aware of that.
-                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
+                  #
+                  # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
+                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
                   # Explain to `cc-rs` that it should use the `libcxx` C++
                   # standard library, and a static version of it, when building
                   # C++ libraries. The `cc-rs` crate is typically used in
