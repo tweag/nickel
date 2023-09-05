@@ -206,6 +206,27 @@
             ]);
         };
 
+      # if we directly set the revision, it would invalidate the cache on every commit.
+      # instead we set a static dummy hash and edit the binary in a separate (fast) derivation.
+      dummyRev = "aaaaaaaa";
+
+      fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
+        pname = pkg.pname + "-rev-fixup";
+        version = pkg.version;
+        src = pkg;
+        buildInputs = [ pkgs.bbe ];
+        phases = [ "fixupPhase" ];
+        fixupPhase = ''
+          mkdir -p $out/bin
+          for srcBin in $src/bin/*; do
+            outBin="$out/bin/$(basename $srcBin)"
+            bbe -e 's/${dummyRev}/${self.shortRev or "GitDirty"}/' \
+              $srcBin > $outBin
+            chmod +x $outBin
+          done
+        '';
+      };
+
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
       mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false }:
@@ -231,7 +252,7 @@
           };
 
           env = {
-            NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
+            NICKEL_NIX_BUILD_REV = dummyRev;
           };
 
           buildPackage = { pnameSuffix, cargoPackage ? "${pname}${pnameSuffix}", extraBuildArgs ? "", extraArgs ? { } }:
@@ -241,8 +262,7 @@
                 pnameSuffix
                 src
                 version
-                cargoArtifacts
-                env;
+                cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
@@ -250,8 +270,17 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
-          nickel-lang-cli = buildPackage { pnameSuffix = "-cli"; extraArgs.meta.mainProgram = "nickel"; };
-          lsp-nls = buildPackage { pnameSuffix = "-lsp"; extraArgs.meta.mainProgram = "nls"; };
+          nickel-lang-cli = fixupGitRevision (buildPackage {
+             pnameSuffix = "-cli";
+             extraArgs = {
+              inherit env;
+              meta.mainProgram = "nickel";
+             };
+          });
+          lsp-nls = buildPackage {
+            pnameSuffix = "-lsp"; 
+            extraArgs.meta.mainProgram = "nls";
+          };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
