@@ -673,6 +673,9 @@ MatchCase: MatchCase = {
 
 // Infix operators by precedence levels. Lowest levels take precedence over
 // highest ones.
+InfixBOp1: BinaryOp = {
+    "." => BinaryOp::DynAccess(),
+}
 
 InfixBOp2: BinaryOp = {
     "++" => BinaryOp::StrConcat(),
@@ -714,6 +717,7 @@ InfixLazyBOp10: UnaryOp = {
 }
 
 InfixBOp: BinaryOp = {
+    InfixBOp1,
     InfixBOp2,
     InfixBOp3,
     InfixBOp4,
