@@ -208,7 +208,15 @@
 
       # if we directly set the revision, it would invalidate the cache on every commit.
       # instead we set a static dummy hash and edit the binary in a separate (fast) derivation.
-      dummyRev = "aaaaaaaa";
+      dummyRev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+      # pad a string with the tail of another string
+      padWith = pad: str:
+        str +
+        builtins.substring
+          (builtins.stringLength str)
+          (builtins.stringLength pad)
+          pad;
 
       fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
         pname = pkg.pname + "-rev-fixup";
@@ -220,7 +228,9 @@
           mkdir -p $out/bin
           for srcBin in $src/bin/*; do
             outBin="$out/bin/$(basename $srcBin)"
-            bbe -e 's/${dummyRev}/${self.shortRev or "GitDirty"}/' \
+            # [dirty] must have 7 characters to match dummyRev (hard coded in nickel-lang-cli)
+            # we have to pad them out so they fit in the same spot in the binary
+            bbe -e 's/${dummyRev}/${padWith dummyRev (self.shortRev or "[dirty]")}/' \
               $srcBin > $outBin
             chmod +x $outBin
           done
