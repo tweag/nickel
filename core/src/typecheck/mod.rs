@@ -1667,7 +1667,11 @@ fn check<L: Linearizer>(
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-    linearizer.add_term(lin, rt, ty.clone());
+
+    if let TypecheckMode::Check = rule_mode(rt) {
+        linearizer.add_term(lin, rt, ty.clone());
+    }
+
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
     // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
@@ -2705,4 +2709,23 @@ fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wil
         .into_iter()
         .map(|var| var.into_type(table))
         .collect()
+}
+
+#[derive(Copy, Clone, Debug)]
+enum TypecheckMode {
+    Check,
+    Infer,
+}
+
+/// TODO: documentation
+fn rule_mode(t: &RichTerm) -> TypecheckMode {
+    match t.as_ref() {
+        Term::Var(_)
+        | Term::App(..)
+        | Term::Op1(..)
+        | Term::Op2(..)
+        | Term::OpN(..)
+        | Term::Annotated(..) => TypecheckMode::Infer,
+        _ => TypecheckMode::Check,
+    }
 }
