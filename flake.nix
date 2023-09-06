@@ -208,7 +208,7 @@
 
       # if we directly set the revision, it would invalidate the cache on every commit.
       # instead we set a static dummy hash and edit the binary in a separate (fast) derivation.
-      dummyRev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      dummyRev = "DUMMYREV_THIS_SHOULD_NOT_APPEAR_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
       # pad a string with the tail of another string
       padWith = pad: str:
