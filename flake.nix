@@ -238,8 +238,8 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
-          nickel-lang-cli = buildPackage { pnameSuffix = "-cli"; };
-          lsp-nls = buildPackage { pnameSuffix = "-lsp"; };
+          nickel-lang-cli = buildPackage { pnameSuffix = "-cli"; extraArgs.meta.mainProgram = "nickel"; };
+          lsp-nls = buildPackage { pnameSuffix = "-lsp"; extraArgs.meta.mainProgram = "nls"; };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -266,6 +266,7 @@
                   CXXSTDLIB = "static=c++";
                   stdenv = pkgs.pkgsMusl.libcxxStdenv;
                   doCheck = false;
+                  meta.mainProgram = "nickel";
                 };
               };
 
@@ -405,7 +406,7 @@
           nickel
         ];
         config = {
-          Entrypoint = "${nickel}/bin/nickel";
+          Entrypoint = pkgs.lib.getExe nickel;
           # Labels that are recognized by GHCR
           # See https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#labelling-container-images
           Labels = {
@@ -464,7 +465,7 @@
             for file in $(ls *.ncl | grep -v 'internals.ncl')
             do
               module=$(basename $file .ncl)
-              ${self.packages."${system}".default}/bin/nickel doc --format "${format}" -f "$module.ncl" \
+              ${pkgs.lib.getExe self.packages."${system}".default} doc --format "${format}" -f "$module.ncl" \
                 --output "$out/$module.${extension}"
             done
           '';
@@ -481,7 +482,7 @@
           ec2-ami = (import "${nixpkgs}/nixos/modules/virtualisation/amazon-ec2-amis.nix").latest.${ec2-region}.aarch64-linux.hvm-ebs;
           run-terraform = pkgs.writeShellScriptBin "run-terraform" ''
             set -e
-            ${nickel}/bin/nickel export > main.tf.json <<EOF
+            ${pkgs.lib.getExe nickel} export > main.tf.json <<EOF
               ((import "main.ncl") & {
                 region = "${ec2-region}",
                 nixos-ami = "${ec2-ami}",
@@ -510,6 +511,7 @@
         default = pkgs.buildEnv {
           name = "nickel";
           paths = [ packages.nickel-lang-cli packages.lsp-nls ];
+          meta.mainProgram = "nickel";
         };
         nickelWasm = buildNickelWasm { };
         dockerImage = buildDocker packages.nickel-lang-cli; # TODO: docker image should be a passthru
@@ -526,7 +528,7 @@
       apps = {
         default = {
           type = "app";
-          program = "${packages.nickel-lang-cli}/bin/nickel";
+          program = pkgs.lib.getExe packages.nickel-lang-cli;
         };
       };
 
