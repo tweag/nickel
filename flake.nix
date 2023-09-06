@@ -281,14 +281,14 @@
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
           nickel-lang-cli = fixupGitRevision (buildPackage {
-             pnameSuffix = "-cli";
-             extraArgs = {
+            pnameSuffix = "-cli";
+            extraArgs = {
               inherit env;
               meta.mainProgram = "nickel";
-             };
+            };
           });
           lsp-nls = buildPackage {
-            pnameSuffix = "-lsp"; 
+            pnameSuffix = "-lsp";
             extraArgs.meta.mainProgram = "nls";
           };
 
