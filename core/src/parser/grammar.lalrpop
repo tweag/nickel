@@ -754,6 +754,9 @@ CurriedOp: RichTerm = {
             )
             .with_pos(mk_pos(src_id, l, r))
         ),
+    <l: @L> "." <r: @R> =>
+        InfixOp::from(BinaryOp::DynAccess())
+            .eta_expand(mk_pos(src_id, l, r)),
     //<l: @L> "->" <r: @R> =>?
     //    UniTerm::from(
     //        mk_fun!("x1", "x2",
