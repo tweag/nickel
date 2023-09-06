@@ -1669,7 +1669,10 @@ fn check<L: Linearizer>(
     let RichTerm { term: t, pos } = rt;
 
     if let TypecheckMode::Check = rule_mode(rt) {
+        eprint!("typecheck::check: checking a `Check` rule mode, adding the term");
         linearizer.add_term(lin, rt, ty.clone());
+    } else {
+        eprint!("typecheck::check: checking a `Infer` rule mode, skipping the term");
     }
 
     // When checking against a polymorphic type, we immediatly instantiate potential heading
@@ -2113,21 +2116,11 @@ fn check_field<L: Linearizer>(
             linearizer,
             &field.metadata.annotation,
             field.value.as_ref(),
+            None,
         )?;
 
         subsumption(state, ctxt, inferred, ty).map_err(|err| err.into_typecheck_err(state, pos))
     }
-}
-
-fn infer_annotated<L: Linearizer>(
-    state: &mut State,
-    ctxt: Context,
-    lin: &mut Linearization<L::Building>,
-    linearizer: L,
-    annot: &TypeAnnotation,
-    rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
-    infer_with_annot(state, ctxt, lin, linearizer, annot, Some(rt))
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
@@ -2142,6 +2135,7 @@ fn infer_with_annot<L: Linearizer>(
     mut linearizer: L,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
+    annotated: Option<&RichTerm>,
 ) -> Result<UnifType, TypecheckError> {
     annot
         .iter()
@@ -2156,6 +2150,7 @@ fn infer_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            annotated.map(|rt| linearizer.add_term(lin, rt, uty2.clone()));
 
             check(state, ctxt, lin, linearizer, value, uty2.clone())?;
             Ok(uty2)
@@ -2175,6 +2170,7 @@ fn infer_with_annot<L: Linearizer>(
             let LabeledType { typ: ty2, .. } = ctr;
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+            annotated.map(|rt| linearizer.add_term(lin, rt, uty2.clone()));
 
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
@@ -2186,7 +2182,17 @@ fn infer_with_annot<L: Linearizer>(
         }
         // A non-empty value without a type or a contract annotation is typechecked in the same way
         // as its inner value
-        (_, Some(value)) => infer(state, ctxt, lin, linearizer, value),
+        (_, Some(value)) => {
+            // An empty annotation can't be produced in the source syntax but only
+            // programmatically. Although it doesn't hurt, this case doesn't make a lot of sense
+            // either, so we
+            // 1) don't add the annotated term to the linearizer
+            // 2) panic in debug mode for now. If it becomes a legitimate use, you can remove the
+            //    debug panic
+            debug_assert!(false);
+
+            infer(state, ctxt, lin, linearizer, value)
+        }
         // A empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         //
@@ -2198,6 +2204,8 @@ fn infer_with_annot<L: Linearizer>(
                 .first()
                 .map(|labeled_ty| UnifType::from_type(labeled_ty.typ.clone(), &ctxt.term_env))
                 .unwrap_or_else(mk_uniftype::dynamic);
+            annotated.map(|rt| linearizer.add_term(lin, rt, inferred.clone()));
+
             Ok(inferred)
         }
     }
@@ -2288,7 +2296,9 @@ fn infer<L: Linearizer>(
             check(state, ctxt.clone(), lin, linearizer, t, dom)?;
             Ok(codom)
         }
-        Term::Annotated(annot, rt) => infer_annotated(state, ctxt, lin, linearizer, annot, rt),
+        Term::Annotated(ref annot, ref value) => {
+            infer_with_annot(state, ctxt, lin, linearizer, annot, Some(value), Some(rt))
+        }
         _ => {
             // The remaining cases can't produce polymorphic types, and thus we can reuse the
             // checking code. Inferring the type for those rules is equivalent to checking against
