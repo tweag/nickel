@@ -300,29 +300,31 @@
             # To build Nickel and its dependencies statically we use the musl
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
-              buildPackage {
-                cargoPackage = "nickel-lang-cli";
-                pnameSuffix = "-static";
-                extraArgs = {
-                  CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
-                  # For some reason, the rust build doesn't pick up the paths
-                  # to `libcxx` and `libcxxabi` from the stdenv. So we specify
-                  # them explicitly. Also, `libcxx` expects to be linked with
-                  # `libcxxabi` at the end, and we need to make the rust linker
-                  # aware of that.
-                  #
-                  # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
-                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
-                  # Explain to `cc-rs` that it should use the `libcxx` C++
-                  # standard library, and a static version of it, when building
-                  # C++ libraries. The `cc-rs` crate is typically used in
-                  # upstream build.rs scripts.
-                  CXXSTDLIB = "static=c++";
-                  stdenv = pkgs.pkgsMusl.libcxxStdenv;
-                  doCheck = false;
-                  meta.mainProgram = "nickel";
-                };
-              };
+              fixupGitRevision
+                (buildPackage {
+                  cargoPackage = "nickel-lang-cli";
+                  pnameSuffix = "-static";
+                  extraArgs = {
+                    inherit env;
+                    CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                    # For some reason, the rust build doesn't pick up the paths
+                    # to `libcxx` and `libcxxabi` from the stdenv. So we specify
+                    # them explicitly. Also, `libcxx` expects to be linked with
+                    # `libcxxabi` at the end, and we need to make the rust linker
+                    # aware of that.
+                    #
+                    # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
+                    RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
+                    # Explain to `cc-rs` that it should use the `libcxx` C++
+                    # standard library, and a static version of it, when building
+                    # C++ libraries. The `cc-rs` crate is typically used in
+                    # upstream build.rs scripts.
+                    CXXSTDLIB = "static=c++";
+                    stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                    doCheck = false;
+                    meta.mainProgram = "nickel";
+                  };
+                });
 
           benchmarks = craneLib.mkCargoDerivation {
             inherit pname src version cargoArtifacts env;
@@ -350,7 +352,7 @@
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
-            inherit pname src env;
+            inherit pname src;
 
             cargoExtraArgs = "--all";
 
