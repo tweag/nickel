@@ -1,14 +1,15 @@
 //! Native terminal implementation of a REPL frontend using rustyline.
 use std::path::PathBuf;
 
-use super::command::Command;
-use super::*;
+use super::{command::Command, *};
 
-use crate::eval::cache::CacheImpl;
-use crate::program::{self, ColorOpt};
+use crate::{
+    error::{self, ColorOpt},
+    eval::cache::CacheImpl,
+};
+
 use ansi_term::Style;
-use rustyline::error::ReadlineError;
-use rustyline::{Config, EditMode, Editor};
+use rustyline::{error::ReadlineError, Config, EditMode, Editor};
 
 /// The config of rustyline's editor.
 pub fn config(color_opt: ColorOpt) -> Config {
@@ -38,14 +39,14 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
     match repl.load_stdlib() {
         Ok(()) => (),
         Err(err) => {
-            program::report(repl.cache_mut(), err, color_opt);
+            error::report(repl.cache_mut(), err, color_opt);
             return Err(InitError::Stdlib);
         }
     }
 
     let validator = InputParser::new(
         repl.cache_mut()
-            .replace_string("<repl-input>", String::new()),
+            .replace_string(SourcePath::ReplInput(0), String::new()),
     );
 
     let mut editor = Editor::with_config(config(color_opt))
@@ -90,7 +91,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                         match repl.eval_full(&exp) {
                             Ok(EvalResult::Evaluated(rt)) => println!("{rt}"),
                             Ok(EvalResult::Bound(_)) => (),
-                            Err(err) => program::report(repl.cache_mut(), err, color_opt),
+                            Err(err) => error::report(repl.cache_mut(), err, color_opt),
                         };
                         Ok(())
                     }
@@ -106,7 +107,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 };
 
                 if let Err(err) = result {
-                    program::report(repl.cache_mut(), err, color_opt);
+                    error::report(repl.cache_mut(), err, color_opt);
                 } else {
                     println!();
                 }
@@ -115,7 +116,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 match repl.eval_full(&line) {
                     Ok(EvalResult::Evaluated(rt)) => println!("{rt}\n"),
                     Ok(EvalResult::Bound(_)) => (),
-                    Err(err) => program::report(repl.cache_mut(), err, color_opt),
+                    Err(err) => error::report(repl.cache_mut(), err, color_opt),
                 };
             }
             Err(ReadlineError::Eof) => {
@@ -125,7 +126,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
             Err(ReadlineError::Interrupted) => (),
             Err(err) => {
                 let _ = editor.save_history(&histfile);
-                program::report(
+                error::report(
                     repl.cache_mut(),
                     Error::IOError(IOError(format!("{err}"))),
                     color_opt,

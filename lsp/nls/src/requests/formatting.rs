@@ -1,7 +1,8 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentFormattingParams, Position, Range, TextEdit};
+use nickel_lang_core::cache::SourcePath;
 
-use crate::{error::Error, server::Server};
+use crate::{error::Error, files::uri_to_path, server::Server};
 
 /// Handle the LSP formatting request from a client using an external binary as a formatter.
 /// If this succeds, it sends a reponse to the server and returns `Ok(..)`, otherwise,
@@ -11,8 +12,8 @@ pub fn handle_format_document(
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
-    let document_id = params.text_document.uri.to_file_path().unwrap();
-    let file_id = server.cache.id_of(document_id).unwrap();
+    let path = uri_to_path(&params.text_document.uri)?;
+    let file_id = server.cache.id_of(&SourcePath::Path(path)).unwrap();
     let text = server.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
     let last_line_length = text.lines().next_back().unwrap().len() as u32;

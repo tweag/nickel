@@ -20,27 +20,28 @@
 //! exposes the standard library files as strings. The embedded strings are then parsed by the
 //! functions in [`crate::cache`] (see [`crate::cache::Cache::mk_eval_env`]).
 //! Each such value is added to the initial environment before the evaluation of the program.
-use crate::cache::*;
-use crate::error::{Error, IntoDiagnostics, ParseError};
-use crate::eval;
-use crate::eval::cache::Cache as EvalCache;
-use crate::eval::VirtualMachine;
-use crate::identifier::LocIdent;
-use crate::term::{record::Field, RichTerm};
+use crate::{
+    cache::*,
+    error::{report, ColorOpt, Error, IntoDiagnostics, ParseError},
+    eval,
+    eval::{cache::Cache as EvalCache, VirtualMachine},
+    identifier::LocIdent,
+    label::Label,
+    term::{
+        make as mk_term, make::builder, record::Field, record::RecordData, BinaryOp, MergePriority,
+        RichTerm, RuntimeContract, Term,
+    },
+};
+
 use codespan::FileId;
-use codespan_reporting::term::termcolor::{Ansi, ColorChoice, StandardStream};
-use std::ffi::OsString;
-use std::io::{self, stdout, Cursor, IsTerminal, Read, Write};
-use std::result::Result;
+use codespan_reporting::term::termcolor::Ansi;
+use std::path::PathBuf;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ColorOpt(pub(crate) clap::ColorChoice);
-
-impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color_choice: clap::ColorChoice) -> Self {
-        Self(color_choice)
-    }
-}
+use std::{
+    ffi::OsString,
+    io::{self, Cursor, Read, Write},
+    result::Result,
+};
 
 /// Attribute path provided when querying metadata.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
@@ -66,8 +67,7 @@ impl QueryPath {
             grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
         };
 
-        let format_name = "query-path";
-        let input_id = cache.replace_string(format_name, input);
+        let input_id = cache.replace_string(SourcePath::Query, input);
         let s = cache.source(input_id);
 
         let parser = FieldPathParser::new();
@@ -110,6 +110,17 @@ impl QueryPath {
     }
 }
 
+/// Several CLI commands accept additional overrides specified directly on the command line. They
+/// are represented by this structure.
+pub struct FieldOverride {
+    /// The field path identifying the (potentially nested) field to override.
+    pub path: Vec<String>,
+    /// The overriding value.
+    pub value: String,
+    /// The priority associated with this override.
+    pub priority: MergePriority,
+}
+
 /// A Nickel program.
 ///
 /// Manage a file database, which stores the original source code of the program and eventually the
@@ -120,7 +131,7 @@ pub struct Program<EC: EvalCache> {
     /// The state of the Nickel virtual machine.
     vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
-    color_opt: ColorOpt,
+    pub color_opt: ColorOpt,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -155,7 +166,8 @@ impl<EC: EvalCache> Program<EC> {
         S: Into<OsString> + Clone,
     {
         let mut cache = Cache::new(ErrorTolerance::Strict);
-        let main_id = cache.add_source(source_name, source)?;
+        let path = PathBuf::from(source_name.into());
+        let main_id = cache.add_source(SourcePath::Path(path), source)?;
         let vm = VirtualMachine::new(cache, trace);
 
         Ok(Self {
@@ -201,10 +213,58 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
     }
 
-    /// Same as `eval`, but proceeds to a full evaluation.
-    /// Skips record fields marked `not_exported`
-    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+    /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
+    /// are to be applied to the term (in practice, to be merged with).
+    ///
+    /// Skips record fields marked `not_exported`.
+    ///
+    /// # Arguments
+    ///
+    /// - `override` is a list of overrides in the form of an iterator of [`FieldOverride`]s. Each override is imported
+    ///   in a separate in-memory source, for complete isolation (this way, overrides can't
+    ///   accidentally or intentionally capture other fields of the configuration). A stub record is
+    ///   then built, which has all fields defined by `overrides`, and values are an import referring
+    ///   to the corresponding isolated value. This stub is finally merged with the current program
+    ///   before being evaluated for import.
+    pub fn eval_full_for_export(
+        &mut self,
+        overrides: impl IntoIterator<Item = FieldOverride>,
+    ) -> Result<RichTerm, Error> {
+        let mut overrides = overrides.into_iter().peekable();
+
+        let (t, initial_env) = match overrides.peek() {
+            // If there are no overrides, we avoid the boilerplate of creating an empty record and
+            // merging it with the current program
+            None => self.prepare_eval()?,
+            Some(_) => {
+                let mut record = builder::Record::new();
+
+                for ovd in overrides {
+                    let value_file_id = self
+                        .vm
+                        .import_resolver_mut()
+                        .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
+                    self.vm.prepare_eval(value_file_id)?;
+                    record = record
+                        .path(ovd.path)
+                        .priority(ovd.priority)
+                        .value(Term::ResolvedImport(value_file_id));
+                }
+
+                let (t, initial_env) = self.prepare_eval()?;
+                let built_record = record.build();
+                // For now, we can't do much better than using `Label::default`, but this is
+                // hazardous. `Label::default` was originally written for tests, and although it
+                // doesn't happen in practice as of today, it could theoretically generate invalid
+                // codespan file ids (because it creates a new file database on the spot just to
+                // generate a dummy file id).
+                // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
+                // without referring to any source position.
+                let wrapper =
+                    mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
+                (wrapper, initial_env)
+            }
+        };
         self.vm.reset();
         self.vm
             .eval_full_for_export(t, &initial_env)
@@ -275,18 +335,76 @@ impl<EC: EvalCache> Program<EC> {
         String::from_utf8(buffer.into_inner().into_inner()).unwrap()
     }
 
-    /// Evaluate a program into a form suitable for extracting documentation.
-    /// This needs to evaluate to WHNF, but then still descend into subfields
-    /// whose values are records.
+    /// Evaluate a program into a record spine, a form suitable for extracting the general
+    /// structure of a configuration, and in particular its interface (fields that might need to be
+    /// filled).
+    ///
+    /// This form is used to extract documentation through `nickel doc`, for example.
+    ///
+    /// ## Record spine
+    ///
+    /// By record spine, we mean that the result is a tree of evaluated nested records, and leafs
+    /// are either non-record values in WHNF or partial expressions left
+    /// unevaluated[^missing-field-def]. For example, the record spine of:
+    ///
+    /// ```nickel
+    /// {
+    ///   foo = {bar = 1 + 1} & {baz.subbaz = [some_func "some_arg"] @ ["snd" ++ "_elt"]},
+    ///   input,
+    ///   depdt = input & {extension = 2},
+    /// }
+    /// ```
+    ///
+    /// is
+    ///
+    /// ```nickel
+    /// {
+    ///   foo = {
+    ///     bar = 2,
+    ///     baz = {
+    ///       subbaz = [some_func "some_arg", "snd" ++ "_elt"],
+    ///     },
+    ///   },
+    ///   input,
+    ///   depdt = input & {extension = 2},
+    /// }
+    /// ```
+    ///
+    /// To evaluate a term to a record spine, we first evaluate it to a WHNF and then:
+    /// - If the result is a record, we recursively evaluate subfields to record spines
+    /// - If the result isn't a record, it is returned as it is
+    /// - If the evaluation fails with [crate::error::EvalError::MissingFieldDef], the original
+    /// term is returned unevaluated[^missing-field-def]
+    /// - If any other error occurs, the evaluation fails and returns the error.
+    ///
+    /// [^missing-field-def]: Because we want to handle partial configurations as well,
+    /// [crate::error::EvalError::MissingFieldDef] errors are _ignored_: if this is encountered
+    /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
-    pub fn eval_for_doc(&mut self) -> Result<RichTerm, Error> {
+    pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
         use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
-        use crate::term::record::RecordData;
-        use crate::term::Term;
 
         let (t, initial_env) = self.prepare_eval()?;
+
+        // Eval pending contracts as well, in order to extract more information from potential
+        // record contract fields.
+        fn eval_contracts<EC: EvalCache>(
+            vm: &mut VirtualMachine<Cache, EC>,
+            mut pending_contracts: Vec<RuntimeContract>,
+            current_env: Environment,
+            initial_env: &Environment,
+        ) -> Result<Vec<RuntimeContract>, Error> {
+            vm.reset();
+
+            for ctr in pending_contracts.iter_mut() {
+                let rt = ctr.contract.clone();
+                ctr.contract = do_eval(vm, rt, current_env.clone(), initial_env)?;
+            }
+
+            Ok(pending_contracts)
+        }
 
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
@@ -330,6 +448,7 @@ impl<EC: EvalCache> Program<EC> {
                                             .value
                                             .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
                                             .transpose()?,
+                                        pending_contracts: eval_contracts(vm, field.pending_contracts, env.clone(), initial_env)?,
                                         ..field
                                     },
                                 ))
@@ -352,7 +471,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn extract_doc(&mut self) -> Result<doc::ExtractedDocumentation, Error> {
         use crate::error::ExportError;
 
-        let term = self.eval_for_doc()?;
+        let term = self.eval_record_spine()?;
         doc::ExtractedDocumentation::extract_from_term(&term).ok_or(Error::ExportError(
             ExportError::NoDocumentation(term.clone()),
         ))
@@ -361,10 +480,6 @@ impl<EC: EvalCache> Program<EC> {
     #[cfg(debug_assertions)]
     pub fn set_skip_stdlib(&mut self) {
         self.vm.import_resolver_mut().skip_stdlib = true;
-    }
-
-    pub fn set_color(&mut self, c: ColorOpt) {
-        self.color_opt = c;
     }
 
     pub fn pprint_ast(
@@ -413,46 +528,6 @@ pub fn query<EC: EvalCache>(
 
     let rt = vm.import_resolver().get_owned(file_id).unwrap();
     Ok(vm.query(rt, path, &initial_env.eval_env)?)
-}
-
-/// Pretty-print an error.
-///
-/// This function is located here in `Program` because errors need a reference to `files` in order
-/// to produce a diagnostic (see `crate::error::label_alt`).
-//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn report<E>(cache: &mut Cache, error: E, color_opt: ColorOpt)
-where
-    E: IntoDiagnostics<FileId>,
-{
-    let writer = StandardStream::stderr(color_opt.into());
-    let config = codespan_reporting::term::Config::default();
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-    let diagnostics = error.into_diagnostics(cache.files_mut(), stdlib_ids.as_ref());
-
-    let result = diagnostics.iter().try_for_each(|d| {
-        codespan_reporting::term::emit(&mut writer.lock(), &config, cache.files_mut(), d)
-    });
-    match result {
-        Ok(()) => (),
-        Err(err) => panic!("Program::report: could not print an error on stderr: {err}"),
-    };
-}
-
-impl From<ColorOpt> for ColorChoice {
-    fn from(c: ColorOpt) -> Self {
-        match c.0 {
-            clap::ColorChoice::Auto => {
-                if stdout().is_terminal() {
-                    ColorChoice::Auto
-                } else {
-                    ColorChoice::Never
-                }
-            }
-            clap::ColorChoice::Always => ColorChoice::Always,
-            clap::ColorChoice::Never => ColorChoice::Never,
-        }
-    }
 }
 
 #[cfg(feature = "doc")]

@@ -34,7 +34,7 @@ pub fn prepare(global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
         program.set_skip_stdlib();
     }
 
-    program.set_color(global.color.into());
+    program.color_opt = global.color.into();
 
     Ok(program)
 }

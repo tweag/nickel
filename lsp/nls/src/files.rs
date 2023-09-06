@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use codespan::FileId;
 use codespan_reporting::diagnostic::Diagnostic;
@@ -5,17 +7,29 @@ use log::trace;
 use lsp_server::RequestId;
 use lsp_types::{
     notification::{DidOpenTextDocument, Notification},
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, Url,
 };
 use nickel_lang_core::{
-    cache::{CacheError, CacheOp},
+    cache::{CacheError, CacheOp, SourcePath},
     error::IntoDiagnostics,
 };
 
-use crate::trace::{param::FileUpdate, Enrich, Trace};
+use crate::{
+    error::Error,
+    trace::{param::FileUpdate, Enrich, Trace},
+};
 
 use super::cache::CacheExt;
 use super::server::Server;
+
+pub(crate) fn uri_to_path(uri: &Url) -> std::result::Result<PathBuf, Error> {
+    if uri.scheme() != "file" {
+        Err(Error::SchemeNotSupported(uri.scheme().into()))
+    } else {
+        uri.to_file_path()
+            .map_err(|_| Error::InvalidPath(uri.clone()))
+    }
+}
 
 pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Result<()> {
     let id: RequestId = format!(
@@ -31,10 +45,10 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
             content: &params.text_document.text,
         },
     );
-    let file_id = server.cache.add_string(
-        params.text_document.uri.to_file_path().unwrap(),
-        params.text_document.text,
-    );
+    let path = uri_to_path(&params.text_document.uri)?;
+    let file_id = server
+        .cache
+        .add_string(SourcePath::Path(path), params.text_document.text);
     server.file_uris.insert(file_id, params.text_document.uri);
 
     parse_and_typecheck(server, file_id)?;
@@ -57,8 +71,9 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
         },
     );
 
+    let path = uri_to_path(&params.text_document.uri)?;
     let file_id = server.cache.replace_string(
-        params.text_document.uri.to_file_path().unwrap(),
+        SourcePath::Path(path),
         params.content_changes[0].text.to_owned(),
     );
 

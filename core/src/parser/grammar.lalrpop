@@ -65,6 +65,7 @@ use crate::{
     typ::*,
     position::{TermPos, RawSpan},
     label::Label,
+    combine::Combine,
 };
 
 use malachite::num::basic::traits::Zero;
@@ -582,7 +583,7 @@ ChunkLiteral : String =
     <parts: ChunkLiteralPart+> => {
         parts.into_iter().fold(String::new(), |mut acc, part| {
             match part {
-                ChunkLiteralPart::Str(s) => acc.push_str(s),
+                ChunkLiteralPart::Str(s) => acc.push_str(&s),
                 ChunkLiteralPart::Char(c) => acc.push(c),
             };
 
@@ -622,7 +623,7 @@ EnumTag: LocIdent = {
   <StringEnumTag> => <>.into(),
 };
 
-ChunkLiteralPart: ChunkLiteralPart<'input> = {
+ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
     "str esc char" => ChunkLiteralPart::Char(<>),
@@ -945,9 +946,9 @@ extern {
 
     enum Token<'input> {
         "identifier" => Token::Normal(NormalToken::Identifier(<&'input str>)),
-        "str literal" => Token::Str(StringToken::Literal(<&'input str>)),
+        "str literal" => Token::Str(StringToken::Literal(<String>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
-        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<&'input str>)),
+        "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<String>)),
         "num literal" => Token::Normal(NormalToken::NumLiteral(<Number>)),
 
         "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),

@@ -11,7 +11,7 @@ use crate::{position::TermPos, term::string::NickelString};
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
 
-/// An interned string.
+/// An interned identifier.
 //
 // Implementation-wise, this is just a wrapper around interner::Symbol that uses a hard-coded,
 // static `Interner`.

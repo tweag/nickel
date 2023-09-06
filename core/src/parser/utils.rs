@@ -9,6 +9,7 @@ use codespan::FileId;
 use super::error::ParseError;
 
 use crate::{
+    combine::Combine,
     destructuring::FieldPattern,
     eval::operation::RecPriority,
     identifier::LocIdent,
@@ -95,8 +96,8 @@ pub type FieldPath = Vec<FieldPathElem>;
 /// Because of the way the lexer handles escaping and interpolation, a contiguous static string
 /// `"Some \\ \%{escaped} string"` will be lexed as a sequence of such atoms.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ChunkLiteralPart<'input> {
-    Str(&'input str),
+pub enum ChunkLiteralPart {
+    Str(String),
     Char(char),
 }
 
@@ -254,13 +255,6 @@ impl InfixOp {
             ),
         }
     }
-}
-
-/// Trait for structures representing a series of annotation that can be combined (flattened).
-/// Pedantically, `Combine` is just a monoid.
-pub trait Combine: Default {
-    /// Combine two annotations.
-    fn combine(left: Self, right: Self) -> Self;
 }
 
 /// Trait for structures representing annotations which can be combined with a term to build
@@ -843,20 +837,6 @@ pub fn strip_indent(mut chunks: Vec<StrChunk<RichTerm>>) -> Vec<StrChunk<RichTer
     }
 
     chunks
-}
-
-/// Strip the indentation of a doc metadata. Wrap it as a literal string chunk and call
-/// [`strip_indent`].
-pub fn strip_indent_doc(doc: String) -> String {
-    let chunk = vec![StrChunk::Literal(doc)];
-    strip_indent(chunk)
-        .into_iter()
-        .map(|chunk| match chunk {
-            StrChunk::Literal(s) => s,
-            _ => panic!("expected literal string after indentation of documentation"),
-        })
-        .next()
-        .expect("expected non-empty chunks after indentation of documentation")
 }
 
 #[cfg(test)]

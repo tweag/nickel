@@ -1,19 +1,3 @@
-use lazy_static::lazy_static;
-use log::debug;
-use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
-};
-use nickel_lang_core::{
-    identifier::{Ident, LocIdent},
-    position::RawPos,
-    term::{
-        record::{Field, FieldMetadata},
-        RichTerm, Term, TypeAnnotation, UnaryOp,
-    },
-    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
-};
-
 use crate::{
     cache::CacheExt,
     field_walker::{Def, FieldDefs},
@@ -23,10 +7,32 @@ use crate::{
         interface::{TermKind, UsageState, ValueState},
         ItemId, LinRegistry, LinearizationItem,
     },
-    server::{self, Server},
+    server::Server,
     trace::{Enrich, Trace},
     usage::Environment,
 };
+use lazy_static::lazy_static;
+use log::debug;
+use lsp_server::{RequestId, Response, ResponseError};
+use lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
+};
+use nickel_lang_core::cache::InputFormat;
+use nickel_lang_core::{
+    cache,
+    identifier::{Ident, LocIdent},
+    position::RawPos,
+    term::{
+        record::{Field, FieldMetadata},
+        RichTerm, Term, TypeAnnotation, UnaryOp,
+    },
+    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
+};
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::io;
+use std::iter::Extend;
+use std::path::PathBuf;
 
 // General idea:
 // A path is the reverse of the list of identifiers that make up a record indexing operation.
@@ -593,7 +599,7 @@ fn get_completion_identifiers(
     };
 
     let in_scope: Vec<_> = match trigger {
-        Some(server::DOT_COMPL_TRIGGER) => {
+        Some(".") => {
             // Record completion
             let Some(path) = get_identifier_path(source) else {
                 return Ok(Vec::new());
@@ -729,11 +735,27 @@ pub fn handle_completion(
         index: (cursor.index.0.saturating_sub(1)).into(),
         ..cursor
     };
+    let trigger = params
+        .context
+        .as_ref()
+        .and_then(|context| context.trigger_character.as_deref());
 
     let term = server.lookup_term_by_position(pos)?.cloned();
+
+    if let Some(Term::Import(import)) = term.as_ref().map(|t| t.term.as_ref()) {
+        // Don't respond with anything if trigger is a `.`, as that may be the
+        // start of a relative file path `./`, or the start of a file extension
+        if !matches!(trigger, Some(".")) {
+            let completions = handle_import_completion(import, &params, server).unwrap_or_default();
+            server.reply(Response::new_ok(id.clone(), completions));
+        }
+        return Ok(());
+    }
+
     let sanitized_term = term
         .as_ref()
         .and_then(|rt| sanitize_term_for_completion(rt, cursor, server));
+
     let mut completions = match term.zip(sanitized_term) {
         Some((term, sanitized)) => {
             let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
@@ -751,7 +773,6 @@ pub fn handle_completion(
     };
 
     log::info!("term-based completion provided {completions:?}");
-
     let linearization = server.lin_cache_get(&pos.src_id)?;
     Trace::enrich(&id, linearization);
 
@@ -760,11 +781,6 @@ pub fn handle_completion(
     let start = pos.index.to_usize();
     if let Some(item) = item {
         debug!("found closest item: {:?}", item);
-
-        let trigger = params
-            .context
-            .as_ref()
-            .and_then(|context| context.trigger_character.as_deref());
 
         completions.extend_from_slice(&get_completion_identifiers(
             &text[..start],
@@ -778,6 +794,80 @@ pub fn handle_completion(
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
+}
+
+fn handle_import_completion(
+    import: &OsString,
+    params: &CompletionParams,
+    server: &mut Server,
+) -> io::Result<Vec<CompletionItem>> {
+    debug!("handle import completion");
+
+    let current_file = params
+        .text_document_position
+        .text_document
+        .uri
+        .to_file_path()
+        .unwrap();
+    let current_file = cache::normalize_path(current_file)?;
+
+    let mut current_path = current_file.clone();
+    current_path.pop();
+    current_path.push(import);
+
+    #[derive(Eq, PartialEq, Hash)]
+    struct Entry {
+        path: PathBuf,
+        file: bool,
+    }
+
+    let mut entries = HashSet::new();
+
+    let dir = std::fs::read_dir(&current_path)?;
+    let dir_entries = dir
+        .filter_map(|i| i.ok().and_then(|d| d.file_type().ok().zip(Some(d))))
+        .map(|(file_type, entry)| Entry {
+            path: entry.path(),
+            file: file_type.is_file(),
+        });
+
+    let cached_entries = server
+        .file_uris
+        .values()
+        .filter_map(|uri| uri.to_file_path().ok())
+        .filter(|path| path.starts_with(&current_path))
+        .map(|path| Entry { path, file: true });
+
+    entries.extend(dir_entries);
+    entries.extend(cached_entries);
+
+    let completions = entries
+        .iter()
+        .filter(|Entry { path, file }| {
+            // don't try to import a file into itself
+            cache::normalize_path(path).unwrap_or_default() != current_file
+                // check that file is importable
+                && (!*file || InputFormat::from_path(path).is_some())
+        })
+        .map(|entry| {
+            let kind = if entry.file {
+                CompletionItemKind::File
+            } else {
+                CompletionItemKind::Folder
+            };
+            CompletionItem {
+                label: entry
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                kind: Some(kind),
+                ..Default::default()
+            }
+        })
+        .collect::<Vec<_>>();
+    Ok(completions)
 }
 
 #[cfg(test)]

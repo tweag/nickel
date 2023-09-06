@@ -162,11 +162,14 @@ impl Default for Attributes {
 
 /// Render the result of a metadata query, automatically selecting an adapted query printer at
 /// compile time.
+///
+/// Return `true` if some metadata were found (according to the selected attributes) and printed,
+/// and `false` otherwise.
 pub fn write_query_result(
     out: &mut impl Write,
     field: &Field,
     selected_attrs: Attributes,
-) -> io::Result<()> {
+) -> io::Result<bool> {
     #[cfg(feature = "markdown")]
     let renderer = MarkdownRenderer::new();
 
@@ -177,12 +180,15 @@ pub fn write_query_result(
 }
 
 /// Render the result of a metadata query.
+///
+/// Return `true` if some metadata were found (according to the selected attributes) and printed,
+/// and `false` otherwise.
 fn render_query_result<R: QueryPrinter>(
     out: &mut impl Write,
     field: &Field,
     selected_attrs: Attributes,
     renderer: &R,
-) -> io::Result<()> {
+) -> io::Result<bool> {
     // Print a list the fields of a term if it is a record, or do nothing otherwise.
     fn write_fields<R: QueryPrinter>(
         out: &mut impl Write,
@@ -190,6 +196,7 @@ fn render_query_result<R: QueryPrinter>(
         value: &Term,
     ) -> io::Result<()> {
         writeln!(out)?;
+
         match value {
             Term::Record(record) if !record.fields.is_empty() => {
                 let mut fields: Vec<_> = record.fields.keys().collect();
@@ -279,13 +286,10 @@ fn render_query_result<R: QueryPrinter>(
         _ => (),
     }
 
-    if !found {
-        println!("Requested metadata were not found for this value.");
-    }
+    match field.value {
+        Some(ref value) if selected_attrs.value => write_fields(out, renderer, value.as_ref())?,
+        _ => (),
+    };
 
-    if let Some(ref value) = field.value {
-        write_fields(out, renderer, value.as_ref())?;
-    }
-
-    Ok(())
+    Ok(found)
 }

@@ -1,5 +1,5 @@
 ---
-source: tests/snapshot/main.rs
+source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: contract broken by the caller: field not allowed in tail: `x`
@@ -14,12 +14,6 @@ error: contract broken by the caller: field not allowed in tail: `x`
   │
 1 │ { ... }
   │ ------- evaluated to this value
-  │
-  = This error may happen in the following situation:
-        1. A function `f` is bound by a contract: e.g. `Number -> Number`.
-        2. `f` is called with an argument of the wrong type: e.g. `f false`.
-  = Either change the contract accordingly, or call `f` with an argument of the right type.
-  = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
 
 note: 
   ┌─ [INPUTS_PATH]/errors/record_forall_constraints_contract.ncl:3:58

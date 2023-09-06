@@ -913,32 +913,41 @@ pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 pub fn constr_unify_rrows(
     constr: &mut RowConstr,
     var_id: VarId,
-    rrows: &UnifRecordRows,
+    urrows: &UnifRecordRows,
 ) -> Result<(), RowUnifError> {
-    if let Some(p_constr) = constr.remove(&var_id) {
+    fn do_unify(
+        constr: &mut RowConstr,
+        var_id: VarId,
+        var_constr: HashSet<Ident>,
+        rrows: &UnifRecordRows,
+    ) -> Result<(), RowUnifError> {
         match rrows {
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::Extend { row, .. },
                 ..
-            } if p_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
+            } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
                 row.id,
                 UnifType::concrete(TypeF::Record(rrows.clone())),
             )),
             UnifRecordRows::Concrete {
                 rrows: RecordRowsF::Extend { tail, .. },
                 ..
-            } => constr_unify_rrows(constr, var_id, tail),
+            } => do_unify(constr, var_id, var_constr, tail),
             UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
-                if let Some(u_constr) = constr.get_mut(id) {
-                    u_constr.extend(p_constr);
+                if let Some(tail_constr) = constr.get_mut(id) {
+                    tail_constr.extend(var_constr);
                 } else {
-                    constr.insert(*id, p_constr);
+                    constr.insert(*id, var_constr);
                 }
 
                 Ok(())
             }
             _ => Ok(()),
         }
+    }
+
+    if let Some(var_constr) = constr.remove(&var_id) {
+        do_unify(constr, var_id, var_constr, urrows)
     } else {
         Ok(())
     }
@@ -1386,14 +1395,13 @@ impl RemoveRow for UnifRecordRows {
                 }
             },
             UnifRecordRows::UnifVar { id: var_id, .. } => {
-                let excluded = state.constr.entry(var_id).or_default();
-
-                if !excluded.insert(target.ident()) {
-                    return Err(RemoveRRowError::Conflict);
-                }
-
                 let fresh_uvar = state.table.fresh_type_uvar(var_level);
                 let tail_var_id = state.table.fresh_rrows_var_id(var_level);
+                // We have to manually insert the constraint that `tail_var_id` can't contain a row
+                // `target`, to avoid producing ill-formed record rows later
+                state
+                    .constr
+                    .insert(tail_var_id, HashSet::from([target.ident()]));
 
                 let row_to_insert = UnifRecordRow {
                     id: *target,
@@ -1403,11 +1411,14 @@ impl RemoveRow for UnifRecordRows {
                     id: tail_var_id,
                     init_level: var_level,
                 };
+
                 let tail_extended = UnifRecordRows::concrete(RecordRowsF::Extend {
                     row: row_to_insert,
                     tail: Box::new(tail_var.clone()),
                 });
 
+                constr_unify_rrows(state.constr, var_id, &tail_extended)
+                    .map_err(|_| RemoveRRowError::Conflict)?;
                 state.table.assign_rrows(var_id, tail_extended);
 
                 Ok((fresh_uvar, tail_var))

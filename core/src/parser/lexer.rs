@@ -56,10 +56,12 @@ fn symbolic_string_prefix_and_length<'input>(
 /// The tokens in normal mode.
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum NormalToken<'input> {
-    #[regex("[ \r\t\n]+", logos::skip)]
+    #[regex("((\r\n)+|[ \t\n]+)", logos::skip)]
     // multiline strings cannot be used as enum tags, so we explicitly
     // disallow that pattern.
     #[regex("'m(%)+\"")]
+    // We forbid lone carriage returns for sanity
+    #[regex("\r[^\n]")]
     #[error]
     Error,
 
@@ -389,13 +391,15 @@ pub struct SymbolicStringStart<'input> {
 /// The tokens in string mode.
 #[derive(Logos, Debug, PartialEq, Eq, Clone)]
 pub enum StringToken<'input> {
+    // We forbid lone carriage returns for sanity
+    #[regex("\r[^\n]")]
     #[error]
     Error,
 
-    #[regex("[^\"%\\\\]+")]
+    #[regex("[^\"%\\\\]+", |lex| normalize_line_endings(lex.slice()))]
     // Has lower matching priority than `Interpolation` according to Logos' rules.
-    #[token("%")]
-    Literal(&'input str),
+    #[token("%", |lex| String::from(lex.slice()))]
+    Literal(String),
 
     #[token("\"")]
     DoubleQuote,
@@ -411,16 +415,18 @@ pub enum StringToken<'input> {
 /// The tokens in multiline string mode.
 #[derive(Logos, Debug, PartialEq, Eq, Clone)]
 pub enum MultiStringToken<'input> {
+    // We forbid lone carriage returns for sanity
+    #[regex("\r[^\n]")]
     #[error]
     Error,
 
-    #[regex("[^\"%]+")]
+    #[regex("[^\"%]+", |lex| normalize_line_endings(lex.slice()))]
     // A token that starts as a multiline end delimiter or an interpolation sequence but is not
     // one.  These ones should have lowest matching priority according to Logos' rules, and
     // CandidateEnd and CandidateInterpolation should be matched first.
-    #[token("\"")]
-    #[regex("%+")]
-    Literal(&'input str),
+    #[token("\"", |lex| String::from(lex.slice()))]
+    #[regex("%+", |lex| String::from(lex.slice()))]
+    Literal(String),
 
     /// A candidate end. A multiline string starting delimiter `MultiStringStart` can have a
     /// variable number of `%` character, so the lexer matches candidate end delimiter, compare the
@@ -431,6 +437,12 @@ pub enum MultiStringToken<'input> {
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
     CandidateInterpolation(&'input str),
+    /// Unfortunate consequence of Logos' [issue #200](https://github.com/maciejhirsz/logos/issues/200).
+    /// The other rules should be sufficient to match this as a double quote followed by a
+    /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
+    /// valid inputs because of #200.
+    #[regex("\"%+\\{")]
+    QuotesCandidateInterpolation(&'input str),
     /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
     /// an actual end token.
     End,
@@ -460,8 +472,8 @@ pub enum ModalLexer<'input> {
     },
     MultiString {
         mode_data: MultiStrData,
-        /// A token that has been buffered and must be returned at the next call to `next()`. This is
-        /// related to lexing an possible interpolation sequence, such as `%%%{`, which requires to
+        /// A token that has been buffered and must be returned at the next call to `next()`.
+        /// Related to lexing a possible interpolation sequence, such as `%%%{`, which requires to
         /// split a candidate interpolation token in two. In this case, we need to emit the first
         /// token on the spot, and bufferize the second one, to be emitted on the following call to
         /// `next()`.
@@ -686,7 +698,7 @@ impl<'input> Lexer<'input> {
         };
         self.bufferize(next_token, next_span);
 
-        let token = Token::MultiStr(MultiStringToken::Literal(&s[0..split_at]));
+        let token = Token::MultiStr(MultiStringToken::Literal(s[0..split_at].to_owned()));
         let span = Range {
             start: span.start,
             end: span.start + split_at,
@@ -823,10 +835,28 @@ impl<'input> Lexer<'input> {
                 self.enter_normal();
                 Token::MultiStr(tok)
             }
+            // If we encounter a `QuotesCandidateInterpolation` token with as many `%` characters
+            // as the current count or more, we need to split it into two tokens:
+            //
+            // - a string literal corresponding to the `"` followed by `(s.len() - self.count)`
+            // `%`s
+            // - an interpolation token
+            //
+            // The interpolation token is put in the buffer to returned next time.
+            //
+            // For example, in `m%""%%{exp}"%`, the `"%%{` is a `QuotesCandidateInterpolation`
+            // which is split as a `"%` literal followed by an interpolation token.
+            MultiStringToken::QuotesCandidateInterpolation(s) if s.len() > data.percent_count => {
+                let (token_fst, span_fst) =
+                    self.split_candidate_interp(s, span, data.percent_count);
+                span = span_fst;
+                token_fst
+            }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `Literal` one
-            MultiStringToken::CandidateInterpolation(s) => {
-                Token::MultiStr(MultiStringToken::Literal(s))
+            MultiStringToken::CandidateInterpolation(s)
+            | MultiStringToken::QuotesCandidateInterpolation(s) => {
+                Token::MultiStr(MultiStringToken::Literal(s.to_owned()))
             }
             // Strictly speaking, a candidate end delimiter with more than the required count of
             // `%` should be split between multistring end token, plus a variable number of `%`
@@ -852,7 +882,9 @@ impl<'input> Lexer<'input> {
             }
             // Otherwise, it is just part of the string, so we transform the token into a
             // `Literal` one
-            MultiStringToken::CandidateEnd(s) => Token::MultiStr(MultiStringToken::Literal(s)),
+            MultiStringToken::CandidateEnd(s) => {
+                Token::MultiStr(MultiStringToken::Literal(s.to_owned()))
+            }
             // Early report errors for now. This could change in the future
             MultiStringToken::Error => {
                 return Some(Err(ParseError::Lexical(LexicalError::Generic(span))))
@@ -953,4 +985,15 @@ fn escape_ascii(code: &str) -> Option<char> {
     } else {
         Some(code as char)
     }
+}
+
+/// Normalize the line endings in `s` to only `\n` and, in debug mode, check
+/// for lone `\r` without an accompanying `\n`.
+pub fn normalize_line_endings(s: impl AsRef<str>) -> String {
+    let normalized = s.as_ref().replace("\r\n", "\n");
+    debug_assert!(
+        normalized.find('\r').is_none(),
+        "The lexer throws an error when it finds a lone carriage return"
+    );
+    normalized
 }

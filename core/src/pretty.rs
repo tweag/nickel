@@ -55,6 +55,7 @@ fn escape(s: &str) -> String {
         .replace("%{", "\\%{")
         .replace('\"', "\\\"")
         .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 static QUOTING_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("^_?[a-zA-Z][_a-zA-Z0-9-]*$").unwrap());
@@ -116,6 +117,15 @@ fn contains_newline<T>(chunks: &[StrChunk<T>]) -> bool {
     })
 }
 
+/// Does a sequence of `StrChunk`s contain a carriage return? Lone carriage
+/// returns are forbidden in Nickel's surface syntax.
+fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
+    chunks.iter().any(|chunk| match chunk {
+        StrChunk::Literal(str) => str.contains('\r'),
+        StrChunk::Expr(_, _) => false,
+    })
+}
+
 pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
 where
     T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
@@ -143,20 +153,27 @@ where
         chunks: &[StrChunk<RichTerm>],
         string_style: StringRenderStyle,
     ) -> DocBuilder<'a, Self, A> {
-        let multiline = string_style == StringRenderStyle::Multiline && contains_newline(chunks);
-        let nb_perc = chunks
-            .iter()
-            .map(
-                |c| {
-                    if let StrChunk::Literal(s) = c {
-                        min_interpolate_sign(s)
-                    } else {
-                        1
-                    }
-                }, // be sure we have at least 1 `%` sign when an interpolation is present
-            )
-            .max()
-            .unwrap_or(1);
+        let multiline = string_style == StringRenderStyle::Multiline
+            && contains_newline(chunks)
+            && !contains_carriage_return(chunks);
+
+        let nb_perc = if multiline {
+            chunks
+                .iter()
+                .map(
+                    |c| {
+                        if let StrChunk::Literal(s) = c {
+                            min_interpolate_sign(s)
+                        } else {
+                            1
+                        }
+                    }, // be sure we have at least 1 `%` sign when an interpolation is present
+                )
+                .max()
+                .unwrap_or(1)
+        } else {
+            1
+        };
 
         let interp: String = "%".repeat(nb_perc);
 
@@ -190,9 +207,7 @@ where
                                 // about whether a trailing newline appears at
                                 // the end of the last line.
                                 s.split_inclusive('\n').map(|line| {
-                                    if let Some(s) = line.strip_suffix("\r\n") {
-                                        self.text(s.to_owned()).append(self.hardline())
-                                    } else if let Some(s) = line.strip_suffix('\n') {
+                                    if let Some(s) = line.strip_suffix('\n') {
                                         self.text(s.to_owned()).append(self.hardline())
                                     } else {
                                         self.text(line.to_owned())
@@ -1150,7 +1165,7 @@ mod tests {
                   x : Number,
                   y : String;
                   Dyn
-                }" 
+                }"
             },
         );
     }
