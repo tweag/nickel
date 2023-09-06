@@ -220,7 +220,7 @@
 
       fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
         pname = pkg.pname + "-rev-fixup";
-        version = pkg.version;
+        inherit (pkg) version meta;
         src = pkg;
         buildInputs = [ pkgs.bbe ];
         phases = [ "fixupPhase" ];
