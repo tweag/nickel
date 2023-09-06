@@ -63,6 +63,18 @@
         inherit system;
         overlays = [
           (import rust-overlay)
+          # gnulib tests in diffutils fail for musl arm64, cf. https://github.com/NixOS/nixpkgs/pull/241281
+          (final: prev: {
+            diffutils =
+              if !(final.stdenv.hostPlatform.isMusl && final.stdenv.hostPlatform.isAarch64) then
+                prev.diffutils
+              else
+                prev.diffutils.overrideAttrs (old: {
+                  postPatch = ''
+                    sed -i 's:gnulib-tests::g' Makefile.in
+                  '';
+                });
+          })
         ];
       };
 
@@ -222,7 +234,7 @@
             NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
           };
 
-          buildPackage = { pnameSuffix, extraBuildArgs ? "", extraArgs ? { } }:
+          buildPackage = { pnameSuffix, cargoPackage ? "${pname}${pnameSuffix}", extraBuildArgs ? "", extraArgs ? { } }:
             craneLib.buildPackage ({
               inherit
                 pname
@@ -232,7 +244,7 @@
                 cargoArtifacts
                 env;
 
-              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${pname}${pnameSuffix}";
+              cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
         in
         rec {
@@ -250,6 +262,7 @@
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
               buildPackage {
+                cargoPackage = "nickel-lang-cli";
                 pnameSuffix = "-static";
                 extraArgs = {
                   CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
@@ -258,7 +271,9 @@
                   # them explicitly. Also, `libcxx` expects to be linked with
                   # `libcxxabi` at the end, and we need to make the rust linker
                   # aware of that.
-                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi";
+                  #
+                  # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
+                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
                   # Explain to `cc-rs` that it should use the `libcxx` C++
                   # standard library, and a static version of it, when building
                   # C++ libraries. The `cc-rs` crate is typically used in

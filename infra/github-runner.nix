@@ -25,7 +25,10 @@ in
           };
       });
     };
+    nodeRuntimes = [ "node16" "node20" ];
     extraPackages = with pkgs; [
+      gh
+      docker
       gawk
       nix
     ];
@@ -34,6 +37,18 @@ in
     extraLabels = [
       "EC2"
     ];
+    serviceOverrides = {
+      Group = "docker";
+    };
+  };
+
+  virtualisation.docker.enable = true;
+
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    substituters = [ "https://tweag-nickel.cachix.org" ];
+    trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
+    accept-flake-config = true;
   };
 
   systemd.services.github-runner-init = {
