@@ -26,6 +26,7 @@ in
     (f 1).foo : _
   )
   ({} | { field : Number }).fiel
+  { foo | { field : Number } }.foo.fiel
 ]
 ### [[request]]
 ### type = "Completion"
@@ -99,3 +100,8 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///completion-basic.ncl"
 ### position = { line = 21, character = 32 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///completion-basic.ncl"
+### position = { line = 22, character = 39 }
