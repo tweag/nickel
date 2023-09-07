@@ -4,7 +4,6 @@ use codespan::FileId;
 use nickel_lang_core::{
     position::{RawPos, TermPos},
     term::{record::FieldMetadata, SharedTerm, Term},
-    typecheck::linearization::LinearizationState,
 };
 
 use super::{
@@ -200,5 +199,3 @@ impl Completed {
         (item.ty.to_owned(), extra)
     }
 }
-
-impl LinearizationState for Completed {}

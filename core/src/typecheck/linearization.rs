@@ -22,53 +22,12 @@
 //!               outside the LSP context meaning to cause as little runtime impact as possible.
 
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 
 use super::UnifType;
 use crate::term::RichTerm;
 use crate::{identifier::LocIdent, term::record::Field};
 
-/// Holds the state of a linearization, either in progress or finalized
-/// Restricts the possible states of a linearization to entities marked
-/// as [LinearizationState]
-pub struct Linearization<S: LinearizationState> {
-    state: S,
-}
-
-impl<S: LinearizationState> Linearization<S> {
-    pub fn into_inner(self) -> S {
-        self.state
-    }
-}
-
-impl<S: LinearizationState> Deref for Linearization<S> {
-    type Target = S;
-
-    fn deref(&self) -> &Self::Target {
-        &self.state
-    }
-}
-
-impl<S: LinearizationState> DerefMut for Linearization<S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.state
-    }
-}
-
-/// Constructors for different phases
-impl Linearization<Uninit> {
-    pub fn new<S: LinearizationState>(state: S) -> Linearization<S> {
-        Linearization { state }
-    }
-}
-
 pub struct Uninit;
-
-/// Marker trait for possible states of the linearization
-pub trait LinearizationState {}
-impl LinearizationState for () {}
-impl LinearizationState for Uninit {}
-impl<K, V> LinearizationState for std::collections::HashMap<K, V> {}
 
 /// The linearizer trait is what is referred to during typechecking.
 /// It is the interface to recording terms (while tracking their scope)
@@ -78,8 +37,8 @@ impl<K, V> LinearizationState for std::collections::HashMap<K, V> {}
 /// `L`: The data type available during build
 /// `S`: Type of external state passed into the linearization
 pub trait Linearizer {
-    type Building: LinearizationState;
-    type Completed: LinearizationState + Default;
+    type Building;
+    type Completed: Default;
     type ItemId: Copy;
     type CompletionExtra;
 
@@ -97,7 +56,7 @@ pub trait Linearizer {
     /// location. In this case, the LSP currently ignores it.
     fn add_term(
         &mut self,
-        _lin: &mut Linearization<Self::Building>,
+        _lin: &mut Self::Building,
         _term: &RichTerm,
         _ty: UnifType,
     ) -> Option<Self::ItemId>;
@@ -110,16 +69,10 @@ pub trait Linearizer {
     ///
     /// In practice this mainly includes environment information. Providing this state is the
     /// responsibility of [Linearizer::scope]
-    fn add_field_metadata(&mut self, _lin: &mut Linearization<Self::Building>, _field: &Field) {}
+    fn add_field_metadata(&mut self, _lin: &mut Self::Building, _field: &Field) {}
 
     /// Allows to amend the type of an ident in scope
-    fn retype_ident(
-        &mut self,
-        _lin: &mut Linearization<Self::Building>,
-        _ident: &LocIdent,
-        _new_type: UnifType,
-    ) {
-    }
+    fn retype_ident(&mut self, _lin: &mut Self::Building, _ident: &LocIdent, _new_type: UnifType) {}
 
     /// Allows to amend the type of an item.
     ///
@@ -136,17 +89,11 @@ pub trait Linearizer {
     /// Defines how to turn a [Self::Building] Linearization of the tracked type into
     /// a [Self::Completed] linearization.
     /// By default creates an entirely empty [Self::Completed] object
-    fn complete(
-        self,
-        _lin: Linearization<Self::Building>,
-        _extra: Self::CompletionExtra,
-    ) -> Linearization<Self::Completed>
+    fn complete(self, _lin: Self::Building, _extra: Self::CompletionExtra) -> Self::Completed
     where
         Self: Sized,
     {
-        Linearization {
-            state: Self::Completed::default(),
-        }
+        Self::Completed::default()
     }
 
     /// Ensures the scope structure of the source can be represented in the
@@ -171,8 +118,8 @@ pub trait Linearizer {
 pub struct StubHost<B = (), C = (), E = ()>(PhantomData<B>, PhantomData<C>, PhantomData<E>);
 impl<B, C, E> Linearizer for StubHost<B, C, E>
 where
-    B: LinearizationState + Default,
-    C: LinearizationState + Default,
+    B: Default,
+    C: Default,
 {
     type Building = B;
     type Completed = C;

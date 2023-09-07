@@ -40,6 +40,7 @@ impl VarLevel {
 
 /// An element of the unification table. Contains the potential type this variable points to (or
 /// `None` if the variable hasn't been unified with something yet), and the variable's level.
+#[derive(Clone)]
 pub struct UnifSlot<Ty> {
     value: Option<Ty>,
     level: VarLevel,
@@ -63,7 +64,7 @@ impl<Ty> UnifSlot<Ty> {
 /// The unification table is a relatively low-level data structure, whose consumer has to ensure
 /// specific invariants. It is used by the `unify` function and its variants, but you should avoid
 /// using it directly, unless you know what you're doing.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct UnifTable {
     types: Vec<UnifSlot<UnifType>>,
     rrows: Vec<UnifSlot<UnifRecordRows>>,
