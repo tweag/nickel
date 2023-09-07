@@ -191,15 +191,19 @@ impl Traverse<RichTerm> for Field {
         })
     }
 
-    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
         self.metadata
             .annotation
-            .traverse_ref(f)
-            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f)))
+            .traverse_ref(f, state)
+            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f, state)))
             .or_else(|| {
                 self.pending_contracts
                     .iter()
-                    .find_map(|c| c.traverse_ref(f))
+                    .find_map(|c| c.traverse_ref(f, state))
             })
     }
 }

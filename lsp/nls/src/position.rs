@@ -109,7 +109,7 @@ impl PositionLookup {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(rt: &RichTerm) -> Self {
         let mut all_ranges = Vec::new();
-        let mut fun = |term: &RichTerm| {
+        let mut fun = |term: &RichTerm, _state: &()| {
             if let TermPos::Original(pos) = &term.pos {
                 all_ranges.push((
                     Range {
@@ -119,10 +119,10 @@ impl PositionLookup {
                     RichTermPtr(term.clone()),
                 ));
             }
-            TraverseControl::<()>::Continue
+            TraverseControl::<(), ()>::Continue
         };
 
-        rt.traverse_ref(&mut fun);
+        rt.traverse_ref(&mut fun, &());
 
         PositionLookup {
             ranges: make_disjoint(all_ranges),

@@ -7,7 +7,7 @@ use nickel_lang_core::{
     position::TermPos,
     term::{
         record::{Field, FieldMetadata},
-        RichTerm, Term, UnaryOp,
+        RichTerm, Term, Traverse, TraverseControl, UnaryOp,
     },
     typ::TypeF,
     typecheck::{linearization::Linearizer, reporting::NameReg, UnifType},
@@ -30,6 +30,57 @@ pub mod interface;
 
 pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>;
 
+#[derive(Clone, Debug)]
+pub struct ParentLookup {
+    table: HashMap<RichTermPtr, RichTerm>,
+}
+
+impl ParentLookup {
+    pub fn new(rt: &RichTerm) -> Self {
+        let mut table = HashMap::new();
+        let mut traverse_merge =
+            |rt: &RichTerm, parent: &Option<RichTerm>| -> TraverseControl<Option<RichTerm>, ()> {
+                if let Some(parent) = parent {
+                    table.insert(RichTermPtr(rt.clone()), parent.clone());
+                }
+                TraverseControl::ContinueWithState(Some(rt.clone()))
+            };
+
+        rt.traverse_ref(&mut traverse_merge, &None);
+
+        ParentLookup { table }
+    }
+
+    pub fn parent(&self, rt: &RichTerm) -> Option<&RichTerm> {
+        self.table.get(&RichTermPtr(rt.clone()))
+    }
+
+    pub fn parent_chain<'a>(&'a self, rt: &'a RichTerm) -> ParentChainIter<'_> {
+        ParentChainIter {
+            table: self,
+            next: Some(rt),
+        }
+    }
+}
+
+pub struct ParentChainIter<'a> {
+    table: &'a ParentLookup,
+    next: Option<&'a RichTerm>,
+}
+
+impl<'a> Iterator for ParentChainIter<'a> {
+    type Item = &'a RichTerm;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.next {
+            self.next = self.table.parent(next);
+            Some(next)
+        } else {
+            None
+        }
+    }
+}
+
 /// A registry mapping file ids to their corresponding linearization. The registry stores the
 /// linearization of every file that has been imported and analyzed, including the main open
 /// document.
@@ -43,6 +94,7 @@ pub struct LinRegistry {
     // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId, everything>)
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
+    pub parent_lookups: HashMap<FileId, ParentLookup>,
     pub type_lookups: HashMap<RichTermPtr, Type>,
 }
 
@@ -62,6 +114,7 @@ impl LinRegistry {
         self.position_lookups
             .insert(file_id, PositionLookup::new(term));
         self.usage_lookups.insert(file_id, UsageLookup::new(term));
+        self.parent_lookups.insert(file_id, ParentLookup::new(term));
 
         self.type_lookups.extend(type_lookups);
     }
@@ -85,6 +138,11 @@ impl LinRegistry {
 
     pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
         self.type_lookups.get(&RichTermPtr(rt.clone()))
+    }
+
+    pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
+        let file = rt.pos.as_opt_ref()?.src_id;
+        Some(self.parent_lookups.get(&file)?.parent_chain(rt))
     }
 }
 

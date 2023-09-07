@@ -3,12 +3,12 @@ source: lsp/nls/tests/main.rs
 expression: output
 ---
 [config]
-[foo, verified, version]
-[foo, verified, version]
-[foo, verified, version]
-[really]
-[really]
-[foo, really, verified, version]
-["has a space", lalala]
-[falala]
+[config, foo, verified, version]
+[config, foo, verified, version]
+[config, foo, verified, version]
+[config, really]
+[config, really]
+[config, foo, really, verified, version]
+["has a space", config, lalala]
+[config, falala]
 

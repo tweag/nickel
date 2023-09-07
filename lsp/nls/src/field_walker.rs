@@ -144,6 +144,18 @@ pub struct DefWithPath {
     pub metadata: Option<FieldMetadata>,
 }
 
+impl DefWithPath {
+    pub fn completion_item(&self) -> CompletionItem {
+        CompletionItem {
+            label: ident_quoted(&self.ident.into()),
+            detail: self.metadata.as_ref().and_then(metadata_detail),
+            kind: Some(CompletionItemKind::Property),
+            documentation: self.metadata.as_ref().and_then(metadata_doc),
+            ..Default::default()
+        }
+    }
+}
+
 #[cfg(test)]
 impl DefWithPath {
     pub fn ident(&self) -> LocIdent {
@@ -241,7 +253,7 @@ impl<'a> FieldResolver<'a> {
     /// are the fields defined on either record.
     ///
     /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
-    fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
+    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]
@@ -273,6 +285,7 @@ impl<'a> FieldResolver<'a> {
                 let defs = self.resolve_annot(annot);
                 defs.chain(self.resolve_term(term)).collect()
             }
+            Term::Type(typ) => self.resolve_type(typ),
             _ => Default::default(),
         };
 

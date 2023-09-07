@@ -625,11 +625,16 @@ impl Traverse<Type> for RecordRows {
         Ok(RecordRows(inner))
     }
 
-    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
         match &self.0 {
-            RecordRowsF::Extend { row, tail } => {
-                row.typ.traverse_ref(f).or_else(|| tail.traverse_ref(f))
-            }
+            RecordRowsF::Extend { row, tail } => row
+                .typ
+                .traverse_ref(f, state)
+                .or_else(|| tail.traverse_ref(f, state)),
             _ => None,
         }
     }
@@ -1056,10 +1061,13 @@ impl Type {
 
     /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
     pub fn find_flat(&self) -> Option<RichTerm> {
-        self.traverse_ref(&mut |ty: &Type| match &ty.typ {
-            TypeF::Flat(f) => TraverseControl::Return(f.clone()),
-            _ => TraverseControl::Continue,
-        })
+        self.traverse_ref(
+            &mut |ty: &Type, _: &()| match &ty.typ {
+                TypeF::Flat(f) => TraverseControl::Return(f.clone()),
+                _ => TraverseControl::Continue,
+            },
+            &(),
+        )
     }
 }
 
@@ -1099,9 +1107,14 @@ impl Traverse<Type> for Type {
         }
     }
 
-    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
-        match f(self) {
-            TraverseControl::Continue => {}
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
+        let child_state = match f(self, state) {
+            TraverseControl::Continue => None,
+            TraverseControl::ContinueWithState(s) => Some(s),
             TraverseControl::SkipBranch => {
                 return None;
             }
@@ -1109,6 +1122,7 @@ impl Traverse<Type> for Type {
                 return Some(ret);
             }
         };
+        let state = child_state.as_ref().unwrap_or(state);
 
         match &self.typ {
             TypeF::Dyn
@@ -1119,12 +1133,14 @@ impl Traverse<Type> for Type {
             | TypeF::Var(_)
             | TypeF::Enum(_)
             | TypeF::Wildcard(_) => None,
-            TypeF::Flat(rt) => rt.traverse_ref(f),
-            TypeF::Arrow(t1, t2) => t1.traverse_ref(f).or_else(|| t2.traverse_ref(f)),
+            TypeF::Flat(rt) => rt.traverse_ref(f, state),
+            TypeF::Arrow(t1, t2) => t1
+                .traverse_ref(f, state)
+                .or_else(|| t2.traverse_ref(f, state)),
             TypeF::Forall { body: t, .. }
             | TypeF::Dict { type_fields: t, .. }
-            | TypeF::Array(t) => t.traverse_ref(f),
-            TypeF::Record(rrows) => rrows.traverse_ref(f),
+            | TypeF::Array(t) => t.traverse_ref(f, state),
+            TypeF::Record(rrows) => rrows.traverse_ref(f, state),
         }
     }
 }
@@ -1144,10 +1160,14 @@ impl Traverse<RichTerm> for Type {
         self.traverse(&f_on_type, state, order)
     }
 
-    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
-        let mut f_on_type = |ty: &Type| match &ty.typ {
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
+        state: &S,
+    ) -> Option<U> {
+        let mut f_on_type = |ty: &Type, s: &S| match &ty.typ {
             TypeF::Flat(t) => {
-                if let Some(ret) = t.traverse_ref(f) {
+                if let Some(ret) = t.traverse_ref(f, s) {
                     TraverseControl::Return(ret)
                 } else {
                     TraverseControl::SkipBranch
@@ -1155,7 +1175,7 @@ impl Traverse<RichTerm> for Type {
             }
             _ => TraverseControl::Continue,
         };
-        self.traverse_ref(&mut f_on_type)
+        self.traverse_ref(&mut f_on_type, state)
     }
 }
 
