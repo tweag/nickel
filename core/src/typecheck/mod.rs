@@ -1237,7 +1237,6 @@ pub struct State<'a> {
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
 /// It is basically an owned-subset of the typechecking state.
-#[derive(Clone)]
 pub struct Extra {
     pub table: UnifTable,
     pub names: NameTable,
@@ -1304,7 +1303,7 @@ where
         names,
         wildcards: result.clone(),
     };
-    let lin = linearizer.complete(building, extra);
+    let lin = linearizer.complete(building, &extra);
 
     Ok((result, lin))
 }

@@ -577,10 +577,10 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             table,
             names: reported_names,
             wildcards,
-        }: Extra,
+        }: &Extra,
     ) -> Completed {
         debug!("linearizing {:?}", self.file);
-        let mut name_reg = NameReg::new(reported_names);
+        let mut name_reg = NameReg::new(reported_names.clone());
 
         // TODO: Storing defers while linearizing?
         let mut defers: Vec<_> = lin
@@ -643,7 +643,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                      kind,
                      metadata: meta,
                  }| LinearizationItem {
-                    ty: name_reg.to_type(&table, ty),
+                    ty: name_reg.to_type(table, ty),
                     term,
                     env,
                     id,
@@ -653,7 +653,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 },
             )
             .map(|item| LinearizationItem {
-                ty: transform_wildcard(&wildcards, item.ty),
+                ty: transform_wildcard(wildcards, item.ty),
                 ..item
             })
             .collect();
@@ -734,12 +734,12 @@ impl Linearizer for TypeCollector {
             table,
             names,
             wildcards,
-        }: Extra,
+        }: &Extra,
     ) -> Self::Completed {
-        let mut name_reg = NameReg::new(names);
+        let mut name_reg = NameReg::new(names.clone());
 
         let mut transform_type = |uty: UnifType| -> Type {
-            let ty = name_reg.to_type(&table, uty);
+            let ty = name_reg.to_type(table, uty);
             match ty.typ {
                 TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&ty).clone(),
                 _ => ty,
@@ -757,7 +757,6 @@ pub struct CombinedLinearizer<T, U>(pub T, pub U);
 impl<T: Linearizer, U: Linearizer> Linearizer for CombinedLinearizer<T, U>
 where
     T: Linearizer<CompletionExtra = U::CompletionExtra>,
-    T::CompletionExtra: Clone,
 {
     type Building = (T::Building, U::Building);
     type Completed = (T::Completed, U::Completed);
@@ -794,14 +793,11 @@ where
         self.1.retype_ident(&mut lin.1, ident, new_type);
     }
 
-    fn complete(self, lin: Self::Building, extra: Self::CompletionExtra) -> Self::Completed
+    fn complete(self, lin: Self::Building, extra: &Self::CompletionExtra) -> Self::Completed
     where
         Self: Sized,
     {
-        (
-            self.0.complete(lin.0, extra.clone()),
-            self.1.complete(lin.1, extra),
-        )
+        (self.0.complete(lin.0, extra), self.1.complete(lin.1, extra))
     }
 }
 
