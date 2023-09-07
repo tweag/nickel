@@ -1657,17 +1657,42 @@ fn walk_with_annot<L: Linearizer>(
 /// `check` is in charge of registering every term with the `linearizer` and makes sure to scope
 /// the linearizer accordingly
 ///
+/// # Arguments
+///
+/// `item_id` is used when `check` is called on a term that has already been visited by the
+/// linearizer, for example when coming from `infer`. When `item_id` is defined, the linearizer
+/// isn't called.
+///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
+
 fn check<L: Linearizer>(
+    state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    linearizer: L,
+    rt: &RichTerm,
+    ty: UnifType,
+) -> Result<(), TypecheckError> {
+    check_from(state, ctxt, lin, linearizer, rt, ty, None)
+}
+
+/// Variant of [check] taking an additional `item_id` to indicate that checking is done on a term
+/// that has already been visited by the linearizer, for example when coming from `infer`. When
+/// `item_id` is defined, the linearizer isn't called. [check] is just [check_from] called with
+/// `item_id` set to `None`.
+fn check_from<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &RichTerm,
     ty: UnifType,
+    item_id: Option<L::ItemId>,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-    linearizer.add_term(lin, rt, ty.clone());
+
+    let item_id = item_id.or_else(|| linearizer.add_term(lin, rt, ty.clone()));
+
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
     // a polymorphic type for `rt`, the subsumption rule will take care of instantiating this type
@@ -1887,7 +1912,7 @@ fn check<L: Linearizer>(
         | Term::Op2(..)
         | Term::OpN(..)
         | Term::Annotated(..) => {
-            let inferred = infer(state, ctxt.clone(), lin, linearizer, rt)?;
+            let inferred = infer_from(state, ctxt.clone(), lin, linearizer, rt, item_id)?;
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
             subsumption(state, ctxt, inferred, ty)
@@ -2109,12 +2134,14 @@ fn check_field<L: Linearizer>(
             linearizer,
             &field.metadata.annotation,
             field.value.as_ref(),
+            None,
         )?;
 
         subsumption(state, ctxt, inferred, ty).map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
 
+/// `item_id` is the id of the linearization item corresponding to the annotated term.
 fn infer_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
@@ -2122,14 +2149,19 @@ fn infer_annotated<L: Linearizer>(
     linearizer: L,
     annot: &TypeAnnotation,
     rt: &RichTerm,
+    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
-    infer_with_annot(state, ctxt, lin, linearizer, annot, Some(rt))
+    infer_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), item_id)
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
 /// annotation, with or without definitions. This encompasses both standalone type annotation
 /// (where `value` is always `Some(_)`) as well as field definitions (where `value` may or may not
 /// be defined).
+///
+/// As for [check_from] and [infer_from], the additional `item_id` is provided when the term has
+/// been added to the linearizer before but can still benefit from updating its information with
+/// the inferred type.
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
 fn infer_with_annot<L: Linearizer>(
     state: &mut State,
@@ -2138,6 +2170,7 @@ fn infer_with_annot<L: Linearizer>(
     mut linearizer: L,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
+    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
     annot
         .iter()
@@ -2152,6 +2185,10 @@ fn infer_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
+
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, uty2.clone())
+            }
 
             check(state, ctxt, lin, linearizer, value, uty2.clone())?;
             Ok(uty2)
@@ -2172,6 +2209,10 @@ fn infer_with_annot<L: Linearizer>(
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, uty2.clone())
+            }
+
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
             if let Some(value) = value_opt {
@@ -2181,10 +2222,13 @@ fn infer_with_annot<L: Linearizer>(
             Ok(uty2)
         }
         // A non-empty value without a type or a contract annotation is typechecked in the same way
-        // as its inner value
+        // as its inner value. This case should only happen for record fields, as the parser can't
+        // produce an annotated term without an actual annotation. Still, such terms could be
+        // produced programmatically, and aren't necessarily an issue.
         (_, Some(value)) => infer(state, ctxt, lin, linearizer, value),
         // A empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
+        // We can only hit this case for record fields.
         //
         // TODO: we might have something to with the linearizer to clear the current metadata.
         // It looks like it may be unduly attached to the next field definition, which is not
@@ -2205,17 +2249,28 @@ fn infer_with_annot<L: Linearizer>(
 /// bidirectional typechecking and traditional ML-like unification.
 fn infer<L: Linearizer>(
     state: &mut State,
+    ctxt: Context,
+    lin: &mut Linearization<L::Building>,
+    linearizer: L,
+    rt: &RichTerm,
+) -> Result<UnifType, TypecheckError> {
+    infer_from(state, ctxt, lin, linearizer, rt, None)
+}
+
+fn infer_from<L: Linearizer>(
+    state: &mut State,
     mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
     mut linearizer: L,
     rt: &RichTerm,
+    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
     let RichTerm { term, pos } = rt;
 
-    // For the following infer rules, we need to be careful to call to `linearizer.add_term` at the
-    // right moment. We need to provide a type, so we can't do it before having inferred a type for
-    // `rt`. However, we must do it **before** any subsequent calls to `check` or `infer`, because
-    // the linearizer relies on terms being visited in order (pre-order).
+    // We don't have a type yet, so we put `Dyn` for now, and we'll update once we infer one
+    // via `linearizer.retype`
+    let item_id = item_id.or_else(|| linearizer.add_term(lin, rt, mk_uniftype::dynamic()));
+
     match term.as_ref() {
         Term::Var(x) => {
             let x_ty = ctxt
@@ -2224,7 +2279,10 @@ fn infer<L: Linearizer>(
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
-            linearizer.add_term(lin, rt, x_ty.clone());
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, x_ty.clone());
+            }
+
             Ok(x_ty)
         }
         // Theoretically, we need to instantiate the type of the head of the primop application,
@@ -2234,7 +2292,10 @@ fn infer<L: Linearizer>(
         // the type of a primop is currently always monomorphic.
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, rt, ty_res.clone());
+
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, ty_res.clone());
+            }
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
@@ -2242,7 +2303,10 @@ fn infer<L: Linearizer>(
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, rt, ty_res.clone());
+
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, ty_res.clone());
+            }
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
             check(state, ctxt.clone(), lin, linearizer, t2, ty_arg2)?;
@@ -2251,7 +2315,10 @@ fn infer<L: Linearizer>(
         }
         Term::OpN(op, args) => {
             let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
-            linearizer.add_term(lin, rt, ty_res.clone());
+
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, ty_res.clone());
+            }
 
             tys_args.into_iter().zip(args.iter()).try_for_each(
                 |(ty_arg, arg)| -> Result<_, TypecheckError> {
@@ -2280,18 +2347,28 @@ fn infer<L: Linearizer>(
                 .unify(head, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, e.pos))?;
 
-            linearizer.add_term(lin, rt, codom.clone());
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, codom.clone());
+            }
+
             check(state, ctxt.clone(), lin, linearizer, t, dom)?;
             Ok(codom)
         }
-        Term::Annotated(annot, rt) => infer_annotated(state, ctxt, lin, linearizer, annot, rt),
+        Term::Annotated(annot, rt) => {
+            infer_annotated(state, ctxt, lin, linearizer, annot, rt, item_id)
+        }
         _ => {
             // The remaining cases can't produce polymorphic types, and thus we can reuse the
             // checking code. Inferring the type for those rules is equivalent to checking against
             // a free unification variable. This saves use from duplicating all the remaining
             // cases.
             let inferred = state.table.fresh_type_uvar(ctxt.var_level);
-            check(state, ctxt, lin, linearizer, rt, inferred.clone())?;
+
+            if let Some(ref id) = item_id {
+                linearizer.retype(lin, id, inferred.clone());
+            }
+
+            check_from(state, ctxt, lin, linearizer, rt, inferred.clone(), item_id)?;
             Ok(inferred.into_root(state.table))
         }
     }

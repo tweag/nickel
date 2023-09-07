@@ -15,7 +15,7 @@ use crate::linearization::interface::{TermKind, UsageState};
 
 use super::{
     interface::{Unresolved, ValueState},
-    Environment, IdGen, ItemId, LinRegistry, LinearizationItem,
+    Environment, ItemId, LinRegistry, LinearizationItem,
 };
 
 /// A concrete [LinearizationState]
@@ -88,9 +88,15 @@ impl<'b> Building<'b> {
             // specific case, we simply ignore it (meaning that one can't do goto references for
             // `std` currently).
             TermKind::Record(_) => (),
-            // unreachable()!: add_usage can only called on let binding, functions and record
+            // unreachable()!: add_usage can only be called on let binding, functions and record
             // fields, only referring to items which support usages.
-            TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
+            t @ (TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_)) => {
+                eprintln!(
+                    "ERROR: unexpected type/structure/usage {:#?} for id {decl:?}",
+                    t
+                );
+                unreachable!()
+            }
             TermKind::Declaration { ref mut usages, .. }
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
@@ -122,8 +128,9 @@ impl<'b> Building<'b> {
         for (ident, field) in record_fields.iter() {
             let id = ItemId {
                 file_id: current_file,
-                index: self.id_gen().get_and_advance(),
+                index: self.next_id(),
             };
+
             self.push(LinearizationItem {
                 env: env.clone(),
                 term: record_term.clone(),
@@ -139,6 +146,8 @@ impl<'b> Building<'b> {
                 },
                 metadata: Some(field.metadata.clone()),
             });
+
+            eprintln!("Registering field {id:?}");
             env.insert(ident.ident(), id);
             self.add_record_field(current_file, record, (ident.ident(), id))
         }
@@ -306,8 +315,11 @@ impl<'b> Building<'b> {
         }
     }
 
-    pub(super) fn id_gen(&self) -> IdGen {
-        IdGen::new(self.linearization.len())
+    /// Return the id of the next item to be inserted. Note that `next_id` doesn't mutate anything:
+    /// as long as no new item in inserted in the linearization, calling `next_id` multiple time
+    /// will return the same result, namely the size of the current linearization.
+    pub(super) fn next_id(&self) -> usize {
+        self.linearization.len()
     }
 }
 
