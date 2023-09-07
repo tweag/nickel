@@ -18,7 +18,6 @@ use super::{
     Environment, ItemId, LinRegistry, LinearizationItem,
 };
 
-/// A concrete [LinearizationState]
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
 pub struct Building<'a> {
