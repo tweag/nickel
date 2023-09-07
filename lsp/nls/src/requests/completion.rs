@@ -17,7 +17,6 @@ use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionParams, Documentation, MarkupContent, MarkupKind,
 };
-use nickel_lang_core::cache::InputFormat;
 use nickel_lang_core::{
     cache,
     identifier::{Ident, LocIdent},
@@ -28,6 +27,7 @@ use nickel_lang_core::{
     },
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
+use nickel_lang_core::{cache::InputFormat, term::BinaryOp};
 use regex::Regex;
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -709,16 +709,55 @@ fn sanitize_term_for_completion(
     }
 }
 
-fn term_based_completion(
-    term: RichTerm,
-    server: &Server,
-) -> Result<Vec<CompletionItem>, ResponseError> {
+fn term_based_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem> {
     log::info!("term based completion path: {term:?}");
 
     let (start_term, path) = extract_static_path(term);
 
     let defs = FieldResolver::new(server).resolve_term_path(&start_term, &path);
-    Ok(defs.iter().flat_map(FieldHaver::completion_items).collect())
+    defs.iter().flat_map(FieldHaver::completion_items).collect()
+}
+
+fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
+    let env = server.lin_registry.get_env(rt).cloned().unwrap_or_default();
+    let resolver = FieldResolver::new(server);
+    let mut items: Vec<_> = env
+        .iter_elems()
+        .map(|(_, def_with_path)| def_with_path.completion_item())
+        .collect();
+
+    // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
+    // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
+    if let Some(parents) = server.lin_registry.get_parent_chain(rt) {
+        // We're only interested in adding identifiers from terms that are records or
+        // merges/annotations of records. But actually we can skip the records, because any
+        // records that are our direct ancestor have already contributed to `env`.
+        let env_term = |rt: &RichTerm| {
+            matches!(
+                rt.as_ref(),
+                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
+            )
+        };
+
+        let mut parents = parents.peekable();
+        while let Some(rt) = parents.next() {
+            // If a parent and a grandparent were both merges, we can skip the parent
+            // because the grandparent will have a superset of its fields. This prevents
+            // quadratic behavior on long chains of merges.
+            if let Some(gp) = parents.peek() {
+                if env_term(gp) {
+                    continue;
+                }
+            }
+
+            if env_term(rt) {
+                let records = resolver.resolve_term(rt);
+                items.extend(records.iter().flat_map(FieldHaver::completion_items));
+            }
+        }
+    }
+
+    items
 }
 
 pub fn handle_completion(
@@ -761,9 +800,13 @@ pub fn handle_completion(
         .and_then(|rt| sanitize_term_for_completion(rt, cursor, server));
 
     let mut completions = match sanitized_term {
-        Some(sanitized) => term_based_completion(sanitized, server)?,
+        Some(sanitized) => term_based_completion(sanitized, server),
         None => Vec::new(),
     };
+
+    if let Some(term) = &term {
+        completions.extend_from_slice(&env_completion(term, server));
+    }
 
     log::info!("term-based completion provided {completions:?}");
     #[cfg(feature = "old-completer")]

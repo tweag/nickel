@@ -126,84 +126,81 @@ impl UsageLookup {
     }
 
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
-        rt.traverse_ref(&mut |term: &RichTerm| {
-            if let Some(span) = term.pos.as_opt_ref() {
-                self.def_table.insert(*span, env.clone());
-            }
-
-            match term.term.as_ref() {
-                Term::Fun(id, body) => {
-                    let mut new_env = env.clone();
-                    new_env.def_noval(*id, None);
-                    self.fill(body, &new_env);
-                    TraverseControl::SkipBranch
+        rt.traverse_ref(
+            &mut |term: &RichTerm, env: &Environment| {
+                if let Some(span) = term.pos.as_opt_ref() {
+                    self.def_table.insert(*span, env.clone());
                 }
-                Term::FunPattern(maybe_id, pat, body) => {
-                    let mut new_env = env.clone();
-                    if let Some(id) = maybe_id {
+
+                match term.term.as_ref() {
+                    Term::Fun(id, _body) => {
+                        let mut new_env = env.clone();
                         new_env.def_noval(*id, None);
+                        TraverseControl::ContinueWithScope(new_env)
                     }
-
-                    for m in &pat.matches {
-                        for (_path, id, field) in m.to_flattened_bindings() {
-                            new_env.def_noval(id, Some(field.metadata));
+                    Term::FunPattern(maybe_id, pat, _body) => {
+                        let mut new_env = env.clone();
+                        if let Some(id) = maybe_id {
+                            new_env.def_noval(*id, None);
                         }
+
+                        for m in &pat.matches {
+                            for (_path, id, field) in m.to_flattened_bindings() {
+                                new_env.def_noval(id, Some(field.metadata));
+                            }
+                        }
+                        TraverseControl::ContinueWithScope(new_env)
                     }
-                    self.fill(body, &new_env);
-                    TraverseControl::SkipBranch
-                }
-                Term::Let(id, val, body, attrs) => {
-                    let mut new_env = env.clone();
-                    new_env.def(*id, Some(val.clone()), None);
-
-                    self.fill(val, if attrs.rec { &new_env } else { env });
-                    self.fill(body, &new_env);
-
-                    TraverseControl::SkipBranch
-                }
-                Term::LetPattern(maybe_id, pat, val, body) => {
-                    let mut new_env = env.clone();
-                    if let Some(id) = maybe_id {
+                    Term::Let(id, val, body, attrs) => {
+                        let mut new_env = env.clone();
                         new_env.def(*id, Some(val.clone()), None);
-                    }
 
-                    for m in &pat.matches {
-                        for (path, id, field) in m.to_flattened_bindings() {
-                            let path = path.iter().map(|i| i.ident()).rev().collect();
-                            let term = TermAtPath {
-                                term: val.clone(),
-                                path,
-                            };
-                            new_env.def(id, Some(term), Some(field.metadata));
+                        self.fill(val, if attrs.rec { &new_env } else { env });
+                        self.fill(body, &new_env);
+
+                        TraverseControl::SkipBranch
+                    }
+                    Term::LetPattern(maybe_id, pat, val, _body) => {
+                        let mut new_env = env.clone();
+                        if let Some(id) = maybe_id {
+                            new_env.def(*id, Some(val.clone()), None);
                         }
-                    }
-                    self.fill(body, &new_env);
-                    TraverseControl::SkipBranch
-                }
-                Term::RecRecord(data, _interp_fields, _deps) => {
-                    let mut new_env = env.clone();
 
-                    // Records are recursive and the order of fields is unimportant, so define
-                    // all the fields in the environment and then recurse into their values.
-                    for (id, field) in &data.fields {
-                        new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
+                        for m in &pat.matches {
+                            for (path, id, field) in m.to_flattened_bindings() {
+                                let path = path.iter().map(|i| i.ident()).rev().collect();
+                                let term = TermAtPath {
+                                    term: val.clone(),
+                                    path,
+                                };
+                                new_env.def(id, Some(term), Some(field.metadata));
+                            }
+                        }
+                        TraverseControl::ContinueWithScope(new_env)
                     }
+                    Term::RecRecord(data, _interp_fields, _deps) => {
+                        let mut new_env = env.clone();
 
-                    for val in data.fields.values().filter_map(|fld| fld.value.as_ref()) {
-                        self.fill(val, &new_env);
+                        // Records are recursive and the order of fields is unimportant, so define
+                        // all the fields in the environment and then recurse into their values.
+                        for (id, field) in &data.fields {
+                            new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
+                        }
+
+                        TraverseControl::ContinueWithScope(new_env)
                     }
-                    TraverseControl::SkipBranch
-                }
-                Term::Var(id) => {
-                    let id = LocIdent::from(*id);
-                    if let Some(def) = env.get(&id.ident) {
-                        self.usage_table.entry(def.ident).or_default().push(id);
+                    Term::Var(id) => {
+                        let id = LocIdent::from(*id);
+                        if let Some(def) = env.get(&id.ident) {
+                            self.usage_table.entry(def.ident).or_default().push(id);
+                        }
+                        TraverseControl::Continue
                     }
-                    TraverseControl::Continue
+                    _ => TraverseControl::<_, ()>::Continue,
                 }
-                _ => TraverseControl::<()>::Continue,
-            }
-        });
+            },
+            env,
+        );
     }
 }
 

@@ -139,10 +139,10 @@ impl PositionLookup {
                 Term::Match { cases, .. } => idents.extend(cases.keys().cloned()),
                 _ => {}
             }
-            TraverseControl::<()>::Continue
+            TraverseControl::<(), ()>::Continue
         };
 
-        rt.traverse_ref(&mut fun);
+        rt.traverse_ref(&mut fun, &());
 
         let mut ident_ranges: Vec<_> = idents
             .into_iter()

@@ -2,6 +2,6 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[foo]
-[foo]
+[foo, x]
+[Dict, foo, x]
 
