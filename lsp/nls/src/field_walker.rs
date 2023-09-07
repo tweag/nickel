@@ -42,10 +42,10 @@ pub enum Value {
     Term(RichTerm),
     /// If type inference has determined that `x` is of type
     ///
-    /// `{ foo: Number }`
+    /// `{ foo: { bar: Number } }`
     ///     ^-----------------------------------------------------------|
     /// then in the expression `x.foo`, the definition of `foo` is here | and the
-    /// value of its definition is `Number`.
+    /// value of its definition is the type `{ bar: Number }`.
     Type(Type),
 }
 
