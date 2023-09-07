@@ -2,9 +2,10 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
+    combine::Combine,
     identifier::Ident,
     pretty::ident_quoted,
-    term::{record::FieldMetadata, BinaryOp, RichTerm, Term, UnaryOp},
+    term::{record::FieldMetadata, BinaryOp, RichTerm, Term, TypeAnnotation, UnaryOp},
     typ::{RecordRowsIteratorItem, Type, TypeF},
 };
 
@@ -219,12 +220,18 @@ impl FieldDefs {
             let dicts = std::mem::take(&mut fields.dicts);
             fields.fields.clear();
 
+            for meta in defs.iter().filter_map(|d| d.metadata.as_ref()) {
+                fields = FieldDefs::resolve_annot(&meta.annotation, env, server)
+                    .fold(fields, Combine::combine);
+            }
+
             for rt in defs.into_iter().filter_map(|d| d.value) {
-                fields = fields.merge_from(FieldDefs::resolve(&rt, env, server));
+                fields = Combine::combine(fields, FieldDefs::resolve(&rt, env, server));
             }
 
             for dict_value in dicts {
-                fields = fields.merge_from(FieldDefs::resolve_type(&dict_value, env, server));
+                fields =
+                    Combine::combine(fields, FieldDefs::resolve_type(&dict_value, env, server));
             }
         }
 
@@ -233,6 +240,18 @@ impl FieldDefs {
 
     pub fn defs(&self) -> impl Iterator<Item = &Def> {
         self.fields.values().flat_map(|defs| defs.iter())
+    }
+
+    fn resolve_annot<'a>(
+        annot: &'a TypeAnnotation,
+        env: &'a Environment,
+        server: &'a Server,
+    ) -> impl Iterator<Item = FieldDefs> + 'a {
+        annot
+            .contracts
+            .iter()
+            .chain(annot.typ.iter())
+            .map(|lty| FieldDefs::resolve_type(&lty.typ, env, server))
     }
 
     fn resolve(v: &Value, env: &Environment, server: &Server) -> FieldDefs {
@@ -296,8 +315,10 @@ impl FieldDefs {
                     .map(|term| FieldDefs::resolve_term(term, &env, server))
                     .unwrap_or_default()
             }
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => FieldDefs::resolve_term(t1, env, server)
-                .merge_from(FieldDefs::resolve_term(t2, env, server)),
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => Combine::combine(
+                FieldDefs::resolve_term(t1, env, server),
+                FieldDefs::resolve_term(t2, env, server),
+            ),
             Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
                 FieldDefs::resolve_term(body, env, server)
             }
@@ -305,14 +326,8 @@ impl FieldDefs {
                 FieldDefs::resolve_term_path(term, &[id.ident()], env, server)
             }
             Term::Annotated(annot, term) => {
-                let defs = annot
-                    .contracts
-                    .iter()
-                    .chain(annot.typ.iter())
-                    .map(|lty| FieldDefs::resolve_type(&lty.typ, env, server));
-                defs.fold(FieldDefs::resolve_term(term, env, server), |acc, def| {
-                    acc.merge_from(def)
-                })
+                let defs = FieldDefs::resolve_annot(annot, env, server);
+                defs.fold(FieldDefs::resolve_term(term, env, server), Combine::combine)
             }
             _ => Default::default(),
         };
@@ -324,7 +339,7 @@ impl FieldDefs {
             FieldDefs::default()
         };
 
-        term_fields.merge_from(typ_fields)
+        Combine::combine(term_fields, typ_fields)
     }
 
     fn resolve_type(typ: &Type, env: &Environment, server: &Server) -> FieldDefs {
@@ -358,9 +373,21 @@ impl FieldDefs {
         }
     }
 
-    fn merge_from(mut self, other: FieldDefs) -> FieldDefs {
-        for (ident, defs) in other.fields {
-            match self.fields.entry(ident) {
+    fn resolve_all<'a>(
+        terms: impl Iterator<Item = &'a Value>,
+        env: &Environment,
+        server: &Server,
+    ) -> FieldDefs {
+        terms
+            .map(|term| FieldDefs::resolve(term, env, server))
+            .fold(FieldDefs::default(), Combine::combine)
+    }
+}
+
+impl Combine for FieldDefs {
+    fn combine(mut left: Self, right: Self) -> Self {
+        for (ident, defs) in right.fields {
+            match left.fields.entry(ident) {
                 Entry::Occupied(oc) => {
                     oc.into_mut().extend_from_slice(&defs);
                 }
@@ -369,17 +396,7 @@ impl FieldDefs {
                 }
             }
         }
-        self.dicts.extend_from_slice(&other.dicts);
-        self
-    }
-
-    fn resolve_all<'a>(
-        terms: impl Iterator<Item = &'a Value>,
-        env: &Environment,
-        server: &Server,
-    ) -> FieldDefs {
-        terms.fold(FieldDefs::default(), |acc, term| {
-            acc.merge_from(FieldDefs::resolve(term, env, server))
-        })
+        left.dicts.extend_from_slice(&right.dicts);
+        left
     }
 }
