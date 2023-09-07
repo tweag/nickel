@@ -10,11 +10,7 @@ use nickel_lang_core::{
         RichTerm, Term, UnaryOp,
     },
     typ::TypeF,
-    typecheck::{
-        linearization::{Linearization, Linearizer},
-        reporting::NameReg,
-        UnifType,
-    },
+    typecheck::{linearization::Linearizer, reporting::NameReg, UnifType},
 };
 
 use crate::{
@@ -171,7 +167,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     type Completed = Completed;
     type CompletionExtra = Extra;
 
-    fn add_term(&mut self, lin: &mut Linearization<Building>, rt: &RichTerm, ty: UnifType) {
+    fn add_term(&mut self, lin: &mut Building, rt: &RichTerm, ty: UnifType) {
         let pos = rt.pos;
         let term = rt.term.as_ref();
         debug!("adding term: {:?} @ {:?}", term, pos);
@@ -560,7 +556,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
     }
 
-    fn add_field_metadata(&mut self, _lin: &mut Linearization<Building>, field: &Field) {
+    fn add_field_metadata(&mut self, _lin: &mut Building, field: &Field) {
         // Notice 1: No push to lin for the `FieldMetadata` itself
         // Notice 2: we discard the encoded value as anything we
         //           would do with the value will be handled in the following
@@ -576,13 +572,13 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     /// Additionally, resolves concrete types for all items.
     fn complete(
         self,
-        mut lin: Linearization<Building>,
+        mut lin: Building,
         Extra {
             table,
             names: reported_names,
             wildcards,
         }: Extra,
-    ) -> Linearization<Completed> {
+    ) -> Completed {
         debug!("linearizing {:?}", self.file);
         let mut name_reg = NameReg::new(reported_names);
 
@@ -606,7 +602,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             mut linearization,
             import_locations,
             ..
-        } = lin.into_inner();
+        } = lin;
 
         linearization.sort_by(
             |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
@@ -661,7 +657,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, id_mapping, import_locations))
+        Completed::new(lin_, id_mapping, import_locations)
     }
 
     fn scope(&mut self) -> Self {
@@ -697,7 +693,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
     fn retype_ident(
         &mut self,
-        lin: &mut Linearization<Building>,
+        lin: &mut Building,
         ident: &nickel_lang_core::identifier::LocIdent,
         new_type: UnifType,
     ) {
@@ -727,19 +723,19 @@ impl Linearizer for TypeCollector {
         TypeCollector {}
     }
 
-    fn add_term(&mut self, lin: &mut Linearization<Self::Building>, rt: &RichTerm, ty: UnifType) {
+    fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) {
         lin.insert(RichTermPtr(rt.clone()), ty);
     }
 
     fn complete(
         self,
-        lin: Linearization<Self::Building>,
+        lin: Self::Building,
         Extra {
             table,
             names,
             wildcards,
         }: Extra,
-    ) -> Linearization<Self::Completed> {
+    ) -> Self::Completed {
         let mut name_reg = NameReg::new(names);
 
         let mut transform_type = |uty: UnifType| -> Type {
@@ -750,11 +746,61 @@ impl Linearizer for TypeCollector {
             }
         };
 
-        Linearization::new(
-            lin.into_inner()
-                .into_iter()
-                .map(|(rt, uty)| (rt, transform_type(uty)))
-                .collect(),
+        lin.into_iter()
+            .map(|(rt, uty)| (rt, transform_type(uty)))
+            .collect()
+    }
+}
+
+pub struct CombinedLinearizer<T, U>(pub T, pub U);
+
+impl<T: Linearizer, U: Linearizer> Linearizer for CombinedLinearizer<T, U>
+where
+    T: Linearizer<CompletionExtra = U::CompletionExtra>,
+    T::CompletionExtra: Clone,
+{
+    type Building = (T::Building, U::Building);
+    type Completed = (T::Completed, U::Completed);
+
+    // Maybe this should be (T::CompletionExtra, U::CompletionExtra) but in practice
+    // CompletionExtra is always Extra anyway.
+    type CompletionExtra = T::CompletionExtra;
+
+    fn scope(&mut self) -> Self {
+        CombinedLinearizer(self.0.scope(), self.1.scope())
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        CombinedLinearizer(self.0.scope_meta(), self.1.scope_meta())
+    }
+
+    fn add_term(&mut self, lin: &mut Self::Building, term: &RichTerm, ty: UnifType) {
+        self.0.add_term(&mut lin.0, term, ty.clone());
+        self.1.add_term(&mut lin.1, term, ty);
+    }
+
+    fn add_field_metadata(&mut self, lin: &mut Self::Building, field: &Field) {
+        self.0.add_field_metadata(&mut lin.0, field);
+        self.1.add_field_metadata(&mut lin.1, field);
+    }
+
+    fn retype_ident(
+        &mut self,
+        lin: &mut Self::Building,
+        ident: &nickel_lang_core::identifier::LocIdent,
+        new_type: UnifType,
+    ) {
+        self.0.retype_ident(&mut lin.0, ident, new_type.clone());
+        self.1.retype_ident(&mut lin.1, ident, new_type);
+    }
+
+    fn complete(self, lin: Self::Building, extra: Self::CompletionExtra) -> Self::Completed
+    where
+        Self: Sized,
+    {
+        (
+            self.0.complete(lin.0, extra.clone()),
+            self.1.complete(lin.1, extra),
         )
     }
 }

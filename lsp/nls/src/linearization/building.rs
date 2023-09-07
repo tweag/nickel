@@ -8,7 +8,7 @@ use nickel_lang_core::{
     position::TermPos,
     term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
-    typecheck::{linearization::LinearizationState, UnifType},
+    typecheck::UnifType,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};
@@ -310,5 +310,3 @@ impl<'b> Building<'b> {
         IdGen::new(self.linearization.len())
     }
 }
-
-impl<'a> LinearizationState for Building<'a> {}
