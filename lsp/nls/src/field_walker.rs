@@ -292,24 +292,6 @@ impl FieldDefs {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]
             }
-            // let fields = data
-            //     .fields
-            //     .iter()
-            //     .map(|(&ident, field)| {
-            //         (
-            //             ident.ident(),
-            //             vec![Def {
-            //                 ident: ident.into(),
-            //                 value: field.value.clone().map(From::from),
-            //                 metadata: Some(field.metadata.clone()),
-            //             }],
-            //         )
-            //     })
-            //     .collect();
-            // FieldDefs {
-            //     fields,
-            //     dicts: Default::default(),
-            // }
             Term::Var(id) => server
                 .lin_registry
                 .get_def(&(*id).into())
@@ -364,25 +346,6 @@ impl FieldDefs {
     fn resolve_type(typ: &Type, env: &Environment, server: &Server) -> Vec<FieldHaver> {
         match &typ.typ {
             TypeF::Record(rows) => vec![FieldHaver::RecordType(rows.clone())],
-
-            // let fields = rows.iter().filter_map(|row| {
-            //     if let RecordRowsIteratorItem::Row(row) = row {
-            //         Some((
-            //             row.id.ident(),
-            //             vec![Def {
-            //                 ident: row.id.into(),
-            //                 value: Some(row.typ.clone().into()),
-            //                 metadata: None,
-            //             }],
-            //         ))
-            //     } else {
-            //         None
-            //     }
-            // });
-            // FieldDefs {
-            //     fields: fields.collect(),
-            //     dicts: Vec::new(),
-            // }
             TypeF::Dict { type_fields, .. } => vec![FieldHaver::Dict(type_fields.as_ref().clone())],
             TypeF::Flat(rt) => FieldDefs::resolve_term(rt, env, server),
             _ => Default::default(),
