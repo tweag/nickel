@@ -1312,7 +1312,7 @@ impl ImportResolver for Cache {
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
         let parent_path = parent.and_then(|p| self.get_path(p)).map(PathBuf::from);
         let path_buf = with_parent(path, parent_path);
-        let format = InputFormat::from_path_buf(&path_buf).unwrap_or_default();
+        let format = InputFormat::from_path(&path_buf).unwrap_or_default();
         let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
             ImportError::IOError(
                 path_buf.to_string_lossy().into_owned(),
