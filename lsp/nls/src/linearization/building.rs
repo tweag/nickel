@@ -88,7 +88,7 @@ impl<'b> Building<'b> {
             // specific case, we simply ignore it (meaning that one can't do goto references for
             // `std` currently).
             TermKind::Record(_) => (),
-            // unreachable()!: add_usage can only be called on let binding, functions and record
+            // unreachable()!: add_usage can only be called on let bindings, functions and record
             // fields, only referring to items which support usages.
             TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
             TermKind::Declaration { ref mut usages, .. }
@@ -309,7 +309,7 @@ impl<'b> Building<'b> {
     }
 
     /// Return the id of the next item to be inserted. Note that `next_id` doesn't mutate anything:
-    /// as long as no new item in inserted in the linearization, calling `next_id` multiple time
+    /// as long as no new item is inserted in the linearization, calling `next_id` multiple time
     /// will return the same result, namely the size of the current linearization.
     pub(super) fn next_id(&self) -> usize {
         self.linearization.len()

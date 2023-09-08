@@ -1657,12 +1657,6 @@ fn walk_with_annot<L: Linearizer>(
 /// `check` is in charge of registering every term with the `linearizer` and makes sure to scope
 /// the linearizer accordingly
 ///
-/// # Arguments
-///
-/// `item_id` is used when `check` is called on a term that has already been visited by the
-/// linearizer, for example when coming from `infer`. When `item_id` is defined, the linearizer
-/// isn't called.
-///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
 fn check<L: Linearizer>(
     state: &mut State,
@@ -2159,7 +2153,7 @@ fn infer_annotated<L: Linearizer>(
 /// be defined).
 ///
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
-/// has been added to the linearizer before but can still benefit from an updating its information
+/// has been added to the linearizer before but can still benefit from updating its information
 /// with the inferred type.
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
 fn infer_with_annot<L: Linearizer>(

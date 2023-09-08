@@ -93,7 +93,7 @@ pub trait Linearizer {
     /// Returns an item id that can then be used to complete e.g. type information. Some terms
     /// might give rise to several items in the linearization, but usually, there's a main one that
     /// is relevant for amending the type. The result can be `None` if the term doesn't have a
-    /// location, in which the LSP currently ignores it.
+    /// location. In this case, the LSP currently ignores it.
     fn add_term(
         &mut self,
         _lin: &mut Linearization<Self::Building>,
