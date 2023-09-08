@@ -2179,9 +2179,7 @@ fn infer_with_annot<L: Linearizer>(
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, uty2.clone())
-            }
+            linearizer.retype(lin, item_id, uty2.clone());
 
             check(state, ctxt, lin, linearizer, value, uty2.clone())?;
             Ok(uty2)
@@ -2202,9 +2200,7 @@ fn infer_with_annot<L: Linearizer>(
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, uty2.clone())
-            }
+            linearizer.retype(lin, item_id, uty2.clone());
 
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
@@ -2278,9 +2274,7 @@ fn infer_visited<L: Linearizer>(
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, x_ty.clone());
-            }
+            linearizer.retype(lin, item_id, x_ty.clone());
 
             Ok(x_ty)
         }
@@ -2292,9 +2286,7 @@ fn infer_visited<L: Linearizer>(
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, ty_res.clone());
-            }
+            linearizer.retype(lin, item_id, ty_res.clone());
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
 
@@ -2303,9 +2295,7 @@ fn infer_visited<L: Linearizer>(
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, ty_res.clone());
-            }
+            linearizer.retype(lin, item_id, ty_res.clone());
 
             check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
             check(state, ctxt.clone(), lin, linearizer, t2, ty_arg2)?;
@@ -2315,9 +2305,7 @@ fn infer_visited<L: Linearizer>(
         Term::OpN(op, args) => {
             let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, ty_res.clone());
-            }
+            linearizer.retype(lin, item_id, ty_res.clone());
 
             tys_args.into_iter().zip(args.iter()).try_for_each(
                 |(ty_arg, arg)| -> Result<_, TypecheckError> {
@@ -2346,9 +2334,7 @@ fn infer_visited<L: Linearizer>(
                 .unify(head, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, e.pos))?;
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, codom.clone());
-            }
+            linearizer.retype(lin, item_id, codom.clone());
 
             check(state, ctxt.clone(), lin, linearizer, t, dom)?;
             Ok(codom)
@@ -2363,9 +2349,7 @@ fn infer_visited<L: Linearizer>(
             // cases.
             let inferred = state.table.fresh_type_uvar(ctxt.var_level);
 
-            if let Some(ref id) = item_id {
-                linearizer.retype(lin, id, inferred.clone());
-            }
+            linearizer.retype(lin, item_id, inferred.clone());
 
             check_visited(state, ctxt, lin, linearizer, rt, inferred.clone(), item_id)?;
             Ok(inferred.into_root(state.table))

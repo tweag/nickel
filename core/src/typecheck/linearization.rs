@@ -79,7 +79,7 @@ impl LinearizationState for Uninit {}
 pub trait Linearizer {
     type Building: LinearizationState;
     type Completed: LinearizationState + Default;
-    type ItemId: Clone;
+    type ItemId: Copy;
     type CompletionExtra;
 
     /// Record a new term.
@@ -121,10 +121,13 @@ pub trait Linearizer {
     }
 
     /// Allows to amend the type of an item.
+    ///
+    /// Because [add_term] returns an optional, it's more ergonomic to have `retype` accept an
+    /// optional as well. If the item id is `None`, `retype` simply does nothing.
     fn retype(
         &mut self,
         _lin: &mut Linearization<Self::Building>,
-        _item_id: &Self::ItemId,
+        _item_id: Option<Self::ItemId>,
         _new_type: UnifType,
     ) {
     }

@@ -688,7 +688,16 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
     }
 
-    fn retype(&mut self, lin: &mut Linearization<Building>, item_id: &ItemId, new_type: UnifType) {
+    fn retype(
+        &mut self,
+        lin: &mut Linearization<Building>,
+        item_id: Option<ItemId>,
+        new_type: UnifType,
+    ) {
+        let Some(item_id) = item_id else {
+            return;
+        };
+
         if let Some(item) = lin.linearization.get_mut(item_id.index) {
             debug!("retyping item {:?} to {:?}", item_id, new_type);
             item.ty = new_type;
