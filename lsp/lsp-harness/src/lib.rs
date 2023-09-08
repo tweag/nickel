@@ -3,7 +3,9 @@ mod output;
 
 pub use jsonrpc::Server;
 use log::error;
-use lsp_types::{CompletionParams, DocumentFormattingParams, GotoDefinitionParams, HoverParams, Url};
+use lsp_types::{
+    CompletionParams, DocumentFormattingParams, GotoDefinitionParams, HoverParams, Url,
+};
 pub use output::LspDebug;
 use serde::Deserialize;
 

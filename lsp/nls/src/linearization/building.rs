@@ -90,13 +90,7 @@ impl<'b> Building<'b> {
             TermKind::Record(_) => (),
             // unreachable()!: add_usage can only be called on let binding, functions and record
             // fields, only referring to items which support usages.
-            t @ (TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_)) => {
-                eprintln!(
-                    "ERROR: unexpected type/structure/usage {:#?} for id {decl:?}",
-                    t
-                );
-                unreachable!()
-            }
+            TermKind::Type(_) | TermKind::Structure | TermKind::Usage(_) => unreachable!(),
             TermKind::Declaration { ref mut usages, .. }
             | TermKind::RecordField { ref mut usages, .. } => usages.push(usage),
         };
@@ -147,7 +141,6 @@ impl<'b> Building<'b> {
                 metadata: Some(field.metadata.clone()),
             });
 
-            eprintln!("Registering field {id:?}");
             env.insert(ident.ident(), id);
             self.add_record_field(current_file, record, (ident.ident(), id))
         }

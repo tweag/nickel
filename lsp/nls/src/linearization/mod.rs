@@ -175,7 +175,6 @@ impl<'a> AnalysisHost<'a> {
         push: impl FnOnce(ItemId),
     ) -> ValueState {
         let next_id = self.next_id(lin);
-        eprintln!("setup_decl: main_id = {next_id:?}");
 
         match rt.as_ref() {
             Term::LetPattern(..) | Term::Let(..) => {
@@ -187,7 +186,7 @@ impl<'a> AnalysisHost<'a> {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id: next_id.clone(),
+                    id: next_id,
                     ty: ty.clone(),
                     pos,
                     kind: TermKind::Structure,
@@ -244,7 +243,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
                 if let Some(field) = lin.linearization.get_mut(record.index + offset.index) {
-                    debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
                             "associating nested field {:?} with chain {:?}",
@@ -306,7 +304,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         path: None,
                     };
 
-                    debug!("Adding ident {ident} with id {next_id:?}");
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
@@ -326,7 +323,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 {
                     let decl_id = self.next_id(lin);
 
-                    debug!("Pushing pattern id, decl_id = {decl_id:?}");
                     pattern_bindings.push(decl_id);
                     self.env.insert(bind_ident.ident(), decl_id);
 
@@ -365,7 +361,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     path: None,
                 };
 
-                debug!("Adding ident {ident} with id {next_id:?}");
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
@@ -685,9 +680,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;
-        }
-        else {
-            debug!("retype_indent failed! Environment miss: {}?", !self.env.get(&ident.ident()).is_some());
+        } else {
+            debug!(
+                "retype_indent failed! Environment miss: {}",
+                self.env.get(&ident.ident()).is_none()
+            );
         }
     }
 
@@ -695,6 +692,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         if let Some(item) = lin.linearization.get_mut(item_id.index) {
             debug!("retyping item {:?} to {:?}", item_id, new_type);
             item.ty = new_type;
+        } else {
+            debug!("retype item failed (item not found)!");
         }
     }
 }

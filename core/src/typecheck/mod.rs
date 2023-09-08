@@ -1664,7 +1664,6 @@ fn walk_with_annot<L: Linearizer>(
 /// isn't called.
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
-
 fn check<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
@@ -1673,14 +1672,14 @@ fn check<L: Linearizer>(
     rt: &RichTerm,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
-    check_from(state, ctxt, lin, linearizer, rt, ty, None)
+    check_visited(state, ctxt, lin, linearizer, rt, ty, None)
 }
 
 /// Variant of [check] taking an additional `item_id` to indicate that checking is done on a term
 /// that has already been visited by the linearizer, for example when coming from `infer`. When
-/// `item_id` is defined, the linearizer isn't called. [check] is just [check_from] called with
+/// `item_id` is defined, the linearizer isn't called. [check] is just [check_visited] called with
 /// `item_id` set to `None`.
-fn check_from<L: Linearizer>(
+fn check_visited<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -1912,7 +1911,7 @@ fn check_from<L: Linearizer>(
         | Term::Op2(..)
         | Term::OpN(..)
         | Term::Annotated(..) => {
-            let inferred = infer_from(state, ctxt.clone(), lin, linearizer, rt, item_id)?;
+            let inferred = infer_visited(state, ctxt.clone(), lin, linearizer, rt, item_id)?;
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
             subsumption(state, ctxt, inferred, ty)
@@ -2159,9 +2158,9 @@ fn infer_annotated<L: Linearizer>(
 /// (where `value` is always `Some(_)`) as well as field definitions (where `value` may or may not
 /// be defined).
 ///
-/// As for [check_from] and [infer_from], the additional `item_id` is provided when the term has
-/// been added to the linearizer before but can still benefit from updating its information with
-/// the inferred type.
+/// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
+/// has been added to the linearizer before but can still benefit from an updating its information
+/// with the inferred type.
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
 fn infer_with_annot<L: Linearizer>(
     state: &mut State,
@@ -2193,7 +2192,7 @@ fn infer_with_annot<L: Linearizer>(
             check(state, ctxt, lin, linearizer, value, uty2.clone())?;
             Ok(uty2)
         }
-        // A annotation without a type but with a contract switches the typechecker back to walk
+        // An annotation without a type but with a contract switches the typechecker back to walk
         // mode. If there are several contracts, we arbitrarily chose the first one as the apparent
         // type (the most precise type would be the intersection of all contracts, but Nickel's
         // type system doesn't feature intersection types).
@@ -2226,7 +2225,7 @@ fn infer_with_annot<L: Linearizer>(
         // produce an annotated term without an actual annotation. Still, such terms could be
         // produced programmatically, and aren't necessarily an issue.
         (_, Some(value)) => infer(state, ctxt, lin, linearizer, value),
-        // A empty value is a record field without definition. We don't check anything, and infer
+        // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
         //
@@ -2254,10 +2253,16 @@ fn infer<L: Linearizer>(
     linearizer: L,
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {
-    infer_from(state, ctxt, lin, linearizer, rt, None)
+    infer_visited(state, ctxt, lin, linearizer, rt, None)
 }
 
-fn infer_from<L: Linearizer>(
+/// Variant of [infer] taking an additional `item_id` to indicate that inference is done on a term
+/// that has already been visited by the linearizer, for example when coming directly from [check].
+/// When `item_id` is defined, the linearizer isn't called. [infer] is just `infer_visited` called
+/// with `item_id` set to `None`.
+///
+/// Whether `item_id` is `Some` or `None`, the item is always amended with its inferred type.
+fn infer_visited<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
     lin: &mut Linearization<L::Building>,
@@ -2267,8 +2272,8 @@ fn infer_from<L: Linearizer>(
 ) -> Result<UnifType, TypecheckError> {
     let RichTerm { term, pos } = rt;
 
-    // We don't have a type yet, so we put `Dyn` for now, and we'll update once we infer one
-    // via `linearizer.retype`
+    // We don't have a type yet, so we put `Dyn` for now, but we'll update once we infer one via
+    // `linearizer.retype`
     let item_id = item_id.or_else(|| linearizer.add_term(lin, rt, mk_uniftype::dynamic()));
 
     match term.as_ref() {
@@ -2368,7 +2373,7 @@ fn infer_from<L: Linearizer>(
                 linearizer.retype(lin, id, inferred.clone());
             }
 
-            check_from(state, ctxt, lin, linearizer, rt, inferred.clone(), item_id)?;
+            check_visited(state, ctxt, lin, linearizer, rt, inferred.clone(), item_id)?;
             Ok(inferred.into_root(state.table))
         }
     }
@@ -2378,17 +2383,19 @@ fn infer_from<L: Linearizer>(
 ///
 /// Call [`apparent_type`] to see if the binding is annotated. If it is, return this type as a
 /// [`UnifType`]. Otherwise:
-///     * in non strict mode, we won't (and possibly can't) infer the type of `bound_exp`: just
-///       return `Dyn`.
-///     * in strict mode, we will typecheck `bound_exp`: return a new unification variable to be
-///       associated to `bound_exp`.
-/// As this function is always called in a context where an `ImportResolver` is present, expect
-/// it passed in arguments.
+///
+/// - in walk mode, we won't (and possibly can't) infer the type of `bound_exp`: just return `Dyn`.
+/// - in typecheck mode, we will typecheck `bound_exp`: return a new unification variable to be
+///   associated to `bound_exp`.
+///
+/// As this function is always called in a context where an `ImportResolver` is present, expect it
+/// passed in arguments.
 ///
 /// If the annotated type contains any wildcard:
-///     * in non strict mode, wildcards are assigned `Dyn`.
-///     * in strict mode, the wildcard is typechecked, and we return the unification variable
-///       corresponding to it.
+///
+/// - in non strict mode, wildcards are assigned `Dyn`.
+/// - in strict mode, the wildcard is typechecked, and we return the unification variable
+///   corresponding to it.
 fn binding_type(state: &mut State, t: &Term, ctxt: &Context, strict: bool) -> UnifType {
     apparent_or_infer(
         state,
