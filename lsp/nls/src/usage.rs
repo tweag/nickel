@@ -8,7 +8,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::{Def, DefWithPath, TermAtPath},
+    field_walker::{DefWithPath, TermAtPath},
     identifier::LocIdent,
 };
 
@@ -42,11 +42,9 @@ impl EnvExt for Environment {
         self.insert(
             ident.ident,
             DefWithPath {
-                def: Def {
-                    ident,
-                    value: term.map(Into::into),
-                    metadata: meta,
-                },
+                ident,
+                value: term.map(Into::into),
+                metadata: meta,
                 path: path.unwrap_or_default(),
             },
         );
@@ -177,7 +175,7 @@ impl UsageLookup {
                 Term::Var(id) => {
                     let id = LocIdent::from(*id);
                     if let Some(def) = env.get(&id.ident) {
-                        self.usage_table.entry(def.def.ident).or_default().push(id);
+                        self.usage_table.entry(def.ident).or_default().push(id);
                     }
                     TraverseControl::Continue
                 }
@@ -222,10 +220,7 @@ mod tests {
 
         let def = table.def(&x1).unwrap();
         assert_eq!(def.ident(), x0);
-        assert_matches!(
-            def.value().unwrap().as_term().unwrap().term.as_ref(),
-            Term::Num(_)
-        );
+        assert_matches!(def.value().unwrap().term.as_ref(), Term::Num(_));
     }
 
     #[test]
