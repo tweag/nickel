@@ -73,8 +73,12 @@ pub struct UsageLookup {
 impl UsageLookup {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
     pub fn new(rt: &RichTerm) -> Self {
+        Self::new_with_env(rt, &Environment::new())
+    }
+
+    pub fn new_with_env(rt: &RichTerm, env: &Environment) -> Self {
         let mut table = Self::default();
-        table.fill(rt, &Environment::new());
+        table.fill(rt, env);
         table
     }
 
