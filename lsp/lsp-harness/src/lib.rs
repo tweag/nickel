@@ -3,7 +3,7 @@ mod output;
 
 pub use jsonrpc::Server;
 use log::error;
-use lsp_types::{CompletionParams, DocumentFormattingParams, GotoDefinitionParams, Url};
+use lsp_types::{CompletionParams, DocumentFormattingParams, GotoDefinitionParams, HoverParams, Url};
 pub use output::LspDebug;
 use serde::Deserialize;
 
@@ -30,6 +30,7 @@ pub enum Request {
     GotoDefinition(GotoDefinitionParams),
     Completion(CompletionParams),
     Formatting(DocumentFormattingParams),
+    Hover(HoverParams),
 }
 
 #[derive(Deserialize, Debug, Default)]
