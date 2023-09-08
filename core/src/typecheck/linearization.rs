@@ -122,7 +122,7 @@ pub trait Linearizer {
 
     /// Allows to amend the type of an item.
     ///
-    /// Because [add_term] returns an optional, it's more ergonomic to have `retype` accept an
+    /// Because [Self::add_term] returns an optional, it's more ergonomic to have `retype` accept an
     /// optional as well. If the item id is `None`, `retype` simply does nothing.
     fn retype(
         &mut self,
