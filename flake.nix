@@ -218,6 +218,16 @@
           (builtins.stringLength pad)
           pad;
 
+      # We want `nickel --version` to print the git revision that nickel
+      # was compiled from. However, putting self.shortRev in a derivation
+      # invalidates the cache on any change, even if otherwise the derivation
+      # is identical. To mitigate this, we pass an unchanging string as the
+      # revision in `NICKEL_NIX_BUILD_REV`, and then have a small wrapper that
+      # replaces that string in the output binary. On every new commit this fast
+      # derivation will have to be rebuilt, but the slow compilation of rust
+      # code will only happen on more substantial changes.
+      # This is only needed for binaries that actually make use of this
+      # information (just the cli)
       fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
         pname = pkg.pname + "-rev-fixup";
         inherit (pkg) version meta;
@@ -229,7 +239,8 @@
           for srcBin in $src/bin/*; do
             outBin="$out/bin/$(basename $srcBin)"
             # [dirty] must have 7 characters to match dummyRev (hard coded in nickel-lang-cli)
-            # we have to pad them out so they fit in the same spot in the binary
+            # we have to pad them out to the same length as dummyRev so they fit
+            # in the same spot in the binary
             bbe -e 's/${dummyRev}/${padWith dummyRev (self.shortRev or "[dirty]")}/' \
               $srcBin > $outBin
             chmod +x $outBin
