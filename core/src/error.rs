@@ -465,10 +465,7 @@ pub enum ParseError {
     ///   e.g. in the signature `forall r. { ; r } -> r`,
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
-    TypeVariableKindMismatch {
-        ty_var: LocIdent,
-        span: RawSpan,
-    },
+    TypeVariableKindMismatch { ty_var: LocIdent, span: RawSpan },
     /// A record literal, which isn't a record type, has a field with a type annotation but without
     /// a definition. While we could technically handle this situation, this is most probably an
     /// error from the user, because this type annotation is useless and, maybe non-intuitively,
@@ -502,10 +499,8 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
-    DisabledFeature {
-        feature: String,
-        span: RawSpan,
-    },
+    /// There was an attempt to use a feature that hasn't been enabled
+    DisabledFeature { feature: String, span: RawSpan },
 }
 
 /// An error occurring during the resolution of an import.
@@ -1803,8 +1798,8 @@ impl IntoDiagnostics<FileId> for ParseError {
                 ]),
             ParseError::DisabledFeature { feature, span } =>
                 Diagnostic::error()
-                    .with_message("Interpreter compiled without required features")
-                    .with_labels(vec![primary(&span).with_message(format!("this syntax is only supported with the `{}` feature", feature))])
+                    .with_message("interpreter compiled without required features")
+                    .with_labels(vec![primary(&span).with_message(format!("this syntax is only supported with the `{}` feature enabled", feature))])
                     .with_notes(vec![format!("Recompile nickel with `--features {}`", feature)]),
         };
 

@@ -14,10 +14,13 @@ using namespace nix;
 
 #include "nickel-lang-core/src/nix_ffi/mod.rs.h"
 
+// nix is designed with command-line use in mind, and there's some setup stuff
+// that's tied to the EvalCommand class.
 struct DummyEvalCommand : virtual EvalCommand {
 
   void run(ref<Store> store) override
   {
+    // so it doesn't complain about unused variables
     (void)store;
   }
 
