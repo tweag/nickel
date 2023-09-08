@@ -1285,6 +1285,8 @@ impl fmt::Display for UnaryOp {
             RecordEmptyWithTail() => write!(f, "record_empty_with_tail"),
             Trace() => write!(f, "trace"),
             LabelPushDiag() => write!(f, "label_push_diag"),
+            #[cfg(feature = "nix-experimental")]
+            EvalNix() => write!(f, "eval_nix"),
         }
     }
 }
