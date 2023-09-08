@@ -1,0 +1,16 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<0:34-0:37>[Applies a function to every element in the given array. That is,
+`map f [ x1, x2, ..., xn ]` is `[ f x1, f x2, ..., f xn ]`.
+
+# Examples
+
+```nickel
+std.array.map (fun x => x + 1) [ 1, 2, 3 ] =>
+  [ 2, 3, 4 ]
+```, ```nickel
+forall a b. (a -> b) -> Array a -> Array b
+```]
+
