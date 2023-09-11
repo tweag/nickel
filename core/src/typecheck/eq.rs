@@ -148,6 +148,7 @@ struct State {
     /// typechecker. Generated type constants simply needs to be unique for the duration of the
     /// type equality computation.
     var_uid: usize,
+
     /// The current gas remaining for variable substitutions. Once it reaches zero and we encounter
     /// a variable, we abort the computation and return false.
     gas: u8,

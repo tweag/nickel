@@ -63,14 +63,18 @@ use std::{
 pub enum Term {
     /// The null value.
     Null,
+
     /// A boolean value.
     Bool(bool),
+
     /// A floating-point value.
     #[serde(serialize_with = "crate::serialize::serialize_num")]
     #[serde(deserialize_with = "crate::serialize::deserialize_num")]
     Num(Number),
+
     /// A literal string.
     Str(NickelString),
+
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
     ///
@@ -81,12 +85,15 @@ pub enum Term {
     /// efficiently from the back of it.
     #[serde(skip)]
     StrChunks(Vec<StrChunk<RichTerm>>),
+
     /// A standard function.
     #[serde(skip)]
     Fun(LocIdent, RichTerm),
+
     /// A function able to destruct its arguments.
     #[serde(skip)]
     FunPattern(Option<LocIdent>, RecordPattern, RichTerm),
+
     /// A blame label.
     #[serde(skip)]
     Lbl(Label),
@@ -94,12 +101,15 @@ pub enum Term {
     /// A let binding.
     #[serde(skip)]
     Let(LocIdent, RichTerm, RichTerm, LetAttrs),
+
     /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<LocIdent>, RecordPattern, RichTerm, RichTerm),
+
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
+
     /// A variable.
     #[serde(skip)]
     Var(LocIdent),
@@ -111,6 +121,7 @@ pub enum Term {
     #[serde(serialize_with = "crate::serialize::serialize_record")]
     #[serde(deserialize_with = "crate::serialize::deserialize_record")]
     Record(RecordData),
+
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
@@ -118,6 +129,7 @@ pub enum Term {
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
+
     /// A match construct. Correspond only to the match cases: this expression is still to be
     /// applied to an argument to match on. Once applied, the evaluation is done by the
     /// corresponding primitive operator. Still, we need this construct for typechecking and being
@@ -136,9 +148,11 @@ pub enum Term {
     /// A primitive unary operator.
     #[serde(skip)]
     Op1(UnaryOp, RichTerm),
+
     /// A primitive binary operator.
     #[serde(skip)]
     Op2(BinaryOp, RichTerm, RichTerm),
+
     /// An primitive n-ary operator.
     #[serde(skip)]
     OpN(NAryOp, Vec<RichTerm>),
@@ -178,6 +192,7 @@ pub enum Term {
     /// An unresolved import.
     #[serde(skip)]
     Import(OsString),
+
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
@@ -192,6 +207,7 @@ pub enum Term {
     /// programs.
     #[serde(skip)]
     ParseError(ParseError),
+
     /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
     /// without the need to store them in the AST. However, some cases require a term which aborts
     /// with a specific error if evaluated, but is fine being stored and passed around.
@@ -245,6 +261,7 @@ pub type Number = Rational;
 pub enum BindingType {
     #[default]
     Normal,
+
     /// In the revertible case, we also store an optional set of dependencies. See
     /// [`crate::transform::free_vars`] for more details.
     Revertible(FieldDeps),
@@ -256,6 +273,7 @@ pub enum BindingType {
 pub struct RuntimeContract {
     /// The pending contract, can be a function or a record.
     pub contract: RichTerm,
+
     /// The blame label.
     pub label: Label,
 }
@@ -326,6 +344,7 @@ impl std::convert::TryFrom<LabeledType> for RuntimeContract {
 pub struct LetAttrs {
     /// The type of a let binding. See the documentation of [`BindingType`].
     pub binding_type: BindingType,
+
     /// A recursive let binding adds its binding to the environment of the expression.
     pub rec: bool,
 }
@@ -351,14 +370,17 @@ impl From<LetMetadata> for record::FieldMetadata {
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
+
     /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
     /// provided.
     ///
     /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
+
     /// A numeral priority.
     Numeral(Number),
+
     /// The priority of values that override everything else and can't be overridden.
     Top,
 }
@@ -465,6 +487,7 @@ impl Traverse<RichTerm> for LabeledType {
 pub struct TypeAnnotation {
     /// The type annotation (using `:`).
     pub typ: Option<LabeledType>,
+
     /// The contracts annotation (using `|`).
     pub contracts: Vec<LabeledType>,
 }
@@ -582,6 +605,7 @@ impl Traverse<RichTerm> for TypeAnnotation {
 pub enum StrChunk<E> {
     /// A string literal.
     Literal(String),
+
     /// An interpolated expression.
     Expr(
         E,     /* the expression */
@@ -902,8 +926,10 @@ pub enum UnaryOp {
     // second argument.
     /// Boolean AND operator.
     BoolAnd(),
+
     /// Boolean OR operator.
     BoolOr(),
+
     /// Boolean NOT operator.
     BoolNot(),
 
@@ -916,6 +942,7 @@ pub enum UnaryOp {
     /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
     /// `embed someId` act like the identity.
     Embed(LocIdent),
+
     /// Evaluate a match block applied to an argument.
     Match { has_default: bool },
 
@@ -926,6 +953,7 @@ pub enum UnaryOp {
 
     /// Map a function on each element of an array.
     ArrayMap(),
+
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
@@ -938,6 +966,7 @@ pub enum UnaryOp {
 
     /// Get the polarity of a label.
     Pol(),
+
     /// Go to the domain in the type path of a label.
     ///
     /// If the argument is a label with a [type path][crate::label::TyPath) representing some
@@ -957,14 +986,17 @@ pub enum UnaryOp {
     /// ------------------- original type
     /// ```
     GoDom(),
+
     /// Go to the codomain in the type path of a label.
     ///
     /// See `GoDom`.
     GoCodom(),
+
     /// Go to the array in the type path of a label.
     ///
     /// See `GoDom`.
     GoArray(),
+
     /// Go to the type ascribed to every field in a dictionary.
     ///
     /// See `GoDom`.
@@ -972,6 +1004,7 @@ pub enum UnaryOp {
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
+
     /// Recursively force the evaluation of its first argument then returns the second.
     ///
     /// Recursive here means that the evaluation does not stop at a WHNF, but the content of arrays
@@ -980,6 +1013,7 @@ pub enum UnaryOp {
 
     /// Return the length of an array.
     ArrayLength(),
+
     /// Generate an array of a given length by mapping a `Num -> Num` function onto `[1,..,n]`.
     ArrayGen(),
 
@@ -991,37 +1025,50 @@ pub enum UnaryOp {
 
     /// Return the names of the fields of a record as a string array.
     FieldsOf(),
+
     /// Return the values of the fields of a record as an array.
     ValuesOf(),
 
     /// Remove heading and trailing spaces from a string.
     StrTrim(),
+
     /// Return the array of characters of a string.
     StrChars(),
+
     /// Transform a string to uppercase.
     StrUppercase(),
+
     /// Transform a string to lowercase.
     StrLowercase(),
+
     /// Return the length of a string.
     StrLength(),
+
     /// Transform a data to a string.
     ToStr(),
+
     /// Transform a string to a number.
     NumFromStr(),
+
     /// Transform a string to an enum.
     EnumFromStr(),
+
     /// Test if a regex matches a string.
     /// Like [`UnaryOp::StrFind`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
     /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrFindCompiled`]
     StrIsMatch(),
+
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
     StrFind(),
+
     /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
+
     /// Version of [`UnaryOp::StrFind`] which remembers the compiled regex.
     StrFindCompiled(CompiledRegex),
+
     /// Force full evaluation of a term and return it.
     ///
     /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
@@ -1049,6 +1096,7 @@ pub enum UnaryOp {
     /// fields that are marked as `not_exported`. When `for_export` is `false`,
     /// these fields are evaluated.
     Force { ignore_not_exported: bool },
+
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.
@@ -1078,6 +1126,7 @@ pub enum UnaryOp {
     /// If a value has any explicit priority annotation, then the original annotation takes
     /// precedence and the default doesn't apply.
     RecDefault(),
+
     /// Recursive force priority operator. Similar to [UnaryOp::RecDefault], but propagate the
     /// `force` annotation.
     ///
@@ -1193,6 +1242,7 @@ pub enum OpPos {
     Infix,
     Postfix,
     Prefix,
+
     /// A special operator like `if ... then ... else ...`
     Special,
 }
@@ -1221,28 +1271,40 @@ pub enum RecordExtKind {
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
+
     /// Subtraction of numerals.
     Sub(),
+
     /// Multiplication of numerals.
     Mult(),
+
     /// Floating-point division of numerals.
     Div(),
+
     /// Modulo of numerals.
     Modulo(),
+
     /// Raise a number to a power.
     Pow(),
+
     /// Concatenation of strings.
     StrConcat(),
+
     /// Polymorphic equality.
     Eq(),
+
     /// Strictly less than comparison operator.
     LessThan(),
+
     /// Less than or equal comparison operator.
     LessOrEq(),
+
     /// Strictly greater than comparison operator.
     GreaterThan(),
+
     /// Greater than or equal comparison operator.
     GreaterOrEq(),
+
     /// An assume.
     ///
     /// Apply a contract to a label and a value. The value is is stored on the stack unevaluated,
@@ -1251,14 +1313,17 @@ pub enum BinaryOp {
     /// operation with its argument. Finally, this operator marks the location of the contract
     /// argument for better error reporting.
     Assume(),
+
     /// Unseal a sealed term.
     ///
     /// See [`BinaryOp::Seal`].
     Unseal(),
+
     /// Go to a specific field in the type path of a label.
     ///
     /// See `GoDom`.
     GoField(),
+
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known
@@ -1276,16 +1341,22 @@ pub enum BinaryOp {
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
     },
+
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
+
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
+
     /// Test if a record has a specific field.
     HasField(),
+
     /// Concatenate two arrays.
     ArrayConcat(),
+
     /// Access the n-th element of an array.
     ArrayElemAt(),
+
     /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
     /// [crate::label::MergeLabel], which carries additional information for error-reporting
     /// purpose.
@@ -1293,15 +1364,19 @@ pub enum BinaryOp {
 
     /// Hash a string.
     Hash(),
+
     /// Serialize a value to a string.
     Serialize(),
+
     /// Deserialize a string to a value.
     Deserialize(),
 
     /// Split a string into an array.
     StrSplit(),
+
     /// Determine if a string is a substring of another one.
     StrContains(),
+
     /// Seal a term with a sealing key (see [`Term::Sealed`]).
     Seal(),
 
@@ -1315,8 +1390,10 @@ pub enum BinaryOp {
 
     /// Set the message of the current diagnostic of a label.
     LabelWithMessage(),
+
     /// Set the notes of the current diagnostic of a label.
     LabelWithNotes(),
+
     /// Append a note to the current diagnostic of a label.
     LabelAppendNote(),
 
@@ -1384,13 +1461,17 @@ impl fmt::Display for BinaryOp {
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
+
     /// Same as [`NAryOp::StrReplace`], but the pattern is interpreted as a regular expression.
     StrReplaceRegex(),
+
     /// Return a substring of an original string.
     StrSubstr(),
+
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
+
     /// Seals one record into the tail of another. Used to ensure that functions
     /// using polymorphic record contracts do not violate parametricity.
     ///
@@ -1400,6 +1481,7 @@ pub enum NAryOp {
     ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
     ///   - the [record](Term::Record) that we wish to seal.
     RecordSealTail(),
+
     /// Unseals a term from the tail of a record and returns it.
     ///
     /// Takes three arguments:
@@ -1408,6 +1490,7 @@ pub enum NAryOp {
     ///     something goes wrong while unsealing,
     ///   - the [record](Term::Record) whose tail we wish to unseal.
     RecordUnsealTail(),
+
     /// Insert type variable data into the `type_environment` of a [`crate::label::Label`]
     ///
     /// Takes four arguments:
@@ -1416,6 +1499,7 @@ pub enum NAryOp {
     ///   - the [kind](crate::typ::VarKind) of the type variable
     ///   - a [label](Term::Lbl) on which to operate
     InsertTypeVar(),
+
     /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
     /// hood, as long as the array isn't modified later, this operation is constant in time and
     /// memory.
@@ -1540,8 +1624,10 @@ impl RichTerm {
 pub enum TraverseControl<U> {
     /// Normal control flow: continue recursing into the children.
     Continue,
+
     /// Skip this branch of the tree.
     SkipBranch,
+
     /// Finish traversing immediately (and return a value).
     Return(U),
 }
