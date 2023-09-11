@@ -23,7 +23,14 @@ use crate::format::FormatCommand;
     author,
     about,
     long_about = None,
-    version = format!("{} {} (rev {})", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"), git_version!(fallback = env!("NICKEL_NIX_BUILD_REV")))
+    version = format!(
+        "{} {} (rev {})",
+        env!("CARGO_BIN_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        // 7 is the length of self.shortRev. the string is padded out so it can
+        // be searched for in the binary
+        git_version!(fallback = &env!("NICKEL_NIX_BUILD_REV")[0..7])
+    )
 )]
 pub struct Options {
     #[command(flatten)]

@@ -206,6 +206,48 @@
             ]);
         };
 
+      # if we directly set the revision, it would invalidate the cache on every commit.
+      # instead we set a static dummy hash and edit the binary in a separate (fast) derivation.
+      dummyRev = "DUMMYREV_THIS_SHOULD_NOT_APPEAR_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+      # pad a string with the tail of another string
+      padWith = pad: str:
+        str +
+        builtins.substring
+          (builtins.stringLength str)
+          (builtins.stringLength pad)
+          pad;
+
+      # We want `nickel --version` to print the git revision that nickel
+      # was compiled from. However, putting self.shortRev in a derivation
+      # invalidates the cache on any change, even if otherwise the derivation
+      # is identical. To mitigate this, we pass an unchanging string as the
+      # revision in `NICKEL_NIX_BUILD_REV`, and then have a small wrapper that
+      # replaces that string in the output binary. On every new commit this fast
+      # derivation will have to be rebuilt, but the slow compilation of rust
+      # code will only happen on more substantial changes.
+      # This is only needed for binaries that actually make use of this
+      # information (just the cli)
+      fixupGitRevision = pkg: pkgs.stdenv.mkDerivation {
+        pname = pkg.pname + "-rev-fixup";
+        inherit (pkg) version meta;
+        src = pkg;
+        buildInputs = [ pkgs.bbe ];
+        phases = [ "fixupPhase" ];
+        fixupPhase = ''
+          mkdir -p $out/bin
+          for srcBin in $src/bin/*; do
+            outBin="$out/bin/$(basename $srcBin)"
+            # [dirty] must have 7 characters to match dummyRev (hard coded in nickel-lang-cli)
+            # we have to pad them out to the same length as dummyRev so they fit
+            # in the same spot in the binary
+            bbe -e 's/${dummyRev}/${padWith dummyRev (self.shortRev or "[dirty]")}/' \
+              $srcBin > $outBin
+            chmod +x $outBin
+          done
+        '';
+      };
+
       # Given a rust toolchain, provide Nickel's Rust dependencies, Nickel, as
       # well as rust tools (like clippy)
       mkCraneArtifacts = { rust ? mkRust { }, noRunBench ? false }:
@@ -231,7 +273,7 @@
           };
 
           env = {
-            NICKEL_NIX_BUILD_REV = self.shortRev or "dirty";
+            NICKEL_NIX_BUILD_REV = dummyRev;
           };
 
           buildPackage = { pnameSuffix, cargoPackage ? "${pname}${pnameSuffix}", extraBuildArgs ? "", extraArgs ? { } }:
@@ -241,8 +283,7 @@
                 pnameSuffix
                 src
                 version
-                cargoArtifacts
-                env;
+                cargoArtifacts;
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
@@ -250,8 +291,17 @@
         rec {
           inherit cargoArtifacts;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
-          nickel-lang-cli = buildPackage { pnameSuffix = "-cli"; extraArgs.meta.mainProgram = "nickel"; };
-          lsp-nls = buildPackage { pnameSuffix = "-lsp"; extraArgs.meta.mainProgram = "nls"; };
+          nickel-lang-cli = fixupGitRevision (buildPackage {
+            pnameSuffix = "-cli";
+            extraArgs = {
+              inherit env;
+              meta.mainProgram = "nickel";
+            };
+          });
+          lsp-nls = buildPackage {
+            pnameSuffix = "-lsp";
+            extraArgs.meta.mainProgram = "nls";
+          };
 
           # Static building isn't really possible on MacOS because the system call ABIs aren't stable.
           nickel-static =
@@ -261,29 +311,31 @@
             # To build Nickel and its dependencies statically we use the musl
             # libc and clang with libc++ to build C and C++ dependencies. We
             # tried building with libstdc++ but without success.
-              buildPackage {
-                cargoPackage = "nickel-lang-cli";
-                pnameSuffix = "-static";
-                extraArgs = {
-                  CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
-                  # For some reason, the rust build doesn't pick up the paths
-                  # to `libcxx` and `libcxxabi` from the stdenv. So we specify
-                  # them explicitly. Also, `libcxx` expects to be linked with
-                  # `libcxxabi` at the end, and we need to make the rust linker
-                  # aware of that.
-                  #
-                  # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
-                  RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
-                  # Explain to `cc-rs` that it should use the `libcxx` C++
-                  # standard library, and a static version of it, when building
-                  # C++ libraries. The `cc-rs` crate is typically used in
-                  # upstream build.rs scripts.
-                  CXXSTDLIB = "static=c++";
-                  stdenv = pkgs.pkgsMusl.libcxxStdenv;
-                  doCheck = false;
-                  meta.mainProgram = "nickel";
-                };
-              };
+              fixupGitRevision
+                (buildPackage {
+                  cargoPackage = "nickel-lang-cli";
+                  pnameSuffix = "-static";
+                  extraArgs = {
+                    inherit env;
+                    CARGO_BUILD_TARGET = pkgs.rust.toRustTarget pkgs.pkgsMusl.stdenv.hostPlatform;
+                    # For some reason, the rust build doesn't pick up the paths
+                    # to `libcxx` and `libcxxabi` from the stdenv. So we specify
+                    # them explicitly. Also, `libcxx` expects to be linked with
+                    # `libcxxabi` at the end, and we need to make the rust linker
+                    # aware of that.
+                    #
+                    # We also explicitly add `libc` because of https://github.com/rust-lang/rust/issues/89626.
+                    RUSTFLAGS = "-L${pkgs.pkgsMusl.llvmPackages.libcxx}/lib -L${pkgs.pkgsMusl.llvmPackages.libcxxabi}/lib -lstatic=c++abi -C link-arg=-lc";
+                    # Explain to `cc-rs` that it should use the `libcxx` C++
+                    # standard library, and a static version of it, when building
+                    # C++ libraries. The `cc-rs` crate is typically used in
+                    # upstream build.rs scripts.
+                    CXXSTDLIB = "static=c++";
+                    stdenv = pkgs.pkgsMusl.libcxxStdenv;
+                    doCheck = false;
+                    meta.mainProgram = "nickel";
+                  };
+                });
 
           benchmarks = craneLib.mkCargoDerivation {
             inherit pname src version cargoArtifacts env;
@@ -311,7 +363,7 @@
 
           rustfmt = craneLib.cargoFmt {
             # Notice that unlike other Crane derivations, we do not pass `cargoArtifacts` to `cargoFmt`, because it does not need access to dependencies to format the code.
-            inherit pname src env;
+            inherit pname src;
 
             cargoExtraArgs = "--all";
 
