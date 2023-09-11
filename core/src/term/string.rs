@@ -323,6 +323,12 @@ impl NickelString {
     }
 }
 
+impl Default for NickelString {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub enum RegexFindResult {
     NoMatch,
     Match {

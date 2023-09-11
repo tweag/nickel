@@ -113,6 +113,12 @@ impl Envs {
     }
 }
 
+impl Default for Envs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// An entry in the term cache. Stores the parsed term together with some metadata and state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermEntry {

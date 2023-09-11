@@ -1111,6 +1111,12 @@ impl Context {
     }
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
     NotARecord(RichTerm),

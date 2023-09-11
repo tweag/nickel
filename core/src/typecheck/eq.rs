@@ -79,6 +79,12 @@ impl SimpleTermEnvironment {
     }
 }
 
+impl Default for SimpleTermEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TermEnvironment for SimpleTermEnvironment {
     fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where

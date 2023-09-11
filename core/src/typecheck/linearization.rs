@@ -202,6 +202,12 @@ impl<B, C, E> StubHost<B, C, E> {
     }
 }
 
+impl<B, C, E> Default for StubHost<B, C, E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct ScopeId(usize);
 
