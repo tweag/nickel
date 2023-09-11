@@ -131,7 +131,7 @@ pub struct AnalysisHost<'a> {
     /// ```
     ///
     /// To resolve those inner fields, accessors (`inner`, `middle`)
-    /// are recorded first until a variable (`outer`). is found.
+    /// are recorded first until a variable (`outer`) is found.
     /// Then, access to all nested records are resolved at once.
     access: Option<Vec<LocIdent>>,
 }
@@ -148,6 +148,56 @@ impl<'a> AnalysisHost<'a> {
             access: Default::default(),
         }
     }
+
+    fn next_id(&self, lin: &Linearization<Building>) -> ItemId {
+        ItemId {
+            file_id: self.file,
+            index: lin.next_id(),
+        }
+    }
+
+    // Helper with logic common to let/fun and let pattern/fun pattern.
+    //
+    // If the term is a let-binding, this function calls to the provided `push` callback to add the next
+    // item id to the relevant list of bindings.
+    //
+    // If the term is a function, this function generates a stub item for it.
+    //
+    // Returns the value state of the corresponding declaration.
+    //
+    // Panic if `rt` is neither a let/let pattern nor a fun/fun pattern.
+    fn setup_decl(
+        &mut self,
+        lin: &mut Linearization<Building>,
+        rt: &RichTerm,
+        ty: &UnifType,
+        pos: TermPos,
+        push: impl FnOnce(ItemId),
+    ) -> ValueState {
+        let next_id = self.next_id(lin);
+
+        match rt.as_ref() {
+            Term::LetPattern(..) | Term::Let(..) => {
+                push(next_id);
+                ValueState::Unknown
+            }
+            Term::FunPattern(..) | Term::Fun(..) => {
+                // stub object, representing the whole function
+                lin.push(LinearizationItem {
+                    env: self.env.clone(),
+                    term: rt.clone(),
+                    id: next_id,
+                    ty: ty.clone(),
+                    pos,
+                    kind: TermKind::Structure,
+                    metadata: self.meta.take(),
+                });
+
+                ValueState::Known(self.next_id(lin))
+            }
+            _ => panic!("expected only a let pattern or a fun pattern in this function"),
+        }
+    }
 }
 
 use nickel_lang_core::typ::Type;
@@ -156,12 +206,25 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     type Building = Building<'a>;
     type Completed = Completed;
     type CompletionExtra = Extra;
+    type ItemId = ItemId;
 
-    fn add_term(&mut self, lin: &mut Linearization<Building>, rt: &RichTerm, ty: UnifType) {
+    fn add_term(
+        &mut self,
+        lin: &mut Linearization<Building>,
+        rt: &RichTerm,
+        ty: UnifType,
+    ) -> Option<ItemId> {
         let pos = rt.pos;
         let term = rt.term.as_ref();
         debug!("adding term: {:?} @ {:?}", term, pos);
-        let mut id_gen = lin.id_gen();
+
+        // The id of the main item added. Some terms give rise to several items (records or
+        // functions for example), but this is the id of the first item added, which is considered
+        // to be the item attached to the term - the rest is extra declaration/usage/etc
+        let main_id = ItemId {
+            file_id: self.file,
+            index: lin.next_id(),
+        };
 
         // Register record field if appropriate
         // `record` is the id [LinearizatonItem] of the enclosing record
@@ -180,7 +243,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 .map(|(record, mut fields)| (record, fields.pop().unwrap()))
             {
                 if let Some(field) = lin.linearization.get_mut(record.index + offset.index) {
-                    debug!("{:?}", field.kind);
                     let usage_offset = if matches!(term, Term::Var(_)) {
                         debug!(
                             "associating nested field {:?} with chain {:?}",
@@ -195,7 +257,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         TermKind::RecordField { ref mut value, .. } => {
                             *value = ValueState::Known(ItemId {
                                 file_id: self.file,
-                                index: id_gen.get() + usage_offset,
+                                index: main_id.index + usage_offset,
                             });
                         }
                         // The linearization item of a record with n fields is expected to be
@@ -213,7 +275,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         decl,
                         ItemId {
                             file_id: self.file,
-                            index: id_gen.get() + offset,
+                            index: main_id.index + offset,
                         },
                     );
                 }
@@ -221,51 +283,19 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
 
         if pos == TermPos::None {
-            return;
+            return None;
         }
 
-        let id = ItemId {
-            file_id: self.file,
-            index: id_gen.get(),
-        };
         match term {
             Term::LetPattern(ident, destruct, ..) | Term::FunPattern(ident, destruct, _) => {
-                let mut binding = None;
+                let mut pattern_bindings = Vec::new();
+
                 if let Some(ident) = ident {
-                    let value_ptr = match term {
-                        Term::LetPattern(..) => {
-                            binding = Some(id);
-                            ValueState::Unknown
-                        }
-                        Term::FunPattern(..) => {
-                            // stub object, representing the whole function
-                            lin.push(LinearizationItem {
-                                env: self.env.clone(),
-                                term: rt.clone(),
-                                id: ItemId {
-                                    file_id: self.file,
-                                    index: id_gen.get_and_advance(),
-                                },
+                    let value_ptr =
+                        self.setup_decl(lin, rt, &ty, pos, |id| pattern_bindings.push(id));
 
-                                ty: ty.clone(),
-                                pos,
-                                kind: TermKind::Structure,
-                                metadata: self.meta.take(),
-                            });
-
-                            ValueState::Known(ItemId {
-                                file_id: self.file,
-                                index: id_gen.get(),
-                            })
-                        }
-                        _ => unreachable!(),
-                    };
-
-                    let id = ItemId {
-                        file_id: self.file,
-                        index: id_gen.get_and_advance(),
-                    };
-                    self.env.insert(ident.ident(), id);
+                    let next_id = self.next_id(lin);
+                    self.env.insert(ident.ident(), next_id);
 
                     let kind = TermKind::Declaration {
                         id: ident.to_owned(),
@@ -273,10 +303,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         value: value_ptr,
                         path: None,
                     };
+
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
-                        id,
+                        id: next_id,
                         ty,
                         pos: ident.pos,
                         kind,
@@ -284,28 +315,21 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     });
                 }
 
-                let mut let_pattern_bindings = if let Some(id) = binding {
-                    vec![id]
-                } else {
-                    Vec::new()
-                };
                 for (path, bind_ident, field) in destruct
                     .to_owned()
                     .inner()
                     .into_iter()
                     .flat_map(|matched| matched.to_flattened_bindings())
                 {
-                    let id = ItemId {
-                        file_id: self.file,
-                        index: id_gen.get_and_advance(),
-                    };
+                    let decl_id = self.next_id(lin);
 
-                    let_pattern_bindings.push(id);
-                    self.env.insert(bind_ident.ident(), id);
+                    pattern_bindings.push(decl_id);
+                    self.env.insert(bind_ident.ident(), decl_id);
+
                     lin.push(LinearizationItem {
                         env: self.env.clone(),
                         term: rt.clone(),
-                        id,
+                        id: decl_id,
                         // TODO: get type from pattern
                         ty: UnifType::concrete(TypeF::Dyn),
                         pos: bind_ident.pos,
@@ -318,44 +342,17 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                         metadata: Some(field.metadata),
                     });
                 }
-                self.bindings = Some(let_pattern_bindings);
+
+                self.bindings = Some(pattern_bindings);
             }
             Term::Let(ident, ..) | Term::Fun(ident, ..) => {
-                let value_ptr = match term {
-                    Term::Let(..) => {
-                        self.bindings = Some(vec![id]);
-                        ValueState::Unknown
-                    }
-                    Term::Fun(..) => {
-                        // stub object, representing the whole function
-                        lin.push(LinearizationItem {
-                            env: self.env.clone(),
-                            term: rt.clone(),
-                            id: ItemId {
-                                file_id: self.file,
-                                index: id_gen.get_and_advance(),
-                            },
+                let mut binding = None;
 
-                            ty: ty.clone(),
-                            pos,
-                            kind: TermKind::Structure,
-                            metadata: self.meta.take(),
-                        });
+                let value_ptr = self.setup_decl(lin, rt, &ty, pos, |id| binding = Some(id));
+                self.bindings = binding.map(|id| vec![id]);
 
-                        ValueState::Known(ItemId {
-                            file_id: self.file,
-                            index: id_gen.get(),
-                        })
-                    }
-                    _ => unreachable!(),
-                };
-                self.env.insert(
-                    ident.ident(),
-                    ItemId {
-                        file_id: self.file,
-                        index: id_gen.get(),
-                    },
-                );
+                let next_id = self.next_id(lin);
+                self.env.insert(ident.ident(), next_id);
 
                 let kind = TermKind::Declaration {
                     id: ident.to_owned(),
@@ -363,13 +360,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     value: value_ptr,
                     path: None,
                 };
+
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id: ItemId {
-                        file_id: self.file,
-                        index: id_gen.get(),
-                    },
+                    id: next_id,
                     ty,
                     pos: ident.pos,
                     kind,
@@ -377,21 +372,17 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 });
             }
             Term::Var(ident) => {
-                let root_id = ItemId {
-                    file_id: self.file,
-                    index: id_gen.get_and_advance(),
-                };
-
                 debug!(
                     "adding usage of variable {} followed by chain {:?}",
                     ident, self.access
                 );
 
                 let pointed = self.env.get(&ident.ident()).copied();
+
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id: root_id,
+                    id: main_id,
                     pos: ident.pos,
                     ty: UnifType::concrete(TypeF::Dyn),
                     kind: TermKind::Usage(UsageState::from(pointed)),
@@ -399,17 +390,14 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 });
 
                 if let Some(referenced) = pointed {
-                    lin.add_usage(self.file, referenced, root_id)
+                    lin.add_usage(self.file, referenced, main_id)
                 }
 
                 if let Some(chain) = self.access.take() {
                     let chain: Vec<_> = chain.into_iter().rev().collect();
 
                     for accessor in chain.iter() {
-                        let id = ItemId {
-                            file_id: self.file,
-                            index: id_gen.get_and_advance(),
-                        };
+                        let id = self.next_id(lin);
 
                         lin.push(LinearizationItem {
                             env: self.env.clone(),
@@ -433,21 +421,21 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id,
+                    id: main_id,
                     pos,
                     ty,
                     kind: TermKind::Record(HashMap::new()),
                     metadata: self.meta.take(),
                 });
 
-                lin.register_fields(self.file, rt, &record.fields, id, &mut self.env);
+                lin.register_fields(self.file, rt, &record.fields, main_id, &mut self.env);
                 let mut field_names = record.fields.keys().cloned().collect::<Vec<_>>();
                 field_names.sort_unstable();
 
                 self.record_fields = Some((
                     ItemId {
-                        file_id: id.file_id,
-                        index: id.index + 1,
+                        file_id: main_id.file_id,
+                        index: main_id.index + 1,
                     },
                     field_names
                         .into_iter()
@@ -480,7 +468,6 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 })
             }
             Term::ResolvedImport(file) => {
-                lin.import_locations.insert(*file, pos);
                 fn final_term_pos(term: &RichTerm) -> &TermPos {
                     let RichTerm { term, pos } = term;
                     match term.as_ref() {
@@ -492,9 +479,9 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                     }
                 }
 
-                let Some(linearization) = lin.lin_registry.map.get(file) else {
-                    return;
-                };
+                lin.import_locations.insert(*file, pos);
+
+                let linearization = lin.lin_registry.map.get(file)?;
 
                 // This is safe because the import file is resolved before we linearize the
                 // containing file, therefore the cache MUST have the term stored.
@@ -504,15 +491,12 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 // unwrap(): this unwrap fails only when position is a `TermPos::None`, which only
                 // happens if the `RichTerm` has been transformed or evaluated. None of these
                 // happen before linearization.
-                let Some(term_id) = linearization.item_at(position.unwrap().start_pos()) else {
-                    return;
-                };
-                let term_id = term_id.id;
+                let term_id = linearization.item_at(position.unwrap().start_pos())?.id;
 
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id,
+                    id: main_id,
                     pos,
                     ty,
                     kind: TermKind::Usage(UsageState::Resolved(term_id)),
@@ -523,7 +507,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id,
+                    id: main_id,
                     pos,
                     ty,
                     kind: TermKind::Type(t.clone()),
@@ -536,7 +520,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 lin.push(LinearizationItem {
                     env: self.env.clone(),
                     term: rt.clone(),
-                    id,
+                    id: main_id,
                     pos,
                     ty,
                     kind: TermKind::Structure,
@@ -544,6 +528,8 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 })
             }
         }
+
+        Some(main_id)
     }
 
     fn add_field_metadata(&mut self, _lin: &mut Linearization<Building>, field: &Field) {
@@ -694,28 +680,29 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         {
             debug!("retyping {:?} to {:?}", ident, new_type);
             item.ty = new_type;
+        } else {
+            debug!(
+                "retype_indent failed! Environment miss: {}",
+                self.env.get(&ident.ident()).is_none()
+            );
         }
     }
-}
 
-struct IdGen(usize);
+    fn retype(
+        &mut self,
+        lin: &mut Linearization<Building>,
+        item_id: Option<ItemId>,
+        new_type: UnifType,
+    ) {
+        let Some(item_id) = item_id else {
+            return;
+        };
 
-impl IdGen {
-    /// Make new Generator starting at `base`
-    fn new(base: usize) -> Self {
-        IdGen(base)
-    }
-
-    /// Get the current id
-    fn get(&self) -> usize {
-        self.0
-    }
-
-    /// Return the **current id** and advance the generator.
-    /// Following calls to get (and get_and_advance) will return a new id
-    fn get_and_advance(&mut self) -> usize {
-        let current_id = self.0;
-        self.0 += 1;
-        current_id
+        if let Some(item) = lin.linearization.get_mut(item_id.index) {
+            debug!("retyping item {:?} to {:?}", item_id, new_type);
+            item.ty = new_type;
+        } else {
+            debug!("retype item failed (item not found)!");
+        }
     }
 }

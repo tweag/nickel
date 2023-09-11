@@ -121,3 +121,39 @@ impl LspDebug for Vec<lsp_types::TextEdit> {
         Iter(self.iter()).debug(w)
     }
 }
+
+impl LspDebug for lsp_types::Hover {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "<{}>", self.range.debug_str())?;
+
+        match &self.contents {
+            lsp_types::HoverContents::Scalar(s) => s.debug(w),
+            lsp_types::HoverContents::Array(items) => {
+                let mut items = items.clone();
+                items.sort_by_cached_key(|i| match i {
+                    lsp_types::MarkedString::String(s) => s.clone(),
+                    lsp_types::MarkedString::LanguageString(l_str) => l_str.value.clone(),
+                });
+                Iter(items.iter()).debug(w)
+            }
+            lsp_types::HoverContents::Markup(s) => s.debug(w),
+        }
+    }
+}
+
+impl LspDebug for lsp_types::MarkedString {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        match self {
+            lsp_types::MarkedString::String(s) => write!(w, "{s}"),
+            lsp_types::MarkedString::LanguageString(l_str) => {
+                write!(w, "```{}\n{}\n```", l_str.language, l_str.value)
+            }
+        }
+    }
+}
+
+impl LspDebug for lsp_types::MarkupContent {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        write!(w, "{}", self.value)
+    }
+}

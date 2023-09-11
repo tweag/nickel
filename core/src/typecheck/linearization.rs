@@ -79,6 +79,7 @@ impl LinearizationState for Uninit {}
 pub trait Linearizer {
     type Building: LinearizationState;
     type Completed: LinearizationState + Default;
+    type ItemId: Copy;
     type CompletionExtra;
 
     /// Record a new term.
@@ -88,13 +89,17 @@ pub trait Linearizer {
     ///
     /// In practice this mainly includes environment information. Providing this
     /// state is the responsibility of [Linearizer::scope]
+    ///
+    /// Returns an item id that can then be used to complete e.g. type information. Some terms
+    /// might give rise to several items in the linearization, but usually, there's a main one that
+    /// is relevant for amending the type. The result can be `None` if the term doesn't have a
+    /// location. In this case, the LSP currently ignores it.
     fn add_term(
         &mut self,
         _lin: &mut Linearization<Self::Building>,
         _term: &RichTerm,
         _ty: UnifType,
-    ) {
-    }
+    ) -> Option<Self::ItemId>;
 
     /// Record the metadata of a record field. The record field is guaranteed to be linearized
     /// next, if the it has a value.
@@ -111,6 +116,18 @@ pub trait Linearizer {
         &mut self,
         _lin: &mut Linearization<Self::Building>,
         _ident: &LocIdent,
+        _new_type: UnifType,
+    ) {
+    }
+
+    /// Allows to amend the type of an item.
+    ///
+    /// Because [Self::add_term] returns an optional, it's more ergonomic to have `retype` accept an
+    /// optional as well. If the item id is `None`, `retype` simply does nothing.
+    fn retype(
+        &mut self,
+        _lin: &mut Linearization<Self::Building>,
+        _item_id: Option<Self::ItemId>,
         _new_type: UnifType,
     ) {
     }
@@ -159,6 +176,16 @@ where
     type Building = B;
     type Completed = C;
     type CompletionExtra = E;
+    type ItemId = ();
+
+    fn add_term(
+        &mut self,
+        _lin: &mut Linearization<Self::Building>,
+        _term: &RichTerm,
+        _ty: UnifType,
+    ) -> Option<()> {
+        None
+    }
 
     fn scope(&mut self) -> Self {
         StubHost::new()
