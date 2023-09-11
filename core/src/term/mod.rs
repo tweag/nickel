@@ -241,22 +241,23 @@ pub type SealingKey = i32;
 /// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
 /// rationals.
 ///
-/// Basic arithmetic operations are exact, without loss of precision (within the limits of
-/// available memory).
+/// Basic arithmetic operations are exact, without loss of precision (within the limits of available
+/// memory).
 ///
 /// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
 /// operands to 64-bits floats, performing the floating-point power operation, and converting back
 /// to rationals, which can incur a loss of precision.
 ///
 /// [^number-serialization]: Conversion to string and serialization try to first convert the
-///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations don't
-///     lose precision. Otherwise, the number is converted to the nearest 64bit float and then
+///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations
+///     don't lose precision. Otherwise, the number is converted to the nearest 64bit float and then
 ///     serialized/printed, which can incur a loss of information.
 pub type Number = Rational;
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
-/// revertible cache elements at evaluation, which are devices used for the implementation of recursive
-/// records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more details.
+/// revertible cache elements at evaluation, which are devices used for the implementation of
+/// recursive records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more
+/// details.
 #[derive(Debug, Eq, PartialEq, Clone, Default)]
 pub enum BindingType {
     #[default]
@@ -522,9 +523,9 @@ impl TypeAnnotation {
     }
 
     /// Build a list of pending contracts from this annotation, to be stored alongside the metadata
-    /// of a field. Similar to [Self::all_contracts], but including the contracts from `self.contracts`
-    /// only, while `types` is excluded. Contracts derived from type annotations aren't treated the
-    /// same since they don't propagate through merging.
+    /// of a field. Similar to [Self::all_contracts], but including the contracts from
+    /// `self.contracts` only, while `types` is excluded. Contracts derived from type annotations
+    /// aren't treated the same since they don't propagate through merging.
     pub fn pending_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.contracts
             .iter()
@@ -753,8 +754,8 @@ impl Term {
 
     /// Determine if a term is a constant.
     ///
-    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number, a
-    /// string, a label, an enum tag or a symbol.
+    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number,
+    /// a string, a label, an enum tag or a symbol.
     pub fn is_constant(&self) -> bool {
         match self {
             Term::Null
@@ -933,7 +934,8 @@ pub enum UnaryOp {
     /// Boolean NOT operator.
     BoolNot(),
 
-    /// Raise a blame, which stops the execution and prints an error according to the label argument.
+    /// Raise a blame, which stops the execution and prints an error according to the label
+    /// argument.
     Blame(),
 
     /// Typecast an enum to a larger enum type.
@@ -957,8 +959,8 @@ pub enum UnaryOp {
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
-    /// content of the field. `RecordMap` then replaces the content of each field by the result of the
-    /// function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
+    /// content of the field. `RecordMap` then replaces the content of each field by the result of
+    /// the function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
     RecordMap(),
 
     /// Inverse the polarity of a label.
@@ -978,7 +980,8 @@ pub enum UnaryOp {
     /// ------------------- original type
     /// ```
     ///
-    /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the domain:
+    /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the
+    /// domain:
     ///
     /// ```text
     /// (Num -> Num) -> Num
@@ -1071,30 +1074,31 @@ pub enum UnaryOp {
 
     /// Force full evaluation of a term and return it.
     ///
-    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
-    /// in particular to make serialization work with lazy array contracts.
+    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`], in particular to make
+    /// serialization work with lazy array contracts.
     ///
     /// # `Force` vs. `DeepSeq`
     ///
-    /// [`UnaryOp::Force`] updates at the indices containing arrays with a new version where the lazy contracts have all been applied,
-    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates at the index of an array with lazy contracts
-    /// with an array where those contracts have been applied. In a way, the result of lazy contract application in arrays is "lost"
-    /// in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
+    /// [`UnaryOp::Force`] updates at the indices containing arrays with a new version where the
+    /// lazy contracts have all been applied, whereas [`UnaryOp::DeepSeq`] evaluates the same
+    /// expressions, but it never updates at the index of an array with lazy contracts with an array
+    /// where those contracts have been applied. In a way, the result of lazy contract application
+    /// in arrays is "lost" in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
     ///
-    /// This means we can observe different results between `deep_seq x x` and `force x`, in some cases.
+    /// This means we can observe different results between `deep_seq x x` and `force x`, in some
+    /// cases.
     ///
-    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
-    /// as it does less cloning.
+    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient
+    /// that [`UnaryOp::Force`] as it does less cloning.
     ///
     /// # About `for_export`
     ///
-    /// When exporting a Nickel term, we first apply `Force` to the term to
-    /// evaluate it. If there are record fields that have been marked `not_exported`,
-    /// they would still be evaluated ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230).
-    /// To stop this from happening, we introduce the `for_export` parameter
-    /// here. When `for_export` is `true`, the evaluation of `Force` will skip
-    /// fields that are marked as `not_exported`. When `for_export` is `false`,
-    /// these fields are evaluated.
+    /// When exporting a Nickel term, we first apply `Force` to the term to evaluate it. If there
+    /// are record fields that have been marked `not_exported`, they would still be evaluated
+    /// ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230). To stop this from
+    /// happening, we introduce the `for_export` parameter here. When `for_export` is `true`, the
+    /// evaluation of `Force` will skip fields that are marked as `not_exported`. When `for_export`
+    /// is `false`, these fields are evaluated.
     Force { ignore_not_exported: bool },
 
     /// Recursive default priority operator. Recursively propagates a default priority through a
@@ -1142,9 +1146,8 @@ pub enum UnaryOp {
     /// tail of its argument.
     RecordEmptyWithTail(),
 
-    /// Print a message when encountered during evaluation and proceed with the evaluation of the argument
-    /// on the top of the stack. Operationally the same as the identity
-    /// function
+    /// Print a message when encountered during evaluation and proceed with the evaluation of the
+    /// argument on the top of the stack. Operationally the same as the identity function
     Trace(),
 
     /// Push a new, fresh diagnostic on the diagnostic stack of a contract label. This has the
@@ -1154,9 +1157,9 @@ pub enum UnaryOp {
     /// contract application.
     LabelPushDiag(),
 
-    /// Return the value of the `dualize` field in a label. Used by
-    /// polymorphic contracts to check if they are being invoked to generate
-    /// a dual contract, as part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
+    /// Return the value of the `dualize` field in a label. Used by polymorphic contracts to check
+    /// if they are being invoked to generate a dual contract, as part of the preliminary fix for
+    /// [#1161](https://github.com/tweag/nickel/issues/1161).
     Dualize(),
 }
 
@@ -1472,12 +1475,13 @@ pub enum NAryOp {
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
 
-    /// Seals one record into the tail of another. Used to ensure that functions
-    /// using polymorphic record contracts do not violate parametricity.
+    /// Seals one record into the tail of another. Used to ensure that functions using polymorphic
+    /// record contracts do not violate parametricity.
     ///
     /// Takes four arguments:
     ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
-    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is attempted,
+    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is
+    ///     attempted,
     ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
     ///   - the [record](Term::Record) that we wish to seal.
     RecordSealTail(),
@@ -1769,7 +1773,10 @@ impl Traverse<RichTerm> for RichTerm {
                         Ok((id, field))
                     })
                     .collect();
-                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
+                RichTerm::new(
+                    Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)),
+                    pos
+                )
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1792,7 +1799,15 @@ impl Traverse<RichTerm> for RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs, record.sealed_tail), dyn_fields_res?, deps),
+                    Term::RecRecord(
+                        RecordData::new(
+                            static_fields_res?,
+                            record.attrs,
+                            record.sealed_tail
+                        ),
+                        dyn_fields_res?,
+                        deps
+                    ),
                     pos,
                 )
             },
@@ -1960,8 +1975,9 @@ impl fmt::Display for Term {
     }
 }
 
-/// Allows to match on SharedTerm without taking ownership of the matched part until the match.
-/// In the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that point.
+/// Allows to match on SharedTerm without taking ownership of the matched part until the match. In
+/// the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that
+/// point.
 ///
 /// It is used somehow as a match statement, going from
 /// ```
@@ -2020,7 +2036,12 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_app {
         ( $f:expr, $arg:expr) => {
-            $crate::term::RichTerm::from($crate::term::Term::App($crate::term::RichTerm::from($f), $crate::term::RichTerm::from($arg)))
+            $crate::term::RichTerm::from(
+                $crate::term::Term::App(
+                    $crate::term::RichTerm::from($f),
+                    $crate::term::RichTerm::from($arg)
+                )
+            )
         };
         ( $f:expr, $fst:expr , $( $args:expr ),+ ) => {
             mk_app!(mk_app!($f, $fst), $( $args ),+)
@@ -2043,7 +2064,12 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
-            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::LocIdent::from($id), $crate::term::RichTerm::from($body)))
+            $crate::term::RichTerm::from(
+                $crate::term::Term::Fun(
+                    $crate::identifier::LocIdent::from($id),
+                    $crate::term::RichTerm::from($body)
+                )
+            )
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
             mk_fun!($crate::identifier::LocIdent::from($id1), mk_fun!($id2, $( $rest ),+))
@@ -2062,14 +2088,18 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_field_values(fields)))
+                $crate::term::RichTerm::from(
+                    $crate::term::Term::Record(
+                        $crate::term::record::RecordData::with_field_values(fields)
+                    )
+                )
             }
         };
     }
 
-    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the
-    /// body of each case. Cases are specified as tuple, and the default case (optional) is separated by a `;`:
-    /// `mk_switch!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
+    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the body
+    /// of each case. Cases are specified as tuple, and the default case (optional) is separated by
+    /// a `;`: `mk_match!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
     /// ``match { 'Json => json_case, 'Yaml => yaml_case, _ => def} format``.
     #[macro_export]
     macro_rules! mk_match {
@@ -2079,7 +2109,12 @@ pub mod make {
                 $(
                     cases.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Match {cases, default: Some($crate::term::RichTerm::from($default)) })
+                $crate::term::RichTerm::from(
+                    $crate::term::Term::Match {
+                        cases,
+                        default: Some($crate::term::RichTerm::from($default))
+                    }
+                )
             }
         };
         ( $( ($id:expr, $body:expr) ),*) => {
@@ -2091,20 +2126,25 @@ pub mod make {
         };
     }
 
-    /// Array for types implementing `Into<RichTerm>` (for elements).
-    /// The array's attributes are a trailing (optional) `ArrayAttrs`, separated by a `;`.
-    /// `mk_array!(Term::Num(42))` corresponds to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may have different attributes.
+    /// Array for types implementing `Into<RichTerm>` (for elements). The array's attributes are a
+    /// trailing (optional) `ArrayAttrs`, separated by a `;`. `mk_array!(Term::Num(42))` corresponds
+    /// to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may
+    /// have different attributes.
     #[macro_export]
     macro_rules! mk_array {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(
+                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                );
                 $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
             }
         };
         ( $( $terms:expr ),* ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(
+                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                );
                 $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
             }
         };

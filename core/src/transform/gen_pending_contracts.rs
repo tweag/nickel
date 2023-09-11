@@ -67,7 +67,10 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
                      Ok((id_term, attach_to_field(field)?))
                 }).collect::<Result<_, _>>()?;
 
-                RichTerm::new(Term::RecRecord(RecordData {fields, attrs, sealed_tail}, dyn_fields, deps), pos)
+                RichTerm::new(
+                    Term::RecRecord(RecordData {fields, attrs, sealed_tail}, dyn_fields, deps),
+                    pos
+                )
             },
             Term::Record(record_data) => {
                 let RecordData {fields, attrs, sealed_tail} = record_data;

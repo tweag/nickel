@@ -87,14 +87,17 @@ impl CacheExt for Cache {
         } else {
             // Add the correct position to typecheck import errors and then
             // transform them to normal import errors.
-            let typecheck_import_diagnostics = typecheck_import_diagnostics
-            .into_iter()
-            .map(|id| {
-                let message = "This import could not be resolved because its content has failed to typecheck correctly.";
+            let typecheck_import_diagnostics = typecheck_import_diagnostics.into_iter().map(|id| {
+                let message = "This import could not be resolved \
+                    because its content has failed to typecheck correctly.";
                 // The unwrap is safe here because (1) we have linearized `file_id` and it must be
-                // in the `lin_registry` and (2) every resolved import has a corresponding position in
-                // the linearization of the file that imports it.
-                let pos = lin_registry.map.get(&file_id).and_then(|lin| lin.import_locations.get(&id)).unwrap_or(&TermPos::None);
+                // in the `lin_registry` and (2) every resolved import has a corresponding position
+                // in the linearization of the file that imports it.
+                let pos = lin_registry
+                    .map
+                    .get(&file_id)
+                    .and_then(|lin| lin.import_locations.get(&id))
+                    .unwrap_or(&TermPos::None);
                 let name: String = self.name(id).to_str().unwrap().into();
                 ImportError::IOError(name, String::from(message), *pos)
             });

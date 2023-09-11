@@ -36,7 +36,8 @@ pub fn handle_document_symbols(
                         codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)
                             .unwrap();
 
-                    // `deprecated` is a required field but causes a warning although we are not using it
+                    // `deprecated` is a required field but causes a warning although we are not
+                    // using it
                     #[allow(deprecated)]
                     Some(DocumentSymbol {
                         name: name.to_string(),

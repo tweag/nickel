@@ -128,12 +128,12 @@ impl FieldDef {
         let content = it
             .rev()
             .fold(self.field.with_name(last_ident), |acc, path_elem| {
-                // We first compute a position for the intermediate generated records (it's useful in
-                // particular for the LSP). The position starts at the subpath corresponding to the
-                // intermediate record and ends at the final value.
+                // We first compute a position for the intermediate generated records (it's useful
+                // in particular for the LSP). The position starts at the subpath corresponding to
+                // the intermediate record and ends at the final value.
                 //
-                // unwrap is safe here becuase the initial content has a position,
-                // and we make sure we assign a position for the next field.
+                // unwrap is safe here becuase the initial content has a position, and we make sure
+                // we assign a position for the next field.
                 let pos = match path_elem {
                     FieldPathElem::Ident(id) => id.pos,
                     FieldPathElem::Expr(ref expr) => expr.pos,
@@ -177,9 +177,10 @@ impl FieldDef {
                                 pos,
                             ))
                         } else {
-                            // The record we create isn't recursive, because it is only comprised of one
-                            // dynamic field. It's just simpler to use the infrastructure of `RecRecord` to
-                            // handle dynamic fields at evaluation time rather than right here
+                            // The record we create isn't recursive, because it is only comprised of
+                            // one dynamic field. It's just simpler to use the infrastructure of
+                            // `RecRecord` to handle dynamic fields at evaluation time rather than
+                            // right here
                             Field::from(RichTerm::new(
                                 Term::RecRecord(RecordData::empty(), vec![(exp, acc)], None),
                                 pos,
@@ -192,7 +193,8 @@ impl FieldDef {
         (fst, content)
     }
 
-    /// Returns the identifier corresponding to this definition if the path is composed of exactly one element which is a static identifier. Returns `None` otherwise.
+    /// Returns the identifier corresponding to this definition if the path is composed of exactly
+    /// one element which is a static identifier. Returns `None` otherwise.
     pub fn path_as_ident(&self) -> Option<LocIdent> {
         if self.path.len() > 1 {
             return None;
@@ -678,13 +680,13 @@ pub fn min_indent(chunks: &[StrChunk<RichTerm>]) -> usize {
 /// Strip the common indentation prefix from a multi-line string.
 ///
 /// Determine the minimum indentation level of a multi-line string via [`min_indent`], and strip an
-/// equal number of whitespace characters (` ` or `\t`) from the beginning of each line. If the
-/// last line is empty or consist only of whitespace characters, it is filtered out.
+/// equal number of whitespace characters (` ` or `\t`) from the beginning of each line. If the last
+/// line is empty or consist only of whitespace characters, it is filtered out.
 ///
 /// The indentation of interpolated expressions in a multi-line string follow the rules:
 /// - if an interpolated expression is alone on a line with whitespaces, its indentation -- minus
-///   the common minimal indentation -- is stored and when the expression will be evaluated, each new
-///   line will be prepended with this indentation level.
+///   the common minimal indentation -- is stored and when the expression will be evaluated, each
+///   new line will be prepended with this indentation level.
 /// - if there are other non whitespace characters or interpolated expressions on the line, then it
 ///   is just replaced by its content. The common indentation is still stripped before the start of
 ///   this expression, but newlines inside it won't be affected..

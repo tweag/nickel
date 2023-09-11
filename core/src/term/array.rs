@@ -118,7 +118,8 @@ impl Array {
         // NOTE: trying to use `Rc::make_mut` will result in the following compiler error:
         // > the trait `Clone` is not implemented for `[term::RichTerm]`
         // This seems to be an edge-case in the standard library.
-        // As a workaround, if `get_mut` fails we recollect the array into a new `Rc` by cloning all terms.
+        // As a workaround, if `get_mut` fails we recollect the array into a new `Rc` by cloning all
+        // terms.
         // Thus we make sure that the second call to `get_mut` won't fail.
 
         // This condition is the same as `!Rc::is_unique(&mut self.inner)`, but that function

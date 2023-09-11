@@ -63,7 +63,10 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
                 RichTerm::new(
                     Term::Fun(
                         x,
-                        RichTerm::new(Term::LetPattern(None, pat, Term::Var(x).into(), t_), t_pos /* TODO: should we use rt.pos? */),
+                        RichTerm::new(
+                            Term::LetPattern(None, pat, Term::Var(x).into(), t_),
+                            t_pos /* TODO: should we use rt.pos? */
+                        ),
                     ),
                     rt.pos,
                 )

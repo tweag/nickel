@@ -210,8 +210,8 @@ impl ThunkData {
 
                 // Build a list of the arguments that the function will need in the same order as
                 // the original iterator. If the identifiers inside `args` are `a`, `b` and `c`, in
-                // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need a
-                // reverse fold.
+                // that order, we want to build `fun a => (fun b => (fun c => body))`. We thus need
+                // a reverse fold.
                 let as_function = args.rfold(body, |built, id| {
                     RichTerm::from(Term::Fun(id.into(), built))
                 });
@@ -234,9 +234,9 @@ impl ThunkData {
             //
             // `cached` set to `None` solely exists because we need to first allocate all the
             // revertible thunks corresponding to a recursive record, and only then can we patch
-            // them (build the cached value) in a second step. But calling to
-            // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
-            // seen as just one construction operation.
+            // them (build the cached value) in a second step. But calling to [`ThunkData::new_rev`]
+            // followed by [`ThunkData::build_cached_value`] should be logically seen as just one
+            // construction operation.
             InnerThunkData::Revertible { ref cached, .. } => {
                 cached.as_ref().expect(REVTHUNK_NO_CACHED_VALUE_MSG)
             }
@@ -259,15 +259,14 @@ impl ThunkData {
     pub fn into_closure(self) -> Closure {
         match self.inner {
             InnerThunkData::Standard(closure) => closure,
-            // Nothing should access the cached value of a revertible thunk before the cached
-            // value has been constructed. This is an invariant that MUST be maintained by the
-            // interpreter
+            // Nothing should access the cached value of a revertible thunk before the cached value
+            // has been constructed. This is an invariant that MUST be maintained by the interpreter
             //
             // `cached` set to `None` solely exists because we need to first allocate all the
             // revertible thunks corresponding to a recursive record, and only then can we patch
-            // them (build the cached value) in a second step. But calling to
-            // [`ThunkData::new_rev`] followed by [`ThunkData::build_cached_value`] should be logically
-            // seen as just one construction operation.
+            // them (build the cached value) in a second step. But calling to [`ThunkData::new_rev`]
+            // followed by [`ThunkData::build_cached_value`] should be logically seen as just one
+            // construction operation.
             InnerThunkData::Revertible { cached, .. } => {
                 cached.expect(REVTHUNK_NO_CACHED_VALUE_MSG)
             }
@@ -335,7 +334,8 @@ impl ThunkData {
         }
     }
 
-    /// Return the potential field dependencies stored in a revertible thunk. See [`crate::transform::free_vars`]
+    /// Return the potential field dependencies stored in a revertible thunk. See
+    /// [`crate::transform::free_vars`]
     pub fn deps(&self) -> FieldDeps {
         match self.inner {
             InnerThunkData::Standard(_) => FieldDeps::empty(),
@@ -450,11 +450,11 @@ impl Thunk {
     }
 
     /// Revert a thunk, abstract over its dependencies to get back a function, and apply the
-    /// function to the given variables. The function part is allocated in a new fresh thunk,
-    /// stored as a generated variable, with the same environment as the original expression.
+    /// function to the given variables. The function part is allocated in a new fresh thunk, stored
+    /// as a generated variable, with the same environment as the original expression.
     ///
-    /// Recall that revertible thunks are just a memoization mechanism for function application.
-    /// The original expression (`orig`) and the dependencies (`deps`) are a representation of a
+    /// Recall that revertible thunks are just a memoization mechanism for function application. The
+    /// original expression (`orig`) and the dependencies (`deps`) are a representation of a
     /// function. Most of the time, we don't have to go through an explicit function, and just
     /// manipulate the body of the function directly (which is what is stored inside the `orig`
     /// field).
@@ -475,8 +475,8 @@ impl Thunk {
     ///
     /// - `env`: the environment in which the explicit function expression is closurized. When
     ///   performing recursive overriding, this is the local environment of the final merged field.
-    /// - `fields`: the fields of the resulting recursive record being built by merging. `fields` is used for two
-    ///   purposes:
+    /// - `fields`: the fields of the resulting recursive record being built by merging. `fields` is
+    ///   used for two purposes:
     ///     - to impose a fixed order on the arguments of the function. The particular order is not
     ///       important but it must be the same used for forming the function and forming the
     ///       application, to avoid a mismatch like `(fun foo bar => ...) bar foo`
@@ -493,11 +493,11 @@ impl Thunk {
     /// # Example
     ///
     /// If `orig` is `foo + bar + a` where `foo` and `bar` are thunk dependencies (hence are free
-    /// variables) and `a` is bound in the environment. Say the iterator represents the fields
-    /// `bar, b, foo` in that order. Then `saturate`:
+    /// variables) and `a` is bound in the environment. Say the iterator represents the fields `bar,
+    /// b, foo` in that order. Then `saturate`:
     ///
-    /// - stores `fun bar foo => foo + bar + a` in a fresh thunk with the same environment as
-    ///   `self` (in particular, `a` is bound)
+    /// - stores `fun bar foo => foo + bar + a` in a fresh thunk with the same environment as `self`
+    ///   (in particular, `a` is bound)
     /// - allocates a fresh variable, say `%1`, and binds it to the previous thunk in `env`
     /// - returns the term `%1 foo bar`
     pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(

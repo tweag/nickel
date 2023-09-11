@@ -88,7 +88,8 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
             env: if !self.was_cloned() {
                 Some(NonNull::from(self))
             } else {
-                // if was cloned, current is the same as first of previous (that cannot be empty then)
+                // if was cloned, current is the same as first of previous (that cannot be empty
+                // then)
                 self.previous
                     .borrow()
                     .as_ref()
@@ -99,14 +100,14 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         }
     }
 
-    /// Creates an iterator that visits all elements from the Environment, from the oldest layer
-    /// to the most recent one. It uses this order, so calling `collect` on this iterator to create
-    /// a hashmap would have the same values as the Environment.
-    /// The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime of the Environment.
+    /// Creates an iterator that visits all elements from the Environment, from the oldest layer to
+    /// the most recent one. It uses this order, so calling `collect` on this iterator to create a
+    /// hashmap would have the same values as the Environment. The element iterator type is `(&'env
+    /// K, &'env V)`, with `'env` being the lifetime of the Environment.
     pub fn iter_elems(&self) -> EnvElemIter<'_, K, V> {
         let mut env: Vec<NonNull<HashMap<K, V>>> = self
             .iter_layers()
-            // SAFETY: all NonNull::new_unchecked comes from pointers created from Rc, so cannot be null
+            // SAFETY: Rc::as_ptr never returnes null
             .map(|hmap| unsafe { NonNull::new_unchecked(Rc::as_ptr(hmap) as *mut _) })
             .collect();
         // SAFETY: by design, env cannot be empty, and coming from an Rc, it is well aligned and initialized
@@ -114,10 +115,11 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
         EnvElemIter { env, current_map }
     }
 
-    /// Creates an iterator that visits all elements from the Environment, from the current layer to the oldest one.
-    /// If values are present multiple times, only the most recent one appears.
-    /// [`iter_elems`] should be preferred, since it does not need to create an intermediary hashmap.
-    /// The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime of the Environment.
+    /// Creates an iterator that visits all elements from the Environment, from the current layer to
+    /// the oldest one. If values are present multiple times, only the most recent one appears.
+    /// [`iter_elems`] should be preferred, since it does not need to create an intermediary
+    /// hashmap. The element iterator type is `(&'env K, &'env V)`, with `'env` being the lifetime
+    /// of the Environment.
     ///
     /// [`iter_elems`]: Environment::iter_elems
     ///
@@ -184,7 +186,8 @@ impl<'a, K: 'a + Hash + Eq, V: 'a + PartialEq> Iterator for EnvLayerIter<'a, K, 
     }
 }
 
-/// An iterator over all the elements inside the `Environment`, from the oldest layer to the current one.
+/// An iterator over all the elements inside the `Environment`, from the oldest layer to the current
+/// one.
 ///
 /// Created by the [`Environment::iter_elems`] method.
 ///

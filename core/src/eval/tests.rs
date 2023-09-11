@@ -338,6 +338,13 @@ fn substitution() {
         .unwrap();
     assert_eq!(
         subst(&eval_cache, t, &initial_env, &env),
-        parse("match {'x => [1, 1], 'y => (if false then 1 else \"Glob2\"), 'z => {id = true, other = false}} true").unwrap()
+        parse(
+            "match {\
+                'x => [1, 1], \
+                'y => (if false then 1 else \"Glob2\"), \
+                'z => {id = true, other = false}\
+            } true"
+        )
+        .unwrap()
     );
 }

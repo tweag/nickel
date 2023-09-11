@@ -19,8 +19,8 @@ pub mod substitute_wildcards;
 /// earlier, as it needs to be done before typechecking.
 ///
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
-/// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or use the
-/// [cache][crate::cache::Cache].
+/// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or
+/// use the [cache][crate::cache::Cache].
 pub fn transform(
     mut rt: RichTerm,
     wildcards: Option<&Wildcards>,
@@ -105,9 +105,9 @@ impl Closurizable for RichTerm {
         // More specifically, the evaluation of a recursive record patches the environment of each
         // field with the indices recursively referring to the other fields of the record. `eval`
         // assumes that a recursive record field is either a constant or a generated variable whose
-        // cache elements *immediately* contain the original unevaluated expression (both properties are
-        // true after the share normal form transformation and maintained when reverting elements
-        // before merging recursive records).
+        // cache elements *immediately* contain the original unevaluated expression (both properties
+        // are true after the share normal form transformation and maintained when reverting
+        // elements before merging recursive records).
         //
         // To maintain this invariant, `closurize` must NOT introduce an indirection through a
         // variable, such as transforming:
@@ -138,8 +138,8 @@ impl Closurizable for RichTerm {
         // reporting, so for the time being, we restrict ourselves to generated identifiers. Note
         // that performing or not performing this optimization for user-supplied variables doesn't
         // affect the invariant mentioned above, because the share normal form must ensure that the
-        // fields of a record all contain generated variables (or constant), but never
-        // user-supplied variables.
+        // fields of a record all contain generated variables (or constant), but never user-supplied
+        // variables.
         let var = LocIdent::fresh();
         let pos = self.pos;
 

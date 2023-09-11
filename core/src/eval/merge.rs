@@ -247,8 +247,12 @@ pub fn merge<C: Cache>(
                         .with_diagnostic_message(format!("extra field{plural} {fields_list}"))
                         .with_diagnostic_notes(vec![
                             String::from("Have you misspelled a field?"),
-                            String::from("The record contract might also be too strict. By default, record contracts exclude any field which is not listed.
-Append `, ..` at the end of the record contract, as in `{some_field | SomeContract, ..}`, to make it accept extra fields."),
+                            String::from(
+                                "The record contract might also be too strict. By default, \
+                                record contracts exclude any field which is not listed.\n\
+                                Append `, ..` at the end of the record contract, as in \
+                                `{some_field | SomeContract, ..}`, to make it accept extra fields.",
+                            ),
                         ]);
 
                     return Err(EvalError::BlameError {
@@ -434,7 +438,8 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         // If one of the record requires this field, then it musn't be optional. The
         // resulting field is optional iff both are.
         opt: metadata1.opt && metadata2.opt,
-        // The resulting field will be suppressed from serialization if either of the fields to be merged is.
+        // The resulting field will be suppressed from serialization if either of the fields to be
+        // merged is.
         not_exported: metadata1.not_exported || metadata2.not_exported,
         priority,
     };
@@ -452,20 +457,20 @@ fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     doc1.or(doc2)
 }
 
-/// See [crate::eval::cache::Cache::saturate]. Saturation is a transformation on recursive cache elements
-/// that is used when we must combine different values with different recursive dependencies (say,
-/// the two values of fields being merged) into one expression.
+/// See [crate::eval::cache::Cache::saturate]. Saturation is a transformation on recursive cache
+/// elements that is used when we must combine different values with different recursive
+/// dependencies (say, the two values of fields being merged) into one expression.
 ///
 /// Saturation is first and foremost a transformation of terms, but like
-/// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence
-/// the trait.
+/// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence the
+/// trait.
 trait Saturate: Sized {
-    /// Take the content of a record field, and saturate the potential revertible element with the given
-    /// fields. See [crate::eval::cache::Cache::saturate].
+    /// Take the content of a record field, and saturate the potential revertible element with the
+    /// given fields. See [crate::eval::cache::Cache::saturate].
     ///
-    /// If the expression is not a variable referring to an element in the cache
-    ///  (this can happen e.g. for numeric constants), we just return the term as it is, which
-    /// falls into the zero dependencies special case.
+    /// If the expression is not a variable referring to an element in the cache (this can happen
+    ///  e.g. for numeric constants), we just return the term as it is, which falls into the zero
+    /// dependencies special case.
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
@@ -550,7 +555,8 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     };
     let fresh_var = LocIdent::fresh();
 
-    // new_rev takes care of not creating a revertible element in the cache if the dependencies are empty.
+    // new_rev takes care of not creating a revertible element in the cache if the dependencies are
+    // empty.
     env.insert(
         fresh_var.ident(),
         cache.add(
@@ -565,7 +571,8 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
 /// Same as [Closurizable], but also revert the element if the term is a variable.
 pub(super) trait RevertClosurize {
-    /// Revert the element at the index inside the term (if any), and closurize the result inside `env`.
+    /// Revert the element at the index inside the term (if any), and closurize the result inside
+    /// `env`.
     fn revert_closurize<C: Cache>(
         self,
         cache: &mut C,
@@ -582,7 +589,8 @@ impl RevertClosurize for RichTerm {
         with_env: Environment,
     ) -> RichTerm {
         if let Term::Var(id) = self.as_ref() {
-            // This create a fresh variable which is bound to a reverted copy of the original element
+            // This create a fresh variable which is bound to a reverted copy of the original
+            // element
             let reverted = cache.revert(with_env.get(&id.ident()).unwrap());
             let fresh_id = LocIdent::fresh();
             env.insert(fresh_id.ident(), reverted);

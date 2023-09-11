@@ -253,9 +253,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
                     match (binding1, binding2) {
                         (None, None) => id1 == id2,
                         (Some((t1, env1)), Some((t2, env2))) => {
-                            // We may end up using one more gas unit if gas was exactly 1. That is not very
-                            // important, and it's simpler to just ignore this case. We still return false
-                            // if gas was already at zero.
+                            // We may end up using one more gas unit if gas was exactly 1. That is
+                            // not very important, and it's simpler to just ignore this case. We
+                            // still return false if gas was already at zero.
                             let had_gas = state.use_gas();
                             state.use_gas();
                             had_gas && contract_eq_bounded(state, t1, env1, t2, env2)
@@ -430,16 +430,16 @@ fn contract_eq_fields<E: TermEnvironment>(
     }
 }
 
-/// Perform the type equality comparison on types. Structurally recurse into type constructors and test
-/// that subtypes or subterms (contracts) are equals.
+/// Perform the type equality comparison on types. Structurally recurse into type constructors and
+/// test that subtypes or subterms (contracts) are equals.
 ///
-/// Currently, this function operates on `Type` rather than `TypeWrapper`s as it is called
-/// by `contract_eq_bounded` on type annotations. But we need to substitute variables to correctly
+/// Currently, this function operates on `Type` rather than `TypeWrapper`s as it is called by
+/// `contract_eq_bounded` on type annotations. But we need to substitute variables to correctly
 /// compare `foralls`, hence it accepts more general `TypeWrapper`s. However, we expect to never
-/// meet unification variables (we treat them for completeness and to be future proof), and that
-/// all the rigid type variables encountered have been introduced by `type_eq_bounded` itself. This
-/// is why we don't need unique identifiers that are distinct from the one used during
-/// typechecking, and we can just start from `0`.
+/// meet unification variables (we treat them for completeness and to be future proof), and that all
+/// the rigid type variables encountered have been introduced by `type_eq_bounded` itself. This is
+/// why we don't need unique identifiers that are distinct from the one used during typechecking,
+/// and we can just start from `0`.
 fn type_eq_bounded<E: TermEnvironment>(
     state: &mut State,
     ty1: &GenericUnifType<E>,
@@ -539,8 +539,9 @@ fn type_eq_bounded<E: TermEnvironment>(
 
                     type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
                 }
-                // We can't compare type variables without knowing what they are instantiated to, and
-                // all type variables should have been substituted at this point, so we bail out.
+                // We can't compare type variables without knowing what they are instantiated to,
+                // and all type variables should have been substituted at this point, so we bail
+                // out.
                 _ => false,
             }
         }

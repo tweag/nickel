@@ -44,8 +44,8 @@ use std::{
 /// As soon as this variable is used in a compound expression, the top-level rule tells us how to
 /// translate it. For example, if we see an arrow `a -> Num`, then we will convert it to a type
 /// variable, and return `UniTermNode::Type(TypeF::Arrow(..))` (there is actually a subtlety: see
-/// the in-code documentation of the private symbol `FixTypeVars::fix_type_vars`, but let's ignore it
-/// here). If, on the other hand, we enter the rule for an infix operator as in `a + 1`, `a` will
+/// the in-code documentation of the private symbol `FixTypeVars::fix_type_vars`, but let's ignore
+/// it here). If, on the other hand, we enter the rule for an infix operator as in `a + 1`, `a` will
 /// be converted to a `Term::Var` and the resulting uniterm will be
 /// `UniTermNode::Term(Term::Op2(..))`.
 pub enum UniTermNode {
@@ -81,10 +81,10 @@ impl UniTerm {
     }
 }
 
-// For nodes such as `Type` or `Record`, the following implementation has to choose between two positions to
-// use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or the `Type`.
-// This implementation assumes that the latest set is the one of `UniTerm`, which is the single
-// source of truth.
+// For nodes such as `Type` or `Record`, the following implementation has to choose between two
+// positions to use: the one of the wrapping `UniTerm`, and the one stored inside the `RichTerm` or
+// the `Type`. This implementation assumes that the latest set is the one of `UniTerm`, which is the
+// single source of truth.
 impl TryFrom<UniTerm> for Type {
     type Error = ParseError;
 
@@ -599,15 +599,16 @@ pub(super) trait FixTypeVars {
     ///
     /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
     /// contract (e.g. in `x | a -> b`) or a type variable (e.g. in `x | forall a b. a -> b`),
-    /// depending on enclosing `forall`s. To handle both cases, we initially parse all variables inside
-    /// types as type variables. When reaching the right-hand side of an annotation, because `forall`s
-    /// can only bind locally in a type, we can then decide the actual nature of each occurrence. We
-    /// thus recurse into the newly constructed type to change those type variables that are not
-    /// actually bound by a `forall` to be term variables. This is the role of `fix_type_vars()`.
+    /// depending on enclosing `forall`s. To handle both cases, we initially parse all variables
+    /// inside types as type variables. When reaching the right-hand side of an annotation, because
+    /// `forall`s can only bind locally in a type, we can then decide the actual nature of each
+    /// occurrence. We thus recurse into the newly constructed type to change those type variables
+    /// that are not actually bound by a `forall` to be term variables. This is the role of
+    /// `fix_type_vars()`.
     ///
-    /// Once again because `forall`s only bind variables locally, and don't bind inside contracts, we
-    /// don't have to recurse into contracts and this pass will only visit each node of the AST at most
-    /// once in total (and most probably much less so).
+    /// Once again because `forall`s only bind variables locally, and don't bind inside contracts,
+    /// we don't have to recurse into contracts and this pass will only visit each node of the AST
+    /// at most once in total (and most probably much less so).
     ///
     /// There is one subtlety with unirecords, though. A unirecord can still be in interpreted as a
     /// record type later. Take the following example:
@@ -619,11 +620,11 @@ pub(super) trait FixTypeVars {
     /// Since this unirecord will eventually be interpreted as a record type, we can't know yet when
     /// parsing `fst: a` if `a` will be a type variable or a term variable (while, for all other
     /// constructs, an annotation is a boundary that `forall` binders can't cross). In this example,
-    /// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type variables,
-    /// we have to wait until we eventually convert the unirecord to a term (in which case we fix all the
-    /// top-level annotations) or a type (in which case we do nothing: the enclosing type will trigger
-    /// the fix once it's fully constructed). Fixing a unirecord prior to a conversion to a term is
-    /// done by [`fix_field_types`].
+    /// there is indeed an enclosing forall binding `a`. With unirecords, before fixing type
+    /// variables, we have to wait until we eventually convert the unirecord to a term (in which
+    /// case we fix all the top-level annotations) or a type (in which case we do nothing: the
+    /// enclosing type will trigger the fix once it's fully constructed). Fixing a unirecord prior
+    /// to a conversion to a term is done by [`fix_field_types`].
     ///
     /// # Variable kind
     ///
@@ -683,7 +684,10 @@ impl FixTypeVars for Type {
             TypeF::Var(sym) => {
                 if let Some(cell) = bound_vars.get(&sym) {
                     cell.try_set(VarKind::Type)
-                        .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: LocIdent::from(sym).with_pos(self.pos), span })?;
+                        .map_err(|_| ParseError::TypeVariableKindMismatch {
+                            ty_var: LocIdent::from(sym).with_pos(self.pos),
+                            span
+                        })?;
                 } else {
                     let id = LocIdent::from(sym).with_pos(self.pos);
                     self.typ = TypeF::Flat(RichTerm::new(Term::Var(id), id.pos));
@@ -707,11 +711,18 @@ impl FixTypeVars for Type {
                 // access to this VarKindCell in bound_vars. We can avoid a clone by taking
                 // the var_kind out. We could also take the whole key value pair out of the
                 // `Environment`, but ownership there is trickier.
-                *var_kind = bound_vars.get(&var.ident()).unwrap().take_var_kind().unwrap_or_default();
+                *var_kind = bound_vars
+                    .get(&var.ident())
+                    .unwrap()
+                    .take_var_kind()
+                    .unwrap_or_default();
 
                 Ok(())
             }
-            TypeF::Dict { type_fields: ref mut ty, flavour: DictTypeFlavour::Type} | TypeF::Array(ref mut ty) => {
+            TypeF::Dict {
+                type_fields: ref mut ty,
+                flavour: DictTypeFlavour::Type
+            } | TypeF::Array(ref mut ty) => {
                 (*ty).fix_type_vars_env(bound_vars, span)
             }
             TypeF::Enum(ref mut erows) => erows.fix_type_vars_env(bound_vars, span),

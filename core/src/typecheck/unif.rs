@@ -115,7 +115,8 @@ impl UnifTable {
     }
 
     // Lazily propagate a variable level to the unification variables contained in `uty`. Either do
-    // a direct update in constant time when possible, or push a stack of delayed updates for composite types.
+    // a direct update in constant time when possible, or push a stack of delayed updates for
+    // composite types.
     fn update_type_level(&mut self, var: VarId, uty: UnifType, new_level: VarLevel) -> UnifType {
         match uty {
             // We can do the update right away
@@ -351,9 +352,9 @@ impl UnifTable {
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
     pub fn root_type(&self, var_id: VarId, init_level: VarLevel) -> UnifType {
-        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
-        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
-        // panic.
+        // All queried variable must have been introduced by `new_var` and thus a corresponding
+        // entry must always exist in `state`. If not, the typechecking algorithm is not correct,
+        // and we panic.
         match self.types[var_id].value.as_ref() {
             None => UnifType::UnifVar {
                 id: var_id,
@@ -370,9 +371,9 @@ impl UnifTable {
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
     pub fn root_rrows(&self, var_id: VarId, init_level: VarLevel) -> UnifRecordRows {
-        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
-        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
-        // panic.
+        // All queried variable must have been introduced by `new_var` and thus a corresponding
+        // entry must always exist in `state`. If not, the typechecking algorithm is not correct,
+        // and we panic.
         match self.rrows[var_id].value.as_ref() {
             None => UnifRecordRows::UnifVar {
                 id: var_id,
@@ -389,9 +390,9 @@ impl UnifTable {
     /// This corresponds to the find in union-find.
     // TODO This should be a union find like algorithm
     pub fn root_erows(&self, var_id: VarId, init_level: VarLevel) -> UnifEnumRows {
-        // All queried variable must have been introduced by `new_var` and thus a corresponding entry
-        // must always exist in `state`. If not, the typechecking algorithm is not correct, and we
-        // panic.
+        // All queried variable must have been introduced by `new_var` and thus a corresponding
+        // entry must always exist in `state`. If not, the typechecking algorithm is not correct,
+        // and we panic.
         match self.erows[var_id].value.as_ref() {
             None => UnifEnumRows::UnifVar {
                 id: var_id,
@@ -519,16 +520,16 @@ impl UnifTable {
                         },
                 } => {
                     // Such an update wouldn't change the outcome of unifying a variable with a
-                    // constant of level `constant_level`. Impactful updates are updates that
-                    // might change a variable level from a value greater than or equals to
+                    // constant of level `constant_level`. Impactful updates are updates that might
+                    // change a variable level from a value greater than or equals to
                     // `constant_level` to a new level strictly smaller, but:
-                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
-                    //    already strictly smaller than `constant_level`. An update won't change
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels
+                    //    are already strictly smaller than `constant_level`. An update won't change
                     //    this inequality (level update can only decrease levels)
-                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
-                    //    level that was greater than `constant_level` to a `pending_level`
-                    //    which is still greater than `constant_level`. Once again, the update
-                    //    doesn't change the inequality with respect to constant_level.
+                    // 2. If `pending_level` >= `constant_level`, then the update might only
+                    //    decrease a level that was greater than `constant_level` to a
+                    //    `pending_level` which is still greater than `constant_level`. Once again,
+                    //    the update doesn't change the inequality with respect to constant_level.
                     //
                     // Thus, such updates might be delayed even more.
                     if upper_bound < constant_level || pending_level >= constant_level {
@@ -688,16 +689,16 @@ impl UnifTable {
                         },
                 } => {
                     // Such an update wouldn't change the outcome of unifying a variable with a
-                    // constant of level `constant_level`. Impactful updates are updates that
-                    // might change a variable level from a value greater than or equals to
+                    // constant of level `constant_level`. Impactful updates are updates that might
+                    // change a variable level from a value greater than or equals to
                     // `constant_level` to a new level strictly smaller, but:
-                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
-                    //    already strictly smaller than `constant_level`. An update won't change
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels
+                    //    are already strictly smaller than `constant_level`. An update won't change
                     //    this inequality (level update can only decrease levels)
-                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
-                    //    level that was greater than `constant_level` to a `pending_level`
-                    //    which is still greater than `constant_level`. Once again, the update
-                    //    doesn't change the inequality with respect to constant_level.
+                    // 2. If `pending_level` >= `constant_level`, then the update might only
+                    //    decrease a level that was greater than `constant_level` to a
+                    //    `pending_level` which is still greater than `constant_level`. Once again,
+                    //    the update doesn't change the inequality with respect to constant_level.
                     //
                     // Thus, such updates might be delayed even more.
                     if upper_bound < constant_level || pending_level >= constant_level {
@@ -822,16 +823,16 @@ impl UnifTable {
                         },
                 } => {
                     // Such an update wouldn't change the outcome of unifying a variable with a
-                    // constant of level `constant_level`. Impactful updates are updates that
-                    // might change a variable level from a value greater than or equals to
+                    // constant of level `constant_level`. Impactful updates are updates that might
+                    // change a variable level from a value greater than or equals to
                     // `constant_level` to a new level strictly smaller, but:
-                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels are
-                    //    already strictly smaller than `constant_level`. An update won't change
+                    // 1. If `upper_bound` < `constant_level`, then all unification variable levels
+                    //    are already strictly smaller than `constant_level`. An update won't change
                     //    this inequality (level update can only decrease levels)
-                    // 2. If `pending_level` >= `constant_level`, then the update might only decrease a
-                    //    level that was greater than `constant_level` to a `pending_level`
-                    //    which is still greater than `constant_level`. Once again, the update
-                    //    doesn't change the inequality with respect to constant_level.
+                    // 2. If `pending_level` >= `constant_level`, then the update might only
+                    //    decrease a level that was greater than `constant_level` to a
+                    //    `pending_level` which is still greater than `constant_level`. Once again,
+                    //    the update doesn't change the inequality with respect to constant_level.
                     //
                     // Thus, such updates might be delayed even more.
                     if upper_bound < constant_level || pending_level >= constant_level {
@@ -897,19 +898,19 @@ pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 /// Check that unifying a variable with a type doesn't violate record rows constraints, and update
 /// the row constraints of the unified type accordingly if needed.
 ///
-/// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type or
-/// another unification variable which could be later unified with a row type itself, the following
-/// operations are required:
+/// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type
+/// or another unification variable which could be later unified with a row type itself, the
+/// following operations are required:
 ///
-/// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden
-///    by a row constraint on `p`.
+/// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden by
+///    a row constraint on `p`.
 /// 2. If `uty` is either a unification variable `u` or a row type ending with a unification
 ///    variable `u`, we must add the constraints of `p` to the constraints of `u`. Indeed, take the
-///    following situation: `p` appears in a row type `{a: Number ; p}`, hence has a constraint
-///    that it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If
-///    we don't constrain `u`, `u` could be unified later with a row type `{a : String}` which
-///    violates the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending
-///    with `u`, `u` must inherit all the constraints of `p`.
+///    following situation: `p` appears in a row type `{a: Number ; p}`, hence has a constraint that
+///    it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If we
+///    don't constrain `u`, `u` could be unified later with a row type `{a : String}` which violates
+///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
+///    `u` must inherit all the constraints of `p`.
 pub fn constr_unify_rrows(
     constr: &mut RowConstr,
     var_id: VarId,

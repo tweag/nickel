@@ -119,11 +119,11 @@ pub enum EnumRowsF<ERows> {
 /// The kind of a quantified type variable.
 ///
 /// Nickel uses several forms of polymorphism. A type variable can be substituted for a type, as in
-/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Number; a} -> Number}`,
-/// or for enum rows. This information is implicit in the source syntax: we don't require users to
-/// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
-/// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
-/// variables are introduced, that is, on forall quantifiers.
+/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Number; a} ->
+/// Number}`, or for enum rows. This information is implicit in the source syntax: we don't require
+/// users to write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is
+/// required for the typechecker. It is thus determined during parsing and stored as `VarKind` where
+/// type variables are introduced, that is, on forall quantifiers.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum VarKind {
     #[default]
@@ -209,12 +209,12 @@ pub enum DictTypeFlavour {
 ///
 /// ## Motivation 1: variation on `Types`
 ///
-/// Having a generic definition makes it possible to easily create other types with the _same
-/// shape_ as `Type` (seen as trees), but with enriched nodes. The typical use-case in Nickel is
-/// the variation on types used by the typechecker. During type inference, the typechecker operates
-/// on trees where each node can either be a concrete type, or a unification variable (a unknown
-/// type to be inferred). Instead of duplicating the whole definition of `Type` as well as all
-/// basic methods, we can simply have a different recursive definition:
+/// Having a generic definition makes it possible to easily create other types with the _same shape_
+/// as `Type` (seen as trees), but with enriched nodes. The typical use-case in Nickel is the
+/// variation on types used by the typechecker. During type inference, the typechecker operates on
+/// trees where each node can either be a concrete type, or a unification variable (a unknown type
+/// to be inferred). Instead of duplicating the whole definition of `Type` as well as all basic
+/// methods, we can simply have a different recursive definition:
 ///
 /// ```
 /// # // phony declarations to make this example pass the tests
@@ -241,9 +241,9 @@ pub enum DictTypeFlavour {
 /// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
 /// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
 /// suffix) in terms of simple appropriate chaining of `map` and folding/unfolding operations. A
-/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't
-/// currently defined using functors per se, the way program transformations are written is in the same
-/// style as recursion schemes: we simply define the action of a transformation as a mapping on the
+/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't currently
+/// defined using functors per se, the way program transformations are written is in the same style
+/// as recursion schemes: we simply define the action of a transformation as a mapping on the
 /// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
 ///
 /// ## Type parameters
@@ -949,9 +949,10 @@ impl Type {
     ///
     /// - `h` is an environment mapping type variables to contracts. Type variables are introduced
     ///   locally when opening a `forall`.
-    /// - `pol` is the current polarity, which is toggled when generating a contract for the argument
-    ///   of an arrow type (see [`crate::label::Label`]).
-    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see [`crate::term::Term::Sealed`]).
+    /// - `pol` is the current polarity, which is toggled when generating a contract for the
+    ///   argument of an arrow type (see [`crate::label::Label`]).
+    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
+    ///   [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
         mut vars: HashMap<Ident, RichTerm>,
@@ -1039,8 +1040,8 @@ impl Type {
         Ok(ctr)
     }
 
-    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or a
-    /// type delimited by specific markers (such as a row type). Used in formatting to decide if
+    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or
+    /// a type delimited by specific markers (such as a row type). Used in formatting to decide if
     /// parentheses need to be inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
         match &self.typ {

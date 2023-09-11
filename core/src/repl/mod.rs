@@ -108,8 +108,8 @@ impl<EC: EvalCache> ReplImpl<EC> {
     // Because we don't use the cache for input, we have to perform recursive import
     // resolution/typechecking/transformation by ourselves.
     //
-    // `id` must be set to `None` for normal expressions and to `Some(id_)` for top-level lets. In the
-    // latter case, we need to update the current type environment before doing program
+    // `id` must be set to `None` for normal expressions and to `Some(id_)` for top-level lets. In
+    // the latter case, we need to update the current type environment before doing program
     // transformations in the case of a top-level let.
     fn prepare(&mut self, id: Option<LocIdent>, t: RichTerm) -> Result<RichTerm, Error> {
         let import_resolution::strict::ResolveResult {
@@ -272,8 +272,8 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         let wildcards =
             typecheck::type_check(&term, self.env.type_ctxt.clone(), self.vm.import_resolver())?;
-        // Substitute the wildcard types for their inferred types
-        // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
+        // Substitute the wildcard types for their inferred types We need to `traverse` the term, in
+        // case the type depends on inner terms that also contain wildcards
         let term = term
             .traverse(
                 &mut |rt: RichTerm| -> Result<RichTerm, Infallible> {
@@ -456,7 +456,11 @@ pub fn print_help(out: &mut impl Write, arg: Option<&str>) -> std::io::Result<()
             Ok(c @ CommandType::Load) => {
                 writeln!(out, ":{c} <file>")?;
                 print_aliases(out, c)?;
-                writeln!(out, "Evaluate the content of <file> to a record and add its fields to the environment.")?;
+                writeln!(
+                    out,
+                    "Evaluate the content of <file> to a record \
+                    and add its fields to the environment."
+                )?;
                 writeln!(
                     out,
                     "Fail if the content of <file> doesn't evaluate to a record."

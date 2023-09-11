@@ -43,7 +43,8 @@ pub type Environment = nickel_lang_core::environment::Environment<Ident, ItemId>
 pub struct LinRegistry {
     pub map: HashMap<FileId, Completed>,
     // TODO: these are supposed to eventually *replace* part of the linearization, at
-    // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId, everything>)
+    // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId,
+    // everything>)
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
 }

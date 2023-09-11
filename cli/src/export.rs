@@ -181,8 +181,9 @@ impl TermInterface {
             term_cmd.clap_cmd = term_cmd.clap_cmd.after_long_help(format!(
                 "\
             [CONFLICT] This configuration has a field named `{conflict_field}` which conflicts \
-            with the built-in `--{conflict_field}` argument. To set this field to e.g. \"some_value\", \
-            use `--override {conflict_field} \"some_value\"` instead of `--{conflict_field} \"some_value\"`\
+            with the built-in `--{conflict_field}` argument. To set this field to e.g. \
+            \"some_value\", use `--override {conflict_field} \"some_value\"` instead of \
+            `--{conflict_field} \"some_value\"`\
             {extra}\n\n\
             {EXPERIMENTAL_MSG}"
             ));

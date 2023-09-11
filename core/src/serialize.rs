@@ -53,11 +53,11 @@ impl fmt::Display for ParseFormatError {
 }
 
 /// Implicitly convert numbers to primitive integers when possible, and serialize an exact
-/// representation. Note that `u128` and `i128` aren't supported for common configuration formats
-/// in serde, so we rather pick `i64` and `u64`, even if the former couple theoretically allows for
-/// a wider range of rationals to be exactly represented. We don't expect values to be that large
-/// in practice anyway: using arbitrary precision rationals is directed toward not introducing rounding errors
-/// when performing simple arithmetic operations over decimals numbers, mostly.
+/// representation. Note that `u128` and `i128` aren't supported for common configuration formats in
+/// serde, so we rather pick `i64` and `u64`, even if the former couple theoretically allows for a
+/// wider range of rationals to be exactly represented. We don't expect values to be that large in
+/// practice anyway: using arbitrary precision rationals is directed toward not introducing rounding
+/// errors when performing simple arithmetic operations over decimals numbers, mostly.
 ///
 /// If the number doesn't fit into an `i64` or `u64`, we approximate it by the nearest `f64` and
 /// serialize this value. This may incur a loss of precision, but this is expected: we can't
@@ -218,7 +218,13 @@ pub fn validate(format: ExportFormat, t: &RichTerm) -> Result<(), ExportError> {
                 record.iter_serializable().try_for_each(|binding| {
                     // unwrap(): terms must be fully evaluated before being validated for
                     // serialization. Otherwise, it's an internal error.
-                    let (_, rt) = binding.unwrap_or_else(|err| panic!("encountered field without definition `{}` during pre-serialization validation", err.id));
+                    let (_, rt) = binding.unwrap_or_else(|err| {
+                        panic!(
+                            "encountered field without definition `{}` \
+                            during pre-serialization validation",
+                            err.id
+                        )
+                    });
                     validate(format, rt)
                 })?;
                 Ok(())
@@ -373,8 +379,10 @@ mod tests {
         );
 
         assert_json_eq(
-            "{foo = let z = 0.5 + 0.5 in z, bar = [\"str\", true || false], baz = {subfoo = !false} & {subbar = 1 - 1}}",
-            json!({"foo": 1, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0}})
+            "{foo = let z = 0.5 + 0.5 in z, \
+            bar = [\"str\", true || false], \
+            baz = {subfoo = !false} & {subbar = 1 - 1}}",
+            json!({"foo": 1, "bar": ["str", true], "baz": {"subfoo": true, "subbar": 0}}),
         );
     }
 
