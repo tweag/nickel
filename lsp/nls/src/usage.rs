@@ -7,10 +7,29 @@ use nickel_lang_core::{
     term::{record::FieldMetadata, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{
-    field_walker::{DefWithPath, TermAtPath},
-    identifier::LocIdent,
-};
+use crate::{field_walker::DefWithPath, identifier::LocIdent};
+
+/// A term and a path.
+///
+/// This is morally equivalent to (but a more convenient representation than)
+/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermAtPath {
+    pub term: RichTerm,
+    /// A path of identifiers, in left-to-right order.
+    ///
+    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
+    pub path: Vec<Ident>,
+}
+
+impl From<RichTerm> for TermAtPath {
+    fn from(term: RichTerm) -> Self {
+        Self {
+            term,
+            path: Vec::new(),
+        }
+    }
+}
 
 pub type Environment = GenericEnvironment<Ident, DefWithPath>;
 
