@@ -63,15 +63,14 @@ trait SubstWildcard {
 
 impl SubstWildcard for Type {
     fn subst_wildcards(self, wildcards: &Wildcards) -> Type {
-        self.traverse::<_, _, Infallible>(
-            &|ty: Type, _| {
+        self.traverse(
+            &mut |ty: Type| -> Result<_, Infallible> {
                 if let TypeF::Wildcard(id) = ty.typ {
                     Ok(get_wildcard_type(wildcards, id))
                 } else {
                     Ok(ty)
                 }
             },
-            &mut (),
             TraverseOrder::TopDown,
         )
         .unwrap()

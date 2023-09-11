@@ -13,12 +13,14 @@ use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
 use crate::program::QueryPath;
+use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
 use crate::typ::Type;
 use crate::{eval, transform, typecheck};
 use codespan::FileId;
 use simple_counter::*;
+use std::convert::Infallible;
 use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::result::Result;
@@ -274,13 +276,12 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
         // We need to `traverse` the term, in case the type depends on inner terms that also contain wildcards
         let term = term
             .traverse(
-                &|rt: RichTerm, _| -> Result<RichTerm, std::convert::Infallible> {
+                &mut |rt: RichTerm| -> Result<RichTerm, Infallible> {
                     Ok(transform::substitute_wildcards::transform_one(
                         rt, &wildcards,
                     ))
                 },
-                &mut (),
-                crate::term::TraverseOrder::TopDown,
+                TraverseOrder::TopDown,
             )
             .unwrap();
 

@@ -46,6 +46,7 @@ pub use indexmap::IndexMap;
 
 use std::{
     cmp::{Ordering, PartialOrd},
+    convert::Infallible,
     ffi::OsString,
     fmt,
     ops::Deref,
@@ -296,11 +297,11 @@ impl RuntimeContract {
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let contract = self.contract.traverse(f, state, order)?;
+        let contract = self.contract.traverse(f, order)?;
         Ok(RuntimeContract { contract, ..self })
     }
 
@@ -446,13 +447,12 @@ impl Traverse<RichTerm> for LabeledType {
     // Note that this function doesn't traverse the label, which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
     // evaluated.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<LabeledType, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<LabeledType, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let LabeledType { typ, label } = self;
-        typ.traverse(f, state, order)
-            .map(|typ| LabeledType { typ, label })
+        typ.traverse(f, order).map(|typ| LabeledType { typ, label })
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
@@ -550,19 +550,19 @@ impl From<TypeAnnotation> for LetMetadata {
 }
 
 impl Traverse<RichTerm> for TypeAnnotation {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let TypeAnnotation { typ, contracts } = self;
 
         let contracts = contracts
             .into_iter()
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
             .collect::<Result<Vec<_>, _>>()?;
 
         let typ = typ
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
             .transpose()?;
 
         Ok(TypeAnnotation { typ, contracts })
@@ -1485,25 +1485,23 @@ impl RichTerm {
     /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
     /// good enough for the tests.
     pub fn without_pos(self) -> Self {
-        self.traverse::<_, _, ()>(
-            &|t: Type, _| {
+        self.traverse(
+            &mut |t: Type| -> Result<_, Infallible> {
                 Ok(Type {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
-        .traverse::<_, _, ()>(
-            &|t: RichTerm, _| {
+        .traverse(
+            &mut |t: RichTerm| -> Result<_, Infallible> {
                 Ok(RichTerm {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -1562,9 +1560,9 @@ pub trait Traverse<T>: Sized {
     /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
     ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(T, &mut S) -> Result<T, E>;
+        F: FnMut(T) -> Result<T, E>;
 
     /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
     /// each object.
@@ -1578,50 +1576,50 @@ impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
     ///
     /// This also recurses into the terms that are contained in `Type` subtrees.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let rt = match order {
-            TraverseOrder::TopDown => f(self, state)?,
+            TraverseOrder::TopDown => f(self)?,
             TraverseOrder::BottomUp => self,
         };
         let pos = rt.pos;
 
         let result = match_sharedterm! {rt.term, with {
             Term::Fun(id, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::Fun(id, t),
                     pos,
                 )
             },
             Term::FunPattern(id, d, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::FunPattern(id, d, t),
                     pos,
                 )
             },
             Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::Let(id, t1, t2, attrs),
                     pos,
                 )
             },
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::LetPattern(id, pat, t1, t2),
                     pos,
                 )
             },
             Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::App(t1, t2),
                     pos,
@@ -1633,10 +1631,10 @@ impl Traverse<RichTerm> for RichTerm {
                 let cases_result : Result<IndexMap<LocIdent, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
+                    .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
                     .collect();
 
-                let default = default.map(|t| t.traverse(f, state, order)).transpose()?;
+                let default = default.map(|t| t.traverse(f, order)).transpose()?;
 
                 RichTerm::new(
                     Term::Match {cases: cases_result?, default },
@@ -1644,15 +1642,15 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Op1(op, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::Op1(op, t),
                     pos,
                 )
             },
             Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(Term::Op2(op, t1, t2),
                     pos,
                 )
@@ -1660,7 +1658,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, order))
+                    .map(|t| t.traverse(f, order))
                     .collect();
                 RichTerm::new(
                     Term::OpN(op, ts_res?),
@@ -1668,7 +1666,7 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Sealed(i, t1, lbl) => {
-                let t1 = t1.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
                 RichTerm::new(
                     Term::Sealed(i, t1, lbl),
                     pos,
@@ -1681,7 +1679,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
-                        let field = field.traverse(f, state, order)?;
+                        let field = field.traverse(f, order)?;
                         Ok((id, field))
                     })
                     .collect();
@@ -1694,15 +1692,15 @@ impl Traverse<RichTerm> for RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
-                        let field = field.traverse(f, state, order)?;
+                        let field = field.traverse(f, order)?;
                         Ok((id, field))
                     })
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, field)| {
-                        let id_t = id_t.traverse(f, state, order)?;
-                        let field = field.traverse(f, state, order)?;
+                        let id_t = id_t.traverse(f, order)?;
+                        let field = field.traverse(f, order)?;
 
                         Ok((id_t, field,))
                     })
@@ -1715,7 +1713,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Array(ts, attrs) => {
                 let ts_res = Array::new(ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, order))
+                    .map(|t| t.traverse(f, order))
                     .collect::<Result<Rc<[_]>, _>>()?);
 
                 RichTerm::new(
@@ -1729,7 +1727,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
                         StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, state, order)?, indent))
+                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
                         }
                     })
                     .collect();
@@ -1740,21 +1738,21 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Annotated(annot, term) => {
-                let annot = annot.traverse(f, state, order)?;
-                let term = term.traverse(f, state, order)?;
+                let annot = annot.traverse(f, order)?;
+                let term = term.traverse(f, order)?;
                 RichTerm::new(
                     Term::Annotated(annot, term),
                     pos,
                 )
             },
             Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, state, order)?), pos)
+                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
             }
         } else rt};
 
         match order {
             TraverseOrder::TopDown => Ok(result),
-            TraverseOrder::BottomUp => f(result, state),
+            TraverseOrder::BottomUp => f(result),
         }
     }
 
@@ -1820,25 +1818,26 @@ impl Traverse<RichTerm> for RichTerm {
 }
 
 impl Traverse<Type> for RichTerm {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
     where
-        F: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
-        let f_on_term = |rt: RichTerm, s: &mut S| {
-            match_sharedterm! {rt.term, with {
-                Term::Type(ty) =>
-                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
-            } else Ok(rt)}
-        };
-        self.traverse(&f_on_term, state, order)
+        self.traverse(
+            &mut |rt: RichTerm| {
+                match_sharedterm! {rt.term, with {
+                    Term::Type(ty) =>
+                        ty.traverse(f, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
+                } else Ok(rt)}
+            },
+            order,
+        )
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
-        let mut f_on_term = |rt: &RichTerm| match &*rt.term {
+        self.traverse_ref(&mut |rt: &RichTerm| match &*rt.term {
             Term::Type(ty) => ty.traverse_ref(f).into(),
             _ => TraverseControl::Continue,
-        };
-        self.traverse_ref(&mut f_on_term)
+        })
     }
 }
 

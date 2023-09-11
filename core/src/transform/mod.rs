@@ -35,7 +35,7 @@ pub fn transform_no_free_vars(
     wildcards: Option<&Wildcards>,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
-        &|mut rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+        &mut |mut rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
             // Start by substituting any wildcard with its inferred type
             if let Some(wildcards) = wildcards {
                 rt = substitute_wildcards::transform_one(rt, wildcards);
@@ -45,13 +45,12 @@ pub fn transform_no_free_vars(
             let rt = desugar_destructuring::transform_one(rt);
             Ok(rt)
         },
-        &mut (),
         TraverseOrder::TopDown,
     )?;
 
     Ok(rt
         .traverse(
-            &|rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+            &mut |rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
                 // We need to do contract generation before the share normal form transformation,
                 // because `gen_pending_contracts` generates record contracts
                 //
@@ -66,7 +65,6 @@ pub fn transform_no_free_vars(
                 let rt = share_normal_form::transform_one(rt);
                 Ok(rt)
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap())

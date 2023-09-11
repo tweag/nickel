@@ -73,7 +73,7 @@ use crate::{
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
-    convert::TryInto,
+    convert::{Infallible, TryInto},
     num::NonZeroU16,
 };
 
@@ -2639,14 +2639,13 @@ pub fn infer_record_type(
 fn has_wildcards(ty: &Type) -> bool {
     let mut has_wildcard = false;
     ty.clone()
-        .traverse::<_, _, std::convert::Infallible>(
-            &|ty: Type, has_wildcard| {
+        .traverse(
+            &mut |ty: Type| {
                 if ty.typ.is_wildcard() {
-                    *has_wildcard = true;
+                    has_wildcard = true;
                 }
-                Ok(ty)
+                Ok::<_, Infallible>(ty)
             },
-            &mut has_wildcard,
             TraverseOrder::TopDown,
         )
         .unwrap();

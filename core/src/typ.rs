@@ -54,6 +54,7 @@ use crate::{
 
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::{self, Display},
 };
 
@@ -607,22 +608,25 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
 }
 
 impl Traverse<Type> for RecordRows {
-    fn traverse<FTy, S, E>(
-        self,
-        f: &FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<RecordRows, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RecordRows, E>
     where
-        FTy: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
-        let inner = self.0.try_map_state(
-            |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-            |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
-            state,
-        )?;
+        let rows = match self.0 {
+            RecordRowsF::Extend {
+                row: RecordRowF { id, typ },
+                tail,
+            } => RecordRowsF::Extend {
+                row: RecordRowF {
+                    id,
+                    typ: Box::new(f(*typ)?),
+                },
+                tail: Box::new(tail.traverse(f, order)?),
+            },
+            other => other,
+        };
 
-        Ok(RecordRows(inner))
+        Ok(RecordRows(rows))
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
@@ -901,25 +905,23 @@ impl Type {
     /// This is currently only used in test code, but because it's used from integration
     /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Type {
-        self.traverse::<_, _, ()>(
-            &|t: Type, _| {
-                Ok(Type {
+        self.traverse(
+            &mut |t: Type| {
+                Ok::<_, Infallible>(Type {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
-        .traverse::<_, _, ()>(
-            &|t: RichTerm, _| {
-                Ok(RichTerm {
+        .traverse(
+            &mut |t: RichTerm| {
+                Ok::<_, Infallible>(RichTerm {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -1064,50 +1066,61 @@ impl Type {
 }
 
 impl Traverse<Type> for Type {
-    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(mut self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        FTy: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
-        match order {
-            TraverseOrder::TopDown => {
-                let ty = f(self, state)?;
-                let inner = ty.typ.try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| rrows.traverse(f, state, order),
-                    |erows, _| Ok(erows),
-                    state,
-                )?;
-
-                Ok(Type { typ: inner, ..ty })
-            }
-            TraverseOrder::BottomUp => {
-                let traversed_depth_first = self.typ.try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| rrows.traverse(f, state, order),
-                    |erows, _| Ok(erows),
-                    state,
-                )?;
-
-                f(
-                    Type {
-                        typ: traversed_depth_first,
-                        ..self
-                    },
-                    state,
-                )
-            }
+        if let TraverseOrder::BottomUp = order {
+            self = f(self)?;
         }
+
+        let typ = match self.typ {
+            TypeF::Dyn => TypeF::Dyn,
+            TypeF::Number => TypeF::Number,
+            TypeF::Bool => TypeF::Bool,
+            TypeF::String => TypeF::String,
+            TypeF::Symbol => TypeF::Symbol,
+            TypeF::Flat(t) => TypeF::Flat(t),
+            TypeF::Arrow(dom, codom) => TypeF::Arrow(
+                Box::new(dom.traverse(f, order)?),
+                Box::new(codom.traverse(f, order)?),
+            ),
+            TypeF::Var(i) => TypeF::Var(i),
+            TypeF::Forall {
+                var,
+                var_kind,
+                body,
+            } => TypeF::Forall {
+                var,
+                var_kind,
+                body: Box::new(body.traverse(f, order)?),
+            },
+            TypeF::Enum(erows) => TypeF::Enum(erows),
+            TypeF::Record(rrows) => TypeF::Record(rrows.traverse(f, order)?),
+            TypeF::Dict {
+                type_fields,
+                flavour: attrs,
+            } => TypeF::Dict {
+                type_fields: Box::new(type_fields.traverse(f, order)?),
+                flavour: attrs,
+            },
+            TypeF::Array(t) => TypeF::Array(Box::new(t.traverse(f, order)?)),
+            TypeF::Wildcard(i) => TypeF::Wildcard(i),
+        };
+        self = Type { typ, ..self };
+
+        if let TraverseOrder::TopDown = order {
+            self = f(self)?;
+        }
+
+        Ok(self)
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
         match f(self) {
-            TraverseControl::Continue => {}
-            TraverseControl::SkipBranch => {
-                return None;
-            }
-            TraverseControl::Return(ret) => {
-                return Some(ret);
-            }
+            TraverseControl::Continue => (),
+            TraverseControl::SkipBranch => return None,
+            TraverseControl::Return(ret) => return Some(ret),
         };
 
         match &self.typ {
@@ -1130,22 +1143,23 @@ impl Traverse<Type> for Type {
 }
 
 impl Traverse<RichTerm> for Type {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let f_on_type = |ty: Type, s: &mut S| match ty.typ {
-            TypeF::Flat(t) => t
-                .traverse(f, s, order)
-                .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
-            _ => Ok(ty),
-        };
-
-        self.traverse(&f_on_type, state, order)
+        self.traverse(
+            &mut |ty: Type| match ty.typ {
+                TypeF::Flat(t) => t
+                    .traverse(f, order)
+                    .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
+                _ => Ok(ty),
+            },
+            order,
+        )
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
-        let mut f_on_type = |ty: &Type| match &ty.typ {
+        self.traverse_ref(&mut |ty: &Type| match &ty.typ {
             TypeF::Flat(t) => {
                 if let Some(ret) = t.traverse_ref(f) {
                     TraverseControl::Return(ret)
@@ -1154,8 +1168,7 @@ impl Traverse<RichTerm> for Type {
                 }
             }
             _ => TraverseControl::Continue,
-        };
-        self.traverse_ref(&mut f_on_type)
+        })
     }
 }
 

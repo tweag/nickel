@@ -163,15 +163,12 @@ impl Field {
 }
 
 impl Traverse<RichTerm> for Field {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Field, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Field, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let annotation = self.metadata.annotation.traverse(f, state, order)?;
-        let value = self
-            .value
-            .map(|v| v.traverse(f, state, order))
-            .transpose()?;
+        let annotation = self.metadata.annotation.traverse(f, order)?;
+        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
 
         let metadata = FieldMetadata {
             annotation,
@@ -181,7 +178,7 @@ impl Traverse<RichTerm> for Field {
         let pending_contracts = self
             .pending_contracts
             .into_iter()
-            .map(|pending_contract| pending_contract.traverse(f, state, order))
+            .map(|pending_contract| pending_contract.traverse(f, order))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Field {
