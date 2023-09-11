@@ -1,6 +1,6 @@
 use crate::{
     cache::CacheExt,
-    field_walker::{FieldDefs, FieldHaver},
+    field_walker::{FieldHaver, FieldResolver},
     incomplete,
     linearization::{
         completed::Completed,
@@ -716,7 +716,7 @@ fn term_based_completion(
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldDefs::resolve_term_path(&start_term, &path, server);
+    let defs = FieldResolver::new(server).resolve_term_path(&start_term, &path);
     Ok(defs.iter().flat_map(FieldHaver::completion_items).collect())
 }
 

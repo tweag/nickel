@@ -11,30 +11,9 @@ use nickel_lang_core::{
 
 use crate::{identifier::LocIdent, server::Server};
 
-/// A term and a path.
+/// A `FieldHaver` is something that... has fields.
 ///
-/// This is morally equivalent to (but a more convenient representation than)
-/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct TermAtPath {
-    pub term: RichTerm,
-    /// A path of identifiers, in left-to-right order.
-    ///
-    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
-    pub path: Vec<Ident>,
-}
-
-impl TermAtPath {}
-
-impl From<RichTerm> for TermAtPath {
-    fn from(term: RichTerm) -> Self {
-        Self {
-            term,
-            path: Vec::new(),
-        }
-    }
-}
-
+/// You can use a [`FieldResolver`] to resolve terms, or terms with paths, to `FieldHaver`s.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldHaver {
     RecordTerm(RecordData),
@@ -43,6 +22,7 @@ pub enum FieldHaver {
 }
 
 impl FieldHaver {
+    /// If this `FieldHaver` has a field named `id`, returns its value.
     fn get(&self, id: Ident) -> Option<FieldValue> {
         match self {
             FieldHaver::RecordTerm(data) => data
@@ -54,6 +34,7 @@ impl FieldHaver {
         }
     }
 
+    /// Returns all fields in this `FieldHaver`, rendered as LSP completion items.
     pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
         match self {
             FieldHaver::RecordTerm(data) => {
@@ -84,6 +65,7 @@ impl FieldHaver {
     }
 }
 
+/// [`FieldHaver`]s can have fields that either terms or types.
 #[derive(Clone, Debug, PartialEq)]
 enum FieldValue {
     RecordField(Field),
@@ -162,26 +144,6 @@ pub struct DefWithPath {
     pub metadata: Option<FieldMetadata>,
 }
 
-impl DefWithPath {
-    fn resolve_terms(&self, server: &Server) -> Vec<FieldHaver> {
-        let mut fields = Vec::new();
-
-        if let Some(val) = &self.value {
-            fields.extend_from_slice(&FieldDefs::resolve_term_path(val, &self.path, server))
-        }
-        if let Some(meta) = &self.metadata {
-            for typ in meta.annotation.contracts.iter().chain(&meta.annotation.typ) {
-                fields.extend_from_slice(&FieldDefs::resolve_path(
-                    &Value::Type(typ.typ.clone()),
-                    &self.path,
-                    server,
-                ))
-            }
-        }
-        fields
-    }
-}
-
 #[cfg(test)]
 impl DefWithPath {
     pub fn ident(&self) -> LocIdent {
@@ -197,32 +159,27 @@ impl DefWithPath {
     }
 }
 
-/// A map from identifiers to the defs that they refer to.
-#[derive(Clone, Debug, Default)]
-pub struct FieldDefs {}
+/// Contains the context needed to resolve fields.
+#[derive(Clone)]
+pub struct FieldResolver<'a> {
+    server: &'a Server,
+}
 
-impl FieldDefs {
-    pub fn resolve_term_path<'a>(
-        rt: &'a RichTerm,
-        path: &'a [Ident],
-        server: &Server,
-    ) -> Vec<FieldHaver> {
-        FieldDefs::resolve_path(&rt.clone().into(), path, server)
+impl<'a> FieldResolver<'a> {
+    pub fn new(server: &'a Server) -> Self {
+        Self { server }
     }
 
-    /// Resolve a record path iteratively, returning all the fields defined on the final path element.
+    /// Resolve a record path iteratively.
     ///
-    /// `env` is an environment that only gets used (and even then, only
-    /// as a fallback) for the first layer of variable resolutions. After
-    /// that, variables are resolved using the precomputed usage tables. This
-    /// mechanism allows providing an initial environment for input that doesn't
-    /// parse, and hence doesn't exist in the precomputed usage tables.
-    ///
-    /// For example, in `let x = ... in let y = x in [ y.` we will rely on the
-    /// initial environment to resolve the `y` in `[ y.`, and after that we will
-    /// use the precomputed tables to resolve the `x`.
-    fn resolve_path<'a>(val: &'a Value, mut path: &'a [Ident], server: &Server) -> Vec<FieldHaver> {
-        let mut fields = FieldDefs::resolve(val, server);
+    /// Returns all the field-having objects that the final path element refers to.
+    pub fn resolve_term_path(&self, rt: &RichTerm, path: &[Ident]) -> Vec<FieldHaver> {
+        self.resolve_path(&rt.clone().into(), path)
+    }
+
+    /// Resolve a record path iteratively, beginning from either a term or a type.
+    fn resolve_path(&self, val: &Value, mut path: &[Ident]) -> Vec<FieldHaver> {
+        let mut fields = self.resolve(val);
 
         while let Some((id, tail)) = path.split_first() {
             path = tail;
@@ -236,12 +193,12 @@ impl FieldDefs {
                 match value {
                     FieldValue::RecordField(field) => {
                         if let Some(val) = &field.value {
-                            fields.extend_from_slice(&FieldDefs::resolve_term(val, server))
+                            fields.extend_from_slice(&self.resolve_term(val))
                         }
-                        fields.extend(FieldDefs::resolve_annot(&field.metadata.annotation, server));
+                        fields.extend(self.resolve_annot(&field.metadata.annotation));
                     }
                     FieldValue::Type(ty) => {
-                        fields.extend_from_slice(&FieldDefs::resolve_type(&ty, server));
+                        fields.extend_from_slice(&self.resolve_type(&ty));
                     }
                 }
             }
@@ -250,21 +207,30 @@ impl FieldDefs {
         fields
     }
 
-    fn resolve_annot<'a>(
-        annot: &'a TypeAnnotation,
-        server: &'a Server,
-    ) -> impl Iterator<Item = FieldHaver> + 'a {
+    fn resolve_def_with_path(&self, def: &DefWithPath) -> Vec<FieldHaver> {
+        let mut fields = Vec::new();
+
+        if let Some(val) = &def.value {
+            fields.extend_from_slice(&self.resolve_term_path(val, &def.path))
+        }
+        if let Some(meta) = &def.metadata {
+            fields.extend(self.resolve_annot(&meta.annotation));
+        }
+        fields
+    }
+
+    fn resolve_annot(&'a self, annot: &'a TypeAnnotation) -> impl Iterator<Item = FieldHaver> + 'a {
         annot
             .contracts
             .iter()
             .chain(annot.typ.iter())
-            .flat_map(|lty| FieldDefs::resolve_type(&lty.typ, server).into_iter())
+            .flat_map(|lty| self.resolve_type(&lty.typ).into_iter())
     }
 
-    fn resolve(v: &Value, server: &Server) -> Vec<FieldHaver> {
+    fn resolve(&self, v: &Value) -> Vec<FieldHaver> {
         match v {
-            Value::Term(rt) => FieldDefs::resolve_term(rt, server),
-            Value::Type(typ) => FieldDefs::resolve_type(typ, server),
+            Value::Term(rt) => self.resolve_term(rt),
+            Value::Type(typ) => self.resolve_type(typ),
         }
     }
 
@@ -275,45 +241,44 @@ impl FieldDefs {
     /// are the fields defined on either record.
     ///
     /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
-    fn resolve_term(rt: &RichTerm, server: &Server) -> Vec<FieldHaver> {
+    fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]
             }
-            Term::Var(id) => server
+            Term::Var(id) => self
+                .server
                 .lin_registry
                 .get_def(&(*id).into())
                 .map(|def| {
                     log::info!("got def {def:?}");
 
-                    def.resolve_terms(server)
+                    self.resolve_def_with_path(def)
                 })
                 .unwrap_or_default(),
-            Term::ResolvedImport(file_id) => server
+            Term::ResolvedImport(file_id) => self
+                .server
                 .cache
                 .get_ref(*file_id)
-                .map(|term| FieldDefs::resolve_term(term, server))
+                .map(|term| self.resolve_term(term))
                 .unwrap_or_default(),
-            Term::Op2(BinaryOp::Merge(_), t1, t2) => combine(
-                FieldDefs::resolve_term(t1, server),
-                FieldDefs::resolve_term(t2, server),
-            ),
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
-                FieldDefs::resolve_term(body, server)
+            Term::Op2(BinaryOp::Merge(_), t1, t2) => {
+                combine(self.resolve_term(t1), self.resolve_term(t2))
             }
+            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => self.resolve_term(body),
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                FieldDefs::resolve_term_path(term, &[id.ident()], server)
+                self.resolve_term_path(term, &[id.ident()])
             }
             Term::Annotated(annot, term) => {
-                let defs = FieldDefs::resolve_annot(annot, server);
-                defs.chain(FieldDefs::resolve_term(term, server)).collect()
+                let defs = self.resolve_annot(annot);
+                defs.chain(self.resolve_term(term)).collect()
             }
             _ => Default::default(),
         };
 
-        let typ_fields = if let Some(typ) = server.lin_registry.get_type(rt) {
+        let typ_fields = if let Some(typ) = self.server.lin_registry.get_type(rt) {
             log::info!("got inferred type {typ:?}");
-            FieldDefs::resolve_type(typ, server)
+            self.resolve_type(typ)
         } else {
             Vec::new()
         };
@@ -321,11 +286,11 @@ impl FieldDefs {
         combine(term_fields, typ_fields)
     }
 
-    fn resolve_type(typ: &Type, server: &Server) -> Vec<FieldHaver> {
+    fn resolve_type(&self, typ: &Type) -> Vec<FieldHaver> {
         match &typ.typ {
             TypeF::Record(rows) => vec![FieldHaver::RecordType(rows.clone())],
             TypeF::Dict { type_fields, .. } => vec![FieldHaver::Dict(type_fields.as_ref().clone())],
-            TypeF::Flat(rt) => FieldDefs::resolve_term(rt, server),
+            TypeF::Flat(rt) => self.resolve_term(rt),
             _ => Default::default(),
         }
     }
