@@ -58,7 +58,7 @@ jobs:
           # an output file. Everything else is just capturing the error code
           # while still printing the logs
           set +e
-          nix flake check --print-build-logs > logs
+          nix flake check --print-build-logs > logs 2>&1
           errcode=$?
           cat logs
           exit $errcode
