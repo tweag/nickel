@@ -1,7 +1,6 @@
 //! In a lazy language like Nickel, there are no well delimited stack frames due to how function
 //! application is evaluated. Additional information about the history of function calls is thus
 //! stored in a call stack solely for better error reporting.
-use super::IdentKind;
 use crate::{
     identifier::LocIdent,
     position::{RawSpan, TermPos},
@@ -28,11 +27,7 @@ pub enum StackElem {
     /// An application was evaluated.
     App(TermPos),
     /// A variable was entered.
-    Var {
-        kind: IdentKind,
-        id: LocIdent,
-        pos: TermPos,
-    },
+    Var { id: LocIdent, pos: TermPos },
     /// A record field was entered.
     Field {
         id: LocIdent,
@@ -48,8 +43,8 @@ impl CallStack {
     }
 
     /// Push a marker to indicate that a var was entered.
-    pub fn enter_var(&mut self, kind: IdentKind, id: LocIdent, pos: TermPos) {
-        self.0.push(StackElem::Var { kind, id, pos });
+    pub fn enter_var(&mut self, id: LocIdent, pos: TermPos) {
+        self.0.push(StackElem::Var { id, pos });
     }
 
     /// Push a marker to indicate that an application was entered.

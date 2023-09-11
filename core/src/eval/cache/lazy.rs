@@ -1,5 +1,5 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{BlackholedError, Cache, CacheIndex, Closure, Environment, IdentKind};
+use super::{BlackholedError, Cache, CacheIndex, Closure, Environment};
 use crate::{
     identifier::{Ident, LocIdent},
     term::{record::FieldDeps, BindingType, RichTerm, Term},
@@ -359,26 +359,23 @@ impl ThunkData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Thunk {
     data: Rc<RefCell<ThunkData>>,
-    ident_kind: IdentKind,
 }
 
 impl Thunk {
     /// Create a new standard thunk.
-    pub fn new(closure: Closure, ident_kind: IdentKind) -> Self {
+    pub fn new(closure: Closure) -> Self {
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
-            ident_kind,
         }
     }
 
     /// Create a new revertible thunk. If the dependencies are empty, this function acts as
     /// [Thunk::new] and create a standard (non-revertible) thunk.
-    pub fn new_rev(closure: Closure, ident_kind: IdentKind, deps: FieldDeps) -> Self {
+    pub fn new_rev(closure: Closure, deps: FieldDeps) -> Self {
         match deps {
-            FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure, ident_kind),
+            FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure),
             deps => Thunk {
                 data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
-                ident_kind,
             },
         }
     }
@@ -403,7 +400,6 @@ impl Thunk {
 
         Ok(ThunkUpdateFrame {
             data: Rc::downgrade(&self.data),
-            _ident_kind: self.ident_kind,
         })
     }
 
@@ -422,10 +418,6 @@ impl Thunk {
         self.data.borrow().closure().clone()
     }
 
-    pub fn ident_kind(&self) -> IdentKind {
-        self.ident_kind
-    }
-
     /// Consume the thunk and return an owned closure. Avoid cloning if this thunk is the only
     /// reference to the inner closure.
     pub fn into_closure(self) -> Closure {
@@ -441,7 +433,6 @@ impl Thunk {
     pub fn revert(&self) -> Self {
         Thunk {
             data: ThunkData::revert(&self.data),
-            ident_kind: self.ident_kind,
         }
     }
 
@@ -519,7 +510,6 @@ impl Thunk {
             data: Rc::new(RefCell::new(
                 inner.revthunk_as_explicit_fun(fields.clone().filter(&mut deps_filter)),
             )),
-            ident_kind: self.ident_kind,
         };
 
         let fresh_var = LocIdent::fresh();
@@ -543,7 +533,6 @@ impl Thunk {
     {
         Thunk {
             data: Rc::new(RefCell::new(self.data.borrow().map(f))),
-            ident_kind: self.ident_kind,
         }
     }
 
@@ -571,7 +560,6 @@ impl Thunk {
 #[derive(Clone, Debug)]
 pub struct ThunkUpdateFrame {
     data: Weak<RefCell<ThunkData>>,
-    _ident_kind: IdentKind,
 }
 
 impl ThunkUpdateFrame {
@@ -628,10 +616,10 @@ impl Cache for CBNCache {
         }
     }
 
-    fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex {
+    fn add(&mut self, clos: Closure, bty: BindingType) -> CacheIndex {
         match bty {
-            BindingType::Normal => Thunk::new(clos, kind),
-            BindingType::Revertible(deps) => Thunk::new_rev(clos, kind, deps),
+            BindingType::Normal => Thunk::new(clos),
+            BindingType::Revertible(deps) => Thunk::new_rev(clos, deps),
         }
     }
 
@@ -665,10 +653,6 @@ impl Cache for CBNCache {
 
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]) {
         idx.build_cached(rec_env)
-    }
-
-    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind {
-        idx.ident_kind()
     }
 
     fn saturate<'a, I: DoubleEndedIterator<Item = Ident> + Clone>(

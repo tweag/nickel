@@ -559,11 +559,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     // empty.
     env.insert(
         fresh_var.ident(),
-        cache.add(
-            closure,
-            IdentKind::Record,
-            BindingType::Revertible(combined_deps),
-        ),
+        cache.add(closure, BindingType::Revertible(combined_deps)),
     );
 
     Ok(RichTerm::from(Term::Var(fresh_var)))

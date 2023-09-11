@@ -3,7 +3,7 @@
 //! See [eval](../eval/index.html).
 use super::cache::{Cache, CacheIndex};
 use super::operation::OperationCont;
-use crate::eval::{Closure, Environment, IdentKind};
+use crate::eval::{Closure, Environment};
 use crate::position::TermPos;
 use crate::term::{BindingType, RichTerm, StrChunk};
 
@@ -211,9 +211,7 @@ impl<C: Cache> Stack<C> {
     /// If the argument is not tracked, it is directly returned.
     pub fn pop_arg_as_idx(&mut self, cache: &mut C) -> Option<(CacheIndex, TermPos)> {
         match self.0.pop() {
-            Some(Marker::Arg(arg, pos)) => {
-                Some((cache.add(arg, IdentKind::Lambda, BindingType::Normal), pos))
-            }
+            Some(Marker::Arg(arg, pos)) => Some((cache.add(arg, BindingType::Normal), pos)),
             Some(Marker::TrackedArg(arg_idx, pos)) => Some((arg_idx, pos)),
             Some(m) => {
                 self.0.push(m);
@@ -324,7 +322,7 @@ impl<C: Cache> Stack<C> {
             Some(Marker::TrackedArg(idx, _)) => Some(idx.clone()),
             Some(Marker::Arg(..)) => {
                 let (closure, pos) = self.pop_arg(cache).unwrap();
-                let idx = cache.add(closure, IdentKind::Lambda, BindingType::Normal);
+                let idx = cache.add(closure, BindingType::Normal);
                 self.push_tracked_arg(idx.clone(), pos);
                 Some(idx)
             }
@@ -346,7 +344,7 @@ impl<C: Cache> std::fmt::Debug for Stack<C> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::{cache::CacheImpl, IdentKind};
+    use crate::eval::cache::CacheImpl;
     use crate::term::{Term, UnaryOp};
     use assert_matches::assert_matches;
 
@@ -375,7 +373,7 @@ mod tests {
     }
 
     fn some_thunk_marker(eval_cache: &mut CacheImpl) -> Marker<CacheImpl> {
-        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let mut idx = eval_cache.add(some_closure(), BindingType::Normal);
         let uidx = eval_cache.make_update_index(&mut idx).unwrap();
         Marker::UpdateIndex(uidx)
     }
@@ -414,9 +412,9 @@ mod tests {
 
         let mut eval_cache = CacheImpl::new();
 
-        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let mut idx = eval_cache.add(some_closure(), BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
-        idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        idx = eval_cache.add(some_closure(), BindingType::Normal);
         s.push_update_index(eval_cache.make_update_index(&mut idx).unwrap());
 
         assert_eq!(2, s.count_thunks());
@@ -427,7 +425,7 @@ mod tests {
     #[test]
     fn thunk_blackhole() {
         let mut eval_cache = CacheImpl::new();
-        let mut idx = eval_cache.add(some_closure(), IdentKind::Let, BindingType::Normal);
+        let mut idx = eval_cache.add(some_closure(), BindingType::Normal);
         let idx_upd = eval_cache.make_update_index(&mut idx);
         assert_matches!(idx_upd, Ok(..));
         assert_matches!(eval_cache.make_update_index(&mut idx), Err(..));

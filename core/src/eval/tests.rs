@@ -262,7 +262,6 @@ fn initial_env() {
         Ident::from("g"),
         eval_cache.add(
             Closure::atomic_closure(mk_term::integer(1)),
-            IdentKind::Let,
             BindingType::Normal,
         ),
     );
@@ -299,11 +298,7 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut CacheImpl) -> Enviro
         .map(|(id, t)| {
             (
                 id.into(),
-                eval_cache.add(
-                    Closure::atomic_closure(t),
-                    IdentKind::Let,
-                    BindingType::Normal,
-                ),
+                eval_cache.add(Closure::atomic_closure(t), BindingType::Normal),
             )
         })
         .collect()

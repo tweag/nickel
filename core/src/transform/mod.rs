@@ -1,7 +1,7 @@
 //! Various post transformations of nickel code.
 use crate::{
     cache::ImportResolver,
-    eval::{cache::Cache, Closure, Environment, IdentKind},
+    eval::{cache::Cache, Closure, Environment},
     identifier::LocIdent,
     term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
@@ -156,7 +156,7 @@ impl Closurizable for RichTerm {
                     body: self,
                     env: with_env,
                 };
-                cache.add(closure, IdentKind::Record, BindingType::Normal)
+                cache.add(closure, BindingType::Normal)
             }
         };
 

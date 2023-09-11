@@ -74,7 +74,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                             env: Environment::new(),
                         };
 
-                        cache.add(closure, IdentKind::Record, BindingType::Normal)
+                        cache.add(closure, BindingType::Normal)
                     }
                 };
 
@@ -132,10 +132,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     env: final_env,
                 };
 
-                Ok((
-                    id.ident(),
-                    cache.add(final_closure, IdentKind::Record, BindingType::Normal),
-                ))
+                Ok((id.ident(), cache.add(final_closure, BindingType::Normal)))
             } else {
                 let error = EvalError::MissingFieldDef {
                     id: *id,
@@ -154,10 +151,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     env: Environment::new(),
                 };
 
-                Ok((
-                    id.ident(),
-                    cache.add(closure, IdentKind::Record, BindingType::Normal),
-                ))
+                Ok((id.ident(), cache.add(closure, BindingType::Normal)))
             }
         })
         .collect()

@@ -401,8 +401,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
 
-                    self.call_stack
-                        .enter_var(self.cache.ident_kind(&idx), *x, pos);
+                    self.call_stack.enter_var(*x, pos);
 
                     // If we are fetching a recursive field from the environment that doesn't have
                     // a definition, we complete the error with the additional information of where
@@ -451,9 +450,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: env.clone(),
                     };
 
-                    let idx = self
-                        .cache
-                        .add(closure, IdentKind::Let, binding_type.clone());
+                    let idx = self.cache.add(closure, binding_type.clone());
 
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
@@ -842,14 +839,6 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
     }
 }
 
-/// Kind of an identifier.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum IdentKind {
-    Let,
-    Lambda,
-    Record,
-}
-
 /// A closure, a term together with an environment.
 #[derive(PartialEq)]
 pub struct Closure {
@@ -905,7 +894,6 @@ pub fn env_add_record<C: Cache>(
                         id.ident(),
                         cache.add(
                             Closure { body: value, env: closure.env.clone() },
-                            IdentKind::Record,
                             BindingType::Normal
                         ),
                     ))
@@ -930,10 +918,7 @@ pub fn env_add<C: Cache>(
         body: rt,
         env: local_env,
     };
-    env.insert(
-        id.ident(),
-        cache.add(closure, IdentKind::Let, BindingType::Normal),
-    );
+    env.insert(id.ident(), cache.add(closure, BindingType::Normal));
 }
 
 /// Pop and update all the indices on the top of the stack with the given closure.
