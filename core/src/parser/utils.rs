@@ -11,7 +11,10 @@ use super::error::ParseError;
 use crate::{
     combine::Combine,
     destructuring::FieldPattern,
-    eval::{merge::merge_doc, operation::RecPriority},
+    eval::{
+        merge::{merge_doc, split},
+        operation::RecPriority,
+    },
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
@@ -522,17 +525,56 @@ where
 /// Merge two fields by performing the merge of both their value (dynamically, by introducing a
 /// merging operator) and their metadata (statically).
 fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
+    fn merge_values(id_span: RawSpan, t1: RichTerm, t2: RichTerm) -> RichTerm {
+        let RichTerm {
+            term: t1,
+            pos: pos1,
+        } = t1;
+        let RichTerm {
+            term: t2,
+            pos: pos2,
+        } = t2;
+        match (t1.into_owned(), t2.into_owned()) {
+            (Term::Record(rd1), Term::Record(rd2)) => {
+                let split::SplitResult {
+                    left,
+                    center,
+                    right,
+                } = split::split(rd1.fields, rd2.fields);
+                let mut fields = IndexMap::with_capacity(left.len() + center.len() + right.len());
+                fields.extend(left);
+                fields.extend(right);
+                for (id, (field1, field2)) in center.into_iter() {
+                    fields.insert(id, merge_fields(id_span, field1, field2));
+                }
+                Term::Record(RecordData::new(
+                    fields,
+                    RecordAttrs::combine(rd1.attrs, rd2.attrs),
+                    None,
+                ))
+                .into()
+            }
+            (t1, t2) => mk_term::op2(
+                BinaryOp::Merge(MergeLabel {
+                    span: id_span,
+                    kind: MergeKind::PiecewiseDef,
+                }),
+                RichTerm::new(t1, pos1),
+                RichTerm::new(t2, pos2),
+            ),
+        }
+    }
+
     let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) => Some(mk_term::op2(
-            BinaryOp::Merge(MergeLabel {
-                span: id_span,
-                kind: MergeKind::PiecewiseDef,
-            }),
-            t1,
-            t2,
-        )),
-        (Some(t), None) | (None, Some(t)) => Some(t),
+        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => {
+            Some(merge_values(id_span, t1, t2))
+        }
+        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => Some(t),
+        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => Some(t),
+        (Some(t), None) => Some(t),
+        (None, Some(t)) => Some(t),
         (None, None) => None,
+        _ => unreachable!(),
     };
 
     let metadata = FieldMetadata::combine(field1.metadata, field2.metadata);
@@ -542,7 +584,7 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
     Field {
         value,
         metadata,
-        pending_contracts: field1.pending_contracts,
+        pending_contracts: Vec::new(),
     }
 }
 
