@@ -612,19 +612,14 @@ impl Traverse<Type> for RecordRows {
     where
         F: FnMut(Type) -> Result<Type, E>,
     {
-        let rows = match self.0 {
-            RecordRowsF::Extend {
-                row: RecordRowF { id, typ },
-                tail,
-            } => RecordRowsF::Extend {
-                row: RecordRowF {
-                    id,
-                    typ: Box::new(f(*typ)?),
-                },
-                tail: Box::new(tail.traverse(f, order)?),
-            },
-            other => other,
-        };
+        // traverse keeps track of state in the FnMut function. try_map_state
+        // keeps track of it in a separate state variable. we can pass the
+        // former into the latter by treating the function itself as the state
+        let rows = self.0.try_map_state(
+            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+            |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
+            f,
+        )?;
 
         Ok(RecordRows(rows))
     }
@@ -1067,54 +1062,31 @@ impl Type {
 }
 
 impl Traverse<Type> for Type {
-    fn traverse<F, E>(mut self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
         F: FnMut(Type) -> Result<Type, E>,
     {
-        if let TraverseOrder::BottomUp = order {
-            self = f(self)?;
-        }
-
-        let typ = match self.typ {
-            TypeF::Dyn => TypeF::Dyn,
-            TypeF::Number => TypeF::Number,
-            TypeF::Bool => TypeF::Bool,
-            TypeF::String => TypeF::String,
-            TypeF::Symbol => TypeF::Symbol,
-            TypeF::Flat(t) => TypeF::Flat(t),
-            TypeF::Arrow(dom, codom) => TypeF::Arrow(
-                Box::new(dom.traverse(f, order)?),
-                Box::new(codom.traverse(f, order)?),
-            ),
-            TypeF::Var(i) => TypeF::Var(i),
-            TypeF::Forall {
-                var,
-                var_kind,
-                body,
-            } => TypeF::Forall {
-                var,
-                var_kind,
-                body: Box::new(body.traverse(f, order)?),
-            },
-            TypeF::Enum(erows) => TypeF::Enum(erows),
-            TypeF::Record(rrows) => TypeF::Record(rrows.traverse(f, order)?),
-            TypeF::Dict {
-                type_fields,
-                flavour: attrs,
-            } => TypeF::Dict {
-                type_fields: Box::new(type_fields.traverse(f, order)?),
-                flavour: attrs,
-            },
-            TypeF::Array(t) => TypeF::Array(Box::new(t.traverse(f, order)?)),
-            TypeF::Wildcard(i) => TypeF::Wildcard(i),
+        let pre_map = match order {
+            TraverseOrder::TopDown => f(self)?,
+            TraverseOrder::BottomUp => self,
         };
-        self = Type { typ, ..self };
 
-        if let TraverseOrder::TopDown = order {
-            self = f(self)?;
+        // traverse keeps track of state in the FnMut function. try_map_state
+        // keeps track of it in a separate state variable. we can pass the
+        // former into the latter by treating the function itself as the state
+        let typ = pre_map.typ.try_map_state(
+            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+            |rrows, f| rrows.traverse(f, order),
+            |erows, _| Ok(erows),
+            f,
+        )?;
+
+        let post_map = Type { typ, ..pre_map };
+
+        match order {
+            TraverseOrder::TopDown => Ok(post_map),
+            TraverseOrder::BottomUp => f(post_map),
         }
-
-        Ok(self)
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
