@@ -11,7 +11,7 @@ use super::error::ParseError;
 use crate::{
     combine::Combine,
     destructuring::FieldPattern,
-    eval::operation::RecPriority,
+    eval::{merge::merge_doc, operation::RecPriority},
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
@@ -292,9 +292,10 @@ impl Combine for FieldMetadata {
         };
 
         FieldMetadata {
-            doc: left.doc.or(right.doc),
+            doc: merge_doc(left.doc, right.doc),
             annotation: Combine::combine(left.annotation, right.annotation),
             opt: left.opt || right.opt,
+            // The resulting field will be suppressed from serialization if either of the fields to be merged is.
             not_exported: left.not_exported || right.not_exported,
             priority,
         }
