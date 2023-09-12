@@ -497,34 +497,16 @@ where
             // Here, both fields are parsed as `StrChunks`, but the first field is actually a
             // static one, just with special characters. The following code determines which fields
             // are actually static or not, and inserts them in the right location.
-            match e.term.as_ref() {
-                Term::StrChunks(chunks) => {
-                    let mut buffer = String::new();
+            let static_access = e.term.as_ref().try_str_chunk_as_static_str();
 
-                    let is_static = chunks
-                        .iter()
-                        .try_for_each(|chunk| match chunk {
-                            StrChunk::Literal(s) => {
-                                buffer.push_str(s);
-                                Ok(())
-                            }
-                            StrChunk::Expr(..) => Err(()),
-                        })
-                        .is_ok();
-
-                    if is_static {
-                        insert_static_field(
-                            &mut static_fields,
-                            LocIdent::new_with_pos(buffer, e.pos),
-                            t,
-                        )
-                    } else {
-                        dynamic_fields.push((e, t));
-                    }
-                }
-                // Currently `e` can only be string chunks, and this case should be unreachable,
-                // but let's be future-proof
-                _ => dynamic_fields.push((e, t)),
+            if let Some(static_access) = static_access {
+                insert_static_field(
+                    &mut static_fields,
+                    LocIdent::new_with_pos(static_access, e.pos),
+                    t,
+                )
+            } else {
+                dynamic_fields.push((e, t));
             }
         }
     });
