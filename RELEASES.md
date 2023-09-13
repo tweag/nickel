@@ -41,7 +41,7 @@ Tooling
 * Improve `nickel query` (and `:query` in the REPL) interface by @yannham in
   https://github.com/tweag/nickel/pull/1447
 * Topiary integration (formatting) as `nickel format` by @vkleen in https://github.com/tweag/nickel/pull/1371
-* LSP: various improvement to completion by @jneem (https://github.com/tweag/nickel/pull/1450, https://github.com/tweag/nickel/pull/1473)
+* LSP: various improvements to completion by @jneem (https://github.com/tweag/nickel/pull/1450, https://github.com/tweag/nickel/pull/1473)
 * Improve doc extraction capabilities through `nickel doc` (evaluate terms before extracting documentation) by @vkleen in https://github.com/tweag/nickel/pull/1463
 * LSP Fix persistent diagnostics by @jneem in https://github.com/tweag/nickel/pull/1478
 * Restore --version for CLI, include git revision by @yannham in https://github.com/tweag/nickel/pull/1486
