@@ -1,3 +1,77 @@
+Version 1.2
+===========
+
+Version 1.2 comes with several improvements on the LSP and other components of
+the Nickel tooling. The new customize mode of the CLI makes it possible to
+dynamically turn a configuration into a command-line interface, which you can
+interact with.
+
+Several related long-standing issues and limitations when typechecking
+polymorphic functions are also finally fixed.
+
+Core language
+-------------
+
+* Make the lexer accept scientific notation by @vkleen in https://github.com/tweag/nickel/pull/1456
+* Improve polymorphism handling, bidirectional typechecking and fix unsound generalization by @yannham in https://github.com/tweag/nickel/pull/1372
+* Error on serializing very large numbers by @vkleen in https://github.com/tweag/nickel/pull/1470
+* Import YAML files containing multiple documents as arrays by @vkleen in https://github.com/tweag/nickel/pull/1497
+* Normalize line endings in string literals during parsing (Windows compatiblity) by @vkleen in https://github.com/tweag/nickel/pull/1562
+* Implement curried dot operator by @suimong in https://github.com/tweag/nickel/pull/1578
+* Statically merge partial record definitions by @vkleen in https://github.com/tweag/nickel/pull/1599
+* Disable recursive priorities by @yannham in https://github.com/tweag/nickel/pull/1600
+
+Fixes
+-----
+
+* Various fixes to the pretty-printer by @vkleen (https://github.com/tweag/nickel/pull/1411, https://github.com/tweag/nickel/pull/1412, https://github.com/tweag/nickel/pull/1410, https://github.com/tweag/nickel/pull/1417)
+* Fix REPL panic on transitive imports by @Radvendii in https://github.com/tweag/nickel/pull/1474
+* Fix contract application order in let bindings and annotations by @vkleen in https://github.com/tweag/nickel/pull/1544
+* Fix cursor desyncing when using REPL by @deotimedev in https://github.com/tweag/nickel/pull/1546
+* Fix handling of relative imports @jneem in https://github.com/tweag/nickel/pull/1489
+* LSP Fix two issues with incomplete input by @jneem in https://github.com/tweag/nickel/pull/1550
+* Fix incomplete check of record row constraints by @yannham in https://github.com/tweag/nickel/pull/1558
+* Fix LSP regression on hovering by @yannham in https://github.com/tweag/nickel/pull/1583
+
+Tooling
+-------
+
+* Full vscode extension by @szlend and @yannham in (https://github.com/tweag/nickel/pull/1405, https://github.com/tweag/nickel/pull/1413, https://github.com/tweag/nickel/pull/1416)
+* Invalidate importers in NLS (plus a couple other import-related issues) by @jneem in https://github.com/tweag/nickel/pull/1426
+* Improve `nickel query` (and `:query` in the REPL) inteface by @yannham in
+  https://github.com/tweag/nickel/pull/1447
+* Topiary integration (formatting) as `nickel format` by @vkleen in https://github.com/tweag/nickel/pull/1371
+* LSP: various improvement to completion by @jneem (https://github.com/tweag/nickel/pull/1450, https://github.com/tweag/nickel/pull/1473)
+* Improve doc extraction capabilities through `nickel doc` (evaluate terms before extracting documentation) by @vkleen in https://github.com/tweag/nickel/pull/1463
+* LSP Fix persistent diagnostics by @jneem in https://github.com/tweag/nickel/pull/1478
+* Restore --version for CLI, include git revision by @yannham in https://github.com/tweag/nickel/pull/1486
+* Disable the colors when stdout isn't a tty by @thufschmitt in https://github.com/tweag/nickel/pull/1508
+* Improve type variables name allocation when reporting type errors by @yannham in https://github.com/tweag/nickel/pull/1512
+* LSP formatting without calling the topiary binary by @vkleen in https://github.com/tweag/nickel/pull/1526
+* LSP Initial handling of incomplete input by @jneem in https://github.com/tweag/nickel/pull/1541
+* LSP resolve imports for incomplete inputs also by @jneem in https://github.com/tweag/nickel/pull/1542
+* Add multiline string support for VSCode autoclosing pairs by @deotimedev in https://github.com/tweag/nickel/pull/1553
+* Display icon for nickel file in vscode explorer by @suimong in https://github.com/tweag/nickel/pull/1556
+* New experimental customize mode CLI to interact with a configuration on the
+  command line (see `nickel help export`) by @Radvendii and @yannham in
+  https://github.com/tweag/nickel/pull/1475
+* (LSP) Import completion by @deotimedev in https://github.com/tweag/nickel/pull/1561
+* Get rid of uninformative generic notes for higher-order contract errors by @yannham in https://github.com/tweag/nickel/pull/1564
+* Render hover documentation as Markdown in LSP by @deotimedev in https://github.com/tweag/nickel/pull/1559
+* Exit with nonzero exit code on failure by @vkleen in https://github.com/tweag/nickel/pull/1576
+
+Stdlib
+------
+
+* add `std.contract.Sequence` by @Radvendii in https://github.com/tweag/nickel/pull/1452
+
+Documentation
+-------------
+
+* manual docs: fix mismatch between input command and its echo in the output by @foo-jin in https://github.com/tweag/nickel/pull/1421
+* Add two examples: imports and foreach pattern by @mipmip in https://github.com/tweag/nickel/pull/1387
+* Fix some leftover instances of the old enum syntax in the manual by @vkleen in https://github.com/tweag/nickel/pull/1548
+
 Version 1.1
 ===========
 
