@@ -158,14 +158,18 @@ SimpleFieldAnnotAtom<TypeRule>: FieldMetadata = {
 // rule).
 FieldAnnotAtom<TypeRule>: FieldExtAnnot = {
     <SimpleFieldAnnotAtom<TypeRule>> => <>.into(),
-    "|" "rec" "force" => FieldExtAnnot {
-        rec_force: true,
-        ..Default::default()
-    },
-    "|" "rec" "default" => FieldExtAnnot {
-        rec_default: true,
-        ..Default::default()
-    },
+// Recursive priorities are disabled as of 1.2.0. Their semantics is non trivial
+// to adapt to RFC005 that landed in 1.0.0, so they are currently on hold. If we
+// drop them altogether, we'll have to clean the corresponding code floating
+// around (not only in the parser, but in the internals module, etc.)
+//    "|" "rec" "force" => FieldExtAnnot {
+//        rec_force: true,
+//        ..Default::default()
+//    },
+//    "|" "rec" "default" => FieldExtAnnot {
+//        rec_default: true,
+//        ..Default::default()
+//    },
 }
 
 // An annotation, with possibly many annotations chained.
