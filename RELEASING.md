@@ -117,7 +117,7 @@ Other crates carry the version number of the Nickel language. These are
 
 2. Verify that the "Upload release artifacts" GitHub action is getting triggered
    and completes successfully, uploading a static Nickel binary and a Docker
-   image for both x86-64 Linux and arm64 MacOS platforms.
+   image for both x86-64 and arm64 Linux platforms.
 
 ### Redeploy nickel-lang.org with the new release
 
