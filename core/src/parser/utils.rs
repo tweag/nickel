@@ -11,7 +11,10 @@ use super::error::ParseError;
 use crate::{
     combine::Combine,
     destructuring::FieldPattern,
-    eval::operation::RecPriority,
+    eval::{
+        merge::{merge_doc, split},
+        operation::RecPriority,
+    },
     identifier::LocIdent,
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
@@ -292,9 +295,10 @@ impl Combine for FieldMetadata {
         };
 
         FieldMetadata {
-            doc: left.doc.or(right.doc),
+            doc: merge_doc(left.doc, right.doc),
             annotation: Combine::combine(left.annotation, right.annotation),
             opt: left.opt || right.opt,
+            // The resulting field will be suppressed from serialization if either of the fields to be merged is.
             not_exported: left.not_exported || right.not_exported,
             priority,
         }
@@ -497,34 +501,16 @@ where
             // Here, both fields are parsed as `StrChunks`, but the first field is actually a
             // static one, just with special characters. The following code determines which fields
             // are actually static or not, and inserts them in the right location.
-            match e.term.as_ref() {
-                Term::StrChunks(chunks) => {
-                    let mut buffer = String::new();
+            let static_access = e.term.as_ref().try_str_chunk_as_static_str();
 
-                    let is_static = chunks
-                        .iter()
-                        .try_for_each(|chunk| match chunk {
-                            StrChunk::Literal(s) => {
-                                buffer.push_str(s);
-                                Ok(())
-                            }
-                            StrChunk::Expr(..) => Err(()),
-                        })
-                        .is_ok();
-
-                    if is_static {
-                        insert_static_field(
-                            &mut static_fields,
-                            LocIdent::new_with_pos(buffer, e.pos),
-                            t,
-                        )
-                    } else {
-                        dynamic_fields.push((e, t));
-                    }
-                }
-                // Currently `e` can only be string chunks, and this case should be unreachable,
-                // but let's be future-proof
-                _ => dynamic_fields.push((e, t)),
+            if let Some(static_access) = static_access {
+                insert_static_field(
+                    &mut static_fields,
+                    LocIdent::new_with_pos(static_access, e.pos),
+                    t,
+                )
+            } else {
+                dynamic_fields.push((e, t));
             }
         }
     });
@@ -536,30 +522,88 @@ where
     )
 }
 
-/// Merge two fields by performing the merge of both their value (dynamically, by introducing a
-/// merging operator) and their metadata (statically).
+/// Merge two fields by performing the merge of both their value (dynamically if
+/// necessary, by introducing a merge operator) and their metadata (statically).
+///
+/// If the values of both fields are static records ([`Term::Record`]s), their
+/// merge is computed statically. This prevents building terms whose depth is
+/// linear in the number of fields if partial definitions are involved. This
+/// manifested in https://github.com/tweag/nickel/issues/1427.
 fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
-    let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) => Some(mk_term::op2(
-            BinaryOp::Merge(MergeLabel {
-                span: id_span,
-                kind: MergeKind::PiecewiseDef,
-            }),
-            t1,
-            t2,
-        )),
-        (Some(t), None) | (None, Some(t)) => Some(t),
-        (None, None) => None,
-    };
+    // FIXME: We're duplicating a lot of the logic in
+    // [`eval::merge::merge_fields`] but not quite enough to actually factor
+    // it out
+    fn merge_values(id_span: RawSpan, t1: RichTerm, t2: RichTerm) -> RichTerm {
+        let RichTerm {
+            term: t1,
+            pos: pos1,
+        } = t1;
+        let RichTerm {
+            term: t2,
+            pos: pos2,
+        } = t2;
+        match (t1.into_owned(), t2.into_owned()) {
+            (Term::Record(rd1), Term::Record(rd2)) => {
+                let split::SplitResult {
+                    left,
+                    center,
+                    right,
+                } = split::split(rd1.fields, rd2.fields);
+                let mut fields = IndexMap::with_capacity(left.len() + center.len() + right.len());
+                fields.extend(left);
+                fields.extend(right);
+                for (id, (field1, field2)) in center.into_iter() {
+                    fields.insert(id, merge_fields(id_span, field1, field2));
+                }
+                Term::Record(RecordData::new(
+                    fields,
+                    RecordAttrs::combine(rd1.attrs, rd2.attrs),
+                    None,
+                ))
+                .into()
+            }
+            (t1, t2) => mk_term::op2(
+                BinaryOp::Merge(MergeLabel {
+                    span: id_span,
+                    kind: MergeKind::PiecewiseDef,
+                }),
+                RichTerm::new(t1, pos1),
+                RichTerm::new(t2, pos2),
+            ),
+        }
+    }
 
-    let metadata = FieldMetadata::combine(field1.metadata, field2.metadata);
+    let (value, priority) = match (field1.value, field2.value) {
+        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
+            Some(merge_values(id_span, t1, t2)),
+            field1.metadata.priority,
+        ),
+        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
+            (Some(t), field1.metadata.priority)
+        }
+        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => {
+            (Some(t), field2.metadata.priority)
+        }
+        (Some(t), None) => (Some(t), field1.metadata.priority),
+        (None, Some(t)) => (Some(t), field2.metadata.priority),
+        (None, None) => (None, Default::default()),
+        _ => unreachable!(),
+    };
 
     // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
     debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
     Field {
         value,
-        metadata,
-        pending_contracts: field1.pending_contracts,
+        // [`FieldMetadata::combine`] produces subtly different behaviour from
+        // the runtime merging code, which is what we need to replicate here
+        metadata: FieldMetadata {
+            doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
+            annotation: Combine::combine(field1.metadata.annotation, field2.metadata.annotation),
+            opt: field1.metadata.opt && field2.metadata.opt,
+            not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
+            priority,
+        },
+        pending_contracts: Vec::new(),
     }
 }
 
