@@ -90,11 +90,22 @@ let {check, ..} = import "../lib/assert.ncl" in
                | default = "",
       snd_data = "snd",
     },
-    final_override | rec force = {
-      fst_data = "override",
-      snd_data = "override",
-      common.final = fst_data ++ "_" ++ snd_data,
+    # Recursive priorities are currently on hold since the implementation of
+    # RFC005, which changes their semantics. In the meantime, this test has been
+    # rewritten temporarily with the expected result of the original "rec force"
+    # instead
+    #
+    # final_override | rec force = {
+    #   fst_data = "override",
+    #   snd_data = "override",
+    #   common.final = fst_data ++ "_" ++ snd_data,
+    # },
+    final_override = {
+      fst_data | force = "override",
+      snd_data | force = "override",
+      common.final | force = fst_data ++ "_" ++ snd_data,
     },
+
   } in
   [
     parent.fst_data & parent.snd_data == {
