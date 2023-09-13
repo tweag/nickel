@@ -20,7 +20,7 @@
       url = "github:tweag/topiary";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix-input.url = "github:nixos/nix/584ff408a4e2b6eb0d74989778c640a92089b6d4";
+    nix-input.url = "github:nixos/nix";
   };
 
   nixConfig = {
