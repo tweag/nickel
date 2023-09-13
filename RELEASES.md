@@ -38,7 +38,7 @@ Tooling
 
 * Full vscode extension by @szlend and @yannham in (https://github.com/tweag/nickel/pull/1405, https://github.com/tweag/nickel/pull/1413, https://github.com/tweag/nickel/pull/1416)
 * Invalidate importers in NLS (plus a couple other import-related issues) by @jneem in https://github.com/tweag/nickel/pull/1426
-* Improve `nickel query` (and `:query` in the REPL) inteface by @yannham in
+* Improve `nickel query` (and `:query` in the REPL) interface by @yannham in
   https://github.com/tweag/nickel/pull/1447
 * Topiary integration (formatting) as `nickel format` by @vkleen in https://github.com/tweag/nickel/pull/1371
 * LSP: various improvement to completion by @jneem (https://github.com/tweag/nickel/pull/1450, https://github.com/tweag/nickel/pull/1473)
