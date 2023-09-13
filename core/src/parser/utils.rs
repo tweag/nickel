@@ -522,9 +522,17 @@ where
     )
 }
 
-/// Merge two fields by performing the merge of both their value (dynamically, by introducing a
-/// merging operator) and their metadata (statically).
+/// Merge two fields by performing the merge of both their value (dynamically if
+/// necessary, by introducing a merge operator) and their metadata (statically).
+///
+/// If the values of both fields are static records ([`Term::Record`]s), their
+/// merge is computed statically. This prevents building terms whose depth is
+/// linear in the number of fields if partial definitions are involved. This
+/// manifested in https://github.com/tweag/nickel/issues/1427.
 fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
+    // FIXME: We're duplicating a lot of the logic in
+    // [`eval::merge::merge_fields`] but not quite enough to actually factor
+    // it out
     fn merge_values(id_span: RawSpan, t1: RichTerm, t2: RichTerm) -> RichTerm {
         let RichTerm {
             term: t1,
@@ -565,25 +573,36 @@ fn merge_fields(id_span: RawSpan, field1: Field, field2: Field) -> Field {
         }
     }
 
-    let value = match (field1.value, field2.value) {
-        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => {
-            Some(merge_values(id_span, t1, t2))
+    let (value, priority) = match (field1.value, field2.value) {
+        (Some(t1), Some(t2)) if field1.metadata.priority == field2.metadata.priority => (
+            Some(merge_values(id_span, t1, t2)),
+            field1.metadata.priority,
+        ),
+        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => {
+            (Some(t), field1.metadata.priority)
         }
-        (Some(t), _) if field1.metadata.priority > field2.metadata.priority => Some(t),
-        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => Some(t),
-        (Some(t), None) => Some(t),
-        (None, Some(t)) => Some(t),
-        (None, None) => None,
+        (_, Some(t)) if field1.metadata.priority < field2.metadata.priority => {
+            (Some(t), field2.metadata.priority)
+        }
+        (Some(t), None) => (Some(t), field1.metadata.priority),
+        (None, Some(t)) => (Some(t), field2.metadata.priority),
+        (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
-
-    let metadata = FieldMetadata::combine(field1.metadata, field2.metadata);
 
     // At this stage, pending contracts aren't filled nor meaningful, and should all be empty.
     debug_assert!(field1.pending_contracts.is_empty() && field2.pending_contracts.is_empty());
     Field {
         value,
-        metadata,
+        // [`FieldMetadata::combine`] produces subtly different behaviour from
+        // the runtime merging code, which is what we need to replicate here
+        metadata: FieldMetadata {
+            doc: merge_doc(field1.metadata.doc, field2.metadata.doc),
+            annotation: Combine::combine(field1.metadata.annotation, field2.metadata.annotation),
+            opt: field1.metadata.opt && field2.metadata.opt,
+            not_exported: field1.metadata.not_exported || field2.metadata.not_exported,
+            priority,
+        },
         pending_contracts: Vec::new(),
     }
 }
