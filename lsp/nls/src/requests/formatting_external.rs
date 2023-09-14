@@ -56,7 +56,7 @@ pub fn handle_format_document(
 
     let new_text = String::from_utf8(output.stdout).unwrap();
 
-    let result = Some(vec![TextEdit {
+    let result = (text != new_text).then_some(vec![TextEdit {
         range: Range {
             start: Position {
                 line: 0,

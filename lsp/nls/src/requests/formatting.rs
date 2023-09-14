@@ -31,7 +31,9 @@ pub fn handle_format_document(
         file: params.text_document.uri,
     })?;
 
-    let result = Some(vec![TextEdit {
+    // TODO: instead of always sending a huge edit, we should compute a diff
+    // between `text` and `formatted` and send more granular edits.
+    let result = (text != formatted).then_some(vec![TextEdit {
         range: Range {
             start: Position {
                 line: 0,
