@@ -14,7 +14,7 @@ it in VSCode, (Neo)Vim and Emacs.
 
 **Warning**: because the cargo registry (crates.io) requires that all
 dependencies of Nickel are published there as well, the format feature isn't
-enabled when installing nls with `cargo install` as of NLS version 1.2.0. In
+enabled when installing nls with `cargo install` as of NLS version 1.2.1. In
 this case, to enable formatting in NLS, you have to make the `topiary`
 executable available in your `PATH`. Please follow [Topiary's setup
 instructions](https://github.com/tweag/topiary#installing) and ensure in
