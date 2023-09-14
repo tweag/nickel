@@ -201,8 +201,6 @@ impl<'a> FieldResolver<'a> {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    ///
-    /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
     fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
