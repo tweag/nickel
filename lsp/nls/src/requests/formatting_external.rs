@@ -20,7 +20,6 @@ pub fn handle_format_document(
     let file_id = server.cache.id_of(&SourcePath::Path(path)).unwrap();
     let text = server.cache.files().source(file_id).clone();
     let document_length = text.lines().count() as u32;
-    let last_line_length = text.lines().next_back().unwrap().len() as u32;
 
     let Ok(mut topiary) = process::Command::new(FORMATTING_COMMAND[0])
         .args(&FORMATTING_COMMAND[1..])
@@ -62,9 +61,12 @@ pub fn handle_format_document(
                 line: 0,
                 character: 0,
             },
+            // The end position is exclusive. Since we want to replace the
+            // entire document, we specify the beginning of the line after the
+            // last line in the document.
             end: Position {
-                line: document_length - 1,
-                character: last_line_length,
+                line: document_length,
+                character: 0,
             },
         },
         new_text,
