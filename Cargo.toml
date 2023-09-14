@@ -22,7 +22,6 @@ readme = "README.md"
 
 [workspace.dependencies]
 nickel-lang-core = { version = "0.2", path = "./core", default-features = false }
-nickel-lang-utils = { version = "0.1", path = "./utils" }
 lsp-harness = { version = "0.1", path = "./lsp/lsp-harness" }
 
 # The wasm-bindgen version is pinned using `=` since flake.nix reads the version

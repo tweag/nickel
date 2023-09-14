@@ -34,6 +34,5 @@ git-version = { workspace = true }
 clap_complete = { workspace = true }
 
 [dev-dependencies]
-nickel-lang-utils.workspace = true
 test-generator.workspace = true
 insta = { workspace = true, features = ["filters"] }
