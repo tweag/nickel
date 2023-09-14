@@ -72,32 +72,6 @@ enum FieldValue {
     Type(Type),
 }
 
-/// The things that can appear as the right hand side of a `Def`
-#[derive(Clone, Debug, PartialEq)]
-enum Value {
-    /// In `let foo = value`, the term `value` is the right hand side of the `Def`.
-    Term(RichTerm),
-    /// If type inference has determined that `x` is of type
-    ///
-    /// `{ foo: { bar: Number } }`
-    ///     ^-----------------------------------------------------------|
-    /// then in the expression `x.foo`, the definition of `foo` is here | and the
-    /// value of its definition is the type `{ bar: Number }`.
-    Type(Type),
-}
-
-impl From<RichTerm> for Value {
-    fn from(rt: RichTerm) -> Self {
-        Value::Term(rt)
-    }
-}
-
-impl From<Type> for Value {
-    fn from(typ: Type) -> Self {
-        Value::Type(typ)
-    }
-}
-
 fn metadata_doc(m: &FieldMetadata) -> Option<Documentation> {
     let doc = m.doc.as_ref()?;
     Some(Documentation::MarkupContent(MarkupContent {
@@ -173,13 +147,8 @@ impl<'a> FieldResolver<'a> {
     /// Resolve a record path iteratively.
     ///
     /// Returns all the field-having objects that the final path element refers to.
-    pub fn resolve_term_path(&self, rt: &RichTerm, path: &[Ident]) -> Vec<FieldHaver> {
-        self.resolve_path(&rt.clone().into(), path)
-    }
-
-    /// Resolve a record path iteratively, beginning from either a term or a type.
-    fn resolve_path(&self, val: &Value, mut path: &[Ident]) -> Vec<FieldHaver> {
-        let mut fields = self.resolve(val);
+    pub fn resolve_term_path(&self, rt: &RichTerm, mut path: &[Ident]) -> Vec<FieldHaver> {
+        let mut fields = self.resolve_term(rt);
 
         while let Some((id, tail)) = path.split_first() {
             path = tail;
@@ -225,13 +194,6 @@ impl<'a> FieldResolver<'a> {
             .iter()
             .chain(annot.typ.iter())
             .flat_map(|lty| self.resolve_type(&lty.typ).into_iter())
-    }
-
-    fn resolve(&self, v: &Value) -> Vec<FieldHaver> {
-        match v {
-            Value::Term(rt) => self.resolve_term(rt),
-            Value::Type(typ) => self.resolve_type(typ),
-        }
     }
 
     /// Find all the fields that are defined on a term.
