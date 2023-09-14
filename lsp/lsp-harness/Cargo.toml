@@ -17,4 +17,3 @@ toml.workspace = true
 assert_cmd.workspace = true
 insta.workspace = true
 test-generator.workspace = true
-nickel-lang-utils.workspace = true
