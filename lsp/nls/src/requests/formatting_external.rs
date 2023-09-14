@@ -55,7 +55,7 @@ pub fn handle_format_document(
 
     let new_text = String::from_utf8(output.stdout).unwrap();
 
-    let result = (text != new_text).then_some(vec![TextEdit {
+    let result = Some(vec![TextEdit {
         range: Range {
             start: Position {
                 line: 0,
@@ -72,5 +72,6 @@ pub fn handle_format_document(
         new_text,
     }]);
     server.reply(Response::new_ok(id, result));
+
     Ok(())
 }
