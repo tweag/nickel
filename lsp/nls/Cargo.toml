@@ -45,6 +45,5 @@ thiserror.workspace = true
 assert_cmd.workspace = true
 assert_matches.workspace = true
 insta.workspace = true
-lsp-harness.workspace = true
 pretty_assertions.workspace = true
 test-generator.workspace = true
