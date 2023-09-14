@@ -15,8 +15,7 @@ name = "nls"
 path = "src/main.rs"
 
 [features]
-default = ["format"]
-format = ["nickel-lang-core/format"]
+format = []
 
 [build-dependencies]
 lalrpop.workspace = true
