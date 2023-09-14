@@ -14,7 +14,7 @@ readme.workspace = true
 bench = false
 
 [features]
-default = ["markdown", "repl", "doc", "format"]
+default = ["markdown", "repl", "doc"]
 markdown = ["termimad"]
 repl = ["rustyline", "rustyline-derive", "ansi_term"]
 repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
