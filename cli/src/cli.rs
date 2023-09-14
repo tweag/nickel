@@ -29,7 +29,9 @@ use crate::format::FormatCommand;
         env!("CARGO_PKG_VERSION"),
         // 7 is the length of self.shortRev. the string is padded out so it can
         // be searched for in the binary
-        git_version!(fallback = &env!("NICKEL_NIX_BUILD_REV")[0..7])
+        // The crate published on cargo doesn't have the git version, so we use "cargorel" as a
+        // fallback value
+        git_version!(fallback = &option_env!("NICKEL_NIX_BUILD_REV").unwrap_or("cargorel")[0..7])
     )
 )]
 pub struct Options {
