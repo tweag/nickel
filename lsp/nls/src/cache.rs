@@ -65,7 +65,7 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
-            let types = TypeCollector {};
+            let types = TypeCollector::default();
             let lin = CombinedLinearizer(host, types);
             let building = Building {
                 lin_registry,

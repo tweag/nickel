@@ -159,7 +159,7 @@ impl<'a> AnalysisHost<'a> {
         }
     }
 
-    fn next_id(&self, lin: &Linearization<Building>) -> ItemId {
+    fn next_id(&self, lin: &Building) -> ItemId {
         ItemId {
             file_id: self.file,
             index: lin.next_id(),
@@ -178,7 +178,7 @@ impl<'a> AnalysisHost<'a> {
     // Panic if `rt` is neither a let/let pattern nor a fun/fun pattern.
     fn setup_decl(
         &mut self,
-        lin: &mut Linearization<Building>,
+        lin: &mut Building,
         rt: &RichTerm,
         ty: &UnifType,
         pos: TermPos,
@@ -218,12 +218,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     type CompletionExtra = Extra;
     type ItemId = ItemId;
 
-    fn add_term(
-        &mut self,
-        lin: &mut Building,
-        rt: &RichTerm,
-        ty: UnifType,
-    ) -> Option<ItemId> {
+    fn add_term(&mut self, lin: &mut Building, rt: &RichTerm, ty: UnifType) -> Option<ItemId> {
         let pos = rt.pos;
         let term = rt.term.as_ref();
         debug!("adding term: {:?} @ {:?}", term, pos);
@@ -698,12 +693,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
     }
 
-    fn retype(
-        &mut self,
-        lin: &mut Linearization<Building>,
-        item_id: Option<ItemId>,
-        new_type: UnifType,
-    ) {
+    fn retype(&mut self, lin: &mut Building, item_id: Option<ItemId>, new_type: UnifType) {
         let Some(item_id) = item_id else {
             return;
         };
@@ -717,23 +707,30 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     }
 }
 
-pub struct TypeCollector {}
+#[derive(Default)]
+pub struct TypeCollector {
+    // Store a copy of the terms we've added so far. The index in this array is their ItemId.
+    term_ids: Vec<RichTermPtr>,
+}
 
 impl Linearizer for TypeCollector {
     type Building = HashMap<RichTermPtr, UnifType>;
     type Completed = HashMap<RichTermPtr, Type>;
     type CompletionExtra = Extra;
+    type ItemId = usize;
 
     fn scope(&mut self) -> Self {
-        TypeCollector {}
+        TypeCollector::default()
     }
 
     fn scope_meta(&mut self) -> Self {
-        TypeCollector {}
+        TypeCollector::default()
     }
 
-    fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) {
+    fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) -> Option<usize> {
+        self.term_ids.push(RichTermPtr(rt.clone()));
         lin.insert(RichTermPtr(rt.clone()), ty);
+        Some(self.term_ids.len() - 1)
     }
 
     fn complete(
@@ -759,6 +756,12 @@ impl Linearizer for TypeCollector {
             .map(|(rt, uty)| (rt, transform_type(uty)))
             .collect()
     }
+
+    fn retype(&mut self, lin: &mut Self::Building, item_id: Option<usize>, new_type: UnifType) {
+        if let Some(id) = item_id {
+            lin.insert(self.term_ids[id].clone(), new_type);
+        }
+    }
 }
 
 pub struct CombinedLinearizer<T, U>(pub T, pub U);
@@ -769,6 +772,7 @@ where
 {
     type Building = (T::Building, U::Building);
     type Completed = (T::Completed, U::Completed);
+    type ItemId = (Option<T::ItemId>, Option<U::ItemId>);
 
     // Maybe this should be (T::CompletionExtra, U::CompletionExtra) but in practice
     // CompletionExtra is always Extra anyway.
@@ -782,9 +786,15 @@ where
         CombinedLinearizer(self.0.scope_meta(), self.1.scope_meta())
     }
 
-    fn add_term(&mut self, lin: &mut Self::Building, term: &RichTerm, ty: UnifType) {
-        self.0.add_term(&mut lin.0, term, ty.clone());
-        self.1.add_term(&mut lin.1, term, ty);
+    fn add_term(
+        &mut self,
+        lin: &mut Self::Building,
+        term: &RichTerm,
+        ty: UnifType,
+    ) -> Option<Self::ItemId> {
+        let id0 = self.0.add_term(&mut lin.0, term, ty.clone());
+        let id1 = self.1.add_term(&mut lin.1, term, ty);
+        Some((id0, id1))
     }
 
     fn add_field_metadata(&mut self, lin: &mut Self::Building, field: &Field) {
@@ -808,26 +818,16 @@ where
     {
         (self.0.complete(lin.0, extra), self.1.complete(lin.1, extra))
     }
-}
 
-struct IdGen(usize);
-
-impl IdGen {
-    /// Make new Generator starting at `base`
-    fn new(base: usize) -> Self {
-        IdGen(base)
-    }
-
-    /// Get the current id
-    fn get(&self) -> usize {
-        self.0
-    }
-
-    /// Return the **current id** and advance the generator.
-    /// Following calls to get (and get_and_advance) will return a new id
-    fn get_and_advance(&mut self) -> usize {
-        let current_id = self.0;
-        self.0 += 1;
-        current_id
+    fn retype(
+        &mut self,
+        lin: &mut Self::Building,
+        item_id: Option<Self::ItemId>,
+        new_type: UnifType,
+    ) {
+        if let Some((id0, id1)) = item_id {
+            self.0.retype(&mut lin.0, id0, new_type.clone());
+            self.1.retype(&mut lin.1, id1, new_type);
+        }
     }
 }

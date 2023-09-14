@@ -1655,7 +1655,7 @@ fn walk_with_annot<L: Linearizer>(
 fn check<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     rt: &RichTerm,
     ty: UnifType,
@@ -2233,7 +2233,7 @@ fn infer_with_annot<L: Linearizer>(
 fn infer<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {

@@ -78,7 +78,7 @@ pub trait Linearizer {
     /// optional as well. If the item id is `None`, `retype` simply does nothing.
     fn retype(
         &mut self,
-        _lin: &mut Linearization<Self::Building>,
+        _lin: &mut Self::Building,
         _item_id: Option<Self::ItemId>,
         _new_type: UnifType,
     ) {
@@ -126,7 +126,7 @@ where
 
     fn add_term(
         &mut self,
-        _lin: &mut Linearization<Self::Building>,
+        _lin: &mut Self::Building,
         _term: &RichTerm,
         _ty: UnifType,
     ) -> Option<()> {
