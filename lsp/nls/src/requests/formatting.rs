@@ -4,7 +4,7 @@ use nickel_lang_core::cache::SourcePath;
 
 use crate::{error::Error, files::uri_to_path, server::Server};
 
-/// Handle the LSP formatting request from a client using an external binary as a formatter.
+/// Handle the LSP formatting request from a client using Topiary as a formatting library.
 /// If this succeds, it sends a reponse to the server and returns `Ok(..)`, otherwise,
 /// it only returns an `Err(..)`.
 pub fn handle_format_document(
@@ -31,7 +31,9 @@ pub fn handle_format_document(
         file: params.text_document.uri,
     })?;
 
-    let result = Some(vec![TextEdit {
+    // TODO: instead of always sending a huge edit, we should compute a diff
+    // between `text` and `formatted` and send more granular edits.
+    let result = (text != formatted).then_some(vec![TextEdit {
         range: Range {
             start: Position {
                 line: 0,
