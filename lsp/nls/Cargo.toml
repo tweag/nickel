@@ -14,6 +14,10 @@ version.workspace = true
 name = "nls"
 path = "src/main.rs"
 
+[features]
+default = ["format"]
+format = ["nickel-lang-core/format"]
+
 [build-dependencies]
 lalrpop.workspace = true
 
@@ -27,7 +31,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 regex.workspace = true
 
-nickel-lang-core = { workspace = true, features = ["format"] }
+nickel-lang-core.workspace = true
 lsp-server.workspace = true
 lsp-types.workspace = true
 log.workspace = true
@@ -36,7 +40,7 @@ anyhow.workspace = true
 derive_more.workspace = true
 lazy_static.workspace = true
 csv.workspace = true
-thiserror = "1.0.44"
+thiserror.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
