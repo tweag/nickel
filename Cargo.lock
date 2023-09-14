@@ -1683,7 +1683,6 @@ dependencies = [
  "lalrpop-util",
  "lazy_static",
  "log",
- "lsp-harness",
  "lsp-server",
  "lsp-types",
  "nickel-lang-core",
