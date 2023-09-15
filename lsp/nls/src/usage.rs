@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(table.def(&x0), None);
 
         let def = table.def(&x1).unwrap();
-        assert_eq!(def.ident(), x0);
+        assert_eq!(def.ident, x0);
         assert_matches!(def.value().unwrap().term.as_ref(), Term::Num(_));
     }
 
@@ -262,15 +262,15 @@ mod tests {
         assert_eq!(table.usages(&baz0).cloned().collect::<Vec<_>>(), vec![baz1]);
 
         let x_def = table.def(&x1).unwrap();
-        assert_eq!(x_def.ident(), x0);
+        assert_eq!(x_def.ident, x0);
         assert!(x_def.path().is_empty());
 
         let a_def = table.def(&a1).unwrap();
-        assert_eq!(a_def.ident(), a0);
+        assert_eq!(a_def.ident, a0);
         assert_eq!(a_def.path(), &["foo".into()]);
 
         let baz_def = table.def(&baz1).unwrap();
-        assert_eq!(baz_def.ident(), baz0);
+        assert_eq!(baz_def.ident, baz0);
         assert_eq!(baz_def.path(), vec!["foo".into(), "bar".into()]);
     }
 
@@ -286,9 +286,9 @@ mod tests {
         let field1 = locced("field", file, 47..52);
         let table = UsageLookup::new(&rt);
 
-        assert_eq!(table.def(&foo1).unwrap().ident(), foo0);
-        assert_eq!(table.def(&foo2).unwrap().ident(), foo0);
-        assert_eq!(table.def(&sub1).unwrap().ident(), sub0);
+        assert_eq!(table.def(&foo1).unwrap().ident, foo0);
+        assert_eq!(table.def(&foo2).unwrap().ident, foo0);
+        assert_eq!(table.def(&sub1).unwrap().ident, sub0);
 
         // We don't see "baz = sub.field" as a "usage" of field, because it's
         // a static access and not a var.

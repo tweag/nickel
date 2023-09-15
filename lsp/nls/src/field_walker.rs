@@ -23,14 +23,14 @@ pub enum FieldHaver {
 
 impl FieldHaver {
     /// If this `FieldHaver` has a field named `id`, returns its value.
-    fn get(&self, id: Ident) -> Option<FieldValue> {
+    fn get(&self, id: Ident) -> Option<FieldContent> {
         match self {
             FieldHaver::RecordTerm(data) => data
                 .fields
                 .get(&id)
-                .map(|field| FieldValue::RecordField(field.clone())),
-            FieldHaver::Dict(ty) => Some(FieldValue::Type(ty.clone())),
-            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(FieldValue::Type),
+                .map(|field| FieldContent::RecordField(field.clone())),
+            FieldHaver::Dict(ty) => Some(FieldContent::Type(ty.clone())),
+            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(FieldContent::Type),
         }
     }
 
@@ -65,9 +65,9 @@ impl FieldHaver {
     }
 }
 
-/// [`FieldHaver`]s can have fields that either terms or types.
+/// [`FieldHaver`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
-enum FieldValue {
+enum FieldContent {
     RecordField(Field),
     Type(Type),
 }
@@ -120,10 +120,6 @@ pub struct DefWithPath {
 
 #[cfg(test)]
 impl DefWithPath {
-    pub fn ident(&self) -> LocIdent {
-        self.ident
-    }
-
     pub fn path(&self) -> &[Ident] {
         &self.path
     }
@@ -160,13 +156,13 @@ impl<'a> FieldResolver<'a> {
 
             for value in values {
                 match value {
-                    FieldValue::RecordField(field) => {
+                    FieldContent::RecordField(field) => {
                         if let Some(val) = &field.value {
                             fields.extend_from_slice(&self.resolve_term(val))
                         }
                         fields.extend(self.resolve_annot(&field.metadata.annotation));
                     }
-                    FieldValue::Type(ty) => {
+                    FieldContent::Type(ty) => {
                         fields.extend_from_slice(&self.resolve_type(&ty));
                     }
                 }
