@@ -27,6 +27,8 @@ Other crates carry the version number of the Nickel language. These are
 - `nickel-lang-lsp`
 - `pyckel`
 
+Finally, update the version number in `doc/manual/introduction.md`.
+
 ### Prepare
 
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
