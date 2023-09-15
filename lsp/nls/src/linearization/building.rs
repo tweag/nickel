@@ -8,7 +8,7 @@ use nickel_lang_core::{
     position::TermPos,
     term::{record::Field, IndexMap, RichTerm},
     typ::TypeF,
-    typecheck::{linearization::LinearizationState, UnifType},
+    typecheck::UnifType,
 };
 
 use crate::linearization::interface::{TermKind, UsageState};
@@ -18,7 +18,6 @@ use super::{
     Environment, ItemId, LinRegistry, LinearizationItem,
 };
 
-/// A concrete [LinearizationState]
 /// Holds any inner datatype that can be used as stable resource
 /// while recording terms.
 pub struct Building<'a> {
@@ -315,5 +314,3 @@ impl<'b> Building<'b> {
         self.linearization.len()
     }
 }
-
-impl<'a> LinearizationState for Building<'a> {}

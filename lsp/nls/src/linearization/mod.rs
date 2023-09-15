@@ -10,15 +10,12 @@ use nickel_lang_core::{
         RichTerm, Term, UnaryOp,
     },
     typ::TypeF,
-    typecheck::{
-        linearization::{Linearization, Linearizer},
-        reporting::NameReg,
-        UnifType,
-    },
+    typecheck::{linearization::Linearizer, reporting::NameReg, UnifType},
 };
 
 use crate::{
-    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, usage::UsageLookup,
+    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, term::RichTermPtr,
+    usage::UsageLookup,
 };
 
 use self::{
@@ -46,6 +43,7 @@ pub struct LinRegistry {
     // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId, everything>)
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
+    pub type_lookups: HashMap<RichTermPtr, Type>,
 }
 
 impl LinRegistry {
@@ -53,11 +51,19 @@ impl LinRegistry {
         Self::default()
     }
 
-    pub fn insert(&mut self, file_id: FileId, linearization: Completed, term: &RichTerm) {
+    pub fn insert(
+        &mut self,
+        file_id: FileId,
+        linearization: Completed,
+        type_lookups: HashMap<RichTermPtr, Type>,
+        term: &RichTerm,
+    ) {
         self.map.insert(file_id, linearization);
         self.position_lookups
             .insert(file_id, PositionLookup::new(term));
         self.usage_lookups.insert(file_id, UsageLookup::new(term));
+
+        self.type_lookups.extend(type_lookups);
     }
 
     /// Look for the linearization corresponding to an item's id, and return the corresponding item
@@ -75,6 +81,10 @@ impl LinRegistry {
     pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
         let file = rt.pos.as_opt_ref()?.src_id;
         self.usage_lookups.get(&file)?.env(rt)
+    }
+
+    pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
+        self.type_lookups.get(&RichTermPtr(rt.clone()))
     }
 }
 
@@ -149,7 +159,7 @@ impl<'a> AnalysisHost<'a> {
         }
     }
 
-    fn next_id(&self, lin: &Linearization<Building>) -> ItemId {
+    fn next_id(&self, lin: &Building) -> ItemId {
         ItemId {
             file_id: self.file,
             index: lin.next_id(),
@@ -168,7 +178,7 @@ impl<'a> AnalysisHost<'a> {
     // Panic if `rt` is neither a let/let pattern nor a fun/fun pattern.
     fn setup_decl(
         &mut self,
-        lin: &mut Linearization<Building>,
+        lin: &mut Building,
         rt: &RichTerm,
         ty: &UnifType,
         pos: TermPos,
@@ -208,12 +218,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     type CompletionExtra = Extra;
     type ItemId = ItemId;
 
-    fn add_term(
-        &mut self,
-        lin: &mut Linearization<Building>,
-        rt: &RichTerm,
-        ty: UnifType,
-    ) -> Option<ItemId> {
+    fn add_term(&mut self, lin: &mut Building, rt: &RichTerm, ty: UnifType) -> Option<ItemId> {
         let pos = rt.pos;
         let term = rt.term.as_ref();
         debug!("adding term: {:?} @ {:?}", term, pos);
@@ -532,7 +537,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         Some(main_id)
     }
 
-    fn add_field_metadata(&mut self, _lin: &mut Linearization<Building>, field: &Field) {
+    fn add_field_metadata(&mut self, _lin: &mut Building, field: &Field) {
         // Notice 1: No push to lin for the `FieldMetadata` itself
         // Notice 2: we discard the encoded value as anything we
         //           would do with the value will be handled in the following
@@ -548,15 +553,15 @@ impl<'a> Linearizer for AnalysisHost<'a> {
     /// Additionally, resolves concrete types for all items.
     fn complete(
         self,
-        mut lin: Linearization<Building>,
+        mut lin: Building,
         Extra {
             table,
             names: reported_names,
             wildcards,
-        }: Extra,
-    ) -> Linearization<Completed> {
+        }: &Extra,
+    ) -> Completed {
         debug!("linearizing {:?}", self.file);
-        let mut name_reg = NameReg::new(reported_names);
+        let mut name_reg = NameReg::new(reported_names.clone());
 
         // TODO: Storing defers while linearizing?
         let mut defers: Vec<_> = lin
@@ -578,7 +583,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             mut linearization,
             import_locations,
             ..
-        } = lin.into_inner();
+        } = lin;
 
         linearization.sort_by(
             |it1, it2| match (it1.pos.as_opt_ref(), it2.pos.as_opt_ref()) {
@@ -619,7 +624,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                      kind,
                      metadata: meta,
                  }| LinearizationItem {
-                    ty: name_reg.to_type(&table, ty),
+                    ty: name_reg.to_type(table, ty),
                     term,
                     env,
                     id,
@@ -629,11 +634,11 @@ impl<'a> Linearizer for AnalysisHost<'a> {
                 },
             )
             .map(|item| LinearizationItem {
-                ty: transform_wildcard(&wildcards, item.ty),
+                ty: transform_wildcard(wildcards, item.ty),
                 ..item
             })
             .collect();
-        Linearization::new(Completed::new(lin_, id_mapping, import_locations))
+        Completed::new(lin_, id_mapping, import_locations)
     }
 
     fn scope(&mut self) -> Self {
@@ -669,7 +674,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
 
     fn retype_ident(
         &mut self,
-        lin: &mut Linearization<Building>,
+        lin: &mut Building,
         ident: &nickel_lang_core::identifier::LocIdent,
         new_type: UnifType,
     ) {
@@ -688,12 +693,7 @@ impl<'a> Linearizer for AnalysisHost<'a> {
         }
     }
 
-    fn retype(
-        &mut self,
-        lin: &mut Linearization<Building>,
-        item_id: Option<ItemId>,
-        new_type: UnifType,
-    ) {
+    fn retype(&mut self, lin: &mut Building, item_id: Option<ItemId>, new_type: UnifType) {
         let Some(item_id) = item_id else {
             return;
         };
@@ -703,6 +703,131 @@ impl<'a> Linearizer for AnalysisHost<'a> {
             item.ty = new_type;
         } else {
             debug!("retype item failed (item not found)!");
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct TypeCollector {
+    // Store a copy of the terms we've added so far. The index in this array is their ItemId.
+    term_ids: Vec<RichTermPtr>,
+}
+
+impl Linearizer for TypeCollector {
+    type Building = HashMap<RichTermPtr, UnifType>;
+    type Completed = HashMap<RichTermPtr, Type>;
+    type CompletionExtra = Extra;
+    type ItemId = usize;
+
+    fn scope(&mut self) -> Self {
+        TypeCollector::default()
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        TypeCollector::default()
+    }
+
+    fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) -> Option<usize> {
+        self.term_ids.push(RichTermPtr(rt.clone()));
+        lin.insert(RichTermPtr(rt.clone()), ty);
+        Some(self.term_ids.len() - 1)
+    }
+
+    fn complete(
+        self,
+        lin: Self::Building,
+        Extra {
+            table,
+            names,
+            wildcards,
+        }: &Extra,
+    ) -> Self::Completed {
+        let mut name_reg = NameReg::new(names.clone());
+
+        let mut transform_type = |uty: UnifType| -> Type {
+            let ty = name_reg.to_type(table, uty);
+            match ty.typ {
+                TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&ty).clone(),
+                _ => ty,
+            }
+        };
+
+        lin.into_iter()
+            .map(|(rt, uty)| (rt, transform_type(uty)))
+            .collect()
+    }
+
+    fn retype(&mut self, lin: &mut Self::Building, item_id: Option<usize>, new_type: UnifType) {
+        if let Some(id) = item_id {
+            lin.insert(self.term_ids[id].clone(), new_type);
+        }
+    }
+}
+
+pub struct CombinedLinearizer<T, U>(pub T, pub U);
+
+impl<T: Linearizer, U: Linearizer> Linearizer for CombinedLinearizer<T, U>
+where
+    T: Linearizer<CompletionExtra = U::CompletionExtra>,
+{
+    type Building = (T::Building, U::Building);
+    type Completed = (T::Completed, U::Completed);
+    type ItemId = (Option<T::ItemId>, Option<U::ItemId>);
+
+    // Maybe this should be (T::CompletionExtra, U::CompletionExtra) but in practice
+    // CompletionExtra is always Extra anyway.
+    type CompletionExtra = T::CompletionExtra;
+
+    fn scope(&mut self) -> Self {
+        CombinedLinearizer(self.0.scope(), self.1.scope())
+    }
+
+    fn scope_meta(&mut self) -> Self {
+        CombinedLinearizer(self.0.scope_meta(), self.1.scope_meta())
+    }
+
+    fn add_term(
+        &mut self,
+        lin: &mut Self::Building,
+        term: &RichTerm,
+        ty: UnifType,
+    ) -> Option<Self::ItemId> {
+        let id0 = self.0.add_term(&mut lin.0, term, ty.clone());
+        let id1 = self.1.add_term(&mut lin.1, term, ty);
+        Some((id0, id1))
+    }
+
+    fn add_field_metadata(&mut self, lin: &mut Self::Building, field: &Field) {
+        self.0.add_field_metadata(&mut lin.0, field);
+        self.1.add_field_metadata(&mut lin.1, field);
+    }
+
+    fn retype_ident(
+        &mut self,
+        lin: &mut Self::Building,
+        ident: &nickel_lang_core::identifier::LocIdent,
+        new_type: UnifType,
+    ) {
+        self.0.retype_ident(&mut lin.0, ident, new_type.clone());
+        self.1.retype_ident(&mut lin.1, ident, new_type);
+    }
+
+    fn complete(self, lin: Self::Building, extra: &Self::CompletionExtra) -> Self::Completed
+    where
+        Self: Sized,
+    {
+        (self.0.complete(lin.0, extra), self.1.complete(lin.1, extra))
+    }
+
+    fn retype(
+        &mut self,
+        lin: &mut Self::Building,
+        item_id: Option<Self::ItemId>,
+        new_type: UnifType,
+    ) {
+        if let Some((id0, id1)) = item_id {
+            self.0.retype(&mut lin.0, id0, new_type.clone());
+            self.1.retype(&mut lin.1, id1, new_type);
         }
     }
 }

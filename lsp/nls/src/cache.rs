@@ -7,10 +7,11 @@ use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
     position::RawPos,
-    typecheck::{self, linearization::Linearization},
+    typecheck::{self},
 };
 
 use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
+use crate::linearization::{CombinedLinearizer, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
@@ -64,16 +65,24 @@ impl CacheExt for Cache {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
             let host = AnalysisHost::new(file_id, initial_env.clone());
-            let building = Linearization::new(Building {
+            let types = TypeCollector::default();
+            let lin = CombinedLinearizer(host, types);
+            let building = Building {
                 lin_registry,
                 linearization: Vec::new(),
                 import_locations: HashMap::new(),
                 cache: self,
-            });
-            let (_, linearized) =
-                typecheck::type_check_linearize(term, initial_ctxt.clone(), self, host, building)
-                    .map_err(|err| vec![Error::TypecheckError(err)])?;
-            lin_registry.insert(file_id, linearized, term);
+            };
+            let (_, (linearized, type_lookups)) = typecheck::type_check_linearize(
+                term,
+                initial_ctxt.clone(),
+                self,
+                lin,
+                (building, HashMap::new()),
+            )
+            .map_err(|err| vec![Error::TypecheckError(err)])?;
+
+            lin_registry.insert(file_id, linearized, type_lookups, term);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {

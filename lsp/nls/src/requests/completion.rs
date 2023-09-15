@@ -1,6 +1,6 @@
 use crate::{
     cache::CacheExt,
-    field_walker::{Def, FieldDefs},
+    field_walker::{FieldHaver, FieldResolver},
     incomplete,
     linearization::{
         completed::Completed,
@@ -688,12 +688,17 @@ fn sanitize_term_for_completion(
 ) -> Option<RichTerm> {
     if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
         let mut range = *range;
+        let env = server
+            .lin_registry
+            .get_env(term)
+            .cloned()
+            .unwrap_or_else(Environment::new);
         if cursor.index < range.start || cursor.index > range.end || cursor.src_id != range.src_id {
             return None;
         }
 
         range.end = cursor.index;
-        incomplete::parse_path_from_incomplete_input(range, server)
+        incomplete::parse_path_from_incomplete_input(range, &env, server)
     } else if let Term::Op1(UnaryOp::StaticAccess(_), parent) = term.term.as_ref() {
         // For completing record paths, we discard the last path element: if we're
         // completing `foo.bar.bla`, we only look at `foo.bar` to find the completions.
@@ -705,16 +710,14 @@ fn sanitize_term_for_completion(
 
 fn term_based_completion(
     term: RichTerm,
-    initial_env: &Environment,
     server: &Server,
 ) -> Result<Vec<CompletionItem>, ResponseError> {
     log::info!("term based completion path: {term:?}");
-    log::info!("initial env: {initial_env:?}");
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldDefs::resolve_path(&start_term, &path, initial_env, server);
-    Ok(defs.defs().map(Def::to_completion_item).collect())
+    let defs = FieldResolver::new(server).resolve_term_path(&start_term, &path);
+    Ok(defs.iter().flat_map(FieldHaver::completion_items).collect())
 }
 
 pub fn handle_completion(
@@ -756,40 +759,32 @@ pub fn handle_completion(
         .as_ref()
         .and_then(|rt| sanitize_term_for_completion(rt, cursor, server));
 
-    let mut completions = match term.zip(sanitized_term) {
-        Some((term, sanitized)) => {
-            let env = if matches!(term.term.as_ref(), Term::ParseError(_)) {
-                server
-                    .lin_registry
-                    .get_env(&term)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                Environment::new()
-            };
-            term_based_completion(sanitized, &env, server)?
-        }
+    let mut completions = match sanitized_term {
+        Some(sanitized) => term_based_completion(sanitized, server)?,
         None => Vec::new(),
     };
 
     log::info!("term-based completion provided {completions:?}");
-    let linearization = server.lin_cache_get(&pos.src_id)?;
-    Trace::enrich(&id, linearization);
+    #[cfg(feature = "old-completer")]
+    {
+        let linearization = server.lin_cache_get(&pos.src_id)?;
+        Trace::enrich(&id, linearization);
 
-    let item = linearization.item_at(pos);
-    let text = server.cache.files().source(pos.src_id);
-    let start = pos.index.to_usize();
-    if let Some(item) = item {
-        debug!("found closest item: {:?}", item);
+        let item = linearization.item_at(pos);
+        let text = server.cache.files().source(pos.src_id);
+        let start = pos.index.to_usize();
+        if let Some(item) = item {
+            debug!("found closest item: {:?}", item);
 
-        completions.extend_from_slice(&get_completion_identifiers(
-            &text[..start],
-            trigger,
-            linearization,
-            item,
-            server,
-        )?);
-    };
+            completions.extend_from_slice(&get_completion_identifiers(
+                &text[..start],
+                trigger,
+                linearization,
+                item,
+                server,
+            )?);
+        };
+    }
     let completions = remove_duplicates(&completions);
 
     server.reply(Response::new_ok(id.clone(), completions));
