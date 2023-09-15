@@ -2146,19 +2146,19 @@
       };
     }
     {
-      name = "semver___semver_5.7.1.tgz";
+      name = "semver___semver_5.7.2.tgz";
       path = fetchurl {
-        name = "semver___semver_5.7.1.tgz";
-        url = "https://registry.yarnpkg.com/semver/-/semver-5.7.1.tgz";
-        sha512 = "sauaDf/PZdVgrLTNYHRtpXa1iRiKcaebiKQ1BJdpQlWH2lCvexQdX55snPFyK7QzpudqbCI0qXFfOasHdyNDGQ==";
+        name = "semver___semver_5.7.2.tgz";
+        url = "https://registry.yarnpkg.com/semver/-/semver-5.7.2.tgz";
+        sha512 = "cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==";
       };
     }
     {
-      name = "semver___semver_7.5.3.tgz";
+      name = "semver___semver_7.5.4.tgz";
       path = fetchurl {
-        name = "semver___semver_7.5.3.tgz";
-        url = "https://registry.yarnpkg.com/semver/-/semver-7.5.3.tgz";
-        sha512 = "QBlUtyVk/5EeHbi7X0fw6liDZc7BBmEaSYn01fMU1OUYbf6GPsbTtd8WmnqbI20SeycoHSeiybkE/q1Q+qlThQ==";
+        name = "semver___semver_7.5.4.tgz";
+        url = "https://registry.yarnpkg.com/semver/-/semver-7.5.4.tgz";
+        sha512 = "1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==";
       };
     }
     {
@@ -2530,11 +2530,11 @@
       };
     }
     {
-      name = "word_wrap___word_wrap_1.2.3.tgz";
+      name = "word_wrap___word_wrap_1.2.4.tgz";
       path = fetchurl {
-        name = "word_wrap___word_wrap_1.2.3.tgz";
-        url = "https://registry.yarnpkg.com/word-wrap/-/word-wrap-1.2.3.tgz";
-        sha512 = "Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==";
+        name = "word_wrap___word_wrap_1.2.4.tgz";
+        url = "https://registry.yarnpkg.com/word-wrap/-/word-wrap-1.2.4.tgz";
+        sha512 = "2V81OA4ugVo5pRo46hAoD2ivUJx8jXmWXfUkY4KFNw0hEptvN0QfH3K4nHiwzGeKl5rFKedV48QVoqYavy4YpA==";
       };
     }
     {
