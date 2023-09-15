@@ -34,6 +34,17 @@ impl FieldHaver {
         }
     }
 
+    pub fn get_definition_pos(&self, id: Ident) -> Option<LocIdent> {
+        match self {
+            FieldHaver::RecordTerm(data) => data
+                .fields
+                .get_key_value(&id)
+                .map(|(id, _field)| (*id).into()),
+            FieldHaver::RecordType(rows) => rows.row_find_path_row(&[id]).map(|r| r.id.into()),
+            FieldHaver::Dict(_) => None,
+        }
+    }
+
     /// Returns all fields in this `FieldHaver`, rendered as LSP completion items.
     pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
         match self {
@@ -197,7 +208,7 @@ impl<'a> FieldResolver<'a> {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
+    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]

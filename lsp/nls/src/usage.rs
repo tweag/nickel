@@ -102,7 +102,6 @@ impl UsageLookup {
     }
 
     /// Return all the usages of `ident`.
-    #[allow(dead_code)] // Not used yet...
     pub fn usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
         self.usage_table
             .get(ident)
