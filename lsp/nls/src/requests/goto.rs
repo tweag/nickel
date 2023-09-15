@@ -72,23 +72,33 @@ pub fn handle_to_definition(
     Ok(())
 }
 
-pub fn handle_to_usages(
+pub fn handle_references(
     params: ReferenceParams,
     id: RequestId,
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server.cache.position(&params.text_document_position)?;
 
-    let usages = if let Some(term) = server.lookup_term_by_position(pos)? {
-        let def_locs = get_defs(term, server);
-        def_locs
-            .into_iter()
-            .flat_map(|id| server.lin_registry.get_usages(&id))
-            .cloned()
-            .collect()
-    } else {
-        Vec::new()
-    };
+    // The "references" of a symbol are all the usages if its definitions,
+    // so first find the definitions and then find their usages.
+    let mut def_locs = server
+        .lookup_term_by_position(pos)?
+        .map(|term| get_defs(term, server))
+        .unwrap_or_default();
+
+    // Maybe the position is pointing straight at the definition already.
+    // In that case, def_locs won't have the definition yet; so add it.
+    def_locs.extend(server.lookup_ident_by_position(pos)?);
+
+    let mut usages: Vec<_> = def_locs
+        .iter()
+        .flat_map(|id| server.lin_registry.get_usages(id))
+        .cloned()
+        .collect();
+
+    if params.context.include_declaration {
+        usages.extend(def_locs.iter().cloned());
+    }
 
     let locations = ids_to_locations(usages, server);
 

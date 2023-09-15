@@ -231,7 +231,7 @@ impl Server {
             References::METHOD => {
                 debug!("handle goto defnition");
                 let params: ReferenceParams = serde_json::from_value(req.params).unwrap();
-                goto::handle_to_usages(params, req.id.clone(), self)
+                goto::handle_references(params, req.id.clone(), self)
             }
 
             Completion::METHOD => {
@@ -287,6 +287,22 @@ impl Server {
                 code: ErrorCode::ParseError as i32,
             })?
             .get(pos.index))
+    }
+
+    pub fn lookup_ident_by_position(
+        &self,
+        pos: RawPos,
+    ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
+        Ok(self
+            .lin_registry
+            .position_lookups
+            .get(&pos.src_id)
+            .ok_or_else(|| ResponseError {
+                data: None,
+                message: "File has not yet been parsed or cached.".to_owned(),
+                code: ErrorCode::ParseError as i32,
+            })?
+            .get_ident(pos.index))
     }
 
     pub fn issue_diagnostics(&mut self, file_id: FileId, diagnostics: Vec<Diagnostic<FileId>>) {
