@@ -48,6 +48,12 @@ impl<T: LspDebug, I: Iterator<Item = T> + Clone> LspDebug for Iter<I> {
     }
 }
 
+impl<T: LspDebug> LspDebug for Vec<T> {
+    fn debug(&self, w: impl Write) -> std::io::Result<()> {
+        Iter(self.iter()).debug(w)
+    }
+}
+
 impl LspDebug for lsp_types::Range {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
         write!(
@@ -113,12 +119,6 @@ impl LspDebug for lsp_types::CompletionResponse {
 impl LspDebug for lsp_types::TextEdit {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
         write!(w, "<{}> {}", self.range.debug_str(), self.new_text)
-    }
-}
-
-impl LspDebug for Vec<lsp_types::TextEdit> {
-    fn debug(&self, w: impl Write) -> std::io::Result<()> {
-        Iter(self.iter()).debug(w)
     }
 }
 
