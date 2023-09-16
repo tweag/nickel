@@ -3,7 +3,7 @@ use codespan::Files;
 use nickel_lang_core::{
     error::{Error, ParseError},
     eval::cache::CacheImpl,
-    parser::{grammar, lexer, ErrorTolerantParser},
+    parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm},
     program::Program,
     term::{RichTerm, Term},
 };
@@ -31,6 +31,14 @@ pub fn parse(s: &str) -> Result<RichTerm, ParseError> {
     let id = Files::new().add("<test>", String::from(s));
 
     grammar::TermParser::new()
+        .parse_strict(id, lexer::Lexer::new(s))
+        .map_err(|errs| errs.errors.first().unwrap().clone())
+}
+
+pub fn parse_extended(s: &str) -> Result<ExtendedTerm, ParseError> {
+    let id = Files::new().add("<test>", String::from(s));
+
+    grammar::ExtendedTermParser::new()
         .parse_strict(id, lexer::Lexer::new(s))
         .map_err(|errs| errs.errors.first().unwrap().clone())
 }

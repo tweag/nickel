@@ -42,7 +42,7 @@ precision as well, for example when serializing `1/3`.
 Here are some examples of number literals in Nickel; scientific notation for
 decimal is supported:
 
-```nickel
+```nickel lines
 1
 0.543
 1.7e217
@@ -95,7 +95,7 @@ evaluates to `false`.
 
 Here are some examples of boolean operators in Nickel:
 
-```nickel
+```nickel repl
 > true && false
 false
 
@@ -119,12 +119,12 @@ The string interpolation syntax is
 
 Here are some examples of string handling in Nickel:
 
-```nickel
+```nickel repl
 > "Hello, World!"
 "Hello, World!"
 
 > m%"Well, if this isn't a multiline string?
-Yes it is, indeed it is"%
+  Yes it is, indeed it is"%
 "Well, if this isn't a multiline string?
 Yes it is, indeed it is"
 
@@ -147,13 +147,13 @@ present on all lines of the string is stripped. This way, multiline strings can
 be indented for nicer code formatting without producing unwanted whitespaces in
 the output. For example:
 
-```nickel
+```nickel repl
 > m%"
-  This line has no indentation.
-    This line is indented.
-      This line is even more indented.
-  This line has no more indentation.
-"%
+    This line has no indentation.
+      This line is indented.
+        This line is even more indented.
+    This line has no more indentation.
+  "%
 "This line has no indentation.
   This line is indented.
     This line is even more indented.
@@ -162,7 +162,7 @@ This line has no more indentation."
 
 The only special sequence in a multiline string is the string interpolation:
 
-```nickel
+```nickel repl
 > m%"Multiline\nString?"%
 "Multiline\nString?"
 
@@ -177,7 +177,7 @@ delimiter. If you want to use string interpolation, you must use the same amount
 of `%` signs as in the delimiters. This can be useful for writing a literal `"%`
 or `%{` sequence in a string without escaping:
 
-```nickel
+```nickel repl
 > m%%"Hello World"%%
 "Hello World"
 
@@ -194,7 +194,7 @@ or `%{` sequence in a string without escaping:
 Multiline string interpolation is "indentation-aware". This means that you can
 interpolate a string with indentation and the result will be as expected:
 
-```nickel
+```nickel repl
 > let log = m%"
   if log:
     print("log:", s)
@@ -221,7 +221,7 @@ potential string literal prefix `"%..%` followed by an interpolation sequence
 opening delimiter, **even if the leading `"%..%` could also act as a string end
 delimiter**:
 
-```nickel
+```nickel repl
 > let msg = "Hello, world!" in m%"
     echo "%{msg}"
   "%
@@ -248,6 +248,7 @@ a string syntax would still feel natural.
 That is precisely the use-case for symbolic strings:
 
 ```nickel
+let inputs = { gcc = "", hello = "", coreutils = "" } in # hide-line
 {
   args = [
       "-c",
@@ -303,7 +304,7 @@ which uses symbolic strings, remember that:
 
 The following examples show how symbolic strings are desugared:
 
-```nickel
+```nickel repl
 > mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
 {
   tag = 'SymbolicString,
@@ -316,6 +317,7 @@ The following examples show how symbolic strings are desugared:
     resource = "foo",
     field = "id",
   }
+
 > tf-s%"id: %{terraform_computed_field}, port: %{5}"%
 {
   tag = 'SymbolicString
@@ -331,7 +333,7 @@ They are formed by writing a single quote `'` followed by any valid identifier
 or by a quoted string. For example, `std.serialize` takes an export format as a
 first argument, which is an enum tag among `'Json`, `'Toml` or `'Yaml`:
 
-```nickel
+```nickel repl
 > std.serialize 'Json {foo = 1}
 "{
    \"foo\": 1
@@ -344,7 +346,7 @@ first argument, which is an enum tag among `'Json`, `'Toml` or `'Yaml`:
 
 An enum tag `'foo` is serialized as the string `"foo"`:
 
-```nickel
+```nickel repl
 > std.serialize 'Json {foo = 'bar}
 "{
   \"foo\": \"bar\"
@@ -366,7 +368,7 @@ types are never equal: that is, `==` doesn't perform implicit conversions.
 
 Here are some examples of equality comparisons in Nickel:
 
-```nickel
+```nickel repl
 > 1 == 1
 true
 
@@ -395,7 +397,7 @@ elements are separated with `,`.
 
 The following are valid Nickel arrays, for example:
 
-```nickel
+```nickel lines
 [1, 2, 3]
 ["Hello", "World"]
 [1, true, "true"]
@@ -404,7 +406,7 @@ The following are valid Nickel arrays, for example:
 
 Arrays can be concatenated with the operator `@`:
 
-```nickel
+```nickel repl
 > [1] @ [2, 3]
 [ 1, 2, 3 ]
 ```
@@ -421,7 +423,7 @@ merging in the [section on merging](./merging.md).
 
 Here are some valid Nickel records:
 
-```nickel
+```nickel lines
 {}
 {a = 3}
 {my_id_n5 = "my id number 5", "my id n4" = "my id number 4" }
@@ -430,7 +432,7 @@ Here are some valid Nickel records:
 
 Record fields can be accessed using the `.` operator :
 
-```nickel
+```nickel repl
 > { a = 1, b = 5 }.a
 1
 
@@ -444,7 +446,7 @@ error: Missing field
 It is possible to write records of records via *piecewise syntax*, where we
 separate fields by dots:
 
-```nickel
+```nickel repl
 > { a = { b = 1 } }
 { a = { b = 1 } }
 
@@ -458,7 +460,7 @@ separate fields by dots:
 When fields are enclosed in double quotes (`"`), you can use string
 interpolation to create or access fields:
 
-```nickel
+```nickel repl
 > let k = "a" in { "%{k}" = 1 }
 { a = 1 }
 
@@ -475,7 +477,7 @@ This construct allows conditional branching in your code. You can use it like
 
 Here are some valid conditional expressions in Nickel:
 
-```nickel
+```nickel repl
 > if true then "TRUE :)" else "false :("
 "TRUE :)"
 
@@ -499,7 +501,7 @@ Currently, only a single variable can be bound per let binding.
 
 Here are some examples of let bindings in Nickel:
 
-```nickel
+```nickel repl
 > let r = { a = "a", b = "b" } in r.a
 "a"
 
@@ -531,7 +533,7 @@ arguments, and so on.
 
 Here are some examples of function definitions in Nickel:
 
-```nickel
+```nickel repl
 > (fun a b => a + b) 1 2
 3
 
@@ -547,7 +549,7 @@ Here are some examples of function definitions in Nickel:
 All existing infix operators in Nickel can be turned into functions by putting
 them inside parentheses, for example:
 
-```nickel
+```nickel repl
 > 1 + 2
 3
 
@@ -571,7 +573,7 @@ Functions may be composed using the *pipe operator*. The pipe operator allows
 for a function application `f x` to be written as `x |> f`. This operator is
 left-associative, so `x |> f |> g` will be interpreted as `g (f x)`. For example:
 
-```nickel
+```nickel repl
 > "Hello World" |> std.string.split " "
 ["Hello", "World"]
 
@@ -609,7 +611,7 @@ expression without having to come up with a type.
 
 Here are some examples of type annotations in Nickel:
 
-```nickel
+```nickel repl
 > 5 : Number
 5
 
@@ -645,7 +647,7 @@ syntactically all the same and can be arbitrary Nickel expressions in practice.
 
 Here are some examples of contract annotations in Nickel:
 
-```nickel
+```nickel repl
 > 5 | Number
 5
 
@@ -654,11 +656,11 @@ error: contract broken by a value.
 [..]
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
-1 | SmallNumber
+  1 | SmallNumber
 1
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
-10 | SmallNumber
+  10 | SmallNumber
 error: contract broken by a value.
 [..]
 
@@ -711,7 +713,7 @@ Type variables bound by a `forall` are only visible inside types (any of the
 constructor listed above). As soon as a term expression appears under a `forall`
 binder, the type variables aren't in scope anymore:
 
-```nickel
+```nickel repl
 > forall a. a -> (a -> a) -> {_ : {foo : a}}
 <func>
 
@@ -725,7 +727,7 @@ error: unbound identifier
 
 Here are some examples of more complicated types in Nickel:
 
-```nickel
+```nickel repl
 > let f : forall a. a -> a = fun x => x in (f 5 : Number)
 5
 
@@ -745,8 +747,8 @@ true
 
 > let add_foo : forall a. {_: a} -> a -> {_: a} = fun dict value =>
     record.insert "foo" value dict
-in
-add_foo {bar = 1} 5 : _
+  in
+  add_foo {bar = 1} 5 : _
 { bar = 1, foo = 5 }
 
 > {foo = 1, bar = "string"} : {_ : Number}
@@ -785,7 +787,7 @@ is a parse error.
 
 Here are some examples of record types in Nickel:
 
-```nickel
+```nickel repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar: String}
 { bar = "foo", foo = 1 }
 
@@ -797,24 +799,23 @@ Here, the right-hand side is missing a type annotation for `baz`, so it doesn't
 qualify as a record type and is parsed as a record contract. This throws an
 "incompatible types" error:
 
-```nickel
-> {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
-error: incompatible types
-  ┌─ repl-input-6:1:1
+```nickel repl
+> {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz : Bool}
+error: type error: missing row `baz`
+  ┌─ <repl-input-0:1:1
   │
-1 │ {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz}
+1 │ {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz : Bool}
   │ ^^^^^^^^^^^^^^^^^^^^^^^ this expression
   │
-  = The type of the expression was expected to be `{ bar : String, baz, foo : Numb…` (a contract)
-  = The type of the expression was inferred to be `{bar: _a, foo: _b}`
-  = Static types and contracts are not compatible
+  = Expected an expression of type `{ foo : Number, bar : String, baz : Bool }`, which contains the field `baz`
+  = Found an expression of type `{ bar : String, foo : Number }`, which does not contain the field `baz`
 ```
 
 If there's a metadata annotation apart from the type, the record cannot be
 parsed as a type. Consequently, it is considered a record contract and converted
 into an opaque type, yielding an error:
 
-```nickel
+```nickel repl parse-error
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
 error: incompatible types
 [..]
@@ -824,7 +825,7 @@ While in the following `MyDyn` isn't a proper type, the record literal `{foo :
 Number, bar : MyDyn}` respects all the requirements for a record type and is
 parsed as such:
 
-```nickel
+```nickel repl
 > let MyDyn = fun label value => value in
     {foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
 { bar = "foo", foo = 1 }
@@ -840,7 +841,7 @@ is introduced with the syntax `<field_name> | <metadata1> | .. | <metadataN>
 
 Documentation can be attached with `| doc <string>`. For example:
 
-```nickel
+```nickel repl
 > let record = {
     value
       | doc "The number five"
@@ -876,7 +877,7 @@ about this in the [dedicated section on merging](./merging.md).
 
 Here are some examples using merge priorities in Nickel:
 
-```nickel
+```nickel repl
 > let Ais2ByDefault = { a | default = 2 } in
     {} | Ais2ByDefault
 { a = 2 }
@@ -904,7 +905,7 @@ Here are some examples using merge priorities in Nickel:
 The `optional` annotation indicates that a field is not mandatory. It is usually
 found in record contracts.
 
-```nickel
+```nickel repl
 > let Contract = {
     foo | Num,
     bar | Num
@@ -922,7 +923,7 @@ error: missing definition for `foo`
 The `not_exported` annotation indicates that a field should be skipped when a
 record is serialized. This includes the output of the `nickel export` command:
 
-```nickel
+```nickel repl
 > let value = { foo = 1, bar | not_exported = 2}
 > value
 { foo = 1, bar = 2 }
