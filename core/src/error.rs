@@ -423,7 +423,7 @@ pub enum ParseError {
     /// Superfluous, unexpected token.
     ExtraToken(RawSpan),
     /// A closing brace '}' does not match an opening brace '{'. This rather precise error is
-    /// detected by the because of how interpolated strings are lexed.
+    /// detected because of how interpolated strings are lexed.
     UnmatchedCloseBrace(RawSpan),
     /// Invalid escape sequence in a string literal.
     InvalidEscapeSequence(RawSpan),
