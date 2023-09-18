@@ -26,10 +26,10 @@ enum CodeBlockType {
     /// > std.function.id 5
     /// 5
     /// ```
-    /// We interpret lines starting with `> ` and followed by indented lines
-    /// (starting with at least one `' '`) as a single Nickel program and try
-    /// to parse them. For now, we don't check evaluation. REPL inputs must be
-    /// separated by an empty line.
+    /// We interpret lines starting with `> ` directly after an empty line
+    /// and followed by indented lines (starting with at least one `' '`) as
+    /// a single Nickel program and try to parse them. For now, we don't check
+    /// evaluation. REPL inputs must be separated by an empty line.
     Repl,
 }
 
@@ -43,8 +43,8 @@ impl CodeBlockType {
     fn from_info(info: impl AsRef<str>) -> Option<CodeBlockType> {
         match info.as_ref() {
             "nickel" => Some(CodeBlockType::Single),
-            "nickel lines" => Some(CodeBlockType::Lines),
-            "nickel repl" => Some(CodeBlockType::Repl),
+            "nickel-lines" => Some(CodeBlockType::Lines),
+            "nickel-repl" => Some(CodeBlockType::Repl),
             _ => None,
         }
     }
@@ -52,23 +52,23 @@ impl CodeBlockType {
 
 fn check_repl_parts(content: String) {
     for piece in content.split("\n\n") {
-        let program: String = piece
-            .strip_prefix('>')
-            .unwrap()
-            .split_inclusive('\n')
-            .take_while(|l| l.starts_with(' '))
-            .collect();
-        check_parse_extended(program);
+        if let Some(piece) = piece.strip_prefix('>') {
+            let program = piece
+                .split_inclusive('\n')
+                .take_while(|l| l.starts_with(' '))
+                .collect();
+            check_parse_extended(program);
+        }
     }
 }
 
 fn check_eval(program: String) {
-    eprintln!("{}", program);
+    eprintln!("{program}"); // Print the program to stderr to make tracking test failures easier
     test_program::eval(program).unwrap();
 }
 
 fn check_parse_extended(program: String) {
-    eprintln!("{}", program);
+    eprintln!("{program}"); // Print the program to stderr to make tracking test failures easier
     test_program::parse_extended(&program).unwrap();
 }
 
@@ -111,5 +111,4 @@ fn check_manual_snippets(path: &str) {
     for code_block in snippets {
         code_block.check();
     }
-    panic!();
 }
