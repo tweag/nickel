@@ -19,8 +19,8 @@ using the `|` operator:
 let x = (1 + 1 | Number) in x
 ```
 
-Contracts can also be attached to identifiers in a definition. In let bindings,
-the following is equivalent to the previous example:
+Contracts can also be attached to identifiers in a let binding.
+The following is equivalent to the previous example:
 
 ```nickel
 let x | Number = 1 + 1 in x
@@ -104,7 +104,7 @@ In `IsFoo`, we first test if the value is a string, and then if it is equal to
 appropriate error messages. Let us try:
 
 ```nickel-repl
-nickel> 1 | IsFoo
+> 1 | IsFoo
 error: contract broken by a value [not a string].
 [..]
 
