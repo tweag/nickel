@@ -39,12 +39,6 @@ struct CodeBlock {
     content: String,
 }
 
-#[derive(Debug, Clone)]
-enum TestCase {
-    Evaluate(String),
-    ParseExtended(String),
-}
-
 impl CodeBlockType {
     fn from_info(info: impl AsRef<str>) -> Option<CodeBlockType> {
         match info.as_ref() {
@@ -56,53 +50,38 @@ impl CodeBlockType {
     }
 }
 
-fn repl_parts(content: String) -> Vec<TestCase> {
-    content
-        .split("\n\n")
-        .map(|piece| {
-            let program: String = piece
-                .strip_prefix('>')
-                .unwrap()
-                .lines()
-                .take_while(|l| l.starts_with(' '))
-                .collect();
-            TestCase::ParseExtended(program)
-        })
-        .collect()
+fn check_repl_parts(content: String) {
+    for piece in content.split("\n\n") {
+        let program: String = piece
+            .strip_prefix('>')
+            .unwrap()
+            .split_inclusive('\n')
+            .take_while(|l| l.starts_with(' '))
+            .collect();
+        check_parse_extended(program);
+    }
+}
+
+fn check_eval(program: String) {
+    eprintln!("{}", program);
+    test_program::eval(program).unwrap();
+}
+
+fn check_parse_extended(program: String) {
+    eprintln!("{}", program);
+    test_program::parse_extended(&program).unwrap();
 }
 
 impl CodeBlock {
-    fn split(self) -> Vec<TestCase> {
+    fn check(self) {
         match self.typ {
-            CodeBlockType::Single => vec![TestCase::Evaluate(self.content)],
-            CodeBlockType::Lines => self
-                .content
-                .lines()
-                .map(|line| TestCase::Evaluate(line.to_owned()))
-                .collect(),
-            CodeBlockType::Repl => repl_parts(self.content),
-        }
-    }
-
-    fn check(self) {
-        for case in self.split() {
-            case.check()
-        }
-    }
-}
-
-impl TestCase {
-    fn check(self) {
-        use TestCase::*;
-        match self {
-            Evaluate(program) => {
-                eprintln!("{}", program);
-                test_program::eval(program).unwrap();
+            CodeBlockType::Single => check_eval(self.content),
+            CodeBlockType::Lines => {
+                for line in self.content.lines() {
+                    check_eval(line.to_owned());
+                }
             }
-            ParseExtended(program) => {
-                eprintln!("{}", program);
-                test_program::parse_extended(&program).unwrap();
-            }
+            CodeBlockType::Repl => check_repl_parts(self.content),
         }
     }
 }
