@@ -79,26 +79,26 @@ Types and contracts are enforced similarly, via annotations.
 
 Type annotations are introduced with `:`. For example:
 
-```nickel
-nickel> 1 + 1.5 : Number
+```nickel-repl
+> 1 + 1.5 : Number
 2.5
 
-nickel> let f : Number -> Number = fun x => x + 1
-nickel> f 0
+> let f : Number -> Number = fun x => x + 1
+
+> f 0
 1
 
-nickel> "not a Number" : Number
+> "not a Number" : Number
 error: incompatible types
 [..]
 ```
 
 Contract annotations are introduced with `|`. For example:
 
-```nickel
-nickel> let GreaterThan = fun bound =>
-  std.contract.from_predicate (fun val => val >= bound) in
--1 | GreaterThan 10
-
+```nickel-repl
+> let GreaterThan = fun bound =>
+    std.contract.from_predicate (fun val => val >= bound) in
+  -1 | GreaterThan 10
 error: contract broken by value
 [..]
 ```
@@ -119,15 +119,15 @@ practical differences between types and contracts.
 Suppose we need a function to convert an array of key-value pairs into an array
 of keys and an array of values. Let's call it `split`:
 
-```nickel
-nickel> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+```nickel-repl
+> split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 {keys = ["foo", "bar"], values = [1, 2]}
 
-nickel> split [
-  {key = "firewall", value = true},
-  {key = "grsec", value = false},
-  {key = "iptables", value = true},
-]
+> split [
+    {key = "firewall", value = true},
+    {key = "grsec", value = false},
+    {key = "iptables", value = true},
+  ]
 { keys: ["firewall", "grsec", "iptables"], values [true, false, true] }
 ```
 
@@ -156,7 +156,7 @@ first wrapping it in an array (note that in real life, you should rather use
 
 We call `split` from our configuration file:
 
-```nickel
+```nickel-parse
 # config.ncl
 let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
@@ -176,7 +176,7 @@ elements of the same type as the input `value`s.
 An idiomatic way to express these properties in Nickel is to use the following
 annotation:
 
-```nickel
+```nickel-no-check
 forall a. Array {key: String, value: a}
           -> {keys: Array String, values: Array a}
 ```
@@ -191,7 +191,7 @@ using contract and type annotations.
 
 `split` can be given a contract annotation as follows:
 
-```nickel
+```nickel-no-check
 split | forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
 ```
 
@@ -251,7 +251,7 @@ that:
 
 `split` can be given a type annotation as follows:
 
-```nickel
+```nickel-no-check
 split : forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
 ```
 
@@ -321,7 +321,7 @@ As in the previous example, we will consider the differences arising when using
 
 If we write:
 
-```nickel
+```nickel-parse
 # config.ncl
 let {OptLevel} = import "lib.ncl" in
 let level = 1 in
@@ -360,7 +360,7 @@ relevant section in the typing documentation].
 For validating custom properties such as `OptLevel`, a contract is the way to
 go:
 
-```nickel
+```nickel-parse
 # config.ncl
 let {OptLevel} = import "lib.ncl" in
 let level = 4 in

@@ -19,13 +19,16 @@ using the `|` operator:
 let x = (1 + 1 | Number) in x
 ```
 
-Contracts can also be attached to identifiers in a definition:
+Contracts can also be attached to identifiers in a definition. In let bindings,
+the following is equivalent to the previous example:
 
 ```nickel
-# let-binding: equivalent to the previous example
 let x | Number = 1 + 1 in x
+```
 
-# on a record field
+Contracts can also be attached to record fields:
+
+```nickel
 {x | Number = 1 + 1}
 ```
 
@@ -41,11 +44,11 @@ are performed:
 2. Check that the result is a number.
 3. If it is, return the expression unchanged. Otherwise, raise an error.
 
-```nickel
-nickel> 1 + 1 | Number
+```nickel-repl
+> 1 + 1 | Number
 2
 
-nickel> "a" | Number
+> "a" | Number
 error: contract broken by a value.
 [..]
 ```
@@ -88,7 +91,7 @@ the label to customize error reporting upon failure using the functions
 from `std.contract.label`, which set various attributes of the label.
 `std.contract.blame_with_message message label` is just shorthand for:
 
-```nickel
+```nickel-parse
 label
 |> std.contract.label.with_message message
 |> std.contract.blame
@@ -100,16 +103,16 @@ In `IsFoo`, we first test if the value is a string, and then if it is equal to
 `"foo"`, in which case the contract succeeds. Otherwise, the contract fails with
 appropriate error messages. Let us try:
 
-```nickel
+```nickel-repl
 nickel> 1 | IsFoo
 error: contract broken by a value [not a string].
 [..]
 
-nickel> "a" | IsFoo
+> "a" | IsFoo
 error: contract broken by a value [not equal to "foo"].
 [..]
 
-nickel> "foo" | IsFoo
+> "foo" | IsFoo
 "foo"
 ```
 
@@ -272,6 +275,7 @@ with contract annotations and whose field definitions are usually (but not
 necessarily) missing:
 
 ```nickel
+let Port = Dyn in # hide-line
 let Schema = {
   path | String,
 
@@ -353,24 +357,26 @@ In addition to defining the contracts of fields, record contracts can also
 attach metadata (see [merging](./merging.md)) to fields, such as documentation
 or default values:
 
-```nickel
-nickel>
-let Schema = {
-  foo
-    | doc "This documentation will propagate to the final value!"
-    | String
-    | default
-    = "foo",
-  bar | Number,
-}
-nickel> let config | Schema = {bar = 2}
-nickel> std.serialize 'Json config
+```nickel-repl
+> let Schema = {
+    foo
+      | doc "This documentation will propagate to the final value!"
+      | String
+      | default
+      = "foo",
+    bar | Number,
+  }
+
+> let config | Schema = {bar = 2}
+
+> std.serialize 'Json config
 "{
   "bar": 2,
   "foo": "foo"
 }"
 
-nickel> :query config foo
+# Don't parse this in tests hide-line
+> :query config foo
 * contract: String
 * default: "foo"
 * documentation: This documentation will propagate to the final value!
@@ -380,9 +386,10 @@ nickel> :query config foo
 
 By default, record contracts are closed, meaning that additional fields are forbidden:
 
-```nickel
-nickel> let Contract = {foo | String}
-nickel> {foo = "a", bar = 1} | Contract
+```nickel-repl
+> let Contract = {foo | String}
+
+> {foo = "a", bar = 1} | Contract
 error: contract broken by a value [extra field `bar`].
 [..]
 ```
@@ -390,9 +397,10 @@ error: contract broken by a value [extra field `bar`].
 If you want to allow additional fields, append `, ..` after the last field
 definition to define an open contract:
 
-```nickel
-nickel> let Contract = {foo | String, ..}
-nickel> {foo = "a", bar = 1} | Contract
+```nickel-repl
+> let Contract = {foo | String, ..}
+
+> {foo = "a", bar = 1} | Contract
 { bar = 1, foo = "a" }
 ```
 
@@ -404,19 +412,19 @@ contract or a normal value. If a field is defined both in the contract and the
 checked value, the two definitions will be merged in the final result. For
 example:
 
-```nickel
-nickel>
-let Secure = {
-  must_be_very_secure | Bool = true,
-  data | String,
-}
-nickel> std.serialize 'Json ({data = ""} | Secure)
+```nickel-repl
+> let Secure = {
+    must_be_very_secure | Bool = true,
+    data | String,
+  }
+
+> std.serialize 'Json ({data = ""} | Secure)
 "{
   "data": "",
   "must_be_very_secure": true
 }"
 
-nickel> {data = "", must_be_very_secure = false} | Secure
+> {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
   ┌─ repl-input-15:1:35
   │
@@ -447,20 +455,20 @@ fields: thus, the contract `{bar | String}` attached to `foo` will actually
 behave like an open contract, even if you didn't use `..`. This might or might not
 be what you want:
 
-```nickel
-nickel>
-let ContractPipe = {
-  sub_field | {foo | String}
-}
-nickel>
-let ContractEq = {
-  sub_field = {foo | String}
-}
-nickel> {sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
+```nickel-repl
+> let ContractPipe = {
+    sub_field | {foo | String}
+  }
+
+> let ContractEq = {
+    sub_field = {foo | String}
+  }
+
+> {sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
 error: contract broken by a value [extra field `bar`].
 [..]
 
-nickel> {sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
+> {sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
 { sub_field = { foo = <contract,value="a">, bar = "b"}}
 ```
 
@@ -479,15 +487,15 @@ system](./typing.md) can be used to combine contracts.
 An array contract checks that the value is an array and applies its parameter
 contract to each element:
 
-```nickel
-nickel>
-let VeryBig =
+```nickel-repl
+> let VeryBig =
   std.contract.from_predicate (
       fun value =>
         std.is_number value
         && value >= 1000
     )
-nickel> [1000, 10001, 2] | Array VeryBig
+
+> [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
   ┌─ repl-input-22:1:15
   │
@@ -510,7 +518,7 @@ for the return value of the function.
 Function contracts, as opposed to a contract like `Number`, have the peculiarity
 of involving two parties. For example:
 
-```nickel
+```nickel-no-check
 let add_semi | String -> String = fun x => x ++ ";" in
 add_semi 1
 
@@ -535,14 +543,14 @@ is a bug you have to fix.
 The interpreter automatically performs bookkeeping for function contracts in
 order to make this caller/callee distinction:
 
-```nickel
-nickel> let add_semi | String -> String = fun x => x ++ ";" in
-add_semi 1
+```nickel-repl
+> let add_semi | String -> String = fun x => x ++ ";" in
+  add_semi 1
 error: contract broken by the caller.
 [..]
 
-nickel> let wrong | String -> String = fun x => 0 in
-wrong "a"
+> let wrong | String -> String = fun x => 0 in
+  wrong "a"
 error: contract broken by a function.
 [..]
 ```
@@ -553,11 +561,9 @@ The beauty of function contracts is that they gracefully scale to higher-order
 functions as well. Higher-order functions are functions that take other
 functions as parameters. Here is an example:
 
-```nickel
-nickel>
-let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
-apply_fun (fun x => "a")
-
+```nickel-repl
+> let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
+  apply_fun (fun x => "a")
 error: contract broken by the caller
   ┌─ repl-input-25:1:28
   │
@@ -577,10 +583,9 @@ not constrained but whose field values must satisfy `Contract`. In practice,
 records as an extensible dictionary, that is a key/value store, where keys are
 strings and values satisfy `Contract`, for example:
 
-```nickel
-nickel>
-let occurrences | {_: Number} = {a = 2, b = 3, "!" = 5, "^" = 1} in
-occurrences."!"
+```nickel-repl
+> let occurrences | {_: Number} = {a = 2, b = 3, "!" = 5, "^" = 1} in
+  occurrences."!"
 5
 ```
 
@@ -603,16 +608,17 @@ laziness, you can for example query specific information on a large
 configuration without having to actually evaluate everything. We will use the
 always failing contract `std.FailWith` to observe where evaluation takes place:
 
-```nickel
-nickel>
-let config = {
-  fail | std.FailWith "ooch" = null,
-  data | doc "Some information" = 42
-}
-nickel> :query config data
+```nickel-repl
+> let config = {
+    fail | std.FailWith "ooch" = null,
+    data | doc "Some information" = 42
+  }
+
+# Don't parse this in tests hide-line
+> :query config data
 * documentation: Some information
 
-nickel> config.fail
+> config.fail
 error: contract broken by a value: ooch
 [..]
 ```
@@ -683,7 +689,7 @@ iterate through the array without building up anything interesting.
 
 For laziness, the interesting bit happens here:
 
-```nickel
+```nickel-parse
 value
 |> std.record.map
   (
@@ -711,34 +717,37 @@ value and continues with the second argument (here, our wrapped `value`).
 
 Let us see if we indeed preserved laziness:
 
-```nickel
-nickel>
-let config | NumberBoolDict = {
-  "1" | std.FailWith "ooch" = null, # same as our previous "fail"
-  "0" | doc "Some information" = true,
-}
-nickel>:query config "0"
+```nickel-repl
+> let config | NumberBoolDict = {
+    "1" | std.FailWith "ooch" = null, # same as our previous "fail"
+    "0" | doc "Some information" = true,
+  }
+
+# Don't parse this in tests hide-line
+> :query config "0"
 * documentation: Some information
 ```
 
 Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
-```nickel
-nickel>
-let config | NumberBoolDict = {
-  not_a_number = false,
-  "0" | doc "Some information" = false,
-}
-nickel>:q config."0"
+```nickel-repl
+> let config | NumberBoolDict = {
+    not_a_number = false,
+    "0" | doc "Some information" = false,
+  }
+
+# Don't parse this in tests hide-line
+> :q config."0"
 error: contract broken by a value [field name `not_a_number` is not a number].
 [..]
 
-nickel>
-let config | NumberBoolDict = {
-  "0" | doc "Some information" = "not a boolean",
-}
-nickel>:q config."0"
+> let config | NumberBoolDict = {
+    "0" | doc "Some information" = "not a boolean",
+  }
+
+# Don't parse this in tests hide-line
+> :q config."0"
 error: contract broken by a value [field `0` is not a boolean].
 [..]
 ```

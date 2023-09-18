@@ -16,6 +16,8 @@ enum CodeBlockType {
     /// A code block containing multiple lines, each of which should be
     /// evaluated separately
     Lines,
+    /// A code block that should only be parsed, not evaluated
+    Parse,
     /// A code block containing a REPL session, e.g.
     /// ```nickel repl
     /// > let foo =
@@ -45,6 +47,7 @@ impl CodeBlockType {
             "nickel" => Some(CodeBlockType::Single),
             "nickel-lines" => Some(CodeBlockType::Lines),
             "nickel-repl" => Some(CodeBlockType::Repl),
+            "nickel-parse" => Some(CodeBlockType::Parse),
             _ => None,
         }
     }
@@ -72,6 +75,11 @@ fn check_parse_extended(program: String) {
     test_program::parse_extended(&program).unwrap();
 }
 
+fn check_parse(program: String) {
+    eprintln!("{program}"); // Print the program to stderr to make tracking test failures easier
+    test_program::parse(&program).unwrap();
+}
+
 impl CodeBlock {
     fn check(self) {
         match self.typ {
@@ -81,6 +89,7 @@ impl CodeBlock {
                     check_eval(line.to_owned());
                 }
             }
+            CodeBlockType::Parse => check_parse(self.content),
             CodeBlockType::Repl => check_repl_parts(self.content),
         }
     }
