@@ -25,7 +25,10 @@ pub mod ty_path {
     //! Checking higher-order contracts can involve a good share of intermediate contract checking.
     //! Take the following example:
     //! ```text
-    //! Assume((Number -> Number) -> Number) -> Number -> Number, fun ev => fun cst => ev (fun x => cst))
+    //! Assume(
+    //!     (Number -> Number) -> Number) -> Number -> Number,
+    //!     fun ev => fun cst => ev (fun x => cst)
+    //! )
     //! ```
     //! Once called, various checks will be performed on the arguments of functions and their return
     //! values:
@@ -43,8 +46,8 @@ pub mod ty_path {
     //! This is the information encoded by a type path: what part of the original type is currently
     //! being checked by this label. It is then reported to the user in case of a blame.
     //!
-    //! Paths are encoded as lists of elements, specifying if the next step is either to go to the **domain**
-    //! or to the **codomain**.
+    //! Paths are encoded as lists of elements, specifying if the next step is either to go to the
+    //! **domain** or to the **codomain**.
     //!
     //! When reporting a blame error on a record type, one faces the same situation as with
     //! higher-order functions: the precise cause of an error can correspond to a small subtype of
@@ -151,33 +154,32 @@ pub mod ty_path {
         }
 
         match (&ty.typ, path_it.next()) {
-            (TypeF::Arrow(dom, codom), Some(next)) => {
-                match next {
-                    Elem::Domain => {
-                        let path_span = span(path_it, dom.as_ref())?;
-                        Some(PathSpan {
-                            last: path_span.last.or(Some(*next)),
-                            last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
-                            ..path_span
-                        })
-                    }
-                    Elem::Codomain => {
-                        let path_span = span(path_it, codom.as_ref())?;
-                        Some(PathSpan {
-                            last: path_span.last.or(Some(*next)),
-                            last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
-                            ..path_span
-                        })
-                    }
-                    _ => panic!("span(): seeing an arrow type, but the type path is neither domain nor codomain"),
+            (TypeF::Arrow(dom, codom), Some(next)) => match next {
+                Elem::Domain => {
+                    let path_span = span(path_it, dom.as_ref())?;
+                    Some(PathSpan {
+                        last: path_span.last.or(Some(*next)),
+                        last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
+                        ..path_span
+                    })
                 }
-            }
+                Elem::Codomain => {
+                    let path_span = span(path_it, codom.as_ref())?;
+                    Some(PathSpan {
+                        last: path_span.last.or(Some(*next)),
+                        last_arrow_elem: path_span.last_arrow_elem.or(Some(*next)),
+                        ..path_span
+                    })
+                }
+                _ => panic!(
+                    "span(): \
+                    seeing an arrow type, but the type path is neither domain nor codomain"
+                ),
+            },
             (TypeF::Record(rows), next @ Some(Elem::Field(ident))) => {
                 for row_item in rows.iter() {
                     match row_item {
-                        RecordRowsIteratorItem::Row(RecordRowF { id, typ: ty })
-                            if id == *ident =>
-                        {
+                        RecordRowsIteratorItem::Row(RecordRowF { id, typ: ty }) if id == *ident => {
                             let path_span = span(path_it, ty)?;
 
                             return Some(PathSpan {
@@ -222,13 +224,11 @@ pub mod ty_path {
                 })
             }
             // The type and the path don't match, or the path is empty. We stop here.
-            _ => {
-                ty.pos.into_opt().map(|span| PathSpan {
-                    span,
-                    last: None,
-                    last_arrow_elem: None,
-                })
-            }
+            _ => ty.pos.into_opt().map(|span| PathSpan {
+                span,
+                last: None,
+                last_arrow_elem: None,
+            }),
         }
     }
 }
@@ -276,36 +276,46 @@ pub mod ty_path {
 pub struct Label {
     /// The type checked by the original contract.
     pub typ: Rc<Type>,
+
     /// Custom diagnostics set by user code. There might be several diagnostics stacked up, as some
     /// contracts might in turn apply other subcontracts.
     ///
     /// The last diagnostic of the stack is usually the current working diagnostic (the one mutated
     /// by corresponding primops), and the latest/most precise when a blame error is raised.
     pub diagnostics: Vec<ContractDiagnostic>,
+
     /// The position of the original contract.
     pub span: RawSpan,
+
     /// The index corresponding to the value being checked. Set at run-time by the interpreter.
     pub arg_idx: Option<CacheIndex>,
+
     /// The original position of the value being checked. Set at run-time by the interpreter.
     pub arg_pos: TermPos,
+
     /// The polarity, used for higher-order contracts, that specifies if the current contract is
     /// on the environment (ex, the argument of a function) or on the term.
     pub polarity: Polarity,
+
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
+
     /// An environment mapping type variables to [`TypeVarData`]. Used by
     /// polymorphic contracts to decide which actions to take when encountering a `forall`.
     pub type_environment: HashMap<SealingKey, TypeVarData>,
-    /// Signal to a polymorphic contract that it should generate the dual
-    /// contract. Part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
+
+    /// Signal to a polymorphic contract that it should generate the dual contract. Part of the
+    /// preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
     pub dualize: bool,
+
     /// The name of the record field to report in blame errors. This is set
     /// while first transforming a record as part of the pending contract generation.
     /// Contract applications outside of records will have this field set to `None`.
     pub field_name: Option<LocIdent>,
 }
 
-/// Data about type variables that is needed for polymorphic contracts to decide which actions to take.
+/// Data about type variables that is needed for polymorphic contracts to decide which actions to
+/// take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeVarData {
     pub polarity: Polarity,

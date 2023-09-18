@@ -54,6 +54,7 @@ use crate::{
 
 use std::{
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::{self, Display},
 };
 
@@ -118,11 +119,11 @@ pub enum EnumRowsF<ERows> {
 /// The kind of a quantified type variable.
 ///
 /// Nickel uses several forms of polymorphism. A type variable can be substituted for a type, as in
-/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Number; a} -> Number}`,
-/// or for enum rows. This information is implicit in the source syntax: we don't require users to
-/// write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is required for
-/// the typechecker. It is thus determined during parsing and stored as `VarKind` where type
-/// variables are introduced, that is, on forall quantifiers.
+/// `id : forall a. a -> a`, for record rows as in `access_foo : forall a . {foo : Number; a} ->
+/// Number}`, or for enum rows. This information is implicit in the source syntax: we don't require
+/// users to write e.g. `forall a :: Type` or `forall a :: Rows`. But the kind of a variable is
+/// required for the typechecker. It is thus determined during parsing and stored as `VarKind` where
+/// type variables are introduced, that is, on forall quantifiers.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum VarKind {
     #[default]
@@ -208,12 +209,12 @@ pub enum DictTypeFlavour {
 ///
 /// ## Motivation 1: variation on `Types`
 ///
-/// Having a generic definition makes it possible to easily create other types with the _same
-/// shape_ as `Type` (seen as trees), but with enriched nodes. The typical use-case in Nickel is
-/// the variation on types used by the typechecker. During type inference, the typechecker operates
-/// on trees where each node can either be a concrete type, or a unification variable (a unknown
-/// type to be inferred). Instead of duplicating the whole definition of `Type` as well as all
-/// basic methods, we can simply have a different recursive definition:
+/// Having a generic definition makes it possible to easily create other types with the _same shape_
+/// as `Type` (seen as trees), but with enriched nodes. The typical use-case in Nickel is the
+/// variation on types used by the typechecker. During type inference, the typechecker operates on
+/// trees where each node can either be a concrete type, or a unification variable (a unknown type
+/// to be inferred). Instead of duplicating the whole definition of `Type` as well as all basic
+/// methods, we can simply have a different recursive definition:
 ///
 /// ```
 /// # // phony declarations to make this example pass the tests
@@ -240,9 +241,9 @@ pub enum DictTypeFlavour {
 /// The usual motivation for recursion schemes is that they allow for elegant and simple definitions
 /// of recursive transformation over trees (here, `TypeF`, and more generally anything with an `F`
 /// suffix) in terms of simple appropriate chaining of `map` and folding/unfolding operations. A
-/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't
-/// currently defined using functors per se, the way program transformations are written is in the same
-/// style as recursion schemes: we simply define the action of a transformation as a mapping on the
+/// good example is the definition of [Type::traverse]. Although [crate::term::Term] isn't currently
+/// defined using functors per se, the way program transformations are written is in the same style
+/// as recursion schemes: we simply define the action of a transformation as a mapping on the
 /// current node, and let the traversal take care of the plumbing of recursion and reconstruction.
 ///
 /// ## Type parameters
@@ -607,22 +608,20 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
 }
 
 impl Traverse<Type> for RecordRows {
-    fn traverse<FTy, S, E>(
-        self,
-        f: &FTy,
-        state: &mut S,
-        order: TraverseOrder,
-    ) -> Result<RecordRows, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RecordRows, E>
     where
-        FTy: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
-        let inner = self.0.try_map_state(
-            |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-            |rrows, state| Ok(Box::new(rrows.traverse(f, state, order)?)),
-            state,
+        // traverse keeps track of state in the FnMut function. try_map_state
+        // keeps track of it in a separate state variable. we can pass the
+        // former into the latter by treating the function itself as the state
+        let rows = self.0.try_map_state(
+            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+            |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
+            f,
         )?;
 
-        Ok(RecordRows(inner))
+        Ok(RecordRows(rows))
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
@@ -901,25 +900,23 @@ impl Type {
     /// This is currently only used in test code, but because it's used from integration
     /// tests we cannot hide it behind cfg(test).
     pub fn without_pos(self) -> Type {
-        self.traverse::<_, _, ()>(
-            &|t: Type, _| {
-                Ok(Type {
+        self.traverse(
+            &mut |t: Type| {
+                Ok::<_, Infallible>(Type {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
-        .traverse::<_, _, ()>(
-            &|t: RichTerm, _| {
-                Ok(RichTerm {
+        .traverse(
+            &mut |t: RichTerm| {
+                Ok::<_, Infallible>(RichTerm {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -947,9 +944,10 @@ impl Type {
     ///
     /// - `h` is an environment mapping type variables to contracts. Type variables are introduced
     ///   locally when opening a `forall`.
-    /// - `pol` is the current polarity, which is toggled when generating a contract for the argument
-    ///   of an arrow type (see [`crate::label::Label`]).
-    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see [`crate::term::Term::Sealed`]).
+    /// - `pol` is the current polarity, which is toggled when generating a contract for the
+    ///   argument of an arrow type (see [`crate::label::Label`]).
+    /// - `sy` is a counter used to generate fresh symbols for `forall` contracts (see
+    ///   [`crate::term::Term::Sealed`]).
     fn subcontract(
         &self,
         mut vars: HashMap<Ident, RichTerm>,
@@ -1037,8 +1035,8 @@ impl Type {
         Ok(ctr)
     }
 
-    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or a
-    /// type delimited by specific markers (such as a row type). Used in formatting to decide if
+    /// Determine if a type is an atom, that is a either a primitive type (`Dyn`, `Number`, etc.) or
+    /// a type delimited by specific markers (such as a row type). Used in formatting to decide if
     /// parentheses need to be inserted during pretty pretting.
     pub fn fmt_is_atom(&self) -> bool {
         match &self.typ {
@@ -1064,50 +1062,38 @@ impl Type {
 }
 
 impl Traverse<Type> for Type {
-    fn traverse<FTy, S, E>(self, f: &FTy, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        FTy: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
+        let pre_map = match order {
+            TraverseOrder::TopDown => f(self)?,
+            TraverseOrder::BottomUp => self,
+        };
+
+        // traverse keeps track of state in the FnMut function. try_map_state
+        // keeps track of it in a separate state variable. we can pass the
+        // former into the latter by treating the function itself as the state
+        let typ = pre_map.typ.try_map_state(
+            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
+            |rrows, f| rrows.traverse(f, order),
+            |erows, _| Ok(erows),
+            f,
+        )?;
+
+        let post_map = Type { typ, ..pre_map };
+
         match order {
-            TraverseOrder::TopDown => {
-                let ty = f(self, state)?;
-                let inner = ty.typ.try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| rrows.traverse(f, state, order),
-                    |erows, _| Ok(erows),
-                    state,
-                )?;
-
-                Ok(Type { typ: inner, ..ty })
-            }
-            TraverseOrder::BottomUp => {
-                let traversed_depth_first = self.typ.try_map_state(
-                    |ty, state| Ok(Box::new(ty.traverse(f, state, order)?)),
-                    |rrows, state| rrows.traverse(f, state, order),
-                    |erows, _| Ok(erows),
-                    state,
-                )?;
-
-                f(
-                    Type {
-                        typ: traversed_depth_first,
-                        ..self
-                    },
-                    state,
-                )
-            }
+            TraverseOrder::TopDown => Ok(post_map),
+            TraverseOrder::BottomUp => f(post_map),
         }
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
         match f(self) {
-            TraverseControl::Continue => {}
-            TraverseControl::SkipBranch => {
-                return None;
-            }
-            TraverseControl::Return(ret) => {
-                return Some(ret);
-            }
+            TraverseControl::Continue => (),
+            TraverseControl::SkipBranch => return None,
+            TraverseControl::Return(ret) => return Some(ret),
         };
 
         match &self.typ {
@@ -1130,22 +1116,23 @@ impl Traverse<Type> for Type {
 }
 
 impl Traverse<RichTerm> for Type {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let f_on_type = |ty: Type, s: &mut S| match ty.typ {
-            TypeF::Flat(t) => t
-                .traverse(f, s, order)
-                .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
-            _ => Ok(ty),
-        };
-
-        self.traverse(&f_on_type, state, order)
+        self.traverse(
+            &mut |ty: Type| match ty.typ {
+                TypeF::Flat(t) => t
+                    .traverse(f, order)
+                    .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
+                _ => Ok(ty),
+            },
+            order,
+        )
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
-        let mut f_on_type = |ty: &Type| match &ty.typ {
+        self.traverse_ref(&mut |ty: &Type| match &ty.typ {
             TypeF::Flat(t) => {
                 if let Some(ret) = t.traverse_ref(f) {
                     TraverseControl::Return(ret)
@@ -1154,8 +1141,7 @@ impl Traverse<RichTerm> for Type {
                 }
             }
             _ => TraverseControl::Continue,
-        };
-        self.traverse_ref(&mut f_on_type)
+        })
     }
 }
 

@@ -2,19 +2,6 @@
 //! replace the original import node by a resolved import one, which stores the corresponding file
 //! identifier directly.
 use super::ImportResolver;
-use crate::error::ImportError;
-use codespan::FileId;
-
-/// The state passed around during the imports resolution.
-struct ImportsResolutionState<'a, R> {
-    resolver: &'a mut R,
-    /// Pending imported terms to be transformed.
-    stack: &'a mut Vec<FileId>,
-    /// Path of the import being currently processed, if any.
-    parent: Option<FileId>,
-    /// Errors of imports that couldn't be resolved correctly.
-    import_errors: &'a mut Vec<ImportError>,
-}
 
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
@@ -88,7 +75,6 @@ pub mod strict {
 /// together with a (partially) resolved term.
 pub mod tolerant {
     use super::ImportResolver;
-    use super::ImportsResolutionState;
     use crate::error::ImportError;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
     use codespan::FileId;
@@ -114,30 +100,20 @@ pub mod tolerant {
 
         let source_file = rt.pos.as_opt_ref().map(|x| x.src_id);
 
-        let mut state = ImportsResolutionState {
-            resolver,
-            stack: &mut stack,
-            parent: source_file,
-            import_errors: &mut import_errors,
-        };
-
         // If an import is resolved, then stack it.
         let transformed = rt
             .traverse(
-                &|rt: RichTerm,
-                  state: &mut ImportsResolutionState<R>|
-                 -> Result<RichTerm, ImportError> {
-                    let (rt, err) = transform_one(rt, state.resolver, state.parent);
+                &mut |rt: RichTerm| -> Result<RichTerm, ImportError> {
+                    let (rt, err) = transform_one(rt, resolver, source_file);
                     if let Some(err) = err {
-                        state.import_errors.push(err);
+                        import_errors.push(err);
                     }
 
                     if let Term::ResolvedImport(file_id) = rt.term.as_ref() {
-                        state.stack.push(*file_id);
+                        stack.push(*file_id);
                     }
                     Ok(rt)
                 },
-                &mut state,
                 TraverseOrder::BottomUp,
             )
             // This will always succeed, because we always return `Ok(..)`, and

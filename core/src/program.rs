@@ -219,12 +219,12 @@ impl<EC: EvalCache> Program<EC> {
     ///
     /// # Arguments
     ///
-    /// - `override` is a list of overrides in the form of an iterator of [`FieldOverride`]s. Each override is imported
-    ///   in a separate in-memory source, for complete isolation (this way, overrides can't
-    ///   accidentally or intentionally capture other fields of the configuration). A stub record is
-    ///   then built, which has all fields defined by `overrides`, and values are an import referring
-    ///   to the corresponding isolated value. This stub is finally merged with the current program
-    ///   before being evaluated for import.
+    /// - `override` is a list of overrides in the form of an iterator of [`FieldOverride`]s. Each
+    ///   override is imported in a separate in-memory source, for complete isolation (this way,
+    ///   overrides can't accidentally or intentionally capture other fields of the configuration).
+    ///   A stub record is then built, which has all fields defined by `overrides`, and values are
+    ///   an import referring to the corresponding isolated value. This stub is finally merged with
+    ///   the current program before being evaluated for import.
     pub fn eval_full_for_export(
         &mut self,
         overrides: impl IntoIterator<Item = FieldOverride>,
@@ -288,7 +288,10 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.vm.import_resolver_mut().parse(self.main_id)?;
         self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect("program::typecheck(): stdlib has been loaded but was not found in cache on mk_type_ctxt()");
+        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
+            "program::typecheck(): \
+            stdlib has been loaded but was not found in cache on mk_type_ctxt()",
+        );
         self.vm
             .import_resolver_mut()
             .resolve_imports(self.main_id)
@@ -448,7 +451,12 @@ impl<EC: EvalCache> Program<EC> {
                                             .value
                                             .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
                                             .transpose()?,
-                                        pending_contracts: eval_contracts(vm, field.pending_contracts, env.clone(), initial_env)?,
+                                        pending_contracts: eval_contracts(
+                                            vm,
+                                            field.pending_contracts,
+                                            env.clone(),
+                                            initial_env
+                                        )?,
                                         ..field
                                     },
                                 ))
@@ -621,7 +629,8 @@ mod doc {
             // Our nodes in the Markdown document are owned by this arena
             let arena = Arena::new();
 
-            // The default ComrakOptions disables all extensions (essentially reducing to CommonMark)
+            // The default ComrakOptions disables all extensions (essentially reducing to
+            // CommonMark)
             let options = ComrakOptions::default();
 
             self.markdown_append(0, &arena, &document, &options);
@@ -631,8 +640,8 @@ mod doc {
             Ok(())
         }
 
-        /// Recursively walk the given `DocOutput`, recursing into fields, looking for documentation.
-        /// This documentation is then appended to the provided document.
+        /// Recursively walk the given `DocOutput`, recursing into fields, looking for
+        /// documentation. This documentation is then appended to the provided document.
         fn markdown_append<'a>(
             &'a self,
             header_level: u8,
@@ -669,8 +678,9 @@ mod doc {
         }
     }
 
-    /// Parses a string into markdown and increases any headers in the markdown by the specified level.
-    /// This allows having headers in documentation without clashing with the structure of the document.
+    /// Parses a string into markdown and increases any headers in the markdown by the specified
+    /// level. This allows having headers in documentation without clashing with the structure of
+    /// the document.
     fn parse_markdown_string<'a>(
         header_level: u8,
         arena: &'a Arena<AstNode<'a>>,

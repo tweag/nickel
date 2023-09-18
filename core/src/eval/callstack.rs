@@ -1,7 +1,6 @@
 //! In a lazy language like Nickel, there are no well delimited stack frames due to how function
 //! application is evaluated. Additional information about the history of function calls is thus
 //! stored in a call stack solely for better error reporting.
-use super::IdentKind;
 use crate::{
     identifier::LocIdent,
     position::{RawSpan, TermPos},
@@ -28,11 +27,7 @@ pub enum StackElem {
     /// An application was evaluated.
     App(TermPos),
     /// A variable was entered.
-    Var {
-        kind: IdentKind,
-        id: LocIdent,
-        pos: TermPos,
-    },
+    Var { id: LocIdent, pos: TermPos },
     /// A record field was entered.
     Field {
         id: LocIdent,
@@ -48,8 +43,8 @@ impl CallStack {
     }
 
     /// Push a marker to indicate that a var was entered.
-    pub fn enter_var(&mut self, kind: IdentKind, id: LocIdent, pos: TermPos) {
-        self.0.push(StackElem::Var { kind, id, pos });
+    pub fn enter_var(&mut self, id: LocIdent, pos: TermPos) {
+        self.0.push(StackElem::Var { id, pos });
     }
 
     /// Push a marker to indicate that an application was entered.
@@ -86,9 +81,9 @@ impl CallStack {
         });
     }
 
-    /// Process a raw callstack by aggregating elements belonging to the same call. Return a list
-    /// of call descriptions from the most nested/recent to the least nested/recent, together with
-    /// the last pending call, if any.
+    /// Process a raw callstack by aggregating elements belonging to the same call. Return a list of
+    /// call descriptions from the most nested/recent to the least nested/recent, together with the
+    /// last pending call, if any.
     ///
     /// Recall that when a call `f arg` is evaluated, the following events happen:
     /// 1. `arg` is pushed on the evaluation stack.
@@ -96,30 +91,31 @@ impl CallStack {
     /// 3. Hopefully, the result of this evaluation is a function `Func(id, body)`. `arg` is popped
     ///    from the stack, bound to `id` in the environment, and `body is entered`.
     ///
-    /// For error reporting purpose, we want to be able to determine the chain of nested calls leading
-    /// to the current code path at any moment. To do so, the Nickel abstract machine maintains a
-    /// callstack via this basic mechanism:
-    /// 1. When an application is evaluated, push a marker with the position of the application on the callstack.
-    /// 2. When a function body is entered, push a marker with the position of the original application on the
-    ///    callstack.
+    /// For error reporting purpose, we want to be able to determine the chain of nested calls
+    /// leading to the current code path at any moment. To do so, the Nickel abstract machine
+    /// maintains a callstack via this basic mechanism:
+    /// 1. When an application is evaluated, push a marker with the position of the application on
+    ///    the callstack.
+    /// 2. When a function body is entered, push a marker with the position of the original
+    ///    application on the callstack.
     /// 3. When a variable is evaluated, push a marker with its name and position on the callstack.
     /// 4. When a record field is accessed, push a marker with its name and position on the
     ///    callstack too.
     ///
-    /// Both field and variable are useful to determine the name of a called function, when there
-    /// is one.  The resulting stack is not suited to be reported to the user for the following
+    /// Both field and variable are useful to determine the name of a called function, when there is
+    /// one.  The resulting stack is not suited to be reported to the user for the following
     /// reasons:
     ///
     /// 1. One call spans several items on the callstack. First the application is entered (pushing
-    ///    an `App`), then possibly variables or other application are evaluated until we
-    ///    eventually reach a function for the left hand side. Then body of this function is
-    ///    entered (pushing a `Fun`).
+    ///    an `App`), then possibly variables or other application are evaluated until we eventually
+    ///    reach a function for the left hand side. Then body of this function is entered (pushing a
+    ///    `Fun`).
     /// 2. Because of currying, multi-ary applications span several objects on the callstack.
     ///    Typically, `(fun x y => x + y) arg1 arg2` spans two `App` and two `Fun` elements in the
     ///    form `App1 App2 Fun2 Fun1`, where the position span of `App1` includes the position span
     ///    of `App2`.  We want to group them as one call.
-    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitly
-    ///    by the abstract machine and are not written explicitly by the user. Showing them is
+    /// 3. The callstack includes calls to builtin contracts. These calls are inserted implicitly by
+    ///    the abstract machine and are not written explicitly by the user. Showing them is
     ///    confusing and clutters the call chain, so we get rid of them too.
     ///
     /// This is the role of `group_by_calls`, which filter out unwanted elements and groups

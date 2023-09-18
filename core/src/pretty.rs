@@ -29,14 +29,14 @@ fn min_interpolate_sign(text: &str) -> usize {
     let reg = Regex::new(r#"([%]+\{)|("[%]+)"#).unwrap();
     reg.find_iter(text)
         .map(|m| {
-            // We iterate over all sequences `%+{` and `"%+`, which could clash with the interpolation
-            // syntax, and return the maximum number of `%` insead each sequence.
+            // We iterate over all sequences `%+{` and `"%+`, which could clash with the
+            // interpolation syntax, and return the maximum number of `%` insead each sequence.
             //
             // For the case of a closing delimiter `"%`, we could actually be slightly smarter as we
-            // don't necessarily need more `%`, but just a different number of `%`. For example, if the
-            // string contains only one `"%%`, then single `%` delimiters like `m%"` and `"%` would
-            // be fine. But picking the maximum results in a simpler algorithm for now, which we can
-            // update later if necessary.
+            // don't necessarily need more `%`, but just a different number of `%`. For example, if
+            // the string contains only one `"%%`, then single `%` delimiters like `m%"` and `"%`
+            // would be fine. But picking the maximum results in a simpler algorithm for now, which
+            // we can update later if necessary.
             m.end() - m.start()
         })
         .max()
@@ -1419,18 +1419,18 @@ mod tests {
 
     #[test]
     fn pretty_multiline_strings() {
-        // The string `"\n1."` contains a newline, so it will be pretty-printed using Nickel's multiline string syntax. The result looks like
+        // The string `"\n1."` contains a newline, so it will be pretty-printed using Nickel's
+        // multiline string syntax. The result looks like:
         // ```
         // m%"
         //
         //   1.
         // "%
         // ```
-        // The newline after `m%"` and the newline before `"%` are removed
-        // by the parser, as is the indentation. Unfortunately, we can't use
-        // `indoc!` in this test because `pretty.rs` insists on putting two
-        // spaces after every newline, even if the line is otherwise empty. But
-        // `indoc!` would rightfully strip those empty spaces.
+        // The newline after `m%"` and the newline before `"%` are removed by the parser, as is the
+        // indentation. Unfortunately, we can't use `indoc!` in this test because `pretty.rs`
+        // insists on putting two spaces after every newline, even if the line is otherwise empty.
+        // But `indoc!` would rightfully strip those empty spaces.
         let t: RichTerm = Term::StrChunks(vec![StrChunk::Literal("\n1.".to_owned())]).into();
         assert_eq!(format!("{t}"), "m%\"\n  \n  1.\n\"%");
 

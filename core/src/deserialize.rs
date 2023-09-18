@@ -626,9 +626,10 @@ mod tests {
         }
 
         assert_eq!(
-            A::deserialize(
-                eval(r#"{ a = 10, b = "test string", c = null, d = true, e = 'foo, f = null, g = -10, h = { bar = "some other string" } }"#)
-            )
+            A::deserialize(eval(
+                r#"{ a = 10, b = "test string", c = null, d = true, e = 'foo, f = null,
+                g = -10, h = { bar = "some other string" } }"#
+            ))
             .expect("deserialization shouldn't fail"),
             A {
                 a: 10.0,

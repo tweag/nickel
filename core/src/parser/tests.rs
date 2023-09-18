@@ -239,7 +239,11 @@ fn enum_terms() {
             "match with string tags",
             "match { '\"one:two\" => true, '\"three four\" => false, _ => 13 } 1",
             mk_app!(
-                mk_match!(("one:two", Bool(true)), ("three four", Bool(false)) ; mk_term::integer(13)),
+                mk_match!(
+                    ("one:two", Bool(true)),
+                    ("three four", Bool(false))
+                    ; mk_term::integer(13)
+                ),
                 mk_term::integer(1)
             ),
         ),

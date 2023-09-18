@@ -3,8 +3,8 @@ use super::{merge::RevertClosurize, *};
 use crate::{label::Label, position::TermPos};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
-// case, the term is expected to be a variable pointing to the element to be patched. Otherwise, it's
-// considered to have no dependencies and is left untouched.
+// case, the term is expected to be a variable pointing to the element to be patched. Otherwise,
+// it's considered to have no dependencies and is left untouched.
 //
 // This function achieve the same as `patch_field`, but is somehow lower-level, as it operates on a
 // general `RichTerm` instead of a `Field`. In practice, the patched term is either the value of a
@@ -66,15 +66,15 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?,
                     _ => {
-                        // If we are in this branch, `rt` must be a constant after the share normal form
-                        // transformation, hence it should not need an environment, which is why it is
-                        // dropped.
+                        // If we are in this branch, `rt` must be a constant after the share normal
+                        // form transformation, hence it should not need an environment, which is
+                        // why it is dropped.
                         let closure = Closure {
                             body: value.clone(),
                             env: Environment::new(),
                         };
 
-                        cache.add(closure, IdentKind::Record, BindingType::Normal)
+                        cache.add(closure, BindingType::Normal)
                     }
                 };
 
@@ -90,23 +90,24 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     field.pending_contracts.iter().cloned().flat_map(|ctr| {
                         // This operation is the heart of our preliminary fix for
                         // [#1161](https://github.com/tweag/nickel/issues/1161). Whenever we detect
-                        // the presence of free type variables in a contract, by witnessing a nonempty
-                        // type environment in the label, we need to not just apply the original
-                        // contract but also its dual. The rationale here is that a record field that
-                        // recursively depends on another of type `T`, say, should be considered a
-                        // function with domain `T`. Consequently, the same contract that would be a
-                        // applied to the argument of a function of type `T -> Dyn` should be applied
-                        // to the recursive reference.
+                        // the presence of free type variables in a contract, by witnessing a
+                        // nonempty type environment in the label, we need to not just apply the
+                        // original contract but also its dual. The rationale here is that a record
+                        // field that recursively depends on another of type `T`, say, should be
+                        // considered a function with domain `T`. Consequently, the same contract
+                        // that would be a applied to the argument of a function of type `T -> Dyn`
+                        // should be applied to the recursive reference.
                         //
-                        // Thus, the recursive reference must satisfy the contract for `T` as well as
-                        // the "dual" contract `T.dualize()`; the latter is defined to be the domain
-                        // contract for a function of type `T -> Dyn`. This sublety only matters if
-                        // `T` contains free type variables because only then does `T.dualize()` differ
-                        // from `T` at all.
+                        // Thus, the recursive reference must satisfy the contract for `T` as well
+                        // as the "dual" contract `T.dualize()`; the latter is defined to be the
+                        // domain contract for a function of type `T -> Dyn`. This sublety only
+                        // matters if `T` contains free type variables because only then does
+                        // `T.dualize()` differ from `T` at all.
                         //
                         // We expect to implement a way of solving this dilemma without essentially
                         // applying every contract twice. This will likely involve a rewriting of
-                        // contracts corresponding to free variables which is yet to be proved sound.
+                        // contracts corresponding to free variables which is yet to be proved
+                        // sound.
                         if ctr.label.type_environment.is_empty() {
                             vec![ctr]
                         } else {
@@ -131,10 +132,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     env: final_env,
                 };
 
-                Ok((
-                    id.ident(),
-                    cache.add(final_closure, IdentKind::Record, BindingType::Normal),
-                ))
+                Ok((id.ident(), cache.add(final_closure, BindingType::Normal)))
             } else {
                 let error = EvalError::MissingFieldDef {
                     id: *id,
@@ -153,10 +151,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     env: Environment::new(),
                 };
 
-                Ok((
-                    id.ident(),
-                    cache.add(closure, IdentKind::Record, BindingType::Normal),
-                ))
+                Ok((id.ident(), cache.add(closure, BindingType::Normal)))
             }
         })
         .collect()

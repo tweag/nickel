@@ -40,7 +40,8 @@ pub enum RowUnifError {
 impl RowUnifError {
     /// Convert a row unification error to a unification error.
     ///
-    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
+    /// There is a hierarchy between error types, from the most local/specific to the most
+    /// high-level:
     /// - [`RowUnifError`]
     /// - [`UnifError`]
     /// - [`crate::error::TypecheckError`]
@@ -108,8 +109,8 @@ pub enum UnifError {
 }
 
 impl UnifError {
-    /// Convert a unification error to a typechecking error.
-    /// There is a hierarchy between error types, from the most local/specific to the most high-level:
+    /// Convert a unification error to a typechecking error. There is a hierarchy between error
+    /// types, from the most local/specific to the most high-level:
     /// - [`RowUnifError`]
     /// - [`UnifError`]
     /// - [`crate::error::TypecheckError`]

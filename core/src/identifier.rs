@@ -231,7 +231,8 @@ mod interner {
 
     use typed_arena::Arena;
 
-    /// A symbol is a correspondence between an [Ident](super::Ident) and its string representation stored in the [Interner].
+    /// A symbol is a correspondence between an [Ident](super::Ident) and its string representation
+    /// stored in the [Interner].
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Symbol(u32);
 
@@ -246,15 +247,16 @@ mod interner {
             Self(RwLock::new(InnerInterner::new()))
         }
 
-        /// Stores a string inside the [Interner] if it does not exists, and returns the corresponding [Symbol].
+        /// Stores a string inside the [Interner] if it does not exists, and returns the
+        /// corresponding [Symbol].
         pub(crate) fn intern(&self, string: impl AsRef<str>) -> Symbol {
             self.0.write().unwrap().intern(string)
         }
 
         /// Looks up for the stored string corresponding to the [Symbol].
         ///
-        /// This operation cannot fails since the only way to have a [Symbol] is to have [interned](Interner::intern)
-        /// the corresponding string first.
+        /// This operation cannot fails since the only way to have a [Symbol] is to have
+        /// [interned](Interner::intern) the corresponding string first.
         pub(crate) fn lookup(&self, sym: Symbol) -> &str {
             // SAFETY: We are making the returned &str lifetime the same as our struct,
             // which is okay here since the InnerInterner uses a typed_arena which prevents
@@ -265,14 +267,14 @@ mod interner {
     }
 
     /// The main part of the Interner.
-    ///
-    /// It is made out of 3 parts:
-    /// - the arena, that preallocates space where strings are stored
-    /// - the map, which prevents the arena from creating different [Symbols](Symbol) for the same string,
-    /// - the vec, which allows for retrieving a string from a [Symbol].
     struct InnerInterner<'a> {
+        /// Preallocates space where strings are stored.
         arena: Mutex<Arena<u8>>,
+
+        /// Prevents the arena from creating different [Symbols](Symbol) for the same string.
         map: HashMap<&'a str, Symbol>,
+
+        /// Allows retrieving a string from a [Symbol].
         vec: Vec<&'a str>,
     }
 
@@ -286,16 +288,17 @@ mod interner {
             }
         }
 
-        /// Stores a string inside the [InnerInterner] if it does not exists, and returns the corresponding [Symbol].
+        /// Stores a string inside the [InnerInterner] if it does not exists, and returns the
+        /// corresponding [Symbol].
         fn intern(&mut self, string: impl AsRef<str>) -> Symbol {
             if let Some(sym) = self.map.get(string.as_ref()) {
                 return *sym;
             }
-            // SAFETY: here we are transmuting the reference lifetime:
-            // &'arena str -> &'self str
+            // SAFETY: Here we are transmuting the reference lifetime: &'arena str -> &'self str
             // This is okay since the lifetime of the arena is identical to the one of the struct.
-            // It is also okay to use it from inside the mutex, since typed_arena does not allow deallocation,
-            // so references are valid until the arena drop, which is tied to the struct drop.
+            // It is also okay to use it from inside the mutex, since typed_arena does not allow
+            // deallocation, so references are valid until the arena drop, which is tied to the
+            // struct drop.
             let in_string = unsafe {
                 std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
             };

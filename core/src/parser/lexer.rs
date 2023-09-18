@@ -434,18 +434,22 @@ pub enum MultiStringToken<'input> {
     /// `FalseEnd` otherwise
     #[regex("\"%+")]
     CandidateEnd(&'input str),
+
     /// Same as `CandidateEnd`, but for interpolation
     #[regex("%+\\{")]
     CandidateInterpolation(&'input str),
-    /// Unfortunate consequence of Logos' [issue #200](https://github.com/maciejhirsz/logos/issues/200).
-    /// The other rules should be sufficient to match this as a double quote followed by a
-    /// `CandidateInterpolation`, but if we omit this token, the lexer can fail unexpectedly on
-    /// valid inputs because of #200.
+
+    /// Unfortunate consequence of Logos'
+    /// [issue#200](https://github.com/maciejhirsz/logos/issues/200). The other rules should be
+    /// sufficient to match this as a double quote followed by a `CandidateInterpolation`, but if we
+    /// omit this token, the lexer can fail unexpectedly on valid inputs because of #200.
     #[regex("\"%+\\{")]
     QuotesCandidateInterpolation(&'input str),
+
     /// Token emitted by the modal lexer for the parser once it has decided that a `CandidateEnd` is
     /// an actual end token.
     End,
+
     Interpolation,
 }
 
@@ -809,8 +813,8 @@ impl<'input> Lexer<'input> {
         let data = self.multistring_mode_data();
 
         let result = match token {
-            // If we encounter a `CandidateInterp` token with the right number of characters, this is
-            // an interpolation sequence.
+            // If we encounter a `CandidateInterp` token with the right number of characters, this
+            // is an interpolation sequence.
             //
             // Note that the number of characters may be greater than `count`: in `m%" %%%{foo} "%`,
             // the lexer will process `%%%{` as a candidate interpolation with 4 characters, while

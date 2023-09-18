@@ -65,6 +65,13 @@ impl MarkdownRenderer {
 }
 
 #[cfg(feature = "markdown")]
+impl Default for MarkdownRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "markdown")]
 fn termimad_to_io(err: termimad::Error) -> io::Error {
     match err {
         termimad::Error::IO(err) => err,

@@ -113,6 +113,12 @@ impl Envs {
     }
 }
 
+impl Default for Envs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// An entry in the term cache. Stores the parsed term together with some metadata and state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermEntry {
@@ -166,7 +172,8 @@ pub struct NameIdEntry {
 pub enum EntryState {
     /// The term have just been parsed.
     Parsed,
-    /// The imports of the entry have been resolved, and the imports of its (transitive) imports are being resolved.
+    /// The imports of the entry have been resolved, and the imports of its (transitive) imports are
+    /// being resolved.
     ImportsResolving,
     /// The imports of the entry and its transitive dependencies has been resolved.
     ImportsResolved,
@@ -553,7 +560,10 @@ impl Cache {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 if terms.is_empty() {
-                    unreachable!("serde always produces at least one document, the empty string turns into `null`")
+                    unreachable!(
+                        "serde always produces at least one document, \
+                        the empty string turns into `null`"
+                    )
                 } else if terms.len() == 1 {
                     Ok((
                         terms.pop().expect("we just checked the length"),
@@ -1014,7 +1024,8 @@ impl Cache {
         self.terms.get(&file_id).map(|TermEntry { term, .. }| term)
     }
 
-    /// Returns true if a particular file id represents a Nickel standard library file, false otherwise.
+    /// Returns true if a particular file id represents a Nickel standard library file, false
+    /// otherwise.
     pub fn is_stdlib_module(&self, file: FileId) -> bool {
         let Some(table) = &self.stdlib_ids else {
             return false;
@@ -1097,8 +1108,8 @@ impl Cache {
         // We have a small bootstraping problem: to typecheck the initial environment, we already
         // need an initial evaluation environment, since stdlib parts may reference each other. But
         // typechecking is performed before program transformations, so this environment is not
-        // final one. We have create a temporary initial environment just for typechecking, which is dropped
-        // right after. However:
+        // final one. We have create a temporary initial environment just for typechecking, which is
+        // dropped right after. However:
         // 1. The stdlib is meant to stay relatively light.
         // 2. Typechecking the standard library ought to occur only during development. Once the
         //    stdlib is stable, we won't have typecheck it at every execution.
@@ -1128,10 +1139,10 @@ impl Cache {
         }
     }
 
-    /// Load, parse, and apply program transformations to the standard library. Do not typecheck
-    /// for performance reasons: this is done in the test suite. Return an initial environment
-    /// containing both the evaluation and type environments. If you only need the type environment, use
-    /// `load_stdlib` then `mk_type_env` to avoid transformations and evaluation preparation.
+    /// Load, parse, and apply program transformations to the standard library. Do not typecheck for
+    /// performance reasons: this is done in the test suite. Return an initial environment
+    /// containing both the evaluation and type environments. If you only need the type environment,
+    /// use `load_stdlib` then `mk_type_env` to avoid transformations and evaluation preparation.
     pub fn prepare_stdlib<EC: EvalCache>(&mut self, eval_cache: &mut EC) -> Result<Envs, Error> {
         #[cfg(debug_assertions)]
         if self.skip_stdlib {
@@ -1191,8 +1202,8 @@ impl Cache {
         Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
     }
 
-    /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the standard
-    /// library parts.
+    /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
+    /// standard library parts.
     pub fn mk_eval_env<EC: EvalCache>(
         &self,
         eval_cache: &mut EC,
@@ -1211,17 +1222,23 @@ impl Cache {
                         )),
                     );
                     if let Err(eval::EnvBuildError::NotARecord(rt)) = result {
-                         panic!(
-                            "cache::load_stdlib(): expected the stdlib module {} to be a record, got {:?}",
+                        panic!(
+                            "cache::load_stdlib(): \
+                            expected the stdlib module {} to be a record, got {:?}",
                             self.name(*file_id).to_string_lossy().as_ref(),
                             rt
-                         )
+                        )
                     }
-                }
-                else {
-                    eval::env_add(eval_cache, &mut eval_env, module.name().into(), self.get_owned(*file_id).expect(
+                } else {
+                    eval::env_add(
+                        eval_cache,
+                        &mut eval_env,
+                        module.name().into(),
+                        self.get_owned(*file_id).expect(
                             "cache::mk_eval_env(): can't build environment, stdlib not parsed",
-                        ), eval::Environment::new());
+                        ),
+                        eval::Environment::new(),
+                    );
                 }
             });
 
@@ -1233,7 +1250,7 @@ impl Cache {
 }
 
 /// Abstract the access to imported files and the import cache. Used by the evaluator, the
-/// typechecker and at [import resolution](../transformations/import_resolution/index.html) phase.
+/// typechecker and at the [import resolution](crate::transform::import_resolution) phase.
 ///
 /// The standard implementation uses 2 caches, the file cache for raw contents and the term cache
 /// for parsed contents, mirroring the 2 steps when resolving an import:
@@ -1241,7 +1258,7 @@ impl Cache {
 ///    read and stored in the file cache (consisting of the file database plus a map between paths
 ///    and ids in the database, the name-id table). The content is parsed, stored in the term
 ///    cache, and queued somewhere so that it can undergo the standard
-///    [transformations](../transformations/index.html) (including import resolution) later.
+///    [transformations](crate::transform) (including import resolution) later.
 /// 2. When it is finally processed, the term cache is updated with the transformed term.
 pub trait ImportResolver {
     /// Resolve an import.

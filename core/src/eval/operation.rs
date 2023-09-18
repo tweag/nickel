@@ -53,12 +53,12 @@ generate_counter!(FreshVariableCounter, usize);
 
 /// Result of the equality of two terms.
 ///
-/// The equality of two terms can either be computed directly for base types (`Number`, `String`, etc.),
-/// in which case `Bool` is returned. Otherwise, composite values such as arrays or records generate
-/// new subequalities, as represented by the last variant as a vector of pairs of terms.  This list
-/// should be non-empty (it if was empty, `eq` should have returned `Bool(true)` directly).  The
-/// first element of this non-empty list is encoded as the two first parameters of `Eqs`, while the
-/// last vector parameter is the (potentially empty) tail.
+/// The equality of two terms can either be computed directly for base types (`Number`, `String`,
+/// etc.), in which case `Bool` is returned. Otherwise, composite values such as arrays or records
+/// generate new subequalities, as represented by the last variant as a vector of pairs of terms.
+/// This list should be non-empty (it if was empty, `eq` should have returned `Bool(true)`
+/// directly).  The first element of this non-empty list is encoded as the two first parameters of
+/// `Eqs`, while the last vector parameter is the (potentially empty) tail.
 ///
 /// See [`eq`].
 enum EqResult {
@@ -108,9 +108,9 @@ impl std::fmt::Debug for OperationCont {
 impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Process to the next step of the evaluation of an operation.
     ///
-    /// Depending on the content of the stack, it either starts the evaluation of the first argument,
-    /// starts the evaluation of the second argument, or finally process with the operation if both
-    /// arguments are evaluated (for binary operators).
+    /// Depending on the content of the stack, it either starts the evaluation of the first
+    /// argument, starts the evaluation of the second argument, or finally process with the
+    /// operation if both arguments are evaluated (for binary operators).
     pub fn continuate_operation(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
         let (cont, cs_len, pos) = self.stack.pop_op_cont().expect("Condition already checked");
         self.call_stack.truncate(cs_len);
@@ -245,11 +245,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Some((next, ..)) = self.stack.pop_arg(&self.cache) {
                     match &*t {
                         Term::Bool(true) => Ok(next),
-                        // FIXME: this does not check that the second argument is actually a boolean.
-                        // This means `true && 2` silently evaluates to `2`. This is simpler and more
-                        // efficient, but can make debugging harder. In any case, it should be solved
-                        // only once primary operators have better support for laziness in some
-                        // arguments.
+                        // FIXME: this does not check that the second argument is actually a
+                        // boolean. This means `true && 2` silently evaluates to `2`. This is
+                        // simpler and more efficient, but can make debugging harder. In any case,
+                        // it should be solved only once primary operators have better support for
+                        // laziness in some arguments.
                         Term::Bool(false) => Ok(Closure::atomic_closure(RichTerm {
                             term: t,
                             pos: pos_op_inh,
@@ -267,11 +267,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             term: t,
                             pos: pos_op_inh,
                         })),
-                        // FIXME: this does not check that the second argument is actually a boolean.
-                        // This means `false || 2` silently evaluates to `2`. This is simpler and more
-                        // efficient, but can make debugging harder. In any case, it should be solved
-                        // only once primary operators have better support for laziness in some
-                        // arguments.
+                        // FIXME: this does not check that the second argument is actually a
+                        // boolean. This means `false || 2` silently evaluates to `2`. This is
+                        // simpler and more efficient, but can make debugging harder. In any case,
+                        // it should be solved only once primary operators have better support for
+                        // laziness in some arguments.
                         Term::Bool(false) => Ok(next),
                         _ => Err(mk_type_error!("(||)", "Bool", 1)),
                     }
@@ -484,7 +484,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .fields
                             .into_iter()
                             // Ignore optional fields without definitions.
-                            .filter_map(|(id, field)| (!field.is_empty_optional()).then(|| id.to_string()))
+                            .filter_map(|(id, field)|
+                                (!field.is_empty_optional()).then(|| id.to_string()))
                             .collect();
                         fields.sort();
                         let terms = fields.into_iter().map(mk_term::string).collect();
@@ -509,9 +510,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let terms = values.into_iter().map(|(_, value)| value).collect();
 
                         Ok(Closure {
-                            // TODO: once sure that the Record is properly closurized, we can
-                            // safely assume that the extracted array here is, in turn, also closuried.
-                            body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
+                            // TODO: once sure that the Record is properly closurized, we can safely
+                            // assume that the extracted array here is, in turn, also closuried.
+                            body: RichTerm::new(
+                                Term::Array(terms, ArrayAttrs::default()),
+                                pos_op_inh
+                            ),
                             env,
                         })
                     }
@@ -529,9 +533,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let mut shared_env = Environment::new();
                             let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
-                            // Array elements are closurized to preserve laziness of data structures. It
-                            // maintains the invariant that any data structure only contain indices (that is,
-                            // currently, variables).
+                            // Array elements are closurized to preserve laziness of data
+                            // structures. It maintains the invariant that any data structure only
+                            // contain indices (that is, currently, variables).
                             let ts = ts
                                 .into_iter()
                                 .map(|t| {
@@ -541,13 +545,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         pos.into_inherited(),
                                     );
 
-                                    RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
-                                        .closurize(&mut self.cache, &mut shared_env, env.clone())
+                                    RichTerm::new(
+                                        Term::App(f_as_var.clone(), t_with_ctrs),
+                                        pos_op_inh
+                                    )
+                                    .closurize(&mut self.cache, &mut shared_env, env.clone())
                                 })
                                 .collect();
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Array(ts, attrs.contracts_cleared().closurized()), pos_op_inh),
+                                body: RichTerm::new(
+                                    Term::Array(ts, attrs.contracts_cleared().closurized()),
+                                    pos_op_inh
+                                ),
                                 env: shared_env,
                             })
                         }
@@ -577,11 +587,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let Ok(n_int) = u32::try_from(n) else {
                     return Err(EvalError::Other(
-                    format!(
-                      "generate expects its first argument to be an integer smaller than {}, got {n}", u32::MAX,
-                    ),
-                    pos_op,
-                  ));
+                        format!(
+                            "generate expects its first argument to be an integer \
+                            smaller than {}, got {n}",
+                            u32::MAX,
+                        ),
+                        pos_op,
+                    ));
                 };
 
                 let mut shared_env = Environment::new();
@@ -639,15 +651,25 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .fields
                                 .into_iter()
                                 .filter(|(_, field)| !field.is_empty_optional())
-                                .map_values_closurize(&mut self.cache, &mut shared_env, &env, |id, t| {
-                                    let pos = t.pos.into_inherited();
+                                .map_values_closurize(&mut self.cache, &mut shared_env, &env,
+                                    |id, t| {
+                                        let pos = t.pos.into_inherited();
 
-                                    mk_app!(f_as_var.clone(), mk_term::string(id.label()), t).with_pos(pos)
-                                })
-                                .map_err(|missing_field_err| missing_field_err.into_eval_err(pos, pos_op))?;
+                                        mk_app!(
+                                            f_as_var.clone(),
+                                            mk_term::string(id.label()), t
+                                        )
+                                        .with_pos(pos)
+                                    }
+                                )
+                                .map_err(|missing_field_err|
+                                    missing_field_err.into_eval_err(pos, pos_op))?;
 
                             Ok(Closure {
-                                body: RichTerm::new(Term::Record(RecordData { fields, ..record }), pos_op_inh),
+                                body: RichTerm::new(
+                                    Term::Record(RecordData { fields, ..record }),
+                                    pos_op_inh
+                                ),
                                 env: shared_env,
                             })
                         }
@@ -791,8 +813,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         )))
                     }
                 } else {
-                    // Since the error halts the evaluation, we don't bother cleaning the stack of the
-                    // remaining string chunks.
+                    // Since the error halts the evaluation, we don't bother cleaning the stack of
+                    // the remaining string chunks.
                     //
                     // Not using mk_type_error! because of a non-uniform message
                     Err(EvalError::TypeError(
@@ -1019,11 +1041,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let fields = record.fields
                                 .into_iter()
                                 .filter(|(_, field)| {
-                                    !(field.is_empty_optional() || (ignore_not_exported && field.metadata.not_exported))
+                                    !(field.is_empty_optional()
+                                        || (ignore_not_exported && field.metadata.not_exported))
                                 })
-                                .map_values_closurize(&mut self.cache, &mut shared_env, &env, |_, value| {
-                                    mk_term::op1(UnaryOp::Force { ignore_not_exported }, value)
-                                })
+                                .map_values_closurize(&mut self.cache, &mut shared_env, &env,
+                                    |_, value| {
+                                        mk_term::op1(UnaryOp::Force { ignore_not_exported }, value)
+                                    }
+                                )
                                 .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
                             let terms = fields
@@ -1032,7 +1057,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .map(|field| {
                                     field
                                         .value
-                                        .expect("map_values_closurize ensures that values without a definition throw a MissingFieldDefError")
+                                        .expect(
+                                            "map_values_closurize ensures that values without a \
+                                            definition throw a MissingFieldDefError"
+                                        )
                                 });
 
                             let cont = RichTerm::new(
@@ -1062,7 +1090,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 })
                                 // It's important to collect here, otherwise the two usages below
                                 // will each do their own .closurize(...) calls and end up with
-                                // different variables, which means that `cont` won't be properly updated.
+                                // different variables, which means that `cont` won't be properly
+                                // updated.
                                 .collect::<Array>();
 
                             let terms = ts.clone().into_iter();
@@ -1306,12 +1335,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
                                 .powf(f64::rounding_from(n2, RoundingMode::Nearest));
                             // The following conversion fails if the result is NaN or +/-infinity
-                            Number::try_from_float_simplest(result_as_f64).map_err(|_|
-                              EvalError::Other(
-                                  format!("invalid arithmetic operation: {n1}^{n2} returned {result_as_f64}, but {result_as_f64} isn't representable in Nickel"),
-                                  pos_op
-                              )
-                            )?
+                            Number::try_from_float_simplest(result_as_f64).map_err(|_| {
+                                EvalError::Other(
+                                    format!(
+                                        "invalid arithmetic operation: \
+                                        {n1}^{n2} returned {result_as_f64}, \
+                                        but {result_as_f64} isn't representable in Nickel"
+                                    ),
+                                    pos_op,
+                                )
+                            })?
                         };
 
                         Ok(Closure::atomic_closure(RichTerm::new(
@@ -1342,8 +1375,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             BinaryOp::Assume() => {
                 if let Term::Lbl(l) = &*t2 {
-                    // Track the contract argument for better error reporting, and push back the label
-                    // on the stack, so that it becomes the first argument of the contract.
+                    // Track the contract argument for better error reporting, and push back the
+                    // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
                         EvalError::NotEnoughArgs(3, String::from("assume"), pos_op)
                     })?;
@@ -1553,7 +1586,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // contracts. There are several way to improve this, but this is left
                             // as future work.
                             let ident = LocIdent::from(&id);
-                            match record.get_value_with_ctrs(&ident).map_err(|missing_field_err| missing_field_err.into_eval_err(pos2, pos_op))? {
+                            match record
+                                .get_value_with_ctrs(&ident)
+                                .map_err(|missing_field_err| {
+                                    missing_field_err.into_eval_err(pos2, pos_op)
+                                })?
+                            {
                                 Some(value) => {
                                     self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
                                     Ok(Closure {
@@ -1562,12 +1600,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     })
                                 }
                                 None => match record.sealed_tail.as_ref() {
-                                    Some(t) if t.has_dyn_field(&id) => Err(EvalError::IllegalPolymorphicTailAccess {
-                                        action: IllegalPolymorphicTailAction::FieldAccess { field: id.to_string() },
-                                        evaluated_arg: t.label.get_evaluated_arg(&self.cache),
-                                        label: t.label.clone(),
-                                        call_stack: std::mem::take(&mut self.call_stack)
-                                    }),
+                                    Some(t) if t.has_dyn_field(&id) =>
+                                        Err(EvalError::IllegalPolymorphicTailAccess {
+                                            action: IllegalPolymorphicTailAction::FieldAccess {
+                                                field: id.to_string()
+                                            },
+                                            evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                            label: t.label.clone(),
+                                            call_stack: std::mem::take(&mut self.call_stack)
+                                        }
+                                    ),
                                     _ => Err(EvalError::FieldMissing(
                                         id.into_inner(),
                                         String::from("(.$)"),
@@ -1616,19 +1658,31 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     let (value_closure, _) = self
                                         .stack
                                         .pop_arg(&self.cache)
-                                        .ok_or_else(|| EvalError::NotEnoughArgs(3, String::from("insert"), pos_op))?;
+                                        .ok_or_else(|| EvalError::NotEnoughArgs(
+                                            3,
+                                            String::from("insert"),
+                                            pos_op
+                                        ))?;
 
-                                    let as_var = value_closure.body.closurize(&mut self.cache, &mut env2, value_closure.env);
+                                    let as_var = value_closure.body
+                                        .closurize(&mut self.cache, &mut env2, value_closure.env);
                                     Some(as_var)
                                 }
                                 else {
                                     None
                                 };
 
-                                match fields.insert(LocIdent::from(id), Field {value, metadata, pending_contracts }) {
+                                match fields.insert(
+                                    LocIdent::from(id),
+                                    Field { value, metadata, pending_contracts }
+                                ) {
                                     //TODO: what to do on insertion where an empty optional field
                                     //exists? Temporary: we fail with existing field exception
-                                    Some(t) => Err(EvalError::Other(format!("record_insert: tried to extend a record with the field {id}, but it already exists"), pos_op)),
+                                    Some(t) => Err(EvalError::Other(format!(
+                                        "record_insert: \
+                                        tried to extend a record with the field {id}, \
+                                        but it already exists"
+                                    ), pos_op)),
                                     _ => Ok(Closure {
                                         body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
@@ -1655,12 +1709,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         metadata: FieldMetadata { opt: true, ..},
                                         ..
                                       }) => match record.sealed_tail.as_ref() {
-                                        Some(t) if t.has_dyn_field(&id) => Err(EvalError::IllegalPolymorphicTailAccess {
-                                            action: IllegalPolymorphicTailAction::RecordRemove { field: id.to_string() },
-                                            evaluated_arg: t.label.get_evaluated_arg(&self.cache),
-                                            label: t.label.clone(),
-                                            call_stack: std::mem::take(&mut self.call_stack)
-                                        }),
+                                        Some(t) if t.has_dyn_field(&id) =>
+                                            Err(EvalError::IllegalPolymorphicTailAccess {
+                                                action: IllegalPolymorphicTailAction::RecordRemove {
+                                                    field: id.to_string()
+                                                },
+                                                evaluated_arg: t.label
+                                                    .get_evaluated_arg(&self.cache),
+                                                label: t.label.clone(),
+                                                call_stack: std::mem::take(&mut self.call_stack)
+                                            }
+                                        ),
                                         _ => Err(EvalError::FieldMissing(
                                             id.into_inner(),
                                             String::from("record_remove"),
@@ -1674,7 +1733,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     _ => {
                                         Ok(Closure {
                                             body: RichTerm::new(
-                                                Term::Record(RecordData { fields, ..record }), pos_op_inh
+                                                Term::Record(RecordData { fields, ..record }),
+                                                pos_op_inh
                                             ),
                                             env: env2,
                                         })
@@ -1693,7 +1753,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(record.fields.get(&LocIdent::from(id.into_inner())), Some(field) if !field.is_empty_optional())),
+                                Term::Bool(matches!(
+                                    record.fields.get(&LocIdent::from(id.into_inner())),
+                                    Some(field) if !field.is_empty_optional()
+                                )),
                                 pos_op_inh,
                             )))
                         } else {
@@ -1711,19 +1774,27 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Term::Array(ts2, attrs2) => {
                                 // NOTE: the [eval_closure] function in [eval] should've made sure
                                 // that the array is closurized. We leave a debug_assert! here just
-                                // in case something goes wrong in the future.
-                                // If the assert failed, you may need to map closurize over `ts1` and `ts2`.
-                                debug_assert!(attrs1.closurized, "the left-hand side of ArrayConcat (@) is not closurized.");
-                                debug_assert!(attrs2.closurized, "the right-hand side of ArrayConcat (@) is not closurized.");
+                                // in case something goes wrong in the future. If the assert failed,
+                                // you may need to map closurize over `ts1` and `ts2`.
+                                debug_assert!(attrs1.closurized,
+                                    "the left-hand side of ArrayConcat (@) is not closurized.");
+                                debug_assert!(attrs2.closurized,
+                                    "the right-hand side of ArrayConcat (@) is not closurized.");
 
-                                // NOTE: To avoid the extra Vec allocation, we could use Rc<[T]>::new_uninit_slice()
-                                // and fill up the slice manually, but that's a nightly-only experimental API.
-                                // Note that collecting into an Rc<[T]> will also allocate a intermediate vector,
-                                // unless the input iterator implements the nightly-only API TrustedLen, and Array's iterator currently doesn't.
-                                // Even if we could implement TrustedLen we would have to contend with the fact that .chain(..) tends to be slow.
-                                // - Rc<[T]>::from_iter docs: https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
+                                // NOTE: To avoid the extra Vec allocation, we could use
+                                // Rc<[T]>::new_uninit_slice() and fill up the slice manually, but
+                                // that's a nightly-only experimental API. Note that collecting into
+                                // an Rc<[T]> will also allocate a intermediate vector, unless the
+                                // input iterator implements the nightly-only API TrustedLen, and
+                                // Array's iterator currently doesn't. Even if we could implement
+                                // TrustedLen we would have to contend with the fact that .chain(..)
+                                // tends to be slow.
+                                // - Rc<[T]>::from_iter docs:
+                                //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
                                 // - chain issue: https://github.com/rust-lang/rust/issues/63340
-                                let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
+                                let mut ts: Vec<RichTerm> = Vec::with_capacity(
+                                    ts1.len() + ts2.len()
+                                );
 
                                 let mut env = env1.clone();
                                 // TODO: Is there a cheaper way to "merge" two environements?
@@ -1745,7 +1816,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 let ctrs_right = attrs2
                                     .pending_contracts
                                     .into_iter()
-                                    .filter(|ctr| !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr));
+                                    .filter(|ctr| {
+                                        !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr)
+                                    });
 
                                 ts.extend(ts1.into_iter().map(|t|
                                     RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
@@ -1763,7 +1836,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 };
 
                                 Ok(Closure {
-                                    body: RichTerm::new(Term::Array(Array::new(Rc::from(ts)), attrs), pos_op_inh),
+                                    body: RichTerm::new(
+                                        Term::Array(Array::new(Rc::from(ts)), attrs),
+                                        pos_op_inh
+                                    ),
                                     env,
                                 })
                             }
@@ -1779,11 +1855,26 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let Ok(n_as_usize) = usize::try_from(n) else {
-                        return Err(EvalError::Other(format!("elem_at expects its second argument to be a positive integer smaller than {}, got {n}", usize::MAX), pos_op));
+                        return Err(EvalError::Other(
+                            format!(
+                                "elem_at expects its second argument to be a \
+                                positive integer smaller than {}, got {n}",
+                                usize::MAX
+                            ),
+                            pos_op,
+                        ));
                     };
 
                     if n_as_usize >= ts.len() {
-                        return Err(EvalError::Other(format!("elem_at: index out of bounds. Expected an index between 0 and {}, got {}", ts.len(), n), pos_op));
+                        return Err(EvalError::Other(
+                            format!(
+                                "elem_at: index out of bounds. \
+                                Expected an index between 0 and {}, got {}",
+                                ts.len(),
+                                n
+                            ),
+                            pos_op,
+                        ));
                     }
 
                     let elem_with_ctr = RuntimeContract::apply_all(
@@ -1996,7 +2087,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             let array_with_ctr = Closure {
                                 body: RichTerm::new(
-                                    Term::Array(ts, attrs.with_extra_contracts([RuntimeContract::new(rt3, lbl)])),
+                                    Term::Array(
+                                        ts,
+                                        attrs.with_extra_contracts([RuntimeContract::new(rt3, lbl)])
+                                    ),
                                     pos2,
                                 ),
                                 env: env2,
@@ -2236,8 +2330,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ) -> Result<Closure, EvalError> {
         let pos_op_inh = pos_op.into_inherited();
 
-        // Currently, for fixed arity primitive operators, the parser must ensure that they get exactly
-        // the right number of argument: if it is not the case, this is a bug, and we panic.
+        // Currently, for fixed arity primitive operators, the parser must ensure that they get
+        // exactly the right number of argument: if it is not the case, this is a bug, and we panic.
         match n_op {
             NAryOp::StrReplace() | NAryOp::StrReplaceRegex() => {
                 let mut args_wo_env = args
@@ -2397,7 +2491,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                         }
                     } else {
-                        Err(EvalError::InternalError(format!("The MergeContract() operator was expecting a first argument of type Label, got {}", t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))), pos_op))
+                        Err(EvalError::InternalError(
+                            format!(
+                                "The MergeContract() operator was expecting \
+                                a first argument of type Label, got {}",
+                                t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))
+                            ),
+                            pos_op
+                        ))
                     }
                 }
             }
@@ -2771,20 +2872,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 let Ok(start_as_usize) = usize::try_from(start) else {
                     return Err(EvalError::Other(
                         format!(
-                            "array_slice expects its first argument (start) to be a positive integer smaller than {}, got {start}",
+                            "array_slice expects its first argument (start) to be a \
+                            positive integer smaller than {}, got {start}",
                             usize::MAX
                         ),
-                        pos_op
+                        pos_op,
                     ));
                 };
 
                 let Ok(end_as_usize) = usize::try_from(end) else {
                     return Err(EvalError::Other(
                         format!(
-                            "array_slice expects its second argument (end) to be a positive integer smaller than {}, got {end}",
+                            "array_slice expects its second argument (end) to be a \
+                            positive integer smaller than {}, got {end}",
                             usize::MAX
                         ),
-                        pos_op
+                        pos_op,
                     ));
                 };
 
@@ -2793,10 +2896,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 if let Err(crate::term::array::OutOfBoundError) = result {
                     return Err(EvalError::Other(
                         format!(
-                            "array_slice: index out of bounds. Expected `start <= end <= {}`, but got `start={start}` and `end={end}`.",
+                            "array_slice: index out of bounds. Expected `start <= end <= {}`, but \
+                            got `start={start}` and `end={end}`.",
                             array.len()
                         ),
-                        pos_op
+                        pos_op,
                     ));
                 };
 
@@ -2867,8 +2971,9 @@ impl RecPriority {
                 // ```
                 //
                 // In the example above, if we just map `$rec_default` on the value of `foo` and
-                // closurize it into a new, normal cache element (non revertible), we lose the ability to
-                // override `foo` and we end up with the unexpected result `{foo = 2, bar = 2}`.
+                // closurize it into a new, normal cache element (non revertible), we lose the
+                // ability to override `foo` and we end up with the unexpected result `{foo = 2, bar
+                // = 2}`.
                 //
                 // What we want is that:
                 //
@@ -2887,7 +2992,8 @@ impl RecPriority {
                 //
                 // To do so, we create a new independent copy of the original element by mapping the
                 // function over both expressions (in the sense of both the original expression and
-                // the cached expression). This logic is encapsulated by [crate::eval::cache::Cache::map_at_index].
+                // the cached expression). This logic is encapsulated by
+                // [crate::eval::cache::Cache::map_at_index].
 
                 field.value = field.value.take().map(|value| {
                     if let Term::Var(id_inner) = value.as_ref() {

@@ -78,7 +78,11 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                 let mut bindings = Vec::with_capacity(record_data.fields.len());
 
                 let fields = record_data.fields.into_iter().map(|(id, field)| {
-                    let field_deps = deps.as_ref().and_then(|deps| deps.stat_fields.get(&id.ident())).cloned();
+                    let field_deps = deps
+                        .as_ref()
+                        .and_then(|deps| deps.stat_fields.get(&id.ident()))
+                        .cloned();
+
                     (id, transform_rec_field(field, field_deps, &mut bindings))
                 }).collect();
 
@@ -86,12 +90,19 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                     .into_iter()
                     .enumerate()
                     .map(|(index, (id_t, field))| {
-                        let field_deps = deps.as_ref().and_then(|deps| deps.dyn_fields.get(index)).cloned();
+                        let field_deps = deps
+                            .as_ref()
+                            .and_then(|deps| deps.dyn_fields.get(index))
+                            .cloned();
                         (id_t, transform_rec_field(field, field_deps, &mut bindings))
                     })
                     .collect();
 
-                with_bindings(Term::RecRecord(RecordData { fields, ..record_data}, dyn_fields, deps), bindings, pos)
+                with_bindings(
+                    Term::RecRecord(RecordData { fields, ..record_data}, dyn_fields, deps),
+                    bindings,
+                    pos
+                )
             },
             Term::Array(ts, attrs) => {
                 let mut bindings = Vec::with_capacity(ts.len());
@@ -102,7 +113,11 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
                         if should_share(&t.term) {
                             let fresh_var = LocIdent::fresh();
                             let pos_t = t.pos;
-                            bindings.push(Binding {fresh_var, term: t, binding_type: BindingType::Normal});
+                            bindings.push(Binding {
+                                fresh_var,
+                                term: t,
+                                binding_type: BindingType::Normal
+                            });
                             RichTerm::new(Term::Var(fresh_var), pos_t)
                         } else {
                             t

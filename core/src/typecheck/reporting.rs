@@ -77,8 +77,8 @@ impl NameReg {
     /// Select a name distinct from all the others, starting from a candidate name for a type
     /// variable or a type constant. Insert the corresponding name in the name table.
     ///
-    /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and so
-    /// on until a free name is found. See `var_to_type` and `cst_to_type`.
+    /// If the name is already taken, it just iterates by adding a numeric suffix `1`, `2`, .., and
+    /// so on until a free name is found. See `var_to_type` and `cst_to_type`.
     fn select_uniq(&mut self, mut name: String, id: VarId, kind: VarKindDiscriminant) -> Ident {
         // To avoid clashing with already picked names, we add a numeric suffix to the picked
         // letter.
@@ -97,8 +97,8 @@ impl NameReg {
     }
 
     /// Either retrieve or generate a new fresh name for a unification variable for error reporting,
-    /// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`, ..
-    /// and so on.
+    /// and wrap it as an identifier. Unification variables are named `_a`, `_b`, .., `_a1`, `_b1`,
+    /// .. and so on.
     pub fn gen_var_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
         self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
             // Select a candidate name and add a "_" prefix
@@ -111,8 +111,8 @@ impl NameReg {
         })
     }
 
-    /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it as
-    /// type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
+    /// Either retrieve or generate a new fresh name for a constant for error reporting, and wrap it
+    /// as type variable. Constant are named `a`, `b`, .., `a1`, `b1`, .. and so on.
     pub fn gen_cst_name(&mut self, id: VarId, kind: VarKindDiscriminant) -> Ident {
         self.names.get(&(id, kind)).cloned().unwrap_or_else(|| {
             // Select a candidate name

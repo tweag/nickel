@@ -4,7 +4,7 @@
 /// Terminology:
 /// An *element* of the cache is what is stored inside of it.
 /// An *index* into the cache points to a given element.
-use super::{Closure, Environment, IdentKind};
+use super::{Closure, Environment};
 use crate::{
     identifier::Ident,
     term::{record::FieldDeps, BindingType, RichTerm},
@@ -42,7 +42,7 @@ pub trait Cache: Clone {
     ) -> Result<Option<Self::UpdateIndex>, BlackholedError>;
 
     /// Adds an element into the [Cache] and returns its index.
-    fn add(&mut self, clos: Closure, kind: IdentKind, bty: BindingType) -> CacheIndex;
+    fn add(&mut self, clos: Closure, bty: BindingType) -> CacheIndex;
 
     /// Applies `f` to the [Closure] stored inside the element at index `idx`.
     fn patch<F: Fn(&mut Closure)>(&mut self, idx: CacheIndex, f: F);
@@ -67,9 +67,6 @@ pub trait Cache: Clone {
 
     /// Initializes the cached value of the element at index `idx` with the given `rec_env`.
     fn build_cached(&mut self, idx: &mut CacheIndex, rec_env: &[(Ident, CacheIndex)]);
-
-    /// Returns the [IdentKind] of the element stored at index `idx`
-    fn ident_kind(&self, idx: &CacheIndex) -> IdentKind;
 
     /// Revert the element at index `idx`, abstract over its dependencies to get back a function,
     /// and apply the function to the given variables. The function part is allocated in a new

@@ -1,7 +1,7 @@
 //! Various post transformations of nickel code.
 use crate::{
     cache::ImportResolver,
-    eval::{cache::Cache, Closure, Environment, IdentKind},
+    eval::{cache::Cache, Closure, Environment},
     identifier::LocIdent,
     term::{record::Field, BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
@@ -19,8 +19,8 @@ pub mod substitute_wildcards;
 /// earlier, as it needs to be done before typechecking.
 ///
 /// Do not perform transformations on the imported files. If needed, either do it yourself using
-/// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or use the
-/// [cache][crate::cache::Cache].
+/// pending imports returned by [`resolve_imports`][import_resolution::strict::resolve_imports] or
+/// use the [cache][crate::cache::Cache].
 pub fn transform(
     mut rt: RichTerm,
     wildcards: Option<&Wildcards>,
@@ -35,7 +35,7 @@ pub fn transform_no_free_vars(
     wildcards: Option<&Wildcards>,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
-        &|mut rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+        &mut |mut rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
             // Start by substituting any wildcard with its inferred type
             if let Some(wildcards) = wildcards {
                 rt = substitute_wildcards::transform_one(rt, wildcards);
@@ -45,13 +45,12 @@ pub fn transform_no_free_vars(
             let rt = desugar_destructuring::transform_one(rt);
             Ok(rt)
         },
-        &mut (),
         TraverseOrder::TopDown,
     )?;
 
     Ok(rt
         .traverse(
-            &|rt: RichTerm, _| -> Result<RichTerm, UnboundTypeVariableError> {
+            &mut |rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
                 // We need to do contract generation before the share normal form transformation,
                 // because `gen_pending_contracts` generates record contracts
                 //
@@ -66,7 +65,6 @@ pub fn transform_no_free_vars(
                 let rt = share_normal_form::transform_one(rt);
                 Ok(rt)
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap())
@@ -107,9 +105,9 @@ impl Closurizable for RichTerm {
         // More specifically, the evaluation of a recursive record patches the environment of each
         // field with the indices recursively referring to the other fields of the record. `eval`
         // assumes that a recursive record field is either a constant or a generated variable whose
-        // cache elements *immediately* contain the original unevaluated expression (both properties are
-        // true after the share normal form transformation and maintained when reverting elements
-        // before merging recursive records).
+        // cache elements *immediately* contain the original unevaluated expression (both properties
+        // are true after the share normal form transformation and maintained when reverting
+        // elements before merging recursive records).
         //
         // To maintain this invariant, `closurize` must NOT introduce an indirection through a
         // variable, such as transforming:
@@ -140,8 +138,8 @@ impl Closurizable for RichTerm {
         // reporting, so for the time being, we restrict ourselves to generated identifiers. Note
         // that performing or not performing this optimization for user-supplied variables doesn't
         // affect the invariant mentioned above, because the share normal form must ensure that the
-        // fields of a record all contain generated variables (or constant), but never
-        // user-supplied variables.
+        // fields of a record all contain generated variables (or constant), but never user-supplied
+        // variables.
         let var = LocIdent::fresh();
         let pos = self.pos;
 
@@ -158,7 +156,7 @@ impl Closurizable for RichTerm {
                     body: self,
                     env: with_env,
                 };
-                cache.add(closure, IdentKind::Record, BindingType::Normal)
+                cache.add(closure, BindingType::Normal)
             }
         };
 

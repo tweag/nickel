@@ -8,7 +8,8 @@ use crate::{
 };
 
 pub trait Cache: Clone {
-    type UpdateIndex; // Temporary: we won't really need that once an alternative caching mechanism gets implemented
+    // Temporary: we won't really need that once an alternative caching mechanism gets implemented.
+    type UpdateIndex;
 
     fn get(&self, idx: CacheIndex) -> Closure;
     fn get_update_index(

@@ -65,14 +65,24 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 let result = match cmd {
                     Ok(Command::Load(path)) => repl.load(&path).map(|term| match term.as_ref() {
                         Term::Record(record) => {
-                             println!("Loaded {} symbol(s) in the environment.", record.fields.len())
+                            println!(
+                                "Loaded {} symbol(s) in the environment.",
+                                record.fields.len()
+                            )
                         }
                         Term::RecRecord(record, dyn_fields, ..) => {
                             if !dyn_fields.is_empty() {
-                                println!("Warning: loading dynamic fields is currently not supported. {} symbols ignored", dyn_fields.len());
+                                println!(
+                                    "Warning: loading dynamic fields is currently not supported. \
+                                    {} symbols ignored",
+                                    dyn_fields.len()
+                                );
                             }
 
-                            println!("Loaded {} symbol(s) in the environment.", record.fields.len())
+                            println!(
+                                "Loaded {} symbol(s) in the environment.",
+                                record.fields.len()
+                            )
                         }
                         _ => (),
                     }),

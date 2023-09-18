@@ -23,12 +23,14 @@ impl Combine for RecordAttrs {
     }
 }
 
-/// Dependencies of a field or a cache element over the other recursive fields of a recursive record.
+/// Dependencies of a field or a cache element over the other recursive fields of a recursive
+/// record.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldDeps {
-    /// The set of dependencies is fixed and has been computed. When attached to an element, an empty
-    /// set of dependency means that the element isn't revertible, but standard.
+    /// The set of dependencies is fixed and has been computed. When attached to an element, an
+    /// empty set of dependency means that the element isn't revertible, but standard.
     Known(Rc<HashSet<Ident>>),
+
     /// The element is revertible, but the set of dependencies hasn't been computed. In that case,
     /// the interpreter should be conservative and assume that any recursive references can appear
     /// in the content of the corresponding element.
@@ -36,9 +38,9 @@ pub enum FieldDeps {
 }
 
 impl FieldDeps {
-    /// Compute the union of two cache elements dependencies. [`FieldDeps::Unknown`] can be see as the top
-    /// element, meaning that if one of the two set of dependencies is [`FieldDeps::Unknown`], so
-    /// is the result.
+    /// Compute the union of two cache elements dependencies. [`FieldDeps::Unknown`] can be see as
+    /// the top element, meaning that if one of the two set of dependencies is
+    /// [`FieldDeps::Unknown`], so is the result.
     pub fn union(self, other: Self) -> Self {
         match (self, other) {
             // If one of the field has unknown dependencies (understand: may depend on all the other
@@ -164,15 +166,12 @@ impl Field {
 }
 
 impl Traverse<RichTerm> for Field {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Field, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Field, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let annotation = self.metadata.annotation.traverse(f, state, order)?;
-        let value = self
-            .value
-            .map(|v| v.traverse(f, state, order))
-            .transpose()?;
+        let annotation = self.metadata.annotation.traverse(f, order)?;
+        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
 
         let metadata = FieldMetadata {
             annotation,
@@ -182,7 +181,7 @@ impl Traverse<RichTerm> for Field {
         let pending_contracts = self
             .pending_contracts
             .into_iter()
-            .map(|pending_contract| pending_contract.traverse(f, state, order))
+            .map(|pending_contract| pending_contract.traverse(f, order))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Field {

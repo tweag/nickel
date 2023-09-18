@@ -262,7 +262,6 @@ fn initial_env() {
         Ident::from("g"),
         eval_cache.add(
             Closure::atomic_closure(mk_term::integer(1)),
-            IdentKind::Let,
             BindingType::Normal,
         ),
     );
@@ -299,11 +298,7 @@ fn mk_env(bindings: Vec<(&str, RichTerm)>, eval_cache: &mut CacheImpl) -> Enviro
         .map(|(id, t)| {
             (
                 id.into(),
-                eval_cache.add(
-                    Closure::atomic_closure(t),
-                    IdentKind::Let,
-                    BindingType::Normal,
-                ),
+                eval_cache.add(Closure::atomic_closure(t), BindingType::Normal),
             )
         })
         .collect()
@@ -338,6 +333,13 @@ fn substitution() {
         .unwrap();
     assert_eq!(
         subst(&eval_cache, t, &initial_env, &env),
-        parse("match {'x => [1, 1], 'y => (if false then 1 else \"Glob2\"), 'z => {id = true, other = false}} true").unwrap()
+        parse(
+            "match {\
+                'x => [1, 1], \
+                'y => (if false then 1 else \"Glob2\"), \
+                'z => {id = true, other = false}\
+            } true"
+        )
+        .unwrap()
     );
 }

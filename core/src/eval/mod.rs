@@ -1,8 +1,8 @@
 //! Evaluation of a Nickel term.
 //!
-//! The implementation of the Nickel abstract machine which evaluates a term. Note that this
-//! machine is not currently formalized somewhere and is just a convenient name to designate the
-//! current implementation.
+//! The implementation of the Nickel abstract machine which evaluates a term. Note that this machine
+//! is not currently formalized somewhere and is just a convenient name to designate the current
+//! implementation.
 //!
 //! # The Nickel Abstract Machine
 //! The abstract machine is a stack machine composed of the following elements:
@@ -21,12 +21,13 @@
 //! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update index is
 //!   pushed on the stack to indicate that once this term has been evaluated, the content of the
 //!   variable must be updated
-//! - **App(func, arg)**: a closure containing the argument and the current environment is pushed
-//!   on the stack, and the applied term `func` is evaluated
-//! - **Let(id, term, body)**: `term` is bound to `id` in the environment, and the machine proceeds with the evaluation of the body
+//! - **App(func, arg)**: a closure containing the argument and the current environment is pushed on
+//!   the stack, and the applied term `func` is evaluated
+//! - **Let(id, term, body)**: `term` is bound to `id` in the environment, and the machine proceeds
+//!   with the evaluation of the body
 //! - **Fun(id, body)**: Try to pop an argument from the stack. If there is some, we bound it to
-//!   `id` in the environment, and proceed with the body of the function. Otherwise, we are done: the
-//!   end result is an unapplied function
+//!   `id` in the environment, and proceed with the body of the function. Otherwise, we are done:
+//!   the end result is an unapplied function
 //! - **Index on stack**: If the evaluation of the current term is done, and there is one (or
 //!   several) index on the stack, this means we have to perform an update. Consecutive indices are
 //!   popped from the stack and are updated to point to the current evaluated term.
@@ -41,8 +42,8 @@
 //!
 //! ## Operators
 //!
-//! Operators are strict by definition. To evaluate say `exp1 + exp2`, the following steps
-//! have to be performed:
+//! Operators are strict by definition. To evaluate say `exp1 + exp2`, the following steps have to
+//! be performed:
 //! - `exp1` needs to be evaluated. The result must be saved somewhere, together with the resulting
 //! environment
 //! - `exp2`: same thing for `exp2`
@@ -55,12 +56,13 @@
 //! of `first`
 //! - **OpFirst on stack**: if the evaluation of the current term is done and there is an `OpFirst`
 //!   marker on the stack, then:
-//!     1. Extract the saved operator, the second argument and the environment `env2` from the marker
+//!     1. Extract the saved operator, the second argument and the environment `env2` from the
+//!        marker
 //!     2. Push an `OpSecond` marker, saving the operator and the evaluated form of the first
 //!        argument with its environment
 //!     3. Proceed with the evaluation of the second argument in environment `env2`
-//! - **OpSecond on stack**: once the second term is evaluated, we can get back the operator and
-//!   the first term evaluated, and forward all both arguments evaluated and their respective
+//! - **OpSecond on stack**: once the second term is evaluated, we can get back the operator and the
+//!   first term evaluated, and forward all both arguments evaluated and their respective
 //!   environment to the specific implementation of the operator (located in [operation], or in
 //!   [merge] for `merge`).
 //!
@@ -165,14 +167,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self.import_resolver
     }
 
-    /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an empty local
-    /// environment and drops the final environment.
+    /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
+    /// empty local environment and drops the final environment.
     pub fn eval(&mut self, t0: RichTerm, initial_env: &Environment) -> Result<RichTerm, EvalError> {
         self.eval_closure(Closure::atomic_closure(t0), initial_env)
             .map(|(term, _)| term)
     }
 
-    /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables substituted.
+    /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables
+    /// substituted.
     pub fn eval_full(
         &mut self,
         t0: RichTerm,
@@ -353,11 +356,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         },
                         env: env.clone(),
                     };
-                    // Update at the original index (the index which holds the result of the op) in both cases,
-                    // even if we continue with a seq.
-                    // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we don't,
-                    // we will be unwrapping a `Sealed` term and assigning the "unsealed" value to the result
-                    // of the `Seq` operation. See also: https://github.com/tweag/nickel/issues/123
+                    // Update at the original index (the index which holds the result of the op) in
+                    // both cases, even if we continue with a seq.
+                    //
+                    // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we
+                    // don't, we will be unwrapping a `Sealed` term and assigning the "unsealed"
+                    // value to the result of the `Seq` operation. See also:
+                    // https://github.com/tweag/nickel/issues/123
                     update_at_indices(&mut self.cache, &mut self.stack, &closure);
                     match stack_item {
                         Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
@@ -396,8 +401,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
 
-                    self.call_stack
-                        .enter_var(self.cache.ident_kind(&idx), *x, pos);
+                    self.call_stack.enter_var(*x, pos);
 
                     // If we are fetching a recursive field from the environment that doesn't have
                     // a definition, we complete the error with the additional information of where
@@ -446,9 +450,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: env.clone(),
                     };
 
-                    let idx = self
-                        .cache
-                        .add(closure, IdentKind::Let, binding_type.clone());
+                    let idx = self.cache.add(closure, binding_type.clone());
 
                     // Patch the environment with the (x <- closure) binding
                     if *rec {
@@ -494,8 +496,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::OpN(op, args) => {
-                    // Arguments are passed as a stack to the operation continuation, so we reverse the
-                    // original list.
+                    // Arguments are passed as a stack to the operation continuation, so we reverse
+                    // the original list.
                     let mut args_iter = args.iter();
                     let fst = args_iter
                         .next()
@@ -780,8 +782,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos,
                         );
 
-                        // Now evaluating `%match% arg`, the left-most part of the application `%match%
-                        // arg cases default`, which is in fact a primop application.
+                        // Now evaluating `%match% arg`, the left-most part of the application
+                        // `%match% arg cases default`, which is in fact a primop application.
                         self.stack.push_op_cont(
                             OperationCont::Op1(UnaryOp::Match { has_default }, pos_app),
                             self.call_stack.len(),
@@ -835,14 +837,6 @@ impl<C: Cache> VirtualMachine<ImportCache, C> {
     pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
         self.import_resolver.prepare_stdlib(&mut self.cache)
     }
-}
-
-/// Kind of an identifier.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum IdentKind {
-    Let,
-    Lambda,
-    Record,
 }
 
 /// A closure, a term together with an environment.
@@ -900,7 +894,6 @@ pub fn env_add_record<C: Cache>(
                         id.ident(),
                         cache.add(
                             Closure { body: value, env: closure.env.clone() },
-                            IdentKind::Record,
                             BindingType::Normal
                         ),
                     ))
@@ -925,10 +918,7 @@ pub fn env_add<C: Cache>(
         body: rt,
         env: local_env,
     };
-    env.insert(
-        id.ident(),
-        cache.add(closure, IdentKind::Let, BindingType::Normal),
-    );
+    env.insert(id.ident(), cache.add(closure, BindingType::Normal));
 }
 
 /// Pop and update all the indices on the top of the stack with the given closure.
@@ -980,8 +970,12 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
         }
-        p @ Term::LetPattern(..) => panic!("Pattern {p:?} has not been transformed before evaluation"),
-        p @ Term::FunPattern(..) => panic!("Pattern {p:?} has not been transformed before evaluation"),
+        p @ Term::LetPattern(..) => panic!(
+            "Pattern {p:?} has not been transformed before evaluation"
+        ),
+        p @ Term::FunPattern(..) => panic!(
+            "Pattern {p:?} has not been transformed before evaluation"
+        ),
         Term::App(t1, t2) => {
             let t1 = subst(cache, t1, initial_env, env);
             let t2 = subst(cache, t2, initial_env, env);
@@ -1027,12 +1021,14 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
+            let record = record
+                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record.map_defined_values(|_, value| subst(cache, value, initial_env, env));
+            let record = record
+                .map_defined_values(|_, value| subst(cache, value, initial_env, env));
 
             let dyn_fields = dyn_fields
                 .into_iter()

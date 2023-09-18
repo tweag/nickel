@@ -28,6 +28,7 @@ use nickel_lang_core::{
     },
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
+use regex::Regex;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::io;
@@ -371,10 +372,10 @@ fn find_fields_from_term(
 }
 
 lazy_static! {
-    // unwraps are safe here because we know these are correct regexes.
-    // This regexp must be the same as the regex for identifiers in the lexer (nickel_lang_core::parser::lexer)
-    static ref RE_IDENTIFIER: regex::Regex = regex::Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
-    static ref RE_SPACE: regex::Regex = regex::Regex::new(r"\s+").unwrap();
+    // Unwraps are safe here because we know these are correct regexes. This regexp must be the same
+    // as the regex for identifiers in the lexer (nickel_lang_core::parser::lexer)
+    static ref RE_IDENTIFIER: Regex = Regex::new(r"_?[a-zA-Z][_a-zA-Z0-9-']*").unwrap();
+    static ref RE_SPACE: Regex = Regex::new(r"\s+").unwrap();
 }
 
 /// Get the string chunks that make up an identifier path.

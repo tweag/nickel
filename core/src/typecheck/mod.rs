@@ -11,8 +11,8 @@
 //!
 //! - **enforce** corresponds to traditional typechecking in a statically typed language. This
 //!   happens inside a statically typed block. Such blocks are introduced by the type ascription
-//!   operator `:`, as in `1 + 1 : Number` or `let f : Number -> Number = fun x => x + 1 in ..`. Enforce
-//!   mode is implemented by [`type_check`] and variants.
+//!   operator `:`, as in `1 + 1 : Number` or `let f : Number -> Number = fun x => x + 1 in ..`.
+//!   Enforce mode is implemented by [`type_check`] and variants.
 //! - **walk** doesn't enforce any typing but traverses the AST looking for typed blocks to
 //!   typecheck. Walk mode also stores the annotations of bound identifiers in the environment. This
 //!   is implemented by the `walk` function.
@@ -27,8 +27,8 @@
 //!
 //! # Type inference
 //!
-//! Type inference is done via a form of bidirectional typechecking coupled with unification, in
-//! the same spirit as GHC (Haskell), although the type system of Nickel is simpler. The type of
+//! Type inference is done via a form of bidirectional typechecking coupled with unification, in the
+//! same spirit as GHC (Haskell), although the type system of Nickel is simpler. The type of
 //! un-annotated let-bound expressions (the type of `bound_exp` in `let x = bound_exp in body`) is
 //! inferred in enforce mode, but it is never implicitly generalized. For example, the following
 //! program is rejected:
@@ -39,8 +39,8 @@
 //! ```
 //!
 //! Indeed, `id` is given the type `_a -> _a`, where `_a` is a unification variable, but is not
-//! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `String`, and at the second
-//! call site the typechecker complains that `5` is not of type `String`.
+//! generalized to `forall a. a -> a`. At the first call site, `_a` is unified with `String`, and at
+//! the second call site the typechecker complains that `5` is not of type `String`.
 //!
 //! This restriction is on purpose, as generalization is not trivial to implement efficiently and
 //! more importantly can interact with other components of the type system and type inference. If
@@ -73,7 +73,7 @@ use crate::{
 use std::{
     cmp::max,
     collections::{HashMap, HashSet},
-    convert::TryInto,
+    convert::{Infallible, TryInto},
     num::NonZeroU16,
 };
 
@@ -162,10 +162,10 @@ pub enum UnifEnumRows {
 /// generalization](http://web.archive.org/web/20230525023637/https://okmij.org/ftp/ML/generalization.html).
 ///
 /// When unifying a variable with a composite type, we have to update the levels of all the free
-/// unification variables contained in that type, which naively incurs a full traversal of the
-/// type. The idea behind Didier Remy's algorithm is to delay such traversals, and use the values
-/// of [VarLevelsData] to group traversals and avoid unneeded ones. This make variable unification
-/// run in constant time again, as long as we don't unify with a rigid type variable.
+/// unification variables contained in that type, which naively incurs a full traversal of the type.
+/// The idea behind Didier Remy's algorithm is to delay such traversals, and use the values of
+/// [VarLevelsData] to group traversals and avoid unneeded ones. This make variable unification run
+/// in constant time again, as long as we don't unify with a rigid type variable.
 ///
 /// Variable levels data might correspond to different variable kinds (type, record rows and enum
 /// rows) depending on where they appear (in a [UnifType], [UnifRecordRows] or [UnifEnumRows])
@@ -230,7 +230,10 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
             TypeF::Dyn | TypeF::Bool | TypeF::Number | TypeF::String | TypeF::Symbol => {
                 VarLevel::NO_VAR
             }
-            TypeF::Arrow(domain, codomain) => max(domain.var_level_upper_bound(), codomain.var_level_upper_bound()),
+            TypeF::Arrow(domain, codomain) => max(
+                domain.var_level_upper_bound(),
+                codomain.var_level_upper_bound()
+            ),
             TypeF::Forall { body, .. } => body.var_level_upper_bound(),
             TypeF::Enum(erows) => erows.var_level_upper_bound(),
             TypeF::Record(rrows) => rrows.var_level_upper_bound(),
@@ -443,8 +446,8 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType
 }
 
 // As opposed to `UnifType` and `UnifRecordRows` which can contain types and thus contracts, with
-// all the subtleties associated with contract equality checking (see `typecheck::eq` module), we can
-// convert enum rows directly to unifiable enum rows without additional data: instead of
+// all the subtleties associated with contract equality checking (see `typecheck::eq` module), we
+// can convert enum rows directly to unifiable enum rows without additional data: instead of
 // implementing a function `from_enum_rows`, we rather implement the more natural trait
 // `From<EnumRows>`.
 impl From<EnumRows> for UnifEnumRows {
@@ -814,9 +817,9 @@ impl Subst<UnifEnumRows> for UnifEnumRows {
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifType<E> {
-    /// Create a [`GenericUnifType`] from a [`Type`]. Contracts are represented as the separate variant
-    /// [`GenericUnifType::Contract`] which also stores a term environment, required for checking type
-    /// equality involving contracts.
+    /// Create a [`GenericUnifType`] from a [`Type`]. Contracts are represented as the separate
+    /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
+    /// checking type equality involving contracts.
     pub fn from_type(ty: Type, env: &E) -> Self {
         match ty.typ {
             TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
@@ -837,8 +840,8 @@ pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
 pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
 
 impl UnifRecordRows {
-    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification variables as well
-    /// as type constants are replaced with the empty row.
+    /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification
+    /// variables as well as type constants are replaced with the empty row.
     fn into_rrows(self, table: &UnifTable) -> RecordRows {
         match self {
             UnifRecordRows::UnifVar { id, init_level } => match table.root_rrows(id, init_level) {
@@ -867,8 +870,8 @@ impl UnifRecordRows {
 }
 
 impl UnifEnumRows {
-    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification variables as well
-    /// as type constants are replaced with the empty row.
+    /// Extract the concrete [`EnumRows`] corresponding to a [`UnifEnumRows`]. Free unification
+    /// variables as well as type constants are replaced with the empty row.
     fn into_erows(self, table: &UnifTable) -> EnumRows {
         match self {
             UnifEnumRows::UnifVar { id, init_level } => match table.root_erows(id, init_level) {
@@ -894,8 +897,8 @@ impl UnifEnumRows {
 }
 
 impl UnifType {
-    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`GenericUnifType::from_type`], this function requires
-    /// the current term environment.
+    /// Create a [`UnifType`] from an [`ApparentType`]. As for [`GenericUnifType::from_type`], this
+    /// function requires the current term environment.
     pub fn from_apparent_type(at: ApparentType, env: &SimpleTermEnvironment) -> Self {
         match at {
             ApparentType::Annotated(ty) if has_wildcards(&ty) => {
@@ -922,8 +925,8 @@ impl UnifType {
         }
     }
 
-    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as well
-    /// as type constants are replaced with the type `Dyn`.
+    /// Extract the concrete type corresponding to a unifiable type. Free unification variables as
+    /// well as type constants are replaced with the type `Dyn`.
     fn into_type(self, table: &UnifTable) -> Type {
         match self {
             UnifType::UnifVar { id, init_level } => match table.root_type(id, init_level) {
@@ -943,8 +946,8 @@ impl UnifType {
         }
     }
 
-    /// Return the unification root associated with this type. If the type is a unification variable,
-    /// return the result of `table.root_type`. Return `self` otherwise.
+    /// Return the unification root associated with this type. If the type is a unification
+    /// variable, return the result of `table.root_type`. Return `self` otherwise.
     fn into_root(self, table: &UnifTable) -> Self {
         match self {
             UnifType::UnifVar { id, init_level } => table.root_type(id, init_level),
@@ -1111,6 +1114,12 @@ impl Context {
     }
 }
 
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum EnvBuildError {
     NotARecord(RichTerm),
@@ -1128,7 +1137,8 @@ pub fn mk_initial_ctxt(
             // The internals module is special: it is required to be syntactically a record,
             // and is added directly to the top-level environment.
             (nickel_stdlib::StdlibModule::Internals, Term::RecRecord(record, ..)) => {
-                // We reject fields without a value (that would be a stdlib module without defintion)
+                // We reject fields without a value (that would be a stdlib module without
+                // defintion)
                 bindings.extend(record.fields.iter().map(|(id, field)| {
                     (
                         *id,
@@ -2024,9 +2034,10 @@ fn check_visited<L: Linearizer>(
                         field,
                         // expect(): we've built `rows` in this very function from
                         // record.fields.keys(), so it must contain `id`
-                        field_types
-                            .remove(id)
-                            .expect("inserted `id` inside the `field_types` hashmap previously; expected it to be there"),
+                        field_types.remove(id).expect(
+                            "inserted `id` inside the `field_types` hashmap previously; \
+                            expected it to be there",
+                        ),
                     )?;
                 }
 
@@ -2633,14 +2644,13 @@ pub fn infer_record_type(
 fn has_wildcards(ty: &Type) -> bool {
     let mut has_wildcard = false;
     ty.clone()
-        .traverse::<_, _, std::convert::Infallible>(
-            &|ty: Type, has_wildcard| {
+        .traverse(
+            &mut |ty: Type| {
                 if ty.typ.is_wildcard() {
-                    *has_wildcard = true;
+                    has_wildcard = true;
                 }
-                Ok(ty)
+                Ok::<_, Infallible>(ty)
             },
-            &mut has_wildcard,
             TraverseOrder::TopDown,
         )
         .unwrap();
@@ -2755,7 +2765,8 @@ fn get_wildcard_var(
     wildcard_vars[id].clone()
 }
 
-/// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete type.
+/// Convert a mapping from wildcard ID to type var, into a mapping from wildcard ID to concrete
+/// type.
 fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wildcards {
     wildcard_vars
         .into_iter()

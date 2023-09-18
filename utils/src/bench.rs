@@ -201,7 +201,13 @@ macro_rules! ncl_bench_group {
                                 c_local.typecheck(id, &type_ctxt).unwrap();
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
-                                VirtualMachine::new_with_cache(c_local, eval_cache.clone(), std::io::sink()).eval(t, &eval_env).unwrap();
+                                VirtualMachine::new_with_cache(
+                                    c_local,
+                                    eval_cache.clone(),
+                                    std::io::sink()
+                                )
+                                .eval(t, &eval_env)
+                                .unwrap();
                             }
                         },
                         criterion::BatchSize::LargeInput,

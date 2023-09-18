@@ -323,6 +323,12 @@ impl NickelString {
     }
 }
 
+impl Default for NickelString {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub enum RegexFindResult {
     NoMatch,
     Match {
@@ -356,7 +362,8 @@ impl std::fmt::Display for SubstringError {
         match self {
             NonIntStart(start) => write!(
                 f,
-                "expected 2nd argument (start) to be a positive integer smaller than {}, got {start}",
+                "expected 2nd argument (start) to be a positive integer smaller than {}, \
+                got {start}",
                 usize::MAX
             ),
             NonIntEnd(end) => write!(
@@ -367,7 +374,7 @@ impl std::fmt::Display for SubstringError {
             StartOutOfBounds { start, str_len } => write!(
                 f,
                 "index out of bounds. \
-                 Expected 2nd argument (start) to be between 0 and {str_len}, got {start}"
+                Expected 2nd argument (start) to be between 0 and {str_len}, got {start}"
             ),
             EndOutOfBounds {
                 start,

@@ -46,6 +46,7 @@ pub use indexmap::IndexMap;
 
 use std::{
     cmp::{Ordering, PartialOrd},
+    convert::Infallible,
     ffi::OsString,
     fmt,
     ops::Deref,
@@ -62,14 +63,18 @@ use std::{
 pub enum Term {
     /// The null value.
     Null,
+
     /// A boolean value.
     Bool(bool),
+
     /// A floating-point value.
     #[serde(serialize_with = "crate::serialize::serialize_num")]
     #[serde(deserialize_with = "crate::serialize::deserialize_num")]
     Num(Number),
+
     /// A literal string.
     Str(NickelString),
+
     /// A string containing interpolated expressions, represented as a list of either literals or
     /// expressions.
     ///
@@ -80,12 +85,15 @@ pub enum Term {
     /// efficiently from the back of it.
     #[serde(skip)]
     StrChunks(Vec<StrChunk<RichTerm>>),
+
     /// A standard function.
     #[serde(skip)]
     Fun(LocIdent, RichTerm),
+
     /// A function able to destruct its arguments.
     #[serde(skip)]
     FunPattern(Option<LocIdent>, RecordPattern, RichTerm),
+
     /// A blame label.
     #[serde(skip)]
     Lbl(Label),
@@ -93,12 +101,15 @@ pub enum Term {
     /// A let binding.
     #[serde(skip)]
     Let(LocIdent, RichTerm, RichTerm, LetAttrs),
+
     /// A destructuring let-binding.
     #[serde(skip)]
     LetPattern(Option<LocIdent>, RecordPattern, RichTerm, RichTerm),
+
     /// An application.
     #[serde(skip)]
     App(RichTerm, RichTerm),
+
     /// A variable.
     #[serde(skip)]
     Var(LocIdent),
@@ -110,6 +121,7 @@ pub enum Term {
     #[serde(serialize_with = "crate::serialize::serialize_record")]
     #[serde(deserialize_with = "crate::serialize::deserialize_record")]
     Record(RecordData),
+
     /// A recursive record, where the fields can reference each others.
     #[serde(skip)]
     RecRecord(
@@ -117,6 +129,7 @@ pub enum Term {
         Vec<(RichTerm, Field)>, /* field whose name is defined by interpolation */
         Option<RecordDeps>, /* dependency tracking between fields. None before the free var pass */
     ),
+
     /// A match construct. Correspond only to the match cases: this expression is still to be
     /// applied to an argument to match on. Once applied, the evaluation is done by the
     /// corresponding primitive operator. Still, we need this construct for typechecking and being
@@ -135,9 +148,11 @@ pub enum Term {
     /// A primitive unary operator.
     #[serde(skip)]
     Op1(UnaryOp, RichTerm),
+
     /// A primitive binary operator.
     #[serde(skip)]
     Op2(BinaryOp, RichTerm, RichTerm),
+
     /// An primitive n-ary operator.
     #[serde(skip)]
     OpN(NAryOp, Vec<RichTerm>),
@@ -177,6 +192,7 @@ pub enum Term {
     /// An unresolved import.
     #[serde(skip)]
     Import(OsString),
+
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
     ResolvedImport(FileId),
@@ -191,6 +207,7 @@ pub enum Term {
     /// programs.
     #[serde(skip)]
     ParseError(ParseError),
+
     /// A delayed runtime error. Usually, errors are raised and abort the execution right away,
     /// without the need to store them in the AST. However, some cases require a term which aborts
     /// with a specific error if evaluated, but is fine being stored and passed around.
@@ -224,26 +241,28 @@ pub type SealingKey = i32;
 /// The underlying type representing Nickel numbers. Currently, numbers are arbitrary precision
 /// rationals.
 ///
-/// Basic arithmetic operations are exact, without loss of precision (within the limits of
-/// available memory).
+/// Basic arithmetic operations are exact, without loss of precision (within the limits of available
+/// memory).
 ///
 /// Raising to a power that doesn't fit in a signed 64bits number will lead to converting both
 /// operands to 64-bits floats, performing the floating-point power operation, and converting back
 /// to rationals, which can incur a loss of precision.
 ///
 /// [^number-serialization]: Conversion to string and serialization try to first convert the
-///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations don't
-///     lose precision. Otherwise, the number is converted to the nearest 64bit float and then
+///     rational as an exact signed or usigned 64-bits integer. If this succeeds, such operations
+///     don't lose precision. Otherwise, the number is converted to the nearest 64bit float and then
 ///     serialized/printed, which can incur a loss of information.
 pub type Number = Rational;
 
 /// Type of let-binding. This only affects run-time behavior. Revertible bindings introduce
-/// revertible cache elements at evaluation, which are devices used for the implementation of recursive
-/// records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more details.
+/// revertible cache elements at evaluation, which are devices used for the implementation of
+/// recursive records merging. See the [`crate::eval::merge`] and [`crate::eval`] modules for more
+/// details.
 #[derive(Debug, Eq, PartialEq, Clone, Default)]
 pub enum BindingType {
     #[default]
     Normal,
+
     /// In the revertible case, we also store an optional set of dependencies. See
     /// [`crate::transform::free_vars`] for more details.
     Revertible(FieldDeps),
@@ -255,6 +274,7 @@ pub enum BindingType {
 pub struct RuntimeContract {
     /// The pending contract, can be a function or a record.
     pub contract: RichTerm,
+
     /// The blame label.
     pub label: Label,
 }
@@ -296,11 +316,11 @@ impl RuntimeContract {
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let contract = self.contract.traverse(f, state, order)?;
+        let contract = self.contract.traverse(f, order)?;
         Ok(RuntimeContract { contract, ..self })
     }
 
@@ -325,6 +345,7 @@ impl std::convert::TryFrom<LabeledType> for RuntimeContract {
 pub struct LetAttrs {
     /// The type of a let binding. See the documentation of [`BindingType`].
     pub binding_type: BindingType,
+
     /// A recursive let binding adds its binding to the environment of the expression.
     pub rec: bool,
 }
@@ -350,14 +371,17 @@ impl From<LetMetadata> for record::FieldMetadata {
 pub enum MergePriority {
     /// The priority of default values that are overridden by everything else.
     Bottom,
+
     /// The priority by default, when no priority annotation (`default`, `force`, `priority`) is
     /// provided.
     ///
     /// Act as the value `MergePriority::Numeral(0)` with respect to ordering and equality
     /// testing. The only way to discriminate this variant is to pattern match on it.
     Neutral,
+
     /// A numeral priority.
     Numeral(Number),
+
     /// The priority of values that override everything else and can't be overridden.
     Top,
 }
@@ -446,13 +470,12 @@ impl Traverse<RichTerm> for LabeledType {
     // Note that this function doesn't traverse the label, which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
     // evaluated.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<LabeledType, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<LabeledType, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let LabeledType { typ, label } = self;
-        typ.traverse(f, state, order)
-            .map(|typ| LabeledType { typ, label })
+        typ.traverse(f, order).map(|typ| LabeledType { typ, label })
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
@@ -465,6 +488,7 @@ impl Traverse<RichTerm> for LabeledType {
 pub struct TypeAnnotation {
     /// The type annotation (using `:`).
     pub typ: Option<LabeledType>,
+
     /// The contracts annotation (using `|`).
     pub contracts: Vec<LabeledType>,
 }
@@ -499,9 +523,9 @@ impl TypeAnnotation {
     }
 
     /// Build a list of pending contracts from this annotation, to be stored alongside the metadata
-    /// of a field. Similar to [Self::all_contracts], but including the contracts from `self.contracts`
-    /// only, while `types` is excluded. Contracts derived from type annotations aren't treated the
-    /// same since they don't propagate through merging.
+    /// of a field. Similar to [Self::all_contracts], but including the contracts from
+    /// `self.contracts` only, while `types` is excluded. Contracts derived from type annotations
+    /// aren't treated the same since they don't propagate through merging.
     pub fn pending_contracts(&self) -> Result<Vec<RuntimeContract>, UnboundTypeVariableError> {
         self.contracts
             .iter()
@@ -550,19 +574,19 @@ impl From<TypeAnnotation> for LetMetadata {
 }
 
 impl Traverse<RichTerm> for TypeAnnotation {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let TypeAnnotation { typ, contracts } = self;
 
         let contracts = contracts
             .into_iter()
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
             .collect::<Result<Vec<_>, _>>()?;
 
         let typ = typ
-            .map(|labeled_ty| labeled_ty.traverse(f, state, order))
+            .map(|labeled_ty| labeled_ty.traverse(f, order))
             .transpose()?;
 
         Ok(TypeAnnotation { typ, contracts })
@@ -582,6 +606,7 @@ impl Traverse<RichTerm> for TypeAnnotation {
 pub enum StrChunk<E> {
     /// A string literal.
     Literal(String),
+
     /// An interpolated expression.
     Expr(
         E,     /* the expression */
@@ -729,8 +754,8 @@ impl Term {
 
     /// Determine if a term is a constant.
     ///
-    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number, a
-    /// string, a label, an enum tag or a symbol.
+    /// In this context, a constant is an atomic literal of the language: null, a boolean, a number,
+    /// a string, a label, an enum tag or a symbol.
     pub fn is_constant(&self) -> bool {
         match self {
             Term::Null
@@ -902,12 +927,15 @@ pub enum UnaryOp {
     // second argument.
     /// Boolean AND operator.
     BoolAnd(),
+
     /// Boolean OR operator.
     BoolOr(),
+
     /// Boolean NOT operator.
     BoolNot(),
 
-    /// Raise a blame, which stops the execution and prints an error according to the label argument.
+    /// Raise a blame, which stops the execution and prints an error according to the label
+    /// argument.
     Blame(),
 
     /// Typecast an enum to a larger enum type.
@@ -916,6 +944,7 @@ pub enum UnaryOp {
     /// `embed c x` will have enum type `a | b | c`. It only affects typechecking as at runtime
     /// `embed someId` act like the identity.
     Embed(LocIdent),
+
     /// Evaluate a match block applied to an argument.
     Match { has_default: bool },
 
@@ -926,11 +955,12 @@ pub enum UnaryOp {
 
     /// Map a function on each element of an array.
     ArrayMap(),
+
     /// Map a function on a record.
     ///
     /// The mapped function must take two arguments, the name of the field as a string, and the
-    /// content of the field. `RecordMap` then replaces the content of each field by the result of the
-    /// function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
+    /// content of the field. `RecordMap` then replaces the content of each field by the result of
+    /// the function: i.e., `recordMap f {a=2;}` evaluates to `{a=(f "a" 2);}`.
     RecordMap(),
 
     /// Inverse the polarity of a label.
@@ -938,6 +968,7 @@ pub enum UnaryOp {
 
     /// Get the polarity of a label.
     Pol(),
+
     /// Go to the domain in the type path of a label.
     ///
     /// If the argument is a label with a [type path][crate::label::TyPath) representing some
@@ -949,7 +980,8 @@ pub enum UnaryOp {
     /// ------------------- original type
     /// ```
     ///
-    /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the domain:
+    /// Then `GoDom` evaluates to a copy of this label, where the path has gone forward into the
+    /// domain:
     ///
     /// ```text
     /// (Num -> Num) -> Num
@@ -957,14 +989,17 @@ pub enum UnaryOp {
     /// ------------------- original type
     /// ```
     GoDom(),
+
     /// Go to the codomain in the type path of a label.
     ///
     /// See `GoDom`.
     GoCodom(),
+
     /// Go to the array in the type path of a label.
     ///
     /// See `GoDom`.
     GoArray(),
+
     /// Go to the type ascribed to every field in a dictionary.
     ///
     /// See `GoDom`.
@@ -972,6 +1007,7 @@ pub enum UnaryOp {
 
     /// Force the evaluation of its argument and proceed with the second.
     Seq(),
+
     /// Recursively force the evaluation of its first argument then returns the second.
     ///
     /// Recursive here means that the evaluation does not stop at a WHNF, but the content of arrays
@@ -980,6 +1016,7 @@ pub enum UnaryOp {
 
     /// Return the length of an array.
     ArrayLength(),
+
     /// Generate an array of a given length by mapping a `Num -> Num` function onto `[1,..,n]`.
     ArrayGen(),
 
@@ -991,64 +1028,79 @@ pub enum UnaryOp {
 
     /// Return the names of the fields of a record as a string array.
     FieldsOf(),
+
     /// Return the values of the fields of a record as an array.
     ValuesOf(),
 
     /// Remove heading and trailing spaces from a string.
     StrTrim(),
+
     /// Return the array of characters of a string.
     StrChars(),
+
     /// Transform a string to uppercase.
     StrUppercase(),
+
     /// Transform a string to lowercase.
     StrLowercase(),
+
     /// Return the length of a string.
     StrLength(),
+
     /// Transform a data to a string.
     ToStr(),
+
     /// Transform a string to a number.
     NumFromStr(),
+
     /// Transform a string to an enum.
     EnumFromStr(),
+
     /// Test if a regex matches a string.
     /// Like [`UnaryOp::StrFind`], this is a unary operator because we would like a way to share the
     /// same "compiled regex" for many matching calls. This is done by returning functions
     /// wrapping [`UnaryOp::StrIsMatchCompiled`] and [`UnaryOp::StrFindCompiled`]
     StrIsMatch(),
+
     /// Match a regex on a string, and returns the captured groups together, the index of the
     /// match, etc.
     StrFind(),
+
     /// Version of [`UnaryOp::StrIsMatch`] which remembers the compiled regex.
     StrIsMatchCompiled(CompiledRegex),
+
     /// Version of [`UnaryOp::StrFind`] which remembers the compiled regex.
     StrFindCompiled(CompiledRegex),
+
     /// Force full evaluation of a term and return it.
     ///
-    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`],
-    /// in particular to make serialization work with lazy array contracts.
+    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`], in particular to make
+    /// serialization work with lazy array contracts.
     ///
     /// # `Force` vs. `DeepSeq`
     ///
-    /// [`UnaryOp::Force`] updates at the indices containing arrays with a new version where the lazy contracts have all been applied,
-    /// whereas [`UnaryOp::DeepSeq`] evaluates the same expressions, but it never updates at the index of an array with lazy contracts
-    /// with an array where those contracts have been applied. In a way, the result of lazy contract application in arrays is "lost"
-    /// in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
+    /// [`UnaryOp::Force`] updates at the indices containing arrays with a new version where the
+    /// lazy contracts have all been applied, whereas [`UnaryOp::DeepSeq`] evaluates the same
+    /// expressions, but it never updates at the index of an array with lazy contracts with an array
+    /// where those contracts have been applied. In a way, the result of lazy contract application
+    /// in arrays is "lost" in [`UnaryOp::DeepSeq`], while it's returned in [`UnaryOp::Force`].
     ///
-    /// This means we can observe different results between `deep_seq x x` and `force x`, in some cases.
+    /// This means we can observe different results between `deep_seq x x` and `force x`, in some
+    /// cases.
     ///
-    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient that [`UnaryOp::Force`]
-    /// as it does less cloning.
+    /// It's also worth noting that [`UnaryOp::DeepSeq`] should be, in principle, more efficient
+    /// that [`UnaryOp::Force`] as it does less cloning.
     ///
     /// # About `for_export`
     ///
-    /// When exporting a Nickel term, we first apply `Force` to the term to
-    /// evaluate it. If there are record fields that have been marked `not_exported`,
-    /// they would still be evaluated ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230).
-    /// To stop this from happening, we introduce the `for_export` parameter
-    /// here. When `for_export` is `true`, the evaluation of `Force` will skip
-    /// fields that are marked as `not_exported`. When `for_export` is `false`,
-    /// these fields are evaluated.
+    /// When exporting a Nickel term, we first apply `Force` to the term to evaluate it. If there
+    /// are record fields that have been marked `not_exported`, they would still be evaluated
+    /// ordinarily, see [#1230](https://github.com/tweag/nickel/issues/1230). To stop this from
+    /// happening, we introduce the `for_export` parameter here. When `for_export` is `true`, the
+    /// evaluation of `Force` will skip fields that are marked as `not_exported`. When `for_export`
+    /// is `false`, these fields are evaluated.
     Force { ignore_not_exported: bool },
+
     /// Recursive default priority operator. Recursively propagates a default priority through a
     /// record, stopping whenever a field isn't a record anymore to then turn into a simple
     /// `default`.
@@ -1078,6 +1130,7 @@ pub enum UnaryOp {
     /// If a value has any explicit priority annotation, then the original annotation takes
     /// precedence and the default doesn't apply.
     RecDefault(),
+
     /// Recursive force priority operator. Similar to [UnaryOp::RecDefault], but propagate the
     /// `force` annotation.
     ///
@@ -1093,9 +1146,8 @@ pub enum UnaryOp {
     /// tail of its argument.
     RecordEmptyWithTail(),
 
-    /// Print a message when encountered during evaluation and proceed with the evaluation of the argument
-    /// on the top of the stack. Operationally the same as the identity
-    /// function
+    /// Print a message when encountered during evaluation and proceed with the evaluation of the
+    /// argument on the top of the stack. Operationally the same as the identity function
     Trace(),
 
     /// Push a new, fresh diagnostic on the diagnostic stack of a contract label. This has the
@@ -1105,9 +1157,9 @@ pub enum UnaryOp {
     /// contract application.
     LabelPushDiag(),
 
-    /// Return the value of the `dualize` field in a label. Used by
-    /// polymorphic contracts to check if they are being invoked to generate
-    /// a dual contract, as part of the preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
+    /// Return the value of the `dualize` field in a label. Used by polymorphic contracts to check
+    /// if they are being invoked to generate a dual contract, as part of the preliminary fix for
+    /// [#1161](https://github.com/tweag/nickel/issues/1161).
     Dualize(),
 }
 
@@ -1193,6 +1245,7 @@ pub enum OpPos {
     Infix,
     Postfix,
     Prefix,
+
     /// A special operator like `if ... then ... else ...`
     Special,
 }
@@ -1221,28 +1274,40 @@ pub enum RecordExtKind {
 pub enum BinaryOp {
     /// Addition of numerals.
     Plus(),
+
     /// Subtraction of numerals.
     Sub(),
+
     /// Multiplication of numerals.
     Mult(),
+
     /// Floating-point division of numerals.
     Div(),
+
     /// Modulo of numerals.
     Modulo(),
+
     /// Raise a number to a power.
     Pow(),
+
     /// Concatenation of strings.
     StrConcat(),
+
     /// Polymorphic equality.
     Eq(),
+
     /// Strictly less than comparison operator.
     LessThan(),
+
     /// Less than or equal comparison operator.
     LessOrEq(),
+
     /// Strictly greater than comparison operator.
     GreaterThan(),
+
     /// Greater than or equal comparison operator.
     GreaterOrEq(),
+
     /// An assume.
     ///
     /// Apply a contract to a label and a value. The value is is stored on the stack unevaluated,
@@ -1251,14 +1316,17 @@ pub enum BinaryOp {
     /// operation with its argument. Finally, this operator marks the location of the contract
     /// argument for better error reporting.
     Assume(),
+
     /// Unseal a sealed term.
     ///
     /// See [`BinaryOp::Seal`].
     Unseal(),
+
     /// Go to a specific field in the type path of a label.
     ///
     /// See `GoDom`.
     GoField(),
+
     /// Extend a record with a dynamic field.
     ///
     /// Dynamic means that the field name may be an expression instead of a statically known
@@ -1276,16 +1344,22 @@ pub enum BinaryOp {
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
     },
+
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
     DynRemove(),
+
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
+
     /// Test if a record has a specific field.
     HasField(),
+
     /// Concatenate two arrays.
     ArrayConcat(),
+
     /// Access the n-th element of an array.
     ArrayElemAt(),
+
     /// The merge operator (see [crate::eval::merge]). `Merge` is parametrized by a
     /// [crate::label::MergeLabel], which carries additional information for error-reporting
     /// purpose.
@@ -1293,15 +1367,19 @@ pub enum BinaryOp {
 
     /// Hash a string.
     Hash(),
+
     /// Serialize a value to a string.
     Serialize(),
+
     /// Deserialize a string to a value.
     Deserialize(),
 
     /// Split a string into an array.
     StrSplit(),
+
     /// Determine if a string is a substring of another one.
     StrContains(),
+
     /// Seal a term with a sealing key (see [`Term::Sealed`]).
     Seal(),
 
@@ -1315,8 +1393,10 @@ pub enum BinaryOp {
 
     /// Set the message of the current diagnostic of a label.
     LabelWithMessage(),
+
     /// Set the notes of the current diagnostic of a label.
     LabelWithNotes(),
+
     /// Append a note to the current diagnostic of a label.
     LabelAppendNote(),
 
@@ -1384,22 +1464,28 @@ impl fmt::Display for BinaryOp {
 pub enum NAryOp {
     /// Replace a substring by another one in a string.
     StrReplace(),
+
     /// Same as [`NAryOp::StrReplace`], but the pattern is interpreted as a regular expression.
     StrReplaceRegex(),
+
     /// Return a substring of an original string.
     StrSubstr(),
+
     /// The merge operator in contract mode (see [crate::eval::merge]). The arguments are in order
     /// the contract's label, the value to check, and the contract as a record.
     MergeContract(),
-    /// Seals one record into the tail of another. Used to ensure that functions
-    /// using polymorphic record contracts do not violate parametricity.
+
+    /// Seals one record into the tail of another. Used to ensure that functions using polymorphic
+    /// record contracts do not violate parametricity.
     ///
     /// Takes four arguments:
     ///   - a [sealing key](Term::SealingKey), which must be provided later to unseal the tail,
-    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is attempted,
+    ///   - a [label](Term::Lbl), which will be used to assign blame correctly tail access is
+    ///     attempted,
     ///   - a [record](Term::Record), which is the record we wish to seal the tail into,
     ///   - the [record](Term::Record) that we wish to seal.
     RecordSealTail(),
+
     /// Unseals a term from the tail of a record and returns it.
     ///
     /// Takes three arguments:
@@ -1408,6 +1494,7 @@ pub enum NAryOp {
     ///     something goes wrong while unsealing,
     ///   - the [record](Term::Record) whose tail we wish to unseal.
     RecordUnsealTail(),
+
     /// Insert type variable data into the `type_environment` of a [`crate::label::Label`]
     ///
     /// Takes four arguments:
@@ -1416,6 +1503,7 @@ pub enum NAryOp {
     ///   - the [kind](crate::typ::VarKind) of the type variable
     ///   - a [label](Term::Lbl) on which to operate
     InsertTypeVar(),
+
     /// Return a sub-array corresponding to a range. Given that Nickel uses array slices under the
     /// hood, as long as the array isn't modified later, this operation is constant in time and
     /// memory.
@@ -1485,25 +1573,23 @@ impl RichTerm {
     /// Note that `Ident`s retain their position. This position is ignored in comparison, so it's
     /// good enough for the tests.
     pub fn without_pos(self) -> Self {
-        self.traverse::<_, _, ()>(
-            &|t: Type, _| {
+        self.traverse(
+            &mut |t: Type| -> Result<_, Infallible> {
                 Ok(Type {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
-        .traverse::<_, _, ()>(
-            &|t: RichTerm, _| {
+        .traverse(
+            &mut |t: RichTerm| -> Result<_, Infallible> {
                 Ok(RichTerm {
                     pos: TermPos::None,
                     ..t
                 })
             },
-            &mut (),
             TraverseOrder::BottomUp,
         )
         .unwrap()
@@ -1542,8 +1628,10 @@ impl RichTerm {
 pub enum TraverseControl<U> {
     /// Normal control flow: continue recursing into the children.
     Continue,
+
     /// Skip this branch of the tree.
     SkipBranch,
+
     /// Finish traversing immediately (and return a value).
     Return(U),
 }
@@ -1562,9 +1650,9 @@ pub trait Traverse<T>: Sized {
     /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
     ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<Self, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: Fn(T, &mut S) -> Result<T, E>;
+        F: FnMut(T) -> Result<T, E>;
 
     /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
     /// each object.
@@ -1578,50 +1666,50 @@ impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
     ///
     /// This also recurses into the terms that are contained in `Type` subtrees.
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
     where
-        F: Fn(RichTerm, &mut S) -> Result<RichTerm, E>,
+        F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
         let rt = match order {
-            TraverseOrder::TopDown => f(self, state)?,
+            TraverseOrder::TopDown => f(self)?,
             TraverseOrder::BottomUp => self,
         };
         let pos = rt.pos;
 
         let result = match_sharedterm! {rt.term, with {
             Term::Fun(id, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::Fun(id, t),
                     pos,
                 )
             },
             Term::FunPattern(id, d, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::FunPattern(id, d, t),
                     pos,
                 )
             },
             Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::Let(id, t1, t2, attrs),
                     pos,
                 )
             },
             Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::LetPattern(id, pat, t1, t2),
                     pos,
                 )
             },
             Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(
                     Term::App(t1, t2),
                     pos,
@@ -1633,10 +1721,10 @@ impl Traverse<RichTerm> for RichTerm {
                 let cases_result : Result<IndexMap<LocIdent, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, state, order).map(|t_ok| (id, t_ok)))
+                    .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
                     .collect();
 
-                let default = default.map(|t| t.traverse(f, state, order)).transpose()?;
+                let default = default.map(|t| t.traverse(f, order)).transpose()?;
 
                 RichTerm::new(
                     Term::Match {cases: cases_result?, default },
@@ -1644,15 +1732,15 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Op1(op, t) => {
-                let t = t.traverse(f, state, order)?;
+                let t = t.traverse(f, order)?;
                 RichTerm::new(
                     Term::Op1(op, t),
                     pos,
                 )
             },
             Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, state, order)?;
-                let t2 = t2.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
+                let t2 = t2.traverse(f, order)?;
                 RichTerm::new(Term::Op2(op, t1, t2),
                     pos,
                 )
@@ -1660,7 +1748,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::OpN(op, ts) => {
                 let ts_res: Result<Vec<RichTerm>, E> = ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, order))
+                    .map(|t| t.traverse(f, order))
                     .collect();
                 RichTerm::new(
                     Term::OpN(op, ts_res?),
@@ -1668,7 +1756,7 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Sealed(i, t1, lbl) => {
-                let t1 = t1.traverse(f, state, order)?;
+                let t1 = t1.traverse(f, order)?;
                 RichTerm::new(
                     Term::Sealed(i, t1, lbl),
                     pos,
@@ -1681,11 +1769,14 @@ impl Traverse<RichTerm> for RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
-                        let field = field.traverse(f, state, order)?;
+                        let field = field.traverse(f, order)?;
                         Ok((id, field))
                     })
                     .collect();
-                RichTerm::new(Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)), pos)
+                RichTerm::new(
+                    Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)),
+                    pos
+                )
             },
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
@@ -1694,28 +1785,36 @@ impl Traverse<RichTerm> for RichTerm {
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
-                        let field = field.traverse(f, state, order)?;
+                        let field = field.traverse(f, order)?;
                         Ok((id, field))
                     })
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
                     .map(|(id_t, field)| {
-                        let id_t = id_t.traverse(f, state, order)?;
-                        let field = field.traverse(f, state, order)?;
+                        let id_t = id_t.traverse(f, order)?;
+                        let field = field.traverse(f, order)?;
 
                         Ok((id_t, field,))
                     })
                     .collect();
                 RichTerm::new(
-                    Term::RecRecord(RecordData::new(static_fields_res?, record.attrs, record.sealed_tail), dyn_fields_res?, deps),
+                    Term::RecRecord(
+                        RecordData::new(
+                            static_fields_res?,
+                            record.attrs,
+                            record.sealed_tail
+                        ),
+                        dyn_fields_res?,
+                        deps
+                    ),
                     pos,
                 )
             },
             Term::Array(ts, attrs) => {
                 let ts_res = Array::new(ts
                     .into_iter()
-                    .map(|t| t.traverse(f, state, order))
+                    .map(|t| t.traverse(f, order))
                     .collect::<Result<Rc<[_]>, _>>()?);
 
                 RichTerm::new(
@@ -1729,7 +1828,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .map(|chunk| match chunk {
                         chunk @ StrChunk::Literal(_) => Ok(chunk),
                         StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, state, order)?, indent))
+                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
                         }
                     })
                     .collect();
@@ -1740,21 +1839,21 @@ impl Traverse<RichTerm> for RichTerm {
                 )
             },
             Term::Annotated(annot, term) => {
-                let annot = annot.traverse(f, state, order)?;
-                let term = term.traverse(f, state, order)?;
+                let annot = annot.traverse(f, order)?;
+                let term = term.traverse(f, order)?;
                 RichTerm::new(
                     Term::Annotated(annot, term),
                     pos,
                 )
             },
             Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, state, order)?), pos)
+                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
             }
         } else rt};
 
         match order {
             TraverseOrder::TopDown => Ok(result),
-            TraverseOrder::BottomUp => f(result, state),
+            TraverseOrder::BottomUp => f(result),
         }
     }
 
@@ -1820,25 +1919,26 @@ impl Traverse<RichTerm> for RichTerm {
 }
 
 impl Traverse<Type> for RichTerm {
-    fn traverse<F, S, E>(self, f: &F, state: &mut S, order: TraverseOrder) -> Result<RichTerm, E>
+    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
     where
-        F: Fn(Type, &mut S) -> Result<Type, E>,
+        F: FnMut(Type) -> Result<Type, E>,
     {
-        let f_on_term = |rt: RichTerm, s: &mut S| {
-            match_sharedterm! {rt.term, with {
-                Term::Type(ty) =>
-                    ty.traverse(f, s, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
-            } else Ok(rt)}
-        };
-        self.traverse(&f_on_term, state, order)
+        self.traverse(
+            &mut |rt: RichTerm| {
+                match_sharedterm! {rt.term, with {
+                    Term::Type(ty) =>
+                        ty.traverse(f, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
+                } else Ok(rt)}
+            },
+            order,
+        )
     }
 
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&Type) -> TraverseControl<U>) -> Option<U> {
-        let mut f_on_term = |rt: &RichTerm| match &*rt.term {
+        self.traverse_ref(&mut |rt: &RichTerm| match &*rt.term {
             Term::Type(ty) => ty.traverse_ref(f).into(),
             _ => TraverseControl::Continue,
-        };
-        self.traverse_ref(&mut f_on_term)
+        })
     }
 }
 
@@ -1875,8 +1975,9 @@ impl fmt::Display for Term {
     }
 }
 
-/// Allows to match on SharedTerm without taking ownership of the matched part until the match.
-/// In the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that point.
+/// Allows to match on SharedTerm without taking ownership of the matched part until the match. In
+/// the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that
+/// point.
 ///
 /// It is used somehow as a match statement, going from
 /// ```
@@ -1935,7 +2036,12 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_app {
         ( $f:expr, $arg:expr) => {
-            $crate::term::RichTerm::from($crate::term::Term::App($crate::term::RichTerm::from($f), $crate::term::RichTerm::from($arg)))
+            $crate::term::RichTerm::from(
+                $crate::term::Term::App(
+                    $crate::term::RichTerm::from($f),
+                    $crate::term::RichTerm::from($arg)
+                )
+            )
         };
         ( $f:expr, $fst:expr , $( $args:expr ),+ ) => {
             mk_app!(mk_app!($f, $fst), $( $args ),+)
@@ -1958,7 +2064,12 @@ pub mod make {
     #[macro_export]
     macro_rules! mk_fun {
         ( $id:expr, $body:expr ) => {
-            $crate::term::RichTerm::from($crate::term::Term::Fun($crate::identifier::LocIdent::from($id), $crate::term::RichTerm::from($body)))
+            $crate::term::RichTerm::from(
+                $crate::term::Term::Fun(
+                    $crate::identifier::LocIdent::from($id),
+                    $crate::term::RichTerm::from($body)
+                )
+            )
         };
         ( $id1:expr, $id2:expr , $( $rest:expr ),+ ) => {
             mk_fun!($crate::identifier::LocIdent::from($id1), mk_fun!($id2, $( $rest ),+))
@@ -1977,14 +2088,18 @@ pub mod make {
                 $(
                     fields.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Record($crate::term::record::RecordData::with_field_values(fields)))
+                $crate::term::RichTerm::from(
+                    $crate::term::Term::Record(
+                        $crate::term::record::RecordData::with_field_values(fields)
+                    )
+                )
             }
         };
     }
 
-    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the
-    /// body of each case. Cases are specified as tuple, and the default case (optional) is separated by a `;`:
-    /// `mk_switch!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
+    /// Switch for types implementing `Into<Ident>` (for patterns) and `Into<RichTerm>` for the body
+    /// of each case. Cases are specified as tuple, and the default case (optional) is separated by
+    /// a `;`: `mk_match!(format, ("Json", json_case), ("Yaml", yaml_case) ; def)` corresponds to
     /// ``match { 'Json => json_case, 'Yaml => yaml_case, _ => def} format``.
     #[macro_export]
     macro_rules! mk_match {
@@ -1994,7 +2109,12 @@ pub mod make {
                 $(
                     cases.insert($id.into(), $body.into());
                 )*
-                $crate::term::RichTerm::from($crate::term::Term::Match {cases, default: Some($crate::term::RichTerm::from($default)) })
+                $crate::term::RichTerm::from(
+                    $crate::term::Term::Match {
+                        cases,
+                        default: Some($crate::term::RichTerm::from($default))
+                    }
+                )
             }
         };
         ( $( ($id:expr, $body:expr) ),*) => {
@@ -2006,20 +2126,25 @@ pub mod make {
         };
     }
 
-    /// Array for types implementing `Into<RichTerm>` (for elements).
-    /// The array's attributes are a trailing (optional) `ArrayAttrs`, separated by a `;`.
-    /// `mk_array!(Term::Num(42))` corresponds to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may have different attributes.
+    /// Array for types implementing `Into<RichTerm>` (for elements). The array's attributes are a
+    /// trailing (optional) `ArrayAttrs`, separated by a `;`. `mk_array!(Term::Num(42))` corresponds
+    /// to `\[42\]`. Here the attributes are `ArrayAttrs::default()`, though the evaluated array may
+    /// have different attributes.
     #[macro_export]
     macro_rules! mk_array {
         ( $( $terms:expr ),* ; $attrs:expr ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(
+                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                );
                 $crate::term::RichTerm::from($crate::term::Term::Array(ts, $attrs))
             }
         };
         ( $( $terms:expr ),* ) => {
             {
-                let ts = $crate::term::array::Array::new(std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*]));
+                let ts = $crate::term::array::Array::new(
+                    std::rc::Rc::new([$( $crate::term::RichTerm::from($terms) ),*])
+                );
                 $crate::term::RichTerm::from(Term::Array(ts, ArrayAttrs::default()))
             }
         };

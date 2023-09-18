@@ -14,9 +14,10 @@ fn array_contracts_label_path_is_set_correctly() {
             evaluated_arg: _,
             ref label,
             call_stack: _,
-        })) => {
-            assert_matches!(label.path.as_slice(), [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a")
-        }
+        })) => assert_matches!(
+            label.path.as_slice(),
+            [Elem::Array, Elem::Field(id), Elem::Array] if &id.to_string() == "a"
+        ),
         err => panic!("expected blame error, got {err:?}"),
     }
     // Check that reporting doesn't panic. Provide a dummy file database, as we won't report
@@ -25,16 +26,19 @@ fn array_contracts_label_path_is_set_correctly() {
     res.unwrap_err().into_diagnostics(&mut files, None);
 
     let res = eval(
-        "(%elem_at% (({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Number)}).foo) 0) false",
+        "(%elem_at% (\
+            ({foo = [(fun x => \"a\")]} | {foo: Array (forall a. a -> Number)}).foo\
+        ) 0) false",
     );
     match &res {
         Err(Error::EvalError(EvalError::BlameError {
             evaluated_arg: _,
             ref label,
             call_stack: _,
-        })) => {
-            assert_matches!(label.path.as_slice(), [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo")
-        }
+        })) => assert_matches!(
+            label.path.as_slice(),
+            [Elem::Field(id), Elem::Array, Elem::Codomain] if &id.to_string() == "foo"
+        ),
         err => panic!("expected blame error, got {err:?}"),
     }
     res.unwrap_err().into_diagnostics(&mut files, None);

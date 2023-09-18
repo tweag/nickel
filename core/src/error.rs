@@ -49,7 +49,8 @@ pub enum Error {
 pub enum EvalError {
     /// A blame occurred: a contract have been broken somewhere.
     BlameError {
-        /// The argument failing the contract. If the argument has been forced by the contract, `evaluated_arg` provides the final value.
+        /// The argument failing the contract. If the argument has been forced by the contract,
+        /// `evaluated_arg` provides the final value.
         evaluated_arg: Option<RichTerm>,
         /// The label of the corresponding contract.
         label: label::Label,
@@ -238,7 +239,8 @@ pub enum TypecheckError {
         /* the actual type */ Type,
         TermPos,
     ),
-    /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row type.
+    /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row
+    /// type.
     RowMismatch(
         LocIdent,
         /* the expected row type (whole) */ Type,
@@ -248,17 +250,17 @@ pub enum TypecheckError {
     ),
     /// Two incompatible types have been deduced for the same identifier of a row type.
     ///
-    /// This is similar to `RowKindMismatch` but occurs in a slightly different situation. Consider a a
-    /// unification variable `t`, which is a placeholder to be filled by a concrete type later in
+    /// This is similar to `RowKindMismatch` but occurs in a slightly different situation. Consider
+    /// a unification variable `t`, which is a placeholder to be filled by a concrete type later in
     /// the typechecking phase.  If `t` appears as the tail of a row type, i.e. the type of some
-    /// expression is inferred to be `{ field: Type | t}`, then `t` must not be unified later with
-    /// a type including a different declaration for field, such as `field: Type2`.
+    /// expression is inferred to be `{ field: Type | t}`, then `t` must not be unified later with a
+    /// type including a different declaration for field, such as `field: Type2`.
     ///
-    /// A [constraint][crate::typecheck::unif::RowConstr] is added accordingly, and if this constraint is
-    /// violated (that is if `t` does end up being unified with a type of the form
-    /// `{ .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the
-    /// original `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to
-    /// the direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
+    /// A [constraint][crate::typecheck::unif::RowConstr] is added accordingly, and if this
+    /// constraint is violated (that is if `t` does end up being unified with a type of the form
+    /// `{ .., field: Type2, .. }`), `RowConflict` is raised.  We do not have access to the original
+    /// `field: Type` declaration, as opposed to `RowKindMismatch`, which corresponds to the direct
+    /// failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, .. }`.
     RowConflict(
         LocIdent,
         /* the second type assignment which violates the constraint */ Type,
@@ -322,9 +324,9 @@ pub enum TypecheckError {
     /// (fun x => let y : forall a. a = x in (y : Number)) : _
     /// ```
     ///
-    /// This example must be rejected, as it is an identity function that casts any value to something
-    /// of type `Number`. It will typically fail with a contract error if applied to a string, for
-    /// example.
+    /// This example must be rejected, as it is an identity function that casts any value to
+    /// something of type `Number`. It will typically fail with a contract error if applied to a
+    /// string, for example.
     ///
     /// But when `let y : forall a. a = x` is typechecked, `x` is affected to a free unification
     /// variable `_a`, which isn't determined yet. The unsoundess comes from the fact that `_a` was
@@ -420,8 +422,8 @@ pub enum ParseError {
     ),
     /// Superfluous, unexpected token.
     ExtraToken(RawSpan),
-    /// A closing brace '}' does not match an opening brace '{'. This rather precise error is detected by the because
-    /// of how interpolated strings are lexed.
+    /// A closing brace '}' does not match an opening brace '{'. This rather precise error is
+    /// detected because of how interpolated strings are lexed.
     UnmatchedCloseBrace(RawSpan),
     /// Invalid escape sequence in a string literal.
     InvalidEscapeSequence(RawSpan),
@@ -808,18 +810,19 @@ fn secondary(span: &RawSpan) -> Label<FileId> {
 /// Create a label from an optional span, or fallback to annotating the alternative snippet
 /// `alt_term` if the span is `None`.
 ///
-/// When `span_opt` is `None`, the code snippet `alt_term` is added to `files` under a special
-/// name and is referred to instead.
+/// When `span_opt` is `None`, the code snippet `alt_term` is added to `files` under a special name
+/// and is referred to instead.
 ///
 /// This is useful because during evaluation, some terms are the results of computations. They
 /// correspond to nothing in the original source, and thus have a position set to `None`(e.g. the
-/// result of `let x = 1 + 1 in x`).  In such cases it may still be valuable to print the term (or
-/// a terse representation) in the error diagnostic rather than nothing, because if you have let `x
-/// = 1 + 1 in` and then 100 lines later, `x arg` - causing a `NotAFunc` error - it may be helpful
-/// to know that `x` holds the value `2`.
+/// result of `let x = 1 + 1 in x`).  In such cases it may still be valuable to print the term (or a
+/// terse representation) in the error diagnostic rather than nothing, because if you have let `x =
+/// 1 + 1 in` and then 100 lines later, `x arg` - causing a `NotAFunc` error - it may be helpful to
+/// know that `x` holds the value `2`.
 ///
-/// For example, if one wants to report an error on a record, `alt_term` may be defined to `{ ...  }`.
-/// Then, if this record has no position (`span_opt` is `None`), the error will be reported as:
+/// For example, if one wants to report an error on a record, `alt_term` may be defined as
+/// `{ ... }`. Then, if this record has no position (`span_opt` is `None`), the error will be
+/// reported as:
 ///
 /// ```text
 /// error: some error
@@ -837,15 +840,15 @@ fn secondary(span: &RawSpan) -> Label<FileId> {
 /// 2. Print the term and the annotation as a note together with the diagnostic. Notes are
 ///    additional text placed at the end of diagnostic. What you lose:
 ///     - pretty formatting of annotations for such snippets
-///     - style consistency: the style of the error now depends on the term being from the source
-///     or a byproduct of evaluation
+///     - style consistency: the style of the error now depends on the term being from the source or
+///     a byproduct of evaluation
 /// 3. Add the term to files, take 1: pass a reference to files so that the code building the
 ///    diagnostic can itself add arbitrary snippets if necessary, and get back their `FileId`. This
 ///    is what is done here.
 /// 4. Add the term to files, take 2: make a wrapper around the `Files` and `FileId` structures of
 ///    codespan which handle source mapping. `FileId` could be something like
-///    `Either<codespan::FileId, CustomId = u32>` so that `to_diagnostic` could construct and use these
-///    separate ids, and return the corresponding snippets to be added together with the
+///    `Either<codespan::FileId, CustomId = u32>` so that `to_diagnostic` could construct and use
+///    these separate ids, and return the corresponding snippets to be added together with the
 ///    diagnostic without modifying external state. Or even have `FileId = Either<codespan::FileId`,
 ///    `LoneCode = String or (Id, String)>` so we don't have to return the additional list of
 ///    snippets. This adds some boilerplate, that we wanted to avoid, but this stays on the
@@ -869,8 +872,8 @@ fn label_alt(
     }
 }
 
-/// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
-/// `alt_term` if the span is `None`.
+/// Create a secondary label from an optional span, or fallback to annotating the alternative
+/// snippet `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`].
 fn primary_alt(
@@ -881,24 +884,24 @@ fn primary_alt(
     label_alt(span_opt, alt_term, LabelStyle::Primary, files)
 }
 
-/// Create a primary label from a term, or fallback to annotating the shallow representation of this term
-/// if its span is `None`.
+/// Create a primary label from a term, or fallback to annotating the shallow representation of this
+/// term if its span is `None`.
 ///
 /// See [`label_alt`].
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
     primary_alt(term.pos.into_opt(), term.as_ref().shallow_repr(), files)
 }
 
-/// Create a secondary label from an optional span, or fallback to annotating the alternative snippet
-/// `alt_term` if the span is `None`.
+/// Create a secondary label from an optional span, or fallback to annotating the alternative
+/// snippet `alt_term` if the span is `None`.
 ///
 /// See [`label_alt`].
 fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>) -> Label<FileId> {
     label_alt(span_opt.into_opt(), alt_term, LabelStyle::Secondary, files)
 }
 
-/// Create a secondary label from a term, or fallback to annotating the shallow representation of this term
-/// if its span is `None`.
+/// Create a secondary label from a term, or fallback to annotating the shallow representation of
+/// this term if its span is `None`.
 ///
 /// See [`label_alt`].
 fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
@@ -1431,18 +1434,21 @@ mod blame_error {
     pub fn path_span(files: &mut Files<String>, path: &[ty_path::Elem], ty: &Type) -> PathSpan {
         use crate::parser::{grammar::FixedTypeParser, lexer::Lexer, ErrorTolerantParser};
 
-        ty_path::span(path.iter().peekable(), ty).or_else(|| {
-            let type_pprinted = format!("{ty}");
-            let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
+        ty_path::span(path.iter().peekable(), ty)
+            .or_else(|| {
+                let type_pprinted = format!("{ty}");
+                let file_id = files.add(super::UNKNOWN_SOURCE_NAME, type_pprinted.clone());
 
-            let ty_with_pos = FixedTypeParser::new()
-                .parse_strict(file_id, Lexer::new(&type_pprinted))
-                .unwrap();
+                let ty_with_pos = FixedTypeParser::new()
+                    .parse_strict(file_id, Lexer::new(&type_pprinted))
+                    .unwrap();
 
-            ty_path::span(path.iter().peekable(), &ty_with_pos)
-        })
-        .expect("path_span: we pretty-printed and parsed again the type of a label, so it must have \
-                all of its position defined, but `ty_path::span` returned `None`")
+                ty_path::span(path.iter().peekable(), &ty_with_pos)
+            })
+            .expect(
+                "path_span: we pretty-printed and parsed again the type of a label, \
+                so it must have all of its position defined, but `ty_path::span` returned `None`",
+            )
     }
 
     /// Generate a codespan label that describes the [type path][crate::label::ty_path::Path] of a
@@ -1635,7 +1641,10 @@ impl IntoDiagnostics<FileId> for ParseError {
             ParseError::InvalidAsciiEscapeCode(span) => Diagnostic::error()
                 .with_message("invalid ascii escape code")
                 .with_labels(vec![primary(&span)]),
-            ParseError::StringDelimiterMismatch { opening_delimiter, closing_delimiter } => Diagnostic::error()
+            ParseError::StringDelimiterMismatch {
+                opening_delimiter,
+                closing_delimiter,
+            } => Diagnostic::error()
                 .with_message("string closing delimiter has too many `%`")
                 .with_labels(vec![
                     primary(&closing_delimiter).with_message("the closing delimiter"),
@@ -1643,7 +1652,8 @@ impl IntoDiagnostics<FileId> for ParseError {
                 ])
                 .with_notes(vec![
                     "A special string must be opened and closed with the same number of `%` \
-                    in the corresponding delimiters.".into(),
+                    in the corresponding delimiters."
+                        .into(),
                     "Try removing the superflous `%` in the closing delimiter".into(),
                 ]),
             ParseError::ExternalFormatError(format, msg, span_opt) => {
@@ -1666,28 +1676,41 @@ impl IntoDiagnostics<FileId> for ParseError {
                         .join(",")
                 ))
                 .with_labels(
-                    idents.into_iter().filter_map(|id| id.pos.into_opt()).map(|span| primary(&span).with_message("this identifier is unbound")).collect()
-                 ),
-            ParseError::InvalidRecordType { record_span, tail_span, cause } => {
+                    idents
+                        .into_iter()
+                        .filter_map(|id| id.pos.into_opt())
+                        .map(|span| primary(&span).with_message("this identifier is unbound"))
+                        .collect(),
+                ),
+            ParseError::InvalidRecordType {
+                record_span,
+                tail_span,
+                cause,
+            } => {
                 let mut labels: Vec<_> = std::iter::once(primary(&record_span))
                     .chain(cause.labels())
                     .collect();
                 let mut notes: Vec<_> = std::iter::once(
-                        "A record type is a literal composed only of type annotations, of the \
-                        form `<field>: <type>`.".into()
-                    ).chain(cause.notes()).collect();
+                    "A record type is a literal composed only of type annotations, of the \
+                        form `<field>: <type>`."
+                        .into(),
+                )
+                .chain(cause.notes())
+                .collect();
 
                 if let Some(tail_span) = tail_span {
                     labels.push(secondary(&tail_span).with_message("tail"));
                     notes.push(
                         "This literal was interpreted as a record type because it has a \
-                        polymorphic tail; record values cannot have tails.".into()
+                        polymorphic tail; record values cannot have tails."
+                            .into(),
                     );
                 } else {
                     notes.push(
                         "This literal was interpreted as a record type because it has \
                         fields with type annotations but no value definitions; to make \
-                        this a record value, assign values to its fields.".into()
+                        this a record value, assign values to its fields."
+                            .into(),
                     );
                 };
                 Diagnostic::error()
@@ -1697,63 +1720,71 @@ impl IntoDiagnostics<FileId> for ParseError {
             }
             ParseError::RecursiveLetPattern(span) => Diagnostic::error()
                 .with_message("recursive destructuring is not supported")
-                .with_labels(vec![
-                    primary(&span),
-                ])
+                .with_labels(vec![primary(&span)])
                 .with_notes(vec![
                     "A destructuring let-binding can't be recursive. Try removing the `rec` \
-                    from `let rec`.".into(),
-                    "You can reference other fields of a record recursively from within a field, so \
-                    you might not need the recursive let.".into(),
+                        from `let rec`."
+                        .into(),
+                    "You can reference other fields of a record recursively \
+                        from within a field, so you might not need the recursive let."
+                        .into(),
                 ]),
             ParseError::TypeVariableKindMismatch { ty_var, span } => Diagnostic::error()
-                .with_message(format!("the type variable `{ty_var}` is used in conflicting ways"))
-                .with_labels(vec![
-                    primary(&span),
-                ])
+                .with_message(format!(
+                    "the type variable `{ty_var}` is used in conflicting ways"
+                ))
+                .with_labels(vec![primary(&span)])
                 .with_notes(vec![
                     "Type variables may be used either as types, polymorphic record tails, \
-                    or polymorphic enum tails.".into(),
+                    or polymorphic enum tails."
+                        .into(),
                     "Using the same type variable as more than one category at the same time \
-                    is forbidden.".into(),
+                    is forbidden."
+                        .into(),
                 ]),
-            ParseError::TypedFieldWithoutDefinition { field_span, annot_span } => {
-                Diagnostic::error()
-                    .with_message("statically typed field without a definition")
-                    .with_labels(vec![
-                        primary(&field_span).with_message("this field doesn't have a definition"),
-                        secondary(&annot_span).with_message("but it has a type annotation"),
-                    ])
+            ParseError::TypedFieldWithoutDefinition {
+                field_span,
+                annot_span,
+            } => Diagnostic::error()
+                .with_message("statically typed field without a definition")
+                .with_labels(vec![
+                    primary(&field_span).with_message("this field doesn't have a definition"),
+                    secondary(&annot_span).with_message("but it has a type annotation"),
+                ])
                 .with_notes(vec![
                     "A static type annotation must be attached to an expression but \
-                    this field doesn't have a definition.".into(),
+                    this field doesn't have a definition."
+                        .into(),
                     "Did you mean to use `|` instead of `:`, for example when defining a \
-                    record contract?".into(),
+                    record contract?"
+                        .into(),
                     "Typed fields without definitions are only allowed inside \
                     record types, but the enclosing record literal doesn't qualify as a \
                     record type. Please refer to the manual for the defining conditions of a \
-                    record type.".into(),
-                ])
-            }
-            ParseError::InterpolationInQuery { input, pos_path_elem: path_elem_pos } => {
-                Diagnostic::error()
-                    .with_message("string interpolation is forbidden within a query")
-                    .with_labels(vec![
-                        primary_alt(path_elem_pos.into_opt(), input, files),
-                    ])
-                    .with_notes(vec![
-                        "Field paths don't support string interpolation when querying \
-                        metadata.".into(),
-                        "Only identifiers and simple string literals are allowed.".into(),
-                    ])
-            }
-            ParseError::DuplicateIdentInRecordPattern { ident, prev_ident } =>
-                Diagnostic::error()
-                    .with_message(format!("duplicated binding `{}` in record pattern", ident.label()))
-                    .with_labels(vec![
-                        secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
-                        primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
-                    ]),
+                    record type."
+                        .into(),
+                ]),
+            ParseError::InterpolationInQuery {
+                input,
+                pos_path_elem: path_elem_pos,
+            } => Diagnostic::error()
+                .with_message("string interpolation is forbidden within a query")
+                .with_labels(vec![primary_alt(path_elem_pos.into_opt(), input, files)])
+                .with_notes(vec![
+                    "Field paths don't support string interpolation when querying \
+                        metadata."
+                        .into(),
+                    "Only identifiers and simple string literals are allowed.".into(),
+                ]),
+            ParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => Diagnostic::error()
+                .with_message(format!(
+                    "duplicated binding `{}` in record pattern",
+                    ident.label()
+                ))
+                .with_labels(vec![
+                    secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
+                    primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
+                ]),
         };
 
         vec![diagnostic]
@@ -1941,15 +1972,22 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 diags
             }
             TypecheckError::RowConflict(ident, conflict, _expd, _actual, span_opt) => {
-                vec![
-                    Diagnostic::error()
-                        .with_message("multiple rows declaration")
-                        .with_labels(mk_expr_label(&span_opt))
-                        .with_notes(vec![
-                            format!("Found an expression of a record type `{}` with the row `{}`", conflict, ident),
-                            format!("But this type appears inside another row type, which already has a declaration for the field `{ident}`"),
-                            String::from("A type cannot have two conflicting declarations for the same row"),
-                        ])]
+                vec![Diagnostic::error()
+                    .with_message("multiple rows declaration")
+                    .with_labels(mk_expr_label(&span_opt))
+                    .with_notes(vec![
+                        format!(
+                            "Found an expression of a record type `{conflict}` \
+                            with the row `{ident}`"
+                        ),
+                        format!(
+                            "But this type appears inside another row type, \
+                            which already has a declaration for the field `{ident}`"
+                        ),
+                        String::from(
+                            "A type cannot have two conflicting declarations for the same row",
+                        ),
+                    ])]
             }
             TypecheckError::ArrowTypeMismatch(expd, actual, path, err, span_opt) => {
                 let PathSpan {
@@ -2022,35 +2060,33 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     VarKindDiscriminant::EnumRows => "enum tail",
                     VarKindDiscriminant::RecordRows => "record tail",
                 };
-                vec![
-                    Diagnostic::error()
-                        .with_message(format!(
-                            "values of type `{violating_type}` are not guaranteed to be compatible with polymorphic {tail_kind} `{tail}`"
-                        ))
-                        .with_labels(mk_expr_label(&pos))
-                        .with_notes(vec![
-                            "Type variables introduced in a `forall` range over all possible types.".to_owned(),
-                        ]),
-                ]
+                vec![Diagnostic::error()
+                    .with_message(format!(
+                        "values of type `{violating_type}` are not guaranteed to be compatible \
+                        with polymorphic {tail_kind} `{tail}`"
+                    ))
+                    .with_labels(mk_expr_label(&pos))
+                    .with_notes(vec![
+                        "Type variables introduced in a `forall` range over all possible types."
+                            .to_owned(),
+                    ])]
             }
             TypecheckError::FlatTypeInTermPosition { flat, pos } => {
-                vec![
-                    Diagnostic::error()
-                        .with_message(
-                            "types containing user-defined contracts cannot be converted into contracts",
-                        )
-                        .with_labels(
-                            pos.into_opt().map(|span|
-                                    primary(&span).with_message("This type (in contract position)")
-                                )
-                                .into_iter()
-                            .chain(
-                                flat.pos.into_opt().map(|span|
-                                    secondary(&span).with_message("contains this user-defined contract")
-                                ))
-                            .collect()
-                    ),
-                ]
+                vec![Diagnostic::error()
+                    .with_message(
+                        "types containing user-defined contracts cannot be converted into contracts"
+                    )
+                    .with_labels(
+                        pos.into_opt()
+                            .map(|span| {
+                                primary(&span).with_message("This type (in contract position)")
+                            })
+                            .into_iter()
+                            .chain(flat.pos.into_opt().map(|span| {
+                                secondary(&span).with_message("contains this user-defined contract")
+                            }))
+                            .collect(),
+                    )]
             }
             TypecheckError::VarLevelMismatch {
                 type_var: constant,
