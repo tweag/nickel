@@ -149,7 +149,7 @@ Nickel performs type inference, so that you don't have to write the type for
 You can use a *type wildcard*, written `_`, when you want the typechecker to
 infer the part of a type for you:
 
-```nickel-parse
+```nickel
 # will infer `Array String`
 let foo : Array _ = ["hello", "there"] in
 
@@ -157,7 +157,7 @@ let foo : Array _ = ["hello", "there"] in
 let r : {first: _, second: _} = {first = 0 + 1, second = 1 < 2} in
 
 # will infer String
-std.array.first foo : _
+std.array.first ["hello", "there"] : _
 ```
 
 For debugging purpose, the quickest way to have the typechecker kick in is
