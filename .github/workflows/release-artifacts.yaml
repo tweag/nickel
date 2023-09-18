@@ -19,7 +19,7 @@ jobs:
     outputs:
       instance_id: ${{ steps.invoke-start.outputs.INSTANCE_ID }}
     steps:
-      - uses: aws-actions/configure-aws-credentials@v3
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.EC2_ROLE }}
           aws-region: ${{ vars.EC2_REGION }}
@@ -53,7 +53,7 @@ jobs:
       - start-runner
       - docker-multiplatform-image
     steps:
-      - uses: aws-actions/configure-aws-credentials@v3
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.EC2_ROLE }}
           aws-region: ${{ vars.EC2_REGION }}

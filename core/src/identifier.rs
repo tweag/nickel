@@ -2,6 +2,7 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Borrow,
     fmt::{self, Debug},
     hash::Hash,
 };
@@ -170,6 +171,12 @@ impl Eq for LocIdent {}
 impl Hash for LocIdent {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.ident.hash(state)
+    }
+}
+
+impl Borrow<Ident> for LocIdent {
+    fn borrow(&self) -> &Ident {
+        &self.ident
     }
 }
 

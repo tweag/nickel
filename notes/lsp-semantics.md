@@ -110,7 +110,7 @@ struct DefInfo {
 }
 ```
 
-Then we have a function `field_infos(RichTerm) -> DefInfo` that looks something like:
+Then we have a function `field_infos(RichTerm or Type) -> DefInfo` that looks something like:
 
 ```text
 field_infos(e1 & e2) = field_infos(e1) U field_infos(e2)
@@ -120,6 +120,10 @@ field_infos(head x) = field_infos(head)
 field_infos(var) = field_infos(goto_definition(var))
 field_infos(e1 | C) = field_infos(e1) U field_infos(C)
 field_infos(foo.bar) = field_infos(goto_definition(bar in foo.bar))
+field_infos(Term::RecRecord) = ... the actual fields defined on the record
+field_infos(TypeF::Record) = ... the actual fields defined on the record type
+field_infos(TypeF::Dict) = ... every possible identifier as a field (represented
+                               lazily, obviously)
 other cases => empty
 ```
 

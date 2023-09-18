@@ -77,7 +77,7 @@ use std::{
     num::NonZeroU16,
 };
 
-use self::linearization::{Linearization, Linearizer, StubHost};
+use self::linearization::{Linearizer, StubHost};
 
 mod destructuring;
 pub mod error;
@@ -1267,14 +1267,8 @@ pub fn type_check(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_linearize(
-        t,
-        initial_ctxt,
-        resolver,
-        StubHost::<(), (), _>::new(),
-        Linearization::new(()),
-    )
-    .map(|(wildcards, _)| wildcards)
+    type_check_linearize(t, initial_ctxt, resolver, StubHost::<(), (), _>::new(), ())
+        .map(|(wildcards, _)| wildcards)
 }
 
 /// Typecheck a term and build its linearization. A linearization is a sequential data structure
@@ -1287,7 +1281,7 @@ pub fn type_check_linearize<LL>(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
     mut linearizer: LL,
-    mut building: Linearization<LL::Building>,
+    mut building: LL::Building,
 ) -> Result<(Wildcards, LL::Completed), TypecheckError>
 where
     LL: Linearizer<CompletionExtra = Extra>,
@@ -1319,7 +1313,7 @@ where
         names,
         wildcards: result.clone(),
     };
-    let lin = linearizer.complete(building, extra).into_inner();
+    let lin = linearizer.complete(building, &extra);
 
     Ok((result, lin))
 }
@@ -1329,7 +1323,7 @@ where
 fn walk<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
@@ -1507,7 +1501,7 @@ fn walk<L: Linearizer>(
 fn walk_type<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     ty: &Type,
 ) -> Result<(), TypecheckError> {
@@ -1539,7 +1533,7 @@ fn walk_type<L: Linearizer>(
 fn walk_rrows<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     rrows: &RecordRows,
 ) -> Result<(), TypecheckError> {
@@ -1559,7 +1553,7 @@ fn walk_rrows<L: Linearizer>(
 fn walk_field<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     field: &Field,
 ) -> Result<(), TypecheckError> {
@@ -1578,7 +1572,7 @@ fn walk_field<L: Linearizer>(
 fn walk_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     annot: &TypeAnnotation,
     rt: &RichTerm,
@@ -1591,7 +1585,7 @@ fn walk_annotated<L: Linearizer>(
 fn walk_with_annot<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
@@ -1671,7 +1665,7 @@ fn walk_with_annot<L: Linearizer>(
 fn check<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     rt: &RichTerm,
     ty: UnifType,
@@ -1686,7 +1680,7 @@ fn check<L: Linearizer>(
 fn check_visited<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     rt: &RichTerm,
     ty: UnifType,
@@ -2109,7 +2103,7 @@ pub fn subsumption(
 fn check_field<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     id: LocIdent,
     field: &Field,
@@ -2149,7 +2143,7 @@ fn check_field<L: Linearizer>(
 fn infer_annotated<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     annot: &TypeAnnotation,
     rt: &RichTerm,
@@ -2170,7 +2164,7 @@ fn infer_annotated<L: Linearizer>(
 fn infer_with_annot<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
@@ -2250,7 +2244,7 @@ fn infer_with_annot<L: Linearizer>(
 fn infer<L: Linearizer>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     linearizer: L,
     rt: &RichTerm,
 ) -> Result<UnifType, TypecheckError> {
@@ -2266,7 +2260,7 @@ fn infer<L: Linearizer>(
 fn infer_visited<L: Linearizer>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut Linearization<L::Building>,
+    lin: &mut L::Building,
     mut linearizer: L,
     rt: &RichTerm,
     item_id: Option<L::ItemId>,

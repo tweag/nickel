@@ -15,7 +15,11 @@ use nickel_lang_core::{
     transform::import_resolution,
 };
 
-use crate::{files::typecheck, server::Server};
+use crate::{
+    files::typecheck,
+    server::Server,
+    usage::{Environment, UsageLookup},
+};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -118,7 +122,11 @@ fn resolve_imports(rt: RichTerm, server: &mut Server) -> RichTerm {
 ///
 /// For example, if the input is `let foo = bar.something.`, we will return
 /// `bar.something` (but parsed, of course).
-pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> Option<RichTerm> {
+pub fn parse_path_from_incomplete_input(
+    range: RawSpan,
+    env: &Environment,
+    server: &mut Server,
+) -> Option<RichTerm> {
     let text = server.cache.files().source(range.src_id);
     let subtext = &text[range.start.to_usize()..range.end.to_usize()];
 
@@ -152,7 +160,13 @@ pub fn parse_path_from_incomplete_input(range: RawSpan, server: &mut Server) -> 
         .replace_string(SourcePath::Snippet(path), to_parse);
 
     match server.cache.parse_nocache(file_id) {
-        Ok((rt, _errors)) => Some(resolve_imports(rt, server)),
+        Ok((rt, _errors)) => {
+            server
+                .lin_registry
+                .usage_lookups
+                .insert(file_id, UsageLookup::new_with_env(&rt, env));
+            Some(resolve_imports(rt, server))
+        }
         Err(_) => None,
     }
 }

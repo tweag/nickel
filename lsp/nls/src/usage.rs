@@ -7,10 +7,29 @@ use nickel_lang_core::{
     term::{record::FieldMetadata, RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{
-    field_walker::{DefWithPath, TermAtPath},
-    identifier::LocIdent,
-};
+use crate::{field_walker::DefWithPath, identifier::LocIdent};
+
+/// A term and a path.
+///
+/// This is morally equivalent to (but a more convenient representation than)
+/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TermAtPath {
+    pub term: RichTerm,
+    /// A path of identifiers, in left-to-right order.
+    ///
+    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
+    pub path: Vec<Ident>,
+}
+
+impl From<RichTerm> for TermAtPath {
+    fn from(term: RichTerm) -> Self {
+        Self {
+            term,
+            path: Vec::new(),
+        }
+    }
+}
 
 pub type Environment = GenericEnvironment<Ident, DefWithPath>;
 
@@ -35,12 +54,17 @@ impl EnvExt for Environment {
         meta: Option<FieldMetadata>,
     ) {
         let ident = id.into();
+        let (term, path) = val
+            .map(Into::into)
+            .map(|term_at_path| (term_at_path.term, term_at_path.path))
+            .unzip();
         self.insert(
             ident.ident,
             DefWithPath {
                 ident,
-                value: val.map(Into::into),
+                value: term.map(Into::into),
                 metadata: meta,
+                path: path.unwrap_or_default(),
             },
         );
     }
@@ -68,8 +92,12 @@ pub struct UsageLookup {
 impl UsageLookup {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
     pub fn new(rt: &RichTerm) -> Self {
+        Self::new_with_env(rt, &Environment::new())
+    }
+
+    pub fn new_with_env(rt: &RichTerm, env: &Environment) -> Self {
         let mut table = Self::default();
-        table.fill(rt, &Environment::new());
+        table.fill(rt, env);
         table
     }
 
@@ -215,7 +243,7 @@ mod tests {
 
         let def = table.def(&x1).unwrap();
         assert_eq!(def.ident, x0);
-        assert_matches!(def.value.as_ref().unwrap().term.as_ref(), &Term::Num(_));
+        assert_matches!(def.value().unwrap().term.as_ref(), Term::Num(_));
     }
 
     #[test]
@@ -235,18 +263,15 @@ mod tests {
 
         let x_def = table.def(&x1).unwrap();
         assert_eq!(x_def.ident, x0);
-        assert!(x_def.value.as_ref().unwrap().path.is_empty());
+        assert!(x_def.path().is_empty());
 
         let a_def = table.def(&a1).unwrap();
         assert_eq!(a_def.ident, a0);
-        assert_eq!(a_def.value.as_ref().unwrap().path, vec!["foo".into()]);
+        assert_eq!(a_def.path(), &["foo".into()]);
 
         let baz_def = table.def(&baz1).unwrap();
         assert_eq!(baz_def.ident, baz0);
-        assert_eq!(
-            baz_def.value.as_ref().unwrap().path,
-            vec!["foo".into(), "bar".into()]
-        );
+        assert_eq!(baz_def.path(), vec!["foo".into(), "bar".into()]);
     }
 
     #[test]

@@ -26,12 +26,13 @@
 //! depend on each metadata.
 
 use super::*;
+use crate::combine::Combine;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
+    BinaryOp, IndexMap, RichTerm, Term,
 };
 use crate::transform::Closurizable;
 
@@ -324,7 +325,7 @@ pub fn merge<C: Cache>(
                     // about them anymore, and dependencies are stored at the level of revertible
                     // cache elements directly.
                     Term::RecRecord(
-                        RecordData::new(m, RecordAttrs::merge(r1.attrs, r2.attrs), None),
+                        RecordData::new(m, RecordAttrs::combine(r1.attrs, r2.attrs), None),
                         Vec::new(),
                         None,
                     ),
@@ -411,48 +412,23 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
     pending_contracts.extend(pending_contracts2.revert_closurize(cache, env_final, env2.clone()));
 
-    // Annotation aren't used anymore at runtime. We still accumulate them to answer metadata
-    // queries, but we don't need to e.g. closurize or revert them.
-    let mut annot1 = metadata1.annotation;
-    let mut annot2 = metadata2.annotation;
-
-    // If both have type annotations, we arbitrarily choose the first one as the type annotation
-    // for the resulting field. This doesn't make any difference operationally.
-    let typ = match (annot1.typ.take(), annot2.typ.take()) {
-        (Some(ctr1), Some(ctr2)) => {
-            annot1.contracts.push(ctr2);
-            Some(ctr1)
-        }
-        (ty1, ty2) => ty1.or(ty2),
-    };
-
-    let contracts: Vec<_> = annot1
-        .contracts
-        .into_iter()
-        .chain(annot2.contracts)
-        .collect();
-
-    let metadata = FieldMetadata {
-        doc: merge_doc(metadata1.doc, metadata2.doc),
-        annotation: TypeAnnotation { typ, contracts },
-        // If one of the record requires this field, then it musn't be optional. The
-        // resulting field is optional iff both are.
-        opt: metadata1.opt && metadata2.opt,
-        // The resulting field will be suppressed from serialization if either of the fields to be
-        // merged is.
-        not_exported: metadata1.not_exported || metadata2.not_exported,
-        priority,
-    };
-
     Ok(Field {
-        metadata,
+        metadata: FieldMetadata {
+            doc: merge_doc(metadata1.doc, metadata2.doc),
+            annotation: Combine::combine(metadata1.annotation, metadata2.annotation),
+            // If one of the record requires this field, then it musn't be optional. The
+            // resulting field is optional iff both are.
+            opt: metadata1.opt && metadata2.opt,
+            not_exported: metadata1.not_exported || metadata2.not_exported,
+            priority,
+        },
         value,
         pending_contracts,
     })
 }
 
 /// Merge two optional documentations.
-fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
+pub(crate) fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<String> {
     //FIXME: how to merge documentation? Just concatenate?
     doc1.or(doc2)
 }

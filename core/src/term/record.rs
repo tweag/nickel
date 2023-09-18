@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    combine::Combine,
     error::EvalError,
     identifier::{Ident, LocIdent},
     label::Label,
@@ -14,10 +15,10 @@ pub struct RecordAttrs {
     pub open: bool,
 }
 
-impl RecordAttrs {
-    pub fn merge(attrs1: RecordAttrs, attrs2: RecordAttrs) -> RecordAttrs {
+impl Combine for RecordAttrs {
+    fn combine(left: Self, right: Self) -> Self {
         RecordAttrs {
-            open: attrs1.open || attrs2.open,
+            open: left.open || right.open,
         }
     }
 }

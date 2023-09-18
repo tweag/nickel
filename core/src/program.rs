@@ -28,8 +28,7 @@ use crate::{
     identifier::LocIdent,
     label::Label,
     term::{
-        make as mk_term, make::builder, record::Field, record::RecordData, BinaryOp, MergePriority,
-        RichTerm, RuntimeContract, Term,
+        make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
     },
 };
 
@@ -388,6 +387,7 @@ impl<EC: EvalCache> Program<EC> {
         use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
+        use crate::term::{record::RecordData, RuntimeContract};
 
         let (t, initial_env) = self.prepare_eval()?;
 

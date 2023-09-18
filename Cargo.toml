@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.1.1"
+version = "1.2.1"
 authors = ["The Nickel Team <nickel-lang@protonmail.com>"]
 license = "MIT"
 edition = "2021"
@@ -21,7 +21,7 @@ homepage = "https://nickel-lang.org"
 readme = "README.md"
 
 [workspace.dependencies]
-nickel-lang-core = { version = "0.1", path = "./core", default-features = false }
+nickel-lang-core = { version = "0.2", path = "./core", default-features = false }
 nickel-lang-utils = { version = "0.1", path = "./utils" }
 lsp-harness = { version = "0.1", path = "./lsp/lsp-harness" }
 
@@ -84,6 +84,7 @@ simple-counter = "0.1.0"
 strip-ansi-escapes = "0.2.0"
 termimad = "0.23.1"
 test-generator = "0.3.1"
+thiserror = "1.0.44"
 toml = "0.7.2"
 typed-arena = "2.0.2"
 unicode-segmentation = "1.10.1"
@@ -91,5 +92,5 @@ void = "1"
 
 topiary = { version = "0.2.3", git = "https://github.com/tweag/topiary.git", rev = "refs/heads/main" }
 # This should be kept in sync with the revision in topiary
-tree-sitter-nickel = { git = "https://github.com/nickel-lang/tree-sitter-nickel", rev = "b1a4718601ebd29a62bf3a7fd1069a99ccf48093" }
+tree-sitter-nickel = { version = "0.1.0" }
 tempfile = "3.5.0"

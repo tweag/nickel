@@ -1,87 +1,93 @@
-use std::collections::{hash_map::Entry, HashMap};
-
 use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
     pretty::ident_quoted,
-    term::{record::FieldMetadata, BinaryOp, RichTerm, Term, UnaryOp},
-    typ::TypeF,
+    term::{
+        record::{Field, FieldMetadata, RecordData},
+        BinaryOp, RichTerm, Term, TypeAnnotation, UnaryOp,
+    },
+    typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::{identifier::LocIdent, server::Server, usage::Environment};
+use crate::{identifier::LocIdent, server::Server};
 
-/// A term and a path.
+/// A `FieldHaver` is something that... has fields.
 ///
-/// This is morally equivalent to (but a more convenient representation than)
-/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
+/// You can use a [`FieldResolver`] to resolve terms, or terms with paths, to `FieldHaver`s.
 #[derive(Clone, Debug, PartialEq)]
-pub struct TermAtPath {
-    pub term: RichTerm,
-    /// A path of identifiers, in left-to-right order.
-    ///
-    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
-    pub path: Vec<Ident>,
+pub enum FieldHaver {
+    RecordTerm(RecordData),
+    Dict(Type),
+    RecordType(RecordRows),
 }
 
-impl TermAtPath {}
+impl FieldHaver {
+    /// If this `FieldHaver` has a field named `id`, returns its value.
+    fn get(&self, id: Ident) -> Option<FieldContent> {
+        match self {
+            FieldHaver::RecordTerm(data) => data
+                .fields
+                .get(&id)
+                .map(|field| FieldContent::RecordField(field.clone())),
+            FieldHaver::Dict(ty) => Some(FieldContent::Type(ty.clone())),
+            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(FieldContent::Type),
+        }
+    }
 
-impl From<RichTerm> for TermAtPath {
-    fn from(term: RichTerm) -> Self {
-        Self {
-            term,
-            path: Vec::new(),
+    /// Returns all fields in this `FieldHaver`, rendered as LSP completion items.
+    pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
+        match self {
+            FieldHaver::RecordTerm(data) => {
+                let iter = data.fields.iter().map(|(id, val)| CompletionItem {
+                    label: ident_quoted(id),
+                    detail: metadata_detail(&val.metadata),
+                    kind: Some(CompletionItemKind::Property),
+                    documentation: metadata_doc(&val.metadata),
+                    ..Default::default()
+                });
+                Box::new(iter)
+            }
+            FieldHaver::Dict(_) => Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>,
+            FieldHaver::RecordType(rows) => {
+                let iter = rows.iter().filter_map(|r| match r {
+                    RecordRowsIteratorItem::TailDyn => None,
+                    RecordRowsIteratorItem::TailVar(_) => None,
+                    RecordRowsIteratorItem::Row(r) => Some(CompletionItem {
+                        label: ident_quoted(&r.id),
+                        kind: Some(CompletionItemKind::Property),
+                        detail: Some(r.typ.to_string()),
+                        ..Default::default()
+                    }),
+                });
+                Box::new(iter)
+            }
         }
     }
 }
 
-/// The position at which a name is defined (possibly also with a value).
+/// [`FieldHaver`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Def {
-    /// The identifier at the definition site.
-    pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one. If the definition
-    /// was made by a `let` binding, there will be a value; if it was made in a
-    /// function definition, there will not be a value.
-    ///
-    /// For example, in `{ foo = 1 }`, this will point at the `1`.
-    pub value: Option<RichTerm>,
-    /// Field metadata.
-    pub metadata: Option<FieldMetadata>,
+enum FieldContent {
+    RecordField(Field),
+    Type(Type),
 }
 
-impl Def {
-    fn doc(&self) -> Option<Documentation> {
-        let doc = self.metadata.as_ref()?.doc.as_ref()?;
-        Some(Documentation::MarkupContent(MarkupContent {
-            kind: MarkupKind::Markdown,
-            value: doc.clone(),
-        }))
-    }
+fn metadata_doc(m: &FieldMetadata) -> Option<Documentation> {
+    let doc = m.doc.as_ref()?;
+    Some(Documentation::MarkupContent(MarkupContent {
+        kind: MarkupKind::Markdown,
+        value: doc.clone(),
+    }))
+}
 
-    // If the field is annotated, returns its type annotation (preferred) or its
-    // contract annotation (fallback).
-    fn detail(&self) -> Option<String> {
-        self.metadata
-            .as_ref()
-            .and_then(|FieldMetadata { annotation, .. }| {
-                annotation
-                    .typ
-                    .as_ref()
-                    .map(|ty| ty.typ.to_string())
-                    .or_else(|| annotation.contracts_to_string())
-            })
-    }
-
-    /// Creates a completion item from this definition.
-    pub fn to_completion_item(&self) -> CompletionItem {
-        CompletionItem {
-            label: ident_quoted(&self.ident.into()),
-            detail: self.detail(),
-            kind: Some(CompletionItemKind::Property),
-            documentation: self.doc(),
-            ..Default::default()
-        }
-    }
+// If the field is annotated, returns its type annotation (preferred) or its
+// contract annotation (fallback).
+fn metadata_detail(m: &FieldMetadata) -> Option<String> {
+    m.annotation
+        .typ
+        .as_ref()
+        .map(|ty| ty.typ.to_string())
+        .or_else(|| m.annotation.contracts_to_string())
 }
 
 /// A definition whose value might need to be accessed through a path.
@@ -101,89 +107,89 @@ impl Def {
 pub struct DefWithPath {
     /// The identifier at the definition site.
     pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one.
+    /// The value assigned by the definition, if there is one. If the definition
+    /// was made by a `let` binding, there will be a value; if it was made in a
+    /// function definition, there will not be a value.
     ///
-    /// For example, in `{ foo = 1 }`, this could point at the `1`.
-    ///
-    /// Because of pattern bindings, there could also be a path associated with
-    /// the value. For example, in
-    ///
-    /// ```text
-    /// let { a = { b } } = val in ...
-    /// ```
-    ///
-    /// the name `b` is bound to the term `val` at the path `[a, b]`.
-    pub value: Option<TermAtPath>,
-    /// Field metadata.
+    /// For example, in `{ foo = 1 }`, this will point at the `1`.
+    pub value: Option<RichTerm>,
+    /// The path within the value that this binding refers to.
+    pub path: Vec<Ident>,
     pub metadata: Option<FieldMetadata>,
 }
 
+#[cfg(test)]
 impl DefWithPath {
-    fn resolve_terms(&self, env: &Environment, server: &Server) -> Vec<Def> {
-        match &self.value {
-            Some(val) if !val.path.is_empty() => {
-                // Calling `resolve_path` on x with path [foo, bar] returns all
-                // the fields *in* x.foo.bar. We want the value(s) of x.foo.bar,
-                // so use `resolve_path` to get x.foo and then find the bars in it.
-                // unwrap: we just checked the path is non-empty
-                let (last, path) = val.path.split_last().unwrap();
-                FieldDefs::resolve_path(&val.term, path, env, server)
-                    .fields
-                    .remove(last)
-                    .unwrap_or_default()
-            }
-            _ => {
-                vec![Def {
-                    ident: self.ident,
-                    value: self.value.as_ref().map(|tp| tp.term.clone()),
-                    metadata: self.metadata.clone(),
-                }]
-            }
-        }
+    pub fn path(&self) -> &[Ident] {
+        &self.path
+    }
+
+    pub fn value(&self) -> Option<&RichTerm> {
+        self.value.as_ref()
     }
 }
 
-/// A map from identifiers to the defs that they refer to.
-#[derive(Clone, Debug, Default)]
-pub struct FieldDefs {
-    fields: HashMap<Ident, Vec<Def>>,
+/// Contains the context needed to resolve fields.
+#[derive(Clone)]
+pub struct FieldResolver<'a> {
+    server: &'a Server,
 }
 
-impl FieldDefs {
-    /// Resolve a record path iteratively, returning all the fields defined on the final path
-    /// element.
+impl<'a> FieldResolver<'a> {
+    pub fn new(server: &'a Server) -> Self {
+        Self { server }
+    }
+
+    /// Resolve a record path iteratively.
     ///
-    /// `env` is an environment that only gets used (and even then, only as a fallback) for the
-    /// first layer of variable resolutions. After that, variables are resolved using the
-    /// precomputed usage tables. This mechanism allows providing an initial environment for input
-    /// that doesn't parse, and hence doesn't exist in the precomputed usage tables.
-    ///
-    /// For example, in `let x = ... in let y = x in [ y.` we will rely on the initial environment
-    /// to resolve the `y` in `[ y.`, and after that we will use the precomputed tables to resolve
-    /// the `x`.
-    pub fn resolve_path<'a>(
-        rt: &'a RichTerm,
-        mut path: &'a [Ident],
-        env: &Environment,
-        server: &Server,
-    ) -> Self {
-        let mut fields = FieldDefs::resolve(rt, env, server);
+    /// Returns all the field-having objects that the final path element refers to.
+    pub fn resolve_term_path(&self, rt: &RichTerm, mut path: &[Ident]) -> Vec<FieldHaver> {
+        let mut fields = self.resolve_term(rt);
 
         while let Some((id, tail)) = path.split_first() {
             path = tail;
-            let defs = fields.fields.remove(id).unwrap_or_default();
-            fields.fields.clear();
+            let values = fields
+                .iter()
+                .filter_map(|haver| haver.get(*id))
+                .collect::<Vec<_>>();
+            fields.clear();
 
-            for rt in defs.into_iter().filter_map(|d| d.value) {
-                fields = fields.merge_from(FieldDefs::resolve(&rt, env, server));
+            for value in values {
+                match value {
+                    FieldContent::RecordField(field) => {
+                        if let Some(val) = &field.value {
+                            fields.extend_from_slice(&self.resolve_term(val))
+                        }
+                        fields.extend(self.resolve_annot(&field.metadata.annotation));
+                    }
+                    FieldContent::Type(ty) => {
+                        fields.extend_from_slice(&self.resolve_type(&ty));
+                    }
+                }
             }
         }
 
         fields
     }
 
-    pub fn defs(&self) -> impl Iterator<Item = &Def> {
-        self.fields.values().flat_map(|defs| defs.iter())
+    fn resolve_def_with_path(&self, def: &DefWithPath) -> Vec<FieldHaver> {
+        let mut fields = Vec::new();
+
+        if let Some(val) = &def.value {
+            fields.extend_from_slice(&self.resolve_term_path(val, &def.path))
+        }
+        if let Some(meta) = &def.metadata {
+            fields.extend(self.resolve_annot(&meta.annotation));
+        }
+        fields
+    }
+
+    fn resolve_annot(&'a self, annot: &'a TypeAnnotation) -> impl Iterator<Item = FieldHaver> + 'a {
+        annot
+            .contracts
+            .iter()
+            .chain(annot.typ.iter())
+            .flat_map(|lty| self.resolve_type(&lty.typ).into_iter())
     }
 
     /// Find all the fields that are defined on a term.
@@ -191,104 +197,62 @@ impl FieldDefs {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    ///
-    /// `env` is an environment used only for the initial resolutions; see [`Self::resolve_path`]
-    fn resolve(rt: &RichTerm, env: &Environment, server: &Server) -> FieldDefs {
-        match rt.term.as_ref() {
+    fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
+        let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
-                let fields = data
-                    .fields
-                    .iter()
-                    .map(|(&ident, field)| {
-                        (
-                            ident.ident(),
-                            vec![Def {
-                                ident: ident.into(),
-                                value: field.value.clone().map(From::from),
-                                metadata: Some(field.metadata.clone()),
-                            }],
-                        )
-                    })
-                    .collect();
-                FieldDefs { fields }
+                vec![FieldHaver::RecordTerm(data.clone())]
             }
-            Term::Var(id) => server
+            Term::Var(id) => self
+                .server
                 .lin_registry
                 .get_def(&(*id).into())
-                .or_else(|| env.get(&id.ident()))
                 .map(|def| {
                     log::info!("got def {def:?}");
 
-                    // The definition of this identifier is unlikely to belong to the
-                    // environment we started with, especially because the enviroment
-                    // mechanism is only used for providing definitions to incompletely
-                    // parsed input.
-                    let env = Environment::new();
-                    let defs = def.resolve_terms(&env, server);
-                    let terms = defs.iter().filter_map(|def| def.value.as_ref());
-                    FieldDefs::resolve_all(terms, &env, server)
+                    self.resolve_def_with_path(def)
                 })
                 .unwrap_or_default(),
-            Term::ResolvedImport(file_id) => {
-                let env = Environment::new();
-                server
-                    .cache
-                    .get_ref(*file_id)
-                    .map(|term| FieldDefs::resolve(term, &env, server))
-                    .unwrap_or_default()
-            }
+            Term::ResolvedImport(file_id) => self
+                .server
+                .cache
+                .get_ref(*file_id)
+                .map(|term| self.resolve_term(term))
+                .unwrap_or_default(),
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
-                FieldDefs::resolve(t1, env, server).merge_from(FieldDefs::resolve(t2, env, server))
+                combine(self.resolve_term(t1), self.resolve_term(t2))
             }
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
-                FieldDefs::resolve(body, env, server)
-            }
+            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => self.resolve_term(body),
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                FieldDefs::resolve_path(term, &[id.ident()], env, server)
+                self.resolve_term_path(term, &[id.ident()])
             }
             Term::Annotated(annot, term) => {
-                // We only check the annotated contracts, not the annotated type.
-                // (Type-based information comes from the inferred types, which
-                // already account for annotated types.)
-                let terms = annot.contracts.iter().filter_map(|ty| {
-                    // TODO: support Dict and Record types also. For now, this is
-                    // enough for completion on basic contract annotations like
-                    // (x | { foo | Number }).fo
-                    if let TypeF::Flat(rt) = &ty.typ.typ {
-                        Some(rt)
-                    } else {
-                        None
-                    }
-                });
-                terms.fold(FieldDefs::resolve(term, env, server), |acc, rt| {
-                    acc.merge_from(FieldDefs::resolve(rt, env, server))
-                })
+                let defs = self.resolve_annot(annot);
+                defs.chain(self.resolve_term(term)).collect()
             }
+            _ => Default::default(),
+        };
+
+        let typ_fields = if let Some(typ) = self.server.lin_registry.get_type(rt) {
+            log::info!("got inferred type {typ:?}");
+            self.resolve_type(typ)
+        } else {
+            Vec::new()
+        };
+
+        combine(term_fields, typ_fields)
+    }
+
+    fn resolve_type(&self, typ: &Type) -> Vec<FieldHaver> {
+        match &typ.typ {
+            TypeF::Record(rows) => vec![FieldHaver::RecordType(rows.clone())],
+            TypeF::Dict { type_fields, .. } => vec![FieldHaver::Dict(type_fields.as_ref().clone())],
+            TypeF::Flat(rt) => self.resolve_term(rt),
             _ => Default::default(),
         }
     }
+}
 
-    fn merge_from(mut self, other: FieldDefs) -> FieldDefs {
-        for (ident, defs) in other.fields {
-            match self.fields.entry(ident) {
-                Entry::Occupied(oc) => {
-                    oc.into_mut().extend_from_slice(&defs);
-                }
-                Entry::Vacant(vac) => {
-                    vac.insert(defs);
-                }
-            }
-        }
-        self
-    }
-
-    fn resolve_all<'a>(
-        terms: impl Iterator<Item = &'a RichTerm>,
-        env: &Environment,
-        server: &Server,
-    ) -> FieldDefs {
-        terms.fold(FieldDefs::default(), |acc, term| {
-            acc.merge_from(FieldDefs::resolve(term, env, server))
-        })
-    }
+fn combine<T>(mut left: Vec<T>, mut right: Vec<T>) -> Vec<T> {
+    left.append(&mut right);
+    left
 }
