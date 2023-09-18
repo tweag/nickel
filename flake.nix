@@ -183,6 +183,7 @@
           txtFilter = mkFilter ".*txt$";
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
+          mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
           importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
 
           infraFilter = mkFilter ".*/infra/.*$";
@@ -199,6 +200,7 @@
               txtFilter
               snapFilter
               scmFilter
+              mdFilter
               filterCargoSources
               importsFilter
             ] && !(builtins.any (filter: filter path type) [
