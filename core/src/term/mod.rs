@@ -1853,13 +1853,6 @@ pub trait Traverse<T>: Sized {
     }
 }
 
-#[derive(PartialEq, Eq)]
-enum Instr {
-    // only used in the BottomUp case
-    ApplyF,
-    Traverse,
-}
-
 impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
     ///
@@ -1868,109 +1861,130 @@ impl Traverse<RichTerm> for RichTerm {
     where
         F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let mut root = self.clone();
-        let mut stack: Vec<(Instr, *mut RichTerm)> = vec![(Instr::Traverse, &mut root)];
-        // let mut stack: Vec<&mut RichTerm> = vec![&mut root];
+        #[derive(PartialEq, Eq)]
+        enum Instruction {
+            ApplyF,
+            Recurse,
+        }
+        use Instruction::*;
 
-        while let Some((inst, next)) = stack.pop() {
-            // by the time we get to a value in the stack, we have to deal with all the oustanding references to sub-nodes
+        let mut root = self.clone();
+        let mut todo: Vec<(Instruction, *mut RichTerm)> = vec![(Recurse, &mut root)];
+
+        while let Some((instruction, next)) = todo.pop() {
+            // If TopDown, we don't need unsafe. We could just use a reference
+            // If BottomUp, we keep a reference to a parent and child node alive
+            // at the same time on the `todo` stack
+            // It is safe because we always finish with the children before we touch the parent.
+            // It's morally the same as
+            // ```
+            // let parent = &mut <node>;
+            // for child in &mut parent.children {
+            //   child.traverse()
+            // }
+            // f(parent)
+            // ```
+            // except we want to avoid recursion, so we have to keep all the
+            // children around until subsequent iterations of the outer loop
+            //
+            // XXX: not sure if we can get the same result with Rc or RefCell.
+            // The problem is that the parent and child aren't the same object,
+            // but we can't hold a reference to both at the same time. I tried
+            // for a while and couldn't manage it.
             let next = unsafe { &mut *next };
 
-            if inst == Instr::ApplyF {
-                *next = f(next.clone())?;
-                continue;
-            }
+            match instruction {
+                ApplyF => *next = f(next.clone())?,
+                Recurse => {
+                    match order {
+                        TraverseOrder::TopDown => {
+                            *next = f(next.clone())?;
+                        }
+                        // postpone f(next) until we've done all its children
+                        // `todo` is a stack, so first on is last off
+                        TraverseOrder::BottomUp => todo.push((ApplyF, next)),
+                    };
 
-            match order {
-                TraverseOrder::TopDown => {
-                    *next = f(next.clone())?;
-                }
-                // postpone applying f until we've gone through all the nodes underneath
-                TraverseOrder::BottomUp => stack.push((Instr::ApplyF, next)),
-            };
-            #[allow(unused_variables)]
-            match SharedTerm::make_mut(&mut next.term) {
-                Term::Fun(id, t) => {
-                    stack.push((Instr::Traverse, t));
-                }
-                Term::FunPattern(id, d, t) => {
-                    stack.push((Instr::Traverse, t));
-                }
-                Term::Let(id, t1, t2, attrs) => {
-                    stack.push((Instr::Traverse, t1));
-                    stack.push((Instr::Traverse, t2));
-                }
-                Term::LetPattern(id, pat, t1, t2) => {
-                    stack.push((Instr::Traverse, t1));
-                    stack.push((Instr::Traverse, t2));
-                }
-                Term::App(t1, t2) => {
-                    stack.push((Instr::Traverse, t1));
-                    stack.push((Instr::Traverse, t2));
-                }
-                Term::Match { cases, default } => {
-                    for (_, t) in cases {
-                        stack.push((Instr::Traverse, t));
-                    }
-                    if let Some(t) = default.as_mut() {
-                        stack.push((Instr::Traverse, t));
-                    }
-                }
-                Term::Op1(op, t) => {
-                    stack.push((Instr::Traverse, t));
-                }
-                Term::Op2(op, t1, t2) => {
-                    stack.push((Instr::Traverse, t1));
-                    stack.push((Instr::Traverse, t2));
-                }
-                Term::OpN(op, ts) => {
-                    for t in ts {
-                        stack.push((Instr::Traverse, t));
-                    }
-                }
-                Term::Sealed(i, t1, lbl) => {
-                    stack.push((Instr::Traverse, t1));
-                }
-                Term::Record(record) => {
-                    // The annotation on `fields_res` uses Result's corresponding trait to convert from
-                    // Iterator<Result> to a Result<Iterator>
-                    for (_, field) in &mut record.fields {
-                        *field = field.clone().traverse(f, order)?;
-                    }
-                }
-                Term::RecRecord(record, dyn_fields, deps) => {
-                    // The annotation on `map_res` uses Result's corresponding trait to convert from
-                    // Iterator<Result> to a Result<Iterator>
-                    for (_, field) in &mut record.fields {
-                        *field = field.clone().traverse(f, order)?;
-                    }
-                    for (id_t, field) in dyn_fields {
-                        stack.push((Instr::Traverse, id_t));
-                        *field = field.clone().traverse(f, order)?;
-                    }
-                }
-                Term::Array(ts, attrs) => {
-                    for t in ts.make_mut() {
-                        stack.push((Instr::Traverse, t));
-                    }
-                    // XXX: do we not need to traverse the contracts in attrs?
-                }
-                Term::StrChunks(chunks) => {
-                    for chunk in chunks.iter_mut() {
-                        match chunk {
-                            StrChunk::Literal(_) => (),
-                            StrChunk::Expr(t, indent) => {
-                                stack.push((Instr::Traverse, t));
+                    match SharedTerm::make_mut(&mut next.term) {
+                        Term::Fun(_, t) => {
+                            todo.push((Recurse, t));
+                        }
+                        Term::FunPattern(_, _, t) => {
+                            todo.push((Recurse, t));
+                        }
+                        Term::Let(_, t1, t2, _) => {
+                            todo.push((Recurse, t1));
+                            todo.push((Recurse, t2));
+                        }
+                        Term::LetPattern(_, _, t1, t2) => {
+                            todo.push((Recurse, t1));
+                            todo.push((Recurse, t2));
+                        }
+                        Term::App(t1, t2) => {
+                            todo.push((Recurse, t1));
+                            todo.push((Recurse, t2));
+                        }
+                        Term::Match { cases, default } => {
+                            for (_, t) in cases {
+                                todo.push((Recurse, t));
+                            }
+                            if let Some(t) = default.as_mut() {
+                                todo.push((Recurse, t));
                             }
                         }
+                        Term::Op1(_, t) => {
+                            todo.push((Recurse, t));
+                        }
+                        Term::Op2(_, t1, t2) => {
+                            todo.push((Recurse, t1));
+                            todo.push((Recurse, t2));
+                        }
+                        Term::OpN(_, ts) => {
+                            for t in ts {
+                                todo.push((Recurse, t));
+                            }
+                        }
+                        Term::Sealed(_, t, _) => {
+                            todo.push((Recurse, t));
+                        }
+                        Term::Record(record) => {
+                            for (_, field) in &mut record.fields {
+                                *field = field.clone().traverse(f, order)?;
+                            }
+                        }
+                        Term::RecRecord(record, dyn_fields, _) => {
+                            for (_, field) in &mut record.fields {
+                                *field = field.clone().traverse(f, order)?;
+                            }
+                            for (id_t, field) in dyn_fields {
+                                todo.push((Recurse, id_t));
+                                *field = field.clone().traverse(f, order)?;
+                            }
+                        }
+                        // XXX: do we not need to traverse the contracts in attrs?
+                        Term::Array(ts, _attrs) => {
+                            for t in ts.make_mut() {
+                                todo.push((Recurse, t));
+                            }
+                        }
+                        Term::StrChunks(chunks) => {
+                            for chunk in chunks.iter_mut() {
+                                match chunk {
+                                    StrChunk::Literal(_) => (),
+                                    StrChunk::Expr(t, _) => {
+                                        todo.push((Recurse, t));
+                                    }
+                                }
+                            }
+                        }
+                        Term::Annotated(annot, term) => {
+                            *annot = annot.clone().traverse(f, order)?;
+                            todo.push((Recurse, term));
+                        }
+                        Term::Type(ty) => *ty = ty.clone().traverse(f, order)?,
+                        _ => (),
                     }
                 }
-                Term::Annotated(annot, term) => {
-                    *annot = annot.clone().traverse(f, order)?;
-                    stack.push((Instr::Traverse, term));
-                }
-                Term::Type(ty) => *ty = ty.clone().traverse(f, order)?,
-                _ => (),
             }
         }
         Ok(root)
