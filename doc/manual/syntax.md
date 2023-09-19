@@ -125,8 +125,7 @@ Here are some examples of string handling in Nickel:
 
 > m%"Well, if this isn't a multiline string?
   Yes it is, indeed it is"%
-"Well, if this isn't a multiline string?
-Yes it is, indeed it is"
+"Well, if this isn't a multiline string?\n  Yes it is, indeed it is"
 
 > "Hello" ++ "World"
 "HelloWorld"
@@ -164,7 +163,7 @@ The only special sequence in a multiline string is the string interpolation:
 
 ```nickel-repl
 > m%"Multiline\nString?"%
-"Multiline\nString?"
+"Multiline\\nString?"
 
 > m%"Multiline%{"\n"}String"%
 "Multiline
