@@ -44,17 +44,17 @@ What to do depends on the context:
 
     Example:
 
-    ```nickel
-    let foo : Number =
-      let addTwo = fun x => x + 2 in
-      addTwo 4
-    in ...
+    ```nickel #repl
+    > let foo : Number =
+        let addTwo = fun x => x + 2 in
+        addTwo 4
+      in {}
 
-    let foo : Number =
-      let ev : ((Number -> Number) -> Number) -> Number -> Number
-        = fun f x => f (std.function.const x) in
-      ev (fun f => f 0) 1
-    in ...
+    > let foo : Number =
+        let ev : ((Number -> Number) -> Number) -> Number -> Number
+          = fun f x => f (std.function.const x) in
+        ev (fun f => f 0) 1
+      in {}
     ```
 
 ## Data (records and arrays)
@@ -66,6 +66,9 @@ flexible and expressive.
 Example:
 
 ```nickel
+let PkgVersion = String in # hide-line
+let BuildSteps = String in # hide-line
+let command = fun x => x in # hide-line
 let Schema = {
   name
     | String
