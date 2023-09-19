@@ -1853,6 +1853,13 @@ pub trait Traverse<T>: Sized {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum Instr {
+    // only used in the BottomUp case
+    ApplyF,
+    Traverse,
+}
+
 impl Traverse<RichTerm> for RichTerm {
     /// Traverse through all `RichTerm`s in the tree.
     ///
@@ -1861,155 +1868,112 @@ impl Traverse<RichTerm> for RichTerm {
     where
         F: FnMut(RichTerm) -> Result<RichTerm, E>,
     {
-        let rt = match order {
-            TraverseOrder::TopDown => f(self)?,
-            TraverseOrder::BottomUp => self,
-        };
-        let pos = rt.pos;
+        let mut root = self.clone();
+        let mut stack: Vec<(Instr, *mut RichTerm)> = vec![(Instr::Traverse, &mut root)];
+        // let mut stack: Vec<&mut RichTerm> = vec![&mut root];
 
-        let result = match_sharedterm!(match (rt.term) {
-            Term::Fun(id, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Fun(id, t), pos)
-            }
-            Term::FunPattern(id, d, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::FunPattern(id, d, t), pos)
-            }
-            Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
-            }
-            Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(id, pat, t1, t2), pos)
-            }
-            Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::App(t1, t2), pos)
-            }
-            Term::Match { cases, default } => {
-                // The annotation on `map_res` use Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let cases_result: Result<IndexMap<LocIdent, RichTerm>, E> = cases
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
-                    .collect();
+        while let Some((inst, next)) = stack.pop() {
+            // by the time we get to a value in the stack, we have to deal with all the oustanding references to sub-nodes
+            let next = unsafe { &mut *next };
 
-                let default = default.map(|t| t.traverse(f, order)).transpose()?;
+            if inst == Instr::ApplyF {
+                *next = f(next.clone())?;
+                continue;
+            }
 
-                RichTerm::new(
-                    Term::Match {
-                        cases: cases_result?,
-                        default,
-                    },
-                    pos,
-                )
-            }
-            Term::Op1(op, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Op1(op, t), pos)
-            }
-            Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Op2(op, t1, t2), pos)
-            }
-            Term::OpN(op, ts) => {
-                let ts_res: Result<Vec<RichTerm>, E> =
-                    ts.into_iter().map(|t| t.traverse(f, order)).collect();
-                RichTerm::new(Term::OpN(op, ts_res?), pos)
-            }
-            Term::Sealed(i, t1, lbl) => {
-                let t1 = t1.traverse(f, order)?;
-                RichTerm::new(Term::Sealed(i, t1, lbl), pos)
-            }
-            Term::Record(record) => {
-                // The annotation on `fields_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-                    .fields
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-                    .collect();
-                RichTerm::new(
-                    Term::Record(RecordData::new(
-                        fields_res?,
-                        record.attrs,
-                        record.sealed_tail,
-                    )),
-                    pos,
-                )
-            }
-            Term::RecRecord(record, dyn_fields, deps) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-                    .fields
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,Field), E>
-                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-                    .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
-                    .into_iter()
-                    .map(|(id_t, field)| {
-                        let id_t = id_t.traverse(f, order)?;
-                        let field = field.traverse(f, order)?;
-
-                        Ok((id_t, field))
-                    })
-                    .collect();
-                RichTerm::new(
-                    Term::RecRecord(
-                        RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
-                        dyn_fields_res?,
-                        deps,
-                    ),
-                    pos,
-                )
-            }
-            Term::Array(ts, attrs) => {
-                let ts_res = Array::new(
-                    ts.into_iter()
-                        .map(|t| t.traverse(f, order))
-                        .collect::<Result<Rc<[_]>, _>>()?,
-                );
-
-                RichTerm::new(Term::Array(ts_res, attrs), pos)
-            }
-            Term::StrChunks(chunks) => {
-                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
-                    .into_iter()
-                    .map(|chunk| match chunk {
-                        chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
+            match order {
+                TraverseOrder::TopDown => {
+                    *next = f(next.clone())?;
+                }
+                // postpone applying f until we've gone through all the nodes underneath
+                TraverseOrder::BottomUp => stack.push((Instr::ApplyF, next)),
+            };
+            #[allow(unused_variables)]
+            match SharedTerm::make_mut(&mut next.term) {
+                Term::Fun(id, t) => {
+                    stack.push((Instr::Traverse, t));
+                }
+                Term::FunPattern(id, d, t) => {
+                    stack.push((Instr::Traverse, t));
+                }
+                Term::Let(id, t1, t2, attrs) => {
+                    stack.push((Instr::Traverse, t1));
+                    stack.push((Instr::Traverse, t2));
+                }
+                Term::LetPattern(id, pat, t1, t2) => {
+                    stack.push((Instr::Traverse, t1));
+                    stack.push((Instr::Traverse, t2));
+                }
+                Term::App(t1, t2) => {
+                    stack.push((Instr::Traverse, t1));
+                    stack.push((Instr::Traverse, t2));
+                }
+                Term::Match { cases, default } => {
+                    for (_, t) in cases {
+                        stack.push((Instr::Traverse, t));
+                    }
+                    if let Some(t) = default.as_mut() {
+                        stack.push((Instr::Traverse, t));
+                    }
+                }
+                Term::Op1(op, t) => {
+                    stack.push((Instr::Traverse, t));
+                }
+                Term::Op2(op, t1, t2) => {
+                    stack.push((Instr::Traverse, t1));
+                    stack.push((Instr::Traverse, t2));
+                }
+                Term::OpN(op, ts) => {
+                    for t in ts {
+                        stack.push((Instr::Traverse, t));
+                    }
+                }
+                Term::Sealed(i, t1, lbl) => {
+                    stack.push((Instr::Traverse, t1));
+                }
+                Term::Record(record) => {
+                    // The annotation on `fields_res` uses Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    for (_, field) in &mut record.fields {
+                        *field = field.clone().traverse(f, order)?;
+                    }
+                }
+                Term::RecRecord(record, dyn_fields, deps) => {
+                    // The annotation on `map_res` uses Result's corresponding trait to convert from
+                    // Iterator<Result> to a Result<Iterator>
+                    for (_, field) in &mut record.fields {
+                        *field = field.clone().traverse(f, order)?;
+                    }
+                    for (id_t, field) in dyn_fields {
+                        stack.push((Instr::Traverse, id_t));
+                        *field = field.clone().traverse(f, order)?;
+                    }
+                }
+                Term::Array(ts, attrs) => {
+                    for t in ts.make_mut() {
+                        stack.push((Instr::Traverse, t));
+                    }
+                    // XXX: do we not need to traverse the contracts in attrs?
+                }
+                Term::StrChunks(chunks) => {
+                    for chunk in chunks.iter_mut() {
+                        match chunk {
+                            StrChunk::Literal(_) => (),
+                            StrChunk::Expr(t, indent) => {
+                                stack.push((Instr::Traverse, t));
+                            }
                         }
-                    })
-                    .collect();
-
-                RichTerm::new(Term::StrChunks(chunks_res?), pos)
+                    }
+                }
+                Term::Annotated(annot, term) => {
+                    *annot = annot.clone().traverse(f, order)?;
+                    stack.push((Instr::Traverse, term));
+                }
+                Term::Type(ty) => *ty = ty.clone().traverse(f, order)?,
+                _ => (),
             }
-            Term::Annotated(annot, term) => {
-                let annot = annot.traverse(f, order)?;
-                let term = term.traverse(f, order)?;
-                RichTerm::new(Term::Annotated(annot, term), pos)
-            }
-            Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
-            }
-            _ => rt,
-        });
-
-        match order {
-            TraverseOrder::TopDown => Ok(result),
-            TraverseOrder::BottomUp => f(result),
         }
+        Ok(root)
     }
 
     fn traverse_ref<S, U>(
