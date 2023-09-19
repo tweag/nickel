@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use assert_cmd::cargo::CommandCargoExt;
 use lsp_types::request::{
-    Completion, Formatting, GotoDefinition, HoverRequest, Request as LspRequest,
+    Completion, Formatting, GotoDefinition, HoverRequest, References, Request as LspRequest,
 };
 use nickel_lang_utils::project_root::project_root;
 use test_generator::test_resources;
@@ -39,6 +39,7 @@ impl TestHarness {
             Request::Completion(c) => self.request::<Completion>(c),
             Request::Formatting(f) => self.request::<Formatting>(f),
             Request::Hover(h) => self.request::<HoverRequest>(h),
+            Request::References(r) => self.request::<References>(r),
         }
     }
 

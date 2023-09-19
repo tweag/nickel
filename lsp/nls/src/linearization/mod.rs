@@ -79,6 +79,17 @@ impl LinRegistry {
         self.usage_lookups.get(&file)?.def(ident)
     }
 
+    pub fn get_usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
+        fn inner<'a>(
+            slf: &'a LinRegistry,
+            ident: &LocIdent,
+        ) -> Option<impl Iterator<Item = &'a LocIdent>> {
+            let file = ident.pos.as_opt_ref()?.src_id;
+            Some(slf.usage_lookups.get(&file)?.usages(ident))
+        }
+        inner(self, ident).into_iter().flatten()
+    }
+
     pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
         let file = rt.pos.as_opt_ref()?.src_id;
         self.usage_lookups.get(&file)?.env(rt)

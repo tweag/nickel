@@ -3,10 +3,10 @@ use std::ops::Range;
 use codespan::ByteIndex;
 use nickel_lang_core::{
     position::TermPos,
-    term::{RichTerm, Traverse, TraverseControl},
+    term::{RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::term::RichTermPtr;
+use crate::{identifier::LocIdent, term::RichTermPtr};
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -102,16 +102,18 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
 #[derive(Clone, Debug)]
 pub struct PositionLookup {
     // The intervals here are sorted and disjoint.
-    ranges: Vec<(Range<u32>, RichTermPtr)>,
+    term_ranges: Vec<(Range<u32>, RichTermPtr)>,
+    ident_ranges: Vec<(Range<u32>, LocIdent)>,
 }
 
 impl PositionLookup {
     /// Create a position lookup table for looking up subterms of `rt` based on their positions.
     pub fn new(rt: &RichTerm) -> Self {
-        let mut all_ranges = Vec::new();
+        let mut all_term_ranges = Vec::new();
+        let mut idents = Vec::new();
         let mut fun = |term: &RichTerm| {
             if let TermPos::Original(pos) = &term.pos {
-                all_ranges.push((
+                all_term_ranges.push((
                     Range {
                         start: pos.start.0,
                         end: pos.end.0,
@@ -119,13 +121,44 @@ impl PositionLookup {
                     RichTermPtr(term.clone()),
                 ));
             }
+
+            match term.as_ref() {
+                Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
+                Term::FunPattern(id, pat, _) | Term::LetPattern(id, pat, _, _) => {
+                    let ids = pat.matches.iter().flat_map(|m| {
+                        m.to_flattened_bindings()
+                            .into_iter()
+                            .map(|(_path, id, _)| id)
+                    });
+                    idents.extend(ids.chain(*id).chain(pat.rest))
+                }
+                Term::Var(id) => idents.push(*id),
+                Term::Record(data) | Term::RecRecord(data, _, _) => {
+                    idents.extend(data.fields.keys().cloned());
+                }
+                Term::Match { cases, .. } => idents.extend(cases.keys().cloned()),
+                _ => {}
+            }
             TraverseControl::<()>::Continue
         };
 
         rt.traverse_ref(&mut fun);
 
+        let mut ident_ranges: Vec<_> = idents
+            .into_iter()
+            .filter_map(|id| {
+                id.pos
+                    .into_opt()
+                    .map(|span| (span.start.0..span.end.0, id.into()))
+            })
+            .collect();
+        // Ident ranges had better be disjoint, so we can just sort by the start position.
+        ident_ranges.sort_by_key(|(range, _id)| range.start);
+        ident_ranges.dedup();
+
         PositionLookup {
-            ranges: make_disjoint(all_ranges),
+            term_ranges: make_disjoint(all_term_ranges),
+            ident_ranges,
         }
     }
 
@@ -134,19 +167,27 @@ impl PositionLookup {
     /// Note that some positions (for example, positions belonging to top-level comments)
     /// may not be enclosed by any term.
     pub fn get(&self, index: ByteIndex) -> Option<&RichTerm> {
-        self.ranges
-            .binary_search_by(|(range, _term)| {
-                if range.end <= index.0 {
-                    std::cmp::Ordering::Less
-                } else if range.start > index.0 {
-                    std::cmp::Ordering::Greater
-                } else {
-                    std::cmp::Ordering::Equal
-                }
-            })
-            .ok()
-            .map(|idx| &self.ranges[idx].1 .0)
+        search(&self.term_ranges, index).map(|rt| &rt.0)
     }
+
+    /// Returns the ident at the given position, if there is one.
+    pub fn get_ident(&self, index: ByteIndex) -> Option<LocIdent> {
+        search(&self.ident_ranges, index).cloned()
+    }
+}
+
+fn search<T>(vec: &[(Range<u32>, T)], index: ByteIndex) -> Option<&T> {
+    vec.binary_search_by(|(range, _payload)| {
+        if range.end <= index.0 {
+            std::cmp::Ordering::Less
+        } else if range.start > index.0 {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    })
+    .ok()
+    .map(|idx| &vec[idx].1)
 }
 
 #[cfg(test)]

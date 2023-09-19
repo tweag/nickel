@@ -30,7 +30,20 @@ impl FieldHaver {
                 .get(&id)
                 .map(|field| FieldContent::RecordField(field.clone())),
             FieldHaver::Dict(ty) => Some(FieldContent::Type(ty.clone())),
-            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(FieldContent::Type),
+            FieldHaver::RecordType(rows) => rows
+                .find_path(&[id])
+                .map(|row| FieldContent::Type(row.typ.clone())),
+        }
+    }
+
+    pub fn get_definition_pos(&self, id: Ident) -> Option<LocIdent> {
+        match self {
+            FieldHaver::RecordTerm(data) => data
+                .fields
+                .get_key_value(&id)
+                .map(|(id, _field)| (*id).into()),
+            FieldHaver::RecordType(rows) => rows.find_path(&[id]).map(|r| r.id.into()),
+            FieldHaver::Dict(_) => None,
         }
     }
 
@@ -197,7 +210,7 @@ impl<'a> FieldResolver<'a> {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
+    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]

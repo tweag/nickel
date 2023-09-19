@@ -852,21 +852,21 @@ impl RecordRows {
     /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<Type> {
+    pub fn find_path(&self, path: &[Ident]) -> Option<RecordRowF<&Type>> {
         if path.is_empty() {
             return None;
         }
 
         let next = self.iter().find_map(|item| match item {
-            RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => Some(row.typ.clone()),
+            RecordRowsIteratorItem::Row(row) if row.id.ident() == path[0] => Some(row.clone()),
             _ => None,
         });
 
         if path.len() == 1 {
             next
         } else {
-            match next.map(|ty| ty.typ) {
-                Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
+            match next.map(|row| &row.typ.typ) {
+                Some(TypeF::Record(rrows)) => rrows.find_path(&path[1..]),
                 _ => None,
             }
         }
