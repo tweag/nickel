@@ -23,23 +23,45 @@ in
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 13, character = 18 }
+###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 14, character = 22 }
+###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 15, character = 26 }
+###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 16, character = 18 }
+###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 17, character = 22 }
+###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
 ### position = { line = 18, character = 22 }
+###
+### # Env completions
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 1, character = 3 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 3, character = 5 }
+###
+### [[request]]
+### type = "Completion"
+### textDocument.uri = "file:///input.ncl"
+### position = { line = 5, character = 6 }

@@ -748,6 +748,19 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect();
 
+    // If the current term is a record, add its fields. (They won't be in the environment,
+    // because that's the environment *of* the current term. And we don't want to treat
+    // all possible FieldHavers here, because for example if the current term is a Term::Var
+    // that references a record, we don't want it.)
+    if matches!(rt.as_ref(), Term::RecRecord(..)) {
+        items.extend(
+            resolver
+                .resolve_term(rt)
+                .iter()
+                .flat_map(FieldHaver::completion_items),
+        );
+    }
+
     // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
     // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
     if let Some(parents) = server.lin_registry.get_parent_chain(rt) {
