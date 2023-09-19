@@ -853,7 +853,7 @@ impl RecordRows {
     /// - self: ` {a : {b : Number }}`
     /// - path: `["a", "b"]`
     /// - result: `Some(Number)`
-    pub fn row_find_path(&self, path: &[Ident]) -> Option<RecordRowF<&Type>> {
+    pub fn find_path(&self, path: &[Ident]) -> Option<RecordRowF<&Type>> {
         if path.is_empty() {
             return None;
         }
@@ -867,7 +867,7 @@ impl RecordRows {
             next
         } else {
             match next.map(|row| &row.typ.typ) {
-                Some(TypeF::Record(rrows)) => rrows.row_find_path(&path[1..]),
+                Some(TypeF::Record(rrows)) => rrows.find_path(&path[1..]),
                 _ => None,
             }
         }
