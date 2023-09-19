@@ -1945,6 +1945,10 @@ impl Traverse<RichTerm> for RichTerm {
                                 todo.push((Recurse, t));
                             }
                         }
+                        // XXX: some of these traverse through fields, types,
+                        //      etc. in order to complete this transformation,
+                        //      we need another function in the Traverse trait,
+                        //      which modifies a `&mut Vec` passed in
                         Term::Record(record) => {
                             for (_, field) in &mut record.fields {
                                 *field = field.clone().traverse(f, order)?;
@@ -1987,6 +1991,13 @@ impl Traverse<RichTerm> for RichTerm {
         Ok(root)
     }
 
+    // XXX: The implementation of the match statement here and above are nearly
+    // identical, and it would be nice to unify them. The differences are:
+    // (1) mutable vs. immutable references,
+    // (2) the Recurse tacked onto everything
+    // (3) stack vs queue.
+    // (4) How we deal with traversing types. This will go away once we convert
+    //     the other types to imperative style
     fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
         let mut todo: VecDeque<&RichTerm> = VecDeque::from([self]);
 
