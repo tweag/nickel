@@ -1873,11 +1873,11 @@ impl Traverse<RichTerm> for RichTerm {
         let mut todo: Vec<(Instruction, *mut RichTerm)> = vec![(Recurse, &mut root)];
 
         while let Some((instruction, next)) = todo.pop() {
-            // If TopDown, we don't need unsafe. We could just use a reference
+            // If TopDown, we don't need unsafe. We could just use a reference.
             // If BottomUp, we keep a reference to a parent and child node alive
-            // at the same time on the `todo` stack
-            // It is safe because we always finish with the children before we touch the parent.
-            // It's morally the same as
+            // at the same time on the `todo` stack.
+            // It is safe because we always finish with the children before we
+            // touch the parent. It's morally the same as
             // ```
             // let parent = &mut <node>;
             // for child in &mut parent.children {
@@ -1901,27 +1901,34 @@ impl Traverse<RichTerm> for RichTerm {
                         TraverseOrder::TopDown => {
                             *next = f(next.clone())?;
                         }
-                        // postpone f(next) until we've done all its children
+                        // postpone f(next) until we've done all the children
                         // `todo` is a stack, so first on is last off
                         TraverseOrder::BottomUp => todo.push((ApplyF, next)),
                     };
 
                     match SharedTerm::make_mut(&mut next.term) {
-                        Term::Fun(_, t) => {
+                        Term::Null
+                        | Term::Bool(_)
+                        | Term::Num(_)
+                        | Term::Str(_)
+                        | Term::Lbl(_)
+                        | Term::Var(_)
+                        | Term::Enum(_)
+                        | Term::Import(_)
+                        | Term::ResolvedImport(_)
+                        | Term::SealingKey(_)
+                        | Term::ParseError(_)
+                        | Term::RuntimeError(_) => (),
+                        Term::Fun(_, t)
+                        | Term::FunPattern(_, _, t)
+                        | Term::Op1(_, t)
+                        | Term::Sealed(_, t, _) => {
                             todo.push((Recurse, t));
                         }
-                        Term::FunPattern(_, _, t) => {
-                            todo.push((Recurse, t));
-                        }
-                        Term::Let(_, t1, t2, _) => {
-                            todo.push((Recurse, t1));
-                            todo.push((Recurse, t2));
-                        }
-                        Term::LetPattern(_, _, t1, t2) => {
-                            todo.push((Recurse, t1));
-                            todo.push((Recurse, t2));
-                        }
-                        Term::App(t1, t2) => {
+                        Term::Let(_, t1, t2, _)
+                        | Term::LetPattern(_, _, t1, t2)
+                        | Term::App(t1, t2)
+                        | Term::Op2(_, t1, t2) => {
                             todo.push((Recurse, t1));
                             todo.push((Recurse, t2));
                         }
@@ -1933,20 +1940,10 @@ impl Traverse<RichTerm> for RichTerm {
                                 todo.push((Recurse, t));
                             }
                         }
-                        Term::Op1(_, t) => {
-                            todo.push((Recurse, t));
-                        }
-                        Term::Op2(_, t1, t2) => {
-                            todo.push((Recurse, t1));
-                            todo.push((Recurse, t2));
-                        }
                         Term::OpN(_, ts) => {
                             for t in ts {
                                 todo.push((Recurse, t));
                             }
-                        }
-                        Term::Sealed(_, t, _) => {
-                            todo.push((Recurse, t));
                         }
                         Term::Record(record) => {
                             for (_, field) in &mut record.fields {
@@ -1983,7 +1980,6 @@ impl Traverse<RichTerm> for RichTerm {
                             todo.push((Recurse, term));
                         }
                         Term::Type(ty) => *ty = ty.clone().traverse(f, order)?,
-                        _ => (),
                     }
                 }
             }
