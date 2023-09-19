@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use crate::{
     cache::CacheExt,
     field_walker::{FieldHaver, FieldResolver},
@@ -43,6 +45,7 @@ use std::path::PathBuf;
 // We follow the path by traversing a term, type or contract which represents a record
 // and stop when there is nothing else on the path
 
+#[cfg(feature = "old-completer")]
 #[derive(Debug)]
 struct IdentWithType {
     ident: Ident,
@@ -50,6 +53,7 @@ struct IdentWithType {
     meta: Option<FieldMetadata>,
 }
 
+#[cfg(feature = "old-completer")]
 impl From<Ident> for IdentWithType {
     fn from(ident: Ident) -> Self {
         IdentWithType {
@@ -60,6 +64,7 @@ impl From<Ident> for IdentWithType {
     }
 }
 
+#[cfg(feature = "old-completer")]
 impl From<&str> for IdentWithType {
     fn from(ident: &str) -> Self {
         IdentWithType {
@@ -70,6 +75,7 @@ impl From<&str> for IdentWithType {
     }
 }
 
+#[cfg(feature = "old-completer")]
 impl IdentWithType {
     fn detail(&self) -> String {
         self.meta
@@ -119,6 +125,7 @@ impl IdentWithType {
     }
 }
 
+#[cfg(feature = "old-completer")]
 /// Completion context: general data structures required by most completion functions.
 #[derive(Clone, Copy)]
 pub struct ComplCtx<'a> {
@@ -126,6 +133,7 @@ pub struct ComplCtx<'a> {
     lin_registry: &'a LinRegistry,
 }
 
+#[cfg(feature = "old-completer")]
 /// Find the record field associated with a particular ID in the linearization
 /// using lexical scoping rules.
 fn find_fields_from_term_kind(
@@ -201,6 +209,7 @@ fn find_fields_from_term_kind(
     result.into_iter().chain(contract_result).collect()
 }
 
+#[cfg(feature = "old-completer")]
 /// Find the record fields associated with an ID in the linearization using
 /// its contract information.
 fn find_fields_from_contract(
@@ -233,6 +242,7 @@ fn find_fields_from_contract(
     }
 }
 
+#[cfg(feature = "old-completer")]
 /// Find record field associated with a field's metadata. This can be gotten from the type or the
 /// contracts.
 fn find_fields_from_contracts(
@@ -249,6 +259,7 @@ fn find_fields_from_contracts(
         .collect()
 }
 
+#[cfg(feature = "old-completer")]
 /// Find the fields that can be found from a type.
 fn find_fields_from_type(
     ty: &Type,
@@ -266,6 +277,7 @@ fn find_fields_from_type(
     }
 }
 
+#[cfg(feature = "old-completer")]
 /// Extract the fields from a given record type.
 fn find_fields_from_rrows(
     rrows: &RecordRows,
@@ -305,6 +317,7 @@ fn find_fields_from_rrows(
     }
 }
 
+#[cfg(feature = "old-completer")]
 fn find_fields_from_field(
     field: &Field,
     path: &mut Vec<LocIdent>,
@@ -313,6 +326,7 @@ fn find_fields_from_field(
     find_fields_from_term_with_annot(&field.metadata.annotation, field.value.as_ref(), path, info)
 }
 
+#[cfg(feature = "old-completer")]
 // TODO: impl a trait FindField to avoid having long names
 fn find_fields_from_term_with_annot(
     annot: &TypeAnnotation,
@@ -329,6 +343,7 @@ fn find_fields_from_term_with_annot(
     info_from_metadata
 }
 
+#[cfg(feature = "old-completer")]
 /// Extract record fields from a record term.
 fn find_fields_from_term(
     term: &RichTerm,
@@ -371,6 +386,7 @@ fn find_fields_from_term(
     }
 }
 
+#[cfg(feature = "old-completer")]
 lazy_static! {
     // Unwraps are safe here because we know these are correct regexes. This regexp must be the same
     // as the regex for identifiers in the lexer (nickel_lang_core::parser::lexer)
@@ -378,6 +394,7 @@ lazy_static! {
     static ref RE_SPACE: Regex = Regex::new(r"\s+").unwrap();
 }
 
+#[cfg(feature = "old-completer")]
 /// Get the string chunks that make up an identifier path.
 fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     /// Remove quotes from a record fields name (if any) and return a tuple
@@ -420,6 +437,7 @@ fn get_identifier_path(text: &str) -> Option<Vec<String>> {
     Some(path)
 }
 
+#[cfg(feature = "old-completer")]
 /// Get the identifiers before `.<text>` for record completion.
 fn get_identifiers_before_field(text: &str) -> Option<Vec<String>> {
     // Skip `<text>`
@@ -445,6 +463,7 @@ fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
     seen
 }
 
+#[cfg(feature = "old-completer")]
 /// Search the linearization to find the record information associated with a
 /// partiular ID, and in the scope of a given linearization item.
 fn collect_record_info(
@@ -507,6 +526,7 @@ fn collect_record_info(
         .unwrap_or_default()
 }
 
+#[cfg(feature = "old-completer")]
 /// As we traverse a nested record all the way to the topmost record,
 /// accumulate all the record metadata and corresponding path.
 fn accumulate_record_meta_data<'a>(
@@ -546,6 +566,7 @@ fn accumulate_record_meta_data<'a>(
     }
 }
 
+#[cfg(feature = "old-completer")]
 /// Generate possible completion identifiers given a source text, its linearization
 /// and the current item the cursor points at.
 fn get_completion_identifiers(
@@ -682,7 +703,8 @@ fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
     }
 }
 
-fn sanitize_term_for_completion(
+// Try to interpret `term` as a record path to offer completions for.
+fn sanitize_record_path_for_completion(
     term: &RichTerm,
     cursor: RawPos,
     server: &mut Server,
@@ -709,7 +731,7 @@ fn sanitize_term_for_completion(
     }
 }
 
-fn term_based_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem> {
+fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem> {
     log::info!("term based completion path: {term:?}");
 
     let (start_term, path) = extract_static_path(term);
@@ -797,16 +819,14 @@ pub fn handle_completion(
 
     let sanitized_term = term
         .as_ref()
-        .and_then(|rt| sanitize_term_for_completion(rt, cursor, server));
+        .and_then(|rt| sanitize_record_path_for_completion(rt, cursor, server));
 
-    let mut completions = match sanitized_term {
-        Some(sanitized) => term_based_completion(sanitized, server),
-        None => Vec::new(),
+    #[allow(unused_mut)] // needs to be mut with feature = old-completer
+    let mut completions = match (sanitized_term, term) {
+        (Some(sanitized), _) => record_path_completion(sanitized, server),
+        (_, Some(term)) => env_completion(&term, server),
+        (None, None) => Vec::new(),
     };
-
-    if let Some(term) = &term {
-        completions.extend_from_slice(&env_completion(term, server));
-    }
 
     log::info!("term-based completion provided {completions:?}");
     #[cfg(feature = "old-completer")]
@@ -909,6 +929,7 @@ fn handle_import_completion(
     Ok(completions)
 }
 
+#[cfg(feature = "old-completer")]
 #[cfg(test)]
 mod tests {
     use super::*;
