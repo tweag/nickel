@@ -86,7 +86,7 @@ Now, create a text file named `users.ncl` that will import our contract
 file created previously. This file will contain the actual data we need
 to use.
 
-```nickel-parse
+```nickel #parse
 let { UserSchema, .. } = import "users-schema.ncl" in
 {
   users | Array UserSchema = [

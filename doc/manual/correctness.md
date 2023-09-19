@@ -79,7 +79,7 @@ Types and contracts are enforced similarly, via annotations.
 
 Type annotations are introduced with `:`. For example:
 
-```nickel-repl
+```nickel #repl
 > 1 + 1.5 : Number
 2.5
 
@@ -95,7 +95,7 @@ error: incompatible types
 
 Contract annotations are introduced with `|`. For example:
 
-```nickel-repl
+```nickel #repl
 > let GreaterThan = fun bound =>
     std.contract.from_predicate (fun val => val >= bound) in
   -1 | GreaterThan 10
@@ -119,7 +119,7 @@ practical differences between types and contracts.
 Suppose we need a function to convert an array of key-value pairs into an array
 of keys and an array of values. Let's call it `split`:
 
-```nickel-repl
+```nickel #repl
 > split [{key = "foo", value = 1}, {key = "bar", value = 2}]
 {keys = ["foo", "bar"], values = [1, 2]}
 
@@ -156,7 +156,7 @@ first wrapping it in an array (note that in real life, you should rather use
 
 We call `split` from our configuration file:
 
-```nickel-parse
+```nickel #parse
 # config.ncl
 let {split} = import "lib.ncl" in
 split [{key = "foo", value = 1}, {key = "bar", value = 2}]
@@ -176,7 +176,7 @@ elements of the same type as the input `value`s.
 An idiomatic way to express these properties in Nickel is to use the following
 annotation:
 
-```nickel-no-check
+```nickel #no-check
 forall a. Array {key: String, value: a}
           -> {keys: Array String, values: Array a}
 ```
@@ -191,7 +191,7 @@ using contract and type annotations.
 
 `split` can be given a contract annotation as follows:
 
-```nickel-no-check
+```nickel #no-check
 split | forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
 ```
 
@@ -251,7 +251,7 @@ that:
 
 `split` can be given a type annotation as follows:
 
-```nickel-no-check
+```nickel #no-check
 split : forall a. Array {key: String, value: a} -> {keys: Array String, values: Array a} = # etc.
 ```
 
@@ -321,7 +321,7 @@ As in the previous example, we will consider the differences arising when using
 
 If we write:
 
-```nickel-parse
+```nickel #parse
 # config.ncl
 let {OptLevel} = import "lib.ncl" in
 let level = 1 in
@@ -360,7 +360,7 @@ relevant section in the typing documentation].
 For validating custom properties such as `OptLevel`, a contract is the way to
 go:
 
-```nickel-parse
+```nickel #parse
 # config.ncl
 let {OptLevel} = import "lib.ncl" in
 let level = 4 in

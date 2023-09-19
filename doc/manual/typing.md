@@ -60,7 +60,7 @@ error: type error
 While dynamic typing is fine for configuration code, the trouble begins once we
 are using functions. Say we want to filter over an array of elements:
 
-```nickel-parse
+```nickel #parse
 let filter = fun pred l =>
   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
@@ -120,7 +120,7 @@ Let us try on the filter example. We want the call to be inside the statically
 typechecked block. The easiest way is to capture the whole expression by adding
 a type annotation at the top-level:
 
-```nickel-parse
+```nickel #parse
 (let filter = fun pred l =>
   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
 filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]) : Array Number
@@ -267,7 +267,7 @@ That is, `filter` is *generic*. Genericity is expressed in Nickel through
 which introduces type variables that can later be substituted for any concrete
 type. Here is our polymorphic type annotation for `filter`:
 
-```nickel-no-check
+```nickel #no-check
 {
   filter : forall a. (a -> Bool) -> Array a -> Array a = ...,
 }
@@ -310,7 +310,7 @@ Let's go back to our first statically typed `filter`, without the polymorphic
 annotation. If we try to add a call to `filter` on an array of strings, the
 typechecker surprisingly rejects our code:
 
-```nickel-no-check
+```nickel #no-check
 (let filter = ... in
 let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
 let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
@@ -354,7 +354,7 @@ like Nickel.
 In a configuration language, you will often find yourself handling records of
 various kinds. In a simple type system, you can hit the following issue:
 
-```nickel-parse
+```nickel #parse
 (
   let add_total : { total : Number } -> { total : Number } -> Number
     = fun r1 r2 => r1.total + r2.total
@@ -476,7 +476,7 @@ Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation. Let us see that by ourselves by
 calling to the statically typed `std.array.filter` from dynamically typed code:
 
-```nickel-parse
+```nickel #parse
 std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
 ```
 
@@ -532,7 +532,7 @@ In the other direction, we face a different issue. Because dynamically typed
 code just get assigned the `Dyn` type most of the time, we can't use a
 dynamically typed value inside a statically typed block directly:
 
-```nickel-parse
+```nickel #parse
 let x = 0 + 1 in
 (1 + x : Number)
 ```
@@ -583,7 +583,7 @@ code that you know is correct but wouldn't typecheck:
 The typechecker accepts the code above, while it rejects a fully statically
 typed version because of the type mismatch between the if branches:
 
-```nickel-parse
+```nickel #parse
 (1 + (if true then 0 else "a")) : Number
 ```
 
@@ -643,7 +643,7 @@ Type annotations and contracts share the same syntax. This means that you can
 technically use custom contracts as any other type inside a static type
 annotation.
 
-```nickel-parse
+```nickel #parse
 let Port = std.contract.from_predicate (fun value =>
   std.is_number value
   && value % 1 == 0

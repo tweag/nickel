@@ -19,7 +19,7 @@ enum CodeBlockType {
     /// A code block that should only be parsed, not evaluated
     Parse,
     /// A code block containing a REPL session, e.g.
-    /// ```nickel repl
+    /// ```nickel #repl
     /// > let foo =
     ///     fun x => x
     ///   in foo 5
@@ -45,9 +45,9 @@ impl CodeBlockType {
     fn from_info(info: impl AsRef<str>) -> Option<CodeBlockType> {
         match info.as_ref() {
             "nickel" => Some(CodeBlockType::Single),
-            "nickel-lines" => Some(CodeBlockType::Lines),
-            "nickel-repl" => Some(CodeBlockType::Repl),
-            "nickel-parse" => Some(CodeBlockType::Parse),
+            "nickel #lines" => Some(CodeBlockType::Lines),
+            "nickel #repl" => Some(CodeBlockType::Repl),
+            "nickel #parse" => Some(CodeBlockType::Parse),
             _ => None,
         }
     }

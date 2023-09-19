@@ -51,7 +51,7 @@ evaluates to `{foo = 1, bar = "bar", baz = false}`.
 
 Formally, if we write the left operand as
 
-```nickel-no-check
+```nickel #no-check
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -61,7 +61,7 @@ left = {
 
 and the right operand as
 
-```nickel-no-check
+```nickel #no-check
 right = {
   field_right_1 = value_right_1,
   ..,
@@ -71,7 +71,7 @@ right = {
 
 then the merge `left & right` evaluates to the record:
 
-```nickel-no-check
+```nickel #no-check
 {
   field_left_1 = value_left_1,
   ..,
@@ -90,7 +90,7 @@ In other words, `left & right` is the union of `left` and `right`.
 
 You can split a configuration into subdomains:
 
-```nickel-no-check
+```nickel #no-check
 # file: server.ncl
 {
     host_name = "example",
@@ -126,7 +126,7 @@ This gives:
 
 Given a configuration, you can use merge to add new fields:
 
-```nickel-no-check
+```nickel #no-check
 # file: safe-network.ncl
 let base = import "network.ncl" in
 base & {use_iptables = true}
@@ -170,7 +170,7 @@ unless one of the following condition hold:
 
 Formally, let's write the left operand as
 
-```nickel-no-check
+```nickel #no-check
 left = {
   field_left_1 = value_left_1,
   ..,
@@ -183,7 +183,7 @@ left = {
 
 and the right operand as
 
-```nickel-no-check
+```nickel #no-check
 right = {
   field_right_1 = value_right_1,
   ..,
@@ -197,7 +197,7 @@ right = {
 where the `field_left_i` and `field_right_j` are distinct for all `i` and `j`.
 Then the merge `left & right` evaluates to the record:
 
-```nickel-no-check
+```nickel #no-check
 {
   field_left_1 = value_left_1,
   ..,
@@ -225,7 +225,7 @@ v1 & v2 = v1               if (type_of(v1) is Number, Bool, String, Enum or
 
 ### Example
 
-```nickel-no-check
+```nickel #no-check
 # file: udp.ncl
 {
     # same as firewall = {open_ports = {udp = [...]}},
@@ -325,7 +325,7 @@ optional field also becomes a regular field as soon as it is merged with the
 same field that doesn't have the `optional` annotation. This holds **even if the
 other field doesn't have a definition**:
 
-```nickel-repl
+```nickel #repl
 > {foo = 1, bar | optional} & {bar | optional}
 { foo = 1 }
 
@@ -349,7 +349,7 @@ record operations. Optional fields without a value don't show up in
 `std.record.fields`, they won't make `std.record.values` throw a missing field
 definition error, etc.
 
-```nickel-repl
+```nickel #repl
 > let Contract = {foo = 1, bar | optional}
 > std.record.values Contract
 [ 1 ]
@@ -378,7 +378,7 @@ values are given the priority `0`. Values with the same priority are recursively
 merged as specified in this document, which can mean failure if the values can't
 be meaningfully combined:
 
-```nickel-repl
+```nickel #repl
 > {foo = 1} & {foo = 2}
 error: non mergeable terms
   ┌─ repl-input-1:1:8
@@ -394,7 +394,7 @@ error: non mergeable terms
 If the priorities differ, the value with the highest priority simply erases the
 other:
 
-```nickel-repl
+```nickel #repl
 > {foo | priority 1 = 1} & {foo = 2}
 { foo = 1 }
 
@@ -549,7 +549,7 @@ which is not propagated by merging.
 Consider two operands with one field each, which is the same on both side, and
 respective contracts `Left1, .., Leftn` and `Right1, .., Rightk` attached
 
-```nickel-no-check
+```nickel #no-check
 left = {
   common | Left1
          | ..
@@ -559,7 +559,7 @@ left = {
 
 and
 
-```nickel-no-check
+```nickel #no-check
 right = {
   common | Right1
          | ..
@@ -593,7 +593,7 @@ If we try to observe the intermediate result (`deep_seq` recursively forces the
 evaluation of its first argument and proceeds with evaluating the second
 argument), we do get a contract violation error:
 
-```nickel-no-check
+```nickel #no-check
 let FooContract = {
   required_field1,
   required_field2,

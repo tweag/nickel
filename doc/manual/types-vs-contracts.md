@@ -44,7 +44,7 @@ What to do depends on the context:
 
     Example:
 
-    ```nickel-repl
+    ```nickel #repl
     > let foo : Number =
         let addTwo = fun x => x + 2 in
         addTwo 4
