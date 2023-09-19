@@ -1904,7 +1904,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
 
                 let note1 = if let TypeF::Record(rrows) = &expd.typ {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => mk_expected_row_msg(&field, ty),
+                        Some(row) => mk_expected_row_msg(&field, row.typ),
                         None => mk_expected_msg(&expd),
                     }
                 } else {
@@ -1913,7 +1913,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
 
                 let note2 = if let TypeF::Record(rrows) = &actual.typ {
                     match rrows.row_find_path(path.as_slice()) {
-                        Some(ty) => mk_inferred_row_msg(&field, ty),
+                        Some(row) => mk_inferred_row_msg(&field, row.typ),
                         None => mk_inferred_msg(&actual),
                     }
                 } else {

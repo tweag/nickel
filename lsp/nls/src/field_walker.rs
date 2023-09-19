@@ -30,7 +30,9 @@ impl FieldHaver {
                 .get(&id)
                 .map(|field| FieldContent::RecordField(field.clone())),
             FieldHaver::Dict(ty) => Some(FieldContent::Type(ty.clone())),
-            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(FieldContent::Type),
+            FieldHaver::RecordType(rows) => rows
+                .row_find_path(&[id])
+                .map(|row| FieldContent::Type(row.typ.clone())),
         }
     }
 
@@ -40,7 +42,7 @@ impl FieldHaver {
                 .fields
                 .get_key_value(&id)
                 .map(|(id, _field)| (*id).into()),
-            FieldHaver::RecordType(rows) => rows.row_find_path_row(&[id]).map(|r| r.id.into()),
+            FieldHaver::RecordType(rows) => rows.row_find_path(&[id]).map(|r| r.id.into()),
             FieldHaver::Dict(_) => None,
         }
     }
