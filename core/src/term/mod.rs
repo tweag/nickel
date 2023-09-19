@@ -49,6 +49,7 @@ pub use indexmap::IndexMap;
 
 use std::{
     cmp::{Ordering, PartialOrd},
+    collections::VecDeque,
     convert::Infallible,
     ffi::OsString,
     fmt,
@@ -1990,79 +1991,99 @@ impl Traverse<RichTerm> for RichTerm {
         Ok(root)
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        let child_state = match f(self, state) {
-            TraverseControl::Continue => None,
-            TraverseControl::ContinueWithScope(s) => Some(s),
-            TraverseControl::SkipBranch => {
-                return None;
-            }
-            TraverseControl::Return(ret) => {
-                return Some(ret);
-            }
-        };
-        let state = child_state.as_ref().unwrap_or(state);
+    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
+        let mut todo: VecDeque<&RichTerm> = VecDeque::from([self]);
 
-        match &*self.term {
-            Term::Null
-            | Term::Bool(_)
-            | Term::Num(_)
-            | Term::Str(_)
-            | Term::Lbl(_)
-            | Term::Var(_)
-            | Term::Closure(_)
-            | Term::Enum(_)
-            | Term::Import(_)
-            | Term::ResolvedImport(_)
-            | Term::SealingKey(_)
-            | Term::ParseError(_)
-            | Term::RuntimeError(_) => None,
-            Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
-                if let StrChunk::Expr(term, _) = ch {
-                    term.traverse_ref(f, state)
-                } else {
-                    None
+        while let Some(next) = todo.pop_front() {
+            match f(next) {
+                TraverseControl::Continue => (),
+                TraverseControl::SkipBranch => continue,
+                TraverseControl::Return(ret) => return Some(ret),
+            }
+            match &*next.term {
+                Term::Null
+                | Term::Bool(_)
+                | Term::Num(_)
+                | Term::Str(_)
+                | Term::Lbl(_)
+                | Term::Var(_)
+                | Term::Closure(_)
+                | Term::Enum(_)
+                | Term::Import(_)
+                | Term::ResolvedImport(_)
+                | Term::SealingKey(_)
+                | Term::ParseError(_)
+                | Term::RuntimeError(_) => (),
+                Term::StrChunks(chunks) => {
+                    for ch in chunks {
+                        if let StrChunk::Expr(t, _) = ch {
+                            todo.push_back(t)
+                        }
+                    }
                 }
-            }),
-            Term::Fun(_, t)
-            | Term::FunPattern(_, _, t)
-            | Term::Op1(_, t)
-            | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
-            Term::Let(_, t1, t2, _)
-            | Term::LetPattern(_, _, t1, t2)
-            | Term::App(t1, t2)
-            | Term::Op2(_, t1, t2) => t1
-                .traverse_ref(f, state)
-                .or_else(|| t2.traverse_ref(f, state)),
-            Term::Record(data) => data
-                .fields
-                .values()
-                .find_map(|field| field.traverse_ref(f, state)),
-            Term::RecRecord(data, dyn_data, _) => data
-                .fields
-                .values()
-                .find_map(|field| field.traverse_ref(f, state))
-                .or_else(|| {
-                    dyn_data.iter().find_map(|(id, field)| {
-                        id.traverse_ref(f, state)
-                            .or_else(|| field.traverse_ref(f, state))
-                    })
-                }),
-            Term::Match { cases, default } => cases
-                .iter()
-                .find_map(|(_id, t)| t.traverse_ref(f, state))
-                .or_else(|| default.as_ref().and_then(|t| t.traverse_ref(f, state))),
-            Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-            Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-            Term::Annotated(annot, t) => t
-                .traverse_ref(f, state)
-                .or_else(|| annot.traverse_ref(f, state)),
-            Term::Type(ty) => ty.traverse_ref(f, state),
+                Term::Fun(_, t)
+                | Term::FunPattern(_, _, t)
+                | Term::Op1(_, t)
+                | Term::Sealed(_, t, _) => todo.push_back(t),
+                Term::Let(_, t1, t2, _)
+                | Term::LetPattern(_, _, t1, t2)
+                | Term::App(t1, t2)
+                | Term::Op2(_, t1, t2) => {
+                    todo.push_back(t1);
+                    todo.push_back(t2);
+                }
+                Term::Record(data) => {
+                    if let Some(ret) = data.fields.values().find_map(|field| field.traverse_ref(f))
+                    {
+                        return Some(ret);
+                    }
+                }
+                Term::RecRecord(data, dyn_data, _) => {
+                    if let Some(ret) = data
+                        .fields
+                        .values()
+                        .find_map(|field| field.traverse_ref(f))
+                        .or_else(|| {
+                            dyn_data.iter().find_map(|(id, field)| {
+                                id.traverse_ref(f).or_else(|| field.traverse_ref(f))
+                            })
+                        })
+                    {
+                        return Some(ret);
+                    }
+                }
+                Term::Match { cases, default } => {
+                    for (_, t) in cases {
+                        todo.push_back(t);
+                    }
+                    if let Some(t) = default {
+                        todo.push_back(t);
+                    }
+                }
+                Term::Array(ts, _) => {
+                    for t in ts.iter() {
+                        todo.push_back(t);
+                    }
+                }
+                Term::OpN(_, ts) => {
+                    for t in ts {
+                        todo.push_back(t)
+                    }
+                }
+                Term::Annotated(annot, t) => {
+                    if let Some(ret) = annot.traverse_ref(f) {
+                        return Some(ret);
+                    }
+                    todo.push_back(t);
+                }
+                Term::Type(ty) => {
+                    if let Some(ret) = ty.traverse_ref(f) {
+                        return Some(ret);
+                    }
+                }
+            }
         }
+        None
     }
 }
 
