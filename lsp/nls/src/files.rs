@@ -82,6 +82,10 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     let invalid = server.cache.get_rev_imports_transitive(file_id);
     for f in &invalid {
         server.lin_registry.map.remove(f);
+        server.lin_registry.position_lookups.remove(f);
+        server.lin_registry.usage_lookups.remove(f);
+        server.lin_registry.parent_lookups.remove(f);
+        server.lin_registry.type_lookups.remove(f);
     }
 
     // TODO: make this part more abstracted

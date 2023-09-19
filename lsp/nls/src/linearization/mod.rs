@@ -91,12 +91,17 @@ impl<'a> Iterator for ParentChainIter<'a> {
 pub struct LinRegistry {
     pub map: HashMap<FileId, Completed>,
     // TODO: these are supposed to eventually *replace* part of the linearization, at
-    // which point we'll rename `LinRegistry` (and probably just have one HashMap<FileId,
-    // everything>)
+    // which point we'll rename `LinRegistry` (and probably just have one
+    // HashMap<FileId, everything>)
+    //
+    // Most of these tables do one more lookup than necessary: they look up a
+    // file id and then they look up a term in an inner table. This is a little
+    // inefficient for lookups, but it makes it easy to invalidate a whole file
+    // in one go.
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
     pub parent_lookups: HashMap<FileId, ParentLookup>,
-    pub type_lookups: HashMap<RichTermPtr, Type>,
+    pub type_lookups: HashMap<FileId, HashMap<RichTermPtr, Type>>,
 }
 
 impl LinRegistry {
@@ -116,8 +121,7 @@ impl LinRegistry {
             .insert(file_id, PositionLookup::new(term));
         self.usage_lookups.insert(file_id, UsageLookup::new(term));
         self.parent_lookups.insert(file_id, ParentLookup::new(term));
-
-        self.type_lookups.extend(type_lookups);
+        self.type_lookups.insert(file_id, type_lookups);
     }
 
     /// Look for the linearization corresponding to an item's id, and return the corresponding item
@@ -149,7 +153,8 @@ impl LinRegistry {
     }
 
     pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
-        self.type_lookups.get(&RichTermPtr(rt.clone()))
+        let file = rt.pos.as_opt_ref()?.src_id;
+        self.type_lookups.get(&file)?.get(&RichTermPtr(rt.clone()))
     }
 
     pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
