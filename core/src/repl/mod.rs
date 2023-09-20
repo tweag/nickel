@@ -43,6 +43,7 @@ pub mod simple_frontend;
 pub mod wasm_frontend;
 
 /// Result of the evaluation of an input.
+#[derive(Debug, Clone)]
 pub enum EvalResult {
     /// The input has been evaluated to a term.
     Evaluated(RichTerm),

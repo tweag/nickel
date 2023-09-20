@@ -283,7 +283,7 @@ impl From<SourcePath> for OsString {
             SourcePath::Std(StdlibModule::Std) => "<stdlib/std.ncl>".into(),
             SourcePath::Std(StdlibModule::Internals) => "<stdlib/internals.ncl>".into(),
             SourcePath::Query => "<query>".into(),
-            SourcePath::ReplInput(idx) => format!("<repl-input-{idx}").into(),
+            SourcePath::ReplInput(idx) => format!("<repl-input-{idx}>").into(),
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
             SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
