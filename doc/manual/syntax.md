@@ -134,7 +134,8 @@ Here are some examples of string handling in Nickel:
 "Hello World"
 
 > let n = 5 in "The number %{n}."
-error: Type error
+error: dynamic type error
+[...]
 
 > let n = 5 in "The number %{std.string.from_number n}."
 "The number 5."
@@ -153,10 +154,7 @@ the output. For example:
         This line is even more indented.
     This line has no more indentation.
   "%
-"This line has no indentation.
-  This line is indented.
-    This line is even more indented.
-This line has no more indentation."
+"This line has no indentation.\n  This line is indented.\n    This line is even more indented.\nThis line has no more indentation."
 ```
 
 The only special sequence in a multiline string is the string interpolation:
@@ -166,8 +164,7 @@ The only special sequence in a multiline string is the string interpolation:
 "Multiline\\nString?"
 
 > m%"Multiline%{"\n"}String"%
-"Multiline
-String"
+"Multiline\nString"
 ```
 
 A multiline string can be opened and closed with multiple `%` signs, as long as
@@ -184,7 +181,7 @@ or `%{` sequence in a string without escaping:
 "Hello World"
 
 > let w = "World" in m%%"Hello %{w}"%%
-"Hello %{w}"
+"Hello \%{w}"
 
 > let w = "World" in m%%"Hello %%{w}"%%
 "Hello World"
@@ -205,13 +202,7 @@ interpolate a string with indentation and the result will be as expected:
       res.append(s)
     return res
   "%
-"def concat(str_array, log=false):
-  res = []
-  for s in str_array:
-    if log:
-      print("log:", s)
-    res.append(s)
-  return res"
+"def concat(str_array, log=false):\n  res = []\n  for s in str_array:\n    if log:\n      print(\"log:\", s)\n    res.append(s)\n  return res"
 ```
 
 Inside a multiline string, an interpolation sequence immediately preceded by a
@@ -306,9 +297,9 @@ The following examples show how symbolic strings are desugared:
 ```nickel #repl
 > mytag-s%"I'm %{"symbolic"} with %{"fragments"}"%
 {
-  tag = 'SymbolicString,
-  prefix = 'mytag
   fragments = [ "I'm ", "symbolic", " with ", "fragments" ],
+  prefix = 'mytag,
+  tag = 'SymbolicString,
 }
 
 > let terraform_computed_field = {
@@ -319,9 +310,15 @@ The following examples show how symbolic strings are desugared:
 
 > tf-s%"id: %{terraform_computed_field}, port: %{5}"%
 {
-  tag = 'SymbolicString
+  fragments =
+    [
+        "id: ",
+        { field = "id", resource = "foo", tag = 'TfComputed, },
+        ", port: ",
+        5
+      ],
   prefix = 'tf,
-  fragments = [ "id: ", { resource = "foo", field = "id", tag = 'TfComputed }, ", port: ", 5 ],
+  tag = 'SymbolicString,
 }
 ```
 
@@ -334,22 +331,17 @@ first argument, which is an enum tag among `'Json`, `'Toml` or `'Yaml`:
 
 ```nickel #repl
 > std.serialize 'Json {foo = 1}
-"{
-   \"foo\": 1
- }"
+"{\n  \"foo\": 1\n}"
 
 > std.serialize 'Toml {foo = 1}
-"foo = 1
-"
+"foo = 1\n"
 ```
 
 An enum tag `'foo` is serialized as the string `"foo"`:
 
 ```nickel #repl
 > std.serialize 'Json {foo = 'bar}
-"{
-  \"foo\": \"bar\"
-}"
+"{\n  \"foo\": \"bar\"\n}"
 ```
 
 While it's technically possible to just use strings in place of enum tags, using
@@ -436,7 +428,8 @@ Record fields can be accessed using the `.` operator :
 1
 
 > { a = 1 }.b
-error: Missing field
+error: missing field `b`
+[...]
 
 > { "1" = "one" }."1"
 "one"
@@ -447,13 +440,13 @@ separate fields by dots:
 
 ```nickel #repl
 > { a = { b = 1 } }
-{ a = { b = 1 } }
+{ a = { b = 1, }, }
 
 > { a.b = 1 }
-{ a = { b = 1 } }
+{ a = { b = 1, }, }
 
 > { a.b = 1, a.c = 2, b = 3}
-{ a = { b = 1, c = 2 }, b = 3 }
+{ a = { b = 1, c = 2, }, b = 3, }
 ```
 
 When fields are enclosed in double quotes (`"`), you can use string
@@ -461,7 +454,7 @@ interpolation to create or access fields:
 
 ```nickel #repl
 > let k = "a" in { "%{k}" = 1 }
-{ a = 1 }
+{ a = 1, }
 
 > let k = "a" in { a = 1 }."%{k}"
 1
@@ -487,7 +480,7 @@ Here are some valid conditional expressions in Nickel:
 "unequal"
 
 > ["1"] @ (if 42 == "42" then ["3"] else ["2"]) @ ["3"]
-["1", "2", "3"]
+[ "1", "2", "3" ]
 ```
 
 ### Let-In
@@ -518,7 +511,7 @@ true
 
 > let rec repeat = fun n x => if n <= 0 then [] else repeat (n - 1) x @ [x] in
     repeat 3 "foo"
-["foo", "foo", "foo"]
+[ "foo", "foo", "foo" ]
 ```
 
 ## Functions
@@ -574,7 +567,7 @@ left-associative, so `x |> f |> g` will be interpreted as `g (f x)`. For example
 
 ```nickel #repl
 > "Hello World" |> std.string.split " "
-["Hello", "World"]
+[ "Hello", "World" ]
 
 > "Hello World"
   |> std.string.split " "
@@ -622,14 +615,14 @@ Here are some examples of type annotations in Nickel:
 
 > 5 + "a" : _
 error: incompatible types
-[..]
+[...]
 
 > (1 + 1 : Number) + (('foo |> match { 'foo => 1, _ => 2 }) : Number)
 3
 
 > let x : Number = "a" in x
 error: incompatible types
-[..]
+[...]
 
 > let complex_argument : _ -> Number = fun {field1, field2, field3} => field1 in
     complex_argument {field1 = 5, field2 = null, field3 = false}
@@ -651,8 +644,8 @@ Here are some examples of contract annotations in Nickel:
 5
 
 > 5 | Bool
-error: contract broken by a value.
-[..]
+error: contract broken by a value
+[...]
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
   1 | SmallNumber
@@ -660,8 +653,8 @@ error: contract broken by a value.
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
   10 | SmallNumber
-error: contract broken by a value.
-[..]
+error: contract broken by a value
+[...]
 
 > let SmallNumber = std.contract.from_predicate (fun x => x < 5) in
   let NotTooSmallNumber = std.contract.from_predicate (fun x => x >= 2) in
@@ -713,15 +706,13 @@ constructor listed above). As soon as a term expression appears under a `forall`
 binder, the type variables aren't in scope anymore:
 
 ```nickel #repl
+# skip output check hide-line
 > forall a. a -> (a -> a) -> {_ : {foo : a}}
 <func>
 
 > forall a. a -> (a -> (fun x => a))
-error: unbound identifier
-  ┌─ repl-input-4:1:32
-  │
-1 │ forall a. a -> (a -> (fun x => a))
-  │                                ^ this identifier is unbound
+error: unbound identifier `a`
+[...]
 ```
 
 Here are some examples of more complicated types in Nickel:
@@ -731,7 +722,7 @@ Here are some examples of more complicated types in Nickel:
 5
 
 > {foo = [[1]]} : {foo : Array (Array Number)}
-{ foo = [ [ 1 ] ] }
+{ foo = [ [ 1 ] ], }
 
 > let select
     : forall a. {left: a, right: a} -> [| 'left, 'right |] -> a
@@ -745,20 +736,20 @@ Here are some examples of more complicated types in Nickel:
 true
 
 > let add_foo : forall a. {_: a} -> a -> {_: a} = fun dict value =>
-    record.insert "foo" value dict
+    std.record.insert "foo" value dict
   in
   add_foo {bar = 1} 5 : _
-{ bar = 1, foo = 5 }
+{ bar = 1, foo = 5, }
 
 > {foo = 1, bar = "string"} : {_ : Number}
 error: incompatible types
-  ┌─ repl-input-12:1:17
+  ┌─ <repl-input-77>:1:18
   │
-1 │ {foo = 1, bar = "string"} : {_ : Number}
-  │                 ^^^^^^^^ this expression
+1 │  {foo = 1, bar = "string"} : {_ : Number}
+  │                  ^^^^^^^^ this expression
   │
-  = The type of the expression was expected to be `Number`
-  = The type of the expression was inferred to be `String`
+  = Expected an expression of type `Number`
+  = Found an expression of type `String`
   = These types are not compatible
 ```
 
@@ -788,10 +779,10 @@ Here are some examples of record types in Nickel:
 
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar: String}
-{ bar = "foo", foo = 1 }
+{ bar = "foo", foo = 1, }
 
 > {foo.bar = 1, baz = 2} : {foo: {bar : Number}, baz : Number}
-{ baz = 2, foo = { bar = 1 } }
+{ baz = 2, foo = { bar = 1, }, }
 ```
 
 Here, the right-hand side is missing a type annotation for `baz`, so it doesn't
@@ -801,23 +792,27 @@ qualify as a record type and is parsed as a record contract. This throws an
 ```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz : Bool}
 error: type error: missing row `baz`
-  ┌─ <repl-input-0:1:1
-  │
-1 │ {foo = 1, bar = "foo" } : {foo : Number, bar : String, baz : Bool}
-  │ ^^^^^^^^^^^^^^^^^^^^^^^ this expression
-  │
-  = Expected an expression of type `{ foo : Number, bar : String, baz : Bool }`, which contains the field `baz`
-  = Found an expression of type `{ bar : String, foo : Number }`, which does not contain the field `baz`
+[...]
 ```
 
 If there's a metadata annotation apart from the type, the record cannot be
-parsed as a type. Consequently, it is considered a record contract and converted
-into an opaque type, yielding an error:
+parsed as a type. Consequently, Nickel tries to interpret it as a record
+contract which will most likely result in an error, because fields with a type
+annotation but no value are forbidden outside of types.
 
-```nickel #no-check
+```nickel #repl
 > {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
-error: incompatible types
-[..]
+error: statically typed field without a definition
+  ┌─ <repl-input-81>:1:29
+  │
+1 │  {foo = 1, bar = "foo" } : {foo : Number, bar : String | optional}
+  │                             ^^^   ------ but it has a type annotation
+  │                             │
+  │                             this field doesn't have a definition
+  │
+  = A static type annotation must be attached to an expression but this field doesn't have a definition.
+  = Did you mean to use `|` instead of `:`, for example when defining a record contract?
+  = Typed fields without definitions are only allowed inside record types, but the enclosing record literal doesn't qualify as a record type. Please refer to the manual for the defining conditions of a record type.
 ```
 
 While in the following `MyDyn` isn't a proper type, the record literal `{foo :
@@ -827,7 +822,7 @@ parsed as such:
 ```nickel #repl
 > let MyDyn = fun label value => value in
     {foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
-{ bar = "foo", foo = 1 }
+{ bar = "foo", foo = 1, }
 ```
 
 ## Metadata
@@ -844,7 +839,8 @@ Documentation can be attached with `| doc <string>`. For example:
 > let record = {
     value
       | doc "The number five"
-      | default = 5
+      | default
+      = 5
   }
 
 # Stop `core/tests/manual` from parsing this hide-line
@@ -862,8 +858,8 @@ Documentation can be attached with `| doc <string>`. For example:
           (Collins dictionary)
         "%
       = true,
-  }
-{ truth = true }
+  }.truth
+true
 ```
 
 Metadata can also set merge priorities using the following annotations:
@@ -881,26 +877,26 @@ Here are some examples using merge priorities in Nickel:
 ```nickel #repl
 > let Ais2ByDefault = { a | default = 2 } in
     {} | Ais2ByDefault
-{ a = 2 }
+{ a | default = 2, }
 
 > let Ais2ByDefault = { a | default = 2 } in
     { a = 1 } | Ais2ByDefault
-{ a = 1 }
+{ a = 1, }
 
 > { foo | default = 1, bar = foo + 1 }
-{ foo = 1, bar = 2 }
+{ bar = 2, foo | default = 1, }
 
 > {foo | default = 1, bar = foo + 1} & {foo = 2}
-{ foo = 2, bar = 3 }
+{ bar = 3, foo = 2, }
 
 > {foo | force = 1, bar = foo + 1} & {foo = 2}
-{ bar = 2, foo = 1 }
+{ bar = 2, foo | force = 1, }
 
 > {foo | priority 10 = 1} & {foo | priority 8 = 2} & {foo = 3}
-{ foo = 1 }
+{ foo | priority 10 = 1, }
 
 > {foo | priority -1 = 1} & {foo = 2}
-{ foo = 2 }
+{ foo = 2, }
 ```
 
 The `optional` annotation indicates that a field is not mandatory. It is usually
@@ -908,17 +904,19 @@ found in record contracts.
 
 ```nickel #repl
 > let Contract = {
-    foo | Num,
-    bar | Num
+    foo | Number,
+    bar | Number
         | optional,
   }
+
 > let value | Contract = {foo = 1}
+
 > value
-{ foo = 1 }
+{ foo | Number = 1, }
 
 > {bar = 1} | Contract
 error: missing definition for `foo`
-[..]
+[...]
 ```
 
 The `not_exported` annotation indicates that a field should be skipped when a
@@ -926,13 +924,12 @@ record is serialized. This includes the output of the `nickel export` command:
 
 ```nickel #repl
 > let value = { foo = 1, bar | not_exported = 2}
+
 > value
-{ foo = 1, bar = 2 }
+{ bar = 2, foo = 1, }
 
 > std.serialize 'Json value
-"{
-  "foo": 1
-}"
+"{\n  \"foo\": 1\n}"
 ```
 
 [nix-string-context]: https://shealevy.com/blog/2018/08/05/understanding-nixs-string-context/

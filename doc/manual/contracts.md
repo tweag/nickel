@@ -49,8 +49,8 @@ are performed:
 2
 
 > "a" | Number
-error: contract broken by a value.
-[..]
+error: contract broken by a value
+[...]
 ```
 
 Contracts corresponding to the basic types `Number`, `String`, `Bool` and `Dyn`
@@ -104,13 +104,24 @@ In `IsFoo`, we first test if the value is a string, and then if it is equal to
 appropriate error messages. Let us try:
 
 ```nickel #repl
+# hide-range{1-10}
+
+> let IsFoo = fun label value =>
+    if std.is_string value then
+      if value == "foo" then
+        value
+      else
+        std.contract.blame_with_message "not equal to \"foo\"" label
+    else
+      std.contract.blame_with_message "not a string" label
+
 > 1 | IsFoo
-error: contract broken by a value [not a string].
-[..]
+error: contract broken by a value: not a string
+[...]
 
 > "a" | IsFoo
-error: contract broken by a value [not equal to "foo"].
-[..]
+error: contract broken by a value: not equal to "foo"
+[...]
 
 > "foo" | IsFoo
 "foo"
@@ -315,7 +326,7 @@ If we export this example to JSON, we get:
 
 ```console
 $ nickel -f config.ncl export
-error: contract broken by a value
+error: contract broken by the value of `server_port`
    ┌─ example.ncl:26:7
    │
 16 │         server_port | Port,
@@ -370,10 +381,7 @@ or default values:
 > let config | Schema = {bar = 2}
 
 > std.serialize 'Json config
-"{
-  "bar": 2,
-  "foo": "foo"
-}"
+"{\n  \"bar\": 2,\n  \"foo\": \"foo\"\n}"
 
 # Don't parse this in tests hide-line
 > :query config foo
@@ -390,8 +398,8 @@ By default, record contracts are closed, meaning that additional fields are forb
 > let Contract = {foo | String}
 
 > {foo = "a", bar = 1} | Contract
-error: contract broken by a value [extra field `bar`].
-[..]
+error: contract broken by a value: extra field `bar`
+[...]
 ```
 
 If you want to allow additional fields, append `, ..` after the last field
@@ -401,7 +409,7 @@ definition to define an open contract:
 > let Contract = {foo | String, ..}
 
 > {foo = "a", bar = 1} | Contract
-{ bar = 1, foo = "a" }
+{ bar = 1, foo | String = "a", .. }
 ```
 
 #### Giving values to fields
@@ -419,26 +427,25 @@ example:
   }
 
 > std.serialize 'Json ({data = ""} | Secure)
-"{
-  "data": "",
-  "must_be_very_secure": true
-}"
+"{\n  \"data\": \"\",\n  \"must_be_very_secure\": true\n}"
 
 > {data = "", must_be_very_secure = false} | Secure
 error: non mergeable terms
-  ┌─ repl-input-15:1:35
+  ┌─ <repl-input-15>:1:36
   │
-1 │ {data = "", must_be_very_secure = false} | Secure
-  │                                   ^^^^^    ------ originally merged here
-  │                                   │
-  │                                   cannot merge this expression
+1 │  {data = "", must_be_very_secure = false} | Secure
+  │                                    ^^^^^    ------ originally merged here
+  │                                    │
+  │                                    cannot merge this expression
   │
-  ┌─ repl-input-13:2:32
+  ┌─ <repl-input-13>:2:34
   │
-2 │   must_be_very_secure | Bool = true,
-  │                                ^^^^ with this expression
+2 │     must_be_very_secure | Bool = true,
+  │                                  ^^^^ with this expression
   │
-  = Both values have the same merge priority but they can't be combined
+  = Both values have the same merge priority but they can't be combined.
+  = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
+  = Functions can never be merged.
 ```
 
 **Warning: `=` vs `|`**
@@ -465,11 +472,11 @@ be what you want:
   }
 
 > {sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
-error: contract broken by a value [extra field `bar`].
-[..]
+error: contract broken by the value of `sub_field`: extra field `bar`
+[...]
 
 > {sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
-{ sub_field = { foo = <contract,value="a">, bar = "b"}}
+{ sub_field = { bar = "b", foo | String = "a", }, }
 ```
 
 There are other discrepancies, e.g. when applying the contract to a record with
@@ -497,12 +504,12 @@ contract to each element:
 
 > [1000, 10001, 2] | Array VeryBig
 error: contract broken by a value
-  ┌─ repl-input-22:1:15
+  ┌─ <repl-input-21>:1:16
   │
-1 │ [1000, 10001, 2] | Array VeryBig
-  │               ^          ------- expected array element type
-  │               │
-  │               applied to this expression
+1 │  [1000, 10001, 2] | Array VeryBig
+  │                ^          ------- expected array element type
+  │                │
+  │                applied to this expression
 ```
 
 #### Functions
@@ -546,13 +553,13 @@ order to make this caller/callee distinction:
 ```nickel #repl
 > let add_semi | String -> String = fun x => x ++ ";" in
   add_semi 1
-error: contract broken by the caller.
-[..]
+error: contract broken by the caller
+[...]
 
 > let wrong | String -> String = fun x => 0 in
   wrong "a"
-error: contract broken by a function.
-[..]
+error: contract broken by a function
+[...]
 ```
 
 ##### Higher-order functions
@@ -565,14 +572,18 @@ functions as parameters. Here is an example:
 > let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
   apply_fun (fun x => "a")
 error: contract broken by the caller
-  ┌─ repl-input-25:1:28
+  ┌─ <repl-input-24>:1:29
   │
-1 │ let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
-  │                            ------ expected return type of a function provided by the caller
-2 │ apply_fun (fun x => "a")
-  │                     --- evaluated to this expression
+1 │  let apply_fun | (Number -> Number) -> Number = fun f => f 0 in
+  │                             ------ expected return type of a function provided by the caller
+2 │   apply_fun (fun x => "a")
+  │                       --- evaluated to this expression
   │
-[..]
+  ┌─ <unknown> (generated by evaluation):1:1
+  │
+1 │ "a"
+  │ --- evaluated to this value
+[...]
 ```
 
 #### Dictionary
@@ -619,8 +630,8 @@ always failing contract `std.FailWith` to observe where evaluation takes place:
 * documentation: Some information
 
 > config.fail
-error: contract broken by a value: ooch
-[..]
+error: contract broken by the value of `fail`: ooch
+[...]
 ```
 
 See how the command `:query config.data` succeeds, although the field `fail`
@@ -718,6 +729,36 @@ value and continues with the second argument (here, our wrapped `value`).
 Let us see if we indeed preserved laziness:
 
 ```nickel #repl
+#hide-range{1-29}
+
+> let NumberBoolDict = fun label value =>
+    if std.is_record value then
+      let check_fields =
+        value
+        |> std.record.fields
+        |> std.array.fold_left
+          (
+            fun acc field_name =>
+              if std.string.is_match "^\\d+$" field_name then
+                acc # unused and always null through iteration
+              else
+                std.contract.blame_with_message "field name `%{field_name}` is not a number" label
+          )
+          null
+      in
+      value
+      |> std.record.map
+        (
+          fun name value =>
+            let label_with_msg =
+              std.contract.label.with_message "field `%{name}` is not a boolean" label
+            in
+            std.contract.apply Bool label_with_msg value
+        )
+      |> std.seq check_fields
+    else
+      std.contract.blame_with_message "not a record" label
+
 > let config | NumberBoolDict = {
     "1" | std.FailWith "ooch" = null, # same as our previous "fail"
     "0" | doc "Some information" = true,
@@ -732,6 +773,36 @@ Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
 it check anything, though?
 
 ```nickel #repl
+#hide-range{1-29}
+
+> let NumberBoolDict = fun label value =>
+    if std.is_record value then
+      let check_fields =
+        value
+        |> std.record.fields
+        |> std.array.fold_left
+          (
+            fun acc field_name =>
+              if std.string.is_match "^\\d+$" field_name then
+                acc # unused and always null through iteration
+              else
+                std.contract.blame_with_message "field name `%{field_name}` is not a number" label
+          )
+          null
+      in
+      value
+      |> std.record.map
+        (
+          fun name value =>
+            let label_with_msg =
+              std.contract.label.with_message "field `%{name}` is not a boolean" label
+            in
+            std.contract.apply Bool label_with_msg value
+        )
+      |> std.seq check_fields
+    else
+      std.contract.blame_with_message "not a record" label
+
 > let config | NumberBoolDict = {
     not_a_number = false,
     "0" | doc "Some information" = false,
@@ -740,7 +811,6 @@ it check anything, though?
 # Don't parse this in tests hide-line
 > :q config."0"
 error: contract broken by a value [field name `not_a_number` is not a number].
-[..]
 
 > let config | NumberBoolDict = {
     "0" | doc "Some information" = "not a boolean",
@@ -749,7 +819,6 @@ error: contract broken by a value [field name `not_a_number` is not a number].
 # Don't parse this in tests hide-line
 > :q config."0"
 error: contract broken by a value [field `0` is not a boolean].
-[..]
 ```
 
 It does!

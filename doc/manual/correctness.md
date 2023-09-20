@@ -90,7 +90,7 @@ Type annotations are introduced with `:`. For example:
 
 > "not a Number" : Number
 error: incompatible types
-[..]
+[...]
 ```
 
 Contract annotations are introduced with `|`. For example:
@@ -99,8 +99,8 @@ Contract annotations are introduced with `|`. For example:
 > let GreaterThan = fun bound =>
     std.contract.from_predicate (fun val => val >= bound) in
   -1 | GreaterThan 10
-error: contract broken by value
-[..]
+error: contract broken by a value
+[...]
 ```
 
 Both type and contract annotations support the same syntax for properties on
@@ -120,15 +120,30 @@ Suppose we need a function to convert an array of key-value pairs into an array
 of keys and an array of values. Let's call it `split`:
 
 ```nickel #repl
+#hide-range{1-14}
+
+> let split = fun pairs =>
+    std.array.fold_right
+      (
+        fun pair acc =>
+          {
+            # problem: the correct expression to use is [pair.key]
+            keys = acc.keys @ [pair.key],
+            values = acc.values @ [pair.value],
+          }
+      )
+      { keys = [], values = [] }
+      pairs
+
 > split [{key = "foo", value = 1}, {key = "bar", value = 2}]
-{keys = ["foo", "bar"], values = [1, 2]}
+{ keys = [ "bar", "foo" ], values = [ 2, 1 ], }
 
 > split [
     {key = "firewall", value = true},
     {key = "grsec", value = false},
     {key = "iptables", value = true},
   ]
-{ keys: ["firewall", "grsec", "iptables"], values [true, false, true] }
+{ keys = [ "iptables", "grsec", "firewall" ], values = [ true, false, true ], }
 ```
 
 Here is the definition for `split`, but with a twist. On line 9 we accidentally
@@ -217,19 +232,18 @@ function contract for `split` has the following limitations:
   evaluating `config.ncl` reports the following error:
 
   ```text
-  error: type error
-    ┌─ /path/to/lib.ncl:6:27
+  error: dynamic type error
+    ┌─ lib.ncl:8:33
     │
-  6 │         keys = acc.keys @ pair.key,
-    │                           ^^^^^^^^ this expression has type String, but Array was expected
+  8 │               keys = acc.keys @ pair.key,
+    │                                 ^^^^^^^^ this expression has type String, but Array was expected
     │
-    ┌─ /path/to/config.ncl:2:41
+    ┌─ <repl-input-1:1:77
     │
-  2 │ split [{key = "foo", value = 1}, {key = "bar", value = 2}]
-    │                                         ----- evaluated to this
+  1 │ let {split} = import "error.ncl" in split [{key = "foo", value = 1}, {key = "bar", value = 2}]
+    │                                                                             ----- evaluated to this
     │
-    = @, 2nd operand
-
+    = (@) expects its 2nd argument to be a Array
   ```
 
   From the caller's perspective, this is not a particularly helpful error. For
@@ -265,17 +279,19 @@ now reports an error:
 
 ```text
 error: incompatible rows declaration
-   ┌─ /path/to/lib.ncl:10:7
+   ┌─ lib.ncl:13:9
    │
-10 │       pairs
-   │       ^^^^^ this expression
+13 │         pairs
+   │         ^^^^^ this expression
    │
-[..]
-error: While typing field `key`: incompatible types
- = The type of the expression was expected to be `Array _a`
- = The type of the expression was inferred to be `String`
- = These types are not compatible
+   = Expected an expression of a record type with the row `key: Array _a`
+   = Found an expression of a record type with the row `key: String`
+   = Could not match the two declarations of `key`
 
+error: while typing field `key`: incompatible types
+ = Expected an expression of type `Array _a`
+ = Found an expression of type `String`
+ = These types are not compatible
 ```
 
 The error says that the `key` field of the elements of `pairs` is a string, but
@@ -334,13 +350,13 @@ We get:
 
 ```text
 error: incompatible types
-  ┌─ repl-input-2:4:26
+  ┌─ config.ncl:4:26
   │
 4 │   opt_level : OptLevel = "A" ++ std.string.from_number level,
   │                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
   │
-  = The type of the expression was expected to be `OptLevel` (a contract)
-  = The type of the expression was inferred to be `String`
+  = Expected an expression of type `OptLevel` (a contract)
+  = Found an expression of type `String`
   = Static types and contracts are not compatible
 ```
 
@@ -372,8 +388,8 @@ let level = 4 in
 This correctly reports an error, and even gives the computed offending value:
 
 ```text
-error: contract broken by a value
-  ┌─ repl-input-4:4:26
+error: contract broken by the value of `opt_level`
+  ┌─ config.ncl:4:26
   │
 4 │   opt_level | OptLevel = "A" ++ std.string.from_number level,
   │               --------   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ applied to this expression
@@ -384,7 +400,6 @@ error: contract broken by a value
   │
 1 │ "A4"
   │ ---- evaluated to this value
-  │
 ```
 
 ### Summary
