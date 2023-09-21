@@ -30,6 +30,7 @@ use crate::combine::Combine;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
+use crate::term::SharedTerm;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
     BinaryOp, IndexMap, RichTerm, Term,
@@ -55,6 +56,20 @@ impl From<MergeMode> for MergeLabel {
             MergeMode::Contract(label) => label.into(),
         }
     }
+}
+
+fn merge_optimize(t1: &SharedTerm, t2: &SharedTerm) -> bool {
+    matches!(
+        (t1.as_ref(), t2.as_ref()),
+        (Term::Null, Term::Null)
+            | (Term::Bool(_), Term::Bool(_))
+            | (Term::Num(_), Term::Num(_))
+            | (Term::Str(_), Term::Str(_))
+            | (Term::Lbl(_), Term::Lbl(_))
+            | (Term::Enum(_), Term::Enum(_))
+            | (Term::Array(..), Term::Array(..))
+            | (Term::Record(..), Term::Record(..))
+    )
 }
 
 /// Compute the merge of two evaluated operands. Support both standard merging and record contract
@@ -83,6 +98,16 @@ pub fn merge<C: Cache>(
         term: t2,
         pos: pos2,
     } = t2;
+
+    if merge_optimize(&t1, &t2) && SharedTerm::ptr_eq(&t1, &t2) {
+        return Ok(Closure {
+            body: RichTerm {
+                term: t1,
+                pos: pos_op.into_inherited(),
+            },
+            env: env1,
+        });
+    }
 
     match (t1.into_owned(), t2.into_owned()) {
         // Merge is idempotent on basic terms
