@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use lsp_types::GotoDefinitionResponse;
+use lsp_types::{DocumentSymbolResponse, GotoDefinitionResponse};
 
 pub trait LspDebug {
     fn debug(&self, w: impl Write) -> std::io::Result<()>;
@@ -155,5 +155,36 @@ impl LspDebug for lsp_types::MarkedString {
 impl LspDebug for lsp_types::MarkupContent {
     fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
         write!(w, "{}", self.value)
+    }
+}
+
+impl LspDebug for lsp_types::SymbolInformation {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        let name = &self.name;
+        let kind = self.kind;
+        write!(w, "{name} ({kind:?})@{}", self.location.debug_str())
+    }
+}
+
+impl LspDebug for lsp_types::DocumentSymbol {
+    fn debug(&self, mut w: impl Write) -> std::io::Result<()> {
+        let name = &self.name;
+        let kind = self.kind;
+        let detail = self.detail.clone().unwrap_or_default();
+        write!(
+            w,
+            "{name} ({kind:?} / {detail:?})@{} in {}",
+            self.selection_range.debug_str(),
+            self.range.debug_str()
+        )
+    }
+}
+
+impl LspDebug for DocumentSymbolResponse {
+    fn debug(&self, w: impl Write) -> std::io::Result<()> {
+        match self {
+            DocumentSymbolResponse::Flat(xs) => xs.debug(w),
+            DocumentSymbolResponse::Nested(xs) => xs.debug(w),
+        }
     }
 }

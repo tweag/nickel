@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
@@ -87,6 +87,10 @@ pub struct UsageLookup {
     // environments) but its enough for us now.
     def_table: HashMap<RawSpan, Environment>,
     usage_table: HashMap<LocIdent, Vec<LocIdent>>,
+    // The list of all the symbols (and their locations) in the document.
+    //
+    // Currently, variables bound in `let` bindings and record fields count as symbols.
+    syms: HashSet<LocIdent>,
 }
 
 impl UsageLookup {
@@ -125,6 +129,15 @@ impl UsageLookup {
             .and_then(|span| self.def_table.get(span))
     }
 
+    /// Return the list of symbols in the document.
+    pub fn symbols(&self) -> impl Iterator<Item = LocIdent> + '_ {
+        self.syms.iter().cloned()
+    }
+
+    fn add_sym(&mut self, id: impl Into<LocIdent>) {
+        self.syms.insert(id.into());
+    }
+
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
         rt.traverse_ref(
             &mut |term: &RichTerm, env: &Environment| {
@@ -154,6 +167,7 @@ impl UsageLookup {
                     Term::Let(id, val, body, attrs) => {
                         let mut new_env = env.clone();
                         new_env.def(*id, Some(val.clone()), None);
+                        self.add_sym(*id);
 
                         self.fill(val, if attrs.rec { &new_env } else { env });
                         self.fill(body, &new_env);
@@ -164,6 +178,7 @@ impl UsageLookup {
                         let mut new_env = env.clone();
                         if let Some(id) = maybe_id {
                             new_env.def(*id, Some(val.clone()), None);
+                            self.add_sym(*id);
                         }
 
                         for m in &pat.matches {
@@ -173,7 +188,8 @@ impl UsageLookup {
                                     term: val.clone(),
                                     path,
                                 };
-                                new_env.def(id, Some(term), Some(field.metadata));
+                                new_env.def(id, Some(term.clone()), Some(field.metadata));
+                                self.add_sym(id);
                             }
                         }
                         TraverseControl::ContinueWithScope(new_env)
@@ -185,6 +201,7 @@ impl UsageLookup {
                         // all the fields in the environment and then recurse into their values.
                         for (id, field) in &data.fields {
                             new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
+                            self.add_sym(*id);
                         }
 
                         TraverseControl::ContinueWithScope(new_env)

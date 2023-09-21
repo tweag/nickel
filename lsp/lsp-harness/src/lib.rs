@@ -4,8 +4,8 @@ mod output;
 pub use jsonrpc::Server;
 use log::error;
 use lsp_types::{
-    CompletionParams, DocumentFormattingParams, GotoDefinitionParams, HoverParams, ReferenceParams,
-    Url,
+    CompletionParams, DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams,
+    HoverParams, ReferenceParams, Url,
 };
 pub use output::LspDebug;
 use serde::Deserialize;
@@ -35,6 +35,7 @@ pub enum Request {
     Completion(CompletionParams),
     Formatting(DocumentFormattingParams),
     Hover(HoverParams),
+    Symbols(DocumentSymbolParams),
 }
 
 #[derive(Deserialize, Debug, Default)]

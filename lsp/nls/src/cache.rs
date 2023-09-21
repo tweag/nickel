@@ -11,7 +11,7 @@ use nickel_lang_core::{
 };
 
 use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
-use crate::linearization::{CombinedLinearizer, TypeCollector};
+use crate::linearization::{CollectedTypes, CombinedLinearizer, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
@@ -78,7 +78,7 @@ impl CacheExt for Cache {
                 initial_ctxt.clone(),
                 self,
                 lin,
-                (building, HashMap::new()),
+                (building, CollectedTypes::default()),
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
