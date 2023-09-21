@@ -15,7 +15,7 @@ name = "nls"
 path = "src/main.rs"
 
 [features]
-default = ["format", "old-completer"]
+default = ["format"]
 format = ["nickel-lang-core/format"]
 old-completer = []
 

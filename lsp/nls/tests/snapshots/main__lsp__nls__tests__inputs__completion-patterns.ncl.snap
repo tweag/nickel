@@ -2,10 +2,13 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
+[extra, foo]
+[bar, more]
+[baz, most]
+[bar, more]
+[baz, most]
+[baz, most]
 [extra, foo, inner, innermost, outer]
-[bar, inner, innermost, more, outer]
-[baz, inner, innermost, most, outer]
-[bar, inner, innermost, more, outer]
-[baz, inner, innermost, most, outer]
-[baz, inner, innermost, most, outer]
+[bar, extra, foo, inner, innermost, more, outer]
+[bar, baz, extra, foo, inner, innermost, more, most, outer]
 

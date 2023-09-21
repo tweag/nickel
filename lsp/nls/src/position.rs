@@ -111,7 +111,7 @@ impl PositionLookup {
     pub fn new(rt: &RichTerm) -> Self {
         let mut all_term_ranges = Vec::new();
         let mut idents = Vec::new();
-        let mut fun = |term: &RichTerm| {
+        let mut fun = |term: &RichTerm, _state: &()| {
             if let TermPos::Original(pos) = &term.pos {
                 all_term_ranges.push((
                     Range {
@@ -139,10 +139,10 @@ impl PositionLookup {
                 Term::Match { cases, .. } => idents.extend(cases.keys().cloned()),
                 _ => {}
             }
-            TraverseControl::<()>::Continue
+            TraverseControl::<(), ()>::Continue
         };
 
-        rt.traverse_ref(&mut fun);
+        rt.traverse_ref(&mut fun, &());
 
         let mut ident_ranges: Vec<_> = idents
             .into_iter()

@@ -11,7 +11,7 @@ use nickel_lang_core::{
     cache::SourcePath,
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
-    term::RichTerm,
+    term::{RichTerm, Term},
     transform::import_resolution,
 };
 
@@ -160,13 +160,13 @@ pub fn parse_path_from_incomplete_input(
         .replace_string(SourcePath::Snippet(path), to_parse);
 
     match server.cache.parse_nocache(file_id) {
-        Ok((rt, _errors)) => {
+        Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
             server
                 .lin_registry
                 .usage_lookups
                 .insert(file_id, UsageLookup::new_with_env(&rt, env));
             Some(resolve_imports(rt, server))
         }
-        Err(_) => None,
+        _ => None,
     }
 }

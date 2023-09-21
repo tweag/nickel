@@ -51,6 +51,7 @@ impl Completed {
     /// Returns the closest item to the left (if any) and to the right (if any) of
     /// a specified item. The "closeness" metric in this context is just the source
     /// position.
+    #[cfg(feature = "old-completer")]
     pub fn get_items_adjacent(
         &self,
         id: ItemId,
@@ -141,6 +142,7 @@ impl Completed {
     }
 
     /// Return all the items in the scope of the given linearization item.
+    #[cfg(feature = "old-completer")]
     pub fn get_in_scope<'a>(
         &'a self,
         LinearizationItem { env, .. }: &'a LinearizationItem<Resolved>,
