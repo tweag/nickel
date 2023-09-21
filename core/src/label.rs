@@ -25,13 +25,12 @@ pub mod ty_path {
     //! Checking higher-order contracts can involve a good share of intermediate contract checking.
     //! Take the following example:
     //! ```text
-    //! Assume(
-    //!     (Number -> Number) -> Number) -> Number -> Number,
-    //!     fun ev => fun cst => ev (fun x => cst)
-    //! )
+    //! (fun ev => fun cst => ev (fun x => cst))
+    //!   | ((Number -> Number) -> Number) -> Number -> Number,
     //! ```
     //! Once called, various checks will be performed on the arguments of functions and their return
     //! values:
+    //!
     //! 1. Check that `ev` provides a `Number` to `(fun x => cst)`
     //! 2. Check that `(fun x => cst)` returns a `Number`
     //! 3. Check that `ev (fun x => cst)` return a `Number`
@@ -39,8 +38,8 @@ pub mod ty_path {
     //!
     //! Each check can be linked to a base type occurrence (here, a `Number`) in the original type:
     //! ```text
-    //! (Number -> Number) -> Number) -> Number -> Number
-    //!  ^^^^^1    ^^^^^^2    ^^^^^^3    etc.
+    //! ((Number -> Number) -> Number) -> Number -> Number
+    //!   ^^^^^1    ^^^^^^2    ^^^^^^3    etc.
     //! ```
     //!
     //! This is the information encoded by a type path: what part of the original type is currently

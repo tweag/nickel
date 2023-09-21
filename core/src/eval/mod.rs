@@ -35,11 +35,6 @@
 //!   causes an [`crate::error::EvalError::InternalError`]. A resolved import, identified by a
 //!   `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
-//! ## Contracts
-//!
-//! - **`Assume(type, label, term)`** (or `Promise(type, label, term)`): replace the current term
-//! with the contract corresponding to `types`, applied to label and term (`contract label term`).
-//!
 //! ## Operators
 //!
 //! Operators are strict by definition. To evaluate say `exp1 + exp2`, the following steps have to

@@ -236,7 +236,7 @@ pub fn get_bop_type(
         BinaryOp::StrConcat() => (mk_uniftype::str(), mk_uniftype::str(), mk_uniftype::str()),
         // Ideally: Contract -> Label -> Dyn -> Dyn
         // Currently: Dyn -> Dyn -> (Dyn -> Dyn)
-        BinaryOp::Assume() => (
+        BinaryOp::ApplyContract() => (
             mk_uniftype::dynamic(),
             mk_uniftype::dynamic(),
             mk_uty_arrow!(mk_uniftype::dynamic(), mk_uniftype::dynamic()),
@@ -366,7 +366,7 @@ pub fn get_bop_type(
         ),
         // The first argument is a contract, the second is a label.
         // forall a. Dyn -> Dyn -> Array a -> Array a
-        BinaryOp::ArrayLazyAssume() => {
+        BinaryOp::ArrayLazyAppCtr() => {
             let ty_elt = state.table.fresh_type_uvar(var_level);
             let ty_array = mk_uniftype::array(ty_elt);
             (
@@ -377,7 +377,7 @@ pub fn get_bop_type(
         }
         // The first argument is a label, the third is a contract.
         // forall a. Dyn -> {_: a} -> Dyn -> {_: a}
-        BinaryOp::RecordLazyAssume() => {
+        BinaryOp::RecordLazyAppCtr() => {
             let ty_field = state.table.fresh_type_uvar(var_level);
             let ty_dict = mk_uniftype::dict(ty_field);
             (

@@ -1373,12 +1373,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("(++)", "String", 1, t1, pos1))
                 }
             }
-            BinaryOp::Assume() => {
+            BinaryOp::ApplyContract() => {
                 if let Term::Lbl(l) = &*t2 {
                     // Track the contract argument for better error reporting, and push back the
                     // label on the stack, so that it becomes the first argument of the contract.
                     let idx = self.stack.track_arg(&mut self.cache).ok_or_else(|| {
-                        EvalError::NotEnoughArgs(3, String::from("assume"), pos_op)
+                        EvalError::NotEnoughArgs(3, String::from("apply_contract"), pos_op)
                     })?;
                     let mut l = l.clone();
                     l.arg_pos = self.cache.get_then(idx.clone(), |c| c.body.pos);
@@ -1425,10 +1425,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             Ok(Closure { body, env: new_env })
                         }
-                        _ => Err(mk_type_error!("assume", "Contract", 1, t1, pos1)),
+                        _ => Err(mk_type_error!("apply_contract", "Contract", 1, t1, pos1)),
                     }
                 } else {
-                    Err(mk_type_error!("assume", "Label", 2, t2, pos2))
+                    Err(mk_type_error!("apply_contract", "Label", 2, t2, pos2))
                 }
             }
             BinaryOp::Unseal() => {
@@ -2063,9 +2063,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 (Term::Str(_), _) => Err(mk_type_error!("str_contains", "String", 2, t2, pos2)),
                 (_, _) => Err(mk_type_error!("str_contains", "String", 1, t1, pos1)),
             },
-            BinaryOp::ArrayLazyAssume() => {
+            BinaryOp::ArrayLazyAppCtr() => {
                 let (ctr, _) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(3, String::from("array_lazy_assume"), pos_op)
+                    EvalError::NotEnoughArgs(3, String::from("array_lazy_app_ctr"), pos_op)
                 })?;
 
                 let Closure {
@@ -2076,7 +2076,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // FIXME: use match?
                 let lbl = match_sharedterm! {t1, with {
                         Term::Lbl(lbl) => lbl
-                    } else return Err(mk_type_error!("array_lazy_assume", "Label", 1, t1, pos1))
+                    } else return Err(mk_type_error!("array_lazy_app_ctr", "Label", 1, t1, pos1))
                 };
 
                 match_sharedterm! {t2,
@@ -2098,10 +2098,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             Ok(array_with_ctr)
                         }
-                    } else Err(mk_type_error!("array_lazy_assume", "Array", 2, t2, pos2))
+                    } else Err(mk_type_error!("array_lazy_app_ctr", "Array", 2, t2, pos2))
                 }
             }
-            BinaryOp::RecordLazyAssume() => {
+            BinaryOp::RecordLazyAppCtr() => {
                 // The contract is expected to be of type `String -> Contract`: it takes the name
                 // of the field as a parameter, and returns a contract.
                 let (
@@ -2111,12 +2111,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     },
                     _,
                 ) = self.stack.pop_arg(&self.cache).ok_or_else(|| {
-                    EvalError::NotEnoughArgs(3, String::from("record_lazy_assume"), pos_op)
+                    EvalError::NotEnoughArgs(3, String::from("record_lazy_app_ctr"), pos_op)
                 })?;
 
                 let label = match_sharedterm! {t1, with {
                         Term::Lbl(label) => label
-                    } else return Err(mk_type_error!("record_lazy_assume", "Label", 1, t1, pos1))
+                    } else return Err(mk_type_error!("record_lazy_app_ctr", "Label", 1, t1, pos1))
                 };
 
                 match_sharedterm! {t2,
@@ -2164,7 +2164,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 env,
                             })
                         }
-                    } else Err(mk_type_error!("record_lazy_assume", "Record", 2, t2, pos2))
+                    } else Err(mk_type_error!("record_lazy_app_ctr", "Record", 2, t2, pos2))
                 }
             }
             BinaryOp::LabelWithMessage() => {

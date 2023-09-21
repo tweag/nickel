@@ -207,7 +207,7 @@ pub fn merge<C: Cache>(
             // exactly the same, but can't be shadowed.
             let eq_contract = mk_app!(stdlib::internals::stdlib_contract_equal(), t1);
             let result = mk_app!(
-                mk_term::op2(BinaryOp::Assume(), eq_contract, Term::Lbl(label)),
+                mk_term::op2(BinaryOp::ApplyContract(), eq_contract, Term::Lbl(label)),
                 t2
             )
             .with_pos(pos_op);

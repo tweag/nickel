@@ -184,12 +184,12 @@ pub enum NormalToken<'input> {
     #[token("%typeof%")]
     Typeof,
 
-    #[token("%assume%")]
-    Assume,
-    #[token("%array_lazy_assume%")]
-    ArrayLazyAssume,
-    #[token("%record_lazy_assume%")]
-    RecordLazyAssume,
+    #[token("%apply_contract%")]
+    ApplyContract,
+    #[token("%array_lazy_app_ctr%")]
+    ArrayLazyAppCtr,
+    #[token("%record_lazy_app_ctr%")]
+    RecordLazyAppCtr,
     #[token("%blame%")]
     Blame,
     #[token("%chng_pol%")]

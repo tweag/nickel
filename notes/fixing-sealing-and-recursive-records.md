@@ -125,9 +125,9 @@ Op1(record_map, record); {stack..}
 record ~ RecRecord {..}
 
 RECORD{ foo |pending Num = %1, bar |pending [PosNat,Even] = %2}
-%2 := (%assume% Num label %1) + 1
+%2 := (%apply_contract% Num label %1) + 1
 
-RECORD{ foo = f (%assume% Num %1), bar = f (%assume% PosNat,Even %2) }
+RECORD{ foo = f (%apply_contract% Num %1), bar = f (%apply_contract% PosNat,Even %2) }
 
 # With a call to pending_contract.dualize()
 

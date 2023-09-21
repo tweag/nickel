@@ -15,13 +15,13 @@
 
   "$array" = fun element_contract label value =>
     if %typeof% value == 'Array then
-      %array_lazy_assume% (%go_array% label) value element_contract
+      %array_lazy_app_ctr% (%go_array% label) value element_contract
     else
       %blame% label,
 
   "$func" = fun domain codomain label value =>
     if %typeof% value == 'Function then
-      (fun x => %assume% codomain (%go_codom% label) (value (%assume% domain (%chng_pol% (%go_dom% label)) x)))
+      (fun x => %apply_contract% codomain (%go_codom% label) (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x)))
     else
       %blame% label,
 
@@ -49,7 +49,7 @@
 
   "$enums" = fun case label value =>
     if %typeof% value == 'Enum then
-      %assume% case label value
+      %apply_contract% case label value
     else
       %blame% (%label_with_message% "not an enum tag" label),
 
@@ -85,7 +85,7 @@
                   let contract = field_contracts."%{field}" in
                   let label = %go_field% field label in
                   let val = value."%{field}" in
-                  %record_insert% field acc (%assume% contract label val)
+                  %record_insert% field acc (%apply_contract% contract label val)
                 else
                   acc
             )
@@ -107,7 +107,7 @@
   # Lazy dictionary contract for `{_ | T}`
   "$dict_contract" = fun contract label value =>
     if %typeof% value == 'Record then
-      %record_lazy_assume% (%go_dict% label) value (fun _field => contract)
+      %record_lazy_app_ctr% (%go_dict% label) value (fun _field => contract)
     else
       %blame% (%label_with_message% "not a record" label),
 
@@ -118,7 +118,7 @@
         value
         (
           fun _field field_value =>
-            %assume% contract (%go_dict% label) field_value
+            %apply_contract% contract (%go_dict% label) field_value
         )
     else
       %blame% (%label_with_message% "not a record" label),

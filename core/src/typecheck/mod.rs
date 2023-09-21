@@ -2514,7 +2514,7 @@ fn field_apparent_type(
 ///
 /// When a let-binding `let x = bound_exp in body` is processed, the type of `bound_exp` must be
 /// determined in order to be bound to the variable `x` in the typing environment.
-/// Then, future occurrences of `x` can be given this type when used in a `Promise` block.
+/// Then, future occurrences of `x` can be given this type when used in a statically typed block.
 ///
 /// The role of `apparent_type` is precisely to determine the type of `bound_exp`:
 /// - if `bound_exp` is annotated by a type or contract annotation, return the user-provided type,

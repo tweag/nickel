@@ -168,11 +168,12 @@ pub enum Term {
     /// Sealed terms are introduced by contracts on polymorphic types. Take the following example:
     ///
     /// ```text
-    /// let f = Assume(forall a. forall b. a -> b -> a, fun x y => y) in
+    /// let f | forall a b. a -> b -> a = fun x y => y in
     /// f true "a"
     /// ```
     ///
     /// This function is ill-typed. To check that, a polymorphic contract will:
+    ///
     /// - Assign a unique identifier to each type variable: say `a => 1`, `b => 2`
     /// - For each cast on a negative occurrence of a type variable `a` or `b` (corresponding to an
     /// argument position), tag the argument with the associated identifier. In our example, `f
@@ -268,8 +269,8 @@ pub enum BindingType {
     Revertible(FieldDeps),
 }
 
-/// A runtime representation of a contract, as a term ready to be applied via `Assume()` together
-/// with its label.
+/// A runtime representation of a contract, as a term ready to be applied via `AppContract`
+/// together with its label.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RuntimeContract {
     /// The pending contract, can be a function or a record.
@@ -300,7 +301,7 @@ impl RuntimeContract {
         use crate::mk_app;
 
         mk_app!(
-            make::op2(BinaryOp::Assume(), self.contract, Term::Lbl(self.label)).with_pos(pos),
+            make::op2(BinaryOp::ApplyContract(), self.contract, Term::Lbl(self.label)).with_pos(pos),
             rt
         )
         .with_pos(pos)
@@ -1074,7 +1075,7 @@ pub enum UnaryOp {
 
     /// Force full evaluation of a term and return it.
     ///
-    /// This was added in the context of [`BinaryOp::ArrayLazyAssume`], in particular to make
+    /// This was added in the context of [`BinaryOp::ArrayLazyAppCtr`], in particular to make
     /// serialization work with lazy array contracts.
     ///
     /// # `Force` vs. `DeepSeq`
@@ -1308,14 +1309,12 @@ pub enum BinaryOp {
     /// Greater than or equal comparison operator.
     GreaterOrEq(),
 
-    /// An assume.
-    ///
     /// Apply a contract to a label and a value. The value is is stored on the stack unevaluated,
-    /// while the contract and the label are the strict arguments to this operator. Assume also
-    /// accepts contracts as records, that are translates to a function that performs a merge
-    /// operation with its argument. Finally, this operator marks the location of the contract
-    /// argument for better error reporting.
-    Assume(),
+    /// while the contract and the label are the strict arguments to this operator. `ApplyContract`
+    /// also accepts contracts as records, which are translated to a function that merge said
+    /// contract with its argument. Finally, this operator marks the location of the contract
+    /// argument on the stack for better error reporting.
+    ApplyContract(),
 
     /// Unseal a sealed term.
     ///
@@ -1385,11 +1384,11 @@ pub enum BinaryOp {
 
     /// Lazily apply a contract to an Array.
     /// This simply inserts a contract into the array attributes.
-    ArrayLazyAssume(),
+    ArrayLazyAppCtr(),
 
     /// Lazily map contracts over a record. The arguments are a label and a function which takes
     /// the name of the field as a parameter and returns the corresponding contract.
-    RecordLazyAssume(),
+    RecordLazyAppCtr(),
 
     /// Set the message of the current diagnostic of a label.
     LabelWithMessage(),
@@ -1432,7 +1431,7 @@ impl fmt::Display for BinaryOp {
             LessOrEq() => write!(f, "less_or_eq"),
             GreaterThan() => write!(f, "greater_than"),
             GreaterOrEq() => write!(f, "greater_or_eq"),
-            Assume() => write!(f, "assume"),
+            ApplyContract() => write!(f, "apply_contract"),
             Unseal() => write!(f, "unseal"),
             GoField() => write!(f, "go_field"),
             DynExtend { .. } => write!(f, "record_insert"),
@@ -1448,8 +1447,8 @@ impl fmt::Display for BinaryOp {
             StrSplit() => write!(f, "str_split"),
             StrContains() => write!(f, "str_contains"),
             Seal() => write!(f, "seal"),
-            ArrayLazyAssume() => write!(f, "array_lazy_assume"),
-            RecordLazyAssume() => write!(f, "record_lazy_assume"),
+            ArrayLazyAppCtr() => write!(f, "array_lazy_app_ctr"),
+            RecordLazyAppCtr() => write!(f, "record_lazy_app_ctr"),
             LabelWithMessage() => write!(f, "label_with_message"),
             LabelWithNotes() => write!(f, "label_with_notes"),
             LabelAppendNote() => write!(f, "label_append_note"),
@@ -2230,12 +2229,12 @@ pub mod make {
         Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
 
-    pub fn assume<T>(typ: Type, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
+    pub fn apply_contract<T>(typ: Type, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
     where
         T: Into<RichTerm>,
     {
         Ok(mk_app!(
-            op2(BinaryOp::Assume(), typ.contract()?, Term::Lbl(l)),
+            op2(BinaryOp::ApplyContract(), typ.contract()?, Term::Lbl(l)),
             t.into()
         ))
     }
