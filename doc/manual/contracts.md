@@ -764,9 +764,8 @@ Let us see if we indeed preserved laziness:
     "0" | doc "Some information" = true,
   }
 
-# Don't parse this in tests hide-line
-> :query config "0"
-* documentation: Some information
+> config."0"
+true
 ```
 
 Yes! Our contract doesn't unduly cause the evaluation of the field `"1"`. Does
@@ -808,17 +807,17 @@ it check anything, though?
     "0" | doc "Some information" = false,
   }
 
-# Don't parse this in tests hide-line
-> :q config."0"
-error: contract broken by a value [field name `not_a_number` is not a number].
+> config."0"
+error: contract broken by a value: field name `not_a_number` is not a number
+[...]
 
 > let config | NumberBoolDict = {
     "0" | doc "Some information" = "not a boolean",
   }
 
-# Don't parse this in tests hide-line
-> :q config."0"
-error: contract broken by a value [field `0` is not a boolean].
+> config."0"
+error: contract broken by a value: field `0` is not a boolean
+[...]
 ```
 
 It does!
