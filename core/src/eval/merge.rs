@@ -410,7 +410,10 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     };
 
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
-    pending_contracts.extend(pending_contracts2.revert_closurize(cache, env_final, env2.clone()));
+
+    for ctr2 in pending_contracts2.revert_closurize(cache, env_final, env2.clone()) {
+        RuntimeContract::push_elide(&mut pending_contracts, ctr2, &env1, &env2);
+    }
 
     Ok(Field {
         metadata: FieldMetadata {

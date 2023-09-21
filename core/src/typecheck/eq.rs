@@ -52,7 +52,7 @@ use crate::{
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
-pub const MAX_GAS: u8 = 8;
+pub const MAX_GAS: u8 = 20;
 
 /// Abstract over the term environment, which is represented differently in the typechecker and
 /// during evaluation.
@@ -105,19 +105,17 @@ impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for Sim
     }
 }
 
-/*
-impl<C: Cache> TermEnvironment for eval::Environment {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+impl TermEnvironment for eval::Environment {
+    fn get_then<F, T>(&self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
     {
-        match self.get(id).map(eval::lazy::Thunk::borrow) {
+        match self.get(&id).map(eval::cache::lazy::Thunk::borrow) {
             Some(closure_ref) => f(Some((&closure_ref.body, &closure_ref.env))),
             None => f(None),
         }
     }
 }
-*/
 
 pub trait FromEnv<C: Cache> {
     fn from_env(eval_env: eval::Environment, cache: &C) -> Self;

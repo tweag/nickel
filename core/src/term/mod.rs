@@ -319,6 +319,21 @@ impl RuntimeContract {
     {
         contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
+
+    pub fn push_elide(
+        contracts: &mut Vec<RuntimeContract>,
+        ctr: Self,
+        env1: &crate::eval::Environment,
+        env2: &crate::eval::Environment,
+    ) {
+        for c in contracts.iter() {
+            if crate::typecheck::eq::contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
+                return;
+            }
+        }
+
+        contracts.push(ctr);
+    }
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
