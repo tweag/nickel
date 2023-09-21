@@ -928,7 +928,7 @@ impl Type {
     }
 
     /// Return the contract corresponding to a type, either as a function or a record. Said
-    /// contract must then be applied using the `Assume` primitive operation.
+    /// contract must then be applied using the `ApplyContract` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
         self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)

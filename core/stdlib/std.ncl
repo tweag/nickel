@@ -836,7 +836,7 @@
                 else if %length% diff.missing != 0 then
                   blame_fields_differ "missing" diff.missing ctr_label
                 else
-                  %record_lazy_assume%
+                  %record_lazy_app_ctr%
                     ctr_label
                     value
                     (
@@ -1168,7 +1168,7 @@
           using the parent contract message and note.
         "%
       = fun contract label value =>
-        %assume% contract (%label_push_diag% label) value,
+        %apply_contract% contract (%label_push_diag% label) value,
 
     unstable
       | doc m%"
