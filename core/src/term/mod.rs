@@ -301,7 +301,12 @@ impl RuntimeContract {
         use crate::mk_app;
 
         mk_app!(
-            make::op2(BinaryOp::ApplyContract(), self.contract, Term::Lbl(self.label)).with_pos(pos),
+            make::op2(
+                BinaryOp::ApplyContract(),
+                self.contract,
+                Term::Lbl(self.label)
+            )
+            .with_pos(pos),
             rt
         )
         .with_pos(pos)
@@ -2229,7 +2234,11 @@ pub mod make {
         Term::OpN(op, args.into_iter().map(T::into).collect()).into()
     }
 
-    pub fn apply_contract<T>(typ: Type, l: Label, t: T) -> Result<RichTerm, UnboundTypeVariableError>
+    pub fn apply_contract<T>(
+        typ: Type,
+        l: Label,
+        t: T,
+    ) -> Result<RichTerm, UnboundTypeVariableError>
     where
         T: Into<RichTerm>,
     {
