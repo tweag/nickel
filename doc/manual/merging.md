@@ -327,17 +327,17 @@ other field doesn't have a definition**:
 
 ```nickel #repl
 > {foo = 1, bar | optional} & {bar | optional}
-{ foo = 1 }
+{ foo = 1, }
 
 > {foo = 1, bar | optional} & {bar}
 error: missing definition for `bar`
-  ┌─ repl-input-0:1:11
+  ┌─ <repl-input-1>:1:12
   │
-1 │ {foo = 1, bar | optional} & {bar}
-  │ ----------^^^--------------------
-  │ │         │
-  │ │         required here
-  │ in this record
+1 │  {foo = 1, bar | optional} & {bar}
+  │  ----------^^^--------------------
+  │  │         │
+  │  │         required here
+  │  in this record
 ```
 
 In the second example, `bar` isn't optional on the right-hand side of the merge.
@@ -351,6 +351,7 @@ definition error, etc.
 
 ```nickel #repl
 > let Contract = {foo = 1, bar | optional}
+
 > std.record.values Contract
 [ 1 ]
 
@@ -381,14 +382,18 @@ be meaningfully combined:
 ```nickel #repl
 > {foo = 1} & {foo = 2}
 error: non mergeable terms
-  ┌─ repl-input-1:1:8
+  ┌─ <repl-input-5>:1:9
   │
-1 │ {foo = 1} & {foo = 2}
-  │        ^           ^ with this expression
-  │        │
-  │        cannot merge this expression
+1 │  {foo = 1} & {foo = 2}
+  │  -------^-----------^-
+  │  │      │           │
+  │  │      │           with this expression
+  │  │      cannot merge this expression
+  │  originally merged here
   │
-  = Both values have the same merge priority but they can't be combined
+  = Both values have the same merge priority but they can't be combined.
+  = Primitive values (Number, String, and Bool) or arrays can be merged only if they are equal.
+  = Functions can never be merged.
 ```
 
 If the priorities differ, the value with the highest priority simply erases the
@@ -396,10 +401,10 @@ other:
 
 ```nickel #repl
 > {foo | priority 1 = 1} & {foo = 2}
-{ foo = 1 }
+{ foo | priority 1 = 1, }
 
 > {foo | priority -1 = 1} & {foo = 2}
-{ foo = 2 }
+{ foo = 2, }
 ```
 
 The priorities are ordered in the following way:
@@ -593,37 +598,32 @@ If we try to observe the intermediate result (`deep_seq` recursively forces the
 evaluation of its first argument and proceeds with evaluating the second
 argument), we do get a contract violation error:
 
-```nickel #no-check
-let FooContract = {
-  required_field1,
-  required_field2,
-}
-in
-let intermediate =
-  { foo | FooContract }
-  & { foo.required_field1 = "here" }
-in
-
-intermediate
-& { foo.required_field2 = "here" }
-|> std.deep_seq intermediate
-```
-
-Result:
-
-```text
+```nickel #repl
+> let FooContract = {
+    required_field1,
+    required_field2,
+  }
+  in
+  let intermediate =
+    { foo | FooContract }
+    & { foo.required_field1 = "here" }
+  in
+  
+  intermediate
+  & { foo.required_field2 = "here" }
+  |> std.deep_seq intermediate
 error: missing definition for `required_field2`
-     ┌─ /home/yago/Pro/Tweag/projects/nickel/nickel/doc/manual/foo.ncl:3:3
+     ┌─ <repl-input-8>:3:5
      │
-   3 │   required_field2,
-     │   ^^^^^^^^^^^^^^^ defined here
+   3 │     required_field2,
+     │     ^^^^^^^^^^^^^^^ required here
      ·
-   8 │   & { foo.required_field1 = "here" }
-     │           ^^^^^^^^^^^^^^^^^^^^^^^^ in this record
+   8 │     & { foo.required_field1 = "here" }
+     │             ------------------------ in this record
      │
-     ┌─ <stdlib/std.ncl>:2448:18
+     ┌─ <stdlib/std.ncl>:2868:18
      │
-2448 │     = fun x y => %deep_seq% x y,
+2868 │     = fun x y => %deep_seq% x y,
      │                  ------------ accessed here
 ```
 
@@ -666,13 +666,13 @@ let GreaterThan
 Because 80 would be less than 1024, this fails at evaluation:
 
 ```text
-error: contract broken by a value
-   ┌─ example.ncl:26:17
+error: contract broken by the value of `port`
+   ┌─ example.ncl:27:17
    │
-21 │     | GreaterThan 1024
+22 │     | GreaterThan 1024
    │       ---------------- expected type
    ·
-26 │   port | Port = 80,
+27 │   port | Port = 80,
    │                 ^^ applied to this expression
 ```
 

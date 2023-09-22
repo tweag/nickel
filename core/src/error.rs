@@ -7,7 +7,7 @@ use crate::cache::Cache;
 pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream, WriteColor};
 use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
 
@@ -2287,23 +2287,27 @@ impl From<ColorOpt> for ColorChoice {
 /// infrastructure to point at specific locations and print snippets when needed.
 pub fn report<E: IntoDiagnostics<FileId>>(cache: &mut Cache, error: E, color_opt: ColorOpt) {
     let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-    report_with(cache.files_mut(), stdlib_ids.as_ref(), error, color_opt)
+    report_with(
+        &mut StandardStream::stderr(color_opt.into()).lock(),
+        cache.files_mut(),
+        stdlib_ids.as_ref(),
+        error,
+    )
 }
 
 /// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
-fn report_with<E: IntoDiagnostics<FileId>>(
+pub fn report_with<E: IntoDiagnostics<FileId>>(
+    writer: &mut dyn WriteColor,
     files: &mut Files<String>,
     stdlib_ids: Option<&Vec<FileId>>,
     error: E,
-    color_opt: ColorOpt,
 ) {
-    let writer = StandardStream::stderr(color_opt.into());
     let config = codespan_reporting::term::Config::default();
     let diagnostics = error.into_diagnostics(files, stdlib_ids);
 
     let result = diagnostics
         .iter()
-        .try_for_each(|d| codespan_reporting::term::emit(&mut writer.lock(), &config, files, d));
+        .try_for_each(|d| codespan_reporting::term::emit(writer, &config, files, d));
 
     match result {
         Ok(()) => (),

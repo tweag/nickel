@@ -45,8 +45,8 @@ example:
 configuration using `nickel export`, we get a reasonable error message:
 
 ```text
-error: type error
-  ┌─ repl-input-0:8:16
+error: dynamic type error
+  ┌─ <repl-input-0>:8:16
   │
 3 │   version = "0.1.1",
   │             ------- evaluated to this
@@ -54,7 +54,7 @@ error: type error
 8 │       "hello-%{version + 1}",
   │                ^^^^^^^ this expression has type String, but Number was expected
   │
-  = +, 1st argument
+  = (+) expects its 1st argument to be a Number
 ```
 
 While dynamic typing is fine for configuration code, the trouble begins once we
@@ -69,15 +69,15 @@ filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
 Result:
 
 ```text
-error: type error
-  ┌─ repl-input-3:2:40
+error: dynamic type error
+  ┌─ <repl-input-0>:2:40
   │
 2 │   std.array.fold_left (fun acc x => if pred x then acc @ [x] else acc) [] l in
   │                                        ^^^^^^ this expression has type Number, but Bool was expected
 3 │ filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
   │                                            -- evaluated to this
   │
-  = if
+  = the condition in an if expression must have type Bool
 ```
 
 This example illustrates how dynamic typing delays type errors, making them
@@ -130,13 +130,13 @@ Result:
 
 ```text
 error: incompatible types
-  ┌─ repl-input-6:3:18
+  ┌─ <repl-input-0>:3:18
   │
 3 │ filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]) : Array Number
   │                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this expression
   │
-  = The type of the expression was expected to be `Bool`
-  = The type of the expression was inferred to be `Number`
+  = Expected an expression of type `Bool`
+  = Found an expression of type `Number`
   = These types are not compatible
 ```
 
@@ -311,23 +311,18 @@ annotation. If we try to add a call to `filter` on an array of strings, the
 typechecker surprisingly rejects our code:
 
 ```nickel #no-check
-(let filter = ... in
-let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
-let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
-result) : Array Number
-```
-
-Result:
-
-```text
+> (let filter = ... in
+  let result = filter (fun x => x % 2 == 0) [1,2,3,4,5,6] in
+  let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
+  result) : Array Number
 error: incompatible types
-  ┌─ repl-input-1:5:48
+  ┌─ <repl-input-1:4:48
   │
-5 │ let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
+4 │ let dummy = filter (fun s => std.string.length s > 2) ["a","ab","abcd"] in
   │                                                ^ this expression
   │
-  = The type of the expression was expected to be `String`
-  = The type of the expression was inferred to be `Number`
+  = Expected an expression of type `String`
+  = Found an expression of type `Number`
   = These types are not compatible
 ```
 
@@ -354,31 +349,27 @@ like Nickel.
 In a configuration language, you will often find yourself handling records of
 various kinds. In a simple type system, you can hit the following issue:
 
-```nickel #parse
-(
-  let add_total : { total : Number } -> { total : Number } -> Number
-    = fun r1 r2 => r1.total + r2.total
-    in
-  let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
-  let r2 = { aug = 50, sept = 20, total = aug + sept } in
-  let r3 = { may = 1300, june = 400, total = may + june } in
-  {
-    partial1 = add_total r1 r2,
-    partial2 = add_total r2 r3,
-  }
-) : { partial1 : Number, partial2 : Number }
-```
-
-```text
-error: type error: extra row `jan`
-  ┌─ src.ncl:9:25
+```nickel #repl
+> (
+    let add_total : { total : Number } -> { total : Number } -> Number
+      = fun r1 r2 => r1.total + r2.total
+      in
+    let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
+    let r2 = { aug = 50, sept = 20, total = aug + sept } in
+    let r3 = { may = 1300, june = 400, total = may + june } in
+    {
+      partial1 = add_total r1 r2,
+      partial2 = add_total r2 r3,
+    }
+  ) : { partial1 : Number, partial2 : Number }
+error: type error: extra row `march`
+  ┌─ <repl-input-0>:9:28
   │
-9 │     partial1 = add_total r1 r2,
-  │                         ^^ this expression
+9 │       partial1 = add_total r1 r2,
+  │                            ^^ this expression
   │
-  = The type of the expression was expected to be `{total: Number}`, which does not contain the field `jan`
-  = The type of the expression was inferred to be `{jan: Number, march: Number, feb: Number, total: Number}`, which contai
-ns the extra field `jan`
+  = Expected an expression of type `{ total : Number }`, which does not contain the field `march`
+  = Found an expression of type `{ total : Number, march : Number, feb : Number, jan : Number }`, which contains the extra field `march`
 ```
 
 The problem here is that for this code to run fine, the requirement of
@@ -393,25 +384,20 @@ similar to polymorphism, but instead of substituting a parameter for a single ty
 we can substitute a parameter for a whole sequence of field declarations, also
 referred to as rows:
 
-```nickel
-(
-  let add_total : forall a b. { total : Number; a } -> { total : Number; b } -> Number
-    = fun r1 r2 => r1.total + r2.total
-    in
-  let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
-  let r2 = { aug = 50, sept = 20, total = aug + sept } in
-  let r3 = { may = 1300, june = 400, total = may + june } in
-  {
-    partial1 = add_total r1 r2,
-    partial2 = add_total r2 r3,
-  }
-) : { partial1 : Number, partial2 : Number }
-```
-
-Result:
-
-```nickel
-{ partial1 = 570, partial2 = 1770 }
+```nickel #repl
+> (
+    let add_total : forall a b. { total : Number; a } -> { total : Number; b } -> Number
+      = fun r1 r2 => r1.total + r2.total
+      in
+    let r1 = { jan = 200, feb = 300, march = 10, total = jan + feb } in
+    let r2 = { aug = 50, sept = 20, total = aug + sept } in
+    let r3 = { may = 1300, june = 400, total = may + june } in
+    {
+      partial1 = add_total r1 r2,
+      partial2 = add_total r2 r3,
+    }
+  ) : { partial1 : Number, partial2 : Number }
+{ partial1 = 570, partial2 = 1770, }
 ```
 
 In the type of `add_total`, the part `{total: Number ; a}` expresses exactly what
@@ -476,42 +462,19 @@ Fortunately, Nickel does have a mechanism to prevent this from happening and to
 provide good error reporting in this situation. Let us see that by ourselves by
 calling to the statically typed `std.array.filter` from dynamically typed code:
 
-```nickel #parse
-std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
-```
-
-Result:
-
-```text
-error: contract broken by the caller
-    ┌─ <stdlib/std.ncl>:333:25
+```nickel #repl
+> std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+error: contract broken by the caller of `filter`
+    ┌─ <stdlib/std.ncl>:349:25
     │
-333 │       : forall a. (a -> Bool) -> Array a -> Array a
+349 │       : forall a. (a -> Bool) -> Array a -> Array a
     │                         ---- expected return type of a function provided by the caller
     │
-    ┌─ repl-input-24:1:54
+    ┌─ <repl-input-2>:1:55
     │
-  1 │ std.array.filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
-    │                                                      -- evaluated to this expression
-    │
-    ┌─ <unknown> (generated by evaluation):1:1
-    │
-  1 │ -1
-    │ -- evaluated to this value
-    │
-    = This error may happen in the following situation:
-          1. A function `f` is bound by a contract: e.g. `(Number -> Number) -> Number`.
-          2. `f` takes another function `g` as an argument: e.g. `f = fun g => g 0`.
-          3. `f` is called by with an argument `g` that does not respect the contract: e.g. `f (fun x => false)`.
-    = Either change the contract accordingly, or call `f` with a function that returns a value of the right type.
-    = Note: this is an illustrative example. The actual error may involve deeper nested functions calls.
-
-note:
-  ┌─ repl-input-24:1:1
-  │
-1 │ std.array.filter (fun x => if x % 2 == 0 then x else -1) [1,2,3,4,5,6]
-  │ ---------------------------------------------------------------------- (1) calling filter
-
+  1 │  std.array.filter (fun x => if x % 2 == 0 then x else null) [1,2,3,4,5,6]
+    │                                                       ---- evaluated to this expression
+[...]
 ```
 
 We call `filter` from a dynamically typed location, but still get a spot-on
@@ -532,22 +495,17 @@ In the other direction, we face a different issue. Because dynamically typed
 code just get assigned the `Dyn` type most of the time, we can't use a
 dynamically typed value inside a statically typed block directly:
 
-```nickel #parse
-let x = 0 + 1 in
-(1 + x : Number)
-```
-
-Result:
-
-```text
-error: Incompatible types
-  ┌─ repl-input-6:1:6
+```nickel #repl
+> let x = 0 + 1 in
+  (1 + x : Number)
+error: incompatible types
+  ┌─ <repl-input-3>:2:8
   │
-1 │ (1 + x : Number)
-  │      ^ this expression
+2 │   (1 + x : Number)
+  │        ^ this expression
   │
-  = The type of the expression was expected to be `Number`
-  = The type of the expression was inferred to be `Dyn`
+  = Expected an expression of type `Number`
+  = Found an expression of type `Dyn`
   = These types are not compatible
 ```
 
@@ -583,21 +541,16 @@ code that you know is correct but wouldn't typecheck:
 The typechecker accepts the code above, while it rejects a fully statically
 typed version because of the type mismatch between the if branches:
 
-```nickel #parse
-(1 + (if true then 0 else "a")) : Number
-```
-
-Result:
-
-```text
-error: Incompatible types
-  ┌─ repl-input-46:1:27
+```nickel #repl
+> (1 + (if true then 0 else "a")) : Number
+error: incompatible types
+  ┌─ <repl-input-4>:1:28
   │
-1 │ (1 + (if true then 0 else "a")) : Number
-  │                           ^^^ this expression
+1 │  (1 + (if true then 0 else "a")) : Number
+  │                            ^^^ this expression
   │
-  = The type of the expression was expected to be `Number`
-  = The type of the expression was inferred to be `String`
+  = Expected an expression of type `Number`
+  = Found an expression of type `String`
   = These types are not compatible
 ```
 
@@ -658,15 +611,15 @@ But this program is unfortunately rejected by the typechecker:
 Result:
 
 ```text
-error: Incompatible types
-  ┌─ repl-input-0:7:2
+error: incompatible types
+  ┌─ <repl-input-0>:7:2
   │
-7 │ (10 : Port)
-  │  ^^ this expression
+7 │ (10 - 1 : Port)
+  │  ^^^^^^ this expression
   │
-  = The type of the expression was expected to be `Port`
-  = The type of the expression was inferred to be `Number`
-  = These types are not compatible
+  = Expected an expression of type `Port` (a contract)
+  = Found an expression of type `Number`
+  = Static types and contracts are not compatible
 ```
 
 It turns out statically ensuring that an arbitrary expression will eventually
