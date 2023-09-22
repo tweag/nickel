@@ -90,7 +90,8 @@ typed-arena = "2.0.2"
 unicode-segmentation = "1.10.1"
 void = "1"
 
-topiary = { version = "0.2.3", git = "https://github.com/tweag/topiary.git", rev = "refs/heads/main" }
+topiary = { git = "https://github.com/tweag/topiary.git", rev = "8299a04bf83c4a2774cbbff7a036c022efa939b3" }
+topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "8299a04bf83c4a2774cbbff7a036c022efa939b3", package = "topiary-queries", default-features = false, features = ["nickel"] }
 # This should be kept in sync with the revision in topiary
 tree-sitter-nickel = { version = "0.1.0" }
 tempfile = "3.5.0"
