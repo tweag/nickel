@@ -1,15 +1,10 @@
-use crate::{
-    files::uri_to_path,
-    linearization::interface::TermKind,
-    term::RawSpanExt,
-    trace::{Enrich, Trace},
-};
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
 use nickel_lang_core::cache::SourcePath;
-use serde_json::Value;
+use nickel_lang_core::typ::Type;
 
 use crate::server::Server;
+use crate::{files::uri_to_path, term::RawSpanExt};
 
 pub fn handle_document_symbols(
     params: DocumentSymbolParams,
@@ -17,47 +12,44 @@ pub fn handle_document_symbols(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let path = uri_to_path(&params.text_document.uri)?;
-    let file_id = server.cache.id_of(&SourcePath::Path(path)).unwrap();
+    let file_id = server
+        .cache
+        .id_of(&SourcePath::Path(path))
+        .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
 
-    if let Some(completed) = server.lin_registry.map.get(&file_id) {
-        Trace::enrich(&id, completed);
-        let symbols = completed
-            .linearization
-            .iter()
-            .filter_map(|item| match &item.kind {
-                TermKind::Declaration { id: name, .. } => {
-                    // Although the position maybe shouldn't be `None`, opening the std library
-                    // source inside VSCode made the LSP panic on the previous `item.pos.unwrap()`.
-                    // Before investigating further, let's not make the VSCode extension panic in
-                    // the meantime.
-                    let (file_id, span) = item.pos.into_opt()?.to_range();
+    let usage_lookups = server.lin_registry.usage_lookups.get(&file_id).unwrap();
 
-                    let range =
-                        codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)
-                            .unwrap();
+    let type_lookups = server
+        .lin_registry
+        .type_lookups
+        .get(&file_id)
+        .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
 
-                    // `deprecated` is a required field but causes a warning although we are not
-                    // using it
-                    #[allow(deprecated)]
-                    Some(DocumentSymbol {
-                        name: name.to_string(),
-                        detail: Some(format!("{}", item.ty)),
-                        kind: SymbolKind::Variable,
-                        tags: None,
-                        range,
-                        selection_range: range,
-                        children: None,
-                        deprecated: None,
-                    })
-                }
-                _ => None,
+    let mut symbols = usage_lookups
+        .symbols()
+        .filter_map(|ident| {
+            let (file_id, span) = ident.pos.into_opt()?.to_range();
+            let range =
+                codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span).ok()?;
+            let ty = type_lookups.idents.get(&ident);
+
+            #[allow(deprecated)] // because the `deprecated` field is... wait for it... deprecated.
+            Some(DocumentSymbol {
+                name: ident.ident.to_string(),
+                detail: ty.map(Type::to_string),
+                kind: SymbolKind::Variable,
+                tags: None,
+                range,
+                selection_range: range,
+                children: None,
+                deprecated: None,
             })
-            .collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
-        server.reply(Response::new_ok(id, symbols));
-    } else {
-        server.reply(Response::new_ok(id, Value::Null));
-    }
+    symbols.sort_by_key(|s| s.range.start);
+
+    server.reply(Response::new_ok(id, symbols));
 
     Ok(())
 }

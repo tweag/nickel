@@ -101,7 +101,7 @@ pub struct LinRegistry {
     pub position_lookups: HashMap<FileId, PositionLookup>,
     pub usage_lookups: HashMap<FileId, UsageLookup>,
     pub parent_lookups: HashMap<FileId, ParentLookup>,
-    pub type_lookups: HashMap<FileId, HashMap<RichTermPtr, Type>>,
+    pub type_lookups: HashMap<FileId, CollectedTypes<Type>>,
 }
 
 impl LinRegistry {
@@ -113,7 +113,7 @@ impl LinRegistry {
         &mut self,
         file_id: FileId,
         linearization: Completed,
-        type_lookups: HashMap<RichTermPtr, Type>,
+        type_lookups: CollectedTypes<Type>,
         term: &RichTerm,
     ) {
         self.map.insert(file_id, linearization);
@@ -154,7 +154,10 @@ impl LinRegistry {
 
     pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
         let file = rt.pos.as_opt_ref()?.src_id;
-        self.type_lookups.get(&file)?.get(&RichTermPtr(rt.clone()))
+        self.type_lookups
+            .get(&file)?
+            .terms
+            .get(&RichTermPtr(rt.clone()))
     }
 
     pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
@@ -788,9 +791,24 @@ pub struct TypeCollector {
     term_ids: Vec<RichTermPtr>,
 }
 
+#[derive(Clone, Debug)]
+pub struct CollectedTypes<Ty> {
+    pub terms: HashMap<RichTermPtr, Ty>,
+    pub idents: HashMap<LocIdent, Ty>,
+}
+
+impl<Ty> Default for CollectedTypes<Ty> {
+    fn default() -> Self {
+        Self {
+            terms: HashMap::new(),
+            idents: HashMap::new(),
+        }
+    }
+}
+
 impl Linearizer for TypeCollector {
-    type Building = HashMap<RichTermPtr, UnifType>;
-    type Completed = HashMap<RichTermPtr, Type>;
+    type Building = CollectedTypes<UnifType>;
+    type Completed = CollectedTypes<Type>;
     type CompletionExtra = Extra;
     type ItemId = usize;
 
@@ -804,7 +822,7 @@ impl Linearizer for TypeCollector {
 
     fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) -> Option<usize> {
         self.term_ids.push(RichTermPtr(rt.clone()));
-        lin.insert(RichTermPtr(rt.clone()), ty);
+        lin.terms.insert(RichTermPtr(rt.clone()), ty);
         Some(self.term_ids.len() - 1)
     }
 
@@ -827,15 +845,32 @@ impl Linearizer for TypeCollector {
             }
         };
 
-        lin.into_iter()
+        let terms = lin
+            .terms
+            .into_iter()
             .map(|(rt, uty)| (rt, transform_type(uty)))
-            .collect()
+            .collect();
+        let idents = lin
+            .idents
+            .into_iter()
+            .map(|(id, uty)| (id, transform_type(uty)))
+            .collect();
+        CollectedTypes { terms, idents }
     }
 
     fn retype(&mut self, lin: &mut Self::Building, item_id: Option<usize>, new_type: UnifType) {
         if let Some(id) = item_id {
-            lin.insert(self.term_ids[id].clone(), new_type);
+            lin.terms.insert(self.term_ids[id].clone(), new_type);
         }
+    }
+
+    fn retype_ident(
+        &mut self,
+        lin: &mut Self::Building,
+        ident: &nickel_lang_core::identifier::LocIdent,
+        new_type: UnifType,
+    ) {
+        lin.idents.insert((*ident).into(), new_type);
     }
 }
 
