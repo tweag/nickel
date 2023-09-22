@@ -269,6 +269,12 @@
           cargoArtifacts = craneLib.buildDepsOnly {
             inherit pname src;
             cargoExtraArgs = "${cargoBuildExtraArgs} --all-features";
+            # If we build all the packages at once, feature unification takes
+            # over and we get libraries with different sets of features than
+            # we would get building them separately. Meaning that when we
+            # later build them separately, it won't hit the cache. So instead,
+            # we need to build each package separately when we are collecting
+            # dependencies.
             cargoBuildCommand = "cargoWorkspace build";
             cargoTestCommand = "cargoWorkspace test";
             cargoCheckCommand = "cargoWorkspace check";
