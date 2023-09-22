@@ -23,10 +23,11 @@ pub fn format(mut input: impl Read, mut output: impl Write) -> Result<(), Format
         topiary::Configuration::parse_default_configuration().map_err(FormatError)?;
     let language = topiary::SupportedLanguage::Nickel.to_language(&topiary_config);
     let grammar = tree_sitter_nickel::language().into();
+    let query = TopiaryQuery::new(&grammar, topiary_queries::nickel()).map_err(FormatError)?;
     topiary::formatter(
         &mut input,
         &mut output,
-        &TopiaryQuery::nickel(),
+        &query,
         language,
         &grammar,
         topiary::Operation::Format {

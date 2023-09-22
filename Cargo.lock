@@ -1657,6 +1657,7 @@ dependencies = [
  "test-generator",
  "toml",
  "topiary",
+ "topiary-queries",
  "tree-sitter-nickel 0.1.0",
  "typed-arena",
  "unicode-segmentation",
@@ -2950,7 +2951,7 @@ dependencies = [
 [[package]]
 name = "topiary"
 version = "0.2.3"
-source = "git+https://github.com/tweag/topiary.git?rev=refs/heads/main#7e6cb4f8b505eacee57aaf3c1ab0f3cf539da159"
+source = "git+https://github.com/tweag/topiary.git?rev=8299a04bf83c4a2774cbbff7a036c022efa939b3#8299a04bf83c4a2774cbbff7a036c022efa939b3"
 dependencies = [
  "clap 4.4.3",
  "futures",
@@ -2977,6 +2978,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "topiary-queries"
+version = "0.2.3"
+source = "git+https://github.com/tweag/topiary.git?rev=8299a04bf83c4a2774cbbff7a036c022efa939b3#8299a04bf83c4a2774cbbff7a036c022efa939b3"
+
+[[package]]
 name = "tree-sitter"
 version = "0.20.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2989,7 +2995,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-bash"
 version = "0.20.3"
-source = "git+https://github.com/tree-sitter/tree-sitter-bash#bdcd56c5a3896f7bbb7684e223c43d9f24380351"
+source = "git+https://github.com/tree-sitter/tree-sitter-bash#fd4e40dab883d6456da4d847de8321aee9c80805"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -2998,7 +3004,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-facade"
 version = "0.9.3"
-source = "git+https://github.com/tweag/tree-sitter-facade#1b290e795e700a57d8bd303f98a9715ab1c4f598"
+source = "git+https://github.com/tweag/tree-sitter-facade.git#1b290e795e700a57d8bd303f98a9715ab1c4f598"
 dependencies = [
  "js-sys",
  "tree-sitter",
@@ -3009,9 +3015,8 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-json"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90b04c4e1a92139535eb9fca4ec8fa9666cc96b618005d3ae35f3c957fa92f92"
+version = "0.20.0"
+source = "git+https://github.com/tree-sitter/tree-sitter-json.git#ca3f8919800e3c1ad4508de3bfd7b0b860ce434f"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -3039,8 +3044,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-ocaml"
 version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd1163abc658cf8ae0ecffbd8f4bd3ee00a2b98729de74f3b08f0e24f3ac208a"
+source = "git+https://github.com/tree-sitter/tree-sitter-ocaml.git#694c57718fd85d514f8b81176038e7a4cfabcaaf"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -3049,8 +3053,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-ocamllex"
 version = "0.20.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e774222086fd065999b6605fb231fbfc386bf782aa7dbad52503ff00b429a62"
+source = "git+https://github.com/314eter/tree-sitter-ocamllex.git#4b9898ccbf198602bb0dec9cd67cc1d2c0a4fad2"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -3068,8 +3071,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-rust"
 version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0832309b0b2b6d33760ce5c0e818cb47e1d72b468516bfe4134408926fa7594"
+source = "git+https://github.com/tree-sitter/tree-sitter-rust.git#48e053397b587de97790b055a1097b7c8a4ef846"
 dependencies = [
  "cc",
  "tree-sitter",
@@ -3077,9 +3079,8 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-toml"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca517f578a98b23d20780247cc2688407fa81effad5b627a5a364ec3339b53e8"
+version = "0.5.1"
+source = "git+https://github.com/tree-sitter/tree-sitter-toml.git#342d9be207c2dba869b9967124c679b5e6fd0ebe"
 dependencies = [
  "cc",
  "tree-sitter",
