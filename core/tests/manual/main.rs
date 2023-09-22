@@ -104,6 +104,9 @@ fn extract_repl_piece(piece: impl AsRef<str>) -> (String, ReplResult) {
     (program_lines.concat(), result)
 }
 
+/// Assert that two strings are equal except for possible trailing whitespace.
+/// The error reporting by `codespan` sometimes produces trailing whitespace
+/// which will be removed from the documentation markdown files.
 #[track_caller]
 fn assert_str_eq_approx(actual: impl AsRef<str>, expected: impl AsRef<str>) {
     assert_str_eq!(
@@ -138,6 +141,8 @@ fn check_repl(content: String) {
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::sink());
     repl.load_stdlib().unwrap();
     for piece in content.split("\n\n") {
+        // We only process `piece`s starting with `>`. This way we can make the
+        // testing code ignore unknown REPL statements, e.g. `:query`.
         if let Some(piece) = piece.strip_prefix('>') {
             let (input, result) = extract_repl_piece(piece);
 
