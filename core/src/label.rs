@@ -303,10 +303,6 @@ pub struct Label {
     /// polymorphic contracts to decide which actions to take when encountering a `forall`.
     pub type_environment: HashMap<SealingKey, TypeVarData>,
 
-    /// Signal to a polymorphic contract that it should generate the dual contract. Part of the
-    /// preliminary fix for [#1161](https://github.com/tweag/nickel/issues/1161).
-    pub dualize: bool,
-
     /// The name of the record field to report in blame errors. This is set
     /// while first transforming a record as part of the pending contract generation.
     /// Contract applications outside of records will have this field set to `None`.
@@ -523,7 +519,6 @@ impl Default for Label {
             arg_pos: Default::default(),
             path: Default::default(),
             type_environment: Default::default(),
-            dualize: false,
             field_name: None,
         }
     }

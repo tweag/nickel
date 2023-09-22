@@ -1,6 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::{label::Label, position::TermPos};
+use crate::position::TermPos;
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise,
@@ -87,43 +87,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 
                 let with_ctr_applied = RuntimeContract::apply_all(
                     RichTerm::new(Term::Var(id_value), value.pos),
-                    field.pending_contracts.iter().cloned().flat_map(|ctr| {
-                        // This operation is the heart of our preliminary fix for
-                        // [#1161](https://github.com/tweag/nickel/issues/1161). Whenever we detect
-                        // the presence of free type variables in a contract, by witnessing a
-                        // nonempty type environment in the label, we need to not just apply the
-                        // original contract but also its dual. The rationale here is that a record
-                        // field that recursively depends on another of type `T`, say, should be
-                        // considered a function with domain `T`. Consequently, the same contract
-                        // that would be a applied to the argument of a function of type `T -> Dyn`
-                        // should be applied to the recursive reference.
-                        //
-                        // Thus, the recursive reference must satisfy the contract for `T` as well
-                        // as the "dual" contract `T.dualize()`; the latter is defined to be the
-                        // domain contract for a function of type `T -> Dyn`. This sublety only
-                        // matters if `T` contains free type variables because only then does
-                        // `T.dualize()` differ from `T` at all.
-                        //
-                        // We expect to implement a way of solving this dilemma without essentially
-                        // applying every contract twice. This will likely involve a rewriting of
-                        // contracts corresponding to free variables which is yet to be proved
-                        // sound.
-                        if ctr.label.type_environment.is_empty() {
-                            vec![ctr]
-                        } else {
-                            vec![
-                                ctr.clone(),
-                                RuntimeContract {
-                                    contract: ctr.contract,
-                                    label: Label {
-                                        polarity: ctr.label.polarity.flip(),
-                                        dualize: true,
-                                        ..ctr.label
-                                    },
-                                },
-                            ]
-                        }
-                    }),
+                    field.pending_contracts.iter().cloned(),
                     value.pos,
                 );
 
