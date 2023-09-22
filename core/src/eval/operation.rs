@@ -1155,18 +1155,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("label_push_diag", "Label"))
                 }}
             }
-            UnaryOp::Dualize() => {
-                match_sharedterm! {t, with {
-                    Term::Lbl(label) => {
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Bool(label.dualize),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("dualize", "Label"))
-                }}
-            }
         }
     }
 
