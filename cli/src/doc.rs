@@ -12,7 +12,7 @@ use nickel_lang_core::{
 use crate::{
     cli::GlobalOptions,
     error::{CliResult, ResultErrorExt},
-    eval,
+    eval::EvalCommand,
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
@@ -53,20 +53,18 @@ pub struct DocCommand {
     /// The output format for the generated documentation.
     #[arg(long, value_enum, default_value_t)]
     pub format: crate::doc::DocFormat,
+
+    #[command(flatten)]
+    pub evaluation: EvalCommand,
 }
 
 impl DocCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = eval::prepare(&global)?;
-        self.export_doc(&mut program, &global)
-            .report_with_program(program)
+        let mut program = self.evaluation.prepare(&global)?;
+        self.export_doc(&mut program).report_with_program(program)
     }
 
-    fn export_doc(
-        self,
-        program: &mut Program<CacheImpl>,
-        global: &GlobalOptions,
-    ) -> Result<(), Error> {
+    fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
         let doc = program.extract_doc()?;
         let mut out: Box<dyn std::io::Write> = if self.stdout {
             Box::new(std::io::stdout())
@@ -96,7 +94,7 @@ impl DocCommand {
 
                         let mut has_file_name = false;
 
-                        if let Some(path) = &global.file {
+                        if let Some(path) = &self.evaluation.input.file {
                             if let Some(file_stem) = path.file_stem() {
                                 output_file.push(file_stem);
                                 has_file_name = true;

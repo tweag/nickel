@@ -7,7 +7,10 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use crate::{cli::GlobalOptions, error::CliResult};
+use crate::{
+    cli::{GlobalOptions, InputOptions},
+    error::CliResult,
+};
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -75,22 +78,20 @@ impl Write for Output {
 
 #[derive(clap::Parser, Debug)]
 pub struct FormatCommand {
-    /// Output file. Standard output by default.
-    #[arg(short, long)]
-    output: Option<PathBuf>,
-
-    /// Format in place, overwriting the input file.
-    #[arg(short, long, requires = "file")]
-    in_place: bool,
+    #[command(flatten)]
+    input: InputOptions,
 }
 
 impl FormatCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = match (&self.output, &global.file, self.in_place) {
-            (None, None, _) | (None, Some(_), false) => Output::Stdout,
-            (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
-        };
-        let input: Box<dyn Read> = match global.file {
+    pub fn run(self, _global: GlobalOptions) -> CliResult<()> {
+        let mut output: Output = self
+            .input
+            .file
+            .as_deref()
+            .map(Output::from_path)
+            .transpose()?
+            .unwrap_or(Output::Stdout);
+        let input: Box<dyn Read> = match self.input.file {
             None => Box::new(stdin()),
             Some(f) => Box::new(BufReader::new(File::open(f)?)),
         };
