@@ -1881,6 +1881,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
+                &self.initial_env,
                 RichTerm {
                     term: t1,
                     pos: pos1,
@@ -2132,9 +2133,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     };
 
                                 crate::term::RuntimeContract::push_elide(
+                                    &self.initial_env,
                                     &mut field.pending_contracts,
-                                    runtime_ctr,
                                     &term_original_env,
+                                    runtime_ctr,
                                     &contract_env,
                                 );
                             }
@@ -2471,6 +2473,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Lbl(lbl) => {
                             merge::merge(
                                 &mut self.cache,
+                                &self.initial_env,
                                 RichTerm {
                                     term: t2,
                                     pos: pos2,

@@ -67,6 +67,7 @@ impl From<MergeMode> for MergeLabel {
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth to pack the inputs in an ad-hoc struct?
 pub fn merge<C: Cache>(
     cache: &mut C,
+    initial_env: &Environment,
     t1: RichTerm,
     env1: Environment,
     t2: RichTerm,
@@ -307,6 +308,7 @@ pub fn merge<C: Cache>(
                     id,
                     merge_fields(
                         cache,
+                        initial_env,
                         merge_label,
                         field1,
                         env1.clone(),
@@ -357,6 +359,7 @@ pub fn merge<C: Cache>(
 #[allow(clippy::too_many_arguments)]
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone>(
     cache: &mut C,
+    initial_env: &Environment,
     merge_label: MergeLabel,
     field1: Field,
     env1: Environment,
@@ -412,7 +415,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
 
     for ctr2 in pending_contracts2.revert_closurize(cache, env_final, env2.clone()) {
-        RuntimeContract::push_elide(&mut pending_contracts, ctr2, &env1, &env2);
+        RuntimeContract::push_elide(initial_env, &mut pending_contracts, &env_final, ctr2, &env_final);
     }
 
     Ok(Field {

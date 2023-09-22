@@ -25,6 +25,8 @@ use crate::{
     match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
+    eval::Environment,
+    typecheck::eq::{contract_eq, EvalEnvs},
 };
 
 use codespan::FileId;
@@ -321,13 +323,20 @@ impl RuntimeContract {
     }
 
     pub fn push_elide(
+        initial_env: &Environment,
         contracts: &mut Vec<RuntimeContract>,
+        env1: &Environment,
         ctr: Self,
-        env1: &crate::eval::Environment,
-        env2: &crate::eval::Environment,
+        env2: &Environment,
     ) {
+        eprintln!("push_elide: ({})", ctr.contract);
+        let envs1 = EvalEnvs { eval_env: env1, initial_env};
+
         for c in contracts.iter() {
-            if crate::typecheck::eq::contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
+            eprintln!("- comparing against ({})", c.contract);
+            let envs = EvalEnvs { eval_env: env2, initial_env};
+            if contract_eq::<EvalEnvs>(0, &c.contract, envs1, &ctr.contract, envs) {
+                eprintln!("  -> found equal contract, eliding");
                 return;
             }
         }

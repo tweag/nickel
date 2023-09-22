@@ -22,8 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
-    error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
-    eval,
+    error::{report, ColorOpt, Error, IntoDiagnostics, ParseError, EvalError, IOError},
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
     label::Label,
@@ -237,7 +236,7 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
-    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
+    fn prepare_eval(&mut self) -> Result<RichTerm, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
         if self.overrides.is_empty() {
@@ -258,7 +257,7 @@ impl<EC: EvalCache> Program<EC> {
                 .value(Term::ResolvedImport(value_file_id));
         }
 
-        let (t, initial_env) = self.vm.prepare_eval(self.main_id)?;
+        let t = self.vm.prepare_eval(self.main_id)?;
         let built_record = record.build();
         // For now, we can't do much better than using `Label::default`, but this is
         // hazardous. `Label::default` was originally written for tests, and although it
@@ -267,22 +266,21 @@ impl<EC: EvalCache> Program<EC> {
         // generate a dummy file id).
         // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
         // without referring to any source position.
-        let wrapper = mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
-        Ok((wrapper, initial_env))
+        Ok(mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval(t).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval_full(t).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -299,18 +297,18 @@ impl<EC: EvalCache> Program<EC> {
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
         self.vm
-            .eval_full_for_export(t, &initial_env)
+            .eval_full_for_export(t)
             .map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval_deep(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval_deep(t).map_err(|e| e.into())
     }
 
     /// Wrapper for [`query`].
@@ -424,7 +422,7 @@ impl<EC: EvalCache> Program<EC> {
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
 
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
 
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
@@ -432,13 +430,12 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
-            initial_env: &Environment,
         ) -> Result<Vec<RuntimeContract>, Error> {
             vm.reset();
 
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
-                ctr.contract = do_eval(vm, rt, current_env.clone(), initial_env)?;
+                ctr.contract = do_eval(vm, rt, current_env.clone())?;
             }
 
             Ok(pending_contracts)
@@ -448,7 +445,6 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             t: RichTerm,
             current_env: Environment,
-            initial_env: &Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
             let result = vm.eval_closure(
@@ -456,7 +452,6 @@ impl<EC: EvalCache> Program<EC> {
                     body: t.clone(),
                     env: current_env,
                 },
-                initial_env,
             );
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
@@ -484,13 +479,12 @@ impl<EC: EvalCache> Program<EC> {
                                     Field {
                                         value: field
                                             .value
-                                            .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
+                                            .map(|rt| do_eval(vm, rt, env.clone()))
                                             .transpose()?,
                                         pending_contracts: eval_contracts(
                                             vm,
                                             field.pending_contracts,
                                             env.clone(),
-                                            initial_env
                                         )?,
                                         ..field
                                     },
@@ -506,7 +500,7 @@ impl<EC: EvalCache> Program<EC> {
             }
         }
 
-        do_eval(&mut self.vm, t, Environment::new(), &initial_env)
+        do_eval(&mut self.vm, t, Environment::new())
     }
 
     /// Extract documentation from the program

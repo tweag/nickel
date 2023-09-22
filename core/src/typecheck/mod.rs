@@ -329,7 +329,7 @@ pub enum GenericUnifType<E: TermEnvironment> {
     /// A contract, seen as an opaque type. In order to compute type equality between contracts or
     /// between a contract and a type, we need to carry an additional environment. This is why we
     /// don't reuse the variant from [`crate::typ::TypeF`].
-    Contract(RichTerm, E),
+    Contract(RichTerm, E::Owned),
     /// A rigid type constant which cannot be unified with anything but itself.
     Constant(VarId),
     /// A unification variable.
@@ -478,7 +478,7 @@ impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
     /// Create `GenericUnifRecordRows` from `RecordRows`. Contracts are represented as the separate
     /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
     /// checking type equality involving contracts.
-    pub fn from_record_rows(rrows: RecordRows, env: &E) -> Self {
+    pub fn from_record_rows(rrows: RecordRows, env: E::Ref<'_>) -> Self {
         let f_rrow = |ty: Box<Type>| Box::new(GenericUnifType::from_type(*ty, env));
         let f_rrows =
             |rrows: Box<RecordRows>| Box::new(GenericUnifRecordRows::from_record_rows(*rrows, env));
@@ -820,9 +820,9 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     /// Create a [`GenericUnifType`] from a [`Type`]. Contracts are represented as the separate
     /// variant [`GenericUnifType::Contract`] which also stores a term environment, required for
     /// checking type equality involving contracts.
-    pub fn from_type(ty: Type, env: &E) -> Self {
+    pub fn from_type(ty: Type, env: E::Ref<'_>) -> Self {
         match ty.typ {
-            TypeF::Flat(t) => GenericUnifType::Contract(t, env.clone()),
+            TypeF::Flat(t) => GenericUnifType::Contract(t, <E as TermEnvironment>::ref_to_owned(env)),
             ty => GenericUnifType::concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
                 |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
