@@ -268,7 +268,22 @@
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
             inherit pname src;
-            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
+            cargoExtraArgs = "${cargoBuildExtraArgs} --all-features";
+            cargoBuildCommand = "cargoWorkspace build";
+            cargoTestCommand = "cargoWorkspace test";
+            cargoCheckCommand = "cargoWorkspace check";
+            preBuild = ''
+              cargoWorkspace() {
+                command=$(shift)
+                for packageDir in $(${pkgs.yq}/bin/tomlq -r '.workspace.members[]' Cargo.toml); do
+                  (
+                    cd $packageDir
+                    pwd
+                    cargoWithProfile $command "$@"
+                  )
+                done
+              }
+            '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
