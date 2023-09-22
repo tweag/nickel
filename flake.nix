@@ -618,9 +618,11 @@
           nickel-lang-cli
           nickel-lang-core
           rustfmt;
-        # An optimizing release build is long: eschew optimizations in checks by
-        # building a dev profile
-        nickelWasm = buildNickelWasm { profile = "dev"; };
+        # There's a tradeoff here: "release" build is in theory longer than
+        # "dev", but it hits the cache on dependencies so in practice it is
+        # shorter. Another option would be to compile a dev dependencies version
+        # of cargoArtifacts. But that almost doubles the cache space.
+        nickelWasm = buildNickelWasm { profile = "release"; };
         inherit vscodeExtension;
         pre-commit = pre-commit-builder { };
       };
