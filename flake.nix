@@ -268,7 +268,28 @@
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
           cargoArtifacts = craneLib.buildDepsOnly {
             inherit pname src;
-            cargoExtraArgs = "${cargoBuildExtraArgs} --workspace --all-features";
+            cargoExtraArgs = "${cargoBuildExtraArgs} --all-features";
+            # If we build all the packages at once, feature unification takes
+            # over and we get libraries with different sets of features than
+            # we would get building them separately. Meaning that when we
+            # later build them separately, it won't hit the cache. So instead,
+            # we need to build each package separately when we are collecting
+            # dependencies.
+            cargoBuildCommand = "cargoWorkspace build";
+            cargoTestCommand = "cargoWorkspace test";
+            cargoCheckCommand = "cargoWorkspace check";
+            preBuild = ''
+              cargoWorkspace() {
+                command=$(shift)
+                for packageDir in $(${pkgs.yq}/bin/tomlq -r '.workspace.members[]' Cargo.toml); do
+                  (
+                    cd $packageDir
+                    pwd
+                    cargoWithProfile $command "$@"
+                  )
+                done
+              }
+            '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
@@ -618,9 +639,11 @@
           nickel-lang-cli
           nickel-lang-core
           rustfmt;
-        # An optimizing release build is long: eschew optimizations in checks by
-        # building a dev profile
-        nickelWasm = buildNickelWasm { profile = "dev"; };
+        # There's a tradeoff here: "release" build is in theory longer than
+        # "dev", but it hits the cache on dependencies so in practice it is
+        # shorter. Another option would be to compile a dev dependencies version
+        # of cargoArtifacts. But that almost doubles the cache space.
+        nickelWasm = buildNickelWasm { profile = "release"; };
         inherit vscodeExtension;
         pre-commit = pre-commit-builder { };
       };
