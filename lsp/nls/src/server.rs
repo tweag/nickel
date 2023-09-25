@@ -31,10 +31,13 @@ use crate::{
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
     field_walker::DefWithPath,
-    linearization::{completed::Completed, Environment, ItemId, LinRegistry},
+    linearization::{Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
+
+#[cfg(feature = "old-completer")]
+use crate::linearization::completed::Completed;
 
 pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
 
@@ -283,6 +286,7 @@ impl Server {
         Ok(())
     }
 
+    #[cfg(feature = "old-completer")]
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
         self.lin_registry
             .map
