@@ -81,7 +81,6 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     // re-parsed).
     let invalid = server.cache.get_rev_imports_transitive(file_id);
     for f in &invalid {
-        server.lin_registry.map.remove(f);
         server.lin_registry.position_lookups.remove(f);
         server.lin_registry.usage_lookups.remove(f);
         server.lin_registry.parent_lookups.remove(f);
@@ -110,7 +109,6 @@ pub(crate) fn typecheck(
         .typecheck_with_analysis(
             file_id,
             &server.initial_ctxt,
-            &server.initial_env,
             &server.initial_term_env,
             &mut server.lin_registry,
         )

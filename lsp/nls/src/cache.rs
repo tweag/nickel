@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use codespan::{ByteIndex, FileId};
 use lsp_types::TextDocumentPositionParams;
 use nickel_lang_core::position::TermPos;
@@ -10,15 +8,14 @@ use nickel_lang_core::{
     typecheck::{self},
 };
 
-use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
-use crate::linearization::{CollectedTypes, CombinedLinearizer, TypeCollector};
+use crate::linearization::LinRegistry;
+use crate::linearization::{CollectedTypes, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
-        initial_env: &Environment,
         initial_term_env: &crate::usage::Environment,
         lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
@@ -32,7 +29,6 @@ impl CacheExt for Cache {
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
-        initial_env: &Environment,
         initial_term_env: &crate::usage::Environment,
         lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
@@ -46,13 +42,8 @@ impl CacheExt for Cache {
             import_errors = errors;
             // Reverse the imports, so we try to typecheck the leaf dependencies first.
             for &id in ids.iter().rev() {
-                let _ = self.typecheck_with_analysis(
-                    id,
-                    initial_ctxt,
-                    initial_env,
-                    initial_term_env,
-                    lin_registry,
-                );
+                let _ =
+                    self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, lin_registry);
             }
         }
 
@@ -60,7 +51,7 @@ impl CacheExt for Cache {
             // If we have typechecked a file correctly, its imports should be
             // in the `lin_registry`. The imports that are not in `lin_registry`
             // were not typechecked correctly.
-            if !lin_registry.map.contains_key(&id) {
+            if !lin_registry.type_lookups.contains_key(&id) {
                 typecheck_import_diagnostics.push(id);
             }
         }
@@ -68,29 +59,22 @@ impl CacheExt for Cache {
         // After self.parse(), the cache must be populated
         let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap();
 
-        let result = if *state > EntryState::Typechecked && lin_registry.map.contains_key(&file_id)
+        let result = if *state > EntryState::Typechecked
+            && lin_registry.type_lookups.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
         } else if *state >= EntryState::Parsed {
-            let host = AnalysisHost::new(file_id, initial_env.clone());
             let types = TypeCollector::default();
-            let lin = CombinedLinearizer(host, types);
-            let building = Building {
-                lin_registry,
-                linearization: Vec::new(),
-                import_locations: HashMap::new(),
-                cache: self,
-            };
-            let (_, (linearized, type_lookups)) = typecheck::type_check_linearize(
+            let (_, type_lookups) = typecheck::type_check_linearize(
                 term,
                 initial_ctxt.clone(),
                 self,
-                lin,
-                (building, CollectedTypes::default()),
+                types,
+                CollectedTypes::default(),
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
-            lin_registry.insert(file_id, linearized, type_lookups, term, initial_term_env);
+            lin_registry.insert(file_id, type_lookups, term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -110,13 +94,15 @@ impl CacheExt for Cache {
                 // The unwrap is safe here because (1) we have linearized `file_id` and it must be
                 // in the `lin_registry` and (2) every resolved import has a corresponding position
                 // in the linearization of the file that imports it.
-                let pos = lin_registry
-                    .map
-                    .get(&file_id)
-                    .and_then(|lin| lin.import_locations.get(&id))
-                    .unwrap_or(&TermPos::None);
+                let pos = TermPos::None;
+                // FIXME
+                // lin_registry
+                //     .map
+                //     .get(&file_id)
+                //     .and_then(|lin| lin.import_locations.get(&id))
+                //     .unwrap_or(&TermPos::None);
                 let name: String = self.name(id).to_str().unwrap().into();
-                ImportError::IOError(name, String::from(message), *pos)
+                ImportError::IOError(name, String::from(message), pos)
             });
             import_errors.extend(typecheck_import_diagnostics);
 
