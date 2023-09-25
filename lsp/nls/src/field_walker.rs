@@ -236,7 +236,12 @@ impl<'a> FieldResolver<'a> {
 
                     self.resolve_def_with_path(def)
                 })
-                .unwrap_or_default(),
+                // FIXME: it isn't finding 'std'. Need to provide an intial env containing std...
+                .unwrap_or_else(|| {
+                    log::info!("no def for {id:?}");
+                    Default::default()
+                }),
+            //.unwrap_or_default(),
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache

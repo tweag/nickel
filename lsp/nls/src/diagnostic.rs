@@ -52,6 +52,14 @@ impl LocationCompat for lsp_types::Range {
             },
         }
     }
+
+    fn from_span(span: &RawSpan, files: &Files<String>) -> Self {
+        Self::from_codespan(
+            &span.src_id,
+            &(span.start.to_usize()..span.end.to_usize()),
+            files,
+        )
+    }
 }
 
 impl LocationCompat for lsp_types::Location {

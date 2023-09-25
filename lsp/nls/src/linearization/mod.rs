@@ -115,11 +115,13 @@ impl LinRegistry {
         linearization: Completed,
         type_lookups: CollectedTypes<Type>,
         term: &RichTerm,
+        initial_env: &crate::usage::Environment,
     ) {
         self.map.insert(file_id, linearization);
         self.position_lookups
             .insert(file_id, PositionLookup::new(term));
-        self.usage_lookups.insert(file_id, UsageLookup::new(term));
+        self.usage_lookups
+            .insert(file_id, UsageLookup::new(term, initial_env));
         self.parent_lookups.insert(file_id, ParentLookup::new(term));
         self.type_lookups.insert(file_id, type_lookups);
     }
@@ -158,6 +160,11 @@ impl LinRegistry {
             .get(&file)?
             .terms
             .get(&RichTermPtr(rt.clone()))
+    }
+
+    pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
+        let file = id.pos.as_opt_ref()?.src_id;
+        self.type_lookups.get(&file)?.idents.get(id)
     }
 
     pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {

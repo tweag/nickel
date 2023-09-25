@@ -19,6 +19,7 @@ pub trait CacheExt {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
+        initial_term_env: &crate::usage::Environment,
         lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 
@@ -32,6 +33,7 @@ impl CacheExt for Cache {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_env: &Environment,
+        initial_term_env: &crate::usage::Environment,
         lin_registry: &mut LinRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
         if !self.terms().contains_key(&file_id) {
@@ -44,7 +46,13 @@ impl CacheExt for Cache {
             import_errors = errors;
             // Reverse the imports, so we try to typecheck the leaf dependencies first.
             for &id in ids.iter().rev() {
-                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_env, lin_registry);
+                let _ = self.typecheck_with_analysis(
+                    id,
+                    initial_ctxt,
+                    initial_env,
+                    initial_term_env,
+                    lin_registry,
+                );
             }
         }
 
@@ -82,7 +90,7 @@ impl CacheExt for Cache {
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
-            lin_registry.insert(file_id, linearized, type_lookups, term);
+            lin_registry.insert(file_id, linearized, type_lookups, term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {

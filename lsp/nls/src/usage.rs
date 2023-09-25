@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
@@ -90,16 +90,12 @@ pub struct UsageLookup {
     // The list of all the symbols (and their locations) in the document.
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
-    syms: HashSet<LocIdent>,
+    syms: HashMap<LocIdent, DefWithPath>,
 }
 
 impl UsageLookup {
     /// Create a new lookup table by looking for definitions and usages in the tree rooted at `rt`.
-    pub fn new(rt: &RichTerm) -> Self {
-        Self::new_with_env(rt, &Environment::new())
-    }
-
-    pub fn new_with_env(rt: &RichTerm, env: &Environment) -> Self {
+    pub fn new(rt: &RichTerm, env: &Environment) -> Self {
         let mut table = Self::default();
         table.fill(rt, env);
         table
@@ -115,11 +111,20 @@ impl UsageLookup {
 
     /// Return the definition site of `ident`.
     pub fn def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
-        ident
-            .pos
-            .as_opt_ref()
-            .and_then(|span| self.def_table.get(span))
-            .and_then(|env| env.get(&ident.ident))
+        // First try to look up the definition in our symbols table. If that fails,
+        // find the active environment and look up the ident in it.
+        //
+        // We check the symbols table first so that we can retrieve the definition
+        // in the case that the ident is already pointing straight at it. For example, in
+        // `let x = 3`, the environment containing `x` doesn't define `x` but we still
+        // want `def(x)` to return this definition.
+        self.syms.get(ident).or_else(|| {
+            ident
+                .pos
+                .as_opt_ref()
+                .and_then(|span| self.def_table.get(span))
+                .and_then(|env| env.get(&ident.ident))
+        })
     }
 
     /// Return the enviroment that a term belongs to.
@@ -131,11 +136,30 @@ impl UsageLookup {
 
     /// Return the list of symbols in the document.
     pub fn symbols(&self) -> impl Iterator<Item = LocIdent> + '_ {
-        self.syms.iter().cloned()
+        self.syms.keys().cloned()
     }
 
-    fn add_sym(&mut self, id: impl Into<LocIdent>) {
-        self.syms.insert(id.into());
+    fn add_sym(
+        &mut self,
+        id: impl Into<LocIdent>,
+        val: Option<impl Into<TermAtPath>>,
+        meta: Option<FieldMetadata>,
+    ) {
+        let ident = id.into();
+        let (term, path) = val
+            .map(Into::into)
+            .map(|term_at_path| (term_at_path.term, term_at_path.path))
+            .unzip();
+
+        self.syms.insert(
+            ident,
+            DefWithPath {
+                ident,
+                value: term.map(Into::into),
+                metadata: meta,
+                path: path.unwrap_or_default(),
+            },
+        );
     }
 
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
@@ -167,7 +191,7 @@ impl UsageLookup {
                     Term::Let(id, val, body, attrs) => {
                         let mut new_env = env.clone();
                         new_env.def(*id, Some(val.clone()), None);
-                        self.add_sym(*id);
+                        self.add_sym(*id, Some(val.clone()), None);
 
                         self.fill(val, if attrs.rec { &new_env } else { env });
                         self.fill(body, &new_env);
@@ -178,7 +202,7 @@ impl UsageLookup {
                         let mut new_env = env.clone();
                         if let Some(id) = maybe_id {
                             new_env.def(*id, Some(val.clone()), None);
-                            self.add_sym(*id);
+                            self.add_sym(*id, Some(val.clone()), None);
                         }
 
                         for m in &pat.matches {
@@ -189,7 +213,7 @@ impl UsageLookup {
                                     path,
                                 };
                                 new_env.def(id, Some(term.clone()), Some(field.metadata));
-                                self.add_sym(id);
+                                self.add_sym(id, Some(val.clone()), None);
                             }
                         }
                         TraverseControl::ContinueWithScope(new_env)
@@ -201,7 +225,7 @@ impl UsageLookup {
                         // all the fields in the environment and then recurse into their values.
                         for (id, field) in &data.fields {
                             new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
-                            self.add_sym(*id);
+                            self.add_sym(*id, field.value.clone(), Some(field.metadata.clone()));
                         }
 
                         TraverseControl::ContinueWithScope(new_env)
@@ -227,7 +251,11 @@ mod tests {
     use codespan::FileId;
     use nickel_lang_core::{identifier::Ident, position::RawSpan, term::Term};
 
-    use crate::{identifier::LocIdent, position::tests::parse, usage::UsageLookup};
+    use crate::{
+        identifier::LocIdent,
+        position::tests::parse,
+        usage::{Environment, UsageLookup},
+    };
 
     fn locced(ident: impl Into<Ident>, src_id: FileId, range: std::ops::Range<u32>) -> LocIdent {
         LocIdent {
@@ -248,11 +276,11 @@ mod tests {
         let x0 = locced(x, file, 4..5);
         let x1 = locced(x, file, 13..14);
         let x2 = locced(x, file, 17..18);
-        let table = UsageLookup::new(&rt);
+        let table = UsageLookup::new(&rt, &Environment::new());
 
         assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x1, x2]);
         assert_eq!(table.def(&x1), table.def(&x2));
-        assert_eq!(table.def(&x0), None);
+        assert_eq!(table.def(&x0), table.def(&x1));
 
         let def = table.def(&x1).unwrap();
         assert_eq!(def.ident, x0);
@@ -268,7 +296,7 @@ mod tests {
         let a1 = locced("a", file, 52..53);
         let baz0 = locced("baz", file, 24..27);
         let baz1 = locced("baz", file, 56..59);
-        let table = UsageLookup::new(&rt);
+        let table = UsageLookup::new(&rt, &Environment::new());
 
         assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x1]);
         assert_eq!(table.usages(&a0).cloned().collect::<Vec<_>>(), vec![a1]);
@@ -297,7 +325,7 @@ mod tests {
         let sub0 = locced("sub", file, 11..14);
         let sub1 = locced("sub", file, 43..46);
         let field1 = locced("field", file, 47..52);
-        let table = UsageLookup::new(&rt);
+        let table = UsageLookup::new(&rt, &Environment::new());
 
         assert_eq!(table.def(&foo1).unwrap().ident, foo0);
         assert_eq!(table.def(&foo2).unwrap().ident, foo0);
