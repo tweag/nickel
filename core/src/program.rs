@@ -182,7 +182,7 @@ impl<EC: EvalCache> Program<EC> {
         path: impl Into<OsString>,
         trace: impl Write + 'static,
     ) -> std::io::Result<Self> {
-        increment!("program.new");
+        increment!("Program::new");
 
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;

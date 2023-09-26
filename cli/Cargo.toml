@@ -20,7 +20,7 @@ default = ["repl", "doc", "format", "metrics"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
-metrics = ["dep:metrics", "dep:metrics-util", "nickel-lang-core/metrics"]
+metrics = ["dep:metrics", "nickel-lang-core/metrics"]
 
 [dependencies]
 nickel-lang-core = { workspace = true, features = [ "markdown" ], default-features = false }
@@ -35,7 +35,6 @@ git-version = { workspace = true }
 clap_complete = { workspace = true }
 
 metrics = { workspace = true, optional = true }
-metrics-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 nickel-lang-utils.workspace = true
