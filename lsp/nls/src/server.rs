@@ -165,19 +165,23 @@ impl Server {
                 )
                 .unwrap();
 
-            // The term should always be populated by typecheck_with_analysis.
-            let term = cache.terms().get(&file_id).unwrap();
-            let name = module.name().into();
-            let def = DefWithPath {
-                ident: crate::identifier::LocIdent {
-                    ident: name,
-                    pos: TermPos::None,
-                },
-                value: Some(term.term.clone()),
-                path: Vec::new(),
-                metadata: None,
-            };
-            self.initial_term_env.insert(name, def);
+            // Add the std module to the environment (but not `internals`, because those symbols
+            // don't get their own namespace, and we don't want to use them for completion anyway).
+            if module == StdlibModule::Std {
+                // The term should always be populated by typecheck_with_analysis.
+                let term = cache.terms().get(&file_id).unwrap();
+                let name = module.name().into();
+                let def = DefWithPath {
+                    ident: crate::identifier::LocIdent {
+                        ident: name,
+                        pos: TermPos::None,
+                    },
+                    value: Some(term.term.clone()),
+                    path: Vec::new(),
+                    metadata: None,
+                };
+                self.initial_term_env.insert(name, def);
+            }
         }
         Ok(())
     }

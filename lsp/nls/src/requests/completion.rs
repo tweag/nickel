@@ -745,12 +745,6 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
     let resolver = FieldResolver::new(server);
     let mut items: Vec<_> = env
         .iter_elems()
-        // The name `internals` is always in scope, but let's not advertise the fact. We do want
-        // to complete `internals` if someone else uses that name, so we only filter out the
-        // `internals` that doesn't have a position -- anything user-defined should have one.
-        .filter(|(_, def_with_path)| {
-            def_with_path.ident.ident != "internals".into() || def_with_path.ident.pos.is_def()
-        })
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect();
 
