@@ -8,8 +8,7 @@ use std::{
 use tempfile::NamedTempFile;
 
 use crate::{
-    cli::{GlobalOptions, InputOptions},
-    error::CliResult,
+    cli::GlobalOptions, customize::NoCustomizeMode, error::CliResult, input::InputOptions,
 };
 
 #[derive(Debug)]
@@ -79,7 +78,7 @@ impl Write for Output {
 #[derive(clap::Parser, Debug)]
 pub struct FormatCommand {
     #[command(flatten)]
-    input: InputOptions,
+    input: InputOptions<NoCustomizeMode>,
 }
 
 impl FormatCommand {

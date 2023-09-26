@@ -1,7 +1,8 @@
 use crate::{
     cli::GlobalOptions,
+    customize::NoCustomizeMode,
     error::{CliResult, ResultErrorExt},
-    eval::EvalCommand,
+    input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -11,12 +12,12 @@ pub struct PprintAstCommand {
     pub transform: bool,
 
     #[command(flatten)]
-    pub evaluation: EvalCommand,
+    pub inputs: InputOptions<NoCustomizeMode>,
 }
 
 impl PprintAstCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.evaluation.prepare(&global)?;
+        let mut program = self.inputs.prepare(&global)?;
         program
             .pprint_ast(&mut std::io::stdout(), self.transform)
             .report_with_program(program)

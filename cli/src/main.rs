@@ -13,6 +13,7 @@ mod customize;
 mod error;
 mod eval;
 mod export;
+mod input;
 mod pprint_ast;
 mod query;
 mod typecheck;

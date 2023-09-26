@@ -13,6 +13,7 @@ use crate::{
     cli::GlobalOptions,
     error::{CliResult, ResultErrorExt},
     eval::EvalCommand,
+    input::Prepare,
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]

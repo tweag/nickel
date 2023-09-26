@@ -3,15 +3,15 @@ use std::{fs, io::Write, path::PathBuf};
 use nickel_lang_core::{
     error::{Error, IOError},
     eval::cache::lazy::CBNCache,
-    program::{FieldOverride, Program},
+    program::Program,
     serialize::{self, ExportFormat},
 };
 
 use crate::{
     cli::GlobalOptions,
-    customize::CustomizeMode,
     error::{CliResult, ResultErrorExt},
     eval::EvalCommand,
+    input::Prepare,
 };
 
 #[derive(clap::Parser, Debug)]
@@ -25,26 +25,17 @@ pub struct ExportCommand {
 
     #[command(flatten)]
     pub evaluation: EvalCommand,
-
-    #[command(flatten)]
-    pub customize_mode: CustomizeMode,
 }
 
 impl ExportCommand {
-    pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
-        let program = self.evaluation.prepare(&global)?;
-        let (mut program, overrides) = self.customize_mode.get_overrides(program)?;
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
+        let mut program = self.evaluation.prepare(&global)?;
 
-        self.export(&mut program, overrides)
-            .report_with_program(program)
+        self.export(&mut program).report_with_program(program)
     }
 
-    fn export(
-        self,
-        program: &mut Program<CBNCache>,
-        overrides: Vec<FieldOverride>,
-    ) -> Result<(), Error> {
-        let rt = program.eval_full_for_export(overrides)?;
+    fn export(self, program: &mut Program<CBNCache>) -> Result<(), Error> {
+        let rt = program.eval_full_for_export()?;
 
         // We only add a trailing newline for JSON exports. Both YAML and TOML
         // exporters already append a trailing newline by default.

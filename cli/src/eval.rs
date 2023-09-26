@@ -1,8 +1,10 @@
 use nickel_lang_core::{eval::cache::lazy::CBNCache, program::Program};
 
 use crate::{
-    cli::{GlobalOptions, InputOptions},
+    cli::GlobalOptions,
+    customize::CustomizeMode,
     error::{CliResult, ResultErrorExt},
+    input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -13,7 +15,7 @@ pub struct EvalCommand {
     pub nostdlib: bool,
 
     #[command(flatten)]
-    pub input: InputOptions,
+    pub input: InputOptions<CustomizeMode>,
 }
 
 impl EvalCommand {
@@ -24,20 +26,16 @@ impl EvalCommand {
             .map(|t| println!("{t}"))
             .report_with_program(program)
     }
+}
 
-    pub fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
-        let mut program = match self.input.files.as_slice() {
-            [] => Program::new_from_stdin(std::io::stderr()),
-            [p] => Program::new_from_file(p, std::io::stderr()),
-            files => Program::new_from_files(files, std::io::stderr()),
-        }?;
+impl Prepare for EvalCommand {
+    fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
+        let mut program = self.input.prepare(global)?;
 
         #[cfg(debug_assertions)]
         if self.nostdlib {
             program.set_skip_stdlib();
         }
-
-        program.color_opt = global.color.into();
 
         Ok(program)
     }

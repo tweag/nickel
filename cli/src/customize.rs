@@ -509,16 +509,17 @@ impl TermCommand {
     }
 }
 
-impl CustomizeMode {
+pub trait Customize {
+    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>>;
+}
+
+impl Customize for CustomizeMode {
     // XXX: we should give a nice error message when someone tries to evaluate some
     //      expression that has unset values, telling them they can set them using
     //      this method
-    pub fn get_overrides(
-        &mut self,
-        mut program: Program<CBNCache>,
-    ) -> CliResult<(Program<CBNCache>, Vec<FieldOverride>)> {
+    fn customize(&self, mut program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
         if self.customize_mode.is_empty() {
-            return Ok((program, Vec::new()));
+            return Ok(program);
         }
 
         let evaled = match program.eval_record_spine() {
@@ -528,9 +529,7 @@ impl CustomizeMode {
         };
 
         let cmd = TermInterface::from(evaled.as_ref()).build_cmd();
-        let arg_matches = cmd
-            .clap_cmd
-            .get_matches_from(std::mem::take(&mut self.customize_mode));
+        let arg_matches = cmd.clap_cmd.get_matches_from(self.customize_mode.iter());
 
         let force_overrides: Result<Vec<_>, super::error::CliUsageError> = arg_matches
             .get_occurrences("override")
@@ -564,8 +563,7 @@ impl CustomizeMode {
             Err(error) => return CliResult::Err(crate::error::Error::CliUsage { error, program }),
         };
 
-        Ok((
-            program,
+        program.add_overrides(
             arg_matches
                 .ids()
                 .filter_map(|id| -> Option<FieldOverride> {
@@ -579,8 +577,17 @@ impl CustomizeMode {
                             priority: MergePriority::default(),
                         })
                 })
-                .chain(force_overrides)
-                .collect::<Vec<_>>(),
-        ))
+                .chain(force_overrides),
+        );
+        Ok(program)
+    }
+}
+
+#[derive(clap::Args, Debug)]
+pub struct NoCustomizeMode;
+
+impl Customize for NoCustomizeMode {
+    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+        Ok(program)
     }
 }

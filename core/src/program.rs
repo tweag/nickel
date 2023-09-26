@@ -111,6 +111,7 @@ impl QueryPath {
 
 /// Several CLI commands accept additional overrides specified directly on the command line. They
 /// are represented by this structure.
+#[derive(Clone)]
 pub struct FieldOverride {
     /// The field path identifying the (potentially nested) field to override.
     pub path: Vec<String>,
@@ -131,6 +132,13 @@ pub struct Program<EC: EvalCache> {
     vm: VirtualMachine<Cache, EC>,
     /// The color option to use when reporting errors.
     pub color_opt: ColorOpt,
+    /// A list of [`FieldOverride`]s. During [`prepare_eval`], each
+    /// override is imported in a separate in-memory source, for complete isolation (this way,
+    /// overrides can't accidentally or intentionally capture other fields of the configuration).
+    /// A stub record is then built, which has all fields defined by `overrides`, and values are
+    /// an import referring to the corresponding isolated value. This stub is finally merged with
+    /// the current program before being evaluated for import.
+    overrides: Vec<FieldOverride>,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -165,6 +173,7 @@ impl<EC: EvalCache> Program<EC> {
             main_id,
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
+            overrides: Vec::new(),
         })
     }
 
@@ -179,6 +188,7 @@ impl<EC: EvalCache> Program<EC> {
             main_id,
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
+            overrides: Vec::new(),
         })
     }
 
@@ -201,7 +211,12 @@ impl<EC: EvalCache> Program<EC> {
             main_id,
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
+            overrides: Vec::new(),
         })
+    }
+
+    pub fn add_overrides(&mut self, overrides: impl IntoIterator<Item = FieldOverride>) {
+        self.overrides.extend(overrides);
     }
 
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
@@ -223,7 +238,37 @@ impl<EC: EvalCache> Program<EC> {
     /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
-        self.vm.prepare_eval(self.main_id)
+        // If there are no overrides, we avoid the boilerplate of creating an empty record and
+        // merging it with the current program
+        if self.overrides.is_empty() {
+            return self.vm.prepare_eval(self.main_id);
+        }
+
+        let mut record = builder::Record::new();
+
+        for ovd in self.overrides.iter().cloned() {
+            let value_file_id = self
+                .vm
+                .import_resolver_mut()
+                .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
+            self.vm.prepare_eval(value_file_id)?;
+            record = record
+                .path(ovd.path)
+                .priority(ovd.priority)
+                .value(Term::ResolvedImport(value_file_id));
+        }
+
+        let (t, initial_env) = self.vm.prepare_eval(self.main_id)?;
+        let built_record = record.build();
+        // For now, we can't do much better than using `Label::default`, but this is
+        // hazardous. `Label::default` was originally written for tests, and although it
+        // doesn't happen in practice as of today, it could theoretically generate invalid
+        // codespan file ids (because it creates a new file database on the spot just to
+        // generate a dummy file id).
+        // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
+        // without referring to any source position.
+        let wrapper = mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
+        Ok((wrapper, initial_env))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -253,45 +298,8 @@ impl<EC: EvalCache> Program<EC> {
     ///   A stub record is then built, which has all fields defined by `overrides`, and values are
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
-    pub fn eval_full_for_export(
-        &mut self,
-        overrides: impl IntoIterator<Item = FieldOverride>,
-    ) -> Result<RichTerm, Error> {
-        let mut overrides = overrides.into_iter().peekable();
-
-        let (t, initial_env) = match overrides.peek() {
-            // If there are no overrides, we avoid the boilerplate of creating an empty record and
-            // merging it with the current program
-            None => self.prepare_eval()?,
-            Some(_) => {
-                let mut record = builder::Record::new();
-
-                for ovd in overrides {
-                    let value_file_id = self
-                        .vm
-                        .import_resolver_mut()
-                        .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
-                    self.vm.prepare_eval(value_file_id)?;
-                    record = record
-                        .path(ovd.path)
-                        .priority(ovd.priority)
-                        .value(Term::ResolvedImport(value_file_id));
-                }
-
-                let (t, initial_env) = self.prepare_eval()?;
-                let built_record = record.build();
-                // For now, we can't do much better than using `Label::default`, but this is
-                // hazardous. `Label::default` was originally written for tests, and although it
-                // doesn't happen in practice as of today, it could theoretically generate invalid
-                // codespan file ids (because it creates a new file database on the spot just to
-                // generate a dummy file id).
-                // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
-                // without referring to any source position.
-                let wrapper =
-                    mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
-                (wrapper, initial_env)
-            }
-        };
+    pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
+        let (t, initial_env) = self.prepare_eval()?;
         self.vm.reset();
         self.vm
             .eval_full_for_export(t, &initial_env)

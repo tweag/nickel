@@ -1,7 +1,5 @@
 //! Command-line options and subcommands.
 
-use std::path::PathBuf;
-
 use git_version::git_version;
 
 use crate::{
@@ -48,12 +46,6 @@ pub struct GlobalOptions {
     /// Configure when to output messages in color
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
-}
-
-#[derive(clap::Parser, Debug)]
-pub struct InputOptions {
-    /// Input file, omit to read from stdin
-    pub files: Vec<PathBuf>,
 }
 
 /// Available subcommands.
