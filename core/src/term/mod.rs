@@ -612,9 +612,9 @@ impl TypeAnnotation {
     /// could equate contracts that are actually totally distinct), but we use it only to trim
     /// accumulated contracts before pretty-printing. Do not use prior to any form of evaluation.
     ///
-    /// Same as [`Combine::combine`], but eliminate duplicate contracts. As there's no notion of
-    /// environment when considering mere annotations, we use an unsound contract equality checking
-    /// which correspond to compares contracts syntactically.
+    /// Same as [`crate::combine::Combine`], but eliminate duplicate contracts. As there's no
+    /// notion of environment when considering mere annotations, we use an unsound contract
+    /// equality checking which correspond to compares contracts syntactically.
     pub fn combine_dedup(left: Self, right: Self) -> Self {
         let mut contracts = left.contracts;
 

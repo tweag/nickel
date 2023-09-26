@@ -274,7 +274,7 @@ impl State {
 
 /// Different possible behavior for variables comparison variables.
 #[derive(Copy, Clone, PartialEq, Eq)]
-enum VarEq {
+pub enum VarEq {
     /// Use the environment to fetch the content of variables and compare them.
     Environment,
     /// Don't use an environment and simply compare variables by name. This is unsound, and should

@@ -309,7 +309,7 @@ impl<EC: EvalCache> Program<EC> {
         self.vm.eval_deep(t).map_err(|e| e.into())
     }
 
-    /// Wrapper for [`query`].
+    /// Prepare for evaluation, then query the program for a field.
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
         let rt = self.prepare_eval()?;
         let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
