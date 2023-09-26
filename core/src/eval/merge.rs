@@ -415,7 +415,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
 
     for ctr2 in pending_contracts2.revert_closurize(cache, env_final, env2.clone()) {
-        RuntimeContract::push_elide(
+        RuntimeContract::push_dedup(
             initial_env,
             &mut pending_contracts,
             &env_final,
@@ -427,7 +427,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     Ok(Field {
         metadata: FieldMetadata {
             doc: merge_doc(metadata1.doc, metadata2.doc),
-            annotation: TypeAnnotation::combine_elide(metadata1.annotation, metadata2.annotation),
+            annotation: TypeAnnotation::combine_dedup(metadata1.annotation, metadata2.annotation),
             // If one of the record requires this field, then it musn't be optional. The
             // resulting field is optional iff both are.
             opt: metadata1.opt && metadata2.opt,

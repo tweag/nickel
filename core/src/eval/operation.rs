@@ -2132,7 +2132,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         label: label.clone(),
                                     };
 
-                                crate::term::RuntimeContract::push_elide(
+                                crate::term::RuntimeContract::push_dedup(
                                     &self.initial_env,
                                     &mut field.pending_contracts,
                                     &term_original_env,

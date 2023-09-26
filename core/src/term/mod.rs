@@ -325,27 +325,24 @@ impl RuntimeContract {
     /// Push a pending contract to a vector of contracts if the contract to add isn't already
     /// present in the vector, according to the notion of contract equality defined in
     /// [crate::typecheck::eq].
-    pub fn push_elide(
+    pub fn push_dedup(
         initial_env: &Environment,
         contracts: &mut Vec<RuntimeContract>,
         env1: &Environment,
         ctr: Self,
         env2: &Environment,
     ) {
-        // eprintln!("push_elide: ({})", ctr.contract);
         let envs1 = EvalEnvs {
             eval_env: env1,
             initial_env,
         };
 
         for c in contracts.iter() {
-            // eprintln!("- comparing against ({})", c.contract);
             let envs = EvalEnvs {
                 eval_env: env2,
                 initial_env,
             };
             if contract_eq::<EvalEnvs>(0, &c.contract, envs1, &ctr.contract, envs) {
-                // eprintln!("  -> found equal contract, eliding");
                 return;
             }
         }
@@ -610,10 +607,15 @@ impl TypeAnnotation {
         self.typ.is_none() && self.contracts.is_empty()
     }
 
+    /// **Warning**: the contract equality check used in this function behaves like syntactic
+    /// equality, and doesn't take the environment into account. It's unsound for execution (it
+    /// could equate contracts that are actually totally distinct), but we use it only to trim
+    /// accumulated contracts before pretty-printing. Do not use prior to any form of evaluation.
+    ///
     /// Same as [`Combine::combine`], but eliminate duplicate contracts. As there's no notion of
-    /// environment when combining annotations, we use an unsound contract equality checking, which
-    /// just compares things syntactically.
-    pub fn combine_elide(left: Self, right: Self) -> Self {
+    /// environment when considering mere annotations, we use an unsound contract equality checking
+    /// which correspond to compares contracts syntactically.
+    pub fn combine_dedup(left: Self, right: Self) -> Self {
         let mut contracts = left.contracts;
 
         let typ = match (left.typ, right.typ) {
