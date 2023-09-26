@@ -1,3 +1,6 @@
+//! This module only contains macros wrapping those of the `metrics` crate, if
+//! the `metrics` feature is enabled.
+
 #[cfg(feature = "metrics")]
 macro_rules! increment {
     ( $counter:expr ) => {

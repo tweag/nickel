@@ -8,17 +8,34 @@ use metrics::{
     atomics::AtomicU64, Counter, Gauge, Histogram, Key, KeyHasher, KeyName, SharedString, Unit,
 };
 
+/// The actual store for recorded metrics and their descriptions. We only need
+/// to take the write lock once when creating a new metric, in all other cases
+/// we only take a read lock. The `metrics` crate implements the necessary
+/// trait [`::metrics::CounterFn`] for `Arc<AtomicU64>` and in any case expects its
+/// counter types to be `Arc`s. For this reason, we use `Arc<AtomicU64>` as the
+/// value type of the counters `HashMap`.
+///
+/// The `metrics` crate expects to be used in a thread safe manner, so follow
+/// suit here.
 #[derive(Default)]
 pub(super) struct Registry {
     counters: RwLock<HashMap<Key, Arc<AtomicU64>, BuildHasherDefault<KeyHasher>>>,
     descriptions: RwLock<HashMap<KeyName, SharedString>>,
 }
 
+/// A metrics recorder utilizing [`Registry`] for storing metrics and their
+/// descriptions. It currently only supports [`Counter`]s and will panic if
+/// gauges or histograms are submitted.
 pub(super) struct Recorder {
     inner: Arc<Registry>,
 }
 
 impl Recorder {
+    /// Construct a `Recorder` and register it as the global metrics recorder.
+    /// The return value is a reference to the metrics registry. This way we can
+    /// retrieve the stored values later.
+    ///
+    /// This function should only be called once at the start of the CLI.
     pub(super) fn install() -> Arc<Registry> {
         let registry = Arc::<Registry>::default();
         metrics::set_boxed_recorder(Box::new(Recorder {
@@ -82,6 +99,11 @@ impl metrics::Recorder for Recorder {
 }
 
 impl Registry {
+    /// Print out a report of all metrics that have been collected so far, with
+    /// their description if available.
+    ///
+    /// We expect this function to be called once at the end of the CLI, but it
+    /// should be safe to call it in the middle of a Nickel execution as well.
     pub(super) fn report(&self) {
         for (key, counter) in self
             .counters
