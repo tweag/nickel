@@ -8,6 +8,8 @@ use crate::{
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
+    /// A field path to inspect. If omitted, we query the top level value.
+    #[arg(long, short)]
     pub path: Option<String>,
 
     #[arg(long)]

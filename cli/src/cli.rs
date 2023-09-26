@@ -53,7 +53,7 @@ pub struct GlobalOptions {
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions {
     /// Input file, omit to read from stdin
-    pub file: Option<PathBuf>,
+    pub files: Vec<PathBuf>,
 }
 
 /// Available subcommands.
@@ -61,9 +61,8 @@ pub struct InputOptions {
 pub enum Command {
     /// Evaluate a Nickel program and pretty-print the result.
     Eval(EvalCommand),
-
-    /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
-    /// debugging purpose
+    /// Converts the parsed representation (AST) back to Nickel source code and
+    /// prints it. Used for debugging purpose
     PprintAst(PprintAstCommand),
     /// Exports the result to a different format
     Export(ExportCommand),

@@ -11,6 +11,7 @@ pub mod strict {
     use codespan::FileId;
 
     /// The result of an import resolution transformation.
+    #[derive(Debug)]
     pub struct ResolveResult {
         /// The transformed term after the import resolution transformation.
         pub transformed_term: RichTerm,
@@ -80,6 +81,7 @@ pub mod tolerant {
     use codespan::FileId;
 
     /// The result of an error tolerant import resolution.
+    #[derive(Debug)]
     pub struct ResolveResult {
         /// The main result of the transformation. May still contain unresolved import terms in
         /// case of errors.

@@ -84,19 +84,19 @@ pub struct FormatCommand {
 
 impl FormatCommand {
     pub fn run(self, _global: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = self
-            .input
-            .file
-            .as_deref()
-            .map(Output::from_path)
-            .transpose()?
-            .unwrap_or(Output::Stdout);
-        let input: Box<dyn Read> = match self.input.file {
-            None => Box::new(stdin()),
-            Some(f) => Box::new(BufReader::new(File::open(f)?)),
-        };
-        nickel_lang_core::format::format(input, &mut output).map_err(FormatError::FormatError)?;
-        output.persist();
+        fn format(input: impl Read, mut output: Output) -> CliResult<()> {
+            nickel_lang_core::format::format(input, &mut output)
+                .map_err(FormatError::FormatError)?;
+            output.persist();
+            Ok(())
+        }
+        if self.input.files.is_empty() {
+            return format(stdin(), Output::Stdout);
+        }
+
+        for file in self.input.files.iter() {
+            format(BufReader::new(File::open(file)?), Output::from_path(file)?)?;
+        }
         Ok(())
     }
 }

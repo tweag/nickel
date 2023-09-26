@@ -26,12 +26,11 @@ impl EvalCommand {
     }
 
     pub fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
-        let mut program = self
-            .input
-            .file
-            .clone()
-            .map(|f| Program::new_from_file(f, std::io::stderr()))
-            .unwrap_or_else(|| Program::new_from_stdin(std::io::stderr()))?;
+        let mut program = match self.input.files.as_slice() {
+            [] => Program::new_from_stdin(std::io::stderr()),
+            [p] => Program::new_from_file(p, std::io::stderr()),
+            files => Program::new_from_files(files, std::io::stderr()),
+        }?;
 
         #[cfg(debug_assertions)]
         if self.nostdlib {

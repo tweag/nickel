@@ -22,7 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
-    error::{report, ColorOpt, Error, IntoDiagnostics, ParseError},
+    error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
     eval,
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
@@ -139,6 +139,32 @@ impl<EC: EvalCache> Program<EC> {
         Program::new_from_source(io::stdin(), "<stdin>", trace)
     }
 
+    /// Create program from possibly multiple files. Each input `path` is
+    /// turned into a [`Term::Import`] and the main program will be the
+    /// [`BinaryOp::Merge`] of all the inputs.
+    pub fn new_from_files<I, P>(paths: I, trace: impl Write + 'static) -> std::io::Result<Self>
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<OsString>,
+    {
+        let mut cache = Cache::new(ErrorTolerance::Strict);
+
+        let merge_term = paths
+            .into_iter()
+            .map(|f| RichTerm::from(Term::Import(f.into())))
+            .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
+            .unwrap();
+        let main_id = cache.add_term(SourcePath::Generated("main".into()), merge_term);
+
+        let vm = VirtualMachine::new(cache, trace);
+
+        Ok(Self {
+            main_id,
+            vm,
+            color_opt: clap::ColorChoice::Auto.into(),
+        })
+    }
+
     pub fn new_from_file(
         path: impl Into<OsString>,
         trace: impl Write + 'static,
@@ -146,7 +172,6 @@ impl<EC: EvalCache> Program<EC> {
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
         let vm = VirtualMachine::new(cache, trace);
-
         Ok(Self {
             main_id,
             vm,
@@ -384,7 +409,6 @@ impl<EC: EvalCache> Program<EC> {
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
-        use crate::error::EvalError;
         use crate::eval::{Closure, Environment};
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
@@ -505,12 +529,13 @@ impl<EC: EvalCache> Program<EC> {
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
-            crate::transform::transform(rt, None).unwrap()
+            crate::transform::transform(rt, None).map_err(EvalError::from)?
         } else {
             rt
         };
         let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
-        doc.render(80, out).unwrap();
+        doc.render(80, out).map_err(IOError::from)?;
+        writeln!(out).map_err(IOError::from)?;
         Ok(())
     }
 }

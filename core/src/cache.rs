@@ -221,6 +221,7 @@ impl<E> From<E> for CacheError<E> {
 }
 
 impl<E> CacheError<E> {
+    #[track_caller]
     pub fn unwrap_error(self, msg: &str) -> E {
         match self {
             CacheError::Error(err) => err,
@@ -260,6 +261,7 @@ pub enum SourcePath {
     ReplTypecheck,
     ReplQuery,
     Override(Vec<String>),
+    Generated(String),
 }
 
 impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
@@ -287,6 +289,7 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
             SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
+            SourcePath::Generated(description) => format!("<generated {}>", description).into(),
         }
     }
 }
@@ -344,6 +347,38 @@ impl Cache {
             },
         );
         Ok(file_id)
+    }
+
+    /// Add an already parsed term into the file cache. The source stored in the
+    /// cache will be the result of pretty printing `term`, but it will not be
+    /// parsed again.
+    pub fn add_term(&mut self, source_name: SourcePath, term: impl Into<RichTerm>) -> FileId {
+        let term = term.into();
+        let contents = format!("{term}");
+        let file_id = self.files.add(source_name.clone(), contents);
+        self.file_paths.insert(file_id, source_name.clone());
+        self.file_ids.insert(
+            source_name,
+            NameIdEntry {
+                id: file_id,
+                source: SourceKind::Memory,
+            },
+        );
+        self.terms.insert(
+            file_id,
+            TermEntry {
+                term: term.with_pos(
+                    crate::position::RawSpan::from_codespan(
+                        file_id,
+                        self.files.source_span(file_id),
+                    )
+                    .into(),
+                ),
+                state: EntryState::Parsed,
+                parse_errs: ParseErrors::none(),
+            },
+        );
+        file_id
     }
 
     /// Load a file from the filesystem and add it to the name-id table.
