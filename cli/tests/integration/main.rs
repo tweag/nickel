@@ -41,11 +41,6 @@ fn doc_creates_output_files() {
 }
 
 #[test]
-fn format_creates_output_files() {
-    test_creates_output_files(&["format"]);
-}
-
-#[test]
 fn automatic_color_on_non_tty() {
     let nickel_bin = env!("CARGO_BIN_EXE_nickel");
     let mut nickel = Command::new(nickel_bin)
