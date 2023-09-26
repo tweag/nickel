@@ -10,7 +10,7 @@ use crate::{
 #[derive(clap::Parser, Debug)]
 pub struct EvalCommand {
     #[cfg(debug_assertions)]
-    /// Skips the standard library import. For debugging only. This does not affect REPL
+    /// Skips the standard library import. For debugging only
     #[arg(long, global = true)]
     pub nostdlib: bool,
 
