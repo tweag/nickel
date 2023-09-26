@@ -349,38 +349,6 @@ impl Cache {
         Ok(file_id)
     }
 
-    /// Add an already parsed term into the file cache. The source stored in the
-    /// cache will be the result of pretty printing `term`, but it will not be
-    /// parsed again.
-    pub fn add_term(&mut self, source_name: SourcePath, term: impl Into<RichTerm>) -> FileId {
-        let term = term.into();
-        let contents = format!("{term}");
-        let file_id = self.files.add(source_name.clone(), contents);
-        self.file_paths.insert(file_id, source_name.clone());
-        self.file_ids.insert(
-            source_name,
-            NameIdEntry {
-                id: file_id,
-                source: SourceKind::Memory,
-            },
-        );
-        self.terms.insert(
-            file_id,
-            TermEntry {
-                term: term.with_pos(
-                    crate::position::RawSpan::from_codespan(
-                        file_id,
-                        self.files.source_span(file_id),
-                    )
-                    .into(),
-                ),
-                state: EntryState::Parsed,
-                parse_errs: ParseErrors::none(),
-            },
-        );
-        file_id
-    }
-
     /// Load a file from the filesystem and add it to the name-id table.
     ///
     /// Uses the normalized path and the *modified at* timestamp as the name-id table entry.

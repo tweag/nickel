@@ -154,7 +154,10 @@ impl<EC: EvalCache> Program<EC> {
             .map(|f| RichTerm::from(Term::Import(f.into())))
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
-        let main_id = cache.add_term(SourcePath::Generated("main".into()), merge_term);
+        let main_id = cache.add_string(
+            SourcePath::Generated("main".into()),
+            format!("{merge_term}"),
+        );
 
         let vm = VirtualMachine::new(cache, trace);
 
