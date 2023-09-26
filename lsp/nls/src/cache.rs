@@ -1,6 +1,6 @@
 use codespan::{ByteIndex, FileId};
 use lsp_types::TextDocumentPositionParams;
-use nickel_lang_core::position::TermPos;
+use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
@@ -57,16 +57,16 @@ impl CacheExt for Cache {
         }
 
         // After self.parse(), the cache must be populated
-        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap();
+        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap().clone();
 
-        let result = if *state > EntryState::Typechecked
+        let result = if state > EntryState::Typechecked
             && lin_registry.type_lookups.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
-        } else if *state >= EntryState::Parsed {
+        } else if state >= EntryState::Parsed {
             let types = TypeCollector::default();
             let (_, type_lookups) = typecheck::type_check_linearize(
-                term,
+                &term,
                 initial_ctxt.clone(),
                 self,
                 types,
@@ -74,7 +74,7 @@ impl CacheExt for Cache {
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
-            lin_registry.insert(file_id, type_lookups, term, initial_term_env);
+            lin_registry.insert(file_id, type_lookups, &term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -91,16 +91,13 @@ impl CacheExt for Cache {
             let typecheck_import_diagnostics = typecheck_import_diagnostics.into_iter().map(|id| {
                 let message = "This import could not be resolved \
                     because its content has failed to typecheck correctly.";
-                // The unwrap is safe here because (1) we have linearized `file_id` and it must be
-                // in the `lin_registry` and (2) every resolved import has a corresponding position
-                // in the linearization of the file that imports it.
-                let pos = TermPos::None;
-                // FIXME
-                // lin_registry
-                //     .map
-                //     .get(&file_id)
-                //     .and_then(|lin| lin.import_locations.get(&id))
-                //     .unwrap_or(&TermPos::None);
+                // Find a position (one is enough) that the import came from.
+                let pos = term
+                    .find_map(|rt: &RichTerm| match rt.as_ref() {
+                        Term::ResolvedImport(_) => Some(rt.pos),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 let name: String = self.name(id).to_str().unwrap().into();
                 ImportError::IOError(name, String::from(message), pos)
             });

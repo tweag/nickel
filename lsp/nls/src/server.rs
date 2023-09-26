@@ -21,6 +21,7 @@ use lsp_types::{
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
     position::{RawPos, TermPos},
+    stdlib::StdlibModule,
     term::RichTerm,
 };
 use nickel_lang_core::{stdlib, typecheck::Context};

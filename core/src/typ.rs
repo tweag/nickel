@@ -1059,13 +1059,10 @@ impl Type {
 
     /// Searches for a `TypeF::Flat`. If one is found, returns the term it contains.
     pub fn find_flat(&self) -> Option<RichTerm> {
-        self.traverse_ref(
-            &mut |ty: &Type, _: &()| match &ty.typ {
-                TypeF::Flat(f) => TraverseControl::Return(f.clone()),
-                _ => TraverseControl::Continue,
-            },
-            &(),
-        )
+        self.find_map(|ty: &Type| match &ty.typ {
+            TypeF::Flat(f) => Some(f.clone()),
+            _ => None,
+        })
     }
 }
 
