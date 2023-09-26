@@ -418,9 +418,9 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         RuntimeContract::push_dedup(
             initial_env,
             &mut pending_contracts,
-            &env_final,
+            env_final,
             ctr2,
-            &env_final,
+            env_final,
         );
     }
 
