@@ -36,7 +36,7 @@ pub struct CustomizeMode {
     ///
     /// Customize mode turns the nickel invocation into a new CLI based on the configuration to be
     /// exported, where the value of fields can be set directly through CLI arguments. Print the
-    /// corresponding help (`nickel export -f <file.ncl> -- --help`) to see available options.
+    /// corresponding help (`nickel export <file.ncl> -- --help`) to see available options.
     #[arg(last = true)]
     pub customize_mode: Vec<OsString>,
 }

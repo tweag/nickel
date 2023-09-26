@@ -6,7 +6,7 @@ use crate::{cli::GlobalOptions, customize::Customize, error::CliResult};
 
 #[derive(clap::Parser, Debug)]
 pub struct InputOptions<Customize: clap::Args> {
-    /// Input file, omit to read from stdin
+    /// Input files, omit to read from stdin
     pub files: Vec<PathBuf>,
 
     #[command(flatten)]
