@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(clap::Parser, Debug)]
 pub struct ExportCommand {
-    #[arg(long, value_enum, default_value_t)]
+    #[arg(long, short, value_enum, default_value_t)]
     pub format: ExportFormat,
 
     /// Output file. Standard output by default
