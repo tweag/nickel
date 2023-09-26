@@ -30,6 +30,9 @@ impl EvalCommand {
 
 impl Prepare for EvalCommand {
     fn prepare(&self, global: &GlobalOptions) -> CliResult<Program<CBNCache>> {
+        // Rust warns about `program` not needing to be mutable if
+        // `debug_assertions` are off
+        #![allow(unused_mut)]
         let mut program = self.input.prepare(global)?;
 
         #[cfg(debug_assertions)]
