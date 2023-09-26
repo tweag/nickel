@@ -236,7 +236,11 @@ impl<'a> FieldResolver<'a> {
 
                     self.resolve_def_with_path(def)
                 })
-                .unwrap_or_default(),
+                .unwrap_or_else(|| {
+                    log::info!("no def for {id:?}");
+                    Default::default()
+                }),
+            //.unwrap_or_default(),
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache

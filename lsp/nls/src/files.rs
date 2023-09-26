@@ -111,6 +111,7 @@ pub(crate) fn typecheck(
             file_id,
             &server.initial_ctxt,
             &server.initial_env,
+            &server.initial_term_env,
             &mut server.lin_registry,
         )
         .map_err(|error| match error {

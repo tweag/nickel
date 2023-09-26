@@ -1,3 +1,5 @@
+#![allow(unused_imports)] // until we get rid of feature(old-completer)
+
 use std::{collections::HashMap, hash::Hash};
 
 use codespan::FileId;
@@ -76,6 +78,7 @@ impl Completed {
 
     /// Try to retrieve the item from the current linearization first, and if that fails, look into
     /// the registry if there is a linearization corresponding to the item's file id.
+    #[cfg(feature = "old-completer")]
     pub fn get_item_with_reg<'a>(
         &'a self,
         id: ItemId,
@@ -156,6 +159,7 @@ impl Completed {
     /// Retrive the type and the metadata of a linearization item. Requires a registry as this code
     /// tries to jump to the definitions of objects to find the relevant data, which might lie in a
     /// different file (and thus in a different linearization within the registry).
+    #[cfg(feature = "old-completer")]
     pub fn get_type_and_metadata(
         &self,
         item: &LinearizationItem<Resolved>,

@@ -2,7 +2,7 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
-[config]
+[config, std]
 [foo, verified, version]
 [foo, verified, version]
 [foo, verified, version]

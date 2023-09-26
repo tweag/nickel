@@ -21,7 +21,7 @@ use lsp_types::{
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
     identifier::LocIdent,
-    position::RawPos,
+    position::{RawPos, TermPos},
     stdlib::StdlibModule,
     term::RichTerm,
 };
@@ -30,10 +30,14 @@ use nickel_lang_core::{stdlib, typecheck::Context};
 use crate::{
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
-    linearization::{completed::Completed, Environment, ItemId, LinRegistry},
+    field_walker::DefWithPath,
+    linearization::{Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
+
+#[cfg(feature = "old-completer")]
+use crate::linearization::completed::Completed;
 
 pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
 
@@ -45,6 +49,7 @@ pub struct Server {
     pub lin_registry: LinRegistry,
     pub initial_ctxt: Context,
     pub initial_env: Environment,
+    pub initial_term_env: crate::usage::Environment,
 }
 
 impl Server {
@@ -88,6 +93,7 @@ impl Server {
             lin_registry: LinRegistry::new(),
             initial_ctxt,
             initial_env: Environment::new(),
+            initial_term_env: crate::usage::Environment::new(),
         }
     }
 
@@ -154,9 +160,28 @@ impl Server {
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_env,
+                    &self.initial_term_env,
                     &mut self.lin_registry,
                 )
                 .unwrap();
+
+            // Add the std module to the environment (but not `internals`, because those symbols
+            // don't get their own namespace, and we don't want to use them for completion anyway).
+            if module == StdlibModule::Std {
+                // The term should always be populated by typecheck_with_analysis.
+                let term = cache.terms().get(&file_id).unwrap();
+                let name = module.name().into();
+                let def = DefWithPath {
+                    ident: crate::identifier::LocIdent {
+                        ident: name,
+                        pos: TermPos::None,
+                    },
+                    value: Some(term.term.clone()),
+                    path: Vec::new(),
+                    metadata: None,
+                };
+                self.initial_term_env.insert(name, def);
+            }
         }
         Ok(())
     }
@@ -265,6 +290,7 @@ impl Server {
         Ok(())
     }
 
+    #[cfg(feature = "old-completer")]
     pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
         self.lin_registry
             .map

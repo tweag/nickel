@@ -1,0 +1,27 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<7:2-7:7>[```nickel
+Dyn
+```]
+<8:2-8:7>[```nickel
+Dyn
+```]
+<8:2-8:11>[```nickel
+Dyn
+```, middle]
+<9:2-9:7>[```nickel
+Dyn
+```, middle]
+<9:2-9:11>[```nickel
+Dyn
+```, ```nickel
+Number
+```, innermost]
+<10:2-10:11>[```nickel
+Dyn
+```, ```nickel
+Number
+```, innermost]
+

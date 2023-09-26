@@ -164,7 +164,7 @@ pub fn parse_path_from_incomplete_input(
             server
                 .lin_registry
                 .usage_lookups
-                .insert(file_id, UsageLookup::new_with_env(&rt, env));
+                .insert(file_id, UsageLookup::new(&rt, env));
             Some(resolve_imports(rt, server))
         }
         _ => None,

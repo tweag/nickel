@@ -79,7 +79,7 @@ pub fn handle_references(
 ) -> Result<(), ResponseError> {
     let pos = server.cache.position(&params.text_document_position)?;
 
-    // The "references" of a symbol are all the usages if its definitions,
+    // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
     let mut def_locs = server
         .lookup_term_by_position(pos)?
