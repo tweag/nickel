@@ -1,4 +1,4 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 (let { a : Number } = { a = "hi" } in
 a) : _

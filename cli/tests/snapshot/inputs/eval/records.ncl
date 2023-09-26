@@ -1,3 +1,3 @@
 # capture = 'stdout'
-# command = []
+# command = ['eval']
 { a = true, b | Number = 6 * 7 }

@@ -1,5 +1,5 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 let val | Array (Array {foo: Dyn -> Number }) = [
   [],
   [{ foo = fun x => "string" }]

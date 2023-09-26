@@ -1,5 +1,5 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 let Contract = fun label _value =>
   label
   |> std.contract.label.with_message "main error message"

@@ -1,5 +1,5 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 (
   let { x : Bool } = { x = 5 } in
   x

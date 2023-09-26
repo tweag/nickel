@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 { foo = 1, bar = "bar" } | {_: String}

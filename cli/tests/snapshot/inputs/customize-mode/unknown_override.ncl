@@ -1,6 +1,6 @@
 # capture = 'stderr'
-# command = [
-#  'export',
+# command = ['export']
+# extra_args = [
 #  '--',
 #  '--input.foo.bar',
 #  '"hello"',
