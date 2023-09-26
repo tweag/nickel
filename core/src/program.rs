@@ -205,7 +205,7 @@ impl<EC: EvalCache> Program<EC> {
         T: Read,
         S: Into<OsString> + Clone,
     {
-        increment!("program.new");
+        increment!("Program::new");
 
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let path = PathBuf::from(source_name.into());

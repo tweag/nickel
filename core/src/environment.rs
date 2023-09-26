@@ -7,6 +7,8 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
+use crate::metrics::increment;
+
 /// An environment as a linked-list of hashmaps.
 ///
 /// Each node of the linked-list corresponds to what is called
@@ -38,6 +40,7 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     /// and if it wasn't, it sets the `current` has the new head of `previous`.
     /// Then a clone is an empty `current` and the clone of `self.previous`.
     fn clone(&self) -> Self {
+        increment!("Environment::clone");
         if !self.current.is_empty() && !self.was_cloned() {
             self.previous.replace_with(|old| {
                 Some(Rc::new(Environment {
