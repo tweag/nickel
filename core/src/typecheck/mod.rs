@@ -89,7 +89,7 @@ pub mod mk_uniftype;
 pub mod eq;
 pub mod unif;
 
-use eq::{SimpleTermEnvironment, TermEnvironment};
+use eq::{SimpleTermEnvironment, TermEnvironment, ToOwnedEnv};
 use error::*;
 use indexmap::IndexMap;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
@@ -822,7 +822,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
     /// checking type equality involving contracts.
     pub fn from_type(ty: Type, env: E::Ref<'_>) -> Self {
         match ty.typ {
-            TypeF::Flat(t) => GenericUnifType::Contract(t, <E as TermEnvironment>::ref_to_owned(env)),
+            TypeF::Flat(t) => GenericUnifType::Contract(t, env.to_owned_env()),
             ty => GenericUnifType::concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
                 |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),

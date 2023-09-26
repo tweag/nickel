@@ -20,13 +20,13 @@ use string::NickelString;
 use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
+    eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
-    eval::Environment,
-    typecheck::eq::{contract_eq, EvalEnvs},
+    typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvs},
 };
 
 use codespan::FileId;
@@ -322,6 +322,9 @@ impl RuntimeContract {
         contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
 
+    /// Push a pending contract to a vector of contracts if the contract to add isn't already
+    /// present in the vector, according to the notion of contract equality defined in
+    /// [crate::typecheck::eq].
     pub fn push_elide(
         initial_env: &Environment,
         contracts: &mut Vec<RuntimeContract>,
@@ -329,14 +332,20 @@ impl RuntimeContract {
         ctr: Self,
         env2: &Environment,
     ) {
-        eprintln!("push_elide: ({})", ctr.contract);
-        let envs1 = EvalEnvs { eval_env: env1, initial_env};
+        // eprintln!("push_elide: ({})", ctr.contract);
+        let envs1 = EvalEnvs {
+            eval_env: env1,
+            initial_env,
+        };
 
         for c in contracts.iter() {
-            eprintln!("- comparing against ({})", c.contract);
-            let envs = EvalEnvs { eval_env: env2, initial_env};
+            // eprintln!("- comparing against ({})", c.contract);
+            let envs = EvalEnvs {
+                eval_env: env2,
+                initial_env,
+            };
             if contract_eq::<EvalEnvs>(0, &c.contract, envs1, &ctr.contract, envs) {
-                eprintln!("  -> found equal contract, eliding");
+                // eprintln!("  -> found equal contract, eliding");
                 return;
             }
         }
@@ -599,6 +608,29 @@ impl TypeAnnotation {
     /// contracts annotations.
     pub fn is_empty(&self) -> bool {
         self.typ.is_none() && self.contracts.is_empty()
+    }
+
+    /// Same as [`Combine::combine`], but eliminate duplicate contracts. As there's no notion of
+    /// environment when combining annotations, we use an unsound contract equality checking, which
+    /// just compares things syntactically.
+    pub fn combine_elide(left: Self, right: Self) -> Self {
+        let mut contracts = left.contracts;
+
+        let typ = match (left.typ, right.typ) {
+            (left_ty @ Some(_), Some(right_ty)) => {
+                contracts.push(right_ty);
+                left_ty
+            }
+            (left_ty, right_ty) => left_ty.or(right_ty),
+        };
+
+        for ctr in right.contracts.into_iter() {
+            if !contracts.iter().any(|c| type_eq_noenv(0, &c.typ, &ctr.typ)) {
+                contracts.push(ctr);
+            }
+        }
+
+        TypeAnnotation { typ, contracts }
     }
 }
 

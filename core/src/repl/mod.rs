@@ -189,7 +189,15 @@ impl<EC: EvalCache> ReplImpl<EC> {
         match term {
             ExtendedTerm::RichTerm(t) => {
                 let t = self.prepare(None, t)?;
-                Ok(eval_function(&mut self.vm, Closure { body: t, env: self.env.eval_env.clone() })?.0.into())
+                Ok(eval_function(
+                    &mut self.vm,
+                    Closure {
+                        body: t,
+                        env: self.env.eval_env.clone(),
+                    },
+                )?
+                .0
+                .into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
                 let t = self.prepare(Some(id), t)?;
@@ -223,9 +231,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         let term = self.prepare(None, term)?;
 
-        let (term, new_env) = self
-            .vm
-            .eval_closure(Closure { body: term, env: self.env.eval_env.clone()})?;
+        let (term, new_env) = self.vm.eval_closure(Closure {
+            body: term,
+            env: self.env.eval_env.clone(),
+        })?;
 
         if !matches!(term.as_ref(), Term::Record(..) | Term::RecRecord(..)) {
             return Err(Error::EvalError(EvalError::Other(
@@ -295,8 +304,6 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     }
 
     fn query(&mut self, path: String) -> Result<Field, Error> {
-        use crate::program;
-
         let mut query_path = QueryPath::parse(self.vm.import_resolver_mut(), path)?;
 
         // remove(): this is safe because there is no such thing as an empty field path. If `path`
@@ -309,7 +316,13 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .import_resolver_mut()
             .replace_string(SourcePath::ReplQuery, target.label().into());
 
-        program::query(&mut self.vm, file_id, &self.env, query_path)
+        Ok(self.vm.query_closure(
+            Closure {
+                body: self.vm.import_resolver().get_owned(file_id).unwrap(),
+                env: self.env.eval_env.clone(),
+            },
+            query_path,
+        )?)
     }
 
     fn cache_mut(&mut self) -> &mut Cache {

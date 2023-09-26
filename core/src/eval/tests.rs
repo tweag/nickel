@@ -14,7 +14,7 @@ use codespan::Files;
 /// Evaluate a term without import support.
 fn eval_no_import(t: RichTerm) -> Result<Term, EvalError> {
     VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::sink())
-        .eval(t, &Environment::new())
+        .eval(t)
         .map(Term::from)
 }
 
@@ -169,9 +169,7 @@ fn imports() {
     let mk_import_two = mk_import("x", "two", mk_term::var("x"), &mut vm).unwrap();
     vm.reset();
     assert_eq!(
-        vm.eval(mk_import_two, &Environment::new(),)
-            .map(RichTerm::without_pos)
-            .unwrap(),
+        vm.eval(mk_import_two).map(RichTerm::without_pos).unwrap(),
         mk_term::integer(2)
     );
 
@@ -187,9 +185,7 @@ fn imports() {
     );
     vm.reset();
     assert_eq!(
-        vm.eval(mk_import_lib.unwrap(), &Environment::new(),)
-            .map(Term::from)
-            .unwrap(),
+        vm.eval(mk_import_lib.unwrap()).map(Term::from).unwrap(),
         Term::Bool(true)
     );
 }
@@ -269,7 +265,8 @@ fn initial_env() {
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("x"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .eval(t, &initial_env)
+            .with_initial_env(initial_env.clone())
+            .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );
@@ -277,7 +274,8 @@ fn initial_env() {
     let t = mk_term::let_in("x", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .eval(t, &initial_env)
+            .with_initial_env(initial_env.clone())
+            .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(1))
     );
@@ -286,7 +284,8 @@ fn initial_env() {
     let t = mk_term::let_in("g", mk_term::integer(2), mk_term::var("g"));
     assert_eq!(
         VirtualMachine::new_with_cache(DummyResolver {}, eval_cache.clone(), std::io::sink())
-            .eval(t, &initial_env)
+            .with_initial_env(initial_env.clone())
+            .eval(t)
             .map(RichTerm::without_pos),
         Ok(mk_term::integer(2))
     );

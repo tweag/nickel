@@ -234,7 +234,7 @@ impl<EC: EvalCache> Program<EC> {
             .clone())
     }
 
-    /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
+    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. Return
     /// both.
     fn prepare_eval(&mut self) -> Result<RichTerm, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
@@ -299,9 +299,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
         let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm
-            .eval_full_for_export(t)
-            .map_err(|e| e.into())
+        self.vm.eval_full_for_export(t).map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
@@ -313,9 +311,10 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Wrapper for [`query`].
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
-        let initial_env = self.vm.prepare_stdlib()?;
+        let rt = self.prepare_eval()?;
         let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
-        query(&mut self.vm, self.main_id, &initial_env, query_path)
+
+        Ok(self.vm.query(rt, query_path)?)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
@@ -447,12 +446,10 @@ impl<EC: EvalCache> Program<EC> {
             current_env: Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
-            let result = vm.eval_closure(
-                Closure {
-                    body: t.clone(),
-                    env: current_env,
-                },
-            );
+            let result = vm.eval_closure(Closure {
+                body: t.clone(),
+                env: current_env,
+            });
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
             // contains undefined record fields they most likely will be used
@@ -524,7 +521,7 @@ impl<EC: EvalCache> Program<EC> {
         out: &mut impl std::io::Write,
         apply_transforms: bool,
     ) -> Result<(), Error> {
-        use crate::pretty::*;
+        use crate::{pretty::*, transform::transform};
         use pretty::BoxAllocator;
 
         let Program {
@@ -534,7 +531,7 @@ impl<EC: EvalCache> Program<EC> {
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
-            crate::transform::transform(rt, None).map_err(EvalError::from)?
+            transform(rt, None).map_err(EvalError::from)?
         } else {
             rt
         };
@@ -543,29 +540,6 @@ impl<EC: EvalCache> Program<EC> {
         writeln!(out).map_err(IOError::from)?;
         Ok(())
     }
-}
-
-/// Query the metadata of a path of a term in the cache.
-///
-/// The path is a list of dot separated identifiers. For example, querying `{a = {b  = ..}}` (call
-/// it `exp`) with path `a.b` will evaluate `exp.a` and retrieve the `b` field. `b` is forced as
-/// well, in order to print its value (note that forced just means evaluated to a WHNF, it isn't
-/// deeply - or recursively - evaluated).
-//TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
-//would additionally report `type: Num` for example. Maybe use the LSP infrastructure?
-//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn query<EC: EvalCache>(
-    vm: &mut VirtualMachine<Cache, EC>,
-    file_id: FileId,
-    initial_env: &Envs,
-    path: QueryPath,
-) -> Result<Field, Error> {
-    vm.import_resolver_mut()
-        .prepare(file_id, &initial_env.type_ctxt)?;
-
-    let rt = vm.import_resolver().get_owned(file_id).unwrap();
-    Ok(vm.query(rt, path, &initial_env.eval_env)?)
 }
 
 #[cfg(feature = "doc")]
