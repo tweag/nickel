@@ -27,6 +27,7 @@ use crate::{
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
     label::Label,
+    metrics::increment,
     term::{
         make as mk_term, make::builder, record::Field, BinaryOp, MergePriority, RichTerm, Term,
     },
@@ -181,6 +182,8 @@ impl<EC: EvalCache> Program<EC> {
         path: impl Into<OsString>,
         trace: impl Write + 'static,
     ) -> std::io::Result<Self> {
+        increment!("program.new");
+
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let main_id = cache.add_file(path)?;
         let vm = VirtualMachine::new(cache, trace);
@@ -202,6 +205,8 @@ impl<EC: EvalCache> Program<EC> {
         T: Read,
         S: Into<OsString> + Clone,
     {
+        increment!("program.new");
+
         let mut cache = Cache::new(ErrorTolerance::Strict);
         let path = PathBuf::from(source_name.into());
         let main_id = cache.add_source(SourcePath::Path(path), source)?;
