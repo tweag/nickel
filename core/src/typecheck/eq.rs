@@ -67,16 +67,17 @@ pub trait ToOwnedEnv<Owned> {
 /// during evaluation.
 ///
 /// The evaluation environment holds [crate::eval::cache::CacheIndex]es, while the term environment
-/// used during typechecking is just maps identifiers to a pair `(RichTerm, Environment)`. To have
-/// an interface that works with both, `TermEnvironment::get_then` has to take a closure
-/// representing the continuation of the task to do with the result instead of merely returning it.
+/// used during typechecking just maps identifiers to a pair `(RichTerm, Environment)`. To have an
+/// interface that works with both, [TermEnvironment] provides [TermEnvironment::get_then], which
+/// has to take a closure representing the continuation of the task to do with the result instead
+/// of merely returning it.
 pub trait TermEnvironment: Clone {
     /// The representation of the environment is different during typechecking and evaluation. In
     /// particular, the evaluation's environment is actually a pair of environments (the initial
-    /// environment and the local environment), and thus the notion of owned environment of the
-    /// environment and of reference to it are not necessarily the obvious `Self` and `&Self`
+    /// environment and the local environment), and thus the notion of owned environment and
+    /// reference to the environment don't always map to the obvious `Self` and `&Self`
     /// respectively.
-    /// The trait abstract over it by defining a reference type and an owned type.
+    /// The trait abstract over thos notions by defining a reference type and an owned type.
     type Owned: Clone + PartialEq + Debug;
     type Ref<'a>: Copy + ToOwnedEnv<Self::Owned>;
 
@@ -138,7 +139,7 @@ impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for Sim
 }
 
 #[derive(Clone, Copy)]
-pub struct EvalEnvs<'a> {
+pub struct EvalEnvsRef<'a> {
     pub eval_env: &'a eval::Environment,
     pub initial_env: &'a eval::Environment,
 }
@@ -149,7 +150,7 @@ pub struct EvalEnvsOwned {
     pub initial_env: eval::Environment,
 }
 
-impl<'a> ToOwnedEnv<EvalEnvsOwned> for EvalEnvs<'a> {
+impl<'a> ToOwnedEnv<EvalEnvsOwned> for EvalEnvsRef<'a> {
     fn to_owned_env(self) -> EvalEnvsOwned {
         EvalEnvsOwned {
             eval_env: self.eval_env.clone(),
@@ -158,13 +159,13 @@ impl<'a> ToOwnedEnv<EvalEnvsOwned> for EvalEnvs<'a> {
     }
 }
 
-impl<'a> TermEnvironment for EvalEnvs<'a> {
-    type Ref<'b> = EvalEnvs<'b>;
+impl<'a> TermEnvironment for EvalEnvsRef<'a> {
+    type Ref<'b> = EvalEnvsRef<'b>;
     type Owned = EvalEnvsOwned;
 
-    fn get_then<F, T>(env: EvalEnvs<'_>, id: Ident, f: F) -> T
+    fn get_then<F, T>(env: EvalEnvsRef<'_>, id: Ident, f: F) -> T
     where
-        F: FnOnce(Option<(&RichTerm, EvalEnvs<'_>)>) -> T,
+        F: FnOnce(Option<(&RichTerm, EvalEnvsRef<'_>)>) -> T,
     {
         debug_assert!(
             env.eval_env.get(&id).or(env.initial_env.get(&id)).is_some(),
@@ -180,7 +181,7 @@ impl<'a> TermEnvironment for EvalEnvs<'a> {
         {
             Some(closure_ref) => f(Some((
                 &closure_ref.body,
-                EvalEnvs {
+                EvalEnvsRef {
                     eval_env: &closure_ref.env,
                     initial_env: env.initial_env,
                 },
@@ -272,13 +273,15 @@ impl State {
     }
 }
 
-/// Different possible behavior for variables comparison variables.
-#[derive(Copy, Clone, PartialEq, Eq)]
+/// Different possible behavior for variables comparison.
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
 pub enum VarEq {
+    #[default]
     /// Use the environment to fetch the content of variables and compare them.
     Environment,
     /// Don't use an environment and simply compare variables by name. This is unsound, and should
-    /// only be used to deduplicate annotations for pretty-printing.
+    /// only be used to deduplicate annotations for pretty-printing. In this case, use
+    /// [NoEnvironment] as an environment.
     Direct,
 }
 

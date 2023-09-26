@@ -26,7 +26,7 @@ use crate::{
     match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
-    typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvs},
+    typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
 };
 
 use codespan::FileId;
@@ -332,17 +332,18 @@ impl RuntimeContract {
         ctr: Self,
         env2: &Environment,
     ) {
-        let envs1 = EvalEnvs {
+        let envs1 = EvalEnvsRef {
             eval_env: env1,
             initial_env,
         };
 
         for c in contracts.iter() {
-            let envs = EvalEnvs {
+            let envs = EvalEnvsRef {
                 eval_env: env2,
                 initial_env,
             };
-            if contract_eq::<EvalEnvs>(0, &c.contract, envs1, &ctr.contract, envs) {
+
+            if contract_eq::<EvalEnvsRef>(0, &c.contract, envs1, &ctr.contract, envs) {
                 return;
             }
         }
