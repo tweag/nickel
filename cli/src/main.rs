@@ -9,6 +9,7 @@ mod repl;
 
 mod cli;
 mod completions;
+mod customize;
 mod error;
 mod eval;
 mod export;
