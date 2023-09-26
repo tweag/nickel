@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 let { x ? true } = { x | default = false } in x

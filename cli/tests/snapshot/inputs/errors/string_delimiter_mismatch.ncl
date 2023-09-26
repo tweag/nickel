@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 m%"Hello"%%

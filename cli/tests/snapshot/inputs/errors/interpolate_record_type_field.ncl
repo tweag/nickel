@@ -1,4 +1,4 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 
 let a = "foo" in { "%{a}" : Number }

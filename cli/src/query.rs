@@ -2,12 +2,15 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
+    customize::NoCustomizeMode,
     error::{CliResult, ResultErrorExt, Warning},
-    eval::EvalCommand,
+    input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
+    /// A field path to inspect. If omitted, we query the top level value.
+    #[arg(long, short)]
     pub path: Option<String>,
 
     #[arg(long)]
@@ -26,7 +29,7 @@ pub struct QueryCommand {
     pub value: bool,
 
     #[command(flatten)]
-    pub evaluation: EvalCommand,
+    pub inputs: InputOptions<NoCustomizeMode>,
 }
 
 impl QueryCommand {
@@ -50,7 +53,7 @@ impl QueryCommand {
     }
 
     pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.evaluation.prepare(&global)?;
+        let mut program = self.inputs.prepare(&global)?;
 
         if self.path.is_none() {
             program.report(Warning::EmptyQueryPath)

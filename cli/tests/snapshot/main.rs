@@ -4,7 +4,7 @@ use nickel_lang_utils::{
 };
 use serde::Deserialize;
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     path::PathBuf,
     process::{Command, Output},
 };
@@ -36,12 +36,15 @@ fn check_snapshots(path: &str) {
         .first()
         .map(|s| s.as_str())
         // TODO: er, maybe?
-        .unwrap_or("error")
+        .unwrap_or("no_subcommand")
         .to_string();
 
     // We set the `-f somefile.ncl` argument before the others, because it can't come after
     // customize mode's delimiter `--`.
-    let invocation = NickelInvocation::new().file(&file).args(annotation.command);
+    let invocation = NickelInvocation::new()
+        .file(&file)
+        .args(annotation.command)
+        .extra_args(annotation.extra_args);
 
     match annotation.capture {
         SnapshotCapture::Stderr => {
@@ -93,27 +96,33 @@ impl TestFile {
         format!("{prefix}_{file_name}")
     }
 
-    fn as_nickel_argument(&self) -> &str {
-        self.path_buf
-            .to_str()
-            .expect("Could not convert path arg to str")
+    fn as_nickel_argument(&self) -> &OsStr {
+        self.path_buf.as_os_str()
     }
 }
 
-struct NickelInvocation {
+struct NickelInvocation<'a> {
     cmd: Command,
+    file: Option<&'a TestFile>,
+    args: Vec<OsString>,
+    extra_args: Vec<OsString>,
 }
 
-impl NickelInvocation {
+impl<'a> NickelInvocation<'a> {
     fn new() -> Self {
         let nickel_loc = env!("CARGO_BIN_EXE_nickel");
         let mut cmd = Command::new(nickel_loc);
         cmd.args(["--color", "never"]);
-        Self { cmd }
+        Self {
+            cmd,
+            file: None,
+            args: Vec::new(),
+            extra_args: Vec::new(),
+        }
     }
 
-    fn file(mut self, f: &TestFile) -> Self {
-        self.cmd.args(["-f", f.as_nickel_argument()]);
+    fn file(mut self, f: &'a TestFile) -> Self {
+        self.file = Some(f);
         self
     }
 
@@ -122,11 +131,26 @@ impl NickelInvocation {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        self.cmd.args(args);
+        self.args
+            .extend(args.into_iter().map(|s| s.as_ref().into()));
+        self
+    }
+
+    fn extra_args<I, S>(mut self, extra_args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.extra_args
+            .extend(extra_args.into_iter().map(|s| s.as_ref().into()));
         self
     }
 
     fn run(mut self) -> Output {
+        self.cmd.args(self.args);
+        self.cmd
+            .args(self.file.into_iter().map(|f| f.as_nickel_argument()));
+        self.cmd.args(self.extra_args);
         self.cmd.output().expect("Should be able to capture output")
     }
 
@@ -152,6 +176,8 @@ impl NickelInvocation {
 struct SnapshotAnnotation {
     capture: SnapshotCapture,
     command: Vec<String>,
+    #[serde(default)]
+    extra_args: Vec<String>,
 }
 
 #[derive(Deserialize)]

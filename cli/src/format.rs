@@ -7,7 +7,9 @@ use std::{
 
 use tempfile::NamedTempFile;
 
-use crate::{cli::GlobalOptions, error::CliResult};
+use crate::{
+    cli::GlobalOptions, customize::NoCustomizeMode, error::CliResult, input::InputOptions,
+};
 
 #[derive(Debug)]
 pub enum FormatError {
@@ -75,27 +77,25 @@ impl Write for Output {
 
 #[derive(clap::Parser, Debug)]
 pub struct FormatCommand {
-    /// Output file. Standard output by default.
-    #[arg(short, long)]
-    output: Option<PathBuf>,
-
-    /// Format in place, overwriting the input file.
-    #[arg(short, long, requires = "file")]
-    in_place: bool,
+    #[command(flatten)]
+    input: InputOptions<NoCustomizeMode>,
 }
 
 impl FormatCommand {
-    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut output: Output = match (&self.output, &global.file, self.in_place) {
-            (None, None, _) | (None, Some(_), false) => Output::Stdout,
-            (None, Some(file), true) | (Some(file), _, _) => Output::from_path(file)?,
-        };
-        let input: Box<dyn Read> = match global.file {
-            None => Box::new(stdin()),
-            Some(f) => Box::new(BufReader::new(File::open(f)?)),
-        };
-        nickel_lang_core::format::format(input, &mut output).map_err(FormatError::FormatError)?;
-        output.persist();
+    pub fn run(self, _global: GlobalOptions) -> CliResult<()> {
+        fn format(input: impl Read, mut output: Output) -> CliResult<()> {
+            nickel_lang_core::format::format(input, &mut output)
+                .map_err(FormatError::FormatError)?;
+            output.persist();
+            Ok(())
+        }
+        if self.input.files.is_empty() {
+            return format(stdin(), Output::Stdout);
+        }
+
+        for file in self.input.files.iter() {
+            format(BufReader::new(File::open(file)?), Output::from_path(file)?)?;
+        }
         Ok(())
     }
 }

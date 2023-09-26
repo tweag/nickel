@@ -1,5 +1,6 @@
 # capture = 'stdout'
-# command = ['export', '--', '--help']
+# command = ['export']
+# extra_args = ['--', '--help']
 {
   help | String,
   input | Number,

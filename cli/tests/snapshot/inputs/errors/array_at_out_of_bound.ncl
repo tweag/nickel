@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 std.array.at 2 [1]

@@ -221,6 +221,7 @@ impl<E> From<E> for CacheError<E> {
 }
 
 impl<E> CacheError<E> {
+    #[track_caller]
     pub fn unwrap_error(self, msg: &str) -> E {
         match self {
             CacheError::Error(err) => err,
@@ -260,6 +261,7 @@ pub enum SourcePath {
     ReplTypecheck,
     ReplQuery,
     Override(Vec<String>),
+    Generated(String),
 }
 
 impl<'a> TryFrom<&'a SourcePath> for &'a OsStr {
@@ -287,6 +289,7 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
             SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
+            SourcePath::Generated(description) => format!("<generated {}>", description).into(),
         }
     }
 }

@@ -1,5 +1,5 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 (
   let { x = { a : Number }} = { x = { a = "" }} in
   x

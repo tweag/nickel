@@ -1,4 +1,4 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 
 {a: Number, b = 1; r}

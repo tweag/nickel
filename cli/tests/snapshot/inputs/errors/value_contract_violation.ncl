@@ -1,4 +1,4 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 { foo | std.FailWith "no reason" = 1 }.foo
 

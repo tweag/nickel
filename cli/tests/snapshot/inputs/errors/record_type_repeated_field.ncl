@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 ({foo.bar.baz = "a"} : {foo : String, foo : Number})

@@ -9,23 +9,23 @@ mod repl;
 
 mod cli;
 mod completions;
+mod customize;
 mod error;
 mod eval;
 mod export;
+mod input;
 mod pprint_ast;
 mod query;
 mod typecheck;
 
 use std::process::ExitCode;
 
-use eval::EvalCommand;
-
 use crate::cli::{Command, Options};
 
 fn main() -> ExitCode {
     let opts = <Options as clap::Parser>::parse();
 
-    let result = match opts.command.unwrap_or(Command::Eval(EvalCommand {})) {
+    let result = match opts.command {
         Command::Eval(eval) => eval.run(opts.global),
         Command::PprintAst(pprint_ast) => pprint_ast.run(opts.global),
         Command::Export(export) => export.run(opts.global),

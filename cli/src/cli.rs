@@ -1,5 +1,4 @@
 //! Command-line options and subcommands.
-use std::path::PathBuf;
 
 use git_version::git_version;
 
@@ -39,34 +38,23 @@ pub struct Options {
     pub global: GlobalOptions,
 
     #[command(subcommand)]
-    pub command: Option<Command>,
+    pub command: Command,
 }
 
 #[derive(clap::Parser, Debug)]
 pub struct GlobalOptions {
-    #[cfg(debug_assertions)]
-    /// Skips the standard library import. For debugging only. This does not affect REPL
-    #[arg(long, global = true)]
-    pub nostdlib: bool,
-
     /// Configure when to output messages in color
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
-
-    /// Input file, omit to read from stdin
-    #[arg(long, short, global = true)]
-    pub file: Option<PathBuf>,
 }
 
 /// Available subcommands.
 #[derive(clap::Subcommand, Debug)]
 pub enum Command {
     /// Evaluate a Nickel program and pretty-print the result.
-    #[command(hide = true)]
     Eval(EvalCommand),
-
-    /// Converts the parsed representation (AST) back to Nickel source code and prints it. Used for
-    /// debugging purpose
+    /// Converts the parsed representation (AST) back to Nickel source code and
+    /// prints it. Used for debugging purpose
     PprintAst(PprintAstCommand),
     /// Exports the result to a different format
     Export(ExportCommand),

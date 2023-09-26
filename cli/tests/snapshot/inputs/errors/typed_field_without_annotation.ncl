@@ -1,5 +1,5 @@
 # capture = 'stderr'
-# command = []
+# command = ['eval']
 {
   foo : Number
       | doc "foo",
