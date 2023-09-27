@@ -140,7 +140,7 @@ impl Closurizable for RichTerm {
         // affect the invariant mentioned above, because the share normal form must ensure that the
         // fields of a record all contain generated variables (or constant), but never user-supplied
         // variables.
-        let var = LocIdent::fresh();
+        // let var = LocIdent::fresh();
         let pos = self.pos;
 
         let idx = match self.as_ref() {
@@ -151,6 +151,7 @@ impl Closurizable for RichTerm {
             )
                 })
             }
+            Term::Closure(idx) => idx.clone(),
             _ => {
                 let closure: Closure = Closure {
                     body: self,
@@ -160,8 +161,7 @@ impl Closurizable for RichTerm {
             }
         };
 
-        env.insert(var.ident(), idx);
-        RichTerm::new(Term::Var(var), pos.into_inherited())
+        RichTerm::new(Term::Closure(idx), pos.into_inherited())
     }
 }
 

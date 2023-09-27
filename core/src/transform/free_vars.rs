@@ -176,6 +176,9 @@ impl CollectFreeVars for RichTerm {
             Term::Type(ty) => {
                 ty.collect_free_vars(free_vars);
             }
+            Term::Closure(_) => {
+                unreachable!("should never see closures at the transformation stage");
+            }
         }
     }
 }

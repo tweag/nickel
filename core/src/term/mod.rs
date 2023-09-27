@@ -27,6 +27,7 @@ use crate::{
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
+    eval::cache::CacheIndex,
 };
 
 use codespan::FileId;
@@ -60,7 +61,7 @@ use std::{
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
 /// this type is nested with [`RichTerm`].
 ///
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
     /// The null value.
@@ -236,6 +237,10 @@ pub enum Term {
     /// behavior of `RuntimeError` behaves.
     #[serde(skip)]
     RuntimeError(EvalError),
+
+    //TODO: should closure be shared (like cache idx) or not?
+    #[serde(skip)]
+    Closure(CacheIndex),
 }
 
 /// A unique sealing key, introduced by polymorphic contracts.
@@ -731,23 +736,24 @@ impl Term {
     /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
         match self {
-            Term::Null => Some("Null"),
-            Term::Bool(_) => Some("Bool"),
-            Term::Num(_) => Some("Number"),
-            Term::Str(_) => Some("String"),
-            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function"),
-            Term::Match { .. } => Some("MatchExpression"),
-            Term::Lbl(_) => Some("Label"),
-            Term::Enum(_) => Some("Enum"),
-            Term::Record(..) | Term::RecRecord(..) => Some("Record"),
-            Term::Array(..) => Some("Array"),
-            Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(..) => Some("Sealed"),
-            Term::Annotated(..) => Some("Annotated"),
+            Term::Null => Some("Null".to_owned()),
+            Term::Bool(_) => Some("Bool".to_owned()),
+            Term::Num(_) => Some("Number".to_owned()),
+            Term::Str(_) => Some("String".to_owned()),
+            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function".to_owned()),
+            Term::Match { .. } => Some("MatchExpression".to_owned()),
+            Term::Lbl(_) => Some("Label".to_owned()),
+            Term::Enum(_) => Some("Enum".to_owned()),
+            Term::Record(..) | Term::RecRecord(..) => Some("Record".to_owned()),
+            Term::Array(..) => Some("Array".to_owned()),
+            Term::SealingKey(_) => Some("SealingKey".to_owned()),
+            Term::Sealed(..) => Some("Sealed".to_owned()),
+            Term::Annotated(..) => Some("Annotated".to_owned()),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -758,7 +764,6 @@ impl Term {
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
         }
-        .map(String::from)
     }
 
     /// Determine if a term is in evaluated form, called weak head normal form (WHNF).
@@ -792,7 +797,9 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
-            | Term::RuntimeError(_) => false,
+            | Term::RuntimeError(_)
+            // TODO: is this really WHNF
+            | Term::Closure(_)=> false,
         }
     }
 
@@ -834,7 +841,8 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
-            | Term::RuntimeError(_) => false,
+            | Term::RuntimeError(_)
+            | Term::Closure(_) => false,
         }
     }
 
@@ -880,6 +888,7 @@ impl Term {
             | Term::Import(..)
             | Term::ResolvedImport(..)
             | Term::Type(_)
+            | Term::Closure(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -1955,6 +1964,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)

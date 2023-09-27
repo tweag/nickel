@@ -1037,12 +1037,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                             .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
-                        let terms = fields.clone().into_values().map(|field| {
-                            field.value.expect(
-                                "map_values_closurize ensures that values without a \
-                                            definition throw a MissingFieldDefError",
-                            )
-                        });
+                            // force [1 | Number] ~ [%1] {%1 -<  force (contract_app Number 1) }
+                            // %1 <- ... this a thunk
+                            // force [1 | Number] ~ [Closure (force (contract_app Number 1)]
+                            let terms = ts.clone().into_iter();
+                            let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
 
                         let cont = RichTerm::new(
                             Term::Record(RecordData { fields, ..record }),
@@ -1862,31 +1861,38 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .closurize(&mut self.cache, &mut env, env1.clone())
                         }));
 
-                        ts.extend(ts2.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_right.clone(), pos2).closurize(
-                                &mut self.cache,
-                                &mut env,
-                                env2.clone(),
-                            )
-                        }));
+                                ts.extend(ts1.into_iter().map(|t|
+                                    RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
+                                    .closurize(&mut self.cache, &mut env, env1.clone())
+                                ));
+                                
+                                ts.extend(ts2.into_iter().map(|t|
+                                    RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                                    .closurize(&mut self.cache, &mut env, env2.clone())
+                                ));
+                                
+                                let attrs = ArrayAttrs {
+                                    closurized: true,
+                                    pending_contracts: Vec::new(),
+                                };
 
-                        let attrs = ArrayAttrs {
-                            closurized: true,
-                            pending_contracts: ctrs_common,
-                        };
+                                Ok(Closure {
+                                    body: RichTerm::new(
+                                        Term::Array(Array::new(Rc::from(ts)), attrs),
+                                        pos_op_inh
+                                    ),
+                                    env,
+                                })
+                            }
+                        } else {
+                            Err(mk_type_error!("(@)", "Array", 2, t2, pos2))
 
-                        Ok(Closure {
-                            body: RichTerm::new(
-                                Term::Array(Array::new(Rc::from(ts)), attrs),
-                                pos_op_inh,
-                            ),
-                            env,
-                        })
-                    }
-                    _ => Err(mk_type_error!("(@)", "Array", 2, t2, pos2)),
-                }),
-                _ => Err(mk_type_error!("(@)", "Array", 1, t1, pos1)),
-            }),
+                        }
+                    },
+                } else {
+                    Err(mk_type_error!("(@)", "Array", 1, t1, pos1))
+                }
+            },
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let Ok(n_as_usize) = usize::try_from(n) else {
