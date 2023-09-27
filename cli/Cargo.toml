@@ -16,7 +16,7 @@ path = "src/main.rs"
 bench = false
 
 [features]
-default = ["repl", "doc", "format", "metrics"]
+default = ["repl", "doc", "format"]
 repl = ["nickel-lang-core/repl"]
 doc = ["nickel-lang-core/doc"]
 format = ["nickel-lang-core/format", "dep:tempfile"]
