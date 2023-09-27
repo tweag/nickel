@@ -327,7 +327,7 @@ pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
 }
 
 /// Decide type equality on contracts in their respective environment and given the remaining gas
-/// `gas`.
+/// in `state`.
 fn contract_eq_bounded<E: TermEnvironment>(
     state: &mut State,
     var_eq: VarEq,
