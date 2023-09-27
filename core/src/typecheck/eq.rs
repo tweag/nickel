@@ -122,7 +122,7 @@ impl TermEnvironment for SimpleTermEnvironment {
 }
 
 impl<'a> AsRef<SimpleTermEnvironment> for &'a SimpleTermEnvironment {
-    fn as_ref(&self) -> &SimpleTermEnvironment {
+    fn as_ref(&self) -> &Self {
         self
     }
 }
