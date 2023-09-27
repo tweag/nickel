@@ -167,6 +167,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
 
     fn eval_(&mut self, exp: &str, eval_full: bool) -> Result<EvalResult, Error> {
         self.vm.reset();
+
         let eval_function = if eval_full {
             eval::VirtualMachine::eval_full_closure
         } else {
@@ -304,6 +305,8 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     }
 
     fn query(&mut self, path: String) -> Result<Field, Error> {
+        self.vm.reset();
+
         let mut query_path = QueryPath::parse(self.vm.import_resolver_mut(), path)?;
 
         // remove(): this is safe because there is no such thing as an empty field path. If `path`
@@ -315,6 +318,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
             .vm
             .import_resolver_mut()
             .replace_string(SourcePath::ReplQuery, target.label().into());
+
+        self.vm
+            .import_resolver_mut()
+            .prepare(file_id, &self.env.type_ctxt)?;
 
         Ok(self.vm.query_closure(
             Closure {
