@@ -117,14 +117,14 @@ impl Registry {
                 .unwrap_or_else(PoisonError::into_inner)
                 .get(key.name())
             {
-                println!(
+                eprintln!(
                     "{}: {}\n  {}",
                     key.name(),
                     description,
                     counter.load(Ordering::Relaxed)
                 );
             } else {
-                println!("{}: {}", key.name(), counter.load(Ordering::Relaxed));
+                eprintln!("{}: {}", key.name(), counter.load(Ordering::Relaxed));
             }
         }
     }
