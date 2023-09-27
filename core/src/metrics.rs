@@ -16,4 +16,17 @@ macro_rules! increment {
     ( $( $args:expr ),+ ) => {};
 }
 
+#[cfg(feature = "metrics")]
+macro_rules! sample {
+    ( $counter:expr, $value:expr ) => {
+        ::metrics::histogram!($counter, $value)
+    };
+}
+
+#[cfg(not(feature = "metrics"))]
+macro_rules! sample {
+    ( $( $args:expr ),+ ) => {};
+}
+
 pub(crate) use increment;
+pub(crate) use sample;
