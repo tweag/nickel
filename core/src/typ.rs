@@ -126,8 +126,8 @@ pub enum EnumRowsF<ERows> {
 /// type variables are introduced, that is, on forall quantifiers.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub enum VarKind {
-    Type,
     #[default]
+    Type,
     EnumRows,
     /// `excluded` keeps track of which rows appear somewhere alongside the tail, and therefore
     /// cannot appear in the tail. For instance `forall r. { ; r } -> { x : Number ; r }` assumes
