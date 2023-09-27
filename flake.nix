@@ -408,7 +408,7 @@
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.cargoDoc {
             inherit pname src version cargoArtifacts env;
-            inherit (cargoArtifacts) buildInputs;
+            inherit (cargoArtifactsDeps) buildInputs;
 
             RUSTDOCFLAGS = "-D warnings";
 
@@ -429,7 +429,7 @@
 
           clippy = craneLib.cargoClippy {
             inherit pname src cargoArtifacts env;
-            inherit (cargoArtifacts) buildInputs;
+            inherit (cargoArtifactsDeps) buildInputs;
 
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";
