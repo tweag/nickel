@@ -11,9 +11,9 @@ use nickel_lang_core::{
 
 use crate::{
     cli::GlobalOptions,
+    customize::NoCustomizeMode,
     error::{CliResult, ResultErrorExt},
-    eval::EvalCommand,
-    input::Prepare,
+    input::{InputOptions, Prepare},
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default, clap::ValueEnum)]
@@ -56,12 +56,12 @@ pub struct DocCommand {
     pub format: crate::doc::DocFormat,
 
     #[command(flatten)]
-    pub evaluation: EvalCommand,
+    pub input: InputOptions<NoCustomizeMode>,
 }
 
 impl DocCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.evaluation.prepare(&global)?;
+        let mut program = self.input.prepare(&global)?;
         self.export_doc(&mut program).report_with_program(program)
     }
 
@@ -95,7 +95,7 @@ impl DocCommand {
 
                         let mut has_file_name = false;
 
-                        if let Some(path) = self.evaluation.input.files.get(0) {
+                        if let Some(path) = self.input.files.get(0) {
                             if let Some(file_stem) = path.file_stem() {
                                 output_file.push(file_stem);
                                 has_file_name = true;

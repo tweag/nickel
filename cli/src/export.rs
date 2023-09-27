@@ -9,9 +9,9 @@ use nickel_lang_core::{
 
 use crate::{
     cli::GlobalOptions,
+    customize::CustomizeMode,
     error::{CliResult, ResultErrorExt},
-    eval::EvalCommand,
-    input::Prepare,
+    input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
@@ -24,12 +24,12 @@ pub struct ExportCommand {
     pub output: Option<PathBuf>,
 
     #[command(flatten)]
-    pub evaluation: EvalCommand,
+    pub input: InputOptions<CustomizeMode>,
 }
 
 impl ExportCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
-        let mut program = self.evaluation.prepare(&global)?;
+        let mut program = self.input.prepare(&global)?;
 
         self.export(&mut program).report_with_program(program)
     }
