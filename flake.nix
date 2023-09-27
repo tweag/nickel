@@ -266,7 +266,7 @@
           cargoBuildExtraArgs = "--frozen --offline";
 
           # Build *just* the cargo dependencies, so we can reuse all of that work (e.g. via cachix) when running in CI
-          cargoArtifacts = craneLib.buildDepsOnly {
+          cargoArtifactsDeps = craneLib.buildDepsOnly {
             inherit pname src;
             cargoExtraArgs = "${cargoBuildExtraArgs} --all-features";
             # If we build all the packages at once, feature unification takes
@@ -293,6 +293,10 @@
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             buildInputs = [ pkgs.python3 ];
+
+            # seems to be needed for consumer cargoArtifacts to be able to use
+            # zstd mode properly
+            installCargoArtifactsMode = "use-zstd";
           };
 
           env = {
@@ -310,6 +314,35 @@
 
               cargoExtraArgs = "${cargoBuildExtraArgs} ${extraBuildArgs} --package ${cargoPackage}";
             } // extraArgs);
+
+          # In addition to external dependencies, we build the lalrpop file in a
+          # separate derivation because it's expensive to build but needs to be
+          # rebuilt infrequently.
+          cargoArtifacts = buildPackage {
+            pnameSuffix = "-core-lalrpop";
+            cargoPackage = "${pname}-core";
+            extraArgs = {
+              src = craneLib.mkDummySrc {
+                inherit src;
+                cargoArtifacts = cargoArtifactsDeps;
+
+                # after stubbing out, reset things back just enough for lalrpop build
+                extraDummyScript = ''
+                  mkdir -p $out/core/src/parser
+                  cp ${./core/build.rs} $out/core/build.rs
+                  cp ${./core/src/parser/grammar.lalrpop} $out/core/src/parser/grammar.lalrpop
+                  # package.build gets set to a dummy file. reset it to use local build.rs
+                  # tomlq -i broken (https://github.com/kislyuk/yq/issues/130 not in nixpkgs yet)
+                  ${pkgs.yq}/bin/tomlq -t 'del(.package.build)' $out/core/Cargo.toml > tmp
+                  mv tmp $out/core/Cargo.toml
+                '';
+              };
+              # the point of this is to cache lalrpop compilation
+              doInstallCargoArtifacts = true;
+              # we need the target/ directory to be writable
+              installCargoArtifactsMode = "use-zstd";
+            };
+          };
         in
         rec {
           inherit cargoArtifacts;
@@ -406,6 +439,9 @@
       makeDevShell = { rust }: pkgs.mkShell {
         # Trick found in Crane's examples to get a nice dev shell
         # See https://github.com/ipetkov/crane/blob/master/examples/quick-start/flake.nix
+        # XXX: this is weird. why are we sticking all the cargoArtifacts in
+        # the devShell? we're not going to use them anyways. This is a problem
+        # because we don't want to build lalrpop for the devShell
         inputsFrom = builtins.attrValues (mkCraneArtifacts { inherit rust; });
 
         buildInputs = [
@@ -594,6 +630,7 @@
     rec {
       packages = {
         inherit (mkCraneArtifacts { })
+          nickel-lang-core
           nickel-lang-cli
           benchmarks
           lsp-nls
