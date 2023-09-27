@@ -90,6 +90,8 @@ typed-arena = "2.0.2"
 unicode-segmentation = "1.10.1"
 void = "1"
 
+metrics = "0.21"
+
 topiary = { git = "https://github.com/tweag/topiary.git", rev = "8299a04bf83c4a2774cbbff7a036c022efa939b3" }
 topiary-queries = { git = "https://github.com/tweag/topiary.git", rev = "8299a04bf83c4a2774cbbff7a036c022efa939b3", package = "topiary-queries", default-features = false, features = ["nickel"] }
 # This should be kept in sync with the revision in topiary

@@ -19,5 +19,7 @@ pub mod transform;
 pub mod typ;
 pub mod typecheck;
 
+pub(crate) mod metrics;
+
 #[cfg(feature = "format")]
 pub mod format;

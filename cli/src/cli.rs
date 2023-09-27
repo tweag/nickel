@@ -46,6 +46,11 @@ pub struct GlobalOptions {
     /// Configure when to output messages in color
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
+
+    #[cfg(feature = "metrics")]
+    /// Print all recorded metrics at the very end of the program
+    #[arg(long, global = true, default_value_t = false)]
+    pub metrics: bool,
 }
 
 /// Available subcommands.

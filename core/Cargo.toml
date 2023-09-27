@@ -15,11 +15,12 @@ bench = false
 
 [features]
 default = ["markdown", "repl", "doc", "format"]
-markdown = ["termimad"]
-repl = ["rustyline", "rustyline-derive", "ansi_term"]
-repl-wasm = ["wasm-bindgen", "js-sys", "serde_repr"]
-doc = ["comrak"]
-format = ["topiary", "topiary-queries", "tree-sitter-nickel"]
+markdown = ["dep:termimad"]
+repl = ["dep:rustyline", "dep:rustyline-derive", "dep:ansi_term"]
+repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
+doc = ["dep:comrak"]
+format = ["dep:topiary", "dep:topiary-queries", "dep:tree-sitter-nickel"]
+metrics = ["dep:metrics"]
 
 [build-dependencies]
 lalrpop.workspace = true
@@ -66,6 +67,8 @@ strip-ansi-escapes.workspace = true
 topiary = { workspace = true, optional = true }
 topiary-queries = { workspace = true, optional = true }
 tree-sitter-nickel = { workspace = true, optional = true }
+
+metrics = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions.workspace = true

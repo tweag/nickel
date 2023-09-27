@@ -4,6 +4,8 @@
 mod doc;
 #[cfg(feature = "format")]
 mod format;
+#[cfg(feature = "metrics")]
+mod metrics;
 #[cfg(feature = "repl")]
 mod repl;
 
@@ -23,7 +25,13 @@ use std::process::ExitCode;
 use crate::cli::{Command, Options};
 
 fn main() -> ExitCode {
+    #[cfg(feature = "metrics")]
+    let metrics = metrics::Recorder::install();
+
     let opts = <Options as clap::Parser>::parse();
+
+    #[cfg(feature = "metrics")]
+    let report_metrics = opts.global.metrics;
 
     let result = match opts.command {
         Command::Eval(eval) => eval.run(opts.global),
@@ -42,6 +50,11 @@ fn main() -> ExitCode {
         #[cfg(feature = "format")]
         Command::Format(format) => format.run(opts.global),
     };
+
+    #[cfg(feature = "metrics")]
+    if report_metrics {
+        metrics.report();
+    }
 
     if let Err(e) = result {
         e.report();

@@ -7,7 +7,7 @@ use std::{
     hash::Hash,
 };
 
-use crate::{position::TermPos, term::string::NickelString};
+use crate::{metrics::increment, position::TermPos, term::string::NickelString};
 
 simple_counter::generate_counter!(GeneratedCounter, usize);
 static INTERNER: Lazy<interner::Interner> = Lazy::new(interner::Interner::new);
@@ -126,6 +126,7 @@ impl LocIdent {
     /// with any identifier defined before. Generated identifiers start with a special prefix that
     /// can't be used by normal, user-defined identifiers.
     pub fn fresh() -> Self {
+        increment!("LocIdent::fresh");
         Self::new(format!("{}{}", GEN_PREFIX, GeneratedCounter::next()))
     }
 
