@@ -9,6 +9,11 @@ pub struct InputOptions<Customize: clap::Args> {
     /// Input files, omit to read from stdin
     pub files: Vec<PathBuf>,
 
+    #[cfg(debug_assertions)]
+    /// Skips the standard library import. For debugging only
+    #[arg(long, global = true)]
+    pub nostdlib: bool,
+
     #[command(flatten)]
     pub customize_mode: Customize,
 }
@@ -26,6 +31,11 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
         }?;
 
         program.color_opt = global.color.into();
+
+        #[cfg(debug_assertions)]
+        if self.nostdlib {
+            program.set_skip_stdlib();
+        }
 
         self.customize_mode.customize(program)
     }
