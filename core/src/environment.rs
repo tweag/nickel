@@ -73,6 +73,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Inserts a key-value pair into the Environment.
     pub fn insert(&mut self, key: K, value: V) {
+        increment!("Environment::insert");
         if self.was_cloned() {
             self.current = Rc::new(HashMap::new());
         }
@@ -81,6 +82,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Tries to find the value of a key in the Environment.
     pub fn get(&self, key: &K) -> Option<&V> {
+        increment!("Environment::get");
         self.iter_layers().find_map(|hmap| hmap.get(key))
     }
 
