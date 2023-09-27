@@ -322,9 +322,9 @@
             pnameSuffix = "-core-lalrpop";
             cargoPackage = "${pname}-core";
             extraArgs = {
+              cargoArtifacts = cargoArtifactsDeps;
               src = craneLib.mkDummySrc {
                 inherit src;
-                cargoArtifacts = cargoArtifactsDeps;
 
                 # after stubbing out, reset things back just enough for lalrpop build
                 extraDummyScript = ''
