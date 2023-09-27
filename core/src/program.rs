@@ -22,7 +22,7 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
-    error::{report, ColorOpt, Error, IntoDiagnostics, ParseError, EvalError, IOError},
+    error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
     label::Label,
@@ -266,7 +266,11 @@ impl<EC: EvalCache> Program<EC> {
         // generate a dummy file id).
         // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
         // without referring to any source position.
-        Ok(mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record))
+        Ok(mk_term::op2(
+            BinaryOp::Merge(Label::default().into()),
+            t,
+            built_record,
+        ))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
