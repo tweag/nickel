@@ -234,8 +234,7 @@ impl<EC: EvalCache> Program<EC> {
             .clone())
     }
 
-    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. Return
-    /// both.
+    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment.
     fn prepare_eval(&mut self) -> Result<RichTerm, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
