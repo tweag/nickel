@@ -20,11 +20,13 @@ use string::NickelString;
 use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
+    eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
+    typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
 };
 
 use codespan::FileId;
@@ -319,6 +321,35 @@ impl RuntimeContract {
     {
         contracts.fold(rt, |acc, ctr| ctr.apply(acc, pos))
     }
+
+    /// Push a pending contract to a vector of contracts if the contract to add isn't already
+    /// present in the vector, according to the notion of contract equality defined in
+    /// [crate::typecheck::eq].
+    pub fn push_dedup(
+        initial_env: &Environment,
+        contracts: &mut Vec<RuntimeContract>,
+        env1: &Environment,
+        ctr: Self,
+        env2: &Environment,
+    ) {
+        let envs1 = EvalEnvsRef {
+            eval_env: env1,
+            initial_env,
+        };
+
+        for c in contracts.iter() {
+            let envs = EvalEnvsRef {
+                eval_env: env2,
+                initial_env,
+            };
+
+            if contract_eq::<EvalEnvsRef>(0, &c.contract, envs1, &ctr.contract, envs) {
+                return;
+            }
+        }
+
+        contracts.push(ctr);
+    }
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
@@ -575,6 +606,34 @@ impl TypeAnnotation {
     /// contracts annotations.
     pub fn is_empty(&self) -> bool {
         self.typ.is_none() && self.contracts.is_empty()
+    }
+
+    /// **Warning**: the contract equality check used in this function behaves like syntactic
+    /// equality, and doesn't take the environment into account. It's unsound for execution (it
+    /// could equate contracts that are actually totally distinct), but we use it only to trim
+    /// accumulated contracts before pretty-printing. Do not use prior to any form of evaluation.
+    ///
+    /// Same as [`crate::combine::Combine`], but eliminate duplicate contracts. As there's no
+    /// notion of environment when considering mere annotations, we use an unsound contract
+    /// equality checking which correspond to compares contracts syntactically.
+    pub fn combine_dedup(left: Self, right: Self) -> Self {
+        let mut contracts = left.contracts;
+
+        let typ = match (left.typ, right.typ) {
+            (left_ty @ Some(_), Some(right_ty)) => {
+                contracts.push(right_ty);
+                left_ty
+            }
+            (left_ty, right_ty) => left_ty.or(right_ty),
+        };
+
+        for ctr in right.contracts.into_iter() {
+            if !contracts.iter().any(|c| type_eq_noenv(0, &c.typ, &ctr.typ)) {
+                contracts.push(ctr);
+            }
+        }
+
+        TypeAnnotation { typ, contracts }
     }
 }
 

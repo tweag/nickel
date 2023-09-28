@@ -281,7 +281,7 @@ mod tests {
     use super::*;
     use crate::cache::resolvers::DummyResolver;
     use crate::eval::cache::CacheImpl;
-    use crate::eval::{Environment, VirtualMachine};
+    use crate::eval::VirtualMachine;
     use crate::program::Program;
     use crate::term::{make as mk_term, BinaryOp};
     use serde_json::json;
@@ -306,10 +306,7 @@ mod tests {
     fn assert_nickel_eq(term: RichTerm, expected: RichTerm) {
         assert_eq!(
             VirtualMachine::<_, CacheImpl>::new(DummyResolver {}, std::io::stderr())
-                .eval(
-                    mk_term::op2(BinaryOp::Eq(), term, expected),
-                    &Environment::new(),
-                )
+                .eval(mk_term::op2(BinaryOp::Eq(), term, expected))
                 .map(Term::from),
             Ok(Term::Bool(true))
         )

@@ -58,6 +58,29 @@ are available. `Dyn` is a contract that never fails.
 
 ## User-defined contracts
 
+### Preamble: idempotency
+
+As you will see in this section, Nickel contracts are more than mere boolean
+validators. They can sometimes modify the checked value for valid reasons
+exposed below. However, it's hard (if not impossible) to rightfully limit the
+expressive power of contracts to be *reasonable* with respect to modifications.
+
+For Nickel, the notion of reasonable modification is practically defined by
+idempotency. An idempotent contract is a contract which gives the same result if
+applied once or many times to the same value. That is, for any value,
+`MyContract` is idempotent if `value | MyContract` and `value | MyContract |
+MyContract` gives the same result. Idempotency sounds like a reasonable property
+for a contract, even if it can perform some normalization.
+
+**Nickel makes the assumption that all contracts - including user-defined
+contracts - are idempotent**, because the converse would be surprising for
+consumers of the contract and because this assumption enables important
+optimizations such as contract deduplication. **While non-idempotent contracts
+shouldn't wreak havoc on your program, they might lead to surprising results**,
+such as a change in behavior e.g. when refactoring a program to a new version
+that should be identical, typically because the deduplication optimization
+doesn't fire anymore.
+
 ### By hand
 
 The ability to check arbitrary properties is where run-time contracts really

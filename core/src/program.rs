@@ -23,7 +23,6 @@
 use crate::{
     cache::*,
     error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
-    eval,
     eval::{cache::Cache as EvalCache, VirtualMachine},
     identifier::LocIdent,
     label::Label,
@@ -240,9 +239,8 @@ impl<EC: EvalCache> Program<EC> {
             .clone())
     }
 
-    /// Retrieve the parsed term and typecheck it, and generate a fresh initial environment. Return
-    /// both.
-    fn prepare_eval(&mut self) -> Result<(RichTerm, eval::Environment), Error> {
+    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment.
+    fn prepare_eval(&mut self) -> Result<RichTerm, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
         if self.overrides.is_empty() {
@@ -263,7 +261,7 @@ impl<EC: EvalCache> Program<EC> {
                 .value(Term::ResolvedImport(value_file_id));
         }
 
-        let (t, initial_env) = self.vm.prepare_eval(self.main_id)?;
+        let t = self.vm.prepare_eval(self.main_id)?;
         let built_record = record.build();
         // For now, we can't do much better than using `Label::default`, but this is
         // hazardous. `Label::default` was originally written for tests, and although it
@@ -272,22 +270,25 @@ impl<EC: EvalCache> Program<EC> {
         // generate a dummy file id).
         // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
         // without referring to any source position.
-        let wrapper = mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record);
-        Ok((wrapper, initial_env))
+        Ok(mk_term::op2(
+            BinaryOp::Merge(Label::default().into()),
+            t,
+            built_record,
+        ))
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval(t).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval_full(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval_full(t).map_err(|e| e.into())
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -304,25 +305,24 @@ impl<EC: EvalCache> Program<EC> {
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm
-            .eval_full_for_export(t, &initial_env)
-            .map_err(|e| e.into())
+        self.vm.eval_full_for_export(t).map_err(|e| e.into())
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
         self.vm.reset();
-        self.vm.eval_deep(t, &initial_env).map_err(|e| e.into())
+        self.vm.eval_deep(t).map_err(|e| e.into())
     }
 
-    /// Wrapper for [`query`].
+    /// Prepare for evaluation, then query the program for a field.
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
-        let initial_env = self.vm.prepare_stdlib()?;
+        let rt = self.prepare_eval()?;
         let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
-        query(&mut self.vm, self.main_id, &initial_env, query_path)
+
+        Ok(self.vm.query(rt, query_path)?)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
@@ -429,7 +429,7 @@ impl<EC: EvalCache> Program<EC> {
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
 
-        let (t, initial_env) = self.prepare_eval()?;
+        let t = self.prepare_eval()?;
 
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
@@ -437,13 +437,12 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             mut pending_contracts: Vec<RuntimeContract>,
             current_env: Environment,
-            initial_env: &Environment,
         ) -> Result<Vec<RuntimeContract>, Error> {
             vm.reset();
 
             for ctr in pending_contracts.iter_mut() {
                 let rt = ctr.contract.clone();
-                ctr.contract = do_eval(vm, rt, current_env.clone(), initial_env)?;
+                ctr.contract = do_eval(vm, rt, current_env.clone())?;
             }
 
             Ok(pending_contracts)
@@ -453,16 +452,12 @@ impl<EC: EvalCache> Program<EC> {
             vm: &mut VirtualMachine<Cache, EC>,
             t: RichTerm,
             current_env: Environment,
-            initial_env: &Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
-            let result = vm.eval_closure(
-                Closure {
-                    body: t.clone(),
-                    env: current_env,
-                },
-                initial_env,
-            );
+            let result = vm.eval_closure(Closure {
+                body: t.clone(),
+                env: current_env,
+            });
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
             // contains undefined record fields they most likely will be used
@@ -489,13 +484,12 @@ impl<EC: EvalCache> Program<EC> {
                                     Field {
                                         value: field
                                             .value
-                                            .map(|rt| do_eval(vm, rt, env.clone(), initial_env))
+                                            .map(|rt| do_eval(vm, rt, env.clone()))
                                             .transpose()?,
                                         pending_contracts: eval_contracts(
                                             vm,
                                             field.pending_contracts,
                                             env.clone(),
-                                            initial_env
                                         )?,
                                         ..field
                                     },
@@ -511,7 +505,7 @@ impl<EC: EvalCache> Program<EC> {
             }
         }
 
-        do_eval(&mut self.vm, t, Environment::new(), &initial_env)
+        do_eval(&mut self.vm, t, Environment::new())
     }
 
     /// Extract documentation from the program
@@ -535,7 +529,7 @@ impl<EC: EvalCache> Program<EC> {
         out: &mut impl std::io::Write,
         apply_transforms: bool,
     ) -> Result<(), Error> {
-        use crate::pretty::*;
+        use crate::{pretty::*, transform::transform};
         use pretty::BoxAllocator;
 
         let Program {
@@ -545,7 +539,7 @@ impl<EC: EvalCache> Program<EC> {
 
         let rt = vm.import_resolver().parse_nocache(*main_id)?.0;
         let rt = if apply_transforms {
-            crate::transform::transform(rt, None).map_err(EvalError::from)?
+            transform(rt, None).map_err(EvalError::from)?
         } else {
             rt
         };
@@ -554,29 +548,6 @@ impl<EC: EvalCache> Program<EC> {
         writeln!(out).map_err(IOError::from)?;
         Ok(())
     }
-}
-
-/// Query the metadata of a path of a term in the cache.
-///
-/// The path is a list of dot separated identifiers. For example, querying `{a = {b  = ..}}` (call
-/// it `exp`) with path `a.b` will evaluate `exp.a` and retrieve the `b` field. `b` is forced as
-/// well, in order to print its value (note that forced just means evaluated to a WHNF, it isn't
-/// deeply - or recursively - evaluated).
-//TODO: also gather type information, such that `query a.b.c <<< '{ ... } : {a: {b: {c: Num}}}`
-//would additionally report `type: Num` for example. Maybe use the LSP infrastructure?
-//TODO: not sure where this should go. It seems to embed too much logic to be in `Cache`, but is
-//common to both `Program` and `Repl`. Leaving it here as a stand-alone function for now
-pub fn query<EC: EvalCache>(
-    vm: &mut VirtualMachine<Cache, EC>,
-    file_id: FileId,
-    initial_env: &Envs,
-    path: QueryPath,
-) -> Result<Field, Error> {
-    vm.import_resolver_mut()
-        .prepare(file_id, &initial_env.type_ctxt)?;
-
-    let rt = vm.import_resolver().get_owned(file_id).unwrap();
-    Ok(vm.query(rt, path, &initial_env.eval_env)?)
 }
 
 #[cfg(feature = "doc")]

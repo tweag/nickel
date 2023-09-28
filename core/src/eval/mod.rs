@@ -122,6 +122,8 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     import_resolver: R,
     // The evaluation cache.
     pub cache: C,
+    // The initial environment containing stdlib and builtin functions accessible from anywhere
+    initial_env: Environment,
     // The stream for writing trace output.
     trace: Box<dyn Write>,
 }
@@ -133,6 +135,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             call_stack: Default::default(),
             stack: Stack::new(),
             cache: Cache::new(),
+            initial_env: Environment::new(),
             trace: Box::new(trace),
         }
     }
@@ -144,6 +147,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             stack: Stack::new(),
             cache,
             trace: Box::new(trace),
+            initial_env: Environment::new(),
         }
     }
 
@@ -164,55 +168,58 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
     /// Evaluate a Nickel term. Wrapper around [VirtualMachine::eval_closure] that starts from an
     /// empty local environment and drops the final environment.
-    pub fn eval(&mut self, t0: RichTerm, initial_env: &Environment) -> Result<RichTerm, EvalError> {
-        self.eval_closure(Closure::atomic_closure(t0), initial_env)
+    pub fn eval(&mut self, t: RichTerm) -> Result<RichTerm, EvalError> {
+        self.eval_closure(Closure::atomic_closure(t))
             .map(|(term, _)| term)
     }
 
     /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables
     /// substituted.
-    pub fn eval_full(
-        &mut self,
-        t0: RichTerm,
-        initial_env: &Environment,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(t0, initial_env, false)
-            .map(|(term, env)| subst(&self.cache, term, initial_env, &env))
+    pub fn eval_full(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
+        self.eval_full_closure(Closure::atomic_closure(t0))
+            .map(|(term, _)| term)
+    }
+
+    pub fn eval_full_closure(&mut self, t0: Closure) -> Result<(RichTerm, Environment), EvalError> {
+        self.eval_deep_closure(t0, false)
+            .map(|(term, env)| (subst(&self.cache, term, &self.initial_env, &env), env))
     }
 
     /// Like `eval_full`, but skips evaluating record fields marked `not_exported`.
-    pub fn eval_full_for_export(
-        &mut self,
-        t0: RichTerm,
-        initial_env: &Environment,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(t0, initial_env, true)
-            .map(|(term, env)| subst(&self.cache, term, initial_env, &env))
+    pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure(Closure::atomic_closure(t0), true)
+            .map(|(term, env)| subst(&self.cache, term, &self.initial_env, &env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
-    pub fn eval_deep(
-        &mut self,
-        t0: RichTerm,
-        initial_env: &Environment,
-    ) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(t0, initial_env, false)
+    pub fn eval_deep(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure(Closure::atomic_closure(t0), false)
             .map(|(term, _)| term)
+    }
+
+    /// Use a specific initial environment for evaluation. Usually, [VirtualMachine::prepare_eval]
+    /// is populating the initial environment. But in some cases, such as testing or benchmarks, we
+    /// might want to use a different one.
+    ///
+    /// Return the new virtual machine with the updated initial environment.
+    pub fn with_initial_env(mut self, env: Environment) -> Self {
+        self.initial_env = env;
+        self
     }
 
     fn eval_deep_closure(
         &mut self,
-        rt: RichTerm,
-        initial_env: &Environment,
+        mut closure: Closure,
         for_export: bool,
     ) -> Result<(RichTerm, Environment), EvalError> {
-        let wrapper = mk_term::op1(
+        closure.body = mk_term::op1(
             UnaryOp::Force {
                 ignore_not_exported: for_export,
             },
-            rt,
+            closure.body,
         );
-        self.eval_closure(Closure::atomic_closure(wrapper), initial_env)
+
+        self.eval_closure(closure)
     }
 
     /// Query the value and the metadata of a record field in an expression.
@@ -221,14 +228,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// `baz`. The content of `baz` is evaluated as well, and variables are substituted, in order
     /// to obtain a value that can be printed. The metadata and the evaluated value are returned as
     /// a new field.
-    pub fn query(
-        &mut self,
-        t: RichTerm,
-        path: QueryPath,
-        initial_env: &Environment,
-    ) -> Result<Field, EvalError> {
-        let mut prev_pos = t.pos;
-        let (rt, mut env) = self.eval_closure(Closure::atomic_closure(t), initial_env)?;
+    pub fn query(&mut self, t: RichTerm, path: QueryPath) -> Result<Field, EvalError> {
+        self.query_closure(Closure::atomic_closure(t), path)
+    }
+
+    /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
+    /// environment.
+    pub fn query_closure(&mut self, closure: Closure, path: QueryPath) -> Result<Field, EvalError> {
+        let mut prev_pos = closure.body.pos;
+        let (rt, mut env) = self.eval_closure(closure)?;
 
         let mut field: Field = rt.into();
 
@@ -268,13 +276,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pending_contracts.into_iter(),
                                     prev_pos,
                                 );
-                                let (new_value, new_env) = self.eval_closure(
-                                    Closure {
-                                        body: value_with_ctr,
-                                        env: env.clone(),
-                                    },
-                                    initial_env,
-                                )?;
+                                let (new_value, new_env) = self.eval_closure(Closure {
+                                    body: value_with_ctr,
+                                    env: env.clone(),
+                                })?;
                                 env = new_env;
 
                                 Ok(new_value)
@@ -329,7 +334,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     pub fn eval_closure(
         &mut self,
         mut clos: Closure,
-        initial_env: &Environment,
     ) -> Result<(RichTerm, Environment), EvalError> {
         loop {
             let Closure {
@@ -383,7 +387,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Var(x) => {
                     let mut idx = env
                         .get(&x.ident())
-                        .or_else(|| initial_env.get(&x.ident()))
+                        .or_else(|| self.initial_env.get(&x.ident()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
                     std::mem::drop(env); // idx may be a 1RC pointer
@@ -820,17 +824,29 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 }
 
 impl<C: Cache> VirtualMachine<ImportCache, C> {
-    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<(RichTerm, Environment), Error> {
+    /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
+    /// etc.). Sets the initial environment of the virtual machine.
+    pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {
         let Envs {
             eval_env,
             type_ctxt,
-        }: Envs = self.import_resolver.prepare_stdlib(&mut self.cache)?;
+        } = self.import_resolver.prepare_stdlib(&mut self.cache)?;
         self.import_resolver.prepare(main_id, &type_ctxt)?;
-        Ok((self.import_resolver().get(main_id).unwrap(), eval_env))
+        self.initial_env = eval_env;
+        Ok(self.import_resolver().get(main_id).unwrap())
     }
 
+    /// Prepare the stdlib for evaluation. Sets the initial environment of the virtual machine. As
+    /// opposed to [VirtualMachine::prepare_eval], [VirtualMachine::prepare_stdlib] doesn't prepare
+    /// the main program yet (typechecking, transformations, etc.).
+    ///
+    /// # Returns
+    ///
+    /// The initial evaluation and typing environments, containing the stdlib items.
     pub fn prepare_stdlib(&mut self) -> Result<Envs, Error> {
-        self.import_resolver.prepare_stdlib(&mut self.cache)
+        let envs = self.import_resolver.prepare_stdlib(&mut self.cache)?;
+        self.initial_env = envs.eval_env.clone();
+        Ok(envs)
     }
 }
 

@@ -49,23 +49,41 @@ use crate::{
     term::{self, record::Field, IndexMap, UnaryOp},
 };
 
+use std::fmt::Debug;
+
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
-pub const MAX_GAS: u8 = 8;
+pub const MAX_GAS: u8 = 10;
+
+/// Like `std::borrow::ToOwned`, but defined as a local trait for convenience and to be implemented
+/// on the reference type directly. Beside the slightly different signature, the blanket
+/// implementations of `ToOwned` would interfere with our own.
+pub trait ToOwnedEnv<Owned> {
+    fn to_owned_env(self) -> Owned;
+}
 
 /// Abstract over the term environment, which is represented differently in the typechecker and
 /// during evaluation.
 ///
-/// The evaluation environment holds [crate::eval::cache::CacheIndex]es,
-/// while the term environment used during typechecking is just maps identifiers to
-/// a pair `(RichTerm, Environment)`. To have an interface that works with both,
-/// `TermEnvironment::get_then` has to take a closure representing the continuation of the task to
-/// do with the result instead of merely returning it.
+/// The evaluation environment holds [crate::eval::cache::CacheIndex]es, while the term environment
+/// used during typechecking just maps identifiers to a pair `(RichTerm, Environment)`. To have an
+/// interface that works with both, [TermEnvironment] provides [TermEnvironment::get_then], which
+/// has to take a closure representing the continuation of the task to do with the result instead
+/// of merely returning it.
 pub trait TermEnvironment: Clone {
-    fn get_then<F, T>(&self, id: Ident, f: F) -> T
+    /// The representation of the environment is different during typechecking and evaluation. In
+    /// particular, the evaluation's environment is actually a pair of environments (the initial
+    /// environment and the local environment), and thus the notion of owned environment and
+    /// reference to the environment don't always map to the obvious `Self` and `&Self`
+    /// respectively.
+    /// The trait abstract over thos notions by defining a reference type and an owned type.
+    type Owned: Clone + PartialEq + Debug;
+    type Ref<'a>: Copy + ToOwnedEnv<Self::Owned>;
+
+    fn get_then<F, T>(env: Self::Ref<'_>, id: Ident, f: F) -> T
     where
-        F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
+        F: FnOnce(Option<(&RichTerm, Self::Ref<'_>)>) -> T;
 }
 
 /// A simple term environment, as a mapping from identifiers to a tuple of a term and an
@@ -85,12 +103,27 @@ impl Default for SimpleTermEnvironment {
     }
 }
 
+impl<'a, E: Clone> ToOwnedEnv<E> for &'a E {
+    fn to_owned_env(self) -> E {
+        self.clone()
+    }
+}
+
 impl TermEnvironment for SimpleTermEnvironment {
-    fn get_then<F, T>(&self, id: Ident, f: F) -> T
+    type Owned = Self;
+    type Ref<'a> = &'a Self;
+
+    fn get_then<F, T>(env: &Self, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
-        f(self.0.get(&id).map(|(rt, env)| (rt, env)))
+        f(env.0.get(&id).map(|(rt, env)| (rt, env)))
+    }
+}
+
+impl<'a> AsRef<SimpleTermEnvironment> for &'a SimpleTermEnvironment {
+    fn as_ref(&self) -> Self {
+        self
     }
 }
 
@@ -105,19 +138,58 @@ impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for Sim
     }
 }
 
-/*
-impl<C: Cache> TermEnvironment for eval::Environment {
-    fn get_then<F, T>(&self, id: &Ident, f: F) -> T
+#[derive(Clone, Copy)]
+pub struct EvalEnvsRef<'a> {
+    pub eval_env: &'a eval::Environment,
+    pub initial_env: &'a eval::Environment,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct EvalEnvsOwned {
+    pub eval_env: eval::Environment,
+    pub initial_env: eval::Environment,
+}
+
+impl<'a> ToOwnedEnv<EvalEnvsOwned> for EvalEnvsRef<'a> {
+    fn to_owned_env(self) -> EvalEnvsOwned {
+        EvalEnvsOwned {
+            eval_env: self.eval_env.clone(),
+            initial_env: self.initial_env.clone(),
+        }
+    }
+}
+
+impl<'a> TermEnvironment for EvalEnvsRef<'a> {
+    type Ref<'b> = EvalEnvsRef<'b>;
+    type Owned = EvalEnvsOwned;
+
+    fn get_then<F, T>(env: EvalEnvsRef<'_>, id: Ident, f: F) -> T
     where
-        F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
+        F: FnOnce(Option<(&RichTerm, EvalEnvsRef<'_>)>) -> T,
     {
-        match self.get(id).map(eval::lazy::Thunk::borrow) {
-            Some(closure_ref) => f(Some((&closure_ref.body, &closure_ref.env))),
+        debug_assert!(
+            env.eval_env.get(&id).or(env.initial_env.get(&id)).is_some(),
+            "unbound variable `{}`",
+            id
+        );
+
+        match env
+            .eval_env
+            .get(&id)
+            .or(env.initial_env.get(&id))
+            .map(eval::cache::lazy::Thunk::borrow)
+        {
+            Some(closure_ref) => f(Some((
+                &closure_ref.body,
+                EvalEnvsRef {
+                    eval_env: &closure_ref.env,
+                    initial_env: env.initial_env,
+                },
+            ))),
             None => f(None),
         }
     }
 }
-*/
 
 pub trait FromEnv<C: Cache> {
     fn from_env(eval_env: eval::Environment, cache: &C) -> Self;
@@ -135,6 +207,26 @@ impl<C: Cache> FromEnv<C> for SimpleTermEnvironment {
             })
             .collect();
         SimpleTermEnvironment(generic_env)
+    }
+}
+
+/// Dummy environment used in conjunction with [VarEq::Direct] to compare variables by name.
+///
+/// **Warning**: calling `get_then` on this environment will panic, as it has no way to generate a
+/// term from a variable. It must only be used in conjunction with [VarEq::Direct], which doesn't
+/// access the environment.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct NoEnvironment;
+
+impl TermEnvironment for NoEnvironment {
+    type Owned = Self;
+    type Ref<'a> = &'a Self;
+
+    fn get_then<F, T>(_env: &Self, id: Ident, _f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &NoEnvironment)>) -> T,
+    {
+        panic!("contract equality checking: cannot get variable `{id}` from no environment")
     }
 }
 
@@ -181,7 +273,19 @@ impl State {
     }
 }
 
-/// Compute the equality between two flat types (contracts).
+/// Different possible behavior for variables comparison.
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
+pub enum VarEq {
+    #[default]
+    /// Use the environment to fetch the content of variables and compare them.
+    Environment,
+    /// Don't use an environment and simply compare variables by name. This is unsound, and should
+    /// only be used to deduplicate annotations for pretty-printing. In this case, use
+    /// [NoEnvironment] as an environment.
+    Direct,
+}
+
+/// Compute equality between two contracts.
 ///
 /// # Parameters
 ///
@@ -190,21 +294,47 @@ impl State {
 pub fn contract_eq<E: TermEnvironment>(
     var_uid: usize,
     t1: &RichTerm,
-    env1: &E,
+    env1: E::Ref<'_>,
     t2: &RichTerm,
-    env2: &E,
+    env2: E::Ref<'_>,
 ) -> bool {
-    contract_eq_bounded(&mut State::new(var_uid), t1, env1, t2, env2)
+    contract_eq_bounded::<E>(
+        &mut State::new(var_uid),
+        VarEq::Environment,
+        t1,
+        env1,
+        t2,
+        env2,
+    )
+}
+
+/// **Warning**: this function isn't computing a sound contract equality (it could equate contracts
+/// that aren't actually the same). It is used to deduplicate type and contract annotations for
+/// pretty-printing, where there is no notion of environment and the only thing that matters is
+/// that they are printed the same or not.
+///
+/// Compute equality between two contracts, considering that two variables with the same name are
+/// equal.
+pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
+    type_eq_bounded::<NoEnvironment>(
+        &mut State::new(var_uid),
+        VarEq::Direct,
+        &GenericUnifType::<NoEnvironment>::from_type(t1.clone(), &NoEnvironment),
+        &NoEnvironment,
+        &GenericUnifType::<NoEnvironment>::from_type(t2.clone(), &NoEnvironment),
+        &NoEnvironment,
+    )
 }
 
 /// Decide type equality on contracts in their respective environment and given the remaining gas
-/// `gas`.
+/// in `state`.
 fn contract_eq_bounded<E: TermEnvironment>(
     state: &mut State,
+    var_eq: VarEq,
     t1: &RichTerm,
-    env1: &E,
+    env1: E::Ref<'_>,
     t2: &RichTerm,
-    env2: &E,
+    env2: E::Ref<'_>,
 ) -> bool {
     use Term::*;
 
@@ -223,7 +353,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (Enum(id1), Enum(id2)) => id1 == id2,
         (SealingKey(s1), SealingKey(s2)) => s1 == s2,
         (Sealed(key1, inner1, _), Sealed(key2, inner2, _)) => {
-            key1 == key2 && contract_eq_bounded(state, inner1, env1, inner2, env2)
+            key1 == key2 && contract_eq_bounded::<E>(state, var_eq, inner1, env1, inner2, env2)
         }
         // We only compare string chunks when they represent a plain string (they don't contain any
         // interpolated expression), as static string may be currently parsed as such. We return
@@ -239,17 +369,18 @@ fn contract_eq_bounded<E: TermEnvironment>(
                     })
         }
         (App(head1, arg1), App(head2, arg2)) => {
-            contract_eq_bounded(state, head1, env1, head2, env2)
-                && contract_eq_bounded(state, arg1, env1, arg2, env2)
+            contract_eq_bounded::<E>(state, var_eq, head1, env1, head2, env2)
+                && contract_eq_bounded::<E>(state, var_eq, arg1, env1, arg2, env2)
         }
+        (Var(id1), Var(id2)) if var_eq == VarEq::Direct => id1 == id2,
         // All variables must be bound at this stage. This is checked by the typechecker when
         // walking annotations. However, we may assume that `env` is a local environment (that it
         // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
-            env1.get_then(id1.ident(), |binding1| {
-                env2.get_then(id2.ident(), |binding2| {
+            <E as TermEnvironment>::get_then(env1, id1.ident(), |binding1| {
+                <E as TermEnvironment>::get_then(env2, id2.ident(), |binding2| {
                     match (binding1, binding2) {
                         (None, None) => id1 == id2,
                         (Some((t1, env1)), Some((t2, env2))) => {
@@ -258,33 +389,41 @@ fn contract_eq_bounded<E: TermEnvironment>(
                             // still return false if gas was already at zero.
                             let had_gas = state.use_gas();
                             state.use_gas();
-                            had_gas && contract_eq_bounded(state, t1, env1, t2, env2)
+                            had_gas && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
                         }
                         _ => false,
                     }
                 })
             })
         }
+        // If one term is a variable and not the other, and we don't have access to an environment, the
+        // term are considered unequal
+        (Var(_), _) | (_, Var(_)) if var_eq == VarEq::Direct => false,
         (Var(id), _) => {
             state.use_gas()
-                && env1.get_then(id.ident(), |binding| {
+                && <E as TermEnvironment>::get_then(env1, id.ident(), |binding| {
                     binding
-                        .map(|(t1, env1)| contract_eq_bounded(state, t1, env1, t2, env2))
+                        .map(|(t1, env1)| {
+                            contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                        })
                         .unwrap_or(false)
                 })
         }
         (_, Var(id)) => {
             state.use_gas()
-                && env2.get_then(id.ident(), |binding| {
+                && <E as TermEnvironment>::get_then(env2, id.ident(), |binding| {
                     binding
-                        .map(|(t2, env2)| contract_eq_bounded(state, t1, env1, t2, env2))
+                        .map(|(t2, env2)| {
+                            contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                        })
                         .unwrap_or(false)
                 })
         }
         (Record(r1), Record(r2)) => {
-            map_eq(
-                contract_eq_fields,
+            map_eq::<_, _, E>(
+                contract_eq_fields::<E>,
                 state,
+                var_eq,
                 &r1.fields,
                 env1,
                 &r2.fields,
@@ -297,9 +436,10 @@ fn contract_eq_bounded<E: TermEnvironment>(
         {
             dyn_fields1.is_empty()
                 && dyn_fields2.is_empty()
-                && map_eq(
-                    contract_eq_fields,
+                && map_eq::<_, _, E>(
+                    contract_eq_fields::<E>,
                     state,
+                    var_eq,
                     &r1.fields,
                     env1,
                     &r2.fields,
@@ -312,13 +452,13 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && ts1
                     .iter()
                     .zip(ts2.iter())
-                    .all(|(t1, t2)| contract_eq_bounded(state, t1, env1, t2, env2))
+                    .all(|(t1, t2)| contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2))
                 && attrs1 == attrs2
         }
         // We must compare the inner values as well as the corresponding contracts or type
         // annotations.
         (Annotated(annot1, t1), Annotated(annot2, t2)) => {
-            let value_eq = contract_eq_bounded(state, t1, env1, t2, env2);
+            let value_eq = contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2);
 
             // TODO:
             // - does it really make sense to compare the annotations?
@@ -337,9 +477,10 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 (None, None) => true,
                 (Some(ctr1), Some(ctr2)) => type_eq_bounded(
                     state,
-                    &GenericUnifType::from_type(ctr1.typ.clone(), env1),
+                    var_eq,
+                    &GenericUnifType::<E>::from_type(ctr1.typ.clone(), env1),
                     env1,
-                    &GenericUnifType::from_type(ctr2.typ.clone(), env2),
+                    &GenericUnifType::<E>::from_type(ctr2.typ.clone(), env2),
                     env2,
                 ),
                 _ => false,
@@ -348,29 +489,38 @@ fn contract_eq_bounded<E: TermEnvironment>(
             value_eq && ty_eq
         }
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
-            id1 == id2 && contract_eq_bounded(state, t1, env1, t2, env2)
+            id1 == id2 && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
         }
+        (Type(ty1), Type(ty2)) => type_eq_bounded(
+            state,
+            var_eq,
+            &GenericUnifType::<E>::from_type(ty1.clone(), env1),
+            env1,
+            &GenericUnifType::<E>::from_type(ty2.clone(), env2),
+            env2,
+        ),
         // We don't treat imports, parse errors, nor pairs of terms that don't have the same shape
         _ => false,
     }
 }
 
 /// Compute the equality between two hashmaps holding either types or terms.
-fn map_eq<V, F, E>(
+fn map_eq<V, F, E: TermEnvironment>(
     mut f: F,
     state: &mut State,
+    var_eq: VarEq,
     map1: &IndexMap<LocIdent, V>,
-    env1: &E,
+    env1: E::Ref<'_>,
     map2: &IndexMap<LocIdent, V>,
-    env2: &E,
+    env2: E::Ref<'_>,
 ) -> bool
 where
-    F: FnMut(&mut State, &V, &E, &V, &E) -> bool,
+    F: FnMut(&mut State, VarEq, &V, E::Ref<'_>, &V, E::Ref<'_>) -> bool,
 {
     map1.len() == map2.len()
         && map1.iter().all(|(id, v1)| {
             map2.get(id)
-                .map(|v2| f(state, v1, env1, v2, env2))
+                .map(|v2| f(state, var_eq, v1, env1, v2, env2))
                 .unwrap_or(false)
         })
 }
@@ -416,14 +566,15 @@ fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<LocIdent>> {
 /// definition, or are both defined and their values are equal.
 fn contract_eq_fields<E: TermEnvironment>(
     state: &mut State,
+    var_eq: VarEq,
     field1: &Field,
-    env1: &E,
+    env1: E::Ref<'_>,
     field2: &Field,
-    env2: &E,
+    env2: E::Ref<'_>,
 ) -> bool {
     match (&field1.value, &field2.value) {
         (Some(ref value1), Some(ref value2)) => {
-            contract_eq_bounded(state, value1, env1, value2, env2)
+            contract_eq_bounded::<E>(state, var_eq, value1, env1, value2, env2)
         }
         (None, None) => true,
         _ => false,
@@ -442,10 +593,11 @@ fn contract_eq_fields<E: TermEnvironment>(
 /// and we can just start from `0`.
 fn type_eq_bounded<E: TermEnvironment>(
     state: &mut State,
+    var_eq: VarEq,
     ty1: &GenericUnifType<E>,
-    env1: &E,
+    env1: E::Ref<'_>,
     ty2: &GenericUnifType<E>,
-    env2: &E,
+    env2: E::Ref<'_>,
 ) -> bool {
     match (ty1, ty2) {
         (GenericUnifType::Concrete { typ: s1, .. }, GenericUnifType::Concrete { typ: s2, .. }) => {
@@ -465,13 +617,13 @@ fn type_eq_bounded<E: TermEnvironment>(
                         type_fields: uty2,
                         flavour: attrs2,
                     },
-                ) if attrs1 == attrs2 => type_eq_bounded(state, uty1, env1, uty2, env2),
+                ) if attrs1 == attrs2 => type_eq_bounded(state, var_eq, uty1, env1, uty2, env2),
                 (TypeF::Array(uty1), TypeF::Array(uty2)) => {
-                    type_eq_bounded(state, uty1, env1, uty2, env2)
+                    type_eq_bounded(state, var_eq, uty1, env1, uty2, env2)
                 }
                 (TypeF::Arrow(s1, t1), TypeF::Arrow(s2, t2)) => {
-                    type_eq_bounded(state, s1, env1, s2, env2)
-                        && type_eq_bounded(state, t1, env1, t2, env2)
+                    type_eq_bounded(state, var_eq, s1, env1, s2, env2)
+                        && type_eq_bounded(state, var_eq, t1, env1, t2, env2)
                 }
                 (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
                     let rows1 = rows_as_set(uty1);
@@ -481,12 +633,13 @@ fn type_eq_bounded<E: TermEnvironment>(
                 (TypeF::Record(uty1), TypeF::Record(uty2)) => {
                     fn type_eq_bounded_wrapper<E: TermEnvironment>(
                         state: &mut State,
+                        var_eq: VarEq,
                         uty1: &&GenericUnifType<E>,
-                        env1: &E,
+                        env1: E::Ref<'_>,
                         uty2: &&GenericUnifType<E>,
-                        env2: &E,
+                        env2: E::Ref<'_>,
                     ) -> bool {
-                        type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                        type_eq_bounded(state, var_eq, *uty1, env1, *uty2, env2)
                     }
 
                     let map1 = rows_as_map(uty1);
@@ -494,12 +647,20 @@ fn type_eq_bounded<E: TermEnvironment>(
 
                     map1.zip(map2)
                         .map(|(m1, m2)| {
-                            map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
+                            map_eq::<_, _, E>(
+                                type_eq_bounded_wrapper,
+                                state,
+                                var_eq,
+                                &m1,
+                                env1,
+                                &m2,
+                                env2,
+                            )
                         })
                         .unwrap_or(false)
                 }
                 (TypeF::Flat(t1), TypeF::Flat(t2)) => {
-                    contract_eq_bounded(state, t1, env1, t2, env2)
+                    contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
                 }
                 (
                     TypeF::Forall {
@@ -537,7 +698,7 @@ fn type_eq_bounded<E: TermEnvironment>(
                         ),
                     };
 
-                    type_eq_bounded(state, &uty1_subst, env1, &uty2_subst, env2)
+                    type_eq_bounded(state, var_eq, &uty1_subst, env1, &uty2_subst, env2)
                 }
                 // We can't compare type variables without knowing what they are instantiated to,
                 // and all type variables should have been substituted at this point, so we bail

@@ -1124,7 +1124,13 @@ impl Unify for UnifType {
                 Err(UnifError::WithConst(VarKindDiscriminant::Type, i, ty))
             }
             (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
-                if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
+                if eq::contract_eq::<SimpleTermEnvironment>(
+                    state.table.max_uvars_count(),
+                    &t1,
+                    &env1,
+                    &t2,
+                    &env2,
+                ) =>
             {
                 Ok(())
             }

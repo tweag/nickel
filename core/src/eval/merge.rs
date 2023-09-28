@@ -32,7 +32,7 @@ use crate::label::{Label, MergeLabel};
 use crate::position::TermPos;
 use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
-    BinaryOp, IndexMap, RichTerm, Term,
+    BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
 };
 use crate::transform::Closurizable;
 
@@ -67,6 +67,7 @@ impl From<MergeMode> for MergeLabel {
 #[allow(clippy::too_many_arguments)] // TODO: Is it worth to pack the inputs in an ad-hoc struct?
 pub fn merge<C: Cache>(
     cache: &mut C,
+    initial_env: &Environment,
     t1: RichTerm,
     env1: Environment,
     t2: RichTerm,
@@ -307,6 +308,7 @@ pub fn merge<C: Cache>(
                     id,
                     merge_fields(
                         cache,
+                        initial_env,
                         merge_label,
                         field1,
                         env1.clone(),
@@ -357,6 +359,7 @@ pub fn merge<C: Cache>(
 #[allow(clippy::too_many_arguments)]
 fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone>(
     cache: &mut C,
+    initial_env: &Environment,
     merge_label: MergeLabel,
     field1: Field,
     env1: Environment,
@@ -410,12 +413,21 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     };
 
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
-    pending_contracts.extend(pending_contracts2.revert_closurize(cache, env_final, env2.clone()));
+
+    for ctr2 in pending_contracts2.revert_closurize(cache, env_final, env2.clone()) {
+        RuntimeContract::push_dedup(
+            initial_env,
+            &mut pending_contracts,
+            env_final,
+            ctr2,
+            env_final,
+        );
+    }
 
     Ok(Field {
         metadata: FieldMetadata {
             doc: merge_doc(metadata1.doc, metadata2.doc),
-            annotation: Combine::combine(metadata1.annotation, metadata2.annotation),
+            annotation: TypeAnnotation::combine_dedup(metadata1.annotation, metadata2.annotation),
             // If one of the record requires this field, then it musn't be optional. The
             // resulting field is optional iff both are.
             opt: metadata1.opt && metadata2.opt,

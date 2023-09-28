@@ -1881,6 +1881,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
+                &self.initial_env,
                 RichTerm {
                     term: t1,
                     pos: pos1,
@@ -2113,6 +2114,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // due to a limitation of `match_sharedterm`: see the macro's
                             // documentation
                             let mut record_data = record_data;
+                            let term_original_env = env2.clone();
 
                             let mut contract_at_field = |id: LocIdent| {
                                 let pos = contract_term.pos;
@@ -2125,10 +2127,18 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             };
 
                             for (id, field) in record_data.fields.iter_mut() {
-                                field.pending_contracts.push(RuntimeContract {
-                                    contract: contract_at_field(*id),
-                                    label: label.clone(),
-                                });
+                                let runtime_ctr = RuntimeContract {
+                                        contract: contract_at_field(*id),
+                                        label: label.clone(),
+                                    };
+
+                                crate::term::RuntimeContract::push_dedup(
+                                    &self.initial_env,
+                                    &mut field.pending_contracts,
+                                    &term_original_env,
+                                    runtime_ctr,
+                                    &contract_env,
+                                );
                             }
 
                             // IMPORTANT: here, we revert the record back to a `RecRecord`. The
@@ -2463,6 +2473,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Lbl(lbl) => {
                             merge::merge(
                                 &mut self.cache,
+                                &self.initial_env,
                                 RichTerm {
                                     term: t2,
                                     pos: pos2,
