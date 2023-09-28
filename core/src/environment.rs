@@ -84,7 +84,10 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// Tries to find the value of a key in the Environment.
     pub fn get(&self, key: &K) -> Option<&V> {
         increment!("Environment::get");
-        self.iter_layers().find_map(|hmap| hmap.get(key))
+        self.iter_layers().find_map(|hmap| {
+            sample!("Environment.hashmap_size_get", hmap.len() as f64);
+            hmap.get(key)
+        })
     }
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
