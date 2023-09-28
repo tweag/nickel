@@ -155,6 +155,7 @@ impl<EC: EvalCache> Program<EC> {
         I: IntoIterator<Item = P>,
         P: Into<OsString>,
     {
+        increment!("Program::new");
         let mut cache = Cache::new(ErrorTolerance::Strict);
 
         let merge_term = paths

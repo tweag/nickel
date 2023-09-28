@@ -2,6 +2,7 @@
 use super::{BlackholedError, Cache, CacheIndex, Closure, Environment};
 use crate::{
     identifier::{Ident, LocIdent},
+    metrics::increment,
     term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
 use std::cell::{Ref, RefCell, RefMut};
@@ -364,6 +365,7 @@ pub struct Thunk {
 impl Thunk {
     /// Create a new standard thunk.
     pub fn new(closure: Closure) -> Self {
+        increment!("Thunk::new");
         Thunk {
             data: Rc::new(RefCell::new(ThunkData::new(closure))),
         }
@@ -374,9 +376,12 @@ impl Thunk {
     pub fn new_rev(closure: Closure, deps: FieldDeps) -> Self {
         match deps {
             FieldDeps::Known(deps) if deps.is_empty() => Self::new(closure),
-            deps => Thunk {
-                data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
-            },
+            deps => {
+                increment!("Thunk::new_rev");
+                Thunk {
+                    data: Rc::new(RefCell::new(ThunkData::new_rev(closure, deps))),
+                }
+            }
         }
     }
 

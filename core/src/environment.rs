@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
-use crate::metrics::increment;
+use crate::metrics::{increment, sample};
 
 /// An environment as a linked-list of hashmaps.
 ///
@@ -42,6 +42,10 @@ impl<K: Hash + Eq, V: PartialEq> Clone for Environment<K, V> {
     fn clone(&self) -> Self {
         increment!("Environment::clone");
         if !self.current.is_empty() && !self.was_cloned() {
+            sample!(
+                "Environment.curr_layer_size_at_clone",
+                self.current.len() as f64
+            );
             self.previous.replace_with(|old| {
                 Some(Rc::new(Environment {
                     current: self.current.clone(),
@@ -73,6 +77,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Inserts a key-value pair into the Environment.
     pub fn insert(&mut self, key: K, value: V) {
+        increment!("Environment::insert");
         if self.was_cloned() {
             self.current = Rc::new(HashMap::new());
         }
@@ -81,7 +86,16 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Tries to find the value of a key in the Environment.
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.iter_layers().find_map(|hmap| hmap.get(key))
+        increment!("Environment::get");
+
+        let mut layer_count = 0;
+        let r = self.iter_layers().find_map(|hmap| {
+            sample!("Environment.hashmap_size_get", hmap.len() as f64);
+            layer_count += 1;
+            hmap.get(key)
+        });
+        sample!("Environment.get_layers_traversed", layer_count as f64);
+        r
     }
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
