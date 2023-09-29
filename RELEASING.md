@@ -114,8 +114,7 @@ Finally, update the version number in `doc/manual/introduction.md`.
 1. Do the [release on
    GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository),
    Make sure that you set `X.Y.Z-release` as the target branch and have GitHub
-   create the `X.Y.Z` tag on release. Upload `nickel-arm64-docker-image.tar.gz`
-   and `nickel-arm64-linux` as release assets from the last step.
+   create the `X.Y.Z` tag on release.
 
 2. Verify that the "Upload release artifacts" GitHub action is getting triggered
    and completes successfully, uploading a static Nickel binary and a Docker
