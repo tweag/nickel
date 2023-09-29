@@ -79,58 +79,31 @@ Let's describe a few simple cases first:
   The algorithm seems to be mainly type-directed. For example, annotating `foo()`
   as `function foo(): any { ... }` breaks going to the definition of `foo`
 
-### Proposed algorithm
+### Proposed field resolution algorithm
 
-The core part of the algorithm is a function mapping terms to sets of
-record literals, giving for each term the set of record literals that might
-"contribute" (through, e.g., merging) to that term. This will only be an
-approximation, of course, because we aren't evaluating. Let's call this process
-"record literal resolution," and it is defined by:
+One of the main tasks is resolving field references: what does `bar`
+refer to in `foo.bar`? To answer this, we describe an algorithm for mapping
+terms to sets of records (more precisely, `RecordData` structs). For
+each term, this algorithm computes the set of records that might
+"contribute" (through, e.g., merging) to that term. To answer what `bar`
+refers to in `foo.bar`, we first figure out the records that `foo` maps to
+and then see which of those records has a `bar` field. This extends naturally
+to a recursive algorithm for resolving `foo.bar.baz`.
 
-- a record literal resolves to itself
-- a variable resolves to the term that it's bound to (e.g. in a let binding)
-- an import statement resolves to the contents of the file that was imported
-- a merge resolves to the union of the resolutions of the two merged terms
-- an if-then-else resolves to the union of the resolutions of the two branches
-- a function application resolves to the resolution of its body (with the
-  function arguments bound appropriately). There probably needs to be some
-  protection against recursion (TBD)
-- everything else resolves to the empty set (but this can be extended later)
-
-Here is some pseudocode roughly corresponding to what's above: we have
-a struct `DefInfo` that represents some object with fields having locations:
-
-```rust
-struct DefInfo {
-  /// What are the definitions available on this field? There could be many:
-  /// in the presence of a merge, a field might be defined in both branches.
-  definitions: HashMap<Ident, Vec<DefInfo>>,
-  // The location of the definition, if any.
-  body: TermPos,
-}
-```
-
-Then we have a function `field_infos(RichTerm or Type) -> DefInfo` that looks something like:
+Let's call this process "record resolution." In pseudocode, we have a function
+`resolve(Term) -> RecordData` that looks something like:
 
 ```text
-field_infos(e1 & e2) = field_infos(e1) U field_infos(e2)
-field_infos(let x = e1 in e2) = field_infos(e2)
-field_infos(fun x => body) = field_infos(body)
-field_infos(head x) = field_infos(head)
-field_infos(var) = field_infos(goto_definition(var))
-field_infos(e1 | C) = field_infos(e1) U field_infos(C)
-field_infos(foo.bar) = field_infos(goto_definition(bar in foo.bar))
-field_infos(Term::RecRecord) = ... the actual fields defined on the record
-field_infos(TypeF::Record) = ... the actual fields defined on the record type
-field_infos(TypeF::Dict) = ... every possible identifier as a field (represented
-                               lazily, obviously)
+resolve(Term::RecRecord) -> itself
+resolve(e1 & e2) = resolve(e1) U resolve(e2)
+resolve(e1 | C) = resolve(e1) U resolve(C)
+resolve(let x = e1 in e2) = resolve(e2)
+resolve(fun x => body) = resolve(body)
+resolve(head x) = resolve(head)
+resolve(var) = look up var in the environment, and call resolve on the answer
+resolve(foo.bar) = figure out which term(s) foo.bar refers to, and flat_map resolve over them
 other cases => empty
 ```
-
-Now to find the definition of `baz` in `foo.bar.baz`, we first resolve `foo`
-to a set of record literals. For each of those literals containing a `bar` field,
-we resolve their values to a set of record literals. For each of those literals
-containing a `baz` field, we report it as a definition of `baz`.
 
 ## Goto type definition
 
