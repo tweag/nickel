@@ -19,6 +19,10 @@ default = ["format"]
 format = ["nickel-lang-core/format"]
 old-completer = []
 
+[[bench]]
+name = "main"
+harness = false
+
 [build-dependencies]
 lalrpop.workspace = true
 
@@ -46,6 +50,8 @@ thiserror.workspace = true
 [dev-dependencies]
 assert_cmd.workspace = true
 assert_matches.workspace = true
+criterion.workspace = true
+glob = "0.3.1"
 insta.workspace = true
 lsp-harness.workspace = true
 nickel-lang-utils.workspace = true

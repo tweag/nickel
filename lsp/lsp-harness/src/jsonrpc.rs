@@ -68,10 +68,10 @@ struct SendNotification<T: LspNotification> {
 pub struct Notification {
     /// The string "2.0", hopefully. (We aren't strict about checking it.)
     jsonrpc: String,
-    method: String,
+    pub method: String,
     /// The notification parameters. The structure of this should be determined
     /// by `method`, but it hasn't been checked yet.
-    params: serde_json::Value,
+    pub params: serde_json::Value,
 }
 
 /// An untyped request response from the LS.
@@ -240,7 +240,7 @@ impl Server {
     }
 
     /// Receive a single JSON RPC message from the server.
-    fn recv(&mut self) -> Result<ServerMessage> {
+    pub(crate) fn recv(&mut self) -> Result<ServerMessage> {
         let mut buf = String::new();
         let mut content_length: Option<usize> = None;
 
