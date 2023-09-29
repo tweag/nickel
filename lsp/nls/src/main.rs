@@ -5,6 +5,7 @@ use anyhow::Result;
 use log::debug;
 use lsp_server::Connection;
 
+mod analysis;
 mod cache;
 mod diagnostic;
 mod error;
@@ -12,7 +13,6 @@ mod field_walker;
 mod files;
 mod identifier;
 mod incomplete;
-mod linearization;
 mod position;
 mod requests;
 mod server;

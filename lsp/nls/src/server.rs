@@ -27,10 +27,10 @@ use nickel_lang_core::{
 use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
+    analysis::{Analysis, AnalysisRegistry},
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
     field_walker::DefWithPath,
-    linearization::LinRegistry,
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
@@ -42,7 +42,7 @@ pub struct Server {
     pub cache: Cache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    pub lin_registry: LinRegistry,
+    pub analysis: AnalysisRegistry,
     pub initial_ctxt: Context,
     pub initial_term_env: crate::usage::Environment,
 }
@@ -85,7 +85,7 @@ impl Server {
             connection,
             cache,
             file_uris: HashMap::new(),
-            lin_registry: LinRegistry::new(),
+            analysis: AnalysisRegistry::default(),
             initial_ctxt,
             initial_term_env: crate::usage::Environment::new(),
         }
@@ -135,7 +135,7 @@ impl Server {
                     file_id,
                     &self.initial_ctxt,
                     &self.initial_term_env,
-                    &mut self.lin_registry,
+                    &mut self.analysis,
                 )
                 .unwrap();
 
@@ -263,16 +263,21 @@ impl Server {
         Ok(())
     }
 
-    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
-        Ok(self
-            .lin_registry
-            .position_lookups
-            .get(&pos.src_id)
+    pub fn file_analysis(&self, file: FileId) -> Result<&Analysis, ResponseError> {
+        self.analysis
+            .analysis
+            .get(&file)
             .ok_or_else(|| ResponseError {
                 data: None,
                 message: "File has not yet been parsed or cached.".to_owned(),
                 code: ErrorCode::ParseError as i32,
-            })?
+            })
+    }
+
+    pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
+        Ok(self
+            .file_analysis(pos.src_id)?
+            .position_lookup
             .get(pos.index))
     }
 
@@ -281,14 +286,8 @@ impl Server {
         pos: RawPos,
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
         Ok(self
-            .lin_registry
-            .position_lookups
-            .get(&pos.src_id)
-            .ok_or_else(|| ResponseError {
-                data: None,
-                message: "File has not yet been parsed or cached.".to_owned(),
-                code: ErrorCode::ParseError as i32,
-            })?
+            .file_analysis(pos.src_id)?
+            .position_lookup
             .get_ident(pos.index))
     }
 

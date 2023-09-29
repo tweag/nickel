@@ -11,11 +11,7 @@ use crate::{
 fn get_defs(term: &RichTerm, server: &Server) -> Vec<LocIdent> {
     match term.as_ref() {
         Term::Var(id) => {
-            if let Some(loc) = server
-                .lin_registry
-                .get_def(&(*id).into())
-                .map(|def| def.ident)
-            {
+            if let Some(loc) = server.analysis.get_def(&(*id).into()).map(|def| def.ident) {
                 vec![loc]
             } else {
                 vec![]
@@ -92,7 +88,7 @@ pub fn handle_references(
 
     let mut usages: Vec<_> = def_locs
         .iter()
-        .flat_map(|id| server.lin_registry.get_usages(id))
+        .flat_map(|id| server.analysis.get_usages(id))
         .cloned()
         .collect();
 

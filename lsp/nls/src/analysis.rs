@@ -8,11 +8,14 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::DefWithPath, identifier::LocIdent, position::PositionLookup, term::RichTermPtr,
-    usage::UsageLookup,
+    field_walker::DefWithPath,
+    identifier::LocIdent,
+    position::PositionLookup,
+    term::RichTermPtr,
+    usage::{Environment, UsageLookup},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Default, Debug)]
 pub struct ParentLookup {
     table: HashMap<RichTermPtr, RichTerm>,
 }
@@ -63,24 +66,42 @@ impl<'a> Iterator for ParentChainIter<'a> {
     }
 }
 
-/// TODO: rename and re-doc
-#[derive(Clone, Default, Debug)]
-pub struct LinRegistry {
-    // Most of these tables do one more lookup than necessary: they look up a
-    // file id and then they look up a term in an inner table. This is a little
-    // inefficient for lookups, but it makes it easy to invalidate a whole file
-    // in one go.
-    pub position_lookups: HashMap<FileId, PositionLookup>,
-    pub usage_lookups: HashMap<FileId, UsageLookup>,
-    pub parent_lookups: HashMap<FileId, ParentLookup>,
-    pub type_lookups: HashMap<FileId, CollectedTypes<Type>>,
+/// The initial analysis that we collect for a file.
+///
+/// This analysis is re-collected from scratch each time the file is updated.
+#[derive(Default, Debug)]
+pub struct Analysis {
+    pub position_lookup: PositionLookup,
+    pub usage_lookup: UsageLookup,
+    pub parent_lookup: ParentLookup,
+    pub type_lookup: CollectedTypes<Type>,
 }
 
-impl LinRegistry {
-    pub fn new() -> Self {
-        Self::default()
+impl Analysis {
+    pub fn new(
+        term: &RichTerm,
+        type_lookup: CollectedTypes<Type>,
+        initial_env: &Environment,
+    ) -> Self {
+        Self {
+            position_lookup: PositionLookup::new(term),
+            usage_lookup: UsageLookup::new(term, initial_env),
+            parent_lookup: ParentLookup::new(term),
+            type_lookup,
+        }
     }
+}
 
+/// The collection of analyses for every file that we know about.
+#[derive(Default, Debug)]
+pub struct AnalysisRegistry {
+    // Most of the fields of `Analysis` are themselves hash tables. Having
+    // a table of tables requires more lookups than necessary, but it makes
+    // it easy to invalidate a whole file.
+    pub analysis: HashMap<FileId, Analysis>,
+}
+
+impl AnalysisRegistry {
     pub fn insert(
         &mut self,
         file_id: FileId,
@@ -88,51 +109,66 @@ impl LinRegistry {
         term: &RichTerm,
         initial_env: &crate::usage::Environment,
     ) {
-        self.position_lookups
-            .insert(file_id, PositionLookup::new(term));
-        self.usage_lookups
-            .insert(file_id, UsageLookup::new(term, initial_env));
-        self.parent_lookups.insert(file_id, ParentLookup::new(term));
-        self.type_lookups.insert(file_id, type_lookups);
+        self.analysis
+            .insert(file_id, Analysis::new(term, type_lookups, initial_env));
+    }
+
+    /// Inserts a new file into the analysis, but only generates usage analysis for it.
+    ///
+    /// This is useful for temporary little pieces of input (like parts extracted from incomplete input)
+    /// that need variable resolution but not the full analysis.
+    pub fn insert_usage(&mut self, file_id: FileId, term: &RichTerm, initial_env: &Environment) {
+        self.analysis.insert(
+            file_id,
+            Analysis {
+                usage_lookup: UsageLookup::new(term, initial_env),
+                ..Default::default()
+            },
+        );
+    }
+
+    pub fn remove(&mut self, file_id: FileId) {
+        self.analysis.remove(&file_id);
     }
 
     pub fn get_def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
         let file = ident.pos.as_opt_ref()?.src_id;
-        self.usage_lookups.get(&file)?.def(ident)
+        self.analysis.get(&file)?.usage_lookup.def(ident)
     }
 
     pub fn get_usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
         fn inner<'a>(
-            slf: &'a LinRegistry,
+            slf: &'a AnalysisRegistry,
             ident: &LocIdent,
         ) -> Option<impl Iterator<Item = &'a LocIdent>> {
             let file = ident.pos.as_opt_ref()?.src_id;
-            Some(slf.usage_lookups.get(&file)?.usages(ident))
+            Some(slf.analysis.get(&file)?.usage_lookup.usages(ident))
         }
         inner(self, ident).into_iter().flatten()
     }
 
     pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
         let file = rt.pos.as_opt_ref()?.src_id;
-        self.usage_lookups.get(&file)?.env(rt)
+        self.analysis.get(&file)?.usage_lookup.env(rt)
     }
 
     pub fn get_type(&self, rt: &RichTerm) -> Option<&Type> {
         let file = rt.pos.as_opt_ref()?.src_id;
-        self.type_lookups
+        self.analysis
             .get(&file)?
+            .type_lookup
             .terms
             .get(&RichTermPtr(rt.clone()))
     }
 
     pub fn get_type_for_ident(&self, id: &LocIdent) -> Option<&Type> {
         let file = id.pos.as_opt_ref()?.src_id;
-        self.type_lookups.get(&file)?.idents.get(id)
+        self.analysis.get(&file)?.type_lookup.idents.get(id)
     }
 
     pub fn get_parent_chain<'a>(&'a self, rt: &'a RichTerm) -> Option<ParentChainIter<'a>> {
         let file = rt.pos.as_opt_ref()?.src_id;
-        Some(self.parent_lookups.get(&file)?.parent_chain(rt))
+        Some(self.analysis.get(&file)?.parent_lookup.parent_chain(rt))
     }
 }
 

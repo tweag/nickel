@@ -15,11 +15,7 @@ use nickel_lang_core::{
     transform::import_resolution,
 };
 
-use crate::{
-    files::typecheck,
-    server::Server,
-    usage::{Environment, UsageLookup},
-};
+use crate::{files::typecheck, server::Server, usage::Environment};
 
 // Take a bunch of tokens and the end of a possibly-delimited sequence, and return the
 // index of the beginning of the possibly-delimited sequence. The sequence might not
@@ -161,10 +157,7 @@ pub fn parse_path_from_incomplete_input(
 
     match server.cache.parse_nocache(file_id) {
         Ok((rt, _errors)) if !matches!(rt.as_ref(), Term::ParseError(_)) => {
-            server
-                .lin_registry
-                .usage_lookups
-                .insert(file_id, UsageLookup::new(&rt, env));
+            server.analysis.insert_usage(file_id, &rt, env);
             Some(resolve_imports(rt, server))
         }
         _ => None,

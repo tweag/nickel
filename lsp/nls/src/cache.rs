@@ -8,8 +8,7 @@ use nickel_lang_core::{
     typecheck::{self},
 };
 
-use crate::linearization::LinRegistry;
-use crate::linearization::{CollectedTypes, TypeCollector};
+use crate::analysis::{AnalysisRegistry, CollectedTypes, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
@@ -17,7 +16,7 @@ pub trait CacheExt {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_term_env: &crate::usage::Environment,
-        lin_registry: &mut LinRegistry,
+        registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 
     fn position(&self, lsp_pos: &TextDocumentPositionParams)
@@ -30,7 +29,7 @@ impl CacheExt for Cache {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
         initial_term_env: &crate::usage::Environment,
-        lin_registry: &mut LinRegistry,
+        registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
         if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
@@ -42,16 +41,15 @@ impl CacheExt for Cache {
             import_errors = errors;
             // Reverse the imports, so we try to typecheck the leaf dependencies first.
             for &id in ids.iter().rev() {
-                let _ =
-                    self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, lin_registry);
+                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);
             }
         }
 
         for id in self.get_imports(file_id) {
             // If we have typechecked a file correctly, its imports should be
-            // in the `lin_registry`. The imports that are not in `lin_registry`
+            // in the `registry`. The imports that are not in `registry`
             // were not typechecked correctly.
-            if !lin_registry.type_lookups.contains_key(&id) {
+            if !registry.analysis.contains_key(&id) {
                 typecheck_import_diagnostics.push(id);
             }
         }
@@ -59,8 +57,7 @@ impl CacheExt for Cache {
         // After self.parse(), the cache must be populated
         let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap().clone();
 
-        let result = if state > EntryState::Typechecked
-            && lin_registry.type_lookups.contains_key(&file_id)
+        let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
         } else if state >= EntryState::Parsed {
@@ -74,7 +71,7 @@ impl CacheExt for Cache {
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
-            lin_registry.insert(file_id, type_lookups, &term, initial_term_env);
+            registry.insert(file_id, type_lookups, &term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {

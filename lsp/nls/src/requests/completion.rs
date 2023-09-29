@@ -54,7 +54,7 @@ fn sanitize_record_path_for_completion(
     if let (Term::ParseError(_), Some(range)) = (term.term.as_ref(), term.pos.as_opt_ref()) {
         let mut range = *range;
         let env = server
-            .lin_registry
+            .analysis
             .get_env(term)
             .cloned()
             .unwrap_or_else(Environment::new);
@@ -83,7 +83,7 @@ fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem
 }
 
 fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
-    let env = server.lin_registry.get_env(rt).cloned().unwrap_or_default();
+    let env = server.analysis.get_env(rt).cloned().unwrap_or_default();
     let resolver = FieldResolver::new(server);
     let mut items: Vec<_> = env
         .iter_elems()
@@ -111,7 +111,7 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
 
     // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
     // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
-    if let Some(parents) = server.lin_registry.get_parent_chain(rt) {
+    if let Some(parents) = server.analysis.get_parent_chain(rt) {
         // We're only interested in adding identifiers from terms that are records or
         // merges/annotations of records. But actually we can skip the records, because any
         // records that are our direct ancestor have already contributed to `env`.

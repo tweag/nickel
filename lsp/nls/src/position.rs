@@ -99,7 +99,7 @@ fn make_disjoint<T: Clone>(mut all_ranges: Vec<(Range<u32>, T)>) -> Vec<(Range<u
 ///
 /// Overlapping positions are resolved in favor of the smaller one; i.e., lookups return the
 /// most specific term for a given position.
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct PositionLookup {
     // The intervals here are sorted and disjoint.
     term_ranges: Vec<(Range<u32>, RichTermPtr)>,
