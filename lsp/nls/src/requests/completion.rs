@@ -115,7 +115,14 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
         // We're only interested in adding identifiers from terms that are records or
         // merges/annotations of records. But actually we can skip the records, because any
         // records that are our direct ancestor have already contributed to `env`.
-        let env_term = |rt: &RichTerm| {
+        let is_env_term = |rt: &RichTerm| {
+            matches!(
+                rt.as_ref(),
+                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _) | Term::RecRecord(..)
+            )
+        };
+
+        let is_merge_term = |rt: &RichTerm| {
             matches!(
                 rt.as_ref(),
                 Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
@@ -123,18 +130,18 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
         };
 
         let mut parents = parents.peekable();
-        while let Some(rt) = parents.next() {
+        while let Some(p) = parents.next() {
             // If a parent and a grandparent were both merges, we can skip the parent
             // because the grandparent will have a superset of its fields. This prevents
             // quadratic behavior on long chains of merges.
             if let Some(gp) = parents.peek() {
-                if env_term(gp) {
+                if is_merge_term(&gp.0) {
                     continue;
                 }
             }
 
-            if env_term(rt) {
-                let records = resolver.resolve_term(rt);
+            if is_env_term(&p.0) {
+                let records = resolver.resolve_term_path(&p.0, &p.1.unwrap_or_default());
                 items.extend(records.iter().flat_map(FieldHaver::completion_items));
             }
         }
