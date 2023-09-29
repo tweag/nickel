@@ -232,9 +232,12 @@
         pname = pkg.pname + "-rev-fixup";
         inherit (pkg) version meta;
         src = pkg;
-        buildInputs = [ pkgs.bbe ];
+        buildInputs = [ pkgs.bbe ]
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.darwin.autoSignDarwinBinariesHook ];
         phases = [ "fixupPhase" ];
         fixupPhase = ''
+          runHook preFixup
+
           mkdir -p $out/bin
           for srcBin in $src/bin/*; do
             outBin="$out/bin/$(basename $srcBin)"
@@ -245,6 +248,8 @@
               $srcBin > $outBin
             chmod +x $outBin
           done
+
+          runHook postFixup
         '';
       };
 
