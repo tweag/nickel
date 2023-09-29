@@ -162,7 +162,7 @@ highlighting and NLS.
 
 **Warning**: because the cargo registry (crates.io) requires that all
 dependencies of Nickel are published there as well, the `format` feature isn't
-enabled when installing nickel with `cargo install` as of Nickel version 1.2.1.
+enabled when installing nickel with `cargo install` as of Nickel version 1.2.2.
 In this case, please use [Topiary](https://github.com/tweag/topiary/) separately
 to format Nickel source code.
 
