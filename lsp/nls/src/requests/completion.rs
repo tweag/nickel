@@ -1,6 +1,6 @@
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams};
+use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     cache::{self, InputFormat},
     identifier::Ident,
@@ -16,19 +16,30 @@ use std::path::PathBuf;
 use crate::{
     cache::CacheExt,
     field_walker::{FieldHaver, FieldResolver},
+    identifier::LocIdent,
     incomplete,
     server::Server,
     usage::Environment,
 };
 
-fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
-    let mut seen: Vec<CompletionItem> = Vec::new();
+fn remove_duplicates_and_myself(
+    items: &[CompletionItem],
+    cursor: RawPos,
+) -> Vec<lsp_types::CompletionItem> {
+    let mut seen_labels = HashSet::new();
+    let mut ret = Vec::new();
     for item in items {
-        if !seen.iter().any(|seen_item| seen_item.label == item.label) {
-            seen.push(item.clone())
+        if let Some(ident) = item.ident {
+            if ident.pos.contains(cursor) {
+                continue;
+            }
+        }
+
+        if seen_labels.insert(&item.label) {
+            ret.push(item.clone().into());
         }
     }
-    seen
+    ret
 }
 
 fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
@@ -70,6 +81,27 @@ fn sanitize_record_path_for_completion(
         Some(parent.clone())
     } else {
         None
+    }
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub struct CompletionItem {
+    pub label: String,
+    pub detail: Option<String>,
+    pub kind: Option<CompletionItemKind>,
+    pub documentation: Option<lsp_types::Documentation>,
+    pub ident: Option<LocIdent>,
+}
+
+impl From<CompletionItem> for lsp_types::CompletionItem {
+    fn from(my: CompletionItem) -> Self {
+        Self {
+            label: my.label,
+            detail: my.detail,
+            kind: my.kind,
+            documentation: my.documentation,
+            ..Default::default()
+        }
     }
 }
 
@@ -196,7 +228,7 @@ pub fn handle_completion(
         (None, None) => Vec::new(),
     };
 
-    let completions = remove_duplicates(&completions);
+    let completions = remove_duplicates_and_myself(&completions, pos);
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
@@ -206,7 +238,7 @@ fn handle_import_completion(
     import: &OsString,
     params: &CompletionParams,
     server: &mut Server,
-) -> io::Result<Vec<CompletionItem>> {
+) -> io::Result<Vec<lsp_types::CompletionItem>> {
     debug!("handle import completion");
 
     let current_file = params
@@ -261,7 +293,7 @@ fn handle_import_completion(
             } else {
                 CompletionItemKind::Folder
             };
-            CompletionItem {
+            lsp_types::CompletionItem {
                 label: entry
                     .path
                     .file_name()

@@ -1,0 +1,8 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[bar, baz, foo, one, std]
+[bar, baz, foo, std, two]
+[bar, baz, foo, std, three]
+

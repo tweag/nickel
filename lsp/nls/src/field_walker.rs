@@ -1,4 +1,4 @@
-use lsp_types::{CompletionItem, CompletionItemKind, Documentation, MarkupContent, MarkupKind};
+use lsp_types::{CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
     pretty::ident_quoted,
@@ -9,7 +9,7 @@ use nickel_lang_core::{
     typ::{RecordRows, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::{identifier::LocIdent, server::Server};
+use crate::{identifier::LocIdent, requests::completion::CompletionItem, server::Server};
 
 /// A `FieldHaver` is something that... has fields.
 ///
@@ -56,7 +56,7 @@ impl FieldHaver {
                     detail: metadata_detail(&val.metadata),
                     kind: Some(CompletionItemKind::Property),
                     documentation: metadata_doc(&val.metadata),
-                    ..Default::default()
+                    ident: Some(*id),
                 });
                 Box::new(iter)
             }

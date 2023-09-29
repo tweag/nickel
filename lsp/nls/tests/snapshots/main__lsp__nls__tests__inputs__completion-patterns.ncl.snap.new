@@ -1,0 +1,15 @@
+---
+source: lsp/nls/tests/main.rs
+assertion_line: 98
+expression: output
+---
+[extra, foo]
+[bar, more]
+[baz, most]
+[bar, more]
+[baz, most]
+[baz, most]
+[foo, inner, innermost, outer, std]
+[bar, extra, foo, inner, innermost, outer, std]
+[bar, baz, extra, foo, inner, innermost, more, most, outer, std]
+
