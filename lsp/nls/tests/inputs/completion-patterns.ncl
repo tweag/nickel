@@ -11,43 +11,42 @@ let outer@{ foo = inner@{ bar = innermost, .. }, .. } = {
 }
 in
 [
-  # The merge here prevents the old completer from working, so we're only testing the new one.
-  (outer & {}).foo,
-  (outer & {}).foo.bar,
-  (outer & {}).foo.bar.baz,
-  (inner & {}).bar,
-  (inner & {}).bar.baz,
-  (innermost & {}).baz,
+  outer.foo,
+  outer.foo.bar,
+  outer.foo.bar.baz,
+  inner.bar,
+  inner.bar.baz,
+  innermost.baz,
 ]
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 13, character = 18 }
+### position = { line = 12, character = 10 }
 ###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 14, character = 22 }
+### position = { line = 13, character = 14 }
 ###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 15, character = 26 }
+### position = { line = 14, character = 18 }
 ###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 16, character = 18 }
+### position = { line = 15, character = 10 }
 ###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 17, character = 22 }
+### position = { line = 16, character = 14 }
 ###
 ### [[request]]
 ### type = "Completion"
 ### textDocument.uri = "file:///input.ncl"
-### position = { line = 18, character = 22 }
+### position = { line = 17, character = 14 }
 ###
 ### # Env completions
 ###

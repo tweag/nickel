@@ -56,7 +56,7 @@ impl FieldHaver {
                     detail: metadata_detail(&val.metadata),
                     kind: Some(CompletionItemKind::Property),
                     documentation: metadata_doc(&val.metadata),
-                    ident: Some(*id),
+                    ident: Some((*id).into()),
                 });
                 Box::new(iter)
             }
