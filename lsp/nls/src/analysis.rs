@@ -91,7 +91,7 @@ impl ParentLookup {
 ///
 /// For example, if we are iterating over the AST of `foo.bar.baz`, the iterator
 /// should return
-/// - ancestor `foo.bar`, path [`baz`]; and then
+/// - ancestor `foo.bar`, path \[`baz`\]; and then
 /// - ancestor `foo`, path [`baz`, `bar`].
 ///
 /// If, during our iteration, we encounter an ancestor that isn't a record then the
