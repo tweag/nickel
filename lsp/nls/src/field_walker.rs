@@ -168,14 +168,17 @@ impl<'a> FieldResolver<'a> {
     /// Resolve a record path iteratively.
     ///
     /// Returns all the field-having objects that the final path element refers to.
-    pub fn resolve_term_path(&self, rt: &RichTerm, mut path: &[Ident]) -> Vec<FieldHaver> {
+    pub fn resolve_term_path(
+        &self,
+        rt: &RichTerm,
+        path: impl Iterator<Item = Ident>,
+    ) -> Vec<FieldHaver> {
         let mut fields = self.resolve_term(rt);
 
-        while let Some((id, tail)) = path.split_first() {
-            path = tail;
+        for id in path {
             let values = fields
                 .iter()
-                .filter_map(|haver| haver.get(*id))
+                .filter_map(|haver| haver.get(id))
                 .collect::<Vec<_>>();
             fields.clear();
 
@@ -201,7 +204,7 @@ impl<'a> FieldResolver<'a> {
         let mut fields = Vec::new();
 
         if let Some(val) = &def.value {
-            fields.extend_from_slice(&self.resolve_term_path(val, &def.path))
+            fields.extend_from_slice(&self.resolve_term_path(val, def.path.iter().copied()))
         }
         if let Some(meta) = &def.metadata {
             fields.extend(self.resolve_annot(&meta.annotation));
@@ -252,7 +255,7 @@ impl<'a> FieldResolver<'a> {
             }
             Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => self.resolve_term(body),
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                self.resolve_term_path(term, &[id.ident()])
+                self.resolve_term_path(term, std::iter::once(id.ident()))
             }
             Term::Annotated(annot, term) => {
                 let defs = self.resolve_annot(annot);

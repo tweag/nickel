@@ -68,7 +68,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
     if let Some(def) = server.analysis.get_def(&ident) {
         let resolver = FieldResolver::new(server);
         if let Some(((last, path), val)) = def.path.split_last().zip(def.value.as_ref()) {
-            let parents = resolver.resolve_term_path(val, path);
+            let parents = resolver.resolve_term_path(val, path.iter().copied());
             let (values, metadata) = values_and_metadata_from_field(parents, *last);
             ret.values = values;
             ret.metadata = metadata;

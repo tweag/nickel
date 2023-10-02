@@ -87,33 +87,35 @@ impl ParentLookup {
     }
 }
 
-/// An iterator over parents in the AST that also keeps track of a record path
-/// from the ancestor to the original element.
+/// Essentially an iterator over pairs of `(ancestor, reversed_path_to_the_original)`.
 ///
-/// For example, suppose we make a parent chain starting at `1` in
-/// `{ foo = { bar = { baz = 1 } } }`. Then the first parent is `{baz = 1}`, and
-/// the original element is accessible at the path `baz`. The grandparent is
-/// `{ bar = { baz = 1 } }` and the original element is accessible at the path
-/// `bar.baz`, and so on.
+/// For example, if we are iterating over the AST of `foo.bar.baz`, the iterator
+/// should return
+/// - ancestor `foo.bar`, path [`baz`]; and then
+/// - ancestor `foo`, path [`baz`, `bar`].
 ///
-/// The path part of this analysis is only approximate: it can see through
-/// records, merges, and annotations, but not arbitrary expressions.
+/// If, during our iteration, we encounter an ancestor that isn't a record then the
+/// path will be none from then on. For example, if we traverse `(some_fn foo.bar.baz).quux`
+/// starting from the `baz` AST node then the first couple of terms will have paths like
+/// the previous example, but after that we'll get
+/// - ancestor `(some_fn foo.bar.baz)`, path `None`; and then
+/// - ancestor `(some_fn foo.bar.baz).quux`, path `None`.
+///
+/// This is a "streaming iterator" in the sense that the returned data borrows from
+/// our state. Since streaming iterators are not (yet) in rust's stdlib, we don't
+/// implement any traits here, but just do it by hand.
+///
+/// For borrowck reasons, the iteration is done in two parts: `next` advances the iterator
+/// and returns just the term part. `path` retrieves the path corresponding to the previous
+/// `next` call.
 pub struct ParentChainIter<'a> {
     table: &'a ParentLookup,
     path: Option<Vec<Ident>>,
     next: Option<Parent>,
 }
 
-impl<'a> Iterator for ParentChainIter<'a> {
-    // TODO: we're cloning the path on each iteration.
-    // did rust ever settle on a "streaming iterator" trait?
-    /// A pair of `(ancestor, path_to_the_original)`.
-    ///
-    /// Once we stop being able to track the path to the original element,
-    /// we return `None` for the path.
-    type Item = (RichTerm, Option<Vec<Ident>>);
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> ParentChainIter<'a> {
+    pub fn next(&mut self) -> Option<RichTerm> {
         if let Some(next) = self.next.take() {
             if let Some((ident, path)) = next.child_name.zip(self.path.as_mut()) {
                 path.push(ident);
@@ -126,11 +128,20 @@ impl<'a> Iterator for ParentChainIter<'a> {
             }
             self.next = self.table.parent(&next.term).cloned();
 
-            let path = self
-                .path
-                .as_ref()
-                .map(|p| p.iter().copied().rev().collect());
-            Some((next.term, path))
+            Some(next.term)
+        } else {
+            None
+        }
+    }
+
+    pub fn path(&self) -> Option<&[Ident]> {
+        self.path.as_deref()
+    }
+
+    /// Peek at the grandparent.
+    pub fn peek_gp(&self) -> Option<&RichTerm> {
+        if let Some(Parent { term, .. }) = &self.next {
+            self.table.parent(term).map(|gp| &gp.term)
         } else {
             None
         }

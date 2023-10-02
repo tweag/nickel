@@ -110,7 +110,7 @@ fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldResolver::new(server).resolve_term_path(&start_term, &path);
+    let defs = FieldResolver::new(server).resolve_term_path(&start_term, path.iter().copied());
     defs.iter().flat_map(FieldHaver::completion_items).collect()
 }
 
@@ -143,7 +143,7 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
 
     // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
     // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
-    if let Some(parents) = server.analysis.get_parent_chain(rt) {
+    if let Some(mut parents) = server.analysis.get_parent_chain(rt) {
         // We're only interested in adding identifiers from terms that are records or
         // merges/annotations of records. But actually we can skip the records, because any
         // records that are our direct ancestor have already contributed to `env`.
@@ -161,19 +161,19 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
             )
         };
 
-        let mut parents = parents.peekable();
         while let Some(p) = parents.next() {
             // If a parent and a grandparent were both merges, we can skip the parent
             // because the grandparent will have a superset of its fields. This prevents
             // quadratic behavior on long chains of merges.
-            if let Some(gp) = parents.peek() {
-                if is_merge_term(&gp.0) {
+            if let Some(gp) = parents.peek_gp() {
+                if is_merge_term(gp) {
                     continue;
                 }
             }
 
-            if is_env_term(&p.0) {
-                let records = resolver.resolve_term_path(&p.0, &p.1.unwrap_or_default());
+            if is_env_term(&p) {
+                let path = parents.path().unwrap_or_default();
+                let records = resolver.resolve_term_path(&p, path.iter().rev().copied());
                 items.extend(records.iter().flat_map(FieldHaver::completion_items));
             }
         }
