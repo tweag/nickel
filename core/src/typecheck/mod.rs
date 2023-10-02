@@ -77,11 +77,8 @@ use std::{
     num::NonZeroU16,
 };
 
-use self::linearization::{Linearizer, StubHost};
-
 mod destructuring;
 pub mod error;
-pub mod linearization;
 pub mod operation;
 pub mod reporting;
 #[macro_use]
@@ -1247,7 +1244,7 @@ pub struct State<'a> {
 
 /// Immutable and owned data, required by the LSP to carry out specific analysis.
 /// It is basically an owned-subset of the typechecking state.
-pub struct Extra {
+pub struct TypeTables {
     pub table: UnifTable,
     pub names: NameTable,
     pub wildcards: Vec<Type>,
@@ -1256,7 +1253,7 @@ pub struct Extra {
 /// Typecheck a term.
 ///
 /// Return the inferred type in case of success. This is just a wrapper that calls
-/// `type_check_linearize` with a blanket implementation for the linearizer.
+/// `type_check_linearize` with a blanket implementation for the visitor.
 ///
 /// Note that this function doesn't recursively typecheck imports (anymore), but just the current
 /// file. It however still needs the resolver to get the apparent type of imports.
@@ -1267,24 +1264,18 @@ pub fn type_check(
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
 ) -> Result<Wildcards, TypecheckError> {
-    type_check_linearize(t, initial_ctxt, resolver, StubHost::<(), (), _>::new(), ())
-        .map(|(wildcards, _)| wildcards)
+    type_check_with_visitor(t, initial_ctxt, resolver, &mut ()).map(|tables| tables.wildcards)
 }
 
-/// Typecheck a term and build its linearization. A linearization is a sequential data structure
-/// that holds additional information (compared to the AST), such as types of subterms, variable
-/// usages, etc.
-///
-/// Linearization is solely used by the LSP server.
-pub fn type_check_linearize<LL>(
+/// Typecheck a term while providing the type information to a visitor.
+pub fn type_check_with_visitor<V>(
     t: &RichTerm,
     initial_ctxt: Context,
     resolver: &impl ImportResolver,
-    mut linearizer: LL,
-    mut building: LL::Building,
-) -> Result<(Wildcards, LL::Completed), TypecheckError>
+    visitor: &mut V,
+) -> Result<TypeTables, TypecheckError>
 where
-    LL: Linearizer<CompletionExtra = Extra>,
+    V: TypeVisitor,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut wildcard_vars = Vec::new();
@@ -1298,38 +1289,27 @@ where
             wildcard_vars: &mut wildcard_vars,
         };
 
-        walk(
-            &mut state,
-            initial_ctxt,
-            &mut building,
-            linearizer.scope(),
-            t,
-        )?;
+        walk(&mut state, initial_ctxt, visitor, t)?;
     }
 
     let result = wildcard_vars_to_type(wildcard_vars.clone(), &table);
-    let extra = Extra {
+    Ok(TypeTables {
         table,
         names,
-        wildcards: result.clone(),
-    };
-    let lin = linearizer.complete(building, &extra);
-
-    Ok((result, lin))
+        wildcards: result,
+    })
 }
 
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization
 /// alongside and store the apparent type of variable inside the typing environment.
-fn walk<L: Linearizer>(
+fn walk<V: TypeVisitor>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
-    linearizer.add_term(
-        lin,
+    visitor.visit_term(
         rt,
         UnifType::from_apparent_type(
             apparent_type(t, Some(&ctxt.type_env), Some(state.resolver)),
@@ -1362,7 +1342,7 @@ fn walk<L: Linearizer>(
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
                         StrChunk::Expr(t, _) => {
-                            walk(state, ctxt.clone(), lin, linearizer.scope(), t)
+                            walk(state, ctxt.clone(), visitor, t)
                         }
                     }
                 })
@@ -1370,7 +1350,7 @@ fn walk<L: Linearizer>(
         Term::Fun(id, t) => {
             // The parameter of an unannotated function is always assigned type `Dyn`.
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            walk(state, ctxt, lin, linearizer, t)
+            walk(state, ctxt, visitor, t)
         }
         Term::FunPattern(id, pat, t) => {
             if let Some(id) = id {
@@ -1380,12 +1360,12 @@ fn walk<L: Linearizer>(
 
             let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
-            walk(state, ctxt, lin, linearizer, t)
+            walk(state, ctxt, visitor, t)
         }
         Term::Array(terms, _) => terms
             .iter()
             .try_for_each(|t| -> Result<(), TypecheckError> {
-                walk(state, ctxt.clone(), lin, linearizer.scope(), t)
+                walk(state, ctxt.clone(), visitor, t)
             }),
         Term::Let(x, re, rt, attrs) => {
             let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
@@ -1403,36 +1383,36 @@ fn walk<L: Linearizer>(
                 ctxt.type_env.insert(x.ident(), ty_let.clone());
             }
 
-            linearizer.retype_ident(lin, x, ty_let.clone());
-            walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
+            visitor.visit_ident(x, ty_let.clone());
+            walk(state, ctxt.clone(), visitor, re)?;
 
             if !attrs.rec {
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
 
-            walk(state, ctxt, lin, linearizer, rt)
+            walk(state, ctxt, visitor, rt)
         }
         Term::LetPattern(x, pat, re, rt) => {
             let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
-            walk(state, ctxt.clone(), lin, linearizer.scope(), re)?;
+            walk(state, ctxt.clone(), visitor, re)?;
 
             if let Some(x) = x {
-                linearizer.retype_ident(lin, x, ty_let.clone());
+                visitor.visit_ident(x, ty_let.clone());
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
 
             let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
 
-            walk(state, ctxt, lin, linearizer, rt)
+            walk(state, ctxt, visitor, rt)
         }
         Term::App(e, t) => {
-            walk(state, ctxt.clone(), lin, linearizer.scope(), e)?;
-            walk(state, ctxt, lin, linearizer, t)
+            walk(state, ctxt.clone(), visitor, e)?;
+            walk(state, ctxt, visitor, t)
         }
         Term::Match {cases, default} => {
             cases.values().chain(default.iter()).try_for_each(|case| {
-                walk(state, ctxt.clone(), lin, linearizer.scope(), case)
+                walk(state, ctxt.clone(), visitor, case)
             })
         }
         Term::RecRecord(record, dynamic, ..) => {
@@ -1444,7 +1424,7 @@ fn walk<L: Linearizer>(
                     false,
                 );
                 ctxt.type_env.insert(id.ident(), field_type.clone());
-                linearizer.retype_ident(lin, id, field_type);
+                visitor.visit_ident(id, field_type);
             }
 
             // Walk the type and contract annotations
@@ -1455,12 +1435,12 @@ fn walk<L: Linearizer>(
             record.fields
                 .values()
                 .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), lin, linearizer.scope(), field)
+                    walk_field(state, ctxt.clone(), visitor, field)
                 })?;
 
             dynamic.iter().map(|(_, field)| field)
                 .try_for_each(|field| -> Result<(), TypecheckError> {
-                    walk_field(state, ctxt.clone(), lin, linearizer.scope(), field)
+                    walk_field(state, ctxt.clone(), visitor, field)
                 })
         }
         Term::Record(record) => {
@@ -1468,41 +1448,39 @@ fn walk<L: Linearizer>(
                 .values()
                 .filter_map(|field| field.value.as_ref())
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    walk(state, ctxt.clone(), lin, linearizer.scope(), t)
+                    walk(state, ctxt.clone(), visitor, t)
                 })
         }
-        Term::Op1(_, t) => walk(state, ctxt.clone(), lin, linearizer.scope(), t),
+        Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
-            walk(state, ctxt.clone(), lin, linearizer.scope(), t1)?;
-            walk(state, ctxt, lin, linearizer, t2)
+            walk(state, ctxt.clone(), visitor, t1)?;
+            walk(state, ctxt, visitor, t2)
         }
         Term::OpN(_, args) => {
            args.iter().try_for_each(|t| -> Result<(), TypecheckError> {
                     walk(
                         state,
                         ctxt.clone(),
-                        lin,
-                        linearizer.scope(),
+                        visitor,
                         t,
                     )
                 },
             )
         }
         Term::Annotated(annot, rt) => {
-            walk_annotated(state, ctxt, lin, linearizer, annot, rt)
+            walk_annotated(state, ctxt, visitor, annot, rt)
         }
-        Term::Sealed(_, t, _) => walk(state, ctxt, lin, linearizer, t),
-        Term::Type(ty) => walk_type(state, ctxt, lin, linearizer, ty),
+        Term::Sealed(_, t, _) => walk(state, ctxt, visitor, t),
+        Term::Type(ty) => walk_type(state, ctxt, visitor, ty),
    }
 }
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts (`TypeF::Flat`),
 /// instead of a term.
-fn walk_type<L: Linearizer>(
+fn walk_type<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     ty: &Type,
 ) -> Result<(), TypecheckError> {
     match &ty.typ {
@@ -1518,23 +1496,22 @@ fn walk_type<L: Linearizer>(
        | TypeF::Enum(_)
        | TypeF::Wildcard(_) => Ok(()),
        TypeF::Arrow(ty1, ty2) => {
-           walk_type(state, ctxt.clone(), lin, linearizer.scope(), ty1.as_ref())?;
-           walk_type(state, ctxt, lin, linearizer, ty2.as_ref())
+           walk_type(state, ctxt.clone(), visitor, ty1.as_ref())?;
+           walk_type(state, ctxt, visitor, ty2.as_ref())
        }
-       TypeF::Record(rrows) => walk_rrows(state, ctxt, lin, linearizer, rrows),
-       TypeF::Flat(t) => walk(state, ctxt, lin, linearizer, t),
+       TypeF::Record(rrows) => walk_rrows(state, ctxt, visitor, rrows),
+       TypeF::Flat(t) => walk(state, ctxt, visitor, t),
        TypeF::Dict { type_fields: ty2, .. }
        | TypeF::Array(ty2)
-       | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, lin, linearizer, ty2),
+       | TypeF::Forall {body: ty2, ..} => walk_type(state, ctxt, visitor, ty2),
     }
 }
 
 /// Same as [`walk_type`] but operate on record rows.
-fn walk_rrows<L: Linearizer>(
+fn walk_rrows<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     rrows: &RecordRows,
 ) -> Result<(), TypecheckError> {
     match rrows.0 {
@@ -1544,55 +1521,49 @@ fn walk_rrows<L: Linearizer>(
         | RecordRowsF::TailVar(_)
         | RecordRowsF::TailDyn => Ok(()),
         RecordRowsF::Extend { ref row, ref tail } => {
-            walk_type(state, ctxt.clone(), lin, linearizer.scope(), &row.typ)?;
-            walk_rrows(state, ctxt, lin, linearizer, tail)
+            walk_type(state, ctxt.clone(), visitor, &row.typ)?;
+            walk_rrows(state, ctxt, visitor, tail)
         }
     }
 }
 
-fn walk_field<L: Linearizer>(
+fn walk_field<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     field: &Field,
 ) -> Result<(), TypecheckError> {
-    linearizer.add_field_metadata(lin, field);
-
     walk_with_annot(
         state,
         ctxt,
-        lin,
-        linearizer,
+        visitor,
         &field.metadata.annotation,
         field.value.as_ref(),
     )
 }
 
-fn walk_annotated<L: Linearizer>(
+fn walk_annotated<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    linearizer: L,
+    visitor: &mut V,
     annot: &TypeAnnotation,
     rt: &RichTerm,
 ) -> Result<(), TypecheckError> {
-    walk_with_annot(state, ctxt, lin, linearizer, annot, Some(rt))
+    walk_with_annot(state, ctxt, visitor, annot, Some(rt))
 }
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<L: Linearizer>(
+fn walk_with_annot<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
 ) -> Result<(), TypecheckError> {
     annot
         .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ))?;
+        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty.typ))?;
 
     match (annot, value) {
         (
@@ -1603,10 +1574,10 @@ fn walk_with_annot<L: Linearizer>(
             Some(value),
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
-            check(state, ctxt, lin, linearizer.scope(), value, uty2)
+            check(state, ctxt, visitor, value, uty2)
         }
-        (_, Some(value)) => walk(state, ctxt, lin, linearizer.scope(), value),
-        // TODO: we might have something to do with the linearizer to clear the current
+        (_, Some(value)) => walk(state, ctxt, visitor, value),
+        // TODO: we might have something to do with the visitor to clear the current
         // metadata. It looks like it may be unduly attached to the next field definition,
         // which is not critical, but still a bug.
         _ => Ok(()),
@@ -1652,43 +1623,26 @@ fn walk_with_annot<L: Linearizer>(
 /// - `state`: the unification state (see [`State`]).
 /// - `env`: the typing environment, mapping free variable to types.
 /// - `lin`: The current building linearization of building state `S`
-/// - `linearizer`: A linearizer that can modify the linearization
+/// - `visitor`: A visitor that can modify the linearization
 /// - `t`: the term to check.
 /// - `ty`: the type to check the term against.
 ///
 /// # Linearization (LSP)
 ///
-/// `check` is in charge of registering every term with the `linearizer` and makes sure to scope
-/// the linearizer accordingly
+/// `check` is in charge of registering every term with the `visitor` and makes sure to scope
+/// the visitor accordingly
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
-fn check<L: Linearizer>(
-    state: &mut State,
-    ctxt: Context,
-    lin: &mut L::Building,
-    linearizer: L,
-    rt: &RichTerm,
-    ty: UnifType,
-) -> Result<(), TypecheckError> {
-    check_visited(state, ctxt, lin, linearizer, rt, ty, None)
-}
-
-/// Variant of [check] taking an additional `item_id` to indicate that checking is done on a term
-/// that has already been visited by the linearizer, for example when coming from `infer`. When
-/// `item_id` is defined, the linearizer isn't called. [check] is just [check_visited] called with
-/// `item_id` set to `None`.
-fn check_visited<L: Linearizer>(
+fn check<V: TypeVisitor>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     rt: &RichTerm,
     ty: UnifType,
-    item_id: Option<L::ItemId>,
 ) -> Result<(), TypecheckError> {
     let RichTerm { term: t, pos } = rt;
 
-    let item_id = item_id.or_else(|| linearizer.add_term(lin, rt, ty.clone()));
+    visitor.visit_term(rt, ty.clone());
 
     // When checking against a polymorphic type, we immediatly instantiate potential heading
     // foralls. Otherwise, this polymorphic type wouldn't unify much with other types. If we infer
@@ -1722,14 +1676,9 @@ fn check_visited<L: Linearizer>(
                 .try_for_each(|chunk| -> Result<(), TypecheckError> {
                     match chunk {
                         StrChunk::Literal(_) => Ok(()),
-                        StrChunk::Expr(t, _) => check(
-                            state,
-                            ctxt.clone(),
-                            lin,
-                            linearizer.scope(),
-                            t,
-                            mk_uniftype::str(),
-                        ),
+                        StrChunk::Expr(t, _) => {
+                            check(state, ctxt.clone(), visitor, t, mk_uniftype::str())
+                        }
                     }
                 })
         }
@@ -1741,13 +1690,13 @@ fn check_visited<L: Linearizer>(
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
-            linearizer.retype_ident(lin, x, src.clone());
+            visitor.visit_ident(x, src.clone());
 
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             ctxt.type_env.insert(x.ident(), src);
-            check(state, ctxt, lin, linearizer, t, trg)
+            check(state, ctxt, visitor, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
             let src_rows_ty = destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
@@ -1756,14 +1705,14 @@ fn check_visited<L: Linearizer>(
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
             if let Some(x) = x {
-                linearizer.retype_ident(lin, x, src.clone());
+                visitor.visit_ident(x, src.clone());
                 ctxt.type_env.insert(x.ident(), src);
             }
 
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src_rows_ty);
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            check(state, ctxt, lin, linearizer, t, trg)
+            check(state, ctxt, visitor, t, trg)
         }
         Term::Array(terms, _) => {
             let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
@@ -1774,14 +1723,7 @@ fn check_visited<L: Linearizer>(
             terms
                 .iter()
                 .try_for_each(|t| -> Result<(), TypecheckError> {
-                    check(
-                        state,
-                        ctxt.clone(),
-                        lin,
-                        linearizer.scope(),
-                        t,
-                        ty_elts.clone(),
-                    )
+                    check(state, ctxt.clone(), visitor, t, ty_elts.clone())
                 })
         }
         Term::Lbl(_) => {
@@ -1802,20 +1744,13 @@ fn check_visited<L: Linearizer>(
                 ctxt.type_env.insert(x.ident(), ty_let.clone());
             }
 
-            linearizer.retype_ident(lin, x, ty_let.clone());
-            check(
-                state,
-                ctxt.clone(),
-                lin,
-                linearizer.scope(),
-                re,
-                ty_let.clone(),
-            )?;
+            visitor.visit_ident(x, ty_let.clone());
+            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
 
             if !attrs.rec {
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
-            check(state, ctxt, lin, linearizer, rt, ty)
+            check(state, ctxt, visitor, rt, ty)
         }
         Term::LetPattern(x, pat, re, rt) => {
             // The inferred type of the pattern w/ unification vars
@@ -1830,17 +1765,10 @@ fn check_visited<L: Linearizer>(
                 .unify(pattern_type, state, &ctxt)
                 .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
-            check(
-                state,
-                ctxt.clone(),
-                lin,
-                linearizer.scope(),
-                re,
-                ty_let.clone(),
-            )?;
+            check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
 
             if let Some(x) = x {
-                linearizer.retype_ident(lin, x, ty_let.clone());
+                visitor.visit_ident(x, ty_let.clone());
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
 
@@ -1851,7 +1779,7 @@ fn check_visited<L: Linearizer>(
                 pattern_rows_type,
             );
 
-            check(state, ctxt, lin, linearizer, rt, ty)
+            check(state, ctxt, visitor, rt, ty)
         }
         Term::Match { cases, default } => {
             // Currently, if the match has a default value, we typecheck the whole thing as taking
@@ -1872,19 +1800,12 @@ fn check_visited<L: Linearizer>(
             .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             for case in cases.values() {
-                check(
-                    state,
-                    ctxt.clone(),
-                    lin,
-                    linearizer.scope(),
-                    case,
-                    return_type.clone(),
-                )?;
+                check(state, ctxt.clone(), visitor, case, return_type.clone())?;
             }
 
             let erows = match default {
                 Some(t) => {
-                    check(state, ctxt.clone(), lin, linearizer.scope(), t, return_type)?;
+                    check(state, ctxt.clone(), visitor, t, return_type)?;
                     state.table.fresh_erows_uvar(ctxt.var_level)
                 }
                 None => cases.iter().try_fold(
@@ -1909,7 +1830,7 @@ fn check_visited<L: Linearizer>(
         | Term::Op2(..)
         | Term::OpN(..)
         | Term::Annotated(..) => {
-            let inferred = infer_visited(state, ctxt.clone(), lin, linearizer, rt, item_id)?;
+            let inferred = infer(state, ctxt.clone(), visitor, rt)?;
 
             // We call to `subsumption` to perform the switch from infer mode to checking mode.
             subsumption(state, ctxt, inferred, ty)
@@ -1932,7 +1853,7 @@ fn check_visited<L: Linearizer>(
             //TODO: should we insert in the environment the checked type, or the actual type?
             for id in record.fields.keys() {
                 ctxt.type_env.insert(id.ident(), ty_dict.clone());
-                linearizer.retype_ident(lin, id, ty_dict.clone())
+                visitor.visit_ident(id, ty_dict.clone())
             }
 
             // We don't bind recursive fields in the term environment used to check for contract.
@@ -1941,15 +1862,7 @@ fn check_visited<L: Linearizer>(
                 .fields
                 .iter()
                 .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                    check_field(
-                        state,
-                        ctxt.clone(),
-                        lin,
-                        linearizer.scope(),
-                        *id,
-                        field,
-                        ty_dict.clone(),
-                    )
+                    check_field(state, ctxt.clone(), visitor, *id, field, ty_dict.clone())
                 })
         }
         Term::Record(record) | Term::RecRecord(record, ..) => {
@@ -1962,7 +1875,7 @@ fn check_visited<L: Linearizer>(
                 for (id, field) in &record.fields {
                     let uty = field_type(state, field, &ctxt, true);
                     ctxt.type_env.insert(id.ident(), uty.clone());
-                    linearizer.retype_ident(lin, id, uty);
+                    visitor.visit_ident(id, uty);
                 }
             }
 
@@ -1982,15 +1895,7 @@ fn check_visited<L: Linearizer>(
                     .fields
                     .iter()
                     .try_for_each(|(id, field)| -> Result<(), TypecheckError> {
-                        check_field(
-                            state,
-                            ctxt.clone(),
-                            lin,
-                            linearizer.scope(),
-                            *id,
-                            field,
-                            (*rec_ty).clone(),
-                        )
+                        check_field(state, ctxt.clone(), visitor, *id, field, (*rec_ty).clone())
                     })
             } else {
                 // Building the type {id1 : ?a1, id2: ?a2, .., idn: ?an}
@@ -2028,8 +1933,7 @@ fn check_visited<L: Linearizer>(
                     check_field(
                         state,
                         ctxt.clone(),
-                        lin,
-                        linearizer.scope(),
+                        visitor,
                         *id,
                         field,
                         // expect(): we've built `rows` in this very function from
@@ -2048,7 +1952,7 @@ fn check_visited<L: Linearizer>(
         Term::SealingKey(_) => ty
             .unify(mk_uniftype::sym(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
-        Term::Sealed(_, t, _) => check(state, ctxt, lin, linearizer, t, ty),
+        Term::Sealed(_, t, _) => check(state, ctxt, visitor, t, ty),
         Term::Import(_) => ty
             .unify(mk_uniftype::dynamic(), state, &ctxt)
             .map_err(|err| err.into_typecheck_err(state, rt.pos)),
@@ -2100,21 +2004,18 @@ pub fn subsumption(
     checked.unify(inferred_inst, state, &ctxt)
 }
 
-fn check_field<L: Linearizer>(
+fn check_field<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     id: LocIdent,
     field: &Field,
     ty: UnifType,
 ) -> Result<(), TypecheckError> {
-    linearizer.add_field_metadata(lin, field);
-
     // If there's no annotation, we simply check the underlying value, if any.
     if field.metadata.annotation.is_empty() {
         if let Some(value) = field.value.as_ref() {
-            check(state, ctxt, lin, linearizer, value, ty)
+            check(state, ctxt, visitor, value, ty)
         } else {
             // It might make sense to accept any type for a value without definition (which would
             // act a bit like a function parameter). But for now, we play safe and implement a more
@@ -2128,28 +2029,23 @@ fn check_field<L: Linearizer>(
         let inferred = infer_with_annot(
             state,
             ctxt.clone(),
-            lin,
-            linearizer,
+            visitor,
             &field.metadata.annotation,
             field.value.as_ref(),
-            None,
         )?;
 
         subsumption(state, ctxt, inferred, ty).map_err(|err| err.into_typecheck_err(state, pos))
     }
 }
 
-/// `item_id` is the id of the linearization item corresponding to the annotated term.
-fn infer_annotated<L: Linearizer>(
+fn infer_annotated<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    linearizer: L,
+    visitor: &mut V,
     annot: &TypeAnnotation,
     rt: &RichTerm,
-    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
-    infer_with_annot(state, ctxt, lin, linearizer, annot, Some(rt), item_id)
+    infer_with_annot(state, ctxt, visitor, annot, Some(rt))
 }
 
 /// Function handling the common part of inferring the type of terms with type or contract
@@ -2158,21 +2054,18 @@ fn infer_annotated<L: Linearizer>(
 /// be defined).
 ///
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
-/// has been added to the linearizer before but can still benefit from updating its information
+/// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-#[allow(clippy::too_many_arguments)] // TODO: Is it worth doing something about it?
-fn infer_with_annot<L: Linearizer>(
+fn infer_with_annot<V: TypeVisitor>(
     state: &mut State,
     ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     annot: &TypeAnnotation,
     value: Option<&RichTerm>,
-    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
     annot
         .iter()
-        .try_for_each(|ty| walk_type(state, ctxt.clone(), lin, linearizer.scope_meta(), &ty.typ))?;
+        .try_for_each(|ty| walk_type(state, ctxt.clone(), visitor, &ty.typ))?;
 
     match (annot, value) {
         (
@@ -2184,9 +2077,9 @@ fn infer_with_annot<L: Linearizer>(
         ) => {
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            linearizer.retype(lin, item_id, uty2.clone());
+            visitor.visit_term(value, uty2.clone());
 
-            check(state, ctxt, lin, linearizer, value, uty2.clone())?;
+            check(state, ctxt, visitor, value, uty2.clone())?;
             Ok(uty2)
         }
         // An annotation without a type but with a contract switches the typechecker back to walk
@@ -2205,12 +2098,14 @@ fn infer_with_annot<L: Linearizer>(
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
 
-            linearizer.retype(lin, item_id, uty2.clone());
+            if let Some(value) = &value_opt {
+                visitor.visit_term(value, uty2.clone());
+            }
 
             // If there's an inner value, we have to walk it, as it may contain statically typed
             // blocks.
             if let Some(value) = value_opt {
-                walk(state, ctxt, lin, linearizer, value)?;
+                walk(state, ctxt, visitor, value)?;
             }
 
             Ok(uty2)
@@ -2219,12 +2114,12 @@ fn infer_with_annot<L: Linearizer>(
         // as its inner value. This case should only happen for record fields, as the parser can't
         // produce an annotated term without an actual annotation. Still, such terms could be
         // produced programmatically, and aren't necessarily an issue.
-        (_, Some(value)) => infer(state, ctxt, lin, linearizer, value),
+        (_, Some(value)) => infer(state, ctxt, visitor, value),
         // An empty value is a record field without definition. We don't check anything, and infer
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
         //
-        // TODO: we might have something to with the linearizer to clear the current metadata.
+        // TODO: we might have something to with the visitor to clear the current metadata.
         // It looks like it may be unduly attached to the next field definition, which is not
         // critical, but still a bug.
         _ => {
@@ -2241,35 +2136,13 @@ fn infer_with_annot<L: Linearizer>(
 ///
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
 /// bidirectional typechecking and traditional ML-like unification.
-fn infer<L: Linearizer>(
-    state: &mut State,
-    ctxt: Context,
-    lin: &mut L::Building,
-    linearizer: L,
-    rt: &RichTerm,
-) -> Result<UnifType, TypecheckError> {
-    infer_visited(state, ctxt, lin, linearizer, rt, None)
-}
-
-/// Variant of [infer] taking an additional `item_id` to indicate that inference is done on a term
-/// that has already been visited by the linearizer, for example when coming directly from [check].
-/// When `item_id` is defined, the linearizer isn't called. [infer] is just `infer_visited` called
-/// with `item_id` set to `None`.
-///
-/// Whether `item_id` is `Some` or `None`, the item is always amended with its inferred type.
-fn infer_visited<L: Linearizer>(
+fn infer<V: TypeVisitor>(
     state: &mut State,
     mut ctxt: Context,
-    lin: &mut L::Building,
-    mut linearizer: L,
+    visitor: &mut V,
     rt: &RichTerm,
-    item_id: Option<L::ItemId>,
 ) -> Result<UnifType, TypecheckError> {
     let RichTerm { term, pos } = rt;
-
-    // We don't have a type yet, so we put `Dyn` for now, but we'll update once we infer one via
-    // `linearizer.retype`
-    let item_id = item_id.or_else(|| linearizer.add_term(lin, rt, mk_uniftype::dynamic()));
 
     match term.as_ref() {
         Term::Var(x) => {
@@ -2279,7 +2152,7 @@ fn infer_visited<L: Linearizer>(
                 .cloned()
                 .ok_or(TypecheckError::UnboundIdentifier(*x, *pos))?;
 
-            linearizer.retype(lin, item_id, x_ty.clone());
+            visitor.visit_term(rt, x_ty.clone());
 
             Ok(x_ty)
         }
@@ -2291,30 +2164,30 @@ fn infer_visited<L: Linearizer>(
         Term::Op1(op, t) => {
             let (ty_arg, ty_res) = get_uop_type(state, ctxt.var_level, op)?;
 
-            linearizer.retype(lin, item_id, ty_res.clone());
+            visitor.visit_term(rt, ty_res.clone());
 
-            check(state, ctxt.clone(), lin, linearizer.scope(), t, ty_arg)?;
+            check(state, ctxt.clone(), visitor, t, ty_arg)?;
 
             Ok(ty_res)
         }
         Term::Op2(op, t1, t2) => {
             let (ty_arg1, ty_arg2, ty_res) = get_bop_type(state, ctxt.var_level, op)?;
 
-            linearizer.retype(lin, item_id, ty_res.clone());
+            visitor.visit_term(rt, ty_res.clone());
 
-            check(state, ctxt.clone(), lin, linearizer.scope(), t1, ty_arg1)?;
-            check(state, ctxt.clone(), lin, linearizer, t2, ty_arg2)?;
+            check(state, ctxt.clone(), visitor, t1, ty_arg1)?;
+            check(state, ctxt.clone(), visitor, t2, ty_arg2)?;
 
             Ok(ty_res)
         }
         Term::OpN(op, args) => {
             let (tys_args, ty_res) = get_nop_type(state, ctxt.var_level, op)?;
 
-            linearizer.retype(lin, item_id, ty_res.clone());
+            visitor.visit_term(rt, ty_res.clone());
 
             tys_args.into_iter().zip(args.iter()).try_for_each(
                 |(ty_arg, arg)| -> Result<_, TypecheckError> {
-                    check(state, ctxt.clone(), lin, linearizer.scope(), arg, ty_arg)?;
+                    check(state, ctxt.clone(), visitor, arg, ty_arg)?;
                     Ok(())
                 },
             )?;
@@ -2327,7 +2200,7 @@ fn infer_visited<L: Linearizer>(
             // instantiation of the potentially polymorphic type of the head of the application.
             // Currently, we limit ourselves to predicative instantiation, and we can get away
             // with eagerly instantiating heading `foralls` with fresh unification variables.
-            let head_poly = infer(state, ctxt.clone(), lin, linearizer.scope(), e)?;
+            let head_poly = infer(state, ctxt.clone(), visitor, e)?;
             let head = instantiate_foralls(state, &mut ctxt, head_poly, ForallInst::UnifVar);
 
             let dom = state.table.fresh_type_uvar(ctxt.var_level);
@@ -2339,14 +2212,12 @@ fn infer_visited<L: Linearizer>(
                 .unify(head, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, e.pos))?;
 
-            linearizer.retype(lin, item_id, codom.clone());
+            visitor.visit_term(rt, codom.clone());
 
-            check(state, ctxt.clone(), lin, linearizer, t, dom)?;
+            check(state, ctxt.clone(), visitor, t, dom)?;
             Ok(codom)
         }
-        Term::Annotated(annot, rt) => {
-            infer_annotated(state, ctxt, lin, linearizer, annot, rt, item_id)
-        }
+        Term::Annotated(annot, rt) => infer_annotated(state, ctxt, visitor, annot, rt),
         _ => {
             // The remaining cases can't produce polymorphic types, and thus we can reuse the
             // checking code. Inferring the type for those rules is equivalent to checking against
@@ -2354,9 +2225,9 @@ fn infer_visited<L: Linearizer>(
             // cases.
             let inferred = state.table.fresh_type_uvar(ctxt.var_level);
 
-            linearizer.retype(lin, item_id, inferred.clone());
+            visitor.visit_term(rt, inferred.clone());
 
-            check_visited(state, ctxt, lin, linearizer, rt, inferred.clone(), item_id)?;
+            check(state, ctxt, visitor, rt, inferred.clone())?;
             Ok(inferred.into_root(state.table))
         }
     }
@@ -2773,3 +2644,18 @@ fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wil
         .map(|var| var.into_type(table))
         .collect()
 }
+
+/// A visitor trait for receiving callbacks during typechecking.
+pub trait TypeVisitor {
+    /// Record the type of a term.
+    ///
+    /// It's possible for a single term to be visited multiple times, for example, if type
+    /// inference kicks in.
+    fn visit_term(&mut self, _term: &RichTerm, _ty: UnifType) {}
+
+    /// Record the type of an identifier.
+    fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType) {}
+}
+
+/// A do-nothing `TypeVisitor` for when you don't want one.
+impl TypeVisitor for () {}

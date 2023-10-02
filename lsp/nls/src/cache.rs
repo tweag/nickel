@@ -8,7 +8,7 @@ use nickel_lang_core::{
     typecheck::{self},
 };
 
-use crate::analysis::{AnalysisRegistry, CollectedTypes, TypeCollector};
+use crate::analysis::{AnalysisRegistry, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
@@ -61,16 +61,16 @@ impl CacheExt for Cache {
         {
             Ok(CacheOp::Cached(()))
         } else if state >= EntryState::Parsed {
-            let types = TypeCollector::default();
-            let (_, type_lookups) = typecheck::type_check_linearize(
+            let mut collector = TypeCollector::default();
+            let type_tables = typecheck::type_check_with_visitor(
                 &term,
                 initial_ctxt.clone(),
                 self,
-                types,
-                CollectedTypes::default(),
+                &mut collector,
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
+            let type_lookups = collector.complete(type_tables);
             registry.insert(file_id, type_lookups, &term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
