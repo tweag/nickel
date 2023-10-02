@@ -345,7 +345,7 @@
           };
         in
         rec {
-          inherit cargoArtifacts;
+          inherit cargoArtifacts cargoArtifactsDeps;
           nickel-lang-core = buildPackage { pnameSuffix = "-core"; };
           nickel-lang-cli = fixupGitRevision (buildPackage {
             pnameSuffix = "-cli";
@@ -437,12 +437,10 @@
         };
 
       makeDevShell = { rust }: pkgs.mkShell {
-        # Trick found in Crane's examples to get a nice dev shell
-        # See https://github.com/ipetkov/crane/blob/master/examples/quick-start/flake.nix
-        # XXX: this is weird. why are we sticking all the cargoArtifacts in
-        # the devShell? we're not going to use them anyways. This is a problem
-        # because we don't want to build lalrpop for the devShell
-        inputsFrom = builtins.attrValues (mkCraneArtifacts { inherit rust; });
+        # Get deps needed to build. Get them from cargoArtifactsDeps so we build
+        # the minimal amount possible to get there. It is a waste of time to
+        # build the cargoArtifacts, because cargo won't use them anyways.
+        inputsFrom = [ (mkCraneArtifacts { inherit rust; }).cargoArtifactsDeps ];
 
         buildInputs = [
           pkgs.rust-analyzer
