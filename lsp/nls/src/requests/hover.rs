@@ -56,7 +56,7 @@ fn values_and_metadata_from_field(
 }
 
 fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
-    let ty = server.lin_registry.get_type_for_ident(&ident).cloned();
+    let ty = server.analysis.get_type_for_ident(&ident).cloned();
     let span = ident.pos.into_opt()?;
     let mut ret = HoverData {
         values: Vec::new(),
@@ -65,7 +65,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
         ty,
     };
 
-    if let Some(def) = server.lin_registry.get_def(&ident) {
+    if let Some(def) = server.analysis.get_def(&ident) {
         let resolver = FieldResolver::new(server);
         if let Some(((last, path), val)) = def.path.split_last().zip(def.value.as_ref()) {
             let parents = resolver.resolve_term_path(val, path);
@@ -81,7 +81,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
 }
 
 fn term_hover(rt: &RichTerm, server: &Server) -> Option<HoverData> {
-    let ty = server.lin_registry.get_type(rt).cloned();
+    let ty = server.analysis.get_type(rt).cloned();
     let span = rt.pos.into_opt()?;
 
     match rt.as_ref() {

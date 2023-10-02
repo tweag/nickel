@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use codespan::{ByteIndex, FileId};
 use lsp_types::TextDocumentPositionParams;
-use nickel_lang_core::position::TermPos;
+use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
     error::{Error, ImportError},
@@ -10,17 +8,15 @@ use nickel_lang_core::{
     typecheck::{self},
 };
 
-use crate::linearization::{building::Building, AnalysisHost, Environment, LinRegistry};
-use crate::linearization::{CollectedTypes, CombinedLinearizer, TypeCollector};
+use crate::analysis::{AnalysisRegistry, CollectedTypes, TypeCollector};
 
 pub trait CacheExt {
     fn typecheck_with_analysis(
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
-        initial_env: &Environment,
         initial_term_env: &crate::usage::Environment,
-        lin_registry: &mut LinRegistry,
+        registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>>;
 
     fn position(&self, lsp_pos: &TextDocumentPositionParams)
@@ -32,9 +28,8 @@ impl CacheExt for Cache {
         &mut self,
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
-        initial_env: &Environment,
         initial_term_env: &crate::usage::Environment,
-        lin_registry: &mut LinRegistry,
+        registry: &mut AnalysisRegistry,
     ) -> Result<CacheOp<()>, CacheError<Vec<Error>>> {
         if !self.terms().contains_key(&file_id) {
             return Err(CacheError::NotParsed);
@@ -46,51 +41,37 @@ impl CacheExt for Cache {
             import_errors = errors;
             // Reverse the imports, so we try to typecheck the leaf dependencies first.
             for &id in ids.iter().rev() {
-                let _ = self.typecheck_with_analysis(
-                    id,
-                    initial_ctxt,
-                    initial_env,
-                    initial_term_env,
-                    lin_registry,
-                );
+                let _ = self.typecheck_with_analysis(id, initial_ctxt, initial_term_env, registry);
             }
         }
 
         for id in self.get_imports(file_id) {
             // If we have typechecked a file correctly, its imports should be
-            // in the `lin_registry`. The imports that are not in `lin_registry`
+            // in the `registry`. The imports that are not in `registry`
             // were not typechecked correctly.
-            if !lin_registry.map.contains_key(&id) {
+            if !registry.analysis.contains_key(&id) {
                 typecheck_import_diagnostics.push(id);
             }
         }
 
         // After self.parse(), the cache must be populated
-        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap();
+        let TermEntry { term, state, .. } = self.terms().get(&file_id).unwrap().clone();
 
-        let result = if *state > EntryState::Typechecked && lin_registry.map.contains_key(&file_id)
+        let result = if state > EntryState::Typechecked && registry.analysis.contains_key(&file_id)
         {
             Ok(CacheOp::Cached(()))
-        } else if *state >= EntryState::Parsed {
-            let host = AnalysisHost::new(file_id, initial_env.clone());
+        } else if state >= EntryState::Parsed {
             let types = TypeCollector::default();
-            let lin = CombinedLinearizer(host, types);
-            let building = Building {
-                lin_registry,
-                linearization: Vec::new(),
-                import_locations: HashMap::new(),
-                cache: self,
-            };
-            let (_, (linearized, type_lookups)) = typecheck::type_check_linearize(
-                term,
+            let (_, type_lookups) = typecheck::type_check_linearize(
+                &term,
                 initial_ctxt.clone(),
                 self,
-                lin,
-                (building, CollectedTypes::default()),
+                types,
+                CollectedTypes::default(),
             )
             .map_err(|err| vec![Error::TypecheckError(err)])?;
 
-            lin_registry.insert(file_id, linearized, type_lookups, term, initial_term_env);
+            registry.insert(file_id, type_lookups, &term, initial_term_env);
             self.update_state(file_id, EntryState::Typechecked);
             Ok(CacheOp::Done(()))
         } else {
@@ -107,16 +88,15 @@ impl CacheExt for Cache {
             let typecheck_import_diagnostics = typecheck_import_diagnostics.into_iter().map(|id| {
                 let message = "This import could not be resolved \
                     because its content has failed to typecheck correctly.";
-                // The unwrap is safe here because (1) we have linearized `file_id` and it must be
-                // in the `lin_registry` and (2) every resolved import has a corresponding position
-                // in the linearization of the file that imports it.
-                let pos = lin_registry
-                    .map
-                    .get(&file_id)
-                    .and_then(|lin| lin.import_locations.get(&id))
-                    .unwrap_or(&TermPos::None);
+                // Find a position (one is enough) that the import came from.
+                let pos = term
+                    .find_map(|rt: &RichTerm| match rt.as_ref() {
+                        Term::ResolvedImport(_) => Some(rt.pos),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 let name: String = self.name(id).to_str().unwrap().into();
-                ImportError::IOError(name, String::from(message), *pos)
+                ImportError::IOError(name, String::from(message), pos)
             });
             import_errors.extend(typecheck_import_diagnostics);
 

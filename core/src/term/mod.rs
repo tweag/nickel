@@ -1747,6 +1747,22 @@ pub trait Traverse<T>: Sized {
         f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
         scope: &S,
     ) -> Option<U>;
+
+    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
+    where
+        T: Clone,
+    {
+        self.traverse_ref(
+            &mut |t, _state: &()| {
+                if let Some(s) = pred(t) {
+                    TraverseControl::Return(s)
+                } else {
+                    TraverseControl::Continue
+                }
+            },
+            &(),
+        )
+    }
 }
 
 impl Traverse<RichTerm> for RichTerm {

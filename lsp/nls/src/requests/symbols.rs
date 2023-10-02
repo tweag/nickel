@@ -17,13 +17,8 @@ pub fn handle_document_symbols(
         .id_of(&SourcePath::Path(path))
         .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
 
-    let usage_lookups = server.lin_registry.usage_lookups.get(&file_id).unwrap();
-
-    let type_lookups = server
-        .lin_registry
-        .type_lookups
-        .get(&file_id)
-        .ok_or_else(|| crate::error::Error::FileNotFound(params.text_document.uri.clone()))?;
+    let usage_lookups = &server.file_analysis(file_id)?.usage_lookup;
+    let type_lookups = &server.file_analysis(file_id)?.type_lookup;
 
     let mut symbols = usage_lookups
         .symbols()

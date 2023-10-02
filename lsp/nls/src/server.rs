@@ -20,7 +20,6 @@ use lsp_types::{
 
 use nickel_lang_core::{
     cache::{Cache, ErrorTolerance},
-    identifier::LocIdent,
     position::{RawPos, TermPos},
     stdlib::StdlibModule,
     term::RichTerm,
@@ -28,16 +27,13 @@ use nickel_lang_core::{
 use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
+    analysis::{Analysis, AnalysisRegistry},
     cache::CacheExt,
     diagnostic::DiagnosticCompat,
     field_walker::DefWithPath,
-    linearization::{Environment, ItemId, LinRegistry},
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
-
-#[cfg(feature = "old-completer")]
-use crate::linearization::completed::Completed;
 
 pub const COMPLETIONS_TRIGGERS: &[&str] = &[".", "\"", "/"];
 
@@ -46,9 +42,8 @@ pub struct Server {
     pub cache: Cache,
     /// In order to return diagnostics, we store the URL of each file we know about.
     pub file_uris: HashMap<FileId, Url>,
-    pub lin_registry: LinRegistry,
+    pub analysis: AnalysisRegistry,
     pub initial_ctxt: Context,
-    pub initial_env: Environment,
     pub initial_term_env: crate::usage::Environment,
 }
 
@@ -90,30 +85,10 @@ impl Server {
             connection,
             cache,
             file_uris: HashMap::new(),
-            lin_registry: LinRegistry::new(),
+            analysis: AnalysisRegistry::default(),
             initial_ctxt,
-            initial_env: Environment::new(),
             initial_term_env: crate::usage::Environment::new(),
         }
-    }
-
-    pub fn initialize_stdlib_environment(&mut self) -> Option<()> {
-        let modules = stdlib::modules();
-        for module in modules {
-            // This module has a different format from the rest of the stdlib items
-            // Also, users are not supposed to use the internal module directly
-            if module == StdlibModule::Internals {
-                continue;
-            }
-
-            // The module is bound to its name in the environment.
-            let name: LocIdent = LocIdent::from(module.name());
-            let file_id = self.cache.get_submodule_file_id(module)?;
-            // We're using the ID 0 to get the top-level value, which is the body of the module.
-            let content_id = ItemId { file_id, index: 0 };
-            self.initial_env.insert(name.ident(), content_id);
-        }
-        Some(())
     }
 
     pub(crate) fn reply(&mut self, response: Response) {
@@ -159,9 +134,8 @@ impl Server {
                 .typecheck_with_analysis(
                     file_id,
                     &self.initial_ctxt,
-                    &self.initial_env,
                     &self.initial_term_env,
-                    &mut self.lin_registry,
+                    &mut self.analysis,
                 )
                 .unwrap();
 
@@ -189,7 +163,6 @@ impl Server {
     pub fn run(&mut self) -> Result<()> {
         trace!("Running...");
         self.linearize_stdlib()?;
-        self.initialize_stdlib_environment().unwrap();
         while let Ok(msg) = self.connection.receiver.recv() {
             trace!("Message: {:#?}", msg);
             match msg {
@@ -290,11 +263,10 @@ impl Server {
         Ok(())
     }
 
-    #[cfg(feature = "old-completer")]
-    pub fn lin_cache_get(&self, file_id: &FileId) -> Result<&Completed, ResponseError> {
-        self.lin_registry
-            .map
-            .get(file_id)
+    pub fn file_analysis(&self, file: FileId) -> Result<&Analysis, ResponseError> {
+        self.analysis
+            .analysis
+            .get(&file)
             .ok_or_else(|| ResponseError {
                 data: None,
                 message: "File has not yet been parsed or cached.".to_owned(),
@@ -304,14 +276,8 @@ impl Server {
 
     pub fn lookup_term_by_position(&self, pos: RawPos) -> Result<Option<&RichTerm>, ResponseError> {
         Ok(self
-            .lin_registry
-            .position_lookups
-            .get(&pos.src_id)
-            .ok_or_else(|| ResponseError {
-                data: None,
-                message: "File has not yet been parsed or cached.".to_owned(),
-                code: ErrorCode::ParseError as i32,
-            })?
+            .file_analysis(pos.src_id)?
+            .position_lookup
             .get(pos.index))
     }
 
@@ -320,14 +286,8 @@ impl Server {
         pos: RawPos,
     ) -> Result<Option<crate::identifier::LocIdent>, ResponseError> {
         Ok(self
-            .lin_registry
-            .position_lookups
-            .get(&pos.src_id)
-            .ok_or_else(|| ResponseError {
-                data: None,
-                message: "File has not yet been parsed or cached.".to_owned(),
-                code: ErrorCode::ParseError as i32,
-            })?
+            .file_analysis(pos.src_id)?
+            .position_lookup
             .get_ident(pos.index))
     }
 

@@ -229,7 +229,7 @@ impl<'a> FieldResolver<'a> {
             }
             Term::Var(id) => self
                 .server
-                .lin_registry
+                .analysis
                 .get_def(&(*id).into())
                 .map(|def| {
                     log::info!("got def {def:?}");
@@ -262,7 +262,7 @@ impl<'a> FieldResolver<'a> {
             _ => Default::default(),
         };
 
-        let typ_fields = if let Some(typ) = self.server.lin_registry.get_type(rt) {
+        let typ_fields = if let Some(typ) = self.server.analysis.get_type(rt) {
             log::info!("got inferred type {typ:?}");
             self.resolve_type(typ)
         } else {
