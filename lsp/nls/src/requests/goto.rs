@@ -8,16 +8,16 @@ use crate::{
     server::Server,
 };
 
-fn get_defs(term: &RichTerm, server: &Server) -> Vec<LocIdent> {
-    match term.as_ref() {
-        Term::Var(id) => {
-            if let Some(loc) = server.analysis.get_def(&(*id).into()).map(|def| def.ident) {
-                vec![loc]
-            } else {
-                vec![]
-            }
+fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option<Vec<LocIdent>> {
+    let ret = match (term.as_ref(), ident) {
+        (Term::Var(id), _) => {
+            let loc = server
+                .analysis
+                .get_def(&(*id).into())
+                .map(|def| def.ident)?;
+            vec![loc]
         }
-        Term::Op1(UnaryOp::StaticAccess(id), parent) => {
+        (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
             let resolver = FieldResolver::new(server);
             let parents = resolver.resolve_term(parent);
             parents
@@ -25,8 +25,27 @@ fn get_defs(term: &RichTerm, server: &Server) -> Vec<LocIdent> {
                 .filter_map(|parent| parent.get_definition_pos(id.ident()))
                 .collect()
         }
-        _ => vec![],
-    }
+        (Term::LetPattern(_, pat, value, _), Some(hovered_id)) => {
+            let (mut path, _, _) = pat
+                .matches
+                .iter()
+                .flat_map(|m| m.to_flattened_bindings())
+                .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
+            path.reverse();
+            let resolver = FieldResolver::new(server);
+            let (last, path) = path.split_last()?;
+            let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
+            let parents = resolver.resolve_term_path(value, &path);
+            parents
+                .iter()
+                .filter_map(|parent| parent.get_definition_pos(last.ident()))
+                .collect()
+        }
+        _ => {
+            return None;
+        }
+    };
+    Some(ret)
 }
 
 fn ids_to_locations(ids: impl IntoIterator<Item = LocIdent>, server: &Server) -> Vec<Location> {
@@ -51,9 +70,12 @@ pub fn handle_to_definition(
         .cache
         .position(&params.text_document_position_params)?;
 
+    let ident = server.lookup_ident_by_position(pos)?;
+
     let locations = server
         .lookup_term_by_position(pos)?
-        .map(|term| ids_to_locations(get_defs(term, server), server))
+        .and_then(|term| get_defs(term, ident, server))
+        .map(|defs| ids_to_locations(defs, server))
         .unwrap_or_default();
 
     let response = if locations.is_empty() {
@@ -74,12 +96,13 @@ pub fn handle_references(
     server: &mut Server,
 ) -> Result<(), ResponseError> {
     let pos = server.cache.position(&params.text_document_position)?;
+    let ident = server.lookup_ident_by_position(pos)?;
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
     let mut def_locs = server
         .lookup_term_by_position(pos)?
-        .map(|term| get_defs(term, server))
+        .and_then(|term| get_defs(term, ident, server))
         .unwrap_or_default();
 
     // Maybe the position is pointing straight at the definition already.
