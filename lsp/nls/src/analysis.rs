@@ -4,7 +4,7 @@ use codespan::FileId;
 use nickel_lang_core::{
     term::{RichTerm, Traverse, TraverseControl},
     typ::{Type, TypeF},
-    typecheck::{reporting::NameReg, TypeTables, TypeVisitor, UnifType},
+    typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
 
 use crate::{
@@ -192,7 +192,7 @@ impl<Ty> Default for CollectedTypes<Ty> {
     }
 }
 
-impl TypeVisitor for TypeCollector {
+impl TypecheckVisitor for TypeCollector {
     fn visit_term(&mut self, rt: &RichTerm, ty: UnifType) {
         self.tables.terms.insert(RichTermPtr(rt.clone()), ty);
     }

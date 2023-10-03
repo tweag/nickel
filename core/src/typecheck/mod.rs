@@ -1275,7 +1275,7 @@ pub fn type_check_with_visitor<V>(
     visitor: &mut V,
 ) -> Result<TypeTables, TypecheckError>
 where
-    V: TypeVisitor,
+    V: TypecheckVisitor,
 {
     let (mut table, mut names) = (UnifTable::new(), HashMap::new());
     let mut wildcard_vars = Vec::new();
@@ -1302,7 +1302,7 @@ where
 
 /// Walk the AST of a term looking for statically typed block to check. Fill the linearization
 /// alongside and store the apparent type of variable inside the typing environment.
-fn walk<V: TypeVisitor>(
+fn walk<V: TypecheckVisitor>(
     state: &mut State,
     mut ctxt: Context,
     visitor: &mut V,
@@ -1477,7 +1477,7 @@ fn walk<V: TypeVisitor>(
 
 /// Same as [`walk`] but operate on a type, which can contain terms as contracts (`TypeF::Flat`),
 /// instead of a term.
-fn walk_type<V: TypeVisitor>(
+fn walk_type<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -1508,7 +1508,7 @@ fn walk_type<V: TypeVisitor>(
 }
 
 /// Same as [`walk_type`] but operate on record rows.
-fn walk_rrows<V: TypeVisitor>(
+fn walk_rrows<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -1527,7 +1527,7 @@ fn walk_rrows<V: TypeVisitor>(
     }
 }
 
-fn walk_field<V: TypeVisitor>(
+fn walk_field<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -1542,7 +1542,7 @@ fn walk_field<V: TypeVisitor>(
     )
 }
 
-fn walk_annotated<V: TypeVisitor>(
+fn walk_annotated<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -1554,7 +1554,7 @@ fn walk_annotated<V: TypeVisitor>(
 
 /// Walk an annotated term, either via [crate::term::record::FieldMetadata], or via a standalone
 /// type or contract annotation. A type annotation switches the typechecking mode to _enforce_.
-fn walk_with_annot<V: TypeVisitor>(
+fn walk_with_annot<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -1633,7 +1633,7 @@ fn walk_with_annot<V: TypeVisitor>(
 /// the visitor accordingly
 ///
 /// [bidirectional-typing]: (https://arxiv.org/abs/1908.05839)
-fn check<V: TypeVisitor>(
+fn check<V: TypecheckVisitor>(
     state: &mut State,
     mut ctxt: Context,
     visitor: &mut V,
@@ -2004,7 +2004,7 @@ pub fn subsumption(
     checked.unify(inferred_inst, state, &ctxt)
 }
 
-fn check_field<V: TypeVisitor>(
+fn check_field<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -2038,7 +2038,7 @@ fn check_field<V: TypeVisitor>(
     }
 }
 
-fn infer_annotated<V: TypeVisitor>(
+fn infer_annotated<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -2056,7 +2056,7 @@ fn infer_annotated<V: TypeVisitor>(
 /// As for [check_visited] and [infer_visited], the additional `item_id` is provided when the term
 /// has been added to the visitor before but can still benefit from updating its information
 /// with the inferred type.
-fn infer_with_annot<V: TypeVisitor>(
+fn infer_with_annot<V: TypecheckVisitor>(
     state: &mut State,
     ctxt: Context,
     visitor: &mut V,
@@ -2136,7 +2136,7 @@ fn infer_with_annot<V: TypeVisitor>(
 ///
 /// `infer` corresponds to the inference mode of bidirectional typechecking. Nickel uses a mix of
 /// bidirectional typechecking and traditional ML-like unification.
-fn infer<V: TypeVisitor>(
+fn infer<V: TypecheckVisitor>(
     state: &mut State,
     mut ctxt: Context,
     visitor: &mut V,
@@ -2646,7 +2646,7 @@ fn wildcard_vars_to_type(wildcard_vars: Vec<UnifType>, table: &UnifTable) -> Wil
 }
 
 /// A visitor trait for receiving callbacks during typechecking.
-pub trait TypeVisitor {
+pub trait TypecheckVisitor {
     /// Record the type of a term.
     ///
     /// It's possible for a single term to be visited multiple times, for example, if type
@@ -2657,5 +2657,5 @@ pub trait TypeVisitor {
     fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType) {}
 }
 
-/// A do-nothing `TypeVisitor` for when you don't want one.
-impl TypeVisitor for () {}
+/// A do-nothing `TypeCheckVisitor` for when you don't want one.
+impl TypecheckVisitor for () {}
