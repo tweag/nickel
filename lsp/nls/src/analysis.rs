@@ -4,7 +4,7 @@ use codespan::FileId;
 use nickel_lang_core::{
     term::{RichTerm, Traverse, TraverseControl},
     typ::{Type, TypeF},
-    typecheck::{linearization::Linearizer, reporting::NameReg, Extra, UnifType},
+    typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
 
 use crate::{
@@ -172,10 +172,9 @@ impl AnalysisRegistry {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TypeCollector {
-    // Store a copy of the terms we've added so far. The index in this array is their ItemId.
-    term_ids: Vec<RichTermPtr>,
+    tables: CollectedTypes<UnifType>,
 }
 
 #[derive(Clone, Debug)]
@@ -187,76 +186,46 @@ pub struct CollectedTypes<Ty> {
 impl<Ty> Default for CollectedTypes<Ty> {
     fn default() -> Self {
         Self {
-            terms: HashMap::new(),
-            idents: HashMap::new(),
+            terms: Default::default(),
+            idents: Default::default(),
         }
     }
 }
 
-impl Linearizer for TypeCollector {
-    type Building = CollectedTypes<UnifType>;
-    type Completed = CollectedTypes<Type>;
-    type CompletionExtra = Extra;
-    type ItemId = usize;
-
-    fn scope(&mut self) -> Self {
-        TypeCollector::default()
+impl TypecheckVisitor for TypeCollector {
+    fn visit_term(&mut self, rt: &RichTerm, ty: UnifType) {
+        self.tables.terms.insert(RichTermPtr(rt.clone()), ty);
     }
 
-    fn scope_meta(&mut self) -> Self {
-        TypeCollector::default()
+    fn visit_ident(&mut self, ident: &nickel_lang_core::identifier::LocIdent, new_type: UnifType) {
+        self.tables.idents.insert((*ident).into(), new_type);
     }
+}
 
-    fn add_term(&mut self, lin: &mut Self::Building, rt: &RichTerm, ty: UnifType) -> Option<usize> {
-        self.term_ids.push(RichTermPtr(rt.clone()));
-        lin.terms.insert(RichTermPtr(rt.clone()), ty);
-        Some(self.term_ids.len() - 1)
-    }
-
-    fn complete(
-        self,
-        lin: Self::Building,
-        Extra {
-            table,
-            names,
-            wildcards,
-        }: &Extra,
-    ) -> Self::Completed {
-        let mut name_reg = NameReg::new(names.clone());
+impl TypeCollector {
+    pub fn complete(self, type_tables: TypeTables) -> CollectedTypes<Type> {
+        let mut name_reg = NameReg::new(type_tables.names.clone());
 
         let mut transform_type = |uty: UnifType| -> Type {
-            let ty = name_reg.to_type(table, uty);
+            let ty = name_reg.to_type(&type_tables.table, uty);
             match ty.typ {
-                TypeF::Wildcard(i) => wildcards.get(i).unwrap_or(&ty).clone(),
+                TypeF::Wildcard(i) => type_tables.wildcards.get(i).unwrap_or(&ty).clone(),
                 _ => ty,
             }
         };
 
-        let terms = lin
+        let terms = self
+            .tables
             .terms
             .into_iter()
             .map(|(rt, uty)| (rt, transform_type(uty)))
             .collect();
-        let idents = lin
+        let idents = self
+            .tables
             .idents
             .into_iter()
             .map(|(id, uty)| (id, transform_type(uty)))
             .collect();
         CollectedTypes { terms, idents }
-    }
-
-    fn retype(&mut self, lin: &mut Self::Building, item_id: Option<usize>, new_type: UnifType) {
-        if let Some(id) = item_id {
-            lin.terms.insert(self.term_ids[id].clone(), new_type);
-        }
-    }
-
-    fn retype_ident(
-        &mut self,
-        lin: &mut Self::Building,
-        ident: &nickel_lang_core::identifier::LocIdent,
-        new_type: UnifType,
-    ) {
-        lin.idents.insert((*ident).into(), new_type);
     }
 }
