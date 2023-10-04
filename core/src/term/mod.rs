@@ -244,6 +244,7 @@ pub enum Term {
 }
 
 impl PartialEq for Term {
+    #[track_caller]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
@@ -273,7 +274,7 @@ impl PartialEq for Term {
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
-            (Self::Closure(l0), Self::Closure(r0)) => false,
+            (Self::Closure(l0), Self::Closure(r0)) => panic!("breakpoint"),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
