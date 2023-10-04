@@ -75,7 +75,6 @@ pub trait Cache: Clone {
     fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
-        env: &mut Environment,
         fields: I,
     ) -> RichTerm;
 

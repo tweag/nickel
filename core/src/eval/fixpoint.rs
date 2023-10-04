@@ -1,6 +1,9 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::position::TermPos;
+use crate::{
+    position::TermPos,
+    term::SharedTerm,
+};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise,
@@ -11,21 +14,16 @@ use crate::position::TermPos;
 // field or one of its pending contract.
 fn patch_term<C: Cache>(
     cache: &mut C,
-    term: &RichTerm,
+    term: &mut RichTerm,
     rec_env: &[(Ident, CacheIndex)],
-    env: &Environment,
-) -> Result<(), EvalError> {
-    if let Term::Var(var_id) = &*term.term {
+) {
+    if let Term::Closure(ref mut idx) = SharedTerm::make_mut(&mut term.term) {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
-        let mut idx = env
-            .get(&var_id.ident())
-            .cloned()
-            .ok_or(EvalError::UnboundIdentifier(*var_id, term.pos))?;
-
-        cache.build_cached(&mut idx, rec_env);
-    };
-
-    Ok(())
+        cache.build_cached(idx, rec_env);
+    }
+    else {
+        debug_assert!(term.as_ref().is_constant())
+    }
 }
 
 /// Build a recursive environment from record bindings. For each field, `rec_env` either extracts
@@ -54,21 +52,18 @@ fn patch_term<C: Cache>(
 pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
     cache: &mut C,
     bindings: I,
-    env: &Environment,
     pos_record: TermPos,
-) -> Result<Vec<(Ident, CacheIndex)>, EvalError> {
+) -> Vec<(Ident, CacheIndex)> {
     bindings
         .map(|(id, field)| {
             if let Some(ref value) = field.value {
                 let idx = match value.as_ref() {
-                    Term::Var(ref var_id) => env
-                        .get(&var_id.ident())
-                        .cloned()
-                        .ok_or(EvalError::UnboundIdentifier(*var_id, value.pos))?,
+                    Term::Closure(idx) => idx.clone(),
                     _ => {
                         // If we are in this branch, `rt` must be a constant after the share normal
                         // form transformation, hence it should not need an environment, which is
                         // why it is dropped.
+                        debug_assert!(value.as_ref().is_constant());
                         let closure = Closure {
                             body: value.clone(),
                             env: Environment::new(),
@@ -81,22 +76,19 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 // We now need to wrap the binding in a value with contracts applied.
                 // Pending contracts might use identifiers from the current record's environment,
                 // so we start from in the environment of the original record.
-                let mut final_env = env.clone();
-                let id_value = LocIdent::fresh();
-                final_env.insert(id_value.ident(), idx);
-
                 let with_ctr_applied = RuntimeContract::apply_all(
-                    RichTerm::new(Term::Var(id_value), value.pos),
+                    RichTerm::new(Term::Closure(idx), value.pos),
                     field.pending_contracts.iter().cloned(),
                     value.pos,
                 );
 
                 let final_closure = Closure {
                     body: with_ctr_applied,
-                    env: final_env,
+                    // FIXME: clean?
+                    env: Environment::new(),
                 };
 
-                Ok((id.ident(), cache.add(final_closure, BindingType::Normal)))
+                (id.ident(), cache.add(final_closure, BindingType::Normal))
             } else {
                 let error = EvalError::MissingFieldDef {
                     id: *id,
@@ -115,7 +107,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     env: Environment::new(),
                 };
 
-                Ok((id.ident(), cache.add(closure, BindingType::Normal)))
+                (id.ident(), cache.add(closure, BindingType::Normal))
             }
         })
         .collect()
@@ -126,18 +118,17 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 /// this step correspond to function application (see documentation of
 /// [crate::eval::cache::lazy::ThunkData]).
 ///
-/// For each field, retrieve the set set of dependencies from the corresponding element in the
+/// For each field, retrieve the set of dependencies from the corresponding element in the
 /// environment, and only add those dependencies to the environment. This avoids retaining
 /// reference-counted pointers to unused data. If no dependencies are available, conservatively add
 /// all the recursive environment. See [`crate::transform::free_vars`].
 pub fn patch_field<C: Cache>(
     cache: &mut C,
-    field: &Field,
+    field: &mut Field,
     rec_env: &[(Ident, CacheIndex)],
-    env: &Environment,
-) -> Result<(), EvalError> {
-    if let Some(ref value) = field.value {
-        patch_term(cache, value, rec_env, env)?;
+) {
+    if let Some(ref mut value) = field.value {
+        patch_term(cache, value, rec_env);
     }
 
     // We must patch the contracts contained in the fields' pending contracts as well, since they
@@ -157,11 +148,9 @@ pub fn patch_field<C: Cache>(
     // ```
     //
     // Here, `Variant` depends on `tag` recursively.
-    for pending_contract in field.pending_contracts.iter() {
-        patch_term(cache, &pending_contract.contract, rec_env, env)?;
+    for ctr in field.pending_contracts.iter_mut() {
+        patch_term(cache, &mut ctr.contract, rec_env);
     }
-
-    Ok(())
 }
 
 /// Revert an evaluated record (`Record`) back to a recursive record (`RecRecord`). The fixpoint
@@ -183,13 +172,12 @@ pub fn patch_field<C: Cache>(
 pub fn revert<C: Cache>(
     cache: &mut C,
     record_data: RecordData,
-    env: &mut Environment,
     local_env: &Environment,
 ) -> Term {
     let fields = record_data
         .fields
         .into_iter()
-        .map(|(id, field)| (id, field.revert_closurize(cache, env, local_env.clone())))
+        .map(|(id, field)| (id, field.revert_closurize(cache, local_env.clone())))
         .collect();
 
     let record_data = RecordData {

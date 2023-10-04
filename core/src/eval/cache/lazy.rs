@@ -1,7 +1,7 @@
 //! Thunks and associated devices used to implement lazy evaluation.
-use super::{BlackholedError, Cache, CacheIndex, Closure, Environment};
+use super::{BlackholedError, Cache, CacheIndex, Closure};
 use crate::{
-    identifier::{Ident, LocIdent},
+    identifier::Ident,
     metrics::increment,
     term::{record::FieldDeps, BindingType, RichTerm, Term},
 };
@@ -498,7 +498,6 @@ impl Thunk {
     /// - returns the term `%1 foo bar`
     pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(
         self,
-        env: &mut Environment,
         fields: I,
     ) -> RichTerm {
         let deps = self.deps();
@@ -517,10 +516,7 @@ impl Thunk {
             )),
         };
 
-        let fresh_var = LocIdent::fresh();
-        env.insert(fresh_var.ident(), thunk_as_function);
-
-        let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
+        let as_function_closurized = RichTerm::from(Term::Closure(thunk_as_function));
         let args =
             fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(id.into()))));
 
@@ -556,6 +552,13 @@ impl Thunk {
         self.data.borrow().deps()
     }
 }
+
+impl std::fmt::Pointer for Thunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Pointer::fmt(&self.data, f)
+    }
+}
+
 /// A thunk update frame.
 ///
 /// A thunk update frame is put on the stack whenever a variable is entered, such that once this
@@ -663,10 +666,9 @@ impl Cache for CBNCache {
     fn saturate<'a, I: DoubleEndedIterator<Item = Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
-        env: &mut Environment,
         fields: I,
     ) -> RichTerm {
-        idx.saturate(env, fields)
+        idx.saturate(fields)
     }
 
     fn deps(&self, idx: &CacheIndex) -> Option<FieldDeps> {

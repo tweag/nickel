@@ -13,12 +13,30 @@ pub struct RecordAttrs {
     /// If the record is an open record, ie ending with `..`. Open records have a different
     /// behavior when used as a record contract: they allow additional fields to be present.
     pub open: bool,
+    /// A `closurized` array verifies the following conditions:
+    ///   - Each element is a generated variable with a unique name (although the same
+    ///     variable can occur in several places, it should always refer to the same index anyway).
+    ///   - The environment of the array's closure only contains those generated variables.
+    pub closurized: bool,
+}
+
+impl RecordAttrs {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the `closurized` flag to true and return the updated attributes.
+    pub fn closurized(mut self) -> Self {
+        self.closurized = true;
+        self
+    }
 }
 
 impl Combine for RecordAttrs {
     fn combine(left: Self, right: Self) -> Self {
         RecordAttrs {
             open: left.open || right.open,
+            closurized: left.closurized && right.closurized,
         }
     }
 }

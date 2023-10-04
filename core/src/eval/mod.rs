@@ -595,17 +595,32 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                 }
-                Term::RecRecord(record, dyn_fields, _) => {
-                    let rec_env =
-                        fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env, pos)?;
-
-                    record.fields.iter().try_for_each(|(_, rt)| {
-                        fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
-                    })?;
-
+                // Closurize the record if it's not already done. Usually this is done at the first
+                // time this record is evaluated.
+                Term::Record(data) if !data.attrs.closurized => {
+                    Closure {
+                        body: RichTerm::new(
+                            Term::Record(
+                                //TODO: avoid clone
+                                data.clone().closurize(&mut self.cache, env),
+                            ),
+                            pos,
+                        ),
+                        env: Environment::new(),
+                    }
+                }
+                Term::RecRecord(data, dyn_fields, deps) => {
                     //TODO: We should probably avoid cloning the record, using `match_sharedterm`
                     //instead of `match` in the main eval loop, if possible
-                    let static_part = RichTerm::new(Term::Record(record.clone()), pos);
+                    // We start by closurizing the fields, which might not be if the record is
+                    // coming out of the parser.
+                    // let static_part_data = RichTerm::new(Term::Record(record.clone()), pos);
+                    let (mut static_part, dyn_fields) = crate::transform::share_normal_form::closurize_rec_record(&mut self.cache, data.clone(), dyn_fields.clone(), deps.clone(), env);
+                    let rec_env = fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
+
+                    for rt in static_part.fields.values_mut() {
+                        fixpoint::patch_field(&mut self.cache, rt, &rec_env);
+                    }
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
                     // dynamic part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of
@@ -625,16 +640,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // fields.
                     let extended = dyn_fields
                         .iter()
-                        .try_fold::<_, _, Result<RichTerm, EvalError>>(
-                            static_part,
-                            |acc, (name_as_term, field)| {
-                                let pos = if let Some(ref value) = field.value {
-                                    value.pos
-                                } else {
-                                    name_as_term.pos
-                                };
+                        .cloned()
+                        .fold(
+                            RichTerm::new(Term::Record(static_part.clone()), pos),
+                            |acc, (name_as_term, mut field)| {
+                                let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(name_as_term.pos);
 
-                                fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
+                                fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
 
                                 let ext_kind = field.extension_kind();
                                 let Field {
@@ -665,13 +677,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     None => extend,
                                 };
 
-                                Ok(result)
+                                result
                             },
-                        )?;
+                        );
 
                     Closure {
                         body: extended.with_pos(pos),
-                        env,
+                        env: Environment::new(),
                     }
                 }
                 Term::ResolvedImport(id) => {
@@ -694,12 +706,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
-                    let mut local_env = Environment::new();
-
                     let closurized_array = terms
                         .clone()
                         .into_iter()
-                        .map(|t| t.closurize(&mut self.cache, &mut local_env, env.clone()))
+                        .map(|t| t.closurize(&mut self.cache, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
@@ -709,7 +719,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             RuntimeContract::new(
                                 ctr.contract.clone().closurize(
                                     &mut self.cache,
-                                    &mut local_env,
                                     env.clone(),
                                 ),
                                 ctr.label.clone(),
@@ -728,7 +737,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             ),
                             pos,
                         ),
-                        env: local_env,
+                        env: Environment::new(),
                     }
                 }
                 Term::ParseError(parse_error) => {
