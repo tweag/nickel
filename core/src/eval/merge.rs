@@ -414,6 +414,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
     let mut pending_contracts = pending_contracts1.revert_closurize(cache, env_final, env1.clone());
 
+    println!("merging push_dedup start");
     for ctr2 in pending_contracts2.revert_closurize(cache, env_final, env2.clone()) {
         RuntimeContract::push_dedup(
             initial_env,
@@ -423,6 +424,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
             env_final,
         );
     }
+    println!("merging push_dedup end");
 
     Ok(Field {
         metadata: FieldMetadata {

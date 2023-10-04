@@ -449,6 +449,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         env: env.clone(),
                     };
 
+                    println!("Inserting thunk for {} with binding type {binding_type:?}", x.ident());
                     let idx = self.cache.add(closure, binding_type.clone());
 
                     // Patch the environment with the (x <- closure) binding

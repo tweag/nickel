@@ -141,10 +141,12 @@ impl Closurizable for RichTerm {
         // fields of a record all contain generated variables (or constant), but never user-supplied
         // variables.
         let var = LocIdent::fresh();
+        println!("Closurizing in {var}");
         let pos = self.pos;
 
         let idx = match self.as_ref() {
             Term::Var(id) if id.is_generated() => {
+                println!("From var {id}");
                 with_env.get(&id.ident()).cloned().unwrap_or_else(|| {
                     panic!(
                 "Internal error(closurize) : generated identifier {id} not found in the environment"

@@ -332,6 +332,8 @@ impl RuntimeContract {
         ctr: Self,
         env2: &Environment,
     ) {
+        println!("push_dedup start");
+
         let envs1 = EvalEnvsRef {
             eval_env: env1,
             initial_env,
@@ -349,6 +351,7 @@ impl RuntimeContract {
         }
 
         contracts.push(ctr);
+        println!("push_dedup end");
     }
 }
 

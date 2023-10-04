@@ -298,14 +298,20 @@ pub fn contract_eq<E: TermEnvironment>(
     t2: &RichTerm,
     env2: E::Ref<'_>,
 ) -> bool {
-    contract_eq_bounded::<E>(
+    println!("contract_eq: start on {t1} and {t2}");
+
+    let result = contract_eq_bounded::<E>(
         &mut State::new(var_uid),
         VarEq::Environment,
         t1,
         env1,
         t2,
         env2,
-    )
+    );
+
+    println!("contract_eq: start");
+
+    result
 }
 
 /// **Warning**: this function isn't computing a sound contract equality (it could equate contracts
@@ -316,14 +322,20 @@ pub fn contract_eq<E: TermEnvironment>(
 /// Compute equality between two contracts, considering that two variables with the same name are
 /// equal.
 pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
-    type_eq_bounded::<NoEnvironment>(
+    println!("type_eq_noenv: start");
+
+    let result = type_eq_bounded::<NoEnvironment>(
         &mut State::new(var_uid),
         VarEq::Direct,
         &GenericUnifType::<NoEnvironment>::from_type(t1.clone(), &NoEnvironment),
         &NoEnvironment,
         &GenericUnifType::<NoEnvironment>::from_type(t2.clone(), &NoEnvironment),
         &NoEnvironment,
-    )
+    );
+
+    println!("type_eq_noenv: end");
+
+    result
 }
 
 /// Decide type equality on contracts in their respective environment and given the remaining gas
@@ -379,6 +391,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         // if they have the same identifier: whatever global environment the term will be put in,
         // free variables are not redefined locally and will be bound to the same value in any case.
         (Var(id1), Var(id2)) => {
+            println!("Going to get_then {id1} then {id2}");
             <E as TermEnvironment>::get_then(env1, id1.ident(), |binding1| {
                 <E as TermEnvironment>::get_then(env2, id2.ident(), |binding2| {
                     match (binding1, binding2) {
@@ -400,6 +413,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
         // term are considered unequal
         (Var(_), _) | (_, Var(_)) if var_eq == VarEq::Direct => false,
         (Var(id), _) => {
+            println!("Going to get_then {id}");
             state.use_gas()
                 && <E as TermEnvironment>::get_then(env1, id.ident(), |binding| {
                     binding
@@ -410,6 +424,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
         }
         (_, Var(id)) => {
+            println!("Going to get_then {id}");
             state.use_gas()
                 && <E as TermEnvironment>::get_then(env2, id.ident(), |binding| {
                     binding
