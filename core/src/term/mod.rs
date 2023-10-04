@@ -61,7 +61,7 @@ use std::{
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
 /// this type is nested with [`RichTerm`].
 ///
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
     /// The null value.
@@ -241,6 +241,42 @@ pub enum Term {
     //TODO: should closure be shared (like cache idx) or not?
     #[serde(skip)]
     Closure(CacheIndex),
+}
+
+impl PartialEq for Term {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
+            (Self::Num(l0), Self::Num(r0)) => l0 == r0,
+            (Self::Str(l0), Self::Str(r0)) => l0 == r0,
+            (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
+            (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::FunPattern(l0, l1, l2), Self::FunPattern(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
+            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3,
+            (Self::LetPattern(l0, l1, l2, l3), Self::LetPattern(r0, r1, r2, r3)) => l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3,
+            (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Var(l0), Self::Var(r0)) => l0 == r0,
+            (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
+            (Self::Record(l0), Self::Record(r0)) => l0 == r0,
+            (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::Match { cases: l_cases, default: l_default }, Self::Match { cases: r_cases, default: r_default }) => l_cases == r_cases && l_default == r_default,
+            (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
+            (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
+            (Self::Type(l0), Self::Type(r0)) => l0 == r0,
+            (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
+            (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
+            (Self::Closure(l0), Self::Closure(r0)) => false,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
 
 /// A unique sealing key, introduced by polymorphic contracts.
