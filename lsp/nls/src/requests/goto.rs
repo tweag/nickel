@@ -35,7 +35,7 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             let resolver = FieldResolver::new(server);
             let (last, path) = path.split_last()?;
             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-            let parents = resolver.resolve_term_path(value, &path);
+            let parents = resolver.resolve_term_path(value, path.iter().copied());
             parents
                 .iter()
                 .filter_map(|parent| parent.get_definition_pos(last.ident()))
