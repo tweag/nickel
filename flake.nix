@@ -640,6 +640,7 @@
     in
     rec {
       packages = {
+        nix = nix-input.packages.${system}.default;
         inherit (mkCraneArtifacts { })
           nickel-lang-core
           nickel-lang-cli
