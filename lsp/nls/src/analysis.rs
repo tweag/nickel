@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_core::{
-    term::{RichTerm, Traverse, TraverseControl},
+    identifier::Ident,
+    term::{RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
     typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
@@ -15,51 +16,132 @@ use crate::{
     usage::{Environment, UsageLookup},
 };
 
-#[derive(Default, Debug)]
+#[derive(Clone, Debug)]
+pub struct Parent {
+    term: RichTerm,
+    child_name: Option<Ident>,
+}
+
+impl From<RichTerm> for Parent {
+    fn from(term: RichTerm) -> Self {
+        Parent {
+            term,
+            child_name: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct ParentLookup {
-    table: HashMap<RichTermPtr, RichTerm>,
+    table: HashMap<RichTermPtr, Parent>,
 }
 
 impl ParentLookup {
     pub fn new(rt: &RichTerm) -> Self {
         let mut table = HashMap::new();
-        let mut traverse_merge =
-            |rt: &RichTerm, parent: &Option<RichTerm>| -> TraverseControl<Option<RichTerm>, ()> {
-                if let Some(parent) = parent {
-                    table.insert(RichTermPtr(rt.clone()), parent.clone());
-                }
-                TraverseControl::ContinueWithScope(Some(rt.clone()))
-            };
 
-        rt.traverse_ref(&mut traverse_merge, &None);
+        fn traversal(
+            rt: &RichTerm,
+            parent: &Option<Parent>,
+            acc: &mut HashMap<RichTermPtr, Parent>,
+        ) -> TraverseControl<Option<Parent>, ()> {
+            if let Some(parent) = parent {
+                acc.insert(RichTermPtr(rt.clone()), parent.clone());
+            }
+            match rt.as_ref() {
+                Term::Record(data) | Term::RecRecord(data, _, _) => {
+                    for (name, field) in &data.fields {
+                        if let Some(child) = &field.value {
+                            let parent = Parent {
+                                term: rt.clone(),
+                                child_name: Some(name.ident()),
+                            };
+                            child.traverse_ref(
+                                &mut |rt, parent| traversal(rt, parent, acc),
+                                &Some(parent),
+                            );
+                        }
+                    }
+                    TraverseControl::SkipBranch
+                }
+                _ => TraverseControl::ContinueWithScope(Some(rt.clone().into())),
+            }
+        }
+
+        rt.traverse_ref(&mut |rt, parent| traversal(rt, parent, &mut table), &None);
 
         ParentLookup { table }
     }
 
-    pub fn parent(&self, rt: &RichTerm) -> Option<&RichTerm> {
+    pub fn parent(&self, rt: &RichTerm) -> Option<&Parent> {
         self.table.get(&RichTermPtr(rt.clone()))
     }
 
-    pub fn parent_chain<'a>(&'a self, rt: &'a RichTerm) -> ParentChainIter<'_> {
+    pub fn parent_chain(&self, rt: &RichTerm) -> ParentChainIter<'_> {
+        let next = self.parent(rt).cloned();
         ParentChainIter {
             table: self,
-            next: Some(rt),
+            path: Some(Vec::new()),
+            next,
         }
     }
 }
 
+/// Essentially an iterator over pairs of `(ancestor, reversed_path_to_the_original)`.
+///
+/// For example, if we are iterating over the AST of `foo.bar.baz`, the iterator
+/// should return
+/// - ancestor `foo.bar`, path \[`baz`\]; and then
+/// - ancestor `foo`, path [`baz`, `bar`].
+///
+/// If, during our iteration, we encounter an ancestor that isn't a record then the
+/// path will be none from then on. For example, if we traverse `(some_fn foo.bar.baz).quux`
+/// starting from the `baz` AST node then the first couple of terms will have paths like
+/// the previous example, but after that we'll get
+/// - ancestor `(some_fn foo.bar.baz)`, path `None`; and then
+/// - ancestor `(some_fn foo.bar.baz).quux`, path `None`.
+///
+/// This is a "streaming iterator" in the sense that the returned data borrows from
+/// our state. Since streaming iterators are not (yet) in rust's stdlib, we don't
+/// implement any traits here, but just do it by hand.
+///
+/// For borrowck reasons, the iteration is done in two parts: `next` advances the iterator
+/// and returns just the term part. `path` retrieves the path corresponding to the previous
+/// `next` call.
 pub struct ParentChainIter<'a> {
     table: &'a ParentLookup,
-    next: Option<&'a RichTerm>,
+    path: Option<Vec<Ident>>,
+    next: Option<Parent>,
 }
 
-impl<'a> Iterator for ParentChainIter<'a> {
-    type Item = &'a RichTerm;
+impl<'a> ParentChainIter<'a> {
+    pub fn next(&mut self) -> Option<RichTerm> {
+        if let Some(next) = self.next.take() {
+            if let Some((ident, path)) = next.child_name.zip(self.path.as_mut()) {
+                path.push(ident);
+            }
+            if !matches!(
+                next.term.as_ref(),
+                Term::Record(_) | Term::RecRecord(..) | Term::Annotated(..) | Term::Op2(..)
+            ) {
+                self.path = None;
+            }
+            self.next = self.table.parent(&next.term).cloned();
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next) = self.next {
-            self.next = self.table.parent(next);
-            Some(next)
+            Some(next.term)
+        } else {
+            None
+        }
+    }
+
+    pub fn path(&self) -> Option<&[Ident]> {
+        self.path.as_deref()
+    }
+
+    /// Peek at the grandparent.
+    pub fn peek_gp(&self) -> Option<&RichTerm> {
+        if let Some(Parent { term, .. }) = &self.next {
+            self.table.parent(term).map(|gp| &gp.term)
         } else {
             None
         }

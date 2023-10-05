@@ -1,6 +1,6 @@
 use log::debug;
 use lsp_server::{RequestId, Response, ResponseError};
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionParams};
+use lsp_types::{CompletionItemKind, CompletionParams};
 use nickel_lang_core::{
     cache::{self, InputFormat},
     identifier::Ident,
@@ -16,19 +16,30 @@ use std::path::PathBuf;
 use crate::{
     cache::CacheExt,
     field_walker::{FieldHaver, FieldResolver},
+    identifier::LocIdent,
     incomplete,
     server::Server,
     usage::Environment,
 };
 
-fn remove_duplicates(items: &Vec<CompletionItem>) -> Vec<CompletionItem> {
-    let mut seen: Vec<CompletionItem> = Vec::new();
+fn remove_duplicates_and_myself(
+    items: &[CompletionItem],
+    cursor: RawPos,
+) -> Vec<lsp_types::CompletionItem> {
+    let mut seen_labels = HashSet::new();
+    let mut ret = Vec::new();
     for item in items {
-        if !seen.iter().any(|seen_item| seen_item.label == item.label) {
-            seen.push(item.clone())
+        if let Some(ident) = item.ident {
+            if ident.pos.contains(cursor) {
+                continue;
+            }
+        }
+
+        if seen_labels.insert(&item.label) {
+            ret.push(item.clone().into());
         }
     }
-    seen
+    ret
 }
 
 fn extract_static_path(mut rt: RichTerm) -> (RichTerm, Vec<Ident>) {
@@ -73,12 +84,33 @@ fn sanitize_record_path_for_completion(
     }
 }
 
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub struct CompletionItem {
+    pub label: String,
+    pub detail: Option<String>,
+    pub kind: Option<CompletionItemKind>,
+    pub documentation: Option<lsp_types::Documentation>,
+    pub ident: Option<LocIdent>,
+}
+
+impl From<CompletionItem> for lsp_types::CompletionItem {
+    fn from(my: CompletionItem) -> Self {
+        Self {
+            label: my.label,
+            detail: my.detail,
+            kind: my.kind,
+            documentation: my.documentation,
+            ..Default::default()
+        }
+    }
+}
+
 fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem> {
     log::info!("term based completion path: {term:?}");
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldResolver::new(server).resolve_term_path(&start_term, &path);
+    let defs = FieldResolver::new(server).resolve_term_path(&start_term, path.iter().copied());
     defs.iter().flat_map(FieldHaver::completion_items).collect()
 }
 
@@ -111,30 +143,37 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
 
     // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
     // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
-    if let Some(parents) = server.analysis.get_parent_chain(rt) {
+    if let Some(mut parents) = server.analysis.get_parent_chain(rt) {
         // We're only interested in adding identifiers from terms that are records or
         // merges/annotations of records. But actually we can skip the records, because any
         // records that are our direct ancestor have already contributed to `env`.
-        let env_term = |rt: &RichTerm| {
+        let is_env_term = |rt: &RichTerm| {
+            matches!(
+                rt.as_ref(),
+                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _) | Term::RecRecord(..)
+            )
+        };
+
+        let is_merge_term = |rt: &RichTerm| {
             matches!(
                 rt.as_ref(),
                 Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
             )
         };
 
-        let mut parents = parents.peekable();
-        while let Some(rt) = parents.next() {
+        while let Some(p) = parents.next() {
             // If a parent and a grandparent were both merges, we can skip the parent
             // because the grandparent will have a superset of its fields. This prevents
             // quadratic behavior on long chains of merges.
-            if let Some(gp) = parents.peek() {
-                if env_term(gp) {
+            if let Some(gp) = parents.peek_gp() {
+                if is_merge_term(gp) {
                     continue;
                 }
             }
 
-            if env_term(rt) {
-                let records = resolver.resolve_term(rt);
+            if is_env_term(&p) {
+                let path = parents.path().unwrap_or_default();
+                let records = resolver.resolve_term_path(&p, path.iter().rev().copied());
                 items.extend(records.iter().flat_map(FieldHaver::completion_items));
             }
         }
@@ -189,7 +228,7 @@ pub fn handle_completion(
         (None, None) => Vec::new(),
     };
 
-    let completions = remove_duplicates(&completions);
+    let completions = remove_duplicates_and_myself(&completions, pos);
 
     server.reply(Response::new_ok(id.clone(), completions));
     Ok(())
@@ -199,7 +238,7 @@ fn handle_import_completion(
     import: &OsString,
     params: &CompletionParams,
     server: &mut Server,
-) -> io::Result<Vec<CompletionItem>> {
+) -> io::Result<Vec<lsp_types::CompletionItem>> {
     debug!("handle import completion");
 
     let current_file = params
@@ -254,7 +293,7 @@ fn handle_import_completion(
             } else {
                 CompletionItemKind::Folder
             };
-            CompletionItem {
+            lsp_types::CompletionItem {
                 label: entry
                     .path
                     .file_name()

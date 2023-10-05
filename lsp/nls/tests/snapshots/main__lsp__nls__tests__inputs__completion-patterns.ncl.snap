@@ -8,7 +8,7 @@ expression: output
 [bar, more]
 [baz, most]
 [baz, most]
-[extra, foo, inner, innermost, outer, std]
-[bar, extra, foo, inner, innermost, more, outer, std]
+[foo, inner, innermost, outer, std]
+[bar, extra, foo, inner, innermost, outer, std]
 [bar, baz, extra, foo, inner, innermost, more, most, outer, std]
 
