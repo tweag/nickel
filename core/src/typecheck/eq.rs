@@ -44,7 +44,11 @@
 
 use super::*;
 use crate::{
-    eval::{self, cache::Cache},
+    eval::{
+        self,
+        cache::lazy::Thunk,
+        cache::{Cache, CacheIndex},
+    },
     identifier::LocIdent,
     term::{self, record::Field, IndexMap, UnaryOp},
 };
@@ -84,6 +88,11 @@ pub trait TermEnvironment: Clone {
     fn get_then<F, T>(env: Self::Ref<'_>, id: Ident, f: F) -> T
     where
         F: FnOnce(Option<(&RichTerm, Self::Ref<'_>)>) -> T;
+
+    /// When comparing closure, we don't get an identifier, but a cache index (a thunk).
+    fn get_idx_then<F, T>(env: Self::Ref<'_>, idx: &CacheIndex, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, Self::Ref<'_>)>) -> T;
 }
 
 /// A simple term environment, as a mapping from identifiers to a tuple of a term and an
@@ -118,6 +127,17 @@ impl TermEnvironment for SimpleTermEnvironment {
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
         f(env.0.get(&id).map(|(rt, env)| (rt, env)))
+    }
+
+    fn get_idx_then<F, T>(_env: &Self, _idx: &CacheIndex, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
+    {
+        debug_assert!(
+            false,
+            "we shouldn't see closure when computing contract equality at typechecking time"
+        );
+        f(None)
     }
 }
 
@@ -189,6 +209,21 @@ impl<'a> TermEnvironment for EvalEnvsRef<'a> {
             None => f(None),
         }
     }
+
+    fn get_idx_then<F, T>(env: EvalEnvsRef<'_>, idx: &CacheIndex, f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, EvalEnvsRef<'_>)>) -> T,
+    {
+        let closure_ref = idx.borrow();
+
+        f(Some((
+            &closure_ref.body,
+            EvalEnvsRef {
+                eval_env: &closure_ref.env,
+                initial_env: env.initial_env,
+            },
+        )))
+    }
 }
 
 pub trait FromEnv<C: Cache> {
@@ -227,6 +262,13 @@ impl TermEnvironment for NoEnvironment {
         F: FnOnce(Option<(&RichTerm, &NoEnvironment)>) -> T,
     {
         panic!("contract equality checking: cannot get variable `{id}` from no environment")
+    }
+
+    fn get_idx_then<F, T>(_env: &Self, idx: &CacheIndex, _f: F) -> T
+    where
+        F: FnOnce(Option<(&RichTerm, &NoEnvironment)>) -> T,
+    {
+        panic!("contract equality checking: cannot get closure `{idx:p}` from no environment")
     }
 }
 
@@ -373,6 +415,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 && contract_eq_bounded::<E>(state, var_eq, arg1, env1, arg2, env2)
         }
         (Var(id1), Var(id2)) if var_eq == VarEq::Direct => id1 == id2,
+        (Closure(id1), Closure(id2)) if Thunk::ptr_eq(id1, id2) => true,
         // All variables must be bound at this stage. This is checked by the typechecker when
         // walking annotations. However, we may assume that `env` is a local environment (that it
         // doesn't include the stdlib). In that case, free variables (unbound) may be deemed equal
@@ -396,9 +439,30 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
             })
         }
+        (Closure(idx1), Closure(idx2)) if var_eq == VarEq::Environment => {
+            <E as TermEnvironment>::get_idx_then(env1, idx1, |binding1| {
+                <E as TermEnvironment>::get_idx_then(env2, idx2, |binding2| {
+                    match (binding1, binding2) {
+                        (Some((t1, env1)), Some((t2, env2))) => {
+                            // We may end up using one more gas unit if gas was exactly 1. That is
+                            // not very important, and it's simpler to just ignore this case. We
+                            // still return false if gas was already at zero.
+                            let had_gas = state.use_gas();
+                            state.use_gas();
+                            had_gas && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                        }
+                        _ => false,
+                    }
+                })
+            })
+        }
         // If one term is a variable and not the other, and we don't have access to an environment, the
         // term are considered unequal
-        (Var(_), _) | (_, Var(_)) if var_eq == VarEq::Direct => false,
+        (Var(_), _) | (_, Var(_)) | (Closure(_), _) | (_, Closure(_))
+            if var_eq == VarEq::Direct =>
+        {
+            false
+        }
         (Var(id), _) => {
             state.use_gas()
                 && <E as TermEnvironment>::get_then(env1, id.ident(), |binding| {
@@ -412,6 +476,26 @@ fn contract_eq_bounded<E: TermEnvironment>(
         (_, Var(id)) => {
             state.use_gas()
                 && <E as TermEnvironment>::get_then(env2, id.ident(), |binding| {
+                    binding
+                        .map(|(t2, env2)| {
+                            contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                        })
+                        .unwrap_or(false)
+                })
+        }
+        (Closure(idx), _) => {
+            state.use_gas()
+                && <E as TermEnvironment>::get_idx_then(env1, idx, |binding| {
+                    binding
+                        .map(|(t1, env1)| {
+                            contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                        })
+                        .unwrap_or(false)
+                })
+        }
+        (_, Closure(idx)) => {
+            state.use_gas()
+                && <E as TermEnvironment>::get_idx_then(env2, idx, |binding| {
                     binding
                         .map(|(t2, env2)| {
                             contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
