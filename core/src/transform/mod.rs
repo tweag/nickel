@@ -91,15 +91,10 @@ pub trait Closurizable : Sized {
         self.closurize_as_btype(cache, env, BindingType::default())
     }
 
-    /// Pack a closurizable together with its environment as a closure, and set the dependencies
-    /// set according to the given binding type. An exception is made for constant term, which are
-    /// left untouched, as it doesn't make sense to allocate a closure for them.
-    ///
-    /// If `btype` is `[crate::term::BindingType::Normal]`, the closure might inherit non-empty
-    /// dependencies if the term is already a closure holding a thunk. That is, a normal binding
-    /// type says "I don't care about the dependencies, it doesn't have to be revertible". On the
-    /// other hand, `[crate::term::BindingType::Revertible`] is guaranteed to be reflected in the
-    /// resulting closure.
+    /// Pack a closurizable together with its environment as a closure with the dependencies set
+    /// according to the given binding type.
+    /// An exception is made for constant term, which are left untouched, as it doesn't make sense
+    /// to allocate a closure for them.
     fn closurize_as_btype<C: Cache>(
         self,
         cache: &mut C,
@@ -187,10 +182,11 @@ impl Closurizable for RichTerm {
                 Term::Closure(idx) if idx.deps().is_empty() && matches!(btype, BindingType::Normal) => idx,
             }
             else {
-                // It's suspicious to wrap a closure with non empty dependencies with a different
-                // binding type, although I'm not sure it would actually break anything. We panic
-                // in debug mode to catch this case.
-                // debug_assert!(!matches!(self.as_ref(), Term::Closure(idx) if !idx.deps().is_empty()), "wrapping a closure with non-empty deps in a new closure with different deps");
+                // It's suspicious to wrap a closure with existing dependencies in a new closure
+                // with set dependencies, although I'm not sure it would actually break anything.
+                // We panic in debug mode to catch this case.
+                debug_assert!(!matches!((self.as_ref(), &btype), (Term::Closure(idx), BindingType::Revertible(_)) if !idx.deps().is_empty()), "wrapping a closure with non-empty deps in a new closure with different deps");
+
                 cache.add(Closure { body: self, env}, btype)
             }
         };

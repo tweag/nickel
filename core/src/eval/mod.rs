@@ -346,6 +346,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 mut env,
             } = clos;
 
+
             clos = match &*shared_term {
                 Term::Sealed(_, inner, lbl) => {
                     let stack_item = self.stack.peek_op_cont();
@@ -615,7 +616,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
                     // let static_part_data = RichTerm::new(Term::Record(record.clone()), pos);
-                    let (mut static_part, dyn_fields) = crate::transform::share_normal_form::closurize_rec_record(&mut self.cache, data.clone(), dyn_fields.clone(), deps.clone(), env);
+
+                    // We must avoid re-closurizing a recursive record that is already closurized
+                    // (coming from `merge`, for example), as the current representation is broken
+                    // if we add a new indirection. This should ideally be encoded in the Rust
+                    // type, once we have a different representation for runtime evaluation,
+                    // instead of relying on invariants. But for now, we have to live with it.
+                    let (mut static_part, dyn_fields) = if !data.attrs.closurized {
+                        crate::transform::share_normal_form::closurize_rec_record(&mut self.cache, data.clone(), dyn_fields.clone(), deps.clone(), env)
+                    }
+                    else {
+                        (data.clone(), dyn_fields.clone())
+                    };
+
                     let rec_env = fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
 
                     for rt in static_part.fields.values_mut() {
