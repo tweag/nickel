@@ -141,7 +141,13 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
     })
 }
 
-pub fn closurize_rec_record<C: Cache>(cache: &mut C, data: RecordData, dyn_fields: Vec<(RichTerm, Field)>, deps: Option<RecordDeps>, env: Environment) -> (RecordData, Vec<(RichTerm, Field)>) {
+pub fn closurize_rec_record<C: Cache>(
+    cache: &mut C,
+    data: RecordData,
+    dyn_fields: Vec<(RichTerm, Field)>,
+    deps: Option<RecordDeps>,
+    env: Environment,
+) -> (RecordData, Vec<(RichTerm, Field)>) {
     let fields = data
         .fields
         .into_iter()
@@ -151,7 +157,10 @@ pub fn closurize_rec_record<C: Cache>(cache: &mut C, data: RecordData, dyn_field
                 .and_then(|deps| deps.stat_fields.get(&id.ident()))
                 .cloned();
 
-            (id, field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())))
+            (
+                id,
+                field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())),
+            )
         })
         .collect();
 
@@ -165,7 +174,10 @@ pub fn closurize_rec_record<C: Cache>(cache: &mut C, data: RecordData, dyn_field
                 .cloned();
             // Identifier expressions aren't currently allowed to recursively depend on another
             // field, so we closurize them as normal bindings.
-            (id_t.closurize(cache, env.clone()), field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())))
+            (
+                id_t.closurize(cache, env.clone()),
+                field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())),
+            )
         })
         .collect();
 

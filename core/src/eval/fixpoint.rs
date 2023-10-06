@@ -1,9 +1,6 @@
 //! Compute the fixpoint of a recursive record.
 use super::{merge::RevertClosurize, *};
-use crate::{
-    position::TermPos,
-    term::SharedTerm,
-};
+use crate::{position::TermPos, term::SharedTerm};
 
 // Update the environment of a term by extending it with a recursive environment. In the general
 // case, the term is expected to be a variable pointing to the element to be patched. Otherwise,
@@ -12,16 +9,11 @@ use crate::{
 // This function achieve the same as `patch_field`, but is somehow lower-level, as it operates on a
 // general `RichTerm` instead of a `Field`. In practice, the patched term is either the value of a
 // field or one of its pending contract.
-fn patch_term<C: Cache>(
-    cache: &mut C,
-    term: &mut RichTerm,
-    rec_env: &[(Ident, CacheIndex)],
-) {
+fn patch_term<C: Cache>(cache: &mut C, term: &mut RichTerm, rec_env: &[(Ident, CacheIndex)]) {
     if let Term::Closure(ref mut idx) = SharedTerm::make_mut(&mut term.term) {
         // TODO: Shouldn't be mutable, [`CBNCache`] abstraction is leaking.
         cache.build_cached(idx, rec_env);
-    }
-    else {
+    } else {
         debug_assert!(term.as_ref().is_constant())
     }
 }
@@ -122,11 +114,7 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 /// environment, and only add those dependencies to the environment. This avoids retaining
 /// reference-counted pointers to unused data. If no dependencies are available, conservatively add
 /// all the recursive environment. See [`crate::transform::free_vars`].
-pub fn patch_field<C: Cache>(
-    cache: &mut C,
-    field: &mut Field,
-    rec_env: &[(Ident, CacheIndex)],
-) {
+pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident, CacheIndex)]) {
     if let Some(ref mut value) = field.value {
         patch_term(cache, value, rec_env);
     }
@@ -169,11 +157,7 @@ pub fn patch_field<C: Cache>(
 /// - `record_data`: the data of the record to revert
 /// - `env`: the final environment in which the fields of the result will be closurized
 /// - `local_env`: the environment of the record represented by `record_data`
-pub fn revert<C: Cache>(
-    cache: &mut C,
-    record_data: RecordData,
-    local_env: &Environment,
-) -> Term {
+pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData, local_env: &Environment) -> Term {
     let fields = record_data
         .fields
         .into_iter()

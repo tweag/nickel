@@ -20,6 +20,7 @@ use string::NickelString;
 use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
+    eval::cache::CacheIndex,
     eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
@@ -27,7 +28,6 @@ use crate::{
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
-    eval::cache::CacheIndex,
 };
 
 use codespan::FileId;
@@ -252,22 +252,41 @@ impl PartialEq for Term {
             (Self::Str(l0), Self::Str(r0)) => l0 == r0,
             (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
             (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::FunPattern(l0, l1, l2), Self::FunPattern(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::FunPattern(l0, l1, l2), Self::FunPattern(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
             (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
-            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3,
-            (Self::LetPattern(l0, l1, l2, l3), Self::LetPattern(r0, r1, r2, r3)) => l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3,
+            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => {
+                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
+            }
+            (Self::LetPattern(l0, l1, l2, l3), Self::LetPattern(r0, r1, r2, r3)) => {
+                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
+            }
             (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Var(l0), Self::Var(r0)) => l0 == r0,
             (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
             (Self::Record(l0), Self::Record(r0)) => l0 == r0,
-            (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
-            (Self::Match { cases: l_cases, default: l_default }, Self::Match { cases: r_cases, default: r_default }) => l_cases == r_cases && l_default == r_default,
+            (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
+            (
+                Self::Match {
+                    cases: l_cases,
+                    default: l_default,
+                },
+                Self::Match {
+                    cases: r_cases,
+                    default: r_default,
+                },
+            ) => l_cases == r_cases && l_default == r_default,
             (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
             (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
-            (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::Import(l0), Self::Import(r0)) => l0 == r0,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,

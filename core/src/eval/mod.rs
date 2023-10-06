@@ -346,7 +346,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 mut env,
             } = clos;
 
-
             clos = match &*shared_term {
                 Term::Sealed(_, inner, lbl) => {
                     let stack_item = self.stack.peek_op_cont();
@@ -623,13 +622,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
-                        crate::transform::share_normal_form::closurize_rec_record(&mut self.cache, data.clone(), dyn_fields.clone(), deps.clone(), env)
-                    }
-                    else {
+                        crate::transform::share_normal_form::closurize_rec_record(
+                            &mut self.cache,
+                            data.clone(),
+                            dyn_fields.clone(),
+                            deps.clone(),
+                            env,
+                        )
+                    } else {
                         (data.clone(), dyn_fields.clone())
                     };
 
-                    let rec_env = fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
+                    let rec_env =
+                        fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
 
                     for rt in static_part.fields.values_mut() {
                         fixpoint::patch_field(&mut self.cache, rt, &rec_env);
@@ -651,48 +656,49 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // The `dyn_val` are given access to the recursive environment, but the
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
-                    let extended = dyn_fields
-                        .iter()
-                        .cloned()
-                        .fold(
-                            RichTerm::new(Term::Record(static_part.clone()), pos),
-                            |acc, (name_as_term, mut field)| {
-                                let pos = field.value.as_ref().map(|v| v.pos).unwrap_or(name_as_term.pos);
+                    let extended = dyn_fields.iter().cloned().fold(
+                        RichTerm::new(Term::Record(static_part.clone()), pos),
+                        |acc, (name_as_term, mut field)| {
+                            let pos = field
+                                .value
+                                .as_ref()
+                                .map(|v| v.pos)
+                                .unwrap_or(name_as_term.pos);
 
-                                fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
+                            fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
 
-                                let ext_kind = field.extension_kind();
-                                let Field {
-                                    metadata,
-                                    value,
-                                    pending_contracts,
-                                } = field;
+                            let ext_kind = field.extension_kind();
+                            let Field {
+                                metadata,
+                                value,
+                                pending_contracts,
+                            } = field;
 
-                                //TODO[LAZYPROP]: we should probably closurize the pending
-                                //contracts. It seems to work currently, but looks a bit fragile
-                                //with respect to refactoring/changes.
-                                let extend = mk_term::op2(
-                                    BinaryOp::DynExtend {
-                                        metadata: metadata.clone(),
-                                        pending_contracts: pending_contracts.clone(),
-                                        ext_kind,
-                                        op_kind: RecordOpKind::ConsiderAllFields,
-                                    },
-                                    name_as_term.clone(),
-                                    acc,
-                                );
+                            //TODO[LAZYPROP]: we should probably closurize the pending
+                            //contracts. It seems to work currently, but looks a bit fragile
+                            //with respect to refactoring/changes.
+                            let extend = mk_term::op2(
+                                BinaryOp::DynExtend {
+                                    metadata: metadata.clone(),
+                                    pending_contracts: pending_contracts.clone(),
+                                    ext_kind,
+                                    op_kind: RecordOpKind::ConsiderAllFields,
+                                },
+                                name_as_term.clone(),
+                                acc,
+                            );
 
-                                let result = match value {
-                                    Some(value) => RichTerm::new(
-                                        Term::App(extend, value.clone()),
-                                        pos.into_inherited(),
-                                    ),
-                                    None => extend,
-                                };
+                            let result = match value {
+                                Some(value) => RichTerm::new(
+                                    Term::App(extend, value.clone()),
+                                    pos.into_inherited(),
+                                ),
+                                None => extend,
+                            };
 
-                                result
-                            },
-                        );
+                            result
+                        },
+                    );
 
                     Closure {
                         body: extended.with_pos(pos),
@@ -730,10 +736,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .iter()
                         .map(|ctr| {
                             RuntimeContract::new(
-                                ctr.contract.clone().closurize(
-                                    &mut self.cache,
-                                    env.clone(),
-                                ),
+                                ctr.contract.clone().closurize(&mut self.cache, env.clone()),
                                 ctr.label.clone(),
                             )
                         })

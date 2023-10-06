@@ -496,10 +496,7 @@ impl Thunk {
     ///   (in particular, `a` is bound)
     /// - allocates a fresh variable, say `%1`, and binds it to the previous thunk in `env`
     /// - returns the term `%1 foo bar`
-    pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(
-        self,
-        fields: I,
-    ) -> RichTerm {
+    pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(self, fields: I) -> RichTerm {
         let deps = self.deps();
         let inner = Rc::try_unwrap(self.data)
             .map(RefCell::into_inner)

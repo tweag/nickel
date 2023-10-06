@@ -58,7 +58,7 @@ use std::fmt::Debug;
 /// The maximal number of variable links we want to unfold before abandoning the check. It should
 /// stay low, but has been fixed arbitrarily: feel fee to increase reasonably if it turns out
 /// legitimate type equalities between simple contracts are unduly rejected in practice.
-pub const MAX_GAS: u8 = 10;
+pub const MAX_GAS: u8 = 12;
 
 /// Like `std::borrow::ToOwned`, but defined as a local trait for convenience and to be implemented
 /// on the reference type directly. Beside the slightly different signature, the blanket
@@ -340,14 +340,18 @@ pub fn contract_eq<E: TermEnvironment>(
     t2: &RichTerm,
     env2: E::Ref<'_>,
 ) -> bool {
-    contract_eq_bounded::<E>(
+    // print!("Comparing for contract equality {t1} and {t2}: ");
+    let result = contract_eq_bounded::<E>(
         &mut State::new(var_uid),
         VarEq::Environment,
         t1,
         env1,
         t2,
         env2,
-    )
+    );
+
+    // println!("COMPARING result: {result}");
+    result
 }
 
 /// **Warning**: this function isn't computing a sound contract equality (it could equate contracts
@@ -444,12 +448,16 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 <E as TermEnvironment>::get_idx_then(env2, idx2, |binding2| {
                     match (binding1, binding2) {
                         (Some((t1, env1)), Some((t2, env2))) => {
+                            // println!("Comparing closures {idx1:p} and {idx2:p}. Gas: {}", state.gas);
                             // We may end up using one more gas unit if gas was exactly 1. That is
                             // not very important, and it's simpler to just ignore this case. We
                             // still return false if gas was already at zero.
                             let had_gas = state.use_gas();
                             state.use_gas();
-                            had_gas && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
+                            let result =
+                                contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2);
+                            // println!("sub_call to equality: {result}");
+                            result && had_gas
                         }
                         _ => false,
                     }
@@ -484,8 +492,10 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
         }
         (Closure(idx), _) => {
+            // println!("Extracting closure {idx:p}");
             state.use_gas()
                 && <E as TermEnvironment>::get_idx_then(env1, idx, |binding| {
+                    // println!("Calling on subterm {}, and previous {t2}", binding.map(|(rt, _)| rt.to_string()).unwrap_or("None".to_owned()));
                     binding
                         .map(|(t1, env1)| {
                             contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
@@ -494,8 +504,10 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
         }
         (_, Closure(idx)) => {
+            // println!("Extracting closure {idx:p}");
             state.use_gas()
                 && <E as TermEnvironment>::get_idx_then(env2, idx, |binding| {
+                    // println!("Calling on subterm {}, and previous {t1}", binding.map(|(rt, _)| rt.to_string()).unwrap_or("None".to_owned()));
                     binding
                         .map(|(t2, env2)| {
                             contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
@@ -512,7 +524,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 env1,
                 &r2.fields,
                 env2,
-            ) && r1.attrs == r2.attrs
+            ) && r1.attrs.open == r2.attrs.open
         }
         (RecRecord(r1, dyn_fields1, _), RecRecord(r2, dyn_fields2, _)) =>
         // We only compare records whose field structure is statically known (i.e. without dynamic
@@ -537,7 +549,9 @@ fn contract_eq_bounded<E: TermEnvironment>(
                     .iter()
                     .zip(ts2.iter())
                     .all(|(t1, t2)| contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2))
-                && attrs1 == attrs2
+                // Ideally we would compare pending contracts, but it's a bit advanced and for now
+                // we only equate arrays without additional contracts
+                && attrs1.pending_contracts.is_empty() && attrs2.pending_contracts.is_empty()
         }
         // We must compare the inner values as well as the corresponding contracts or type
         // annotations.
@@ -573,6 +587,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
             value_eq && ty_eq
         }
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
+            // println!("Comparing static access {t1}.{id1} / {t2}.{id2}");
             id1 == id2 && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
         }
         (Type(ty1), Type(ty2)) => type_eq_bounded(

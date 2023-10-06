@@ -125,7 +125,10 @@ impl RecordPattern {
             typ: TypeF::Flat(
                 Term::Record(RecordData::new(
                     self.inner().into_iter().map(Match::as_binding).collect(),
-                    RecordAttrs { open: is_open, ..Default::default() },
+                    RecordAttrs {
+                        open: is_open,
+                        ..Default::default()
+                    },
                     None,
                 ))
                 .into(),

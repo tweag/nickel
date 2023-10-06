@@ -83,7 +83,7 @@ pub fn transform_no_free_vars(
 /// of terms, etc.
 ///
 /// In those cases, the inner terms are closurized.
-pub trait Closurizable : Sized {
+pub trait Closurizable: Sized {
     /// Pack a closurizable together with its environment `env` as a closure.
     ///
     /// By default, this is just `self.closurize_as_btype(cache, env, BindingType::default())`.
@@ -196,23 +196,44 @@ impl Closurizable for RichTerm {
 }
 
 impl Closurizable for RuntimeContract {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> RuntimeContract {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> RuntimeContract {
         self.map_contract(|ctr| ctr.closurize_as_btype(cache, env, btype.clone()))
     }
 }
 
 impl Closurizable for Vec<RuntimeContract> {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Vec<RuntimeContract> {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Vec<RuntimeContract> {
         self.into_iter()
-            .map(|pending_contract| pending_contract.closurize_as_btype(cache, env.clone(), btype.clone()))
+            .map(|pending_contract| {
+                pending_contract.closurize_as_btype(cache, env.clone(), btype.clone())
+            })
             .collect()
     }
 }
 
 impl Closurizable for Field {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Field {
-        let pending_contracts = self.pending_contracts.closurize_as_btype(cache, env.clone(), btype.clone());
-        let value = self.value.map(|value| value.closurize_as_btype(cache, env, btype));
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Field {
+        let pending_contracts =
+            self.pending_contracts
+                .closurize_as_btype(cache, env.clone(), btype.clone());
+        let value = self
+            .value
+            .map(|value| value.closurize_as_btype(cache, env, btype));
 
         Field {
             metadata: self.metadata,
@@ -223,7 +244,12 @@ impl Closurizable for Field {
 }
 
 impl Closurizable for Array {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Self {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Self {
         self.into_iter()
             .map(|t| {
                 if should_share(&t.term) {
@@ -237,9 +263,15 @@ impl Closurizable for Array {
 }
 
 impl Closurizable for ArrayAttrs {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Self {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Self {
         let pending_contracts = if !self.closurized {
-            self.pending_contracts.closurize_as_btype(cache, env.clone(), btype)
+            self.pending_contracts
+                .closurize_as_btype(cache, env.clone(), btype)
         } else {
             self.pending_contracts
         };
@@ -257,7 +289,12 @@ impl Closurizable for ArrayAttrs {
 }
 
 impl Closurizable for (Array, ArrayAttrs) {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Self {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Self {
         if self.1.closurized && matches!(btype, BindingType::Normal) {
             self
         } else {
@@ -270,7 +307,12 @@ impl Closurizable for (Array, ArrayAttrs) {
 }
 
 impl Closurizable for RecordData {
-    fn closurize_as_btype<C: Cache>(self, cache: &mut C, env: Environment, btype: BindingType) -> Self {
+    fn closurize_as_btype<C: Cache>(
+        self,
+        cache: &mut C,
+        env: Environment,
+        btype: BindingType,
+    ) -> Self {
         if !self.attrs.closurized {
             // We don't closurize the sealed tail, if any, because the underlying term is a private
             // field anyway, and is supposed to be closurized already.
@@ -279,7 +321,12 @@ impl Closurizable for RecordData {
                 fields: self
                     .fields
                     .into_iter()
-                    .map(|(id, field)| (id, field.closurize_as_btype(cache, env.clone(), btype.clone())))
+                    .map(|(id, field)| {
+                        (
+                            id,
+                            field.closurize_as_btype(cache, env.clone(), btype.clone()),
+                        )
+                    })
                     .collect(),
                 attrs: self.attrs.closurized(),
                 ..self
