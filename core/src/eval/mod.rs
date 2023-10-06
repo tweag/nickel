@@ -1118,14 +1118,24 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record
+            let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+
+            // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
+            // It's a detail but it comes handy in tests, where we abuse partial equality over
+            // terms - keeping closurized to `true` would require to do the same when building the
+            // expected result, which is annoying, as closurized is initialized to false by term
+            // builders.
+            record.attrs.closurized = false;
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record
+            let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+
+            // see [^subst-closurized-false]
+            record.attrs.closurized = false;
 
             let dyn_fields = dyn_fields
                 .into_iter()
@@ -1139,12 +1149,14 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
-        Term::Array(ts, attrs) => {
+        Term::Array(ts, mut attrs) => {
             let ts = ts
                 .into_iter()
                 .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
+            // cd [^subst-closurized-false]
+            attrs.closurized = false;
             RichTerm::new(Term::Array(ts, attrs), pos)
         }
         Term::StrChunks(chunks) => {

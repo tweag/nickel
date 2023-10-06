@@ -163,9 +163,9 @@ pub fn closurize_rec_record<C: Cache>(cache: &mut C, data: RecordData, dyn_field
                 .as_ref()
                 .and_then(|deps| deps.dyn_fields.get(index))
                 .cloned();
-            // Identifiers as terms are evaluated away the first time we see a recursive record, so
-            // it's neither useful nor required to closurize them.
-            (id_t, field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())))
+            // Identifier expressions aren't currently allowed to recursively depend on another
+            // field, so we closurize them as normal bindings.
+            (id_t.closurize(cache, env.clone()), field.closurize_as_btype(cache, env.clone(), mk_binding_type(field_deps.clone())))
         })
         .collect();
 

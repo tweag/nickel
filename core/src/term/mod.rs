@@ -1894,10 +1894,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, field)| {
-                        let field = field.traverse(f, order)?;
-                        Ok((id, field))
-                    })
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 RichTerm::new(
                     Term::Record(RecordData::new(
@@ -1915,10 +1912,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
-                    .map(|(id, field)| {
-                        let field = field.traverse(f, order)?;
-                        Ok((id, field))
-                    })
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
@@ -1968,6 +1962,7 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Type(ty) => {
                 RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
             }
+            Term::Closure(_) => panic!("traverse breakpoint"),
             _ => rt,
         });
 
@@ -2001,7 +1996,6 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Var(_)
-            | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -2049,6 +2043,7 @@ impl Traverse<RichTerm> for RichTerm {
                 .traverse_ref(f, state)
                 .or_else(|| annot.traverse_ref(f, state)),
             Term::Type(ty) => ty.traverse_ref(f, state),
+            Term::Closure(_) => panic!("traverse_ref breakpoint"),
         }
     }
 }
