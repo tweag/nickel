@@ -551,6 +551,10 @@ impl Thunk {
     pub fn deps(&self) -> FieldDeps {
         self.data.borrow().deps()
     }
+
+    pub fn ptr_eq(this: &Thunk, that: &Thunk) -> bool {
+        Rc::ptr_eq(&this.data, &that.data)
+    }
 }
 
 impl std::fmt::Pointer for Thunk {
