@@ -55,11 +55,8 @@ jobs:
     - name: Run all checks
       run: |
           # debug
-          # doesn't work because path-info only works on successfully built installables
-          # nix path-info .#nix
           echo "========================"
-          # nix derivation show $(nix path-info .#nix)
-          nix derivation show /nix/store/y55r5nm94s0rq1l5lyf15fy85avlkp3k-nix-2.18.0pre20230913_b99fdcf.drv || echo "not a valid store path"
+          nix derivation show $(nix eval --raw .#nix.drvPath)
           echo "========================"
           # see https://github.com/NixOS/nix/issues/8949 for why we redirect to
           # an output file. Everything else is just capturing the error code
