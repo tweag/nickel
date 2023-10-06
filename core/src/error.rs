@@ -1796,11 +1796,16 @@ impl IntoDiagnostics<FileId> for ParseError {
                     secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
                     primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
                 ]),
-            ParseError::DisabledFeature { feature, span } =>
-                Diagnostic::error()
-                    .with_message("interpreter compiled without required features")
-                    .with_labels(vec![primary(&span).with_message(format!("this syntax is only supported with the `{}` feature enabled", feature))])
-                    .with_notes(vec![format!("Recompile nickel with `--features {}`", feature)]),
+            ParseError::DisabledFeature { feature, span } => Diagnostic::error()
+                .with_message("interpreter compiled without required features")
+                .with_labels(vec![primary(&span).with_message(format!(
+                    "this syntax is only supported with the `{}` feature enabled",
+                    feature
+                ))])
+                .with_notes(vec![format!(
+                    "Recompile nickel with `--features {}`",
+                    feature
+                )]),
         };
 
         vec![diagnostic]
