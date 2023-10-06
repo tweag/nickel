@@ -56,6 +56,8 @@ jobs:
       run: |
           # debug
           echo "========================"
+          nix-env --version
+          echo "========================"
           nix derivation show $(nix eval --raw .#nix.drvPath)
           echo "========================"
           # see https://github.com/NixOS/nix/issues/8949 for why we redirect to
