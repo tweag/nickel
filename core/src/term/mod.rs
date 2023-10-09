@@ -1345,7 +1345,7 @@ pub enum RecordExtKind {
 /// trying to map over such an empty value). So they are most of the time silently ignored.
 ///
 /// However, it's sometimes useful and even necessary to take them into account. This behavior is
-/// controled by [RecordOpKind].
+/// controlled by [RecordOpKind].
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
 pub enum RecordOpKind {
     #[default]
