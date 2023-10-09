@@ -1971,7 +1971,7 @@
         "%
       = fun field content r =>
         let r =
-          if %has_field_all% field r then
+          if %has_field% field r then
             %record_remove% field r
           else
             r
