@@ -1347,9 +1347,8 @@ pub enum RecordExtKind {
 /// However, it's sometimes useful and even necessary to take them into account, such as to check
 /// if a field is present before inserting it - otherwise, `has_field` would return `false` but the
 /// insertion would still fail, much to the user's surprise.
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub enum RecordOpKind {
-    #[default]
     IgnoreEmptyOpt,
     ConsderAllFields,
 }
@@ -1426,10 +1425,11 @@ pub enum BinaryOp {
         metadata: FieldMetadata,
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
+        op_kind: RecordOpKind,
     },
 
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
-    DynRemove(),
+    DynRemove(RecordOpKind),
 
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
@@ -1519,7 +1519,7 @@ impl fmt::Display for BinaryOp {
             Unseal() => write!(f, "unseal"),
             GoField() => write!(f, "go_field"),
             DynExtend { .. } => write!(f, "record_insert"),
-            DynRemove() => write!(f, "record_remove"),
+            DynRemove(_) => write!(f, "record_remove"),
             DynAccess() => write!(f, "dyn_access"),
             HasField(_) => write!(f, "has_field"),
             ArrayConcat() => write!(f, "array_concat"),
