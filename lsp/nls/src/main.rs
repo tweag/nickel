@@ -5,8 +5,10 @@ use anyhow::Result;
 use log::debug;
 use lsp_server::Connection;
 
+mod actions;
 mod analysis;
 mod cache;
+mod command;
 mod diagnostic;
 mod error;
 mod field_walker;

@@ -1,5 +1,5 @@
 use codespan::{ByteIndex, FileId};
-use lsp_types::TextDocumentPositionParams;
+use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
     cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
@@ -21,6 +21,8 @@ pub trait CacheExt {
 
     fn position(&self, lsp_pos: &TextDocumentPositionParams)
         -> Result<RawPos, crate::error::Error>;
+
+    fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error>;
 }
 
 impl CacheExt for Cache {
@@ -106,18 +108,21 @@ impl CacheExt for Cache {
         }
     }
 
+    fn file_id(&self, uri: &Url) -> Result<Option<FileId>, crate::error::Error> {
+        let path = uri
+            .to_file_path()
+            .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
+        Ok(self.id_of(&SourcePath::Path(path)))
+    }
+
     fn position(
         &self,
         lsp_pos: &TextDocumentPositionParams,
     ) -> Result<RawPos, crate::error::Error> {
         let uri = &lsp_pos.text_document.uri;
-        let path = uri
-            .to_file_path()
-            .map_err(|_| crate::error::Error::FileNotFound(uri.clone()))?;
         let file_id = self
-            .id_of(&SourcePath::Path(path))
+            .file_id(uri)?
             .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
-
         let pos = lsp_pos.position;
         let idx =
             codespan_lsp::position_to_byte_index(self.files(), file_id, &pos).map_err(|_| {
