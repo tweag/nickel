@@ -1518,8 +1518,14 @@ impl fmt::Display for BinaryOp {
             ApplyContract() => write!(f, "apply_contract"),
             Unseal() => write!(f, "unseal"),
             GoField() => write!(f, "go_field"),
-            DynExtend { op_kind: RecordOpKind::IgnoreEmptyOpt, ..} => write!(f, "record_insert"),
-            DynExtend { op_kind: RecordOpKind::ConsiderAllFields, ..} => write!(f, "record_insert_all"),
+            DynExtend {
+                op_kind: RecordOpKind::IgnoreEmptyOpt,
+                ..
+            } => write!(f, "record_insert"),
+            DynExtend {
+                op_kind: RecordOpKind::ConsiderAllFields,
+                ..
+            } => write!(f, "record_insert_all"),
             DynRemove(RecordOpKind::IgnoreEmptyOpt) => write!(f, "record_remove"),
             DynRemove(RecordOpKind::ConsiderAllFields) => write!(f, "record_remove_all"),
             DynAccess() => write!(f, "dyn_access"),
