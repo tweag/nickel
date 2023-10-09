@@ -841,7 +841,8 @@ BOpPre: BinaryOp = {
     "unseal" => BinaryOp::Unseal(),
     "seal" => BinaryOp::Seal(),
     "go_field" => BinaryOp::GoField(),
-    "has_field" => BinaryOp::HasField(),
+    "has_field" => BinaryOp::HasField(RecordOpKind::IgnoreEmptyOpt),
+    "has_field_all" => BinaryOp::HasField(RecordOpKind::ConsderAllFields),
     "elem_at" => BinaryOp::ArrayElemAt(),
     "hash" => BinaryOp::Hash(),
     "serialize" => BinaryOp::Serialize(),
@@ -1052,6 +1053,7 @@ extern {
         "lookup_type_variable" => Token::Normal(NormalToken::LookupTypeVar),
 
         "has_field" => Token::Normal(NormalToken::HasField),
+        "has_field_all" => Token::Normal(NormalToken::HasFieldAll),
         "map" => Token::Normal(NormalToken::Map),
         "generate" => Token::Normal(NormalToken::ArrayGen),
         "elem_at" => Token::Normal(NormalToken::ElemAt),

@@ -301,7 +301,7 @@ pub fn get_bop_type(
             )
         }
         // forall a. Str -> {_: a} -> Bool
-        BinaryOp::HasField() => {
+        BinaryOp::HasField(_) => {
             let ty_elt = state.table.fresh_type_uvar(var_level);
             (
                 mk_uniftype::str(),

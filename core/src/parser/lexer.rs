@@ -248,6 +248,8 @@ pub enum NormalToken<'input> {
 
     #[token("%has_field%")]
     HasField,
+    #[token("%has_field_all%")]
+    HasFieldAll,
     #[token("%map%")]
     Map,
     #[token("%elem_at%")]

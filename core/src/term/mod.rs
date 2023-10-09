@@ -1340,6 +1340,20 @@ pub enum RecordExtKind {
     WithoutValue,
 }
 
+/// A flavor for record operations. By design, we want empty optional values to be transparent for
+/// record operations, because they would otherwise make many operations fail spuriously (e.g.
+/// trying to map over such an empty value). So they are most of the time silently ignored.
+///
+/// However, it's sometimes useful and even necessary to take them into account, such as to check
+/// if a field is present before inserting it - otherwise, `has_field` would return `false` but the
+/// insertion would still fail, much to the user's surprise.
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
+pub enum RecordOpKind {
+    #[default]
+    IgnoreEmptyOpt,
+    ConsderAllFields,
+}
+
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
@@ -1421,7 +1435,7 @@ pub enum BinaryOp {
     DynAccess(),
 
     /// Test if a record has a specific field.
-    HasField(),
+    HasField(RecordOpKind),
 
     /// Concatenate two arrays.
     ArrayConcat(),
@@ -1507,7 +1521,7 @@ impl fmt::Display for BinaryOp {
             DynExtend { .. } => write!(f, "record_insert"),
             DynRemove() => write!(f, "record_remove"),
             DynAccess() => write!(f, "dyn_access"),
-            HasField() => write!(f, "has_field"),
+            HasField(_) => write!(f, "has_field"),
             ArrayConcat() => write!(f, "array_concat"),
             ArrayElemAt() => write!(f, "elem_at"),
             Merge(_) => write!(f, "merge"),

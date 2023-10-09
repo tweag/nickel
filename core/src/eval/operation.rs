@@ -27,8 +27,7 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, RecordExtKind, RichTerm,
-        RuntimeContract, SharedTerm, StrChunk, Term, UnaryOp,
+        *,
     },
     transform::Closurizable,
 };
@@ -1737,13 +1736,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("record_remove", "String", 1, t1, pos1))
                 }
             },
-            BinaryOp::HasField() => match_sharedterm! {t1, with {
+            BinaryOp::HasField(op_kind) => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
                                 Term::Bool(matches!(
                                     record.fields.get(&LocIdent::from(id.into_inner())),
-                                    Some(field) if !field.is_empty_optional()
+                                    Some(field) if matches!(op_kind, RecordOpKind::ConsderAllFields) || !field.is_empty_optional()
                                 )),
                                 pos_op_inh,
                             )))
