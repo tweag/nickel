@@ -1664,7 +1664,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     LocIdent::from(id),
                                     Field { value, metadata, pending_contracts }
                                 ) {
-                                    Some(t) if matches!(op_kind, RecordOpKind::ConsderAllFields)
+                                    Some(t) if matches!(op_kind, RecordOpKind::ConsiderAllFields)
                                         || !t.is_empty_optional() =>
                                         Err(EvalError::Other(format!(
                                             "record_insert: \
@@ -1743,7 +1743,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             Ok(Closure::atomic_closure(RichTerm::new(
                                 Term::Bool(matches!(
                                     record.fields.get(&LocIdent::from(id.into_inner())),
-                                    Some(field) if matches!(op_kind, RecordOpKind::ConsderAllFields) || !field.is_empty_optional()
+                                    Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                                 )),
                                 pos_op_inh,
                             )))

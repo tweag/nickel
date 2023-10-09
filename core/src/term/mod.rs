@@ -1344,13 +1344,13 @@ pub enum RecordExtKind {
 /// record operations, because they would otherwise make many operations fail spuriously (e.g.
 /// trying to map over such an empty value). So they are most of the time silently ignored.
 ///
-/// However, it's sometimes useful and even necessary to take them into account, such as to check
-/// if a field is present before inserting it - otherwise, `has_field` would return `false` but the
-/// insertion would still fail, much to the user's surprise.
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+/// However, it's sometimes useful and even necessary to take them into account. This behavior is
+/// controled by [RecordOpKind].
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
 pub enum RecordOpKind {
+    #[default]
     IgnoreEmptyOpt,
-    ConsderAllFields,
+    ConsiderAllFields,
 }
 
 /// Primitive binary operators
