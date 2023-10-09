@@ -303,7 +303,12 @@
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
             buildInputs = with pkgs; [
-              nix-input.packages.${system}.default
+              (nix-input.packages.${system}.default.overrideAttrs
+                # SEE: https://github.com/NixOS/nix/issues/9107
+                (_: lib.optionalAttrs (system == "x86_64-darwin") {
+                  doCheck = false;
+                })
+              )
               boost # implicit dependency of nix
             ];
 
@@ -640,7 +645,6 @@
     in
     rec {
       packages = {
-        nix = nix-input.packages.${system}.default;
         inherit (mkCraneArtifacts { })
           nickel-lang-core
           nickel-lang-cli
