@@ -68,7 +68,11 @@ pub mod internals {
     generate_accessor!(bool);
     generate_accessor!(string);
     generate_accessor!(array);
+    generate_accessor!(array_dyn);
     generate_accessor!(func);
+    generate_accessor!(func_dom);
+    generate_accessor!(func_codom);
+    generate_accessor!(func_dyn);
     generate_accessor!(forall_var);
     generate_accessor!(forall);
     generate_accessor!(fail);
@@ -77,6 +81,7 @@ pub mod internals {
     generate_accessor!(record);
     generate_accessor!(dict_type);
     generate_accessor!(dict_contract);
+    generate_accessor!(dict_dyn);
     generate_accessor!(record_extend);
     generate_accessor!(forall_tail);
     generate_accessor!(dyn_tail);

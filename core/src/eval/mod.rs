@@ -703,10 +703,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // avoiding repeated contract application. Annotations could then be a good way of
                 // remembering which contracts have been applied to a value.
                 Term::Annotated(annot, inner) => {
-                    let contracts = annot.all_contracts()?;
+                    // We apply the contract coming from the static type annotation separately as
+                    // it is optimized.
+                    let static_contrat = annot.static_contract();
+                    let contracts = annot.pending_contracts()?;
                     let pos = inner.pos;
+                    let inner = inner.clone();
+
+                    let inner_with_static = if let Some(static_ctr) = static_contrat {
+                        static_ctr?.apply(inner, pos)
+                    } else {
+                        inner
+                    };
+
                     let inner_with_ctr =
-                        RuntimeContract::apply_all(inner.clone(), contracts.into_iter(), pos);
+                        RuntimeContract::apply_all(inner_with_static, contracts.into_iter(), pos);
 
                     Closure {
                         body: inner_with_ctr,
