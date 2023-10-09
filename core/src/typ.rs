@@ -929,17 +929,18 @@ impl Type {
 
     /// Static typing guarantees make some of the contract checks useless, assuming that blame
     /// safety holds. This function simplifies `self` for contract generation, assuming it is part
-    /// of a static type annotation, for contract generation by removing some of these useless
-    /// checks.
+    /// of a static type annotation, by eliding some of these useless subcontracts.
     ///
     /// # Simplifications
     ///
     /// - `forall`s in positive positions are removed, and the corresponding type variable is
-    /// turned to a `Dyn` contract, with the hope of making [Self::contract()] to generate
-    /// optimized contracts in return (for example, `Array Dyn` becomes a constant-time overhead,
-    /// while `Array a` is linear in the size of the array).
-    /// - All positive occurrences of first order types are turned to `Dyn` contracts.
-    fn optimize_static_ctr(self) -> Self {
+    ///   substituted for a `Dyn` contract. In consequence, [Self::contract()] will generate
+    ///   optimized contracts as well (for example, `forall a. Array a -> a` becomes `Array Dyn ->
+    ///   Dyn`, where `Array Dyn` will be translated to `$array_dyn` which has a constant-time
+    ///   overhead while `Array a` is linear in the size of the array.
+    /// - All positive occurrences of first order contracts (that is, anything but a function type)
+    /// are turned to `Dyn` contracts.
+    fn optimize_static(self) -> Self {
         fn optimize_rrows(
             rrows: RecordRows,
             vars_elide: &HashSet<LocIdent>,
@@ -1008,17 +1009,15 @@ impl Type {
         optimize(self, &HashSet::new(), Polarity::Positive)
     }
 
-    /// Return the contract corresponding to a type part of a static type annotation, either as a function or a record. Said
+    /// Return the contract corresponding to a type which appears in a static type annotation. Said
     /// contract must then be applied using the `ApplyContract` primitive operation.
     ///
     /// [contract_static] uses the fact that the checked term has been typechecked to optimize the
     /// generated contract.
     pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
-        // println!("Optimizing contract: {self}");
-        // println!("Optimized: {}", self.clone().optimize_static_ctr());
-        self.optimize_static_ctr().subcontract(HashMap::new(), Polarity::Positive, &mut sy)
-        // self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+        self.optimize_static()
+            .subcontract(HashMap::new(), Polarity::Positive, &mut sy)
     }
 
     /// Return the contract corresponding to a type, either as a function or a record. Said
@@ -1060,9 +1059,12 @@ impl Type {
             TypeF::Number => internals::num(),
             TypeF::Bool => internals::bool(),
             TypeF::String => internals::string(),
+            // Array Dyn is specialied to array_dyn, which is constant time
             TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
             TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
             TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
+            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
+            // to the corresponding builtin contract.
             TypeF::Arrow(ref s, ref t) if matches!((&s.typ, &t.typ), (TypeF::Dyn, TypeF::Dyn)) => {
                 internals::func_dyn()
             }
@@ -1121,6 +1123,8 @@ impl Type {
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
+            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
+            // `dict_dyn`.
             TypeF::Dict {
                 ref type_fields,
                 flavour: _,
