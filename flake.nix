@@ -20,6 +20,7 @@
       url = "github:tweag/topiary";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-input.url = "github:nixos/nix";
   };
 
   nixConfig = {
@@ -35,6 +36,7 @@
     , rust-overlay
     , crane
     , topiary
+    , nix-input
     }:
     let
       SYSTEMS = [
@@ -184,6 +186,7 @@
           snapFilter = mkFilter ".*snap$";
           scmFilter = mkFilter ".*scm$";
           mdFilter = mkFilter ".*md$"; # include markdown files for checking snippets in the documentation
+          cxxFilter = mkFilter ".*(cc|hh)$";
           importsFilter = mkFilter ".*/core/tests/integration/imports/imported/.*$"; # include all files that are imported in tests
 
           infraFilter = mkFilter ".*/infra/.*$";
@@ -201,6 +204,7 @@
               snapFilter
               scmFilter
               mdFilter
+              cxxFilter
               filterCargoSources
               importsFilter
             ] && !(builtins.any (filter: filter path type) [
@@ -297,7 +301,16 @@
             '';
             # pyo3 needs a Python interpreter in the build environment
             # https://pyo3.rs/v0.17.3/building_and_distribution#configuring-the-python-version
-            buildInputs = [ pkgs.python3 ];
+            nativeBuildInputs = with pkgs; [ pkg-config python3 ];
+            buildInputs = with pkgs; [
+              (nix-input.packages.${system}.default.overrideAttrs
+                # SEE: https://github.com/NixOS/nix/issues/9107
+                (_: lib.optionalAttrs (system == "x86_64-darwin") {
+                  doCheck = false;
+                })
+              )
+              boost # implicit dependency of nix
+            ];
 
             # seems to be needed for consumer cargoArtifacts to be able to use
             # zstd mode properly
@@ -413,7 +426,7 @@
           # Check that documentation builds without warnings or errors
           checkRustDoc = craneLib.cargoDoc {
             inherit pname src version cargoArtifacts env;
-            inherit (cargoArtifactsDeps) buildInputs;
+            inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
             RUSTDOCFLAGS = "-D warnings";
 
@@ -434,7 +447,7 @@
 
           clippy = craneLib.cargoClippy {
             inherit pname src cargoArtifacts env;
-            inherit (cargoArtifactsDeps) buildInputs;
+            inherit (cargoArtifactsDeps) nativeBuildInputs buildInputs;
 
             cargoExtraArgs = cargoBuildExtraArgs;
             cargoClippyExtraArgs = "--all-features --all-targets --workspace -- --deny warnings --allow clippy::new-without-default --allow clippy::match_like_matches_macro";

@@ -9,6 +9,11 @@ keywords.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
+# Maybe we should have the nix bindings in a separate -sys crate. maybe we
+# should even have separate crates for "nix-store", "nix-cmd", "nix-expr", "nix-
+# main", since they're separate libraries, but that seems a bit over the top.
+# SEE: https://kornel.ski/rust-sys-crate
+links = "nix"
 
 [lib]
 bench = false
@@ -21,9 +26,12 @@ repl-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde_repr"]
 doc = ["dep:comrak"]
 format = ["dep:topiary", "dep:topiary-queries", "dep:tree-sitter-nickel"]
 metrics = ["dep:metrics"]
+nix-experimental = [ "dep:cxx", "dep:cxx-build", "dep:pkg-config" ]
 
 [build-dependencies]
 lalrpop.workspace = true
+cxx-build = { workspace = true, optional = true }
+pkg-config = { workspace = true, optional = true }
 
 [dependencies]
 lalrpop-util.workspace = true
@@ -32,6 +40,7 @@ simple-counter.workspace = true
 clap = { workspace = true, features = ["derive"] }
 codespan.workspace = true
 codespan-reporting.workspace = true
+cxx = { workspace = true, optional = true }
 logos.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

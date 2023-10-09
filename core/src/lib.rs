@@ -7,6 +7,8 @@ pub mod error;
 pub mod eval;
 pub mod identifier;
 pub mod label;
+#[cfg(feature = "nix-experimental")]
+pub mod nix_ffi;
 pub mod parser;
 pub mod position;
 pub mod pretty;

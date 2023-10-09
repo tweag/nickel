@@ -113,7 +113,10 @@ pub enum ParseError {
     ///   e.g. in the signature `forall r. { ; r } -> r`,
     /// - a variable is used as both a record and enum row variable, e.g. in the
     ///   signature `forall r. [| ; r |] -> { ; r }`.
-    TypeVariableKindMismatch { ty_var: LocIdent, span: RawSpan },
+    TypeVariableKindMismatch {
+        ty_var: LocIdent,
+        span: RawSpan,
+    },
     /// A record literal, which isn't a record type, has a field with a type annotation but without
     /// a definition. While we could technically handle this situation, this is most probably an
     /// error from the user, because this type annotation is useless and, maybe non-intuitively,
@@ -133,5 +136,9 @@ pub enum ParseError {
         field_span: RawSpan,
         /// The position of the type annotation.
         annot_span: RawSpan,
+    },
+    DisabledFeature {
+        feature: String,
+        span: RawSpan,
     },
 }

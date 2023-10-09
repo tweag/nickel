@@ -499,6 +499,8 @@ pub enum ParseError {
         /// The previous instance of the duplicated identifier.
         prev_ident: LocIdent,
     },
+    /// There was an attempt to use a feature that hasn't been enabled
+    DisabledFeature { feature: String, span: RawSpan },
 }
 
 /// An error occurring during the resolution of an import.
@@ -699,6 +701,9 @@ impl ParseError {
                 InternalParseError::DuplicateIdentInRecordPattern { ident, prev_ident } => {
                     ParseError::DuplicateIdentInRecordPattern { ident, prev_ident }
                 }
+                InternalParseError::DisabledFeature { feature, span } => {
+                    ParseError::DisabledFeature { feature, span }
+                }
             },
         }
     }
@@ -763,6 +768,12 @@ impl ParseError {
                 end: ByteIndex(span.end as u32) + ByteOffset::from(1),
             }),
         )
+    }
+
+    #[cfg(feature = "nix-experimental")]
+    pub fn from_nix(error: &str, _file_id: FileId) -> Self {
+        // Span is shown in the nix error message
+        ParseError::ExternalFormatError(String::from("nix"), error.to_string(), None)
     }
 }
 
@@ -1785,6 +1796,16 @@ impl IntoDiagnostics<FileId> for ParseError {
                     secondary(&prev_ident.pos.unwrap()).with_message("previous binding here"),
                     primary(&ident.pos.unwrap()).with_message("duplicated binding here"),
                 ]),
+            ParseError::DisabledFeature { feature, span } => Diagnostic::error()
+                .with_message("interpreter compiled without required features")
+                .with_labels(vec![primary(&span).with_message(format!(
+                    "this syntax is only supported with the `{}` feature enabled",
+                    feature
+                ))])
+                .with_notes(vec![format!(
+                    "Recompile nickel with `--features {}`",
+                    feature
+                )]),
         };
 
         vec![diagnostic]

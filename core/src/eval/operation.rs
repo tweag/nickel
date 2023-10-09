@@ -12,6 +12,9 @@ use super::{
     subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
 };
 
+#[cfg(feature = "nix-experimental")]
+use crate::nix_ffi;
+
 use crate::{
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
@@ -1154,6 +1157,30 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } else {
                     Err(mk_type_error!("label_push_diag", "Label"))
                 }}
+            }
+            #[cfg(feature = "nix-experimental")]
+            UnaryOp::EvalNix() => {
+                if let Term::Str(s) = &*t {
+                    let json = nix_ffi::eval_to_json(&String::from(s)).map_err(|e| {
+                        EvalError::Other(
+                            format!("nix code failed to evaluate:\n {}", e.what()),
+                            pos,
+                        )
+                    })?;
+                    Ok(Closure::atomic_closure(
+                        serde_json::from_str(&json).map_err(|e| {
+                            EvalError::Other(format!("Nix produced invalid json: {}", e), pos)
+                        })?,
+                    ))
+                } else {
+                    // Not using mk_type_error! because of a non-uniform message
+                    Err(EvalError::TypeError(
+                        String::from("String"),
+                        String::from("eval_nix takes a string of nix code as an argument"),
+                        arg_pos,
+                        RichTerm { term: t, pos },
+                    ))
+                }
             }
         }
     }

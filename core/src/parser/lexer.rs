@@ -320,6 +320,8 @@ pub enum NormalToken<'input> {
     LabelPushDiag,
     #[token("%array_slice%")]
     ArraySlice,
+    #[token("%eval_nix%")]
+    EvalNix,
 
     #[token("{")]
     LBrace,

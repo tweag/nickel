@@ -667,7 +667,22 @@ UOp: UnaryOp = {
     "record_empty_with_tail" => UnaryOp::RecordEmptyWithTail(),
     "trace" => UnaryOp::Trace(),
     "label_push_diag" => UnaryOp::LabelPushDiag(),
-};
+    <l: @L> "eval_nix" <r: @R> =>? {
+        #[cfg(feature = "nix-experimental")]
+        {
+            Ok(UnaryOp::EvalNix())
+        }
+        #[cfg(not(feature = "nix-experimental"))]
+        {
+            Err(lalrpop_util::ParseError::User {
+                error: ParseError::DisabledFeature {
+                    feature: String::from("nix-experimental"),
+                    span: mk_span(src_id, l, r),
+                }
+            })
+        }
+    }
+}
 
 MatchCase: MatchCase = {
     <id: EnumTag> "=>" <t: Term> => MatchCase::Normal(id, t),
@@ -1087,6 +1102,7 @@ extern {
         "label_append_note" => Token::Normal(NormalToken::LabelAppendNote),
         "label_push_diag" => Token::Normal(NormalToken::LabelPushDiag),
         "array_slice" => Token::Normal(NormalToken::ArraySlice),
+        "eval_nix" => Token::Normal(NormalToken::EvalNix),
 
         "{" => Token::Normal(NormalToken::LBrace),
         "}" => Token::Normal(NormalToken::RBrace),

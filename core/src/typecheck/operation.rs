@@ -207,6 +207,9 @@ pub fn get_uop_type(
         // Morally: Lbl -> Lbl
         // Actual: Dyn -> Dyn
         UnaryOp::LabelPushDiag() => (mk_uniftype::dynamic(), mk_uniftype::dynamic()),
+        // Str -> Dyn
+        #[cfg(feature = "nix-experimental")]
+        UnaryOp::EvalNix() => (mk_uniftype::str(), mk_uniftype::dynamic()),
     })
 }
 
