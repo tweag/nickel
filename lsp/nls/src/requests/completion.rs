@@ -5,7 +5,7 @@ use nickel_lang_core::{
     cache::{self, InputFormat},
     identifier::Ident,
     position::RawPos,
-    term::{BinaryOp, RichTerm, Term, UnaryOp},
+    term::{RichTerm, Term, UnaryOp},
 };
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -119,12 +119,6 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
     let resolver = FieldResolver::new(server);
     let mut items: Vec<_> = env
         .iter_elems()
-        // The name `internals` is always in scope, but let's not advertise the fact. We do want
-        // to complete `internals` if someone else uses that name, so we only filter out the
-        // `internals` that doesn't have a position -- anything user-defined should have one.
-        .filter(|(_, def_with_path)| {
-            def_with_path.ident.ident != "internals".into() || def_with_path.ident.pos.is_def()
-        })
         .map(|(_, def_with_path)| def_with_path.completion_item())
         .collect();
 
@@ -144,38 +138,13 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
     // Iterate through all ancestors of our term, looking for identifiers that are "in scope"
     // because they're in an uncle/aunt/cousin that gets merged into our direct ancestors.
     if let Some(mut parents) = server.analysis.get_parent_chain(rt) {
-        // We're only interested in adding identifiers from terms that are records or
-        // merges/annotations of records. But actually we can skip the records, because any
-        // records that are our direct ancestor have already contributed to `env`.
-        let is_env_term = |rt: &RichTerm| {
-            matches!(
-                rt.as_ref(),
-                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _) | Term::RecRecord(..)
-            )
-        };
+        while let Some(p) = parents.next_merge() {
+            let path = parents.path().unwrap_or_default();
 
-        let is_merge_term = |rt: &RichTerm| {
-            matches!(
-                rt.as_ref(),
-                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
-            )
-        };
-
-        while let Some(p) = parents.next() {
-            // If a parent and a grandparent were both merges, we can skip the parent
-            // because the grandparent will have a superset of its fields. This prevents
-            // quadratic behavior on long chains of merges.
-            if let Some(gp) = parents.peek_gp() {
-                if is_merge_term(gp) {
-                    continue;
-                }
-            }
-
-            if is_env_term(&p) {
-                let path = parents.path().unwrap_or_default();
-                let records = resolver.resolve_term_path(&p, path.iter().rev().copied());
-                items.extend(records.iter().flat_map(FieldHaver::completion_items));
-            }
+            // TODO: This adds our merge "cousins" to the environment, but we should also
+            // be adding our merge "uncles" and "great-uncles".
+            let records = resolver.resolve_term_path(&p, path.iter().rev().copied());
+            items.extend(records.iter().flat_map(FieldHaver::completion_items));
         }
     }
 

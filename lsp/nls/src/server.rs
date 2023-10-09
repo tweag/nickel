@@ -153,6 +153,7 @@ impl Server {
                     value: Some(term.term.clone()),
                     path: Vec::new(),
                     metadata: None,
+                    parent_record: None,
                 };
                 self.initial_term_env.insert(name, def);
             }

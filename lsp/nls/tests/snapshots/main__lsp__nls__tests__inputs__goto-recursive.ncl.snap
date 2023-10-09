@@ -1,0 +1,16 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+[file:///main.ncl:0:3-0:4, file:///main.ncl:0:23-0:24]
+[file:///main.ncl:0:3-0:4, file:///main.ncl:0:23-0:24]
+[file:///main.ncl:0:3-0:4, file:///main.ncl:0:23-0:24]
+[file:///main.ncl:0:13-0:14, file:///main.ncl:0:27-0:28]
+[file:///main.ncl:0:13-0:14, file:///main.ncl:0:27-0:28]
+[file:///main.ncl:0:13-0:14, file:///main.ncl:0:27-0:28]
+[file:///main.ncl:0:13-0:14, file:///main.ncl:0:27-0:28]
+[file:///main.ncl:0:13-0:14, file:///main.ncl:0:27-0:28]
+file:///main.ncl:0:9-0:10
+file:///main.ncl:0:9-0:10
+file:///main.ncl:0:9-0:10
+

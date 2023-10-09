@@ -39,10 +39,11 @@ trait EnvExt {
         id: impl Into<LocIdent>,
         val: Option<impl Into<TermAtPath>>,
         meta: Option<FieldMetadata>,
+        parent_record: Option<RichTerm>,
     );
 
     fn def_noval(&mut self, id: impl Into<LocIdent>, meta: Option<FieldMetadata>) {
-        self.def(id, None::<TermAtPath>, meta);
+        self.def(id, None::<TermAtPath>, meta, None);
     }
 }
 
@@ -52,6 +53,7 @@ impl EnvExt for Environment {
         id: impl Into<LocIdent>,
         val: Option<impl Into<TermAtPath>>,
         meta: Option<FieldMetadata>,
+        parent_record: Option<RichTerm>,
     ) {
         let ident = id.into();
         let (term, path) = val
@@ -65,6 +67,7 @@ impl EnvExt for Environment {
                 value: term.map(Into::into),
                 metadata: meta,
                 path: path.unwrap_or_default(),
+                parent_record,
             },
         );
     }
@@ -144,6 +147,7 @@ impl UsageLookup {
         id: impl Into<LocIdent>,
         val: Option<impl Into<TermAtPath>>,
         meta: Option<FieldMetadata>,
+        parent_record: Option<RichTerm>,
     ) {
         let ident = id.into();
         let (term, path) = val
@@ -158,6 +162,7 @@ impl UsageLookup {
                 value: term.map(Into::into),
                 metadata: meta,
                 path: path.unwrap_or_default(),
+                parent_record,
             },
         );
     }
@@ -190,8 +195,8 @@ impl UsageLookup {
                     }
                     Term::Let(id, val, body, attrs) => {
                         let mut new_env = env.clone();
-                        new_env.def(*id, Some(val.clone()), None);
-                        self.add_sym(*id, Some(val.clone()), None);
+                        new_env.def(*id, Some(val.clone()), None, None);
+                        self.add_sym(*id, Some(val.clone()), None, None);
 
                         self.fill(val, if attrs.rec { &new_env } else { env });
                         self.fill(body, &new_env);
@@ -201,8 +206,8 @@ impl UsageLookup {
                     Term::LetPattern(maybe_id, pat, val, _body) => {
                         let mut new_env = env.clone();
                         if let Some(id) = maybe_id {
-                            new_env.def(*id, Some(val.clone()), None);
-                            self.add_sym(*id, Some(val.clone()), None);
+                            new_env.def(*id, Some(val.clone()), None, None);
+                            self.add_sym(*id, Some(val.clone()), None, None);
                         }
 
                         for m in &pat.matches {
@@ -212,8 +217,8 @@ impl UsageLookup {
                                     term: val.clone(),
                                     path,
                                 };
-                                new_env.def(id, Some(term.clone()), Some(field.metadata));
-                                self.add_sym(id, Some(val.clone()), None);
+                                new_env.def(id, Some(term.clone()), Some(field.metadata), None);
+                                self.add_sym(id, Some(val.clone()), None, None);
                             }
                         }
                         TraverseControl::ContinueWithScope(new_env)
@@ -224,8 +229,18 @@ impl UsageLookup {
                         // Records are recursive and the order of fields is unimportant, so define
                         // all the fields in the environment and then recurse into their values.
                         for (id, field) in &data.fields {
-                            new_env.def(*id, field.value.clone(), Some(field.metadata.clone()));
-                            self.add_sym(*id, field.value.clone(), Some(field.metadata.clone()));
+                            new_env.def(
+                                *id,
+                                field.value.clone(),
+                                Some(field.metadata.clone()),
+                                Some(term.clone()),
+                            );
+                            self.add_sym(
+                                *id,
+                                field.value.clone(),
+                                Some(field.metadata.clone()),
+                                Some(term.clone()),
+                            );
                         }
 
                         TraverseControl::ContinueWithScope(new_env)

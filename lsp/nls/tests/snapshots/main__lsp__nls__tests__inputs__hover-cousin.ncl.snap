@@ -1,0 +1,21 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<1:2-1:5>[```nickel
+Dyn
+```, outer]
+<1:10-1:13>[```nickel
+Number
+```, ```nickel
+Number
+```, inner]
+<2:9-2:12>[```nickel
+Dyn
+```, outer]
+<2:9-2:16>[```nickel
+Dyn
+```, ```nickel
+Number
+```, inner]
+

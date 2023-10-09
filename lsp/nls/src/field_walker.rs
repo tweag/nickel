@@ -1,3 +1,5 @@
+use std::{cell::RefCell, collections::HashSet};
+
 use lsp_types::{CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
@@ -33,6 +35,17 @@ impl FieldHaver {
             FieldHaver::RecordType(rows) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ.clone())),
+        }
+    }
+
+    /// If this `FieldHaver` is a record term, try to retrieve the field named `id`.
+    fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &Field)> {
+        match self {
+            FieldHaver::RecordTerm(data) => data
+                .fields
+                .get_key_value(&id)
+                .map(|(id, fld)| (LocIdent::from(*id), fld)),
+            _ => None,
         }
     }
 
@@ -128,6 +141,11 @@ pub struct DefWithPath {
     pub value: Option<RichTerm>,
     /// The path within the value that this binding refers to.
     pub path: Vec<Ident>,
+    /// If this definition came from a record field, this is the containing
+    /// record. Note that having a parent record is mutually exclusive with
+    /// having a non-empty path, because non-empty paths only come from let
+    /// pattern bindings.
+    pub parent_record: Option<RichTerm>,
     pub metadata: Option<FieldMetadata>,
 }
 
@@ -158,11 +176,20 @@ impl DefWithPath {
 #[derive(Clone)]
 pub struct FieldResolver<'a> {
     server: &'a Server,
+
+    // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
+    // Variable resolution is an exception, however, and so we protect against
+    // loops by recording the ids that we are currently resolving and refusing to
+    // resolve them again.
+    blackholed_ids: RefCell<HashSet<LocIdent>>,
 }
 
 impl<'a> FieldResolver<'a> {
     pub fn new(server: &'a Server) -> Self {
-        Self { server }
+        Self {
+            server,
+            blackholed_ids: Default::default(),
+        }
     }
 
     /// Resolve a record path iteratively.
@@ -200,6 +227,28 @@ impl<'a> FieldResolver<'a> {
         fields
     }
 
+    pub fn get_cousin_defs(&self, def: &DefWithPath) -> Vec<(LocIdent, Field)> {
+        let mut ret = Vec::new();
+        if let Some(parent) = &def.parent_record {
+            if let Some(mut ancestors) = self.server.analysis.get_parent_chain(parent) {
+                while let Some(ancestor) = ancestors.next_merge() {
+                    // We're traversing up the tree starting at the parent, so this is the
+                    // path to the parent (not the original def).
+                    if let Some(parent_path) = ancestors.path() {
+                        let uncles = self.resolve_term_path(&ancestor, parent_path.iter().copied());
+                        ret.extend(
+                            uncles
+                                .iter()
+                                .filter_map(|uncle| uncle.get_field_and_loc(def.ident.ident))
+                                .map(|(loc, fld)| (loc, fld.clone())),
+                        )
+                    }
+                }
+            }
+        }
+        ret
+    }
+
     fn resolve_def_with_path(&self, def: &DefWithPath) -> Vec<FieldHaver> {
         let mut fields = Vec::new();
 
@@ -209,6 +258,14 @@ impl<'a> FieldResolver<'a> {
         if let Some(meta) = &def.metadata {
             fields.extend(self.resolve_annot(&meta.annotation));
         }
+
+        for (_, field) in self.get_cousin_defs(def) {
+            fields.extend(self.resolve_annot(&field.metadata.annotation));
+            if let Some(val) = &field.value {
+                fields.extend(self.resolve_term(val));
+            }
+        }
+
         fields
     }
 
@@ -230,20 +287,29 @@ impl<'a> FieldResolver<'a> {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]
             }
-            Term::Var(id) => self
-                .server
-                .analysis
-                .get_def(&(*id).into())
-                .map(|def| {
-                    log::info!("got def {def:?}");
+            Term::Var(id) => {
+                let id = LocIdent::from(*id);
+                if self.blackholed_ids.borrow_mut().insert(id) {
+                    let ret = self
+                        .server
+                        .analysis
+                        .get_def(&id)
+                        .map(|def| {
+                            log::info!("got def {def:?}");
 
-                    self.resolve_def_with_path(def)
-                })
-                .unwrap_or_else(|| {
-                    log::info!("no def for {id:?}");
-                    Default::default()
-                }),
-            //.unwrap_or_default(),
+                            self.resolve_def_with_path(def)
+                        })
+                        .unwrap_or_else(|| {
+                            log::info!("no def for {id:?}");
+                            Default::default()
+                        });
+                    self.blackholed_ids.borrow_mut().remove(&id);
+                    ret
+                } else {
+                    log::warn!("detected recursion when resolving {id:?}");
+                    Vec::new()
+                }
+            }
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache

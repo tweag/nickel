@@ -73,7 +73,17 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
             ret.values = values;
             ret.metadata = metadata;
         } else if def.path.is_empty() {
-            ret.values.extend(def.value.iter().cloned());
+            let cousins = resolver.get_cousin_defs(def);
+            if cousins.is_empty() {
+                ret.values.extend(def.value.iter().cloned());
+            } else {
+                for (_, cousin) in cousins {
+                    if let Some(val) = cousin.value {
+                        ret.values.push(val);
+                    }
+                    ret.metadata.push(cousin.metadata);
+                }
+            }
         }
     }
 
