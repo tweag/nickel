@@ -1015,8 +1015,10 @@ impl Type {
     /// generated contract.
     pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
-        self.optimize_static_ctr()
-            .subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+        // println!("Optimizing contract: {self}");
+        // println!("Optimized: {}", self.clone().optimize_static_ctr());
+        self.optimize_static_ctr().subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+        // self.subcontract(HashMap::new(), Polarity::Positive, &mut sy)
     }
 
     /// Return the contract corresponding to a type, either as a function or a record. Said
@@ -1122,12 +1124,7 @@ impl Type {
             TypeF::Dict {
                 ref type_fields,
                 flavour: _,
-            } if matches!(type_fields.typ, TypeF::Dyn) => {
-                mk_app!(
-                    internals::dict_contract(),
-                    type_fields.subcontract(vars, pol, sy)?
-                )
-            }
+            } if matches!(type_fields.typ, TypeF::Dyn) => internals::dict_dyn(),
             TypeF::Dict {
                 ref type_fields,
                 flavour: DictTypeFlavour::Contract,

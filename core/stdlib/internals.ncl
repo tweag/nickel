@@ -58,7 +58,7 @@
         fun x =>
           %apply_contract%
             codomain
-            (%chng_pol% (%go_codom% label))
+            (%go_codom% label)
             (value x)
       )
     else
