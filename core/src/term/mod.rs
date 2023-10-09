@@ -1354,6 +1354,7 @@ pub enum RecordExtKind {
 /// controlled by [RecordOpKind].
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
 pub enum RecordOpKind {
+    #[default]
     IgnoreEmptyOpt,
     ConsiderAllFields,
 }
