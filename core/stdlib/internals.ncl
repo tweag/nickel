@@ -19,9 +19,54 @@
     else
       %blame% label,
 
+  "$array_dyn" = fun label value =>
+    if %typeof% value == 'Array then
+      value
+    else
+      %blame% label,
+
   "$func" = fun domain codomain label value =>
     if %typeof% value == 'Function then
-      (fun x => %apply_contract% codomain (%go_codom% label) (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x)))
+      (
+        fun x =>
+          %apply_contract%
+            codomain
+            (%go_codom% label)
+            (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x))
+      )
+    else
+      %blame% label,
+
+  "$func_dom" = fun domain label value =>
+    if %typeof% value == 'Function then
+      (
+        fun x =>
+          value
+            (
+              %apply_contract%
+                domain
+                (%chng_pol% (%go_dom% label))
+                x
+            )
+      )
+    else
+      %blame% label,
+
+  "$func_codom" = fun codomain label value =>
+    if %typeof% value == 'Function then
+      (
+        fun x =>
+          %apply_contract%
+            codomain
+            (%chng_pol% (%go_codom% label))
+            (value x)
+      )
+    else
+      %blame% label,
+
+  "$func_dyn" = fun label value =>
+    if %typeof% value == 'Function then
+      value
     else
       %blame% label,
 
@@ -113,6 +158,12 @@
           fun _field field_value =>
             %apply_contract% contract (%go_dict% label) field_value
         )
+    else
+      %blame% (%label_with_message% "not a record" label),
+
+  "$dict_dyn" = fun label value =>
+    if %typeof% value == 'Record then
+      value
     else
       %blame% (%label_with_message% "not a record" label),
 
