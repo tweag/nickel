@@ -966,9 +966,9 @@ impl Type {
                     var_kind: VarKind::Type,
                     body,
                 } if polarity == Polarity::Positive => {
-                    let mut env = vars_elide.clone();
-                    env.insert(var);
-                    let result = optimize(*body, &env, polarity);
+                    let mut var_owned = vars_elide.clone();
+                    var_owned.insert(var);
+                    let result = optimize(*body, &var_owned, polarity);
                     // we keep the position of the body, not the one of the forall
                     pos = result.pos;
                     result.typ
@@ -980,7 +980,7 @@ impl Type {
                 } => TypeF::Forall {
                     var,
                     var_kind,
-                    body: Box::new(optimize(*body, &vars_elide, polarity)),
+                    body: Box::new(optimize(*body, vars_elide, polarity)),
                 },
                 TypeF::Var(id) if vars_elide.contains(&id) => TypeF::Dyn,
                 v @ TypeF::Var(_) => v,
