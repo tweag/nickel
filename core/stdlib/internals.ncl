@@ -2,7 +2,7 @@
   # Internal operations. Can't be accessed from user code because `$` is not a
   # valid starting character for an identifier.
 
-  # Contract implementations
+  # Builtin contract implementations
   "$dyn" = fun _label value => value,
 
   "$num" = fun label value => if %typeof% value == 'Number then value else %blame% label,
@@ -19,9 +19,58 @@
     else
       %blame% label,
 
+  # A specialized version of `$array $dyn`, but which is constant time.
+  "$array_dyn" = fun label value =>
+    if %typeof% value == 'Array then
+      value
+    else
+      %blame% label,
+
   "$func" = fun domain codomain label value =>
     if %typeof% value == 'Function then
-      (fun x => %apply_contract% codomain (%go_codom% label) (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x)))
+      (
+        fun x =>
+          %apply_contract%
+            codomain
+            (%go_codom% label)
+            (value (%apply_contract% domain (%chng_pol% (%go_dom% label)) x))
+      )
+    else
+      %blame% label,
+
+  # A specialied version of `_ -> Dyn`
+  "$func_dom" = fun domain label value =>
+    if %typeof% value == 'Function then
+      (
+        fun x =>
+          value
+            (
+              %apply_contract%
+                domain
+                (%chng_pol% (%go_dom% label))
+                x
+            )
+      )
+    else
+      %blame% label,
+
+  # A specialied version of `Dyn -> _`
+  "$func_codom" = fun codomain label value =>
+    if %typeof% value == 'Function then
+      (
+        fun x =>
+          %apply_contract%
+            codomain
+            (%go_codom% label)
+            (value x)
+      )
+    else
+      %blame% label,
+
+  # A specialied version of `Dyn -> Dyn`
+  "$func_dyn" = fun label value =>
+    if %typeof% value == 'Function then
+      value
     else
       %blame% label,
 
@@ -113,6 +162,14 @@
           fun _field field_value =>
             %apply_contract% contract (%go_dict% label) field_value
         )
+    else
+      %blame% (%label_with_message% "not a record" label),
+
+  # A specialized version of either `{_ | Dyn}` or `{_ : Dyn}` (which are
+  # equivalent), but which is constant time.
+  "$dict_dyn" = fun label value =>
+    if %typeof% value == 'Record then
+      value
     else
       %blame% (%label_with_message% "not a record" label),
 

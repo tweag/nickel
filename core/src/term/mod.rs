@@ -287,6 +287,15 @@ impl RuntimeContract {
         RuntimeContract { contract, label }
     }
 
+    /// Generate a runtime contract from a type used as a static type annotation and a label. Use
+    /// the guarantees of the static type system to optimize and simplify the contract.
+    pub fn from_static_type(labeled_typ: LabeledType) -> Result<Self, UnboundTypeVariableError> {
+        Ok(RuntimeContract {
+            contract: labeled_typ.typ.contract_static()?,
+            label: labeled_typ.label,
+        })
+    }
+
     /// Map a function over the term representing the underlying contract.
     pub fn map_contract<F>(self, f: F) -> Self
     where
@@ -577,6 +586,15 @@ impl TypeAnnotation {
             .cloned()
             .map(RuntimeContract::try_from)
             .collect::<Result<Vec<_>, _>>()
+    }
+
+    /// Build the contract derived from the static type annotation, applying the specific
+    /// optimizations along the way.
+    pub fn static_contract(&self) -> Option<Result<RuntimeContract, UnboundTypeVariableError>> {
+        self.typ
+            .as_ref()
+            .cloned()
+            .map(RuntimeContract::from_static_type)
     }
 
     /// Convert all the contracts of this annotation, including the potential type annotation as

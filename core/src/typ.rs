@@ -927,6 +927,99 @@ impl Type {
         .unwrap()
     }
 
+    /// Static typing guarantees make some of the contract checks useless, assuming that blame
+    /// safety holds. This function simplifies `self` for contract generation, assuming it is part
+    /// of a static type annotation, by eliding some of these useless subcontracts.
+    ///
+    /// # Simplifications
+    ///
+    /// - `forall`s in positive positions are removed, and the corresponding type variable is
+    ///   substituted for a `Dyn` contract. In consequence, [Self::contract()] will generate
+    ///   optimized contracts as well (for example, `forall a. Array a -> a` becomes `Array Dyn ->
+    ///   Dyn`, where `Array Dyn` will be translated to `$array_dyn` which has a constant-time
+    ///   overhead while `Array a` is linear in the size of the array.
+    /// - All positive occurrences of first order contracts (that is, anything but a function type)
+    /// are turned to `Dyn` contracts.
+    fn optimize_static(self) -> Self {
+        fn optimize_rrows(
+            rrows: RecordRows,
+            vars_elide: &HashSet<LocIdent>,
+            polarity: Polarity,
+        ) -> RecordRows {
+            RecordRows(rrows.0.map(
+                |typ| Box::new(optimize(*typ, vars_elide, polarity)),
+                |rrows| Box::new(optimize_rrows(*rrows, vars_elide, polarity)),
+            ))
+        }
+
+        fn optimize(typ: Type, vars_elide: &HashSet<LocIdent>, polarity: Polarity) -> Type {
+            let mut pos = typ.pos;
+
+            let optimized = match typ.typ {
+                TypeF::Arrow(dom, codom) => TypeF::Arrow(
+                    Box::new(optimize(*dom, vars_elide, polarity.flip())),
+                    Box::new(optimize(*codom, vars_elide, polarity)),
+                ),
+                // TODO: don't optimize only VarKind::Type
+                TypeF::Forall {
+                    var,
+                    var_kind: VarKind::Type,
+                    body,
+                } if polarity == Polarity::Positive => {
+                    let mut var_owned = vars_elide.clone();
+                    var_owned.insert(var);
+                    let result = optimize(*body, &var_owned, polarity);
+                    // we keep the position of the body, not the one of the forall
+                    pos = result.pos;
+                    result.typ
+                }
+                TypeF::Forall {
+                    var,
+                    var_kind,
+                    body,
+                } => TypeF::Forall {
+                    var,
+                    var_kind,
+                    body: Box::new(optimize(*body, vars_elide, polarity)),
+                },
+                TypeF::Var(id) if vars_elide.contains(&id) => TypeF::Dyn,
+                v @ TypeF::Var(_) => v,
+                // Any first-order type on positive position can be elided
+                _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
+                // Otherwise, we still recurse into non-primitive types
+                TypeF::Record(rrows) => TypeF::Record(optimize_rrows(rrows, vars_elide, polarity)),
+                TypeF::Dict {
+                    type_fields,
+                    flavour,
+                } => TypeF::Dict {
+                    type_fields: Box::new(optimize(*type_fields, vars_elide, polarity)),
+                    flavour,
+                },
+                TypeF::Array(t) => TypeF::Array(Box::new(optimize(*t, vars_elide, polarity))),
+                // All other types don't contain subtypes, it's a base case
+                t => t,
+            };
+
+            Type {
+                typ: optimized,
+                pos,
+            }
+        }
+
+        optimize(self, &HashSet::new(), Polarity::Positive)
+    }
+
+    /// Return the contract corresponding to a type which appears in a static type annotation. Said
+    /// contract must then be applied using the `ApplyContract` primitive operation.
+    ///
+    /// [Self::contract_static] uses the fact that the checked term has been typechecked to
+    /// optimize the generated contract.
+    pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
+        let mut sy = 0;
+        self.optimize_static()
+            .subcontract(HashMap::new(), Polarity::Positive, &mut sy)
+    }
+
     /// Return the contract corresponding to a type, either as a function or a record. Said
     /// contract must then be applied using the `ApplyContract` primitive operation.
     pub fn contract(&self) -> Result<RichTerm, UnboundTypeVariableError> {
@@ -966,10 +1059,24 @@ impl Type {
             TypeF::Number => internals::num(),
             TypeF::Bool => internals::bool(),
             TypeF::String => internals::string(),
-            //TODO: optimization: have a specialized contract for `Array Dyn`, to avoid mapping an
-            //always successful contract on each element.
+            // Array Dyn is specialized to array_dyn, which is constant time
+            TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
             TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
             TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),
+            // Similarly, any variant of `A -> B` where either `A` or `B` is `Dyn` get specialized
+            // to the corresponding builtin contract.
+            TypeF::Arrow(ref s, ref t) if matches!((&s.typ, &t.typ), (TypeF::Dyn, TypeF::Dyn)) => {
+                internals::func_dyn()
+            }
+            TypeF::Arrow(ref s, ref t) if matches!(s.typ, TypeF::Dyn) => {
+                mk_app!(internals::func_codom(), t.subcontract(vars, pol, sy)?)
+            }
+            TypeF::Arrow(ref s, ref t) if matches!(t.typ, TypeF::Dyn) => {
+                mk_app!(
+                    internals::func_dom(),
+                    s.subcontract(vars.clone(), pol.flip(), sy)?
+                )
+            }
             TypeF::Arrow(ref s, ref t) => mk_app!(
                 internals::func(),
                 s.subcontract(vars.clone(), pol.flip(), sy)?,
@@ -1016,6 +1123,12 @@ impl Type {
             }
             TypeF::Enum(ref erows) => erows.subcontract()?,
             TypeF::Record(ref rrows) => rrows.subcontract(vars, pol, sy)?,
+            // `{_: Dyn}` and `{_ | Dyn}` are equivalent, and both specialied to the constant-time
+            // `dict_dyn`.
+            TypeF::Dict {
+                ref type_fields,
+                flavour: _,
+            } if matches!(type_fields.typ, TypeF::Dyn) => internals::dict_dyn(),
             TypeF::Dict {
                 ref type_fields,
                 flavour: DictTypeFlavour::Contract,

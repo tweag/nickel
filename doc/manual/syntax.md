@@ -822,7 +822,7 @@ parsed as such:
 ```nickel #repl
 > let MyDyn = fun label value => value in
     {foo = 1, bar | MyDyn = "foo"} : {foo : Number, bar : MyDyn}
-{ bar = "foo", foo = 1, }
+{ bar | MyDyn = "foo", foo = 1, }
 ```
 
 ## Metadata

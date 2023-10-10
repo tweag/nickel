@@ -32,7 +32,7 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
             .map(|v| -> Result<RichTerm, UnboundTypeVariableError> {
                 if let Some(labeled_ty) = &field.metadata.annotation.typ {
                     let pos = v.pos;
-                    let contract = RuntimeContract::try_from(labeled_ty.clone())?;
+                    let contract = RuntimeContract::from_static_type(labeled_ty.clone())?;
                     Ok(contract.apply(v, pos))
                 } else {
                     Ok(v)
