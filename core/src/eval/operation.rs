@@ -30,8 +30,7 @@ use crate::{
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
-        BinaryOp, CompiledRegex, IndexMap, MergePriority, NAryOp, Number, RecordExtKind, RichTerm,
-        RuntimeContract, SharedTerm, StrChunk, Term, UnaryOp,
+        *,
     },
     transform::Closurizable,
 };
@@ -1661,6 +1660,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 metadata,
                 pending_contracts,
                 ext_kind,
+                op_kind,
             } => {
                 if let Term::Str(id) = &*t1 {
                     match_sharedterm! {t2, with {
@@ -1691,13 +1691,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     LocIdent::from(id),
                                     Field { value, metadata, pending_contracts }
                                 ) {
-                                    //TODO: what to do on insertion where an empty optional field
-                                    //exists? Temporary: we fail with existing field exception
-                                    Some(t) => Err(EvalError::Other(format!(
-                                        "record_insert: \
-                                        tried to extend a record with the field {id}, \
-                                        but it already exists"
-                                    ), pos_op)),
+                                    Some(t) if matches!(op_kind, RecordOpKind::ConsiderAllFields)
+                                        || !t.is_empty_optional() =>
+                                        Err(EvalError::Other(format!(
+                                            "record_insert: \
+                                            tried to extend a record with the field {id}, \
+                                            but it already exists"
+                                        ), pos_op)),
                                     _ => Ok(Closure {
                                         body: Term::Record(RecordData { fields, ..record }).into(),
                                         env: env2,
@@ -1712,40 +1712,41 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("record_insert", "String", 1, t1, pos1))
                 }
             }
-            BinaryOp::DynRemove() => match_sharedterm! {t1, with {
+            BinaryOp::DynRemove(op_kind) => match_sharedterm! {t1, with {
                     Term::Str(id) => match_sharedterm! {t2, with {
                             Term::Record(record) => {
                                 let mut fields = record.fields;
                                 let fetched = fields.remove(&LocIdent::from(&id));
-                                match fetched {
-                                    None
-                                    | Some(Field {
+                                if fetched.is_none()
+                                    || matches!((op_kind, fetched), (RecordOpKind::IgnoreEmptyOpt, Some(Field {
                                         value: None,
                                         metadata: FieldMetadata { opt: true, ..},
                                         ..
-                                      }) => match record.sealed_tail.as_ref() {
-                                        Some(t) if t.has_dyn_field(&id) =>
-                                            Err(EvalError::IllegalPolymorphicTailAccess {
-                                                action: IllegalPolymorphicTailAction::RecordRemove {
-                                                    field: id.to_string()
-                                                },
-                                                evaluated_arg: t.label
-                                                    .get_evaluated_arg(&self.cache),
-                                                label: t.label.clone(),
-                                                call_stack: std::mem::take(&mut self.call_stack)
-                                            }
-                                        ),
-                                        _ => Err(EvalError::FieldMissing(
-                                            id.into_inner(),
-                                            String::from("record_remove"),
-                                            RichTerm::new(
-                                                Term::Record(RecordData { fields, ..record }),
-                                                pos2,
+                                      }))) {
+                                        match record.sealed_tail.as_ref() {
+                                            Some(t) if t.has_dyn_field(&id) =>
+                                                Err(EvalError::IllegalPolymorphicTailAccess {
+                                                    action: IllegalPolymorphicTailAction::RecordRemove {
+                                                        field: id.to_string()
+                                                    },
+                                                    evaluated_arg: t.label
+                                                        .get_evaluated_arg(&self.cache),
+                                                    label: t.label.clone(),
+                                                    call_stack: std::mem::take(&mut self.call_stack)
+                                                }
                                             ),
-                                            pos_op,
-                                        )),
+                                            _ => Err(EvalError::FieldMissing(
+                                                id.into_inner(),
+                                                String::from("record_remove"),
+                                                RichTerm::new(
+                                                    Term::Record(RecordData { fields, ..record }),
+                                                    pos2,
+                                                ),
+                                                pos_op,
+                                            )),
+                                        }
                                     }
-                                    _ => {
+                                    else {
                                         Ok(Closure {
                                             body: RichTerm::new(
                                                 Term::Record(RecordData { fields, ..record }),
@@ -1755,22 +1756,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         })
                                     }
                                 }
-                            }
                         } else {
                             Err(mk_type_error!("record_remove", "Record", 2, t2, pos2))
                         }
-                    },
+                    }
                 } else {
                     Err(mk_type_error!("record_remove", "String", 1, t1, pos1))
                 }
             },
-            BinaryOp::HasField() => match_sharedterm! {t1, with {
+            BinaryOp::HasField(op_kind) => match_sharedterm! {t1, with {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             Ok(Closure::atomic_closure(RichTerm::new(
                                 Term::Bool(matches!(
                                     record.fields.get(&LocIdent::from(id.into_inner())),
-                                    Some(field) if !field.is_empty_optional()
+                                    Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
                                 )),
                                 pos_op_inh,
                             )))

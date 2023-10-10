@@ -221,8 +221,12 @@ pub enum NormalToken<'input> {
     RecordMap,
     #[token("%record_insert%")]
     RecordInsert,
+    #[token("%record_insert_all%")]
+    RecordInsertAll,
     #[token("%record_remove%")]
     RecordRemove,
+    #[token("%record_remove_all%")]
+    RecordRemoveAll,
     #[token("%record_empty_with_tail%")]
     RecordEmptyWithTail,
     #[token("%record_seal_tail%")]
@@ -248,6 +252,8 @@ pub enum NormalToken<'input> {
 
     #[token("%has_field%")]
     HasField,
+    #[token("%has_field_all%")]
+    HasFieldAll,
     #[token("%map%")]
     Map,
     #[token("%elem_at%")]

@@ -33,9 +33,12 @@
 use crate::destructuring::{FieldPattern, Match, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::match_sharedterm;
-use crate::term::make::{op1, op2};
-use crate::term::{BinaryOp::DynRemove, RichTerm, Term, TypeAnnotation, UnaryOp::StaticAccess};
-use crate::term::{BindingType, LetAttrs};
+use crate::term::{
+    make::{op1, op2},
+    BinaryOp::DynRemove,
+    BindingType, LetAttrs, RecordOpKind, RichTerm, Term, TypeAnnotation,
+    UnaryOp::StaticAccess,
+};
 
 /// Entry point of the patterns desugaring.
 /// It desugar a `RichTerm` if possible (the term is a let pattern or a function with patterns in
@@ -156,9 +159,11 @@ fn bind_open_field(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm
     Term::Let(
         var,
         matches.iter().fold(Term::Var(x).into(), |x, m| match m {
-            Match::Simple(i, _) | Match::Assign(i, _, _) => {
-                op2(DynRemove(), Term::Str((*i).into()), x)
-            }
+            Match::Simple(i, _) | Match::Assign(i, _, _) => op2(
+                DynRemove(RecordOpKind::default()),
+                Term::Str((*i).into()),
+                x,
+            ),
         }),
         body,
         Default::default(),

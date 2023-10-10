@@ -1346,6 +1346,19 @@ pub enum RecordExtKind {
     WithoutValue,
 }
 
+/// A flavor for record operations. By design, we want empty optional values to be transparent for
+/// record operations, because they would otherwise make many operations fail spuriously (e.g.
+/// trying to map over such an empty value). So they are most of the time silently ignored.
+///
+/// However, it's sometimes useful and even necessary to take them into account. This behavior is
+/// controlled by [RecordOpKind].
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
+pub enum RecordOpKind {
+    #[default]
+    IgnoreEmptyOpt,
+    ConsiderAllFields,
+}
+
 /// Primitive binary operators
 #[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOp {
@@ -1418,16 +1431,17 @@ pub enum BinaryOp {
         metadata: FieldMetadata,
         pending_contracts: Vec<RuntimeContract>,
         ext_kind: RecordExtKind,
+        op_kind: RecordOpKind,
     },
 
     /// Remove a field from a record. The field name is given as an arbitrary Nickel expression.
-    DynRemove(),
+    DynRemove(RecordOpKind),
 
     /// Access the field of record. The field name is given as an arbitrary Nickel expression.
     DynAccess(),
 
     /// Test if a record has a specific field.
-    HasField(),
+    HasField(RecordOpKind),
 
     /// Concatenate two arrays.
     ArrayConcat(),
@@ -1510,10 +1524,19 @@ impl fmt::Display for BinaryOp {
             ApplyContract() => write!(f, "apply_contract"),
             Unseal() => write!(f, "unseal"),
             GoField() => write!(f, "go_field"),
-            DynExtend { .. } => write!(f, "record_insert"),
-            DynRemove() => write!(f, "record_remove"),
+            DynExtend {
+                op_kind: RecordOpKind::IgnoreEmptyOpt,
+                ..
+            } => write!(f, "record_insert"),
+            DynExtend {
+                op_kind: RecordOpKind::ConsiderAllFields,
+                ..
+            } => write!(f, "record_insert_all"),
+            DynRemove(RecordOpKind::IgnoreEmptyOpt) => write!(f, "record_remove"),
+            DynRemove(RecordOpKind::ConsiderAllFields) => write!(f, "record_remove_all"),
             DynAccess() => write!(f, "dyn_access"),
-            HasField() => write!(f, "has_field"),
+            HasField(RecordOpKind::IgnoreEmptyOpt) => write!(f, "has_field"),
+            HasField(RecordOpKind::ConsiderAllFields) => write!(f, "has_field_all"),
             ArrayConcat() => write!(f, "array_concat"),
             ArrayElemAt() => write!(f, "elem_at"),
             Merge(_) => write!(f, "merge"),

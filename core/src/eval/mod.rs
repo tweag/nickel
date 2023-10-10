@@ -85,7 +85,8 @@ use crate::{
         array::ArrayAttrs,
         make as mk_term,
         record::{Field, RecordData},
-        BinaryOp, BindingType, LetAttrs, RichTerm, RuntimeContract, StrChunk, Term, UnaryOp,
+        BinaryOp, BindingType, LetAttrs, RecordOpKind, RichTerm, RuntimeContract, StrChunk, Term,
+        UnaryOp,
     },
     transform::Closurizable,
 };
@@ -608,6 +609,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         metadata: metadata.clone(),
                                         pending_contracts: pending_contracts.clone(),
                                         ext_kind,
+                                        op_kind: RecordOpKind::ConsiderAllFields,
                                     },
                                     name_as_term.clone(),
                                     acc,
