@@ -1012,8 +1012,8 @@ impl Type {
     /// Return the contract corresponding to a type which appears in a static type annotation. Said
     /// contract must then be applied using the `ApplyContract` primitive operation.
     ///
-    /// [contract_static] uses the fact that the checked term has been typechecked to optimize the
-    /// generated contract.
+    /// [Self::contract_static] uses the fact that the checked term has been typechecked to
+    /// optimize the generated contract.
     pub fn contract_static(self) -> Result<RichTerm, UnboundTypeVariableError> {
         let mut sy = 0;
         self.optimize_static()
