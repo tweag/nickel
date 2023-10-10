@@ -1059,7 +1059,7 @@ impl Type {
             TypeF::Number => internals::num(),
             TypeF::Bool => internals::bool(),
             TypeF::String => internals::string(),
-            // Array Dyn is specialied to array_dyn, which is constant time
+            // Array Dyn is specialized to array_dyn, which is constant time
             TypeF::Array(ref ty) if matches!(ty.typ, TypeF::Dyn) => internals::array_dyn(),
             TypeF::Array(ref ty) => mk_app!(internals::array(), ty.subcontract(vars, pol, sy)?),
             TypeF::Symbol => panic!("Are you trying to check a Sym at runtime?"),

@@ -705,12 +705,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Annotated(annot, inner) => {
                     // We apply the contract coming from the static type annotation separately as
                     // it is optimized.
-                    let static_contrat = annot.static_contract();
+                    let static_contract = annot.static_contract();
                     let contracts = annot.pending_contracts()?;
                     let pos = inner.pos;
                     let inner = inner.clone();
 
-                    let inner_with_static = if let Some(static_ctr) = static_contrat {
+                    let inner_with_static = if let Some(static_ctr) = static_contract {
                         static_ctr?.apply(inner, pos)
                     } else {
                         inner
