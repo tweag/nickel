@@ -34,23 +34,6 @@ impl ArrayAttrs {
         self.pending_contracts.clear();
         self
     }
-
-    /// Extend contracts from an iterator of `PendingContract`.
-    /// De-duplicate equal contracts. Note that current contract
-    /// equality testing is very limited, but this may change in the
-    /// future
-    pub fn with_extra_contracts<I>(mut self, iter: I) -> Self
-    where
-        I: IntoIterator<Item = RuntimeContract>,
-    {
-        for ctr in iter {
-            if !self.pending_contracts.contains(&ctr) {
-                self.pending_contracts.push(ctr)
-            }
-        }
-
-        self
-    }
 }
 
 /// A Nickel array, represented as a view (slice) into a shared backing array. The view is

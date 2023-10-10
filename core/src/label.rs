@@ -299,8 +299,8 @@ pub struct Label {
     /// The path of the type being currently checked in the original type.
     pub path: ty_path::Path,
 
-    /// An environment mapping type variables to [`TypeVarData`]. Used by
-    /// polymorphic contracts to decide which actions to take when encountering a `forall`.
+    /// An environment mapping type variables to [`TypeVarData`]. Used by polymorphic contracts to
+    /// decide which actions to take when encountering a `forall`.
     pub type_environment: HashMap<SealingKey, TypeVarData>,
 
     /// The name of the record field to report in blame errors. This is set
@@ -501,6 +501,20 @@ impl Label {
 
     pub fn with_field_name(self, field_name: Option<LocIdent>) -> Self {
         Label { field_name, ..self }
+    }
+
+    /// Tests if the contract associated to this label might have polymorphic subcontracts
+    /// (equivalently, if the contract is derived from a type which has free type variables). Such
+    /// contracts are special, in particular because they aren't idempotent and thus can't be e.g.
+    /// deduplicated.
+    ///
+    /// This check is an over approximation and might return `true` even if the contract is not
+    /// polymorphic, in return of being fast.
+    pub fn can_have_poly_ctrs(&self) -> bool {
+        // Checking that the type environment is not empty is a bit coarse: what it actually checks
+        // is that this contract is derived from the body of a `forall`. For example, in `forall a.
+        // a -> Number`, `Number` isn't polymorphic, but `has_polymorphic_ctrs` will return `true`.
+        self.type_environment.is_empty()
     }
 }
 
