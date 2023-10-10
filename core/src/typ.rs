@@ -952,21 +952,11 @@ impl Type {
         ) -> RecordRows {
             RecordRows(rrows.0.map(
                 |typ| Box::new(optimize(*typ, vars_elide.clone(), polarity)),
-                |rrows| {
-                    Box::new(optimize_rrows(
-                        *rrows,
-                        vars_elide.clone(),
-                        polarity,
-                    ))
-                },
+                |rrows| Box::new(optimize_rrows(*rrows, vars_elide.clone(), polarity)),
             ))
         }
 
-        fn optimize(
-            typ: Type,
-            mut vars_elide: VarsHashSet,
-            polarity: Polarity,
-        ) -> Type {
+        fn optimize(typ: Type, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
             let mut pos = typ.pos;
 
             let optimized = match typ.typ {
