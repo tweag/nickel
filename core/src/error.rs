@@ -2300,6 +2300,12 @@ impl From<ColorOpt> for ColorChoice {
     }
 }
 
+impl Default for ColorOpt {
+    fn default() -> Self {
+        Self(clap::ColorChoice::Auto)
+    }
+}
+
 /// Pretty-print an error on stderr.
 ///
 /// # Arguments

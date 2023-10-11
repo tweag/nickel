@@ -204,14 +204,21 @@ macro_rules! ncl_bench_group {
                             } else {
                                 c_local.prepare(id, &type_ctxt).unwrap();
 
-                                VirtualMachine::new_with_cache(
+                                let mut vm = VirtualMachine::new_with_cache(
                                     c_local,
                                     eval_cache.clone(),
                                     std::io::sink()
                                 )
-                                .with_initial_env(eval_env.clone())
-                                .eval(t)
-                                .unwrap();
+                                .with_initial_env(eval_env.clone());
+
+                                if let Err(e) = vm.eval(t) {
+                                    nickel_lang_core::error::report(
+                                        vm.import_resolver_mut(),
+                                        e,
+                                        nickel_lang_core::error::ColorOpt::default()
+                                    );
+                                    panic!("Error during bench evaluation");
+                                }
                             }
                         },
                         criterion::BatchSize::LargeInput,
