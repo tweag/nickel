@@ -407,25 +407,23 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // a definition, we complete the error with the additional information of where
                     // it was accessed:
                     let Closure { body, env } = self.cache.get(idx);
-                    let body = match_sharedterm! {body.term, with {
+                    let body = match_sharedterm!(match (body.term) {
+                        Term::RuntimeError(EvalError::MissingFieldDef {
+                            id,
+                            metadata,
+                            pos_record,
+                            pos_access: TermPos::None,
+                        }) => RichTerm::new(
                             Term::RuntimeError(EvalError::MissingFieldDef {
                                 id,
                                 metadata,
                                 pos_record,
-                                pos_access: TermPos::None,
-                            }) => RichTerm::new(
-                                Term::RuntimeError(EvalError::MissingFieldDef {
-                                    id,
-                                    metadata,
-                                    pos_record,
-                                    pos_access: pos,
-                                }),
-                                pos,
-                            ),
-                        } else {
-                            body
-                        }
-                    };
+                                pos_access: pos,
+                            }),
+                            pos,
+                        ),
+                        _ => body,
+                    });
 
                     Closure { body, env }
                 }
@@ -910,24 +908,28 @@ pub fn env_add_record<C: Cache>(
     env: &mut Environment,
     closure: Closure,
 ) -> Result<(), EnvBuildError> {
-    match_sharedterm! {closure.body.term, with {
-            Term::Record(record) | Term::RecRecord(record, ..) => {
-                let ext = record.fields.into_iter().filter_map(|(id, field)| {
-                    field.value.map(|value|
+    match_sharedterm!(match (closure.body.term) {
+        Term::Record(record) | Term::RecRecord(record, ..) => {
+            let ext = record.fields.into_iter().filter_map(|(id, field)| {
+                field.value.map(|value| {
                     (
                         id.ident(),
                         cache.add(
-                            Closure { body: value, env: closure.env.clone() },
-                            BindingType::Normal
+                            Closure {
+                                body: value,
+                                env: closure.env.clone(),
+                            },
+                            BindingType::Normal,
                         ),
-                    ))
-                });
+                    )
+                })
+            });
 
-                env.extend(ext);
-                Ok(())
-            },
-        } else Err(EnvBuildError::NotARecord(closure.body))
-    }
+            env.extend(ext);
+            Ok(())
+        }
+        _ => Err(EnvBuildError::NotARecord(closure.body)),
+    })
 }
 
 /// Bind a closure in an environment.

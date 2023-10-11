@@ -58,27 +58,23 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// down traversal. This means that the return value is a normal `Term::Fun` but it can contain
 /// `Term::FunPattern` and `Term::LetPattern` inside.
 pub fn desugar_fun(rt: RichTerm) -> RichTerm {
-    match_sharedterm! { rt.term,
-        with {
-            Term::FunPattern(x, pat, t_) => {
-                let x = x.unwrap_or_else(LocIdent::fresh);
-                let t_pos = t_.pos;
-                RichTerm::new(
-                    Term::Fun(
-                        x,
-                        RichTerm::new(
-                            Term::LetPattern(None, pat, Term::Var(x).into(), t_),
-                            t_pos /* TODO: should we use rt.pos? */
-                        ),
+    match_sharedterm!(match (rt.term) {
+        Term::FunPattern(x, pat, t_) => {
+            let x = x.unwrap_or_else(LocIdent::fresh);
+            let t_pos = t_.pos;
+            RichTerm::new(
+                Term::Fun(
+                    x,
+                    RichTerm::new(
+                        Term::LetPattern(None, pat, Term::Var(x).into(), t_),
+                        t_pos, /* TODO: should we use rt.pos? */
                     ),
-                    rt.pos,
-                )
-            }
+                ),
+                rt.pos,
+            )
         }
-        else {
-            rt
-        }
-    }
+        _ => rt,
+    })
 }
 
 /// Wrap the desugar `LetPattern` in a meta value containing the "Record contract" needed to check
@@ -86,48 +82,52 @@ pub fn desugar_fun(rt: RichTerm) -> RichTerm {
 /// record. This function should be, in the general case, considered as the entry point of the let
 /// patterns transformation.
 pub fn desugar_with_contract(rt: RichTerm) -> RichTerm {
-    match_sharedterm!(rt.term,
-        with {
-            Term::LetPattern(x, pat, bound, body) => {
-                let pos = body.pos;
-                let contract = pat.clone().into_contract();
-                let annotated = {
-                    let t_pos = bound.pos;
-                    RichTerm::new(
-                        Term::Annotated(
-                            TypeAnnotation { contracts: vec![contract], ..Default::default() },
-                            bound
-                        ),
-                        t_pos,
-                    )
-                };
-                desugar(RichTerm::new(Term::LetPattern(x, pat, annotated, body), pos))
-            }
-        } else rt
-    )
+    match_sharedterm!(match (rt.term) {
+        Term::LetPattern(x, pat, bound, body) => {
+            let pos = body.pos;
+            let contract = pat.clone().into_contract();
+            let annotated = {
+                let t_pos = bound.pos;
+                RichTerm::new(
+                    Term::Annotated(
+                        TypeAnnotation {
+                            contracts: vec![contract],
+                            ..Default::default()
+                        },
+                        bound,
+                    ),
+                    t_pos,
+                )
+            };
+            desugar(RichTerm::new(
+                Term::LetPattern(x, pat, annotated, body),
+                pos,
+            ))
+        }
+        _ => rt,
+    })
 }
 
 /// Main transformation function to desugar let patterns. WARNING: In a real usage case, you will
 /// want to generate also the contract associated to this pattern destructuring. Do not consider
 /// this function as the entry point of the transformation. For that, use `desugar_with_contract`.
 pub fn desugar(rt: RichTerm) -> RichTerm {
-    match_sharedterm!(rt.term,
-        with {
-            Term::LetPattern(x, pat, t_, body) => {
-                let pos = body.pos;
-                let x = x.unwrap_or_else(LocIdent::fresh);
-                RichTerm::new(
-                    Term::Let(
-                        x,
-                        t_,
-                        destruct_term(x, &pat, bind_open_field(x, &pat, body)),
-                        Default::default(),
-                    ),
-                    pos,
-                )
-            }
-        } else rt
-    )
+    match_sharedterm!(match (rt.term) {
+        Term::LetPattern(x, pat, t_, body) => {
+            let pos = body.pos;
+            let x = x.unwrap_or_else(LocIdent::fresh);
+            RichTerm::new(
+                Term::Let(
+                    x,
+                    t_,
+                    destruct_term(x, &pat, bind_open_field(x, &pat, body)),
+                    Default::default(),
+                ),
+                pos,
+            )
+        }
+        _ => rt,
+    })
 }
 
 /// Wrap `body` in a let construct binding the open part of the pattern to the required value.

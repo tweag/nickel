@@ -57,29 +57,52 @@ pub fn transform_one(rt: RichTerm) -> Result<RichTerm, UnboundTypeVariableError>
     }
 
     let pos = rt.pos;
-    let result = match_sharedterm! {rt.term,
-        with {
-            Term::RecRecord(record_data, dyn_fields, deps) => {
-                let RecordData {fields, attrs, sealed_tail} = record_data;
+    let result = match_sharedterm!(match (rt.term) {
+        Term::RecRecord(record_data, dyn_fields, deps) => {
+            let RecordData {
+                fields,
+                attrs,
+                sealed_tail,
+            } = record_data;
 
-                let fields = attach_to_fields(fields)?;
-                let dyn_fields = dyn_fields.into_iter().map(|(id_term, field)| {
-                     Ok((id_term, attach_to_field(field)?))
-                }).collect::<Result<_, _>>()?;
+            let fields = attach_to_fields(fields)?;
+            let dyn_fields = dyn_fields
+                .into_iter()
+                .map(|(id_term, field)| Ok((id_term, attach_to_field(field)?)))
+                .collect::<Result<_, _>>()?;
 
-                RichTerm::new(
-                    Term::RecRecord(RecordData {fields, attrs, sealed_tail}, dyn_fields, deps),
-                    pos
-                )
-            },
-            Term::Record(record_data) => {
-                let RecordData {fields, attrs, sealed_tail} = record_data;
+            RichTerm::new(
+                Term::RecRecord(
+                    RecordData {
+                        fields,
+                        attrs,
+                        sealed_tail,
+                    },
+                    dyn_fields,
+                    deps,
+                ),
+                pos,
+            )
+        }
+        Term::Record(record_data) => {
+            let RecordData {
+                fields,
+                attrs,
+                sealed_tail,
+            } = record_data;
 
-                let fields = attach_to_fields(fields)?;
+            let fields = attach_to_fields(fields)?;
 
-                RichTerm::new(Term::Record(RecordData {fields, attrs, sealed_tail}), pos)
-            }
-        } else rt
-    };
+            RichTerm::new(
+                Term::Record(RecordData {
+                    fields,
+                    attrs,
+                    sealed_tail,
+                }),
+                pos,
+            )
+        }
+        _ => rt,
+    });
     Ok(result)
 }

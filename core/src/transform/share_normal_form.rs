@@ -53,88 +53,112 @@ struct Binding {
 /// traversal to obtain a full transformation.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     let pos = rt.pos;
-    match_sharedterm! {rt.term,
-        with {
-            // CAUTION: currently, if the record literals written by a user are always recursive
-            // records, other phases of program transformation (such as desugaring of field paths
-            // like `{foo.bar.baz = val}` or desugaring of destructuring) do introduce non
-            // recursive records.
-            //
-            // I've scratched my head more that once on a transformation seemingly not happening
-            // only for record elaborated by the destructuring desguaring phase, to find that the
-            // `Term::Record` case below has been forgotten, and only the case `Term::RecRecord`
-            // was updated.
-            Term::Record(record_data) => {
-                let mut bindings = Vec::with_capacity(record_data.fields.len());
-                let empty_deps = FieldDeps::empty();
+    match_sharedterm!(match (rt.term) {
+        // CAUTION: currently, if the record literals written by a user are always recursive
+        // records, other phases of program transformation (such as desugaring of field paths
+        // like `{foo.bar.baz = val}` or desugaring of destructuring) do introduce non
+        // recursive records.
+        //
+        // I've scratched my head more that once on a transformation seemingly not happening
+        // only for record elaborated by the destructuring desguaring phase, to find that the
+        // `Term::Record` case below has been forgotten, and only the case `Term::RecRecord`
+        // was updated.
+        Term::Record(record_data) => {
+            let mut bindings = Vec::with_capacity(record_data.fields.len());
+            let empty_deps = FieldDeps::empty();
 
-                let fields = record_data.fields.into_iter().map(|(id, field)| {
-                    (id, transform_rec_field(field, Some(empty_deps.clone()), &mut bindings))
-                }).collect();
+            let fields = record_data
+                .fields
+                .into_iter()
+                .map(|(id, field)| {
+                    (
+                        id,
+                        transform_rec_field(field, Some(empty_deps.clone()), &mut bindings),
+                    )
+                })
+                .collect();
 
-                with_bindings(Term::Record(RecordData { fields, ..record_data }), bindings, pos)
-            },
-            Term::RecRecord(record_data, dyn_fields, deps) => {
-                let mut bindings = Vec::with_capacity(record_data.fields.len());
+            with_bindings(
+                Term::Record(RecordData {
+                    fields,
+                    ..record_data
+                }),
+                bindings,
+                pos,
+            )
+        }
+        Term::RecRecord(record_data, dyn_fields, deps) => {
+            let mut bindings = Vec::with_capacity(record_data.fields.len());
 
-                let fields = record_data.fields.into_iter().map(|(id, field)| {
+            let fields = record_data
+                .fields
+                .into_iter()
+                .map(|(id, field)| {
                     let field_deps = deps
                         .as_ref()
                         .and_then(|deps| deps.stat_fields.get(&id.ident()))
                         .cloned();
 
                     (id, transform_rec_field(field, field_deps, &mut bindings))
-                }).collect();
+                })
+                .collect();
 
-                let dyn_fields = dyn_fields
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, (id_t, field))| {
-                        let field_deps = deps
-                            .as_ref()
-                            .and_then(|deps| deps.dyn_fields.get(index))
-                            .cloned();
-                        (id_t, transform_rec_field(field, field_deps, &mut bindings))
-                    })
-                    .collect();
+            let dyn_fields = dyn_fields
+                .into_iter()
+                .enumerate()
+                .map(|(index, (id_t, field))| {
+                    let field_deps = deps
+                        .as_ref()
+                        .and_then(|deps| deps.dyn_fields.get(index))
+                        .cloned();
+                    (id_t, transform_rec_field(field, field_deps, &mut bindings))
+                })
+                .collect();
 
-                with_bindings(
-                    Term::RecRecord(RecordData { fields, ..record_data}, dyn_fields, deps),
-                    bindings,
-                    pos
-                )
-            },
-            Term::Array(ts, attrs) => {
-                let mut bindings = Vec::with_capacity(ts.len());
+            with_bindings(
+                Term::RecRecord(
+                    RecordData {
+                        fields,
+                        ..record_data
+                    },
+                    dyn_fields,
+                    deps,
+                ),
+                bindings,
+                pos,
+            )
+        }
+        Term::Array(ts, attrs) => {
+            let mut bindings = Vec::with_capacity(ts.len());
 
-                let ts = ts
-                    .into_iter()
-                    .map(|t| {
-                        if should_share(&t.term) {
-                            let fresh_var = LocIdent::fresh();
-                            let pos_t = t.pos;
-                            bindings.push(Binding {
-                                fresh_var,
-                                term: t,
-                                binding_type: BindingType::Normal
-                            });
-                            RichTerm::new(Term::Var(fresh_var), pos_t)
-                        } else {
-                            t
-                        }
-                    })
-                    .collect();
+            let ts = ts
+                .into_iter()
+                .map(|t| {
+                    if should_share(&t.term) {
+                        let fresh_var = LocIdent::fresh();
+                        let pos_t = t.pos;
+                        bindings.push(Binding {
+                            fresh_var,
+                            term: t,
+                            binding_type: BindingType::Normal,
+                        });
+                        RichTerm::new(Term::Var(fresh_var), pos_t)
+                    } else {
+                        t
+                    }
+                })
+                .collect();
 
-                with_bindings(Term::Array(ts, attrs), bindings, pos)
-            },
-            Term::Annotated(annot, t) if should_share(&t.term) => {
-                let fresh_var = LocIdent::fresh();
-                let shared = RichTerm::new(Term::Var(fresh_var), t.pos);
-                let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
-                RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
-            },
-        } else rt
-    }
+            with_bindings(Term::Array(ts, attrs), bindings, pos)
+        }
+        Term::Annotated(annot, t) if should_share(&t.term) => {
+            let fresh_var = LocIdent::fresh();
+            let shared = RichTerm::new(Term::Var(fresh_var), t.pos);
+            let inner = RichTerm::new(Term::Annotated(annot, shared), pos);
+            RichTerm::new(Term::Let(fresh_var, t, inner, LetAttrs::default()), pos)
+        }
+        _ => rt,
+    })
 }
 
 /// Transform the field of a recursive record. Take care of transforming the pending contracts

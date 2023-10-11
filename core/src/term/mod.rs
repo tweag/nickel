@@ -1780,49 +1780,34 @@ impl Traverse<RichTerm> for RichTerm {
         };
         let pos = rt.pos;
 
-        let result = match_sharedterm! {rt.term, with {
+        let result = match_sharedterm!(match (rt.term) {
             Term::Fun(id, t) => {
                 let t = t.traverse(f, order)?;
-                RichTerm::new(
-                    Term::Fun(id, t),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Fun(id, t), pos)
+            }
             Term::FunPattern(id, d, t) => {
                 let t = t.traverse(f, order)?;
-                RichTerm::new(
-                    Term::FunPattern(id, d, t),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::FunPattern(id, d, t), pos)
+            }
             Term::Let(id, t1, t2, attrs) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
-                RichTerm::new(
-                    Term::Let(id, t1, t2, attrs),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
+            }
             Term::LetPattern(id, pat, t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
-                RichTerm::new(
-                    Term::LetPattern(id, pat, t1, t2),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::LetPattern(id, pat, t1, t2), pos)
+            }
             Term::App(t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
-                RichTerm::new(
-                    Term::App(t1, t2),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::App(t1, t2), pos)
+            }
             Term::Match { cases, default } => {
                 // The annotation on `map_res` use Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let cases_result : Result<IndexMap<LocIdent, RichTerm>, E> = cases
+                let cases_result: Result<IndexMap<LocIdent, RichTerm>, E> = cases
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
@@ -1831,45 +1816,36 @@ impl Traverse<RichTerm> for RichTerm {
                 let default = default.map(|t| t.traverse(f, order)).transpose()?;
 
                 RichTerm::new(
-                    Term::Match {cases: cases_result?, default },
+                    Term::Match {
+                        cases: cases_result?,
+                        default,
+                    },
                     pos,
                 )
-            },
+            }
             Term::Op1(op, t) => {
                 let t = t.traverse(f, order)?;
-                RichTerm::new(
-                    Term::Op1(op, t),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Op1(op, t), pos)
+            }
             Term::Op2(op, t1, t2) => {
                 let t1 = t1.traverse(f, order)?;
                 let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Op2(op, t1, t2),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Op2(op, t1, t2), pos)
+            }
             Term::OpN(op, ts) => {
-                let ts_res: Result<Vec<RichTerm>, E> = ts
-                    .into_iter()
-                    .map(|t| t.traverse(f, order))
-                    .collect();
-                RichTerm::new(
-                    Term::OpN(op, ts_res?),
-                    pos,
-                )
-            },
+                let ts_res: Result<Vec<RichTerm>, E> =
+                    ts.into_iter().map(|t| t.traverse(f, order)).collect();
+                RichTerm::new(Term::OpN(op, ts_res?), pos)
+            }
             Term::Sealed(i, t1, lbl) => {
                 let t1 = t1.traverse(f, order)?;
-                RichTerm::new(
-                    Term::Sealed(i, t1, lbl),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Sealed(i, t1, lbl), pos)
+            }
             Term::Record(record) => {
                 // The annotation on `fields_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<IndexMap<LocIdent, Field>, E> = record.fields
+                let fields_res: Result<IndexMap<LocIdent, Field>, E> = record
+                    .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
                     .map(|(id, field)| {
@@ -1878,14 +1854,19 @@ impl Traverse<RichTerm> for RichTerm {
                     })
                     .collect();
                 RichTerm::new(
-                    Term::Record(RecordData::new(fields_res?, record.attrs, record.sealed_tail)),
-                    pos
+                    Term::Record(RecordData::new(
+                        fields_res?,
+                        record.attrs,
+                        record.sealed_tail,
+                    )),
+                    pos,
                 )
-            },
+            }
             Term::RecRecord(record, dyn_fields, deps) => {
                 // The annotation on `map_res` uses Result's corresponding trait to convert from
                 // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record.fields
+                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
+                    .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
                     .map(|(id, field)| {
@@ -1899,33 +1880,27 @@ impl Traverse<RichTerm> for RichTerm {
                         let id_t = id_t.traverse(f, order)?;
                         let field = field.traverse(f, order)?;
 
-                        Ok((id_t, field,))
+                        Ok((id_t, field))
                     })
                     .collect();
                 RichTerm::new(
                     Term::RecRecord(
-                        RecordData::new(
-                            static_fields_res?,
-                            record.attrs,
-                            record.sealed_tail
-                        ),
+                        RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
                         dyn_fields_res?,
-                        deps
+                        deps,
                     ),
                     pos,
                 )
-            },
+            }
             Term::Array(ts, attrs) => {
-                let ts_res = Array::new(ts
-                    .into_iter()
-                    .map(|t| t.traverse(f, order))
-                    .collect::<Result<Rc<[_]>, _>>()?);
+                let ts_res = Array::new(
+                    ts.into_iter()
+                        .map(|t| t.traverse(f, order))
+                        .collect::<Result<Rc<[_]>, _>>()?,
+                );
 
-                RichTerm::new(
-                    Term::Array(ts_res, attrs),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Array(ts_res, attrs), pos)
+            }
             Term::StrChunks(chunks) => {
                 let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
                     .into_iter()
@@ -1937,23 +1912,18 @@ impl Traverse<RichTerm> for RichTerm {
                     })
                     .collect();
 
-                RichTerm::new(
-                    Term::StrChunks(chunks_res?),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::StrChunks(chunks_res?), pos)
+            }
             Term::Annotated(annot, term) => {
                 let annot = annot.traverse(f, order)?;
                 let term = term.traverse(f, order)?;
-                RichTerm::new(
-                    Term::Annotated(annot, term),
-                    pos,
-                )
-            },
+                RichTerm::new(Term::Annotated(annot, term), pos)
+            }
             Term::Type(ty) => {
                 RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
             }
-        } else rt};
+            _ => rt,
+        });
 
         match order {
             TraverseOrder::TopDown => Ok(result),
@@ -2043,10 +2013,12 @@ impl Traverse<Type> for RichTerm {
     {
         self.traverse(
             &mut |rt: RichTerm| {
-                match_sharedterm! {rt.term, with {
-                    Term::Type(ty) =>
-                        ty.traverse(f, order).map(|ty| RichTerm::new(Term::Type(ty), rt.pos))
-                } else Ok(rt)}
+                match_sharedterm!(match (rt.term) {
+                    Term::Type(ty) => ty
+                        .traverse(f, order)
+                        .map(|ty| RichTerm::new(Term::Type(ty), rt.pos)),
+                    _ => Ok(rt),
+                })
             },
             order,
         )
@@ -2100,9 +2072,9 @@ impl fmt::Display for Term {
     }
 }
 
-/// Allows to match on SharedTerm without taking ownership of the matched part until the match. In
-/// the `else` clause, we haven't taken ownership yet, so we can still use the richterm at that
-/// point.
+/// Allows to match on SharedTerm without taking ownership of the matched part
+/// until the match. In the wildcard pattern, we don't take ownership, so we can
+/// still use the richterm at that point.
 ///
 /// It is used somehow as a match statement, going from
 /// ```
@@ -2121,20 +2093,25 @@ impl fmt::Display for Term {
 /// # use nickel_lang_core::match_sharedterm;
 /// let rt = RichTerm::from(Term::Bool(true));
 ///
-/// match_sharedterm!{rt.term, with {
+/// match_sharedterm!(match (rt.term) {
 ///         Term::Bool(x) => usize::from(x),
 ///         Term::Str(s) => s.len(),
-///     } else 42
-/// };
+///         _ => 42,
+///     }
+/// );
 /// ```
+///
+/// Unlike a regular match statement, the expression being matched on must be
+/// surrounded in parentheses
 ///
 /// Known limitation: cannot use a `mut` inside the patterns.
 #[macro_export]
 macro_rules! match_sharedterm {
     (
-        $st: expr, with {
-            $($($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr),+ $(,)?
-        } else $else_clause: expr
+        match ($st: expr) {
+            $(%PROCESSED% $($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr,)+
+            _ => $else_expr: expr $(,)?
+        }
     ) => {
         match $st.as_ref() {
             $(
@@ -2145,8 +2122,55 @@ macro_rules! match_sharedterm {
                         _ => unsafe {::core::hint::unreachable_unchecked()}
                     },
             )+
-            _ => $else_clause
+            _ => $else_expr
         }
+    };
+
+
+    // recurse through the match arms prepending %PROCESSED% for two reasons:
+    // 1. to standardize match arms with trailing commas on <pattern> => { <body> }
+    // 2. so there's no ambiguity between a normal match arm and the final _ => <body>
+    (
+        match ($st: expr) {
+            $(%PROCESSED% $($pat1: pat_param)|+ $(if $if_expr1: expr)? => $expr1: expr,)*
+            $($pat2: pat_param)|+ $(if $if_expr2: expr)? => $expr2: expr,
+            $($rest:tt)*
+        }
+    ) => {
+        match_sharedterm!(match ($st) {
+            $(%PROCESSED% $($pat1)|+ $(if $if_expr1)? => $expr1,)*
+            %PROCESSED% $($pat2)|+ $(if $if_expr2)? => $expr2,
+            $($rest)*
+        })
+    };
+    (
+        match ($st: expr) {
+            $(%PROCESSED% $($pat1: pat_param)|+ $(if $if_expr1: expr)? => $expr1: expr,)*
+            $($pat2: pat_param)|+ $(if $if_expr2: expr)? => $expr2: block
+            $($rest:tt)*
+        }
+    ) => {
+        match_sharedterm!(match ($st) {
+            $(%PROCESSED% $($pat1)|+ $(if $if_expr1)? => $expr1,)*
+            %PROCESSED% $($pat2)|+ $(if $if_expr2)? => $expr2,
+            $($rest)*
+        })
+    };
+
+    // throw nice error messages for common mistakes
+    (
+        match ($st: expr) {
+            $(%PROCESSED% $($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr,)+
+        }
+    ) => {
+        compile_error!("`match_sharedterm!` used without a final wildcard match arm. You can just match on `sharedTerm.into_owned()`")
+    };
+    (
+        match ($st: expr) {
+            _ => $else_expr: expr $(,)?
+        }
+    ) => {
+        compile_error!("`match_sharedterm!` used with only a wildcard match arm. You can just unconditionally execute that arm")
     };
 }
 
