@@ -1843,7 +1843,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         // We don't deduplicate polymorphic contracts, because
                                         // they're not idempotent.
                                         if ctr.can_have_poly_ctrs() {
-                                            return false;
+                                            return true;
                                         }
 
                                         let envs_left = EvalEnvsRef {
@@ -1873,7 +1873,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     })
                                     .collect();
 
-                                let ctrs_right = ctrs_right_sieve.into_iter().filter_map(|ctr| ctr);
+                                let ctrs_right = ctrs_right_sieve.into_iter().flatten();
 
                                 ts.extend(ts1.into_iter().map(|t|
                                     RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
