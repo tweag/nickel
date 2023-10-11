@@ -505,16 +505,16 @@ impl Label {
 
     /// Tests if the contract associated to this label might have polymorphic subcontracts
     /// (equivalently, if the contract is derived from a type which has free type variables). Such
-    /// contracts are special, in particular because they aren't idempotent and thus can't be e.g.
-    /// deduplicated.
+    /// contracts are special, in particular because they aren't idempotent and thus can't be
+    /// freely deduplicated.
     ///
     /// This check is an over approximation and might return `true` even if the contract is not
-    /// polymorphic, in return of being fast.
+    /// polymorphic, in exchange of being fast (constant time).
     pub fn can_have_poly_ctrs(&self) -> bool {
         // Checking that the type environment is not empty is a bit coarse: what it actually checks
         // is that this contract is derived from the body of a `forall`. For example, in `forall a.
         // a -> Number`, `Number` isn't polymorphic, but `has_polymorphic_ctrs` will return `true`.
-        self.type_environment.is_empty()
+        !self.type_environment.is_empty()
     }
 }
 
