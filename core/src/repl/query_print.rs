@@ -6,6 +6,10 @@ use crate::term::{
 };
 use std::{io, io::Write};
 
+/// The maximum width for pretty-printing default values. Beyond this limit, the content is cut and
+/// an ellipsis is appended.
+const TERM_MAX_WIDTH: usize = 80;
+
 /// A query printer. The implementation may differ depending on the activation of markdown
 /// support.
 pub trait QueryPrinter {
@@ -266,7 +270,7 @@ fn render_query_result<R: QueryPrinter>(
             value: Some(t),
             ..
         } if selected_attrs.default => {
-            renderer.write_metadata(out, "default", &t.as_ref().shallow_repr())?;
+            renderer.write_metadata(out, "default", &t.pretty_print_cap(TERM_MAX_WIDTH))?;
             found = true;
         }
         Field {
@@ -279,7 +283,7 @@ fn render_query_result<R: QueryPrinter>(
             ..
         } if selected_attrs.value => {
             renderer.write_metadata(out, "priority", &format!("{n}"))?;
-            renderer.write_metadata(out, "value", &t.as_ref().shallow_repr())?;
+            renderer.write_metadata(out, "value", &t.pretty_print_cap(TERM_MAX_WIDTH))?;
             found = true;
         }
         _ => (),

@@ -755,58 +755,6 @@ impl Term {
         .map(String::from)
     }
 
-    /// Return a shallow string representation of a term, used for error reporting.
-    pub fn shallow_repr(&self) -> String {
-        match self {
-            Term::Null => String::from("null"),
-            Term::Bool(true) => String::from("true"),
-            Term::Bool(false) => String::from("false"),
-            Term::Num(n) => format!("{}", n.to_sci()),
-            Term::Str(s) => format!("\"{s}\""),
-            Term::StrChunks(chunks) => {
-                let chunks_str: Vec<String> = chunks
-                    .iter()
-                    .map(|chunk| match chunk {
-                        StrChunk::Literal(s) => s,
-                        StrChunk::Expr(..) => "${ ... }",
-                    })
-                    .map(String::from)
-                    .collect();
-
-                format!("\"{}\"", chunks_str.join(""))
-            }
-            Term::Fun(_, _) | Term::FunPattern(_, _, _) => String::from("<func>"),
-            Term::Match { .. } => String::from("<func (match expr)>"),
-            Term::Lbl(_) => String::from("<label>"),
-            Term::Enum(id) => {
-                let re = regex::Regex::new("_?[a-zA-Z][_a-zA-Z0-9]*").unwrap();
-                let s = id.to_string();
-                if re.is_match(&s) {
-                    format!("'{s}")
-                } else {
-                    format!("'\"{s}\"")
-                }
-            }
-            Term::Record(..) | Term::RecRecord(..) => String::from("{ ... }"),
-            Term::Array(..) => String::from("[ ... ]"),
-            Term::SealingKey(_) => String::from("<sealing key>"),
-            Term::Sealed(..) => String::from("<sealed>"),
-            Term::Annotated(_, t) => t.as_ref().shallow_repr(),
-            Term::Var(id) => id.to_string(),
-            Term::ParseError(_) => String::from("<parse error>"),
-            Term::RuntimeError(_) => String::from("<runtime error>"),
-            Term::Type(_) => String::from("<type>"),
-            Term::Let(..)
-            | Term::LetPattern(..)
-            | Term::App(_, _)
-            | Term::Op1(_, _)
-            | Term::Op2(_, _, _)
-            | Term::OpN(..)
-            | Term::Import(_)
-            | Term::ResolvedImport(_) => String::from("<unevaluated>"),
-        }
-    }
-
     /// Determine if a term is in evaluated form, called weak head normal form (WHNF).
     pub fn is_whnf(&self) -> bool {
         match self {
@@ -1722,7 +1670,7 @@ impl RichTerm {
     /// than the bound, the string is truncated to `max_width` and the last character after
     /// truncate is replaced by the ellipsis unicode character U+2026.
     pub fn pretty_print_cap(&self, max_width: usize) -> String {
-        let output = format!("{self}");
+        let output = self.to_string();
 
         if output.len() <= max_width {
             output
