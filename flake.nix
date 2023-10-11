@@ -49,6 +49,7 @@
       RUST_CHANNELS = [
         "stable"
         "beta"
+        "nightly"
       ];
 
       forEachRustChannel = fn: builtins.listToAttrs (builtins.map fn RUST_CHANNELS);
@@ -112,6 +113,8 @@
             "rust-analysis"
             "rustfmt"
             "clippy"
+          ] ++ pkgs.lib.optionals (channel == "nightly") [
+            "miri"
           ]
         , channel ? "stable"
         , targets ? [ (toRustTarget hostPlatform) ]
