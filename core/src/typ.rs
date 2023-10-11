@@ -941,23 +941,27 @@ impl Type {
     /// - All positive occurrences of first order contracts (that is, anything but a function type)
     /// are turned to `Dyn` contracts.
     fn optimize_static(self) -> Self {
+        use crate::environment::Environment;
+        // We use this environment as a shareable HashSet
+        type VarsHashSet = Environment<Ident, ()>;
+
         fn optimize_rrows(
             rrows: RecordRows,
-            vars_elide: &HashSet<LocIdent>,
+            vars_elide: VarsHashSet,
             polarity: Polarity,
         ) -> RecordRows {
             RecordRows(rrows.0.map(
-                |typ| Box::new(optimize(*typ, vars_elide, polarity)),
-                |rrows| Box::new(optimize_rrows(*rrows, vars_elide, polarity)),
+                |typ| Box::new(optimize(*typ, vars_elide.clone(), polarity)),
+                |rrows| Box::new(optimize_rrows(*rrows, vars_elide.clone(), polarity)),
             ))
         }
 
-        fn optimize(typ: Type, vars_elide: &HashSet<LocIdent>, polarity: Polarity) -> Type {
+        fn optimize(typ: Type, mut vars_elide: VarsHashSet, polarity: Polarity) -> Type {
             let mut pos = typ.pos;
 
             let optimized = match typ.typ {
                 TypeF::Arrow(dom, codom) => TypeF::Arrow(
-                    Box::new(optimize(*dom, vars_elide, polarity.flip())),
+                    Box::new(optimize(*dom, vars_elide.clone(), polarity.flip())),
                     Box::new(optimize(*codom, vars_elide, polarity)),
                 ),
                 // TODO: don't optimize only VarKind::Type
@@ -966,9 +970,8 @@ impl Type {
                     var_kind: VarKind::Type,
                     body,
                 } if polarity == Polarity::Positive => {
-                    let mut var_owned = vars_elide.clone();
-                    var_owned.insert(var);
-                    let result = optimize(*body, &var_owned, polarity);
+                    vars_elide.insert(var.ident(), ());
+                    let result = optimize(*body, vars_elide, polarity);
                     // we keep the position of the body, not the one of the forall
                     pos = result.pos;
                     result.typ
@@ -982,7 +985,7 @@ impl Type {
                     var_kind,
                     body: Box::new(optimize(*body, vars_elide, polarity)),
                 },
-                TypeF::Var(id) if vars_elide.contains(&id) => TypeF::Dyn,
+                TypeF::Var(id) if vars_elide.get(&id).is_some() => TypeF::Dyn,
                 v @ TypeF::Var(_) => v,
                 // Any first-order type on positive position can be elided
                 _ if matches!(polarity, Polarity::Positive) => TypeF::Dyn,
@@ -999,14 +1002,13 @@ impl Type {
                 // All other types don't contain subtypes, it's a base case
                 t => t,
             };
-
             Type {
                 typ: optimized,
                 pos,
             }
         }
 
-        optimize(self, &HashSet::new(), Polarity::Positive)
+        optimize(self, VarsHashSet::new(), Polarity::Positive)
     }
 
     /// Return the contract corresponding to a type which appears in a static type annotation. Said
