@@ -1892,20 +1892,28 @@ impl Traverse<RichTerm> for RichTerm {
             // The problem is that the parent and child aren't the same object,
             // but we can't hold a reference to both at the same time. I tried
             // for a while and couldn't manage it.
-            let next = unsafe { &mut *next };
+            // let next = unsafe { &mut *next };
 
             match instruction {
-                ApplyF => *next = f(next.clone())?,
+                ApplyF => {
+                    let next = unsafe { &mut *next };
+                    *next = f(next.clone())?;
+                }
                 Recurse => {
                     match order {
                         TraverseOrder::TopDown => {
+                            let next = unsafe { &mut *next };
                             *next = f(next.clone())?;
                         }
                         // postpone f(next) until we've done all the children
                         // `todo` is a stack, so first on is last off
+                        // NOTE: for stacked borrows (SB), this line must come
+                        //       before casting `next` to a reference. For tree
+                        //       borrows (TB), it doesn't make a difference.
                         TraverseOrder::BottomUp => todo.push((ApplyF, next)),
                     };
 
+                    let next = unsafe { &mut *next };
                     match SharedTerm::make_mut(&mut next.term) {
                         Term::Null
                         | Term::Bool(_)
