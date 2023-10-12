@@ -33,6 +33,7 @@ use crate::{
         *,
     },
     transform::Closurizable,
+    typecheck::eq::{contract_eq, EvalEnvsRef},
 };
 
 use malachite::{
@@ -1823,17 +1824,56 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 // applied because we don't have a way of tracking which elements
                                 // should take which contracts.
 
-                                let (ctrs_left, ctrs_common) : (Vec<_>, Vec<_>) = attrs1
-                                    .pending_contracts
-                                    .into_iter()
-                                    .partition(|ctr| !attrs2.pending_contracts.contains(ctr));
+                                // Separate contracts between the parts that aren't common, and
+                                // must be applied right away, and the common part, which can be
+                                // kept lazy.
+                                let mut ctrs_left = attrs1.pending_contracts;
+                                // We use a vector of `Option` so that we can set the elements to
+                                // remove to `None` and make a single pass at the end
+                                // to retain the remaining ones.
+                                let mut ctrs_right_sieve : Vec<_> = attrs2.pending_contracts.into_iter().map(Some).collect();
+                                let mut ctrs_common = Vec::new();
 
-                                let ctrs_right = attrs2
-                                    .pending_contracts
+                                // We basically compute the intersection (`ctr_common`),
+                                // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
+                                let ctrs_left : Vec<_> =
+                                    ctrs_left
                                     .into_iter()
                                     .filter(|ctr| {
-                                        !ctrs_left.contains(ctr) && !ctrs_common.contains(ctr)
-                                    });
+                                        // We don't deduplicate polymorphic contracts, because
+                                        // they're not idempotent.
+                                        if ctr.can_have_poly_ctrs() {
+                                            return true;
+                                        }
+
+                                        let envs_left = EvalEnvsRef {
+                                            eval_env: &env1,
+                                            initial_env: &self.initial_env,
+                                        };
+
+                                        let twin_index = ctrs_right_sieve
+                                            .iter()
+                                            .filter_map(|ctr| ctr.as_ref())
+                                            .position(|other_ctr| {
+                                                let envs_right = EvalEnvsRef {
+                                                    eval_env: &env2,
+                                                    initial_env: &self.initial_env,
+                                                };
+
+                                                contract_eq::<EvalEnvsRef>(0, &ctr.contract, envs_left, &other_ctr.contract, envs_right)
+                                            });
+
+                                        if let Some(index) = twin_index {
+                                            ctrs_right_sieve[index] = None;
+                                            false
+                                        }
+                                        else {
+                                            true
+                                        }
+                                    })
+                                    .collect();
+
+                                let ctrs_right = ctrs_right_sieve.into_iter().flatten();
 
                                 ts.extend(ts1.into_iter().map(|t|
                                     RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
@@ -2098,18 +2138,28 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 match_sharedterm! {t2,
                     with {
                         Term::Array(ts, attrs) => {
+                            let mut attrs = attrs;
+                            let mut final_env = env2;
+
                             // Preserve the environment of the contract in the resulting array.
-                            let rt3 = rt3.closurize(&mut self.cache, &mut env2, env3);
+                            let contract = rt3.closurize(&mut self.cache, &mut final_env, env3);
+                            RuntimeContract::push_dedup(
+                                &self.initial_env,
+                                &mut attrs.pending_contracts,
+                                &final_env,
+                                RuntimeContract::new(contract, lbl),
+                                &final_env
+                            );
 
                             let array_with_ctr = Closure {
                                 body: RichTerm::new(
                                     Term::Array(
                                         ts,
-                                        attrs.with_extra_contracts([RuntimeContract::new(rt3, lbl)])
+                                        attrs,
                                     ),
                                     pos2,
                                 ),
-                                env: env2,
+                                env: final_env,
                             };
 
                             Ok(array_with_ctr)

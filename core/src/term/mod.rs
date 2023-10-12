@@ -359,6 +359,12 @@ impl RuntimeContract {
 
         contracts.push(ctr);
     }
+
+    /// Check if this contract might have polymorphic subcontracts. See
+    /// [crate::label::Label::can_have_poly_ctrs].
+    pub fn can_have_poly_ctrs(&self) -> bool {
+        self.label.can_have_poly_ctrs()
+    }
 }
 
 impl Traverse<RichTerm> for RuntimeContract {
