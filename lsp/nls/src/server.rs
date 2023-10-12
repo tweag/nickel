@@ -11,11 +11,12 @@ use lsp_types::{
     notification::Notification as _,
     notification::{DidChangeTextDocument, DidOpenTextDocument},
     request::{Request as RequestTrait, *},
-    CompletionOptions, CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams, HoverOptions,
-    HoverParams, HoverProviderCapability, OneOf, PublishDiagnosticsParams, ReferenceParams,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    Url, WorkDoneProgressOptions,
+    CodeActionParams, CompletionOptions, CompletionParams, DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
+    ExecuteCommandParams, GotoDefinitionParams, HoverOptions, HoverParams, HoverProviderCapability,
+    OneOf, PublishDiagnosticsParams, ReferenceParams, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Url,
+    WorkDoneProgressOptions,
 };
 
 use nickel_lang_core::{
@@ -27,8 +28,10 @@ use nickel_lang_core::{
 use nickel_lang_core::{stdlib, typecheck::Context};
 
 use crate::{
+    actions,
     analysis::{Analysis, AnalysisRegistry},
     cache::CacheExt,
+    command,
     diagnostic::DiagnosticCompat,
     field_walker::DefWithPath,
     requests::{completion, formatting, goto, hover, symbols},
@@ -72,6 +75,11 @@ impl Server {
             }),
             document_symbol_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
+            code_action_provider: Some(lsp_types::CodeActionProviderCapability::Simple(true)),
+            execute_command_provider: Some(lsp_types::ExecuteCommandOptions {
+                commands: vec!["eval".to_owned()],
+                ..Default::default()
+            }),
             ..ServerCapabilities::default()
         }
     }
@@ -248,6 +256,18 @@ impl Server {
                 debug!("handle formatting");
                 let params: DocumentFormattingParams = serde_json::from_value(req.params).unwrap();
                 formatting::handle_format_document(params, req.id.clone(), self)
+            }
+
+            CodeActionRequest::METHOD => {
+                debug!("code action");
+                let params: CodeActionParams = serde_json::from_value(req.params).unwrap();
+                actions::handle_code_action(params, req.id.clone(), self)
+            }
+
+            ExecuteCommand::METHOD => {
+                debug!("command");
+                let params: ExecuteCommandParams = serde_json::from_value(req.params).unwrap();
+                command::handle_command(params, req.id.clone(), self)
             }
 
             _ => Ok(()),
