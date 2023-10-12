@@ -1836,7 +1836,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                 // We basically compute the intersection (`ctr_common`),
                                 // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                                let ctrs_left : Vec<_> =
+                                let ctrs_left_dedup : Vec<_> =
                                     ctrs_left
                                     .into_iter()
                                     .filter(|ctr| {
@@ -1853,18 +1853,27 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                                         let twin_index = ctrs_right_sieve
                                             .iter()
-                                            .filter_map(|ctr| ctr.as_ref())
-                                            .position(|other_ctr| {
+                                            // Keep track of the index for later deletion
+                                            .enumerate()
+                                            // Filter out contracts already deduplicated
+                                            .filter_map(|(i, other_ctr)| Some((i, other_ctr.as_ref()?)))
+                                            .find_map(|(i, other_ctr)| {
                                                 let envs_right = EvalEnvsRef {
                                                     eval_env: &env2,
                                                     initial_env: &self.initial_env,
                                                 };
 
-                                                contract_eq::<EvalEnvsRef>(0, &ctr.contract, envs_left, &other_ctr.contract, envs_right)
+                                                contract_eq::<EvalEnvsRef>(0, &ctr.contract, envs_left, &other_ctr.contract, envs_right).then_some(i)
                                             });
 
                                         if let Some(index) = twin_index {
-                                            ctrs_right_sieve[index] = None;
+                                            // unwrap(): we know that the contract at this index is
+                                            // `Some`, because all elements are initially some when
+                                            // creating `ctrs_right_sieve` and then we always
+                                            // filter out `None` values when computing a new
+                                            // `index` in the `filter_map` above.
+                                            let common = ctrs_right_sieve[index].take().unwrap();
+                                            ctrs_common.push(common);
                                             false
                                         }
                                         else {
@@ -1873,15 +1882,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     })
                                     .collect();
 
-                                let ctrs_right = ctrs_right_sieve.into_iter().flatten();
+                                let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
                                 ts.extend(ts1.into_iter().map(|t|
-                                    RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
+                                    RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
                                     .closurize(&mut self.cache, &mut env, env1.clone())
                                 ));
 
                                 ts.extend(ts2.into_iter().map(|t|
-                                    RuntimeContract::apply_all(t, ctrs_right.clone(), pos2)
+                                    RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
                                     .closurize(&mut self.cache, &mut env, env2.clone())
                                 ));
 
