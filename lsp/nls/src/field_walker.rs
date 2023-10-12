@@ -116,59 +116,80 @@ fn metadata_detail(m: &FieldMetadata) -> Option<String> {
         .or_else(|| m.annotation.contracts_to_string())
 }
 
-/// A definition whose value might need to be accessed through a path.
-///
-/// This arises because of pattern bindings.
-///  For example, in
-///
-/// ```text
-/// let { a = { b } } = val in ...
-/// ```
-///
-/// the name `b` is bound to the term `val` at the path `[a, b]`.
-///
-/// Semantically, a definition with a path is pretty much the same as
-/// a definition whose value is a `Op1(StaticAccess, Op1(StaticAccess, ...))`.
+/// The definition site of an identifier.
 #[derive(Clone, Debug, PartialEq)]
-pub struct DefWithPath {
-    /// The identifier at the definition site.
-    pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one. If the definition
-    /// was made by a `let` binding, there will be a value; if it was made in a
-    /// function definition, there will not be a value.
+pub enum Def {
+    /// A definition site that's a let binding (possibly a pattern binding).
+    Let {
+        ident: LocIdent,
+        /// The right hand side of the let binding. Note that in the case of a
+        /// pattern binding, this may not be the value that's actually bound to
+        /// `ident`. (See `path`.)
+        value: RichTerm,
+        /// The path that `ident` refers to in `value`.
+        path: Vec<Ident>,
+    },
+    /// An identifier bound as the argument to a function.
     ///
-    /// For example, in `{ foo = 1 }`, this will point at the `1`.
-    pub value: Option<RichTerm>,
-    /// The path within the value that this binding refers to.
-    pub path: Vec<Ident>,
-    /// If this definition came from a record field, this is the containing
-    /// record. Note that having a parent record is mutually exclusive with
-    /// having a non-empty path, because non-empty paths only come from let
-    /// pattern bindings.
-    pub parent_record: Option<RichTerm>,
-    pub metadata: Option<FieldMetadata>,
+    /// Note that this can also be a pattern binding (and therefore come with
+    /// an associated path) but because we don't track any bound value here, we
+    /// don't need to track the path either.
+    Fn { ident: LocIdent },
+    /// An identifier bound as a record field.
+    Field {
+        ident: LocIdent,
+        value: Option<RichTerm>,
+        record: RichTerm,
+        metadata: FieldMetadata,
+    },
 }
 
-impl DefWithPath {
-    pub fn completion_item(&self) -> CompletionItem {
-        CompletionItem {
-            label: ident_quoted(&self.ident.into()),
-            detail: self.metadata.as_ref().and_then(metadata_detail),
-            kind: Some(CompletionItemKind::Property),
-            documentation: self.metadata.as_ref().and_then(metadata_doc),
-            ..Default::default()
+impl Def {
+    pub fn ident(&self) -> LocIdent {
+        match self {
+            Def::Let { ident, .. } | Def::Fn { ident, .. } | Def::Field { ident, .. } => *ident,
+        }
+    }
+
+    pub fn metadata(&self) -> Option<&FieldMetadata> {
+        match self {
+            Def::Field { metadata, .. } => Some(metadata),
+            _ => None,
+        }
+    }
+
+    pub fn parent_record(&self) -> Option<&RichTerm> {
+        match self {
+            Def::Field { record, .. } => Some(record),
+            _ => None,
+        }
+    }
+
+    pub fn value(&self) -> Option<&RichTerm> {
+        match self {
+            Def::Let { value, .. } => Some(value),
+            Def::Field { value, .. } => value.as_ref(),
+            Def::Fn { .. } => None,
+        }
+    }
+
+    pub fn path(&self) -> &[Ident] {
+        match self {
+            Def::Let { path, .. } => path.as_slice(),
+            _ => &[],
         }
     }
 }
 
-#[cfg(test)]
-impl DefWithPath {
-    pub fn path(&self) -> &[Ident] {
-        &self.path
-    }
-
-    pub fn value(&self) -> Option<&RichTerm> {
-        self.value.as_ref()
+impl Def {
+    pub fn completion_item(&self) -> CompletionItem {
+        CompletionItem {
+            label: ident_quoted(&self.ident().into()),
+            detail: self.metadata().and_then(metadata_detail),
+            kind: Some(CompletionItemKind::Property),
+            documentation: self.metadata().and_then(metadata_doc),
+            ..Default::default()
+        }
     }
 }
 
@@ -227,9 +248,25 @@ impl<'a> FieldResolver<'a> {
         fields
     }
 
-    pub fn get_cousin_defs(&self, def: &DefWithPath) -> Vec<(LocIdent, Field)> {
+    /// Find the "cousins" of this definition.
+    ///
+    /// When resolving references, we often want to take merged records into
+    /// account. For example, when looking at the first definition of `foo` in
+    ///
+    /// ```nickel
+    /// { foo = 1 } | { foo | Number | doc "blah blah" }
+    /// ```
+    ///
+    /// we often want to access the information in the second "foo". We call these two
+    /// `foo`s "cousin" definitions because they look like cousins in the AST. Note
+    /// that these can also happen at arbitrary depths, like the two `foo`s in
+    ///
+    /// ```nickel
+    /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
+    /// ```
+    pub fn get_cousin_defs(&self, def: &Def) -> Vec<(LocIdent, Field)> {
         let mut ret = Vec::new();
-        if let Some(parent) = &def.parent_record {
+        if let Some(parent) = def.parent_record() {
             if let Some(mut ancestors) = self.server.analysis.get_parent_chain(parent) {
                 while let Some(ancestor) = ancestors.next_merge() {
                     // We're traversing up the tree starting at the parent, so this is the
@@ -239,7 +276,7 @@ impl<'a> FieldResolver<'a> {
                         ret.extend(
                             uncles
                                 .iter()
-                                .filter_map(|uncle| uncle.get_field_and_loc(def.ident.ident))
+                                .filter_map(|uncle| uncle.get_field_and_loc(def.ident().ident))
                                 .map(|(loc, fld)| (loc, fld.clone())),
                         )
                     }
@@ -249,13 +286,13 @@ impl<'a> FieldResolver<'a> {
         ret
     }
 
-    fn resolve_def_with_path(&self, def: &DefWithPath) -> Vec<FieldHaver> {
+    fn resolve_def_with_path(&self, def: &Def) -> Vec<FieldHaver> {
         let mut fields = Vec::new();
 
-        if let Some(val) = &def.value {
-            fields.extend_from_slice(&self.resolve_term_path(val, def.path.iter().copied()))
+        if let Some(val) = def.value() {
+            fields.extend_from_slice(&self.resolve_term_path(val, def.path().iter().copied()))
         }
-        if let Some(meta) = &def.metadata {
+        if let Some(meta) = def.metadata() {
             fields.extend(self.resolve_annot(&meta.annotation));
         }
 

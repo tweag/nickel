@@ -9,7 +9,7 @@ use nickel_lang_core::{
 };
 
 use crate::{
-    field_walker::DefWithPath,
+    field_walker::Def,
     identifier::LocIdent,
     position::PositionLookup,
     term::RichTermPtr,
@@ -139,6 +139,8 @@ impl<'a> ParentChainIter<'a> {
         let is_fieldy_term = |rt: &RichTerm| {
             matches!(
                 rt.as_ref(),
+                // There is also NAryOp::MergeContract, but only at eval time so we don't
+                // expect it.
                 Term::Op2(BinaryOp::Merge(_), _, _)
                     | Term::Annotated(_, _)
                     | Term::RecRecord(..)
@@ -249,7 +251,7 @@ impl AnalysisRegistry {
         self.analysis.remove(&file_id);
     }
 
-    pub fn get_def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
+    pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
         let file = ident.pos.as_opt_ref()?.src_id;
         self.analysis.get(&file)?.usage_lookup.def(ident)
     }

@@ -1,12 +1,12 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceParams};
-use nickel_lang_core::term::{RichTerm, Term, UnaryOp};
+use nickel_lang_core::term::{record::FieldMetadata, RichTerm, Term, UnaryOp};
 use serde_json::Value;
 
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{DefWithPath, FieldResolver},
+    field_walker::{Def, FieldResolver},
     identifier::LocIdent,
     server::Server,
 };
@@ -19,7 +19,7 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             let def = server.analysis.get_def(&id)?;
             let cousins = resolver.get_cousin_defs(def);
             if cousins.is_empty() {
-                vec![def.ident]
+                vec![def.ident()]
             } else {
                 cousins.into_iter().map(|(loc, _)| loc).collect()
             }
@@ -118,12 +118,11 @@ pub fn handle_references(
             // If `id` is a field name in a record, we can search through cousins
             // to find more definitions.
             if matches!(parent.as_ref(), Term::RecRecord(..) | Term::Record(_)) {
-                let def = DefWithPath {
+                let def = Def::Field {
                     ident: id,
                     value: None,
-                    path: vec![id.ident],
-                    parent_record: Some(parent.clone()),
-                    metadata: None,
+                    record: parent.clone(),
+                    metadata: FieldMetadata::default(),
                 };
                 let resolver = FieldResolver::new(server);
                 let cousins = resolver.get_cousin_defs(&def);

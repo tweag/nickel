@@ -4,72 +4,20 @@ use nickel_lang_core::{
     environment::Environment as GenericEnvironment,
     identifier::Ident,
     position::RawSpan,
-    term::{record::FieldMetadata, RichTerm, Term, Traverse, TraverseControl},
+    term::{RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{field_walker::DefWithPath, identifier::LocIdent};
+use crate::{field_walker::Def, identifier::LocIdent};
 
-/// A term and a path.
-///
-/// This is morally equivalent to (but a more convenient representation than)
-/// `Op1(StaticAccess("field2"), Op1(StaticAccess("field1"), term))`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct TermAtPath {
-    pub term: RichTerm,
-    /// A path of identifiers, in left-to-right order.
-    ///
-    /// So, for `term.x.y.z`, this will be `vec!["x", "y", "z"]`.
-    pub path: Vec<Ident>,
-}
-
-impl From<RichTerm> for TermAtPath {
-    fn from(term: RichTerm) -> Self {
-        Self {
-            term,
-            path: Vec::new(),
-        }
-    }
-}
-
-pub type Environment = GenericEnvironment<Ident, DefWithPath>;
+pub type Environment = GenericEnvironment<Ident, Def>;
 
 trait EnvExt {
-    fn def(
-        &mut self,
-        id: impl Into<LocIdent>,
-        val: Option<impl Into<TermAtPath>>,
-        meta: Option<FieldMetadata>,
-        parent_record: Option<RichTerm>,
-    );
-
-    fn def_noval(&mut self, id: impl Into<LocIdent>, meta: Option<FieldMetadata>) {
-        self.def(id, None::<TermAtPath>, meta, None);
-    }
+    fn insert_def(&mut self, def: Def);
 }
 
 impl EnvExt for Environment {
-    fn def(
-        &mut self,
-        id: impl Into<LocIdent>,
-        val: Option<impl Into<TermAtPath>>,
-        meta: Option<FieldMetadata>,
-        parent_record: Option<RichTerm>,
-    ) {
-        let ident = id.into();
-        let (term, path) = val
-            .map(Into::into)
-            .map(|term_at_path| (term_at_path.term, term_at_path.path))
-            .unzip();
-        self.insert(
-            ident.ident,
-            DefWithPath {
-                ident,
-                value: term.map(Into::into),
-                metadata: meta,
-                path: path.unwrap_or_default(),
-                parent_record,
-            },
-        );
+    fn insert_def(&mut self, def: Def) {
+        self.insert(def.ident().ident, def);
     }
 }
 
@@ -93,7 +41,7 @@ pub struct UsageLookup {
     // The list of all the symbols (and their locations) in the document.
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
-    syms: HashMap<LocIdent, DefWithPath>,
+    syms: HashMap<LocIdent, Def>,
 }
 
 impl UsageLookup {
@@ -113,7 +61,7 @@ impl UsageLookup {
     }
 
     /// Return the definition site of `ident`.
-    pub fn def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
+    pub fn def(&self, ident: &LocIdent) -> Option<&Def> {
         // First try to look up the definition in our symbols table. If that fails,
         // find the active environment and look up the ident in it.
         //
@@ -142,29 +90,8 @@ impl UsageLookup {
         self.syms.keys().cloned()
     }
 
-    fn add_sym(
-        &mut self,
-        id: impl Into<LocIdent>,
-        val: Option<impl Into<TermAtPath>>,
-        meta: Option<FieldMetadata>,
-        parent_record: Option<RichTerm>,
-    ) {
-        let ident = id.into();
-        let (term, path) = val
-            .map(Into::into)
-            .map(|term_at_path| (term_at_path.term, term_at_path.path))
-            .unzip();
-
-        self.syms.insert(
-            ident,
-            DefWithPath {
-                ident,
-                value: term.map(Into::into),
-                metadata: meta,
-                path: path.unwrap_or_default(),
-                parent_record,
-            },
-        );
+    fn add_sym(&mut self, def: Def) {
+        self.syms.insert(def.ident(), def);
     }
 
     fn fill(&mut self, rt: &RichTerm, env: &Environment) {
@@ -177,26 +104,33 @@ impl UsageLookup {
                 match term.term.as_ref() {
                     Term::Fun(id, _body) => {
                         let mut new_env = env.clone();
-                        new_env.def_noval(*id, None);
+                        let ident = LocIdent::from(*id);
+                        new_env.insert_def(Def::Fn { ident });
                         TraverseControl::ContinueWithScope(new_env)
                     }
                     Term::FunPattern(maybe_id, pat, _body) => {
                         let mut new_env = env.clone();
                         if let Some(id) = maybe_id {
-                            new_env.def_noval(*id, None);
+                            let ident = LocIdent::from(*id);
+                            new_env.insert_def(Def::Fn { ident });
                         }
 
                         for m in &pat.matches {
-                            for (_path, id, field) in m.to_flattened_bindings() {
-                                new_env.def_noval(id, Some(field.metadata));
+                            for (_path, id, _field) in m.to_flattened_bindings() {
+                                new_env.insert_def(Def::Fn { ident: id.into() });
                             }
                         }
                         TraverseControl::ContinueWithScope(new_env)
                     }
                     Term::Let(id, val, body, attrs) => {
                         let mut new_env = env.clone();
-                        new_env.def(*id, Some(val.clone()), None, None);
-                        self.add_sym(*id, Some(val.clone()), None, None);
+                        let def = Def::Let {
+                            ident: LocIdent::from(*id),
+                            value: val.clone(),
+                            path: Vec::new(),
+                        };
+                        new_env.insert_def(def.clone());
+                        self.add_sym(def);
 
                         self.fill(val, if attrs.rec { &new_env } else { env });
                         self.fill(body, &new_env);
@@ -206,19 +140,26 @@ impl UsageLookup {
                     Term::LetPattern(maybe_id, pat, val, _body) => {
                         let mut new_env = env.clone();
                         if let Some(id) = maybe_id {
-                            new_env.def(*id, Some(val.clone()), None, None);
-                            self.add_sym(*id, Some(val.clone()), None, None);
+                            let def = Def::Let {
+                                ident: LocIdent::from(*id),
+                                value: val.clone(),
+                                path: Vec::new(),
+                            };
+
+                            new_env.insert_def(def.clone());
+                            self.add_sym(def);
                         }
 
                         for m in &pat.matches {
-                            for (path, id, field) in m.to_flattened_bindings() {
+                            for (path, id, _field) in m.to_flattened_bindings() {
                                 let path = path.iter().map(|i| i.ident()).rev().collect();
-                                let term = TermAtPath {
-                                    term: val.clone(),
+                                let def = Def::Let {
+                                    ident: LocIdent::from(id),
+                                    value: val.clone(),
                                     path,
                                 };
-                                new_env.def(id, Some(term.clone()), Some(field.metadata), None);
-                                self.add_sym(id, Some(val.clone()), None, None);
+                                new_env.insert_def(def.clone());
+                                self.add_sym(def);
                             }
                         }
                         TraverseControl::ContinueWithScope(new_env)
@@ -229,18 +170,14 @@ impl UsageLookup {
                         // Records are recursive and the order of fields is unimportant, so define
                         // all the fields in the environment and then recurse into their values.
                         for (id, field) in &data.fields {
-                            new_env.def(
-                                *id,
-                                field.value.clone(),
-                                Some(field.metadata.clone()),
-                                Some(term.clone()),
-                            );
-                            self.add_sym(
-                                *id,
-                                field.value.clone(),
-                                Some(field.metadata.clone()),
-                                Some(term.clone()),
-                            );
+                            let def = Def::Field {
+                                ident: LocIdent::from(*id),
+                                value: field.value.clone(),
+                                record: term.clone(),
+                                metadata: field.metadata.clone(),
+                            };
+                            new_env.insert_def(def.clone());
+                            self.add_sym(def);
                         }
 
                         TraverseControl::ContinueWithScope(new_env)
@@ -248,7 +185,7 @@ impl UsageLookup {
                     Term::Var(id) => {
                         let id = LocIdent::from(*id);
                         if let Some(def) = env.get(&id.ident) {
-                            self.usage_table.entry(def.ident).or_default().push(id);
+                            self.usage_table.entry(def.ident()).or_default().push(id);
                         }
                         TraverseControl::Continue
                     }
@@ -302,7 +239,7 @@ pub(crate) mod tests {
         assert_eq!(table.def(&x0), table.def(&x1));
 
         let def = table.def(&x1).unwrap();
-        assert_eq!(def.ident, x0);
+        assert_eq!(def.ident(), x0);
         assert_matches!(def.value().unwrap().term.as_ref(), Term::Num(_));
     }
 
@@ -322,15 +259,15 @@ pub(crate) mod tests {
         assert_eq!(table.usages(&baz0).cloned().collect::<Vec<_>>(), vec![baz1]);
 
         let x_def = table.def(&x1).unwrap();
-        assert_eq!(x_def.ident, x0);
+        assert_eq!(x_def.ident(), x0);
         assert!(x_def.path().is_empty());
 
         let a_def = table.def(&a1).unwrap();
-        assert_eq!(a_def.ident, a0);
+        assert_eq!(a_def.ident(), a0);
         assert_eq!(a_def.path(), &["foo".into()]);
 
         let baz_def = table.def(&baz1).unwrap();
-        assert_eq!(baz_def.ident, baz0);
+        assert_eq!(baz_def.ident(), baz0);
         assert_eq!(baz_def.path(), vec!["foo".into(), "bar".into()]);
     }
 
@@ -346,9 +283,9 @@ pub(crate) mod tests {
         let field1 = locced("field", file, 47..52);
         let table = UsageLookup::new(&rt, &Environment::new());
 
-        assert_eq!(table.def(&foo1).unwrap().ident, foo0);
-        assert_eq!(table.def(&foo2).unwrap().ident, foo0);
-        assert_eq!(table.def(&sub1).unwrap().ident, sub0);
+        assert_eq!(table.def(&foo1).unwrap().ident(), foo0);
+        assert_eq!(table.def(&foo2).unwrap().ident(), foo0);
+        assert_eq!(table.def(&sub1).unwrap().ident(), sub0);
 
         // We don't see "baz = sub.field" as a "usage" of field, because it's
         // a static access and not a var.
