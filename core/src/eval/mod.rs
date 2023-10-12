@@ -75,6 +75,7 @@ use crate::term::record::FieldMetadata;
 use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
+    closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     identifier::LocIdent,
@@ -88,7 +89,6 @@ use crate::{
         BinaryOp, BindingType, LetAttrs, RecordOpKind, RichTerm, RuntimeContract, StrChunk, Term,
         UnaryOp,
     },
-    transform::Closurizable,
 };
 
 use std::io::Write;
@@ -622,7 +622,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
-                        crate::transform::share_normal_form::closurize_rec_record(
+                        closurize_rec_record(
                             &mut self.cache,
                             data.clone(),
                             dyn_fields.clone(),

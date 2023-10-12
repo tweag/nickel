@@ -16,6 +16,7 @@ use super::{
 use crate::nix_ffi;
 
 use crate::{
+    closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
@@ -32,7 +33,6 @@ use crate::{
         string::NickelString,
         *,
     },
-    transform::Closurizable,
     typecheck::eq::{contract_eq, EvalEnvsRef},
 };
 

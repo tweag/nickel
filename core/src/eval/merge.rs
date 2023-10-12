@@ -26,6 +26,7 @@
 //! depend on each metadata.
 
 use super::*;
+use crate::closurize::Closurize;
 use crate::combine::Combine;
 use crate::error::{EvalError, IllegalPolymorphicTailAction};
 use crate::label::{Label, MergeLabel};
@@ -34,7 +35,6 @@ use crate::term::{
     record::{self, Field, FieldDeps, FieldMetadata, RecordAttrs, RecordData},
     BinaryOp, IndexMap, RichTerm, Term, TypeAnnotation,
 };
-use crate::transform::Closurizable;
 
 /// Merging mode. Merging is used both to combine standard data and to apply contracts defined as
 /// records.

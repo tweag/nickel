@@ -238,11 +238,29 @@ pub enum Term {
     #[serde(skip)]
     RuntimeError(EvalError),
 
-    //TODO: should closure be shared (like cache idx) or not?
     #[serde(skip)]
+    /// A "pointer" (cache index, which can see as a kind of generic pointer to the memory managed
+    /// by the evaluation cache) to a term together with its environment. Unfortunately, this is an
+    /// evaluation object leaking into the AST: ideally, we would have one concrete syntax tree
+    /// coming out of the parser, and a different representation for later stages, storing closures
+    /// and whatnot.
+    ///
+    /// This is not the case yet, so in the meantime, we have to mix everything together. The
+    /// ability to sotre closures directly in the AST without having to generate a variable a bind
+    /// it in the environment is an important performance boost and we couldn't wait for the AST to
+    /// be split to implement it.
+    ///
+    /// For all intent of purpose, you should consider `Closure` as a "inline" variable: before its
+    /// introduction, it was encoded as a variable bound in the environment.
+    ///
+    /// This is a temporary solution, and will be removed in the future.
     Closure(CacheIndex),
 }
 
+// PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
+// Most of the instance aren't really meaningful to use outside of very simple cases, and you
+// should avoid comparing terms directly.
+// We have to implement this instance by hand because of the `Closure` node.
 impl PartialEq for Term {
     #[track_caller]
     fn eq(&self, other: &Self) -> bool {
@@ -293,7 +311,10 @@ impl PartialEq for Term {
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
-            (Self::Closure(l0), Self::Closure(r0)) => panic!("breakpoint"),
+            // We don't compare closure, because we can't, without the evaluation cache at hand.
+            // It's ok even if the cache index are the same: we implement PartialEq, so we can have
+            // `x != x`.
+            (Self::Closure(l0), Self::Closure(r0)) => false,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
@@ -842,6 +863,7 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(..)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
@@ -853,9 +875,7 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
-            | Term::RuntimeError(_)
-            // TODO: is this really WHNF
-            | Term::Closure(_)=> false,
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -886,6 +906,7 @@ impl Term {
             | Term::App(_, _)
             | Term::Match { .. }
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
@@ -897,8 +918,7 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
-            | Term::RuntimeError(_)
-            | Term::Closure(_) => false,
+            | Term::RuntimeError(_) => false,
         }
     }
 
@@ -1981,7 +2001,6 @@ impl Traverse<RichTerm> for RichTerm {
             Term::Type(ty) => {
                 RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
             }
-            Term::Closure(_) => panic!("traverse breakpoint"),
             _ => rt,
         });
 
@@ -2015,6 +2034,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
@@ -2062,7 +2082,6 @@ impl Traverse<RichTerm> for RichTerm {
                 .traverse_ref(f, state)
                 .or_else(|| annot.traverse_ref(f, state)),
             Term::Type(ty) => ty.traverse_ref(f, state),
-            Term::Closure(_) => panic!("traverse_ref breakpoint"),
         }
     }
 }
