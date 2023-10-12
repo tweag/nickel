@@ -27,7 +27,7 @@ pub fn handle_command(
 
 fn eval(server: &mut Server, uri: &Url) -> Result<(), Error> {
     if let Some(file_id) = server.cache.file_id(uri)? {
-        // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut ImportResolver?
+        // TODO: avoid cloning the cache. Maybe we can have a VM with a &mut Cache?
         let mut vm = VirtualMachine::<_, CacheImpl>::new(server.cache.clone(), std::io::stderr());
         let rt = vm.prepare_eval(file_id)?;
         if let Err(e) = vm.eval_full(rt) {
