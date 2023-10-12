@@ -33,7 +33,7 @@ use crate::{
     cache::CacheExt,
     command,
     diagnostic::DiagnosticCompat,
-    field_walker::DefWithPath,
+    field_walker::Def,
     requests::{completion, formatting, goto, hover, symbols},
     trace::Trace,
 };
@@ -153,14 +153,13 @@ impl Server {
                 // The term should always be populated by typecheck_with_analysis.
                 let term = cache.terms().get(&file_id).unwrap();
                 let name = module.name().into();
-                let def = DefWithPath {
+                let def = Def::Let {
                     ident: crate::identifier::LocIdent {
                         ident: name,
                         pos: TermPos::None,
                     },
-                    value: Some(term.term.clone()),
+                    value: term.term.clone(),
                     path: Vec::new(),
-                    metadata: None,
                 };
                 self.initial_term_env.insert(name, def);
             }

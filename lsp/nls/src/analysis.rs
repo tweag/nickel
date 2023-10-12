@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use codespan::FileId;
 use nickel_lang_core::{
     identifier::Ident,
-    term::{RichTerm, Term, Traverse, TraverseControl},
+    term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
     typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
 
 use crate::{
-    field_walker::DefWithPath,
+    field_walker::Def,
     identifier::LocIdent,
     position::PositionLookup,
     term::RichTermPtr,
@@ -134,6 +134,44 @@ impl<'a> ParentChainIter<'a> {
         }
     }
 
+    /// Like `next`, but skips over everything except for merges, annotations, and records.
+    pub fn next_merge(&mut self) -> Option<RichTerm> {
+        let is_fieldy_term = |rt: &RichTerm| {
+            matches!(
+                rt.as_ref(),
+                // There is also NAryOp::MergeContract, but only at eval time so we don't
+                // expect it.
+                Term::Op2(BinaryOp::Merge(_), _, _)
+                    | Term::Annotated(_, _)
+                    | Term::RecRecord(..)
+                    | Term::Record(..)
+            )
+        };
+
+        let is_merge_term = |rt: &RichTerm| {
+            matches!(
+                rt.as_ref(),
+                Term::Op2(BinaryOp::Merge(_), _, _) | Term::Annotated(_, _)
+            )
+        };
+
+        while let Some(p) = self.next() {
+            // If a parent and a grandparent were both merges, we can skip the parent
+            // because the grandparent will have a superset of its fields. This prevents
+            // quadratic behavior on long chains of merges.
+            if let Some(gp) = self.peek_gp() {
+                if is_merge_term(gp) {
+                    continue;
+                }
+            }
+
+            if is_fieldy_term(&p) {
+                return Some(p);
+            }
+        }
+        None
+    }
+
     pub fn path(&self) -> Option<&[Ident]> {
         self.path.as_deref()
     }
@@ -213,7 +251,7 @@ impl AnalysisRegistry {
         self.analysis.remove(&file_id);
     }
 
-    pub fn get_def(&self, ident: &LocIdent) -> Option<&DefWithPath> {
+    pub fn get_def(&self, ident: &LocIdent) -> Option<&Def> {
         let file = ident.pos.as_opt_ref()?.src_id;
         self.analysis.get(&file)?.usage_lookup.def(ident)
     }

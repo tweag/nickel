@@ -1,24 +1,30 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceParams};
-use nickel_lang_core::term::{RichTerm, Term, UnaryOp};
+use nickel_lang_core::term::{record::FieldMetadata, RichTerm, Term, UnaryOp};
 use serde_json::Value;
 
 use crate::{
-    cache::CacheExt, diagnostic::LocationCompat, field_walker::FieldResolver, identifier::LocIdent,
+    cache::CacheExt,
+    diagnostic::LocationCompat,
+    field_walker::{Def, FieldResolver},
+    identifier::LocIdent,
     server::Server,
 };
 
 fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option<Vec<LocIdent>> {
+    let resolver = FieldResolver::new(server);
     let ret = match (term.as_ref(), ident) {
         (Term::Var(id), _) => {
-            let loc = server
-                .analysis
-                .get_def(&(*id).into())
-                .map(|def| def.ident)?;
-            vec![loc]
+            let id = LocIdent::from(*id);
+            let def = server.analysis.get_def(&id)?;
+            let cousins = resolver.get_cousin_defs(def);
+            if cousins.is_empty() {
+                vec![def.ident()]
+            } else {
+                cousins.into_iter().map(|(loc, _)| loc).collect()
+            }
         }
         (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
-            let resolver = FieldResolver::new(server);
             let parents = resolver.resolve_term(parent);
             parents
                 .iter()
@@ -32,7 +38,6 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
                 .flat_map(|m| m.to_flattened_bindings())
                 .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;
             path.reverse();
-            let resolver = FieldResolver::new(server);
             let (last, path) = path.split_last()?;
             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
             let parents = resolver.resolve_term_path(value, path.iter().copied());
@@ -100,15 +105,35 @@ pub fn handle_references(
 
     // The "references" of a symbol are all the usages of its definitions,
     // so first find the definitions and then find their usages.
-    let mut def_locs = server
-        .lookup_term_by_position(pos)?
+    let term = server.lookup_term_by_position(pos)?;
+    let mut def_locs = term
         .and_then(|term| get_defs(term, ident, server))
         .unwrap_or_default();
 
     // Maybe the position is pointing straight at the definition already.
     // In that case, def_locs won't have the definition yet; so add it.
-    def_locs.extend(server.lookup_ident_by_position(pos)?);
+    if let Some(id) = server.lookup_ident_by_position(pos)? {
+        def_locs.push(id);
+        if let Some(parent) = term {
+            // If `id` is a field name in a record, we can search through cousins
+            // to find more definitions.
+            if matches!(parent.as_ref(), Term::RecRecord(..) | Term::Record(_)) {
+                let def = Def::Field {
+                    ident: id,
+                    value: None,
+                    record: parent.clone(),
+                    metadata: FieldMetadata::default(),
+                };
+                let resolver = FieldResolver::new(server);
+                let cousins = resolver.get_cousin_defs(&def);
+                def_locs.extend(cousins.into_iter().map(|(loc, _)| loc))
+            }
+        }
+    }
 
+    // TODO: This usage map is based only on static scoping, and not on our "extended"
+    // scopes that we build up dynamically based on merges. Improving this probably
+    // requires building the extended scopes at static analysis time.
     let mut usages: Vec<_> = def_locs
         .iter()
         .flat_map(|id| server.analysis.get_usages(id))

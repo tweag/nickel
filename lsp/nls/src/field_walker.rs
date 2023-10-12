@@ -1,3 +1,5 @@
+use std::{cell::RefCell, collections::HashSet};
+
 use lsp_types::{CompletionItemKind, Documentation, MarkupContent, MarkupKind};
 use nickel_lang_core::{
     identifier::Ident,
@@ -33,6 +35,17 @@ impl FieldHaver {
             FieldHaver::RecordType(rows) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ.clone())),
+        }
+    }
+
+    /// If this `FieldHaver` is a record term, try to retrieve the field named `id`.
+    fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &Field)> {
+        match self {
+            FieldHaver::RecordTerm(data) => data
+                .fields
+                .get_key_value(&id)
+                .map(|(id, fld)| (LocIdent::from(*id), fld)),
+            _ => None,
         }
     }
 
@@ -103,54 +116,80 @@ fn metadata_detail(m: &FieldMetadata) -> Option<String> {
         .or_else(|| m.annotation.contracts_to_string())
 }
 
-/// A definition whose value might need to be accessed through a path.
-///
-/// This arises because of pattern bindings.
-///  For example, in
-///
-/// ```text
-/// let { a = { b } } = val in ...
-/// ```
-///
-/// the name `b` is bound to the term `val` at the path `[a, b]`.
-///
-/// Semantically, a definition with a path is pretty much the same as
-/// a definition whose value is a `Op1(StaticAccess, Op1(StaticAccess, ...))`.
+/// The definition site of an identifier.
 #[derive(Clone, Debug, PartialEq)]
-pub struct DefWithPath {
-    /// The identifier at the definition site.
-    pub ident: LocIdent,
-    /// The value assigned by the definition, if there is one. If the definition
-    /// was made by a `let` binding, there will be a value; if it was made in a
-    /// function definition, there will not be a value.
+pub enum Def {
+    /// A definition site that's a let binding (possibly a pattern binding).
+    Let {
+        ident: LocIdent,
+        /// The right hand side of the let binding. Note that in the case of a
+        /// pattern binding, this may not be the value that's actually bound to
+        /// `ident`. (See `path`.)
+        value: RichTerm,
+        /// The path that `ident` refers to in `value`.
+        path: Vec<Ident>,
+    },
+    /// An identifier bound as the argument to a function.
     ///
-    /// For example, in `{ foo = 1 }`, this will point at the `1`.
-    pub value: Option<RichTerm>,
-    /// The path within the value that this binding refers to.
-    pub path: Vec<Ident>,
-    pub metadata: Option<FieldMetadata>,
+    /// Note that this can also be a pattern binding (and therefore come with
+    /// an associated path) but because we don't track any bound value here, we
+    /// don't need to track the path either.
+    Fn { ident: LocIdent },
+    /// An identifier bound as a record field.
+    Field {
+        ident: LocIdent,
+        value: Option<RichTerm>,
+        record: RichTerm,
+        metadata: FieldMetadata,
+    },
 }
 
-impl DefWithPath {
-    pub fn completion_item(&self) -> CompletionItem {
-        CompletionItem {
-            label: ident_quoted(&self.ident.into()),
-            detail: self.metadata.as_ref().and_then(metadata_detail),
-            kind: Some(CompletionItemKind::Property),
-            documentation: self.metadata.as_ref().and_then(metadata_doc),
-            ..Default::default()
+impl Def {
+    pub fn ident(&self) -> LocIdent {
+        match self {
+            Def::Let { ident, .. } | Def::Fn { ident, .. } | Def::Field { ident, .. } => *ident,
+        }
+    }
+
+    pub fn metadata(&self) -> Option<&FieldMetadata> {
+        match self {
+            Def::Field { metadata, .. } => Some(metadata),
+            _ => None,
+        }
+    }
+
+    pub fn parent_record(&self) -> Option<&RichTerm> {
+        match self {
+            Def::Field { record, .. } => Some(record),
+            _ => None,
+        }
+    }
+
+    pub fn value(&self) -> Option<&RichTerm> {
+        match self {
+            Def::Let { value, .. } => Some(value),
+            Def::Field { value, .. } => value.as_ref(),
+            Def::Fn { .. } => None,
+        }
+    }
+
+    pub fn path(&self) -> &[Ident] {
+        match self {
+            Def::Let { path, .. } => path.as_slice(),
+            _ => &[],
         }
     }
 }
 
-#[cfg(test)]
-impl DefWithPath {
-    pub fn path(&self) -> &[Ident] {
-        &self.path
-    }
-
-    pub fn value(&self) -> Option<&RichTerm> {
-        self.value.as_ref()
+impl Def {
+    pub fn completion_item(&self) -> CompletionItem {
+        CompletionItem {
+            label: ident_quoted(&self.ident().into()),
+            detail: self.metadata().and_then(metadata_detail),
+            kind: Some(CompletionItemKind::Property),
+            documentation: self.metadata().and_then(metadata_doc),
+            ..Default::default()
+        }
     }
 }
 
@@ -158,11 +197,20 @@ impl DefWithPath {
 #[derive(Clone)]
 pub struct FieldResolver<'a> {
     server: &'a Server,
+
+    // Most of our analysis moves "down" the AST and so can't get stuck in a loop.
+    // Variable resolution is an exception, however, and so we protect against
+    // loops by recording the ids that we are currently resolving and refusing to
+    // resolve them again.
+    blackholed_ids: RefCell<HashSet<LocIdent>>,
 }
 
 impl<'a> FieldResolver<'a> {
     pub fn new(server: &'a Server) -> Self {
-        Self { server }
+        Self {
+            server,
+            blackholed_ids: Default::default(),
+        }
     }
 
     /// Resolve a record path iteratively.
@@ -200,15 +248,61 @@ impl<'a> FieldResolver<'a> {
         fields
     }
 
-    fn resolve_def_with_path(&self, def: &DefWithPath) -> Vec<FieldHaver> {
+    /// Find the "cousins" of this definition.
+    ///
+    /// When resolving references, we often want to take merged records into
+    /// account. For example, when looking at the first definition of `foo` in
+    ///
+    /// ```nickel
+    /// { foo = 1 } | { foo | Number | doc "blah blah" }
+    /// ```
+    ///
+    /// we often want to access the information in the second "foo". We call these two
+    /// `foo`s "cousin" definitions because they look like cousins in the AST. Note
+    /// that these can also happen at arbitrary depths, like the two `foo`s in
+    ///
+    /// ```nickel
+    /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
+    /// ```
+    pub fn get_cousin_defs(&self, def: &Def) -> Vec<(LocIdent, Field)> {
+        let mut ret = Vec::new();
+        if let Some(parent) = def.parent_record() {
+            if let Some(mut ancestors) = self.server.analysis.get_parent_chain(parent) {
+                while let Some(ancestor) = ancestors.next_merge() {
+                    // We're traversing up the tree starting at the parent, so this is the
+                    // path to the parent (not the original def).
+                    if let Some(parent_path) = ancestors.path() {
+                        let uncles = self.resolve_term_path(&ancestor, parent_path.iter().copied());
+                        ret.extend(
+                            uncles
+                                .iter()
+                                .filter_map(|uncle| uncle.get_field_and_loc(def.ident().ident))
+                                .map(|(loc, fld)| (loc, fld.clone())),
+                        )
+                    }
+                }
+            }
+        }
+        ret
+    }
+
+    fn resolve_def_with_path(&self, def: &Def) -> Vec<FieldHaver> {
         let mut fields = Vec::new();
 
-        if let Some(val) = &def.value {
-            fields.extend_from_slice(&self.resolve_term_path(val, def.path.iter().copied()))
+        if let Some(val) = def.value() {
+            fields.extend_from_slice(&self.resolve_term_path(val, def.path().iter().copied()))
         }
-        if let Some(meta) = &def.metadata {
+        if let Some(meta) = def.metadata() {
             fields.extend(self.resolve_annot(&meta.annotation));
         }
+
+        for (_, field) in self.get_cousin_defs(def) {
+            fields.extend(self.resolve_annot(&field.metadata.annotation));
+            if let Some(val) = &field.value {
+                fields.extend(self.resolve_term(val));
+            }
+        }
+
         fields
     }
 
@@ -230,20 +324,29 @@ impl<'a> FieldResolver<'a> {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![FieldHaver::RecordTerm(data.clone())]
             }
-            Term::Var(id) => self
-                .server
-                .analysis
-                .get_def(&(*id).into())
-                .map(|def| {
-                    log::info!("got def {def:?}");
+            Term::Var(id) => {
+                let id = LocIdent::from(*id);
+                if self.blackholed_ids.borrow_mut().insert(id) {
+                    let ret = self
+                        .server
+                        .analysis
+                        .get_def(&id)
+                        .map(|def| {
+                            log::info!("got def {def:?}");
 
-                    self.resolve_def_with_path(def)
-                })
-                .unwrap_or_else(|| {
-                    log::info!("no def for {id:?}");
-                    Default::default()
-                }),
-            //.unwrap_or_default(),
+                            self.resolve_def_with_path(def)
+                        })
+                        .unwrap_or_else(|| {
+                            log::info!("no def for {id:?}");
+                            Default::default()
+                        });
+                    self.blackholed_ids.borrow_mut().remove(&id);
+                    ret
+                } else {
+                    log::warn!("detected recursion when resolving {id:?}");
+                    Vec::new()
+                }
+            }
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache

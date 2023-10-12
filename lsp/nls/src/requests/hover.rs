@@ -67,13 +67,23 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
 
     if let Some(def) = server.analysis.get_def(&ident) {
         let resolver = FieldResolver::new(server);
-        if let Some(((last, path), val)) = def.path.split_last().zip(def.value.as_ref()) {
+        if let Some(((last, path), val)) = def.path().split_last().zip(def.value()) {
             let parents = resolver.resolve_term_path(val, path.iter().copied());
             let (values, metadata) = values_and_metadata_from_field(parents, *last);
             ret.values = values;
             ret.metadata = metadata;
-        } else if def.path.is_empty() {
-            ret.values.extend(def.value.iter().cloned());
+        } else if def.path().is_empty() {
+            let cousins = resolver.get_cousin_defs(def);
+            if cousins.is_empty() {
+                ret.values.extend(def.value().into_iter().cloned());
+            } else {
+                for (_, cousin) in cousins {
+                    if let Some(val) = cousin.value {
+                        ret.values.push(val);
+                    }
+                    ret.metadata.push(cousin.metadata);
+                }
+            }
         }
     }
 
