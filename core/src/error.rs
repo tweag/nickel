@@ -900,7 +900,7 @@ fn primary_alt(
 ///
 /// See [`label_alt`].
 fn primary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
-    primary_alt(term.pos.into_opt(), term.as_ref().shallow_repr(), files)
+    primary_alt(term.pos.into_opt(), term.to_string(), files)
 }
 
 /// Create a secondary label from an optional span, or fallback to annotating the alternative
@@ -916,7 +916,7 @@ fn secondary_alt(span_opt: TermPos, alt_term: String, files: &mut Files<String>)
 ///
 /// See [`label_alt`].
 fn secondary_term(term: &RichTerm, files: &mut Files<String>) -> Label<FileId> {
-    secondary_alt(term.pos, term.as_ref().shallow_repr(), files)
+    secondary_alt(term.pos, term.to_string(), files)
 }
 
 fn cardinal(number: usize) -> String {
@@ -1051,16 +1051,8 @@ impl IntoDiagnostics<FileId> for EvalError {
                 .with_labels(vec![
                     primary_term(&t, files)
                         .with_message("this term is applied, but it is not a function"),
-                    secondary_alt(
-                        pos_opt,
-                        format!(
-                            "({}) ({})",
-                            (*t.term).shallow_repr(),
-                            (*arg.term).shallow_repr()
-                        ),
-                        files,
-                    )
-                    .with_message("applied here"),
+                    secondary_alt(pos_opt, format!("({}) ({})", t, arg), files)
+                        .with_message("applied here"),
                 ])],
             EvalError::FieldMissing(field, op, t, span_opt) => {
                 let mut labels = Vec::new();
@@ -2059,14 +2051,8 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .with_message("internal error: can't compare unconverted flat types")
                     .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
-                        format!(
-                            "{} (contract)",
-                            mk_expected_msg(&expd.as_ref().shallow_repr()),
-                        ),
-                        format!(
-                            "{} (contract)",
-                            mk_inferred_msg(&actual.as_ref().shallow_repr()),
-                        ),
+                        format!("{} (contract)", mk_expected_msg(&expd.to_string()),),
+                        format!("{} (contract)", mk_inferred_msg(&actual.to_string()),),
                         String::from(INTERNAL_ERROR_MSG),
                     ])]
             }
