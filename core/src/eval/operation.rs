@@ -1851,27 +1851,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             initial_env: &self.initial_env,
                                         };
 
+                                        // We check if there is a remaining contract in
+                                        // `ctrs_right_sieve` which matches `ctr`: in this case,
+                                        // `twin_index` will hold its index.
                                         let twin_index = ctrs_right_sieve
                                             .iter()
-                                            // Keep track of the index for later deletion
-                                            .enumerate()
-                                            // Filter out contracts already deduplicated
-                                            .filter_map(|(i, other_ctr)| Some((i, other_ctr.as_ref()?)))
-                                            .find_map(|(i, other_ctr)| {
-                                                let envs_right = EvalEnvsRef {
-                                                    eval_env: &env2,
-                                                    initial_env: &self.initial_env,
-                                                };
+                                            .position(|other_ctr| {
+                                                other_ctr
+                                                    .as_ref()
+                                                    .map_or(false, |other_ctr| {
+                                                        let envs_right = EvalEnvsRef {
+                                                            eval_env: &env2,
+                                                            initial_env: &self.initial_env,
+                                                        };
 
-                                                contract_eq::<EvalEnvsRef>(0, &ctr.contract, envs_left, &other_ctr.contract, envs_right).then_some(i)
-                                            });
+                                                        contract_eq::<EvalEnvsRef>(
+                                                            0,
+                                                            &ctr.contract,
+                                                            envs_left,
+                                                            &other_ctr.contract,
+                                                            envs_right,
+                                                        )
+                                                })
+                                         });
 
                                         if let Some(index) = twin_index {
                                             // unwrap(): we know that the contract at this index is
                                             // `Some`, because all elements are initially some when
-                                            // creating `ctrs_right_sieve` and then we always
-                                            // filter out `None` values when computing a new
-                                            // `index` in the `filter_map` above.
+                                            // creating `ctrs_right_sieve` and then we don't
+                                            // consider `None` values when computing a new `index`
+                                            // in the `position` above.
                                             let common = ctrs_right_sieve[index].take().unwrap();
                                             ctrs_common.push(common);
                                             false
