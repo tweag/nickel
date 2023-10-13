@@ -659,15 +659,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 acc,
                             );
 
-                            let result = match value {
+                            match value {
                                 Some(value) => RichTerm::new(
                                     Term::App(extend, value.clone()),
                                     pos.into_inherited(),
                                 ),
                                 None => extend,
-                            };
-
-                            result
+                            }
                         },
                     );
 

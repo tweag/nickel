@@ -340,18 +340,14 @@ pub fn contract_eq<E: TermEnvironment>(
     t2: &RichTerm,
     env2: E::Ref<'_>,
 ) -> bool {
-    // print!("Comparing for contract equality {t1} and {t2}: ");
-    let result = contract_eq_bounded::<E>(
+    contract_eq_bounded::<E>(
         &mut State::new(var_uid),
         VarEq::Environment,
         t1,
         env1,
         t2,
         env2,
-    );
-
-    // println!("COMPARING result: {result}");
-    result
+    )
 }
 
 /// **Warning**: this function isn't computing a sound contract equality (it could equate contracts
@@ -448,16 +444,12 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 <E as TermEnvironment>::get_idx_then(env2, idx2, |binding2| {
                     match (binding1, binding2) {
                         (Some((t1, env1)), Some((t2, env2))) => {
-                            // println!("Comparing closures {idx1:p} and {idx2:p}. Gas: {}", state.gas);
                             // We may end up using one more gas unit if gas was exactly 1. That is
                             // not very important, and it's simpler to just ignore this case. We
                             // still return false if gas was already at zero.
                             let had_gas = state.use_gas();
                             state.use_gas();
-                            let result =
-                                contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2);
-                            // println!("sub_call to equality: {result}");
-                            result && had_gas
+                            contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2) && had_gas
                         }
                         _ => false,
                     }
@@ -492,10 +484,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
         }
         (Closure(idx), _) => {
-            // println!("Extracting closure {idx:p}");
             state.use_gas()
                 && <E as TermEnvironment>::get_idx_then(env1, idx, |binding| {
-                    // println!("Calling on subterm {}, and previous {t2}", binding.map(|(rt, _)| rt.to_string()).unwrap_or("None".to_owned()));
                     binding
                         .map(|(t1, env1)| {
                             contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
@@ -504,10 +494,8 @@ fn contract_eq_bounded<E: TermEnvironment>(
                 })
         }
         (_, Closure(idx)) => {
-            // println!("Extracting closure {idx:p}");
             state.use_gas()
                 && <E as TermEnvironment>::get_idx_then(env2, idx, |binding| {
-                    // println!("Calling on subterm {}, and previous {t1}", binding.map(|(rt, _)| rt.to_string()).unwrap_or("None".to_owned()));
                     binding
                         .map(|(t2, env2)| {
                             contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
