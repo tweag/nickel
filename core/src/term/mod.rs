@@ -2163,7 +2163,7 @@ macro_rules! match_sharedterm {
             $(%PROCESSED% $($pat: pat_param)|+ $(if $if_expr: expr)? => $expr: expr,)+
         }
     ) => {
-        compile_error!("`match_sharedterm!` used without a final wildcard match arm. You can just match on `sharedTerm.into_owned()`")
+        compile_error!("`match_sharedterm!` used without a final wildcard match arm. You can just match on `shared_term.into_owned()`")
     };
     (
         match ($st: expr) {
