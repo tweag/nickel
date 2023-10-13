@@ -160,7 +160,7 @@ impl IntoIterator for Array {
         // Otherwise, we clone everything.
 
         unsafe {
-            let mut inner: Rc<[ManuallyDrop<RichTerm>]> = transmute(self.inner);
+            let mut inner = transmute::<Rc<[RichTerm]>, Rc<[ManuallyDrop<RichTerm>]>>(self.inner);
             let idx = self.start;
             let end = self.end;
 

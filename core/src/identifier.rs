@@ -258,12 +258,12 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol] is to have
         /// [interned](Interner::intern) the corresponding string first.
-        pub(crate) fn lookup(&self, sym: Symbol) -> &str {
+        pub(crate) fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
             // SAFETY: We are making the returned &str lifetime the same as our struct,
             // which is okay here since the InnerInterner uses a typed_arena which prevents
             // deallocations, so the reference will be valid while the InnerInterner exists,
             // hence while the struct exists.
-            unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
+            unsafe { std::mem::transmute::<&'_ str, &'slf str>(self.0.read().unwrap().lookup(sym)) }
         }
     }
 
@@ -300,8 +300,11 @@ mod interner {
             // It is also okay to use it from inside the mutex, since typed_arena does not allow
             // deallocation, so references are valid until the arena drop, which is tied to the
             // struct drop.
+            // XXX: we have to use &'a str here, not &'self str like the comment indicates. what's going on?
             let in_string = unsafe {
-                std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
+                std::mem::transmute::<&'_ str, &'a str>(
+                    self.arena.lock().unwrap().alloc_str(string.as_ref()),
+                )
             };
             let sym = Symbol(self.vec.len() as u32);
             self.vec.push(in_string);
@@ -312,7 +315,7 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol]
         /// is to have [interned](InnerInterner::intern) the corresponding string first.
-        fn lookup(&self, sym: Symbol) -> &str {
+        fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
             self.vec[sym.0 as usize]
         }
     }

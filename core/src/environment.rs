@@ -100,7 +100,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
     /// The element iterator type is `Rc<HashMap<K, V>>`.
-    pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
+    pub fn iter_layers<'slf>(&'slf self) -> EnvLayerIter<'slf, K, V> {
         EnvLayerIter {
             env: if !self.was_cloned() {
                 Some(NonNull::from(self))
@@ -121,7 +121,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// the most recent one. It uses this order, so calling `collect` on this iterator to create a
     /// hashmap would have the same values as the Environment. The element iterator type is `(&'env
     /// K, &'env V)`, with `'env` being the lifetime of the Environment.
-    pub fn iter_elems(&self) -> EnvElemIter<'_, K, V> {
+    pub fn iter_elems<'slf>(&'slf self) -> EnvElemIter<'slf, K, V> {
         let mut env: Vec<NonNull<HashMap<K, V>>> = self
             .iter_layers()
             // SAFETY: Rc::as_ptr never returnes null
