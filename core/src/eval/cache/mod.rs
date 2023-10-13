@@ -4,7 +4,7 @@
 /// Terminology:
 /// An *element* of the cache is what is stored inside of it.
 /// An *index* into the cache points to a given element.
-use super::{Closure, Environment};
+use super::Closure;
 use crate::{
     identifier::Ident,
     term::{record::FieldDeps, BindingType, RichTerm},

@@ -313,8 +313,10 @@ impl PartialEq for Term {
             (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
             // We don't compare closure, because we can't, without the evaluation cache at hand.
             // It's ok even if the cache index are the same: we implement PartialEq, so we can have
-            // `x != x`.
-            (Self::Closure(l0), Self::Closure(r0)) => false,
+            // `x != x`. In practice, this case shouldn't even be triggered, because tests usually
+            // compare simple terms without closures in it (or terms completely where closures have
+            // been substituted for their value).
+            (Self::Closure(_l0), Self::Closure(_r0)) => false,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }

@@ -1,14 +1,7 @@
 //! Various post transformations of nickel code.
 use crate::{
     cache::ImportResolver,
-    eval::{cache::Cache, Closure, Environment},
-    match_sharedterm,
-    term::{
-        array::{Array, ArrayAttrs},
-        record::Field,
-        record::RecordData,
-        BindingType, RichTerm, RuntimeContract, Term, Traverse, TraverseOrder,
-    },
+    term::{RichTerm, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,
 };

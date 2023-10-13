@@ -157,11 +157,11 @@ pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident
 /// - `record_data`: the data of the record to revert
 /// - `env`: the final environment in which the fields of the result will be closurized
 /// - `local_env`: the environment of the record represented by `record_data`
-pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData, local_env: &Environment) -> Term {
+pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     let fields = record_data
         .fields
         .into_iter()
-        .map(|(id, field)| (id, field.revert_closurize(cache, local_env.clone())))
+        .map(|(id, field)| (id, field.revert_closurize(cache)))
         .collect();
 
     let record_data = RecordData {

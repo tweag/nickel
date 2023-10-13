@@ -280,7 +280,7 @@ pub fn merge<C: Cache>(
                 .keys()
                 .chain(center.keys())
                 .chain(right.keys())
-                .cloned()
+                .copied()
                 .collect();
             let mut m = IndexMap::with_capacity(left.len() + center.len() + right.len());
 
@@ -295,13 +295,13 @@ pub fn merge<C: Cache>(
             // [crate::eval::cache::Cache::saturate()].
             m.extend(
                 left.into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache, env1.clone()))),
+                    .map(|(id, field)| (id, field.revert_closurize(cache)))
             );
 
             m.extend(
                 right
                     .into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache, env2.clone()))),
+                    .map(|(id, field)| (id, field.revert_closurize(cache)))
             );
 
             for (id, (field1, field2)) in center.into_iter() {
@@ -312,9 +312,7 @@ pub fn merge<C: Cache>(
                         initial_env,
                         merge_label,
                         field1,
-                        env1.clone(),
                         field2,
-                        env2.clone(),
                         field_names.iter(),
                     )?,
                 );
@@ -363,9 +361,7 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     initial_env: &Environment,
     merge_label: MergeLabel,
     field1: Field,
-    env1: Environment,
     field2: Field,
-    env2: Environment,
     fields: I,
 ) -> Result<Field, EvalError> {
     // For now, we blindly closurize things and copy environments in this function. A
@@ -386,35 +382,35 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     // depending on which is defined and respective priorities.
     let (value, priority) = match (value1, value2) {
         (Some(t1), Some(t2)) if metadata1.priority == metadata2.priority => (
-            Some(fields_merge_closurize(cache, merge_label, t1, &env1, t2, &env2, fields).unwrap()),
+            Some(fields_merge_closurize(cache, merge_label, t1, t2, fields).unwrap()),
             metadata1.priority,
         ),
         (Some(t1), _) if metadata1.priority > metadata2.priority => (
-            Some(t1.revert_closurize(cache, env1.clone())),
+            Some(t1.revert_closurize(cache)),
             metadata1.priority,
         ),
         (Some(t1), None) => (
-            Some(t1.revert_closurize(cache, env1.clone())),
+            Some(t1.revert_closurize(cache)),
             metadata1.priority,
         ),
         (_, Some(t2)) if metadata2.priority > metadata1.priority => (
-            Some(t2.revert_closurize(cache, env2.clone())),
+            Some(t2.revert_closurize(cache)),
             metadata2.priority,
         ),
         (None, Some(t2)) => (
-            Some(t2.revert_closurize(cache, env2.clone())),
+            Some(t2.revert_closurize(cache)),
             metadata2.priority,
         ),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
 
-    let mut pending_contracts = pending_contracts1.revert_closurize(cache, env1.clone());
+    let mut pending_contracts = pending_contracts1.revert_closurize(cache);
 
     // Since contracts are closurized, they don't need another local environment
     let empty = Environment::new();
 
-    for ctr2 in pending_contracts2.revert_closurize(cache, env2.clone()) {
+    for ctr2 in pending_contracts2.revert_closurize(cache) {
         RuntimeContract::push_dedup(initial_env, &mut pending_contracts, &empty, ctr2, &empty);
     }
 
@@ -444,8 +440,8 @@ pub(crate) fn merge_doc(doc1: Option<String>, doc2: Option<String>) -> Option<St
 /// dependencies (say, the two values of fields being merged) into one expression.
 ///
 /// Saturation is first and foremost a transformation of terms, but like
-/// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence the
-/// trait.
+/// [crate::transform::Closurizable], it can be applied to other types that contain terms, hence
+/// the trait.
 trait Saturate: Sized {
     /// Take the content of a record field, and saturate the potential revertible element with the
     /// given fields. See [crate::eval::cache::Cache::saturate].
@@ -456,7 +452,6 @@ trait Saturate: Sized {
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
-        env: &Environment,
         fields: I,
     ) -> Result<Self, EvalError>;
 }
@@ -465,7 +460,6 @@ impl Saturate for RichTerm {
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clone, C: Cache>(
         self,
         cache: &mut C,
-        env: &Environment,
         fields: I,
     ) -> Result<RichTerm, EvalError> {
         if let Term::Closure(idx) = &*self.term {
@@ -482,7 +476,6 @@ impl Saturate for RichTerm {
 fn field_deps<C: Cache>(
     cache: &C,
     rt: &RichTerm,
-    local_env: &Environment,
 ) -> Result<FieldDeps, EvalError> {
     if let Term::Closure(idx) = &*rt.term {
         Ok(cache.deps(idx).unwrap_or_else(FieldDeps::empty))
@@ -505,24 +498,20 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     cache: &mut C,
     merge_label: MergeLabel,
     t1: RichTerm,
-    env1: &Environment,
     t2: RichTerm,
-    env2: &Environment,
     fields: I,
 ) -> Result<RichTerm, EvalError> {
-    let mut local_env = Environment::new();
-
-    let combined_deps = field_deps(cache, &t1, env1)?.union(field_deps(cache, &t2, env2)?);
+    let combined_deps = field_deps(cache, &t1)?.union(field_deps(cache, &t2)?);
     let body = RichTerm::from(Term::Op2(
         BinaryOp::Merge(merge_label),
-        t1.saturate(cache, env1, fields.clone())?,
-        t2.saturate(cache, env2, fields)?,
+        t1.saturate(cache, fields.clone())?,
+        t2.saturate(cache, fields)?,
     ));
 
     // We closurize the final result in an element with appropriate dependencies
     let closure = Closure {
         body,
-        env: local_env,
+        env: Environment::new(),
     };
 
     let idx = cache.add(closure, BindingType::Revertible(combined_deps));
@@ -532,13 +521,12 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
 
 /// Same as [Closurizable], but also revert the element if the term is a variable.
 pub(super) trait RevertClosurize {
-    /// Revert the element at the index inside the term (if any), and closurize the result inside
-    /// `env`.
-    fn revert_closurize<C: Cache>(self, cache: &mut C, env: Environment) -> Self;
+    /// Revert the element at the index inside the term (if any)
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> Self;
 }
 
 impl RevertClosurize for RichTerm {
-    fn revert_closurize<C: Cache>(self, cache: &mut C, env: Environment) -> RichTerm {
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> RichTerm {
         if let Term::Closure(idx) = self.as_ref() {
             RichTerm::new(Term::Closure(cache.revert(idx)), self.pos)
         } else {
@@ -551,12 +539,12 @@ impl RevertClosurize for RichTerm {
 }
 
 impl RevertClosurize for Field {
-    fn revert_closurize<C: Cache>(self, cache: &mut C, env: Environment) -> Field {
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> Field {
         let value = self
             .value
-            .map(|value| value.revert_closurize(cache, env.clone()));
+            .map(|value| value.revert_closurize(cache));
 
-        let pending_contracts = self.pending_contracts.revert_closurize(cache, env);
+        let pending_contracts = self.pending_contracts.revert_closurize(cache);
 
         Field {
             metadata: self.metadata,
@@ -567,15 +555,15 @@ impl RevertClosurize for Field {
 }
 
 impl RevertClosurize for RuntimeContract {
-    fn revert_closurize<C: Cache>(self, cache: &mut C, env: Environment) -> RuntimeContract {
-        self.map_contract(|ctr| ctr.revert_closurize(cache, env))
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> RuntimeContract {
+        self.map_contract(|ctr| ctr.revert_closurize(cache))
     }
 }
 
 impl RevertClosurize for Vec<RuntimeContract> {
-    fn revert_closurize<C: Cache>(self, cache: &mut C, env: Environment) -> Vec<RuntimeContract> {
+    fn revert_closurize<C: Cache>(self, cache: &mut C) -> Vec<RuntimeContract> {
         self.into_iter()
-            .map(|pending_contract| pending_contract.revert_closurize(cache, env.clone()))
+            .map(|pending_contract| pending_contract.revert_closurize(cache))
             .collect()
     }
 }

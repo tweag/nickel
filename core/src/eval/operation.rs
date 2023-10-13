@@ -27,7 +27,7 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::{Array, ArrayAttrs},
+        array::{Array, ArrayAttrs, OutOfBoundError},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
@@ -2159,7 +2159,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         label: label.clone(),
                                     };
 
-                                crate::term::RuntimeContract::push_dedup(
+                                RuntimeContract::push_dedup(
                                     &self.initial_env,
                                     &mut field.pending_contracts,
                                     &env2,
@@ -2179,7 +2179,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let reverted = super::fixpoint::revert(
                                 &mut self.cache,
                                 record_data,
-                                &env2
                             );
 
                             Ok(Closure {
@@ -2912,7 +2911,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let result = array.slice(start_as_usize, end_as_usize);
 
-                if let Err(crate::term::array::OutOfBoundError) = result {
+                if let Err(OutOfBoundError) = result {
                     return Err(EvalError::Other(
                         format!(
                             "array_slice: index out of bounds. Expected `start <= end <= {}`, but \

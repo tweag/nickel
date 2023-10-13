@@ -14,7 +14,7 @@
 
 use crate::{
     eval::{
-        cache::{Cache, CacheIndex},
+        cache::Cache,
         Closure, Environment,
     },
     match_sharedterm,
