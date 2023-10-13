@@ -474,36 +474,36 @@ impl<EC: EvalCache> Program<EC> {
                 _ => result,
             }?;
 
-            match_sharedterm! {rt.term, with {
-                    Term::Record(data) => {
-                        let fields = data
-                            .fields
-                            .into_iter()
-                            .map(|(id, field)| -> Result<_, Error> {
-                                Ok((
-                                    id,
-                                    Field {
-                                        value: field
-                                            .value
-                                            .map(|rt| do_eval(vm, rt, env.clone()))
-                                            .transpose()?,
-                                        pending_contracts: eval_contracts(
-                                            vm,
-                                            field.pending_contracts,
-                                            env.clone(),
-                                        )?,
-                                        ..field
-                                    },
-                                ))
-                            })
-                            .collect::<Result<_, Error>>()?;
-                        Ok(RichTerm::new(
-                            Term::Record(RecordData { fields, ..data }),
-                            rt.pos,
-                        ))
-                    }
-                } else Ok(rt)
-            }
+            match_sharedterm!(match (rt.term) {
+                Term::Record(data) => {
+                    let fields = data
+                        .fields
+                        .into_iter()
+                        .map(|(id, field)| -> Result<_, Error> {
+                            Ok((
+                                id,
+                                Field {
+                                    value: field
+                                        .value
+                                        .map(|rt| do_eval(vm, rt, env.clone()))
+                                        .transpose()?,
+                                    pending_contracts: eval_contracts(
+                                        vm,
+                                        field.pending_contracts,
+                                        env.clone(),
+                                    )?,
+                                    ..field
+                                },
+                            ))
+                        })
+                        .collect::<Result<_, Error>>()?;
+                    Ok(RichTerm::new(
+                        Term::Record(RecordData { fields, ..data }),
+                        rt.pos,
+                    ))
+                }
+                _ => Ok(rt),
+            })
         }
 
         do_eval(&mut self.vm, t, Environment::new())

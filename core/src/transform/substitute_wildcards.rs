@@ -21,34 +21,27 @@ use crate::{
 /// both the type annotation and the label's type with the inferred type.
 pub fn transform_one(rt: RichTerm, wildcards: &Wildcards) -> RichTerm {
     let pos = rt.pos;
-    match_sharedterm! {rt.term,
-        with {
-            Term::Annotated(
-                annot @ TypeAnnotation {
-                    typ: Some(_),
-                    ..
-                },
-                inner
-            ) => {
-                RichTerm::new(Term::Annotated(annot.subst_wildcards(wildcards), inner), pos)
-            },
-            Term::RecRecord(record_data, dyn_fields, deps) => {
-                let record_data = record_data.subst_wildcards(wildcards);
-                let dyn_fields = dyn_fields
-                    .into_iter()
-                    .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
-                    .collect();
+    match_sharedterm!(match (rt.term) {
+        Term::Annotated(annot @ TypeAnnotation { typ: Some(_), .. }, inner) => {
+            RichTerm::new(
+                Term::Annotated(annot.subst_wildcards(wildcards), inner),
+                pos,
+            )
+        }
+        Term::RecRecord(record_data, dyn_fields, deps) => {
+            let record_data = record_data.subst_wildcards(wildcards);
+            let dyn_fields = dyn_fields
+                .into_iter()
+                .map(|(id_t, field)| (id_t, field.subst_wildcards(wildcards)))
+                .collect();
 
-                RichTerm::new(Term::RecRecord(record_data, dyn_fields, deps), pos)
-            },
-            Term::Record(record_data) => {
-                RichTerm::new(
-                    Term::Record(record_data.subst_wildcards(wildcards)),
-                    pos,
-                )
-            },
-        } else rt
-    }
+            RichTerm::new(Term::RecRecord(record_data, dyn_fields, deps), pos)
+        }
+        Term::Record(record_data) => {
+            RichTerm::new(Term::Record(record_data.subst_wildcards(wildcards)), pos)
+        }
+        _ => rt,
+    })
 }
 
 /// Get the inferred type for a wildcard, or `Dyn` if no type was inferred.

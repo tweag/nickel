@@ -292,16 +292,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("unary negation", "Bool"))
                 }
             }
-            UnaryOp::Blame() => match_sharedterm! { t, with {
-                    Term::Lbl(label) => Err(
-                        EvalError::BlameError {
-                            evaluated_arg: label.get_evaluated_arg(&self.cache),
-                            label,
-                            call_stack: std::mem::take(&mut self.call_stack),
-                        }),
-                } else
-                    Err(mk_type_error!("blame", "Label"))
-            },
+            UnaryOp::Blame() => match_sharedterm!(match (t) {
+                Term::Lbl(label) => Err(EvalError::BlameError {
+                    evaluated_arg: label.get_evaluated_arg(&self.cache),
+                    label,
+                    call_stack: std::mem::take(&mut self.call_stack),
+                }),
+                _ => Err(mk_type_error!("blame", "Label")),
+            }),
             UnaryOp::Embed(_id) => {
                 if let Term::Enum(_) = &*t {
                     Ok(Closure::atomic_closure(RichTerm {
@@ -362,19 +360,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("match", "Enum", 2))
                 }
             }
-            UnaryOp::ChangePolarity() => match_sharedterm! {t, with {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.polarity = l.polarity.flip();
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("chng_pol", "Label"))
+            UnaryOp::ChangePolarity() => match_sharedterm!(match (t) {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.polarity = l.polarity.flip();
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
-            },
+                _ => Err(mk_type_error!("chng_pol", "Label")),
+            }),
             UnaryOp::Pol() => {
                 if let Term::Lbl(l) = &*t {
                     Ok(Closure::atomic_closure(RichTerm::new(
@@ -385,58 +381,50 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("polarity", "Label"))
                 }
             }
-            UnaryOp::GoDom() => match_sharedterm! {t, with {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Domain);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("go_dom", "Label"))
+            UnaryOp::GoDom() => match_sharedterm!(match (t) {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Domain);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
-            },
-            UnaryOp::GoCodom() => match_sharedterm! {t, with {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Codomain);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("go_codom", "Label"))
+                _ => Err(mk_type_error!("go_dom", "Label")),
+            }),
+            UnaryOp::GoCodom() => match_sharedterm!(match (t) {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Codomain);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
-            },
-            UnaryOp::GoArray() => match_sharedterm! {t, with {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Array);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("go_array", "Label"))
+                _ => Err(mk_type_error!("go_codom", "Label")),
+            }),
+            UnaryOp::GoArray() => match_sharedterm!(match (t) {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Array);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
-            },
-            UnaryOp::GoDict() => match_sharedterm! {t, with {
-                    Term::Lbl(l) => {
-                        let mut l = l;
-                        l.path.push(ty_path::Elem::Dict);
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Lbl(l),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("go_dict", "Label"))
+                _ => Err(mk_type_error!("go_array", "Label")),
+            }),
+            UnaryOp::GoDict() => match_sharedterm!(match (t) {
+                Term::Lbl(l) => {
+                    let mut l = l;
+                    l.path.push(ty_path::Elem::Dict);
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Lbl(l),
+                        pos_op_inh,
+                    )))
                 }
-            },
+                _ => Err(mk_type_error!("go_dict", "Label")),
+            }),
             UnaryOp::StaticAccess(id) => {
                 if let Term::Record(record) = &*t {
                     // We have to apply potentially pending contracts. Right now, this
@@ -481,93 +469,82 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ))
                 }
             }
-            UnaryOp::FieldsOf() => match_sharedterm! {t, with {
-                    Term::Record(record) => {
-                        let mut fields: Vec<String> = record
-                            .fields
-                            .into_iter()
-                            // Ignore optional fields without definitions.
-                            .filter_map(|(id, field)|
-                                (!field.is_empty_optional()).then(|| id.to_string()))
-                            .collect();
-                        fields.sort();
-                        let terms = fields.into_iter().map(mk_term::string).collect();
-
-                        Ok(Closure::atomic_closure(RichTerm::new(
-                            Term::Array(terms, ArrayAttrs::new().closurized()),
-                            pos_op_inh,
-                        )))
-                    }
-                } else {
-                    Err(mk_type_error!("fields", "Record"))
-                }
-            },
-            UnaryOp::ValuesOf() => match_sharedterm! {t, with {
-                    Term::Record(record) => {
-                        let mut values = record
-                            .into_iter_without_opts()
-                            .collect::<Result<Vec<_>, _>>()
-                            .map_err(|missing_def_err| missing_def_err.into_eval_err(pos, pos_op))?;
-
-                        values.sort_by_key(|(id, _)| *id);
-                        let terms = values.into_iter().map(|(_, value)| value).collect();
-
-                        Ok(Closure {
-                            // TODO: once sure that the Record is properly closurized, we can safely
-                            // assume that the extracted array here is, in turn, also closuried.
-                            body: RichTerm::new(
-                                Term::Array(terms, ArrayAttrs::default()),
-                                pos_op_inh
-                            ),
-                            env,
+            UnaryOp::FieldsOf() => match_sharedterm!(match (t) {
+                Term::Record(record) => {
+                    let mut fields: Vec<String> = record
+                        .fields
+                        .into_iter()
+                        // Ignore optional fields without definitions.
+                        .filter_map(|(id, field)| {
+                            (!field.is_empty_optional()).then(|| id.to_string())
                         })
-                    }
-                } else {
-                    Err(mk_type_error!("values", "Record"))
+                        .collect();
+                    fields.sort();
+                    let terms = fields.into_iter().map(mk_term::string).collect();
+
+                    Ok(Closure::atomic_closure(RichTerm::new(
+                        Term::Array(terms, ArrayAttrs::new().closurized()),
+                        pos_op_inh,
+                    )))
                 }
-            },
+                _ => Err(mk_type_error!("fields", "Record")),
+            }),
+            UnaryOp::ValuesOf() => match_sharedterm!(match (t) {
+                Term::Record(record) => {
+                    let mut values = record
+                        .into_iter_without_opts()
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|missing_def_err| missing_def_err.into_eval_err(pos, pos_op))?;
+
+                    values.sort_by_key(|(id, _)| *id);
+                    let terms = values.into_iter().map(|(_, value)| value).collect();
+
+                    Ok(Closure {
+                        // TODO: once sure that the Record is properly closurized, we can safely
+                        // assume that the extracted array here is, in turn, also closuried.
+                        body: RichTerm::new(Term::Array(terms, ArrayAttrs::default()), pos_op_inh),
+                        env,
+                    })
+                }
+                _ => Err(mk_type_error!("values", "Record")),
+            }),
             UnaryOp::ArrayMap() => {
                 let (f, ..) = self
                     .stack
                     .pop_arg(&self.cache)
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
-                match_sharedterm! {t, with {
-                        Term::Array(ts, attrs) => {
-                            let mut shared_env = Environment::new();
-                            let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+                match_sharedterm!(match (t) {
+                    Term::Array(ts, attrs) => {
+                        let mut shared_env = Environment::new();
+                        let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
 
-                            // Array elements are closurized to preserve laziness of data
-                            // structures. It maintains the invariant that any data structure only
-                            // contain indices (that is, currently, variables).
-                            let ts = ts
-                                .into_iter()
-                                .map(|t| {
-                                    let t_with_ctrs = RuntimeContract::apply_all(
-                                        t,
-                                        attrs.pending_contracts.iter().cloned(),
-                                        pos.into_inherited(),
-                                    );
+                        // Array elements are closurized to preserve laziness of data
+                        // structures. It maintains the invariant that any data structure only
+                        // contain indices (that is, currently, variables).
+                        let ts = ts
+                            .into_iter()
+                            .map(|t| {
+                                let t_with_ctrs = RuntimeContract::apply_all(
+                                    t,
+                                    attrs.pending_contracts.iter().cloned(),
+                                    pos.into_inherited(),
+                                );
 
-                                    RichTerm::new(
-                                        Term::App(f_as_var.clone(), t_with_ctrs),
-                                        pos_op_inh
-                                    )
+                                RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
                                     .closurize(&mut self.cache, &mut shared_env, env.clone())
-                                })
-                                .collect();
-
-                            Ok(Closure {
-                                body: RichTerm::new(
-                                    Term::Array(ts, attrs.contracts_cleared().closurized()),
-                                    pos_op_inh
-                                ),
-                                env: shared_env,
                             })
-                        }
-                    } else {
-                        Err(mk_type_error!("map", "Array"))
+                            .collect();
+
+                        Ok(Closure {
+                            body: RichTerm::new(
+                                Term::Array(ts, attrs.contracts_cleared().closurized()),
+                                pos_op_inh,
+                            ),
+                            env: shared_env,
+                        })
                     }
-                }
+                    _ => Err(mk_type_error!("map", "Array")),
+                })
             }
             UnaryOp::ArrayGen() => {
                 let (f, _) = self
@@ -628,58 +605,57 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::NotEnoughArgs(2, String::from("record_map"), pos_op)
                 })?;
 
-                match_sharedterm! {t, with {
-                        Term::Record(record) => {
-                            // While it's certainly possible to allow mapping over
-                            // a record with a sealed tail, it's not entirely obvious
-                            // how that should behave. It's also not clear that this
-                            // is something users will actually need to do, so we've
-                            // decided to prevent this until we have a clearer idea
-                            // of potential use-cases.
-                            if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
-                                return Err(EvalError::IllegalPolymorphicTailAccess {
-                                    action: IllegalPolymorphicTailAction::Map,
-                                    evaluated_arg: label.get_evaluated_arg(&self.cache),
-                                    label,
-                                    call_stack: std::mem::take(&mut self.call_stack),
-                                })
-                            }
-
-                            let mut shared_env = Environment::new();
-                            let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
-
-                            // As for `ArrayMap` (see above), we closurize the content of fields
-
-                            let fields = record
-                                .fields
-                                .into_iter()
-                                .filter(|(_, field)| !field.is_empty_optional())
-                                .map_values_closurize(&mut self.cache, &mut shared_env, &env,
-                                    |id, t| {
-                                        let pos = t.pos.into_inherited();
-
-                                        mk_app!(
-                                            f_as_var.clone(),
-                                            mk_term::string(id.label()), t
-                                        )
-                                        .with_pos(pos)
-                                    }
-                                )
-                                .map_err(|missing_field_err|
-                                    missing_field_err.into_eval_err(pos, pos_op))?;
-
-                            Ok(Closure {
-                                body: RichTerm::new(
-                                    Term::Record(RecordData { fields, ..record }),
-                                    pos_op_inh
-                                ),
-                                env: shared_env,
-                            })
+                match_sharedterm!(match (t) {
+                    Term::Record(record) => {
+                        // While it's certainly possible to allow mapping over
+                        // a record with a sealed tail, it's not entirely obvious
+                        // how that should behave. It's also not clear that this
+                        // is something users will actually need to do, so we've
+                        // decided to prevent this until we have a clearer idea
+                        // of potential use-cases.
+                        if let Some(record::SealedTail { label, .. }) = record.sealed_tail {
+                            return Err(EvalError::IllegalPolymorphicTailAccess {
+                                action: IllegalPolymorphicTailAction::Map,
+                                evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                label,
+                                call_stack: std::mem::take(&mut self.call_stack),
+                            });
                         }
-                    } else {
-                        Err(mk_type_error!("record_map", "Record", 1))
+
+                        let mut shared_env = Environment::new();
+                        let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+
+                        // As for `ArrayMap` (see above), we closurize the content of fields
+
+                        let fields = record
+                            .fields
+                            .into_iter()
+                            .filter(|(_, field)| !field.is_empty_optional())
+                            .map_values_closurize(
+                                &mut self.cache,
+                                &mut shared_env,
+                                &env,
+                                |id, t| {
+                                    let pos = t.pos.into_inherited();
+
+                                    mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
+                                        .with_pos(pos)
+                                },
+                            )
+                            .map_err(|missing_field_err| {
+                                missing_field_err.into_eval_err(pos, pos_op)
+                            })?;
+
+                        Ok(Closure {
+                            body: RichTerm::new(
+                                Term::Record(RecordData { fields, ..record }),
+                                pos_op_inh,
+                            ),
+                            env: shared_env,
+                        })
                     }
-                }
+                    _ => Err(mk_type_error!("record_map", "Record", 1)),
+                })
             }
             UnaryOp::Seq() => self
                 .stack
@@ -881,21 +857,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             UnaryOp::ToStr() => {
-                let result = match_sharedterm! {t, with {
+                let result = match_sharedterm!(match (t) {
                     Term::Num(n) => Ok(Term::Str(format!("{}", n.to_sci()).into())),
                     Term::Str(s) => Ok(Term::Str(s)),
                     Term::Bool(b) => Ok(Term::Str(b.to_string().into())),
                     Term::Enum(id) => Ok(Term::Str(id.into())),
                     Term::Null => Ok(Term::Str("null".into())),
-                } else {
-                    Err(EvalError::Other(
+                    _ => Err(EvalError::Other(
                         format!(
                             "to_string: can't convert an argument of type {} to string",
                             t.type_of().unwrap()
                         ),
                         pos,
-                    ))
-                }}?;
+                    )),
+                })?;
 
                 Ok(Closure::atomic_closure(RichTerm::new(result, pos_op_inh)))
             }
@@ -1036,80 +1011,89 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .with_pos(pos)
                 }
 
-                match_sharedterm! {t,
-                    with {
-                        Term::Record(record) if !record.fields.is_empty() => {
-                            let mut shared_env = Environment::new();
+                match_sharedterm!(match (t) {
+                    Term::Record(record) if !record.fields.is_empty() => {
+                        let mut shared_env = Environment::new();
 
-                            let fields = record.fields
-                                .into_iter()
-                                .filter(|(_, field)| {
-                                    !(field.is_empty_optional()
-                                        || (ignore_not_exported && field.metadata.not_exported))
-                                })
-                                .map_values_closurize(&mut self.cache, &mut shared_env, &env,
-                                    |_, value| {
-                                        mk_term::op1(UnaryOp::Force { ignore_not_exported }, value)
-                                    }
-                                )
-                                .map_err(|e| e.into_eval_err(pos, pos_op))?;
-
-                            let terms = fields
-                                .clone()
-                                .into_values()
-                                .map(|field| {
-                                    field
-                                        .value
-                                        .expect(
-                                            "map_values_closurize ensures that values without a \
-                                            definition throw a MissingFieldDefError"
-                                        )
-                                });
-
-                            let cont = RichTerm::new(
-                                Term::Record(RecordData { fields, ..record }),
-                                pos.into_inherited(),
-                            );
-
-                            Ok(Closure {
-                                body: seq_terms(terms, pos_op, cont),
-                                env: shared_env,
+                        let fields = record
+                            .fields
+                            .into_iter()
+                            .filter(|(_, field)| {
+                                !(field.is_empty_optional()
+                                    || (ignore_not_exported && field.metadata.not_exported))
                             })
-                        },
-                        Term::Array(ts, attrs) if !ts.is_empty() => {
-                            let mut shared_env = Environment::new();
-                            let ts = ts
-                                .into_iter()
-                                .map(|t| {
+                            .map_values_closurize(
+                                &mut self.cache,
+                                &mut shared_env,
+                                &env,
+                                |_, value| {
                                     mk_term::op1(
-                                        UnaryOp::Force { ignore_not_exported },
-                                        RuntimeContract::apply_all(
-                                            t,
-                                            attrs.pending_contracts.iter().cloned(),
-                                            pos.into_inherited(),
-                                        ),
+                                        UnaryOp::Force {
+                                            ignore_not_exported,
+                                        },
+                                        value,
                                     )
-                                    .closurize(&mut self.cache, &mut shared_env, env.clone())
-                                })
-                                // It's important to collect here, otherwise the two usages below
-                                // will each do their own .closurize(...) calls and end up with
-                                // different variables, which means that `cont` won't be properly
-                                // updated.
-                                .collect::<Array>();
+                                },
+                            )
+                            .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
-                            let terms = ts.clone().into_iter();
-                            let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+                        let terms = fields.clone().into_values().map(|field| {
+                            field.value.expect(
+                                "map_values_closurize ensures that values without a \
+                                            definition throw a MissingFieldDefError",
+                            )
+                        });
 
-                            Ok(Closure {
-                                body: seq_terms(terms, pos_op, cont),
-                                env: shared_env,
+                        let cont = RichTerm::new(
+                            Term::Record(RecordData { fields, ..record }),
+                            pos.into_inherited(),
+                        );
+
+                        Ok(Closure {
+                            body: seq_terms(terms, pos_op, cont),
+                            env: shared_env,
+                        })
+                    }
+                    Term::Array(ts, attrs) if !ts.is_empty() => {
+                        let mut shared_env = Environment::new();
+                        let ts = ts
+                            .into_iter()
+                            .map(|t| {
+                                mk_term::op1(
+                                    UnaryOp::Force {
+                                        ignore_not_exported,
+                                    },
+                                    RuntimeContract::apply_all(
+                                        t,
+                                        attrs.pending_contracts.iter().cloned(),
+                                        pos.into_inherited(),
+                                    ),
+                                )
+                                .closurize(
+                                    &mut self.cache,
+                                    &mut shared_env,
+                                    env.clone(),
+                                )
                             })
-                        }
-                    } else Ok(Closure {
-                        body: RichTerm { term : t, pos},
+                            // It's important to collect here, otherwise the two usages below
+                            // will each do their own .closurize(...) calls and end up with
+                            // different variables, which means that `cont` won't be properly
+                            // updated.
+                            .collect::<Array>();
+
+                        let terms = ts.clone().into_iter();
+                        let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
+
+                        Ok(Closure {
+                            body: seq_terms(terms, pos_op, cont),
+                            env: shared_env,
+                        })
+                    }
+                    _ => Ok(Closure {
+                        body: RichTerm { term: t, pos },
                         env
-                    })
-                }
+                    }),
+                })
             }
             UnaryOp::RecDefault() => {
                 Ok(RecPriority::Bottom.propagate_in_term(&mut self.cache, t, env, pos))
@@ -1117,20 +1101,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             UnaryOp::RecForce() => {
                 Ok(RecPriority::Top.propagate_in_term(&mut self.cache, t, env, pos))
             }
-            UnaryOp::RecordEmptyWithTail() => match_sharedterm! { t,
-                with {
-                    Term::Record(r) => {
-                        let mut empty = RecordData::empty();
-                        empty.sealed_tail = r.sealed_tail;
-                        Ok(Closure {
-                            body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
-                            env
-                        })
-                    },
-                } else {
-                    Err(mk_type_error!("record_empty_with_tail", "Record"))
+            UnaryOp::RecordEmptyWithTail() => match_sharedterm!(match (t) {
+                Term::Record(r) => {
+                    let mut empty = RecordData::empty();
+                    empty.sealed_tail = r.sealed_tail;
+                    Ok(Closure {
+                        body: RichTerm::new(Term::Record(empty), pos_op.into_inherited()),
+                        env,
+                    })
                 }
-            },
+                _ => Err(mk_type_error!("record_empty_with_tail", "Record")),
+            }),
             UnaryOp::Trace() => {
                 if let Term::Str(s) = &*t {
                     let _ = writeln!(self.trace, "std.trace: {s}");
@@ -1145,18 +1126,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("trace"), pos_op))
             }
             UnaryOp::LabelPushDiag() => {
-                match_sharedterm! {t, with {
+                match_sharedterm!(match (t) {
                     Term::Lbl(label) => {
                         let mut label = label;
                         label.push_diagnostic();
                         Ok(Closure {
                             body: RichTerm::new(Term::Lbl(label), pos),
-                            env
+                            env,
                         })
                     }
-                } else {
-                    Err(mk_type_error!("label_push_diag", "Label"))
-                }}
+                    _ => Err(mk_type_error!("label_push_diag", "Label")),
+                })
             }
             #[cfg(feature = "nix-experimental")]
             UnaryOp::EvalNix() => {
@@ -1574,25 +1554,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Err(mk_type_error!("(>=)", "Number", 1, t1, pos1))
                 }
             }
-            BinaryOp::GoField() => match_sharedterm! {t1, with {
-                    Term::Str(field) => match_sharedterm! {t2, with {
-                            Term::Lbl(l) => {
-                                let mut l = l;
-                                l.path.push(ty_path::Elem::Field(field.into_inner().into()));
-                                Ok(Closure::atomic_closure(RichTerm::new(
-                                    Term::Lbl(l),
-                                    pos_op_inh,
-                                )))
-                            }
-                        } else {
-                            Err(mk_type_error!("go_field", "Label", 2, t2, pos2))
-                        }
-                    },
-                } else {
-                    Err(mk_type_error!("go_field", "String", 1, t1, pos1))
-                }
-            },
-            BinaryOp::DynAccess() => match_sharedterm! {t1, with {
+            BinaryOp::GoField() => match_sharedterm!(match (t1) {
+                Term::Str(field) => match_sharedterm!(match (t2) {
+                    Term::Lbl(l) => {
+                        let mut l = l;
+                        l.path.push(ty_path::Elem::Field(field.into_inner().into()));
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Lbl(l),
+                            pos_op_inh,
+                        )))
+                    }
+                    _ => Err(mk_type_error!("go_field", "Label", 2, t2, pos2)),
+                }),
+                _ => Err(mk_type_error!("go_field", "String", 1, t1, pos1)),
+            }),
+            BinaryOp::DynAccess() => {
+                match_sharedterm!(match (t1) {
                     Term::Str(id) => {
                         if let Term::Record(record) = &*t2 {
                             // We have to apply potential pending contracts. Right now, this
@@ -1601,12 +1578,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // contracts. There are several way to improve this, but this is left
                             // as future work.
                             let ident = LocIdent::from(&id);
-                            match record
-                                .get_value_with_ctrs(&ident)
-                                .map_err(|missing_field_err| {
-                                    missing_field_err.into_eval_err(pos2, pos_op)
-                                })?
-                            {
+                            match record.get_value_with_ctrs(&ident).map_err(
+                                |missing_field_err| missing_field_err.into_eval_err(pos2, pos_op),
+                            )? {
                                 Some(value) => {
                                     self.call_stack.enter_field(ident, pos2, value.pos, pos_op);
                                     Ok(Closure {
@@ -1615,16 +1589,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     })
                                 }
                                 None => match record.sealed_tail.as_ref() {
-                                    Some(t) if t.has_dyn_field(&id) =>
+                                    Some(t) if t.has_dyn_field(&id) => {
                                         Err(EvalError::IllegalPolymorphicTailAccess {
                                             action: IllegalPolymorphicTailAction::FieldAccess {
-                                                field: id.to_string()
+                                                field: id.to_string(),
                                             },
                                             evaluated_arg: t.label.get_evaluated_arg(&self.cache),
                                             label: t.label.clone(),
-                                            call_stack: std::mem::take(&mut self.call_stack)
-                                        }
-                                    ),
+                                            call_stack: std::mem::take(&mut self.call_stack),
+                                        })
+                                    }
                                     _ => Err(EvalError::FieldMissing(
                                         id.into_inner(),
                                         String::from("(.$)"),
@@ -1634,8 +1608,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         },
                                         pos_op,
                                     )),
-                                }
-
+                                },
                             }
                         } else {
                             // Not using mk_type_error! because of a non-uniform message
@@ -1650,13 +1623,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             ))
                         }
                     }
-                } else {
                     // This error should be impossible to trigger. The parser
                     // prevents a dynamic field access where the field name is not syntactically
                     // a string.
-                    Err(mk_type_error!(".$", "String", 1, t1, pos1))
-               }
-            },
+                    _ => Err(mk_type_error!(".$", "String", 1, t1, pos1)),
+                })
+            }
             BinaryOp::DynExtend {
                 metadata,
                 pending_contracts,
@@ -1664,267 +1636,257 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 op_kind,
             } => {
                 if let Term::Str(id) = &*t1 {
-                    match_sharedterm! {t2, with {
-                            Term::Record(record) => {
-                                let mut fields = record.fields;
+                    match_sharedterm!(match (t2) {
+                        Term::Record(record) => {
+                            let mut fields = record.fields;
 
-                                // If a defined value is expected for this field, it must be
-                                // provided as an additional argument, so we pop it from the stack
-                                let value = if let RecordExtKind::WithValue = ext_kind {
-                                    let (value_closure, _) = self
-                                        .stack
-                                        .pop_arg(&self.cache)
-                                        .ok_or_else(|| EvalError::NotEnoughArgs(
-                                            3,
-                                            String::from("insert"),
-                                            pos_op
-                                        ))?;
+                            // If a defined value is expected for this field, it must be
+                            // provided as an additional argument, so we pop it from the stack
+                            let value = if let RecordExtKind::WithValue = ext_kind {
+                                let (value_closure, _) =
+                                    self.stack.pop_arg(&self.cache).ok_or_else(|| {
+                                        EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
+                                    })?;
 
-                                    let as_var = value_closure.body
-                                        .closurize(&mut self.cache, &mut env2, value_closure.env);
-                                    Some(as_var)
-                                }
-                                else {
-                                    None
-                                };
+                                let as_var = value_closure.body.closurize(
+                                    &mut self.cache,
+                                    &mut env2,
+                                    value_closure.env,
+                                );
+                                Some(as_var)
+                            } else {
+                                None
+                            };
 
-                                match fields.insert(
-                                    LocIdent::from(id),
-                                    Field { value, metadata, pending_contracts }
-                                ) {
-                                    Some(t) if matches!(op_kind, RecordOpKind::ConsiderAllFields)
+                            match fields.insert(
+                                LocIdent::from(id),
+                                Field {
+                                    value,
+                                    metadata,
+                                    pending_contracts,
+                                },
+                            ) {
+                                Some(t)
+                                    if matches!(op_kind, RecordOpKind::ConsiderAllFields)
                                         || !t.is_empty_optional() =>
-                                        Err(EvalError::Other(format!(
+                                {
+                                    Err(EvalError::Other(
+                                        format!(
                                             "record_insert: \
                                             tried to extend a record with the field {id}, \
                                             but it already exists"
-                                        ), pos_op)),
-                                    _ => Ok(Closure {
-                                        body: Term::Record(RecordData { fields, ..record }).into(),
-                                        env: env2,
-                                    }),
+                                        ),
+                                        pos_op,
+                                    ))
                                 }
+                                _ => Ok(Closure {
+                                    body: Term::Record(RecordData { fields, ..record }).into(),
+                                    env: env2,
+                                }),
                             }
-                        } else {
-                            Err(mk_type_error!("record_insert", "Record", 2, t2, pos2))
                         }
-                    }
+                        _ => Err(mk_type_error!("record_insert", "Record", 2, t2, pos2)),
+                    })
                 } else {
                     Err(mk_type_error!("record_insert", "String", 1, t1, pos1))
                 }
             }
-            BinaryOp::DynRemove(op_kind) => match_sharedterm! {t1, with {
-                    Term::Str(id) => match_sharedterm! {t2, with {
-                            Term::Record(record) => {
-                                let mut fields = record.fields;
-                                let fetched = fields.remove(&LocIdent::from(&id));
-                                if fetched.is_none()
-                                    || matches!((op_kind, fetched), (RecordOpKind::IgnoreEmptyOpt, Some(Field {
+            BinaryOp::DynRemove(op_kind) => match_sharedterm!(match (t1) {
+                Term::Str(id) => match_sharedterm!(match (t2) {
+                    Term::Record(record) => {
+                        let mut fields = record.fields;
+                        let fetched = fields.remove(&LocIdent::from(&id));
+                        if fetched.is_none()
+                            || matches!(
+                                (op_kind, fetched),
+                                (
+                                    RecordOpKind::IgnoreEmptyOpt,
+                                    Some(Field {
                                         value: None,
-                                        metadata: FieldMetadata { opt: true, ..},
+                                        metadata: FieldMetadata { opt: true, .. },
                                         ..
-                                      }))) {
-                                        match record.sealed_tail.as_ref() {
-                                            Some(t) if t.has_dyn_field(&id) =>
-                                                Err(EvalError::IllegalPolymorphicTailAccess {
-                                                    action: IllegalPolymorphicTailAction::RecordRemove {
-                                                        field: id.to_string()
-                                                    },
-                                                    evaluated_arg: t.label
-                                                        .get_evaluated_arg(&self.cache),
-                                                    label: t.label.clone(),
-                                                    call_stack: std::mem::take(&mut self.call_stack)
-                                                }
-                                            ),
-                                            _ => Err(EvalError::FieldMissing(
-                                                id.into_inner(),
-                                                String::from("record_remove"),
-                                                RichTerm::new(
-                                                    Term::Record(RecordData { fields, ..record }),
-                                                    pos2,
-                                                ),
-                                                pos_op,
-                                            )),
-                                        }
-                                    }
-                                    else {
-                                        Ok(Closure {
-                                            body: RichTerm::new(
-                                                Term::Record(RecordData { fields, ..record }),
-                                                pos_op_inh
-                                            ),
-                                            env: env2,
-                                        })
-                                    }
+                                    })
+                                )
+                            )
+                        {
+                            match record.sealed_tail.as_ref() {
+                                Some(t) if t.has_dyn_field(&id) => {
+                                    Err(EvalError::IllegalPolymorphicTailAccess {
+                                        action: IllegalPolymorphicTailAction::RecordRemove {
+                                            field: id.to_string(),
+                                        },
+                                        evaluated_arg: t.label.get_evaluated_arg(&self.cache),
+                                        label: t.label.clone(),
+                                        call_stack: std::mem::take(&mut self.call_stack),
+                                    })
                                 }
-                        } else {
-                            Err(mk_type_error!("record_remove", "Record", 2, t2, pos2))
-                        }
-                    }
-                } else {
-                    Err(mk_type_error!("record_remove", "String", 1, t1, pos1))
-                }
-            },
-            BinaryOp::HasField(op_kind) => match_sharedterm! {t1, with {
-                    Term::Str(id) => {
-                        if let Term::Record(record) = &*t2 {
-                            Ok(Closure::atomic_closure(RichTerm::new(
-                                Term::Bool(matches!(
-                                    record.fields.get(&LocIdent::from(id.into_inner())),
-                                    Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                                _ => Err(EvalError::FieldMissing(
+                                    id.into_inner(),
+                                    String::from("record_remove"),
+                                    RichTerm::new(
+                                        Term::Record(RecordData { fields, ..record }),
+                                        pos2,
+                                    ),
+                                    pos_op,
                                 )),
-                                pos_op_inh,
-                            )))
+                            }
                         } else {
-                            Err(mk_type_error!("has_field", "Record", 2, t2, pos2))
+                            Ok(Closure {
+                                body: RichTerm::new(
+                                    Term::Record(RecordData { fields, ..record }),
+                                    pos_op_inh,
+                                ),
+                                env: env2,
+                            })
                         }
                     }
-                } else {
-                    Err(mk_type_error!("has_field", "String", 1, t1, pos1))
+                    _ => Err(mk_type_error!("record_remove", "Record", 2, t2, pos2)),
+                }),
+                _ => Err(mk_type_error!("record_remove", "String", 1, t1, pos1)),
+            }),
+            BinaryOp::HasField(op_kind) => match_sharedterm!(match (t1) {
+                Term::Str(id) => {
+                    if let Term::Record(record) = &*t2 {
+                        Ok(Closure::atomic_closure(RichTerm::new(
+                            Term::Bool(matches!(
+                                record.fields.get(&LocIdent::from(id.into_inner())),
+                                Some(field) if matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+                            )),
+                            pos_op_inh,
+                        )))
+                    } else {
+                        Err(mk_type_error!("has_field", "Record", 2, t2, pos2))
+                    }
                 }
-            },
-            BinaryOp::ArrayConcat() => match_sharedterm! {t1,
-                with {
-                    Term::Array(ts1, attrs1) => match_sharedterm! {t2,
-                        with {
-                            Term::Array(ts2, attrs2) => {
-                                // NOTE: the [eval_closure] function in [eval] should've made sure
-                                // that the array is closurized. We leave a debug_assert! here just
-                                // in case something goes wrong in the future. If the assert failed,
-                                // you may need to map closurize over `ts1` and `ts2`.
-                                debug_assert!(attrs1.closurized,
-                                    "the left-hand side of ArrayConcat (@) is not closurized.");
-                                debug_assert!(attrs2.closurized,
-                                    "the right-hand side of ArrayConcat (@) is not closurized.");
+                _ => Err(mk_type_error!("has_field", "String", 1, t1, pos1)),
+            }),
+            BinaryOp::ArrayConcat() => match_sharedterm!(match (t1) {
+                Term::Array(ts1, attrs1) => match_sharedterm!(match (t2) {
+                    Term::Array(ts2, attrs2) => {
+                        // NOTE: the [eval_closure] function in [eval] should've made sure
+                        // that the array is closurized. We leave a debug_assert! here just
+                        // in case something goes wrong in the future. If the assert failed,
+                        // you may need to map closurize over `ts1` and `ts2`.
+                        debug_assert!(
+                            attrs1.closurized,
+                            "the left-hand side of ArrayConcat (@) is not closurized."
+                        );
+                        debug_assert!(
+                            attrs2.closurized,
+                            "the right-hand side of ArrayConcat (@) is not closurized."
+                        );
 
-                                // NOTE: To avoid the extra Vec allocation, we could use
-                                // Rc<[T]>::new_uninit_slice() and fill up the slice manually, but
-                                // that's a nightly-only experimental API. Note that collecting into
-                                // an Rc<[T]> will also allocate a intermediate vector, unless the
-                                // input iterator implements the nightly-only API TrustedLen, and
-                                // Array's iterator currently doesn't. Even if we could implement
-                                // TrustedLen we would have to contend with the fact that .chain(..)
-                                // tends to be slow.
-                                // - Rc<[T]>::from_iter docs:
-                                //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
-                                // - chain issue: https://github.com/rust-lang/rust/issues/63340
-                                let mut ts: Vec<RichTerm> = Vec::with_capacity(
-                                    ts1.len() + ts2.len()
-                                );
+                        // NOTE: To avoid the extra Vec allocation, we could use
+                        // Rc<[T]>::new_uninit_slice() and fill up the slice manually, but
+                        // that's a nightly-only experimental API. Note that collecting into
+                        // an Rc<[T]> will also allocate a intermediate vector, unless the
+                        // input iterator implements the nightly-only API TrustedLen, and
+                        // Array's iterator currently doesn't. Even if we could implement
+                        // TrustedLen we would have to contend with the fact that .chain(..)
+                        // tends to be slow.
+                        // - Rc<[T]>::from_iter docs:
+                        //   https://doc.rust-lang.org/std/rc/struct.Rc.html#impl-FromIterator%3CT%3E
+                        // - chain issue: https://github.com/rust-lang/rust/issues/63340
+                        let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
-                                let mut env = env1.clone();
-                                // TODO: Is there a cheaper way to "merge" two environements?
-                                env.extend(env2.iter_elems().map(|(k, v)| (*k, v.clone())));
+                        let mut env = env1.clone();
+                        // TODO: Is there a cheaper way to "merge" two environements?
+                        env.extend(env2.iter_elems().map(|(k, v)| (*k, v.clone())));
 
-                                // We have two sets of contracts from the LHS and RHS arrays.
-                                // - Common contracts between the two sides can be put into
-                                // `pending_contracts` of the resulting concatenation as they're
-                                // shared by all elements: we don't have to apply them just yet.
-                                // - Contracts thats are specific to the LHS or the RHS have to
-                                // applied because we don't have a way of tracking which elements
-                                // should take which contracts.
+                        // We have two sets of contracts from the LHS and RHS arrays.
+                        // - Common contracts between the two sides can be put into
+                        // `pending_contracts` of the resulting concatenation as they're
+                        // shared by all elements: we don't have to apply them just yet.
+                        // - Contracts thats are specific to the LHS or the RHS have to
+                        // applied because we don't have a way of tracking which elements
+                        // should take which contracts.
 
-                                // Separate contracts between the parts that aren't common, and
-                                // must be applied right away, and the common part, which can be
-                                // kept lazy.
-                                let mut ctrs_left = attrs1.pending_contracts;
-                                // We use a vector of `Option` so that we can set the elements to
-                                // remove to `None` and make a single pass at the end
-                                // to retain the remaining ones.
-                                let mut ctrs_right_sieve : Vec<_> = attrs2.pending_contracts.into_iter().map(Some).collect();
-                                let mut ctrs_common = Vec::new();
+                        // Separate contracts between the parts that aren't common, and
+                        // must be applied right away, and the common part, which can be
+                        // kept lazy.
+                        let mut ctrs_left = attrs1.pending_contracts;
+                        // We use a vector of `Option` so that we can set the elements to
+                        // remove to `None` and make a single pass at the end
+                        // to retain the remaining ones.
+                        let mut ctrs_right_sieve: Vec<_> =
+                            attrs2.pending_contracts.into_iter().map(Some).collect();
+                        let mut ctrs_common = Vec::new();
 
-                                // We basically compute the intersection (`ctr_common`),
-                                // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                                let ctrs_left_dedup : Vec<_> =
-                                    ctrs_left
-                                    .into_iter()
-                                    .filter(|ctr| {
-                                        // We don't deduplicate polymorphic contracts, because
-                                        // they're not idempotent.
-                                        if ctr.can_have_poly_ctrs() {
-                                            return true;
-                                        }
+                        // We basically compute the intersection (`ctr_common`),
+                        // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
+                        let ctrs_left: Vec<_> = ctrs_left
+                            .into_iter()
+                            .filter(|ctr| {
+                                // We don't deduplicate polymorphic contracts, because
+                                // they're not idempotent.
+                                if ctr.can_have_poly_ctrs() {
+                                    return true;
+                                }
 
-                                        let envs_left = EvalEnvsRef {
-                                            eval_env: &env1,
+                                let envs_left = EvalEnvsRef {
+                                    eval_env: &env1,
+                                    initial_env: &self.initial_env,
+                                };
+
+                                let twin_index = ctrs_right_sieve
+                                    .iter()
+                                    .filter_map(|ctr| ctr.as_ref())
+                                    .position(|other_ctr| {
+                                        let envs_right = EvalEnvsRef {
+                                            eval_env: &env2,
                                             initial_env: &self.initial_env,
                                         };
 
-                                        // We check if there is a remaining contract in
-                                        // `ctrs_right_sieve` which matches `ctr`: in this case,
-                                        // `twin_index` will hold its index.
-                                        let twin_index = ctrs_right_sieve
-                                            .iter()
-                                            .position(|other_ctr| {
-                                                other_ctr
-                                                    .as_ref()
-                                                    .map_or(false, |other_ctr| {
-                                                        let envs_right = EvalEnvsRef {
-                                                            eval_env: &env2,
-                                                            initial_env: &self.initial_env,
-                                                        };
+                                        contract_eq::<EvalEnvsRef>(
+                                            0,
+                                            &ctr.contract,
+                                            envs_left,
+                                            &other_ctr.contract,
+                                            envs_right,
+                                        )
+                                    });
 
-                                                        contract_eq::<EvalEnvsRef>(
-                                                            0,
-                                                            &ctr.contract,
-                                                            envs_left,
-                                                            &other_ctr.contract,
-                                                            envs_right,
-                                                        )
-                                                })
-                                         });
+                                if let Some(index) = twin_index {
+                                    ctrs_right_sieve[index] = None;
+                                    false
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect();
 
-                                        if let Some(index) = twin_index {
-                                            // unwrap(): we know that the contract at this index is
-                                            // `Some`, because all elements are initially some when
-                                            // creating `ctrs_right_sieve` and then we don't
-                                            // consider `None` values when computing a new `index`
-                                            // in the `position` above.
-                                            let common = ctrs_right_sieve[index].take().unwrap();
-                                            ctrs_common.push(common);
-                                            false
-                                        }
-                                        else {
-                                            true
-                                        }
-                                    })
-                                    .collect();
+                        let ctrs_right = ctrs_right_sieve.into_iter().flatten();
 
-                                let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
+                        ts.extend(ts1.into_iter().map(|t| {
+                            RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
+                                .closurize(&mut self.cache, &mut env, env1.clone())
+                        }));
 
-                                ts.extend(ts1.into_iter().map(|t|
-                                    RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
-                                    .closurize(&mut self.cache, &mut env, env1.clone())
-                                ));
+                        ts.extend(ts2.into_iter().map(|t| {
+                            RuntimeContract::apply_all(t, ctrs_right.clone(), pos2).closurize(
+                                &mut self.cache,
+                                &mut env,
+                                env2.clone(),
+                            )
+                        }));
 
-                                ts.extend(ts2.into_iter().map(|t|
-                                    RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
-                                    .closurize(&mut self.cache, &mut env, env2.clone())
-                                ));
+                        let attrs = ArrayAttrs {
+                            closurized: true,
+                            pending_contracts: ctrs_common,
+                        };
 
-                                let attrs = ArrayAttrs {
-                                    closurized: true,
-                                    pending_contracts: ctrs_common,
-                                };
-
-                                Ok(Closure {
-                                    body: RichTerm::new(
-                                        Term::Array(Array::new(Rc::from(ts)), attrs),
-                                        pos_op_inh
-                                    ),
-                                    env,
-                                })
-                            }
-                        } else {
-                            Err(mk_type_error!("(@)", "Array", 2, t2, pos2))
-
-                        }
-                    },
-                } else {
-                    Err(mk_type_error!("(@)", "Array", 1, t1, pos1))
-                }
-            },
+                        Ok(Closure {
+                            body: RichTerm::new(
+                                Term::Array(Array::new(Rc::from(ts)), attrs),
+                                pos_op_inh,
+                            ),
+                            env,
+                        })
+                    }
+                    _ => Err(mk_type_error!("(@)", "Array", 2, t2, pos2)),
+                }),
+                _ => Err(mk_type_error!("(@)", "Array", 1, t1, pos1)),
+            }),
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
                     let Ok(n_as_usize) = usize::try_from(n) else {
@@ -2148,42 +2110,35 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 } = ctr;
 
                 // FIXME: use match?
-                let lbl = match_sharedterm! {t1, with {
-                        Term::Lbl(lbl) => lbl
-                    } else return Err(mk_type_error!("array_lazy_app_ctr", "Label", 1, t1, pos1))
-                };
+                let lbl = match_sharedterm!(match (t1) {
+                    Term::Lbl(lbl) => lbl,
+                    _ => return Err(mk_type_error!("array_lazy_app_ctr", "Label", 1, t1, pos1)),
+                });
 
-                match_sharedterm! {t2,
-                    with {
-                        Term::Array(ts, attrs) => {
-                            let mut attrs = attrs;
-                            let mut final_env = env2;
+                match_sharedterm!(match (t2) {
+                    Term::Array(ts, attrs) => {
+                        let mut attrs = attrs;
+                        let mut final_env = env2;
 
-                            // Preserve the environment of the contract in the resulting array.
-                            let contract = rt3.closurize(&mut self.cache, &mut final_env, env3);
-                            RuntimeContract::push_dedup(
-                                &self.initial_env,
-                                &mut attrs.pending_contracts,
-                                &final_env,
-                                RuntimeContract::new(contract, lbl),
-                                &final_env
-                            );
+                        // Preserve the environment of the contract in the resulting array.
+                        let contract = rt3.closurize(&mut self.cache, &mut final_env, env3);
+                        RuntimeContract::push_dedup(
+                            &self.initial_env,
+                            &mut attrs.pending_contracts,
+                            &final_env,
+                            RuntimeContract::new(contract, lbl),
+                            &final_env,
+                        );
 
-                            let array_with_ctr = Closure {
-                                body: RichTerm::new(
-                                    Term::Array(
-                                        ts,
-                                        attrs,
-                                    ),
-                                    pos2,
-                                ),
-                                env: final_env,
-                            };
+                        let array_with_ctr = Closure {
+                            body: RichTerm::new(Term::Array(ts, attrs), pos2),
+                            env: final_env,
+                        };
 
-                            Ok(array_with_ctr)
-                        }
-                    } else Err(mk_type_error!("array_lazy_app_ctr", "Array", 2, t2, pos2))
-                }
+                        Ok(array_with_ctr)
+                    }
+                    _ => Err(mk_type_error!("array_lazy_app_ctr", "Array", 2, t2, pos2)),
+                })
             }
             BinaryOp::RecordLazyAppCtr() => {
                 // The contract is expected to be of type `String -> Contract`: it takes the name
@@ -2198,67 +2153,66 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     EvalError::NotEnoughArgs(3, String::from("record_lazy_app_ctr"), pos_op)
                 })?;
 
-                let label = match_sharedterm! {t1, with {
-                        Term::Lbl(label) => label
-                    } else return Err(mk_type_error!("record_lazy_app_ctr", "Label", 1, t1, pos1))
-                };
+                let label = match_sharedterm!(match (t1) {
+                    Term::Lbl(label) => label,
+                    _ => return Err(mk_type_error!("record_lazy_app_ctr", "Label", 1, t1, pos1)),
+                });
 
-                match_sharedterm! {t2,
-                    with {
-                        Term::Record(record_data) => {
-                            // due to a limitation of `match_sharedterm`: see the macro's
-                            // documentation
-                            let mut record_data = record_data;
-                            let term_original_env = env2.clone();
+                match_sharedterm!(match (t2) {
+                    Term::Record(record_data) => {
+                        // due to a limitation of `match_sharedterm`: see the macro's
+                        // documentation
+                        let mut record_data = record_data;
+                        let term_original_env = env2.clone();
 
-                            let mut contract_at_field = |id: LocIdent| {
-                                let pos = contract_term.pos;
-                                mk_app!(
-                                    contract_term.clone(),
-                                    RichTerm::new(Term::Str(id.into()), id.pos))
-                                        .with_pos(pos)
-                                        .closurize(&mut self.cache, &mut env2, contract_env.clone(),
-                                )
+                        let mut contract_at_field = |id: LocIdent| {
+                            let pos = contract_term.pos;
+                            mk_app!(
+                                contract_term.clone(),
+                                RichTerm::new(Term::Str(id.into()), id.pos)
+                            )
+                            .with_pos(pos)
+                            .closurize(
+                                &mut self.cache,
+                                &mut env2,
+                                contract_env.clone(),
+                            )
+                        };
+
+                        for (id, field) in record_data.fields.iter_mut() {
+                            let runtime_ctr = RuntimeContract {
+                                contract: contract_at_field(*id),
+                                label: label.clone(),
                             };
 
-                            for (id, field) in record_data.fields.iter_mut() {
-                                let runtime_ctr = RuntimeContract {
-                                        contract: contract_at_field(*id),
-                                        label: label.clone(),
-                                    };
-
-                                crate::term::RuntimeContract::push_dedup(
-                                    &self.initial_env,
-                                    &mut field.pending_contracts,
-                                    &term_original_env,
-                                    runtime_ctr,
-                                    &contract_env,
-                                );
-                            }
-
-                            // IMPORTANT: here, we revert the record back to a `RecRecord`. The
-                            // reason is that applying a contract over fields might change the
-                            // value of said fields (the typical example is adding a value to a
-                            // subrecord via the default value of a contract).
-                            //
-                            // We want recursive occurrences of fields to pick this new value as
-                            // well: hence, we need to recompute the fixpoint, which is done by
-                            // `fixpoint::revert`.
-                            let mut env = Environment::new();
-                            let reverted = super::fixpoint::revert(
-                                &mut self.cache,
-                                record_data,
-                                &mut env,
-                                &env2
+                            crate::term::RuntimeContract::push_dedup(
+                                &self.initial_env,
+                                &mut field.pending_contracts,
+                                &term_original_env,
+                                runtime_ctr,
+                                &contract_env,
                             );
-
-                            Ok(Closure {
-                                body: RichTerm::new(reverted, pos2),
-                                env,
-                            })
                         }
-                    } else Err(mk_type_error!("record_lazy_app_ctr", "Record", 2, t2, pos2))
-                }
+
+                        // IMPORTANT: here, we revert the record back to a `RecRecord`. The
+                        // reason is that applying a contract over fields might change the
+                        // value of said fields (the typical example is adding a value to a
+                        // subrecord via the default value of a contract).
+                        //
+                        // We want recursive occurrences of fields to pick this new value as
+                        // well: hence, we need to recompute the fixpoint, which is done by
+                        // `fixpoint::revert`.
+                        let mut env = Environment::new();
+                        let reverted =
+                            super::fixpoint::revert(&mut self.cache, record_data, &mut env, &env2);
+
+                        Ok(Closure {
+                            body: RichTerm::new(reverted, pos2),
+                            env,
+                        })
+                    }
+                    _ => Err(mk_type_error!("record_lazy_app_ctr", "Record", 2, t2, pos2)),
+                })
             }
             BinaryOp::LabelWithMessage() => {
                 let t1 = t1.into_owned();
@@ -2564,37 +2518,36 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 ) = args_iter.next().unwrap();
                 debug_assert!(args_iter.next().is_none());
 
-                match_sharedterm! {t1, with {
-                        Term::Lbl(lbl) => {
-                            merge::merge(
-                                &mut self.cache,
-                                &self.initial_env,
-                                RichTerm {
-                                    term: t2,
-                                    pos: pos2,
-                                },
-                                env2,
-                                RichTerm {
-                                    term: t3,
-                                    pos: pos3,
-                                },
-                                env3,
-                                pos_op,
-                                MergeMode::Contract(lbl),
-                                &mut self.call_stack
-                            )
-                        }
-                    } else {
-                        Err(EvalError::InternalError(
-                            format!(
-                                "The MergeContract() operator was expecting \
-                                a first argument of type Label, got {}",
-                                t1.type_of().unwrap_or_else(|| String::from("<unevaluated>"))
-                            ),
-                            pos_op
-                        ))
+                match_sharedterm!(match (t1) {
+                    Term::Lbl(lbl) => {
+                        merge::merge(
+                            &mut self.cache,
+                            &self.initial_env,
+                            RichTerm {
+                                term: t2,
+                                pos: pos2,
+                            },
+                            env2,
+                            RichTerm {
+                                term: t3,
+                                pos: pos3,
+                            },
+                            env3,
+                            pos_op,
+                            MergeMode::Contract(lbl),
+                            &mut self.call_stack,
+                        )
                     }
-                }
+                    _ => Err(EvalError::InternalError(
+                        format!(
+                            "The MergeContract() operator was expecting \
+                                a first argument of type Label, got {}",
+                            t1.type_of()
+                                .unwrap_or_else(|| String::from("<unevaluated>"))
+                        ),
+                        pos_op
+                    )),
+                })
             }
             NAryOp::RecordSealTail() => {
                 let mut args = args.into_iter();
