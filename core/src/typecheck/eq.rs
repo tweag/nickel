@@ -587,7 +587,6 @@ fn contract_eq_bounded<E: TermEnvironment>(
             value_eq && ty_eq
         }
         (Op1(UnaryOp::StaticAccess(id1), t1), Op1(UnaryOp::StaticAccess(id2), t2)) => {
-            // println!("Comparing static access {t1}.{id1} / {t2}.{id2}");
             id1 == id2 && contract_eq_bounded::<E>(state, var_eq, t1, env1, t2, env2)
         }
         (Type(ty1), Type(ty2)) => type_eq_bounded(

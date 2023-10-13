@@ -295,13 +295,13 @@ pub fn merge<C: Cache>(
             // [crate::eval::cache::Cache::saturate()].
             m.extend(
                 left.into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache)))
+                    .map(|(id, field)| (id, field.revert_closurize(cache))),
             );
 
             m.extend(
                 right
                     .into_iter()
-                    .map(|(id, field)| (id, field.revert_closurize(cache)))
+                    .map(|(id, field)| (id, field.revert_closurize(cache))),
             );
 
             for (id, (field1, field2)) in center.into_iter() {
@@ -385,22 +385,14 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
             Some(fields_merge_closurize(cache, merge_label, t1, t2, fields).unwrap()),
             metadata1.priority,
         ),
-        (Some(t1), _) if metadata1.priority > metadata2.priority => (
-            Some(t1.revert_closurize(cache)),
-            metadata1.priority,
-        ),
-        (Some(t1), None) => (
-            Some(t1.revert_closurize(cache)),
-            metadata1.priority,
-        ),
-        (_, Some(t2)) if metadata2.priority > metadata1.priority => (
-            Some(t2.revert_closurize(cache)),
-            metadata2.priority,
-        ),
-        (None, Some(t2)) => (
-            Some(t2.revert_closurize(cache)),
-            metadata2.priority,
-        ),
+        (Some(t1), _) if metadata1.priority > metadata2.priority => {
+            (Some(t1.revert_closurize(cache)), metadata1.priority)
+        }
+        (Some(t1), None) => (Some(t1.revert_closurize(cache)), metadata1.priority),
+        (_, Some(t2)) if metadata2.priority > metadata1.priority => {
+            (Some(t2.revert_closurize(cache)), metadata2.priority)
+        }
+        (None, Some(t2)) => (Some(t2.revert_closurize(cache)), metadata2.priority),
         (None, None) => (None, Default::default()),
         _ => unreachable!(),
     };
@@ -473,10 +465,7 @@ impl Saturate for RichTerm {
 }
 
 /// Return the dependencies of a field when represented as a `RichTerm`.
-fn field_deps<C: Cache>(
-    cache: &C,
-    rt: &RichTerm,
-) -> Result<FieldDeps, EvalError> {
+fn field_deps<C: Cache>(cache: &C, rt: &RichTerm) -> Result<FieldDeps, EvalError> {
     if let Term::Closure(idx) = &*rt.term {
         Ok(cache.deps(idx).unwrap_or_else(FieldDeps::empty))
     } else {
@@ -540,9 +529,7 @@ impl RevertClosurize for RichTerm {
 
 impl RevertClosurize for Field {
     fn revert_closurize<C: Cache>(self, cache: &mut C) -> Field {
-        let value = self
-            .value
-            .map(|value| value.revert_closurize(cache));
+        let value = self.value.map(|value| value.revert_closurize(cache));
 
         let pending_contracts = self.pending_contracts.revert_closurize(cache);
 

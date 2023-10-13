@@ -13,10 +13,7 @@
 //! closurize all the inner terms.
 
 use crate::{
-    eval::{
-        cache::Cache,
-        Closure, Environment,
-    },
+    eval::{cache::Cache, Closure, Environment},
     match_sharedterm,
     term::{
         array::{Array, ArrayAttrs},

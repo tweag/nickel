@@ -316,6 +316,56 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         Ok(field)
     }
 
+    fn enter_cache_index(
+        &mut self,
+        var: Option<LocIdent>,
+        mut idx: CacheIndex,
+        pos: TermPos,
+        env: Environment,
+    ) -> Result<Closure, EvalError> {
+        // idx may be a 1-counted RC, so we make sure we drop any reference to it from `env`, which
+        // is going to be discared anyway
+        std::mem::drop(env);
+
+        match self.cache.get_update_index(&mut idx) {
+            Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
+            Ok(None) => {}
+            Err(_blackholed_error) => {
+                return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
+            }
+        }
+
+        if let Some(var) = var {
+            self.call_stack.enter_var(var, pos);
+        }
+
+        // If we are fetching a recursive field from the environment that doesn't have
+        // a definition, we complete the error with the additional information of where
+        // it was accessed:
+        let Closure { body, env } = self.cache.get(idx);
+        let body = match_sharedterm!(match (body.term) {
+                Term::RuntimeError(EvalError::MissingFieldDef {
+                    id,
+                    metadata,
+                    pos_record,
+                    pos_access: TermPos::None,
+                }) => RichTerm::new(
+                    Term::RuntimeError(EvalError::MissingFieldDef {
+                        id,
+                        metadata,
+                        pos_record,
+                        pos_access: pos,
+                    }),
+                    pos,
+                ),
+            _ => {
+                body
+            }
+        });
+
+        Ok(Closure { body, env })
+    }
+
     /// The main loop of evaluation.
     ///
     /// Implement the evaluation loop of the core language. The specific implementations of
@@ -386,91 +436,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Var(x) => {
-                    let mut idx = env
+                    let idx = env
                         .get(&x.ident())
                         .or_else(|| self.initial_env.get(&x.ident()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
-                    std::mem::drop(env); // idx may be a 1RC pointer
 
-                    match self.cache.get_update_index(&mut idx) {
-                        Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
-                        Ok(None) => {}
-                        Err(_blackholed_error) => {
-                            return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
-                        }
-                    }
-
-                    self.call_stack.enter_var(*x, pos);
-
-                    // If we are fetching a recursive field from the environment that doesn't have
-                    // a definition, we complete the error with the additional information of where
-                    // it was accessed:
-                    let Closure { body, env } = self.cache.get(idx);
-                    let body = match_sharedterm!(match (body.term) {
-                        Term::RuntimeError(EvalError::MissingFieldDef {
-                            id,
-                            metadata,
-                            pos_record,
-                            pos_access: TermPos::None,
-                        }) => RichTerm::new(
-                            Term::RuntimeError(EvalError::MissingFieldDef {
-                                id,
-                                metadata,
-                                pos_record,
-                                pos_access: pos,
-                            }),
-                            pos,
-                        ),
-                        _ => body,
-                    });
-
-                    Closure { body, env }
+                    self.enter_cache_index(Some(*x), idx, pos, env)?
                 }
-                //TODO: avoid clone?
-                Term::Closure(idx) => {
-                    let mut idx = idx.clone();
-
-                    //TODO: deduplicate with Var case
-                    std::mem::drop(env); // idx may be a 1RC pointer
-
-                    match self.cache.get_update_index(&mut idx) {
-                        Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
-                        Ok(None) => {}
-                        Err(_blackholed_error) => {
-                            return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
-                        }
-                    }
-
-                    //TODO: replace that for the call stack?
-                    // self.call_stack.enter_var(*x, pos);
-
-                    // If we are fetching a recursive field from the environment that doesn't have
-                    // a definition, we complete the error with the additional information of where
-                    // it was accessed:
-                    let Closure { body, env } = self.cache.get(idx);
-                    let body = match_sharedterm! {body.term, with {
-                            Term::RuntimeError(EvalError::MissingFieldDef {
-                                id,
-                                metadata,
-                                pos_record,
-                                pos_access: TermPos::None,
-                            }) => RichTerm::new(
-                                Term::RuntimeError(EvalError::MissingFieldDef {
-                                    id,
-                                    metadata,
-                                    pos_record,
-                                    pos_access: pos,
-                                }),
-                                pos,
-                            ),
-                        } else {
-                            body
-                        }
-                    };
-
-                    Closure { body, env }
-                }
+                Term::Closure(idx) => self.enter_cache_index(None, idx.clone(), pos, env)?,
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
 
@@ -674,9 +648,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 pending_contracts,
                             } = field;
 
-                            //TODO[LAZYPROP]: we should probably closurize the pending
-                            //contracts. It seems to work currently, but looks a bit fragile
-                            //with respect to refactoring/changes.
                             let extend = mk_term::op2(
                                 BinaryOp::DynExtend {
                                     metadata: metadata.clone(),
@@ -1041,7 +1012,6 @@ pub fn subst<C: Cache>(
                 subst(cache, closure.body, initial_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
-        //TODO: deduplicate with Var case?
         Term::Closure(idx) => {
                 let closure = cache.get(idx.clone());
                 subst(cache, closure.body, initial_env, &closure.env)
