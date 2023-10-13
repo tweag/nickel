@@ -150,13 +150,8 @@ pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident
 ///
 /// # Parameters
 ///
-/// `env` and `local_env` are similar to the parameters of
-/// `[crate::transform::Closurize::closurize]`.
-///
 /// - `cache`: the evaluation cache
 /// - `record_data`: the data of the record to revert
-/// - `env`: the final environment in which the fields of the result will be closurized
-/// - `local_env`: the environment of the record represented by `record_data`
 pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     let fields = record_data
         .fields

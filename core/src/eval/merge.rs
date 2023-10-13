@@ -364,9 +364,6 @@ fn merge_fields<'a, C: Cache, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     field2: Field,
     fields: I,
 ) -> Result<Field, EvalError> {
-    // For now, we blindly closurize things and copy environments in this function. A
-    // careful analysis would make it possible to spare a few closurize operations and more
-    // generally environment cloning.
     let Field {
         metadata: metadata1,
         value: value1,
@@ -497,7 +494,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
         t2.saturate(cache, fields)?,
     ));
 
-    // We closurize the final result in an element with appropriate dependencies
+    // We closurize the final result with appropriate dependencies
     let closure = Closure {
         body,
         env: Environment::new(),

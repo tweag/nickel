@@ -446,12 +446,12 @@ impl Thunk {
     }
 
     /// Revert a thunk, abstract over its dependencies to get back a function, and apply the
-    /// function to the given variables. The function part is allocated in a new fresh thunk, stored
-    /// as a generated variable, with the same environment as the original expression.
+    /// resulting function to the given variables. The function part is allocated in a fresh thunk
+    /// with the same environment as the original expression.
     ///
-    /// Recall that revertible thunks are just a memoization mechanism for function application. The
-    /// original expression (`orig`) and the dependencies (`deps`) are a representation of a
-    /// function. Most of the time, we don't have to go through an explicit function, and just
+    /// Recall that revertible thunks are just a memoization mechanism for function application.
+    /// The original expression (`orig`) and the dependencies (`deps`) are a representation of a
+    /// function. Most of the time, we don't have to manipulate the explicit function, but just
     /// manipulate the body of the function directly (which is what is stored inside the `orig`
     /// field).
     ///
@@ -469,8 +469,6 @@ impl Thunk {
     ///
     /// # Parameters
     ///
-    /// - `env`: the environment in which the explicit function expression is closurized. When
-    ///   performing recursive overriding, this is the local environment of the final merged field.
     /// - `fields`: the fields of the resulting recursive record being built by merging. `fields` is
     ///   used for two purposes:
     ///     - to impose a fixed order on the arguments of the function. The particular order is not
@@ -484,7 +482,7 @@ impl Thunk {
     ///
     /// Non revertible thunks can be seen as a special case of revertible thunks with no
     /// dependencies. Thus the abstraction and application are nullary, and the result is just the
-    /// current thunk closurized in `env` as a fresh variable.
+    /// current thunk.
     ///
     /// # Example
     ///
@@ -492,10 +490,9 @@ impl Thunk {
     /// variables) and `a` is bound in the environment. Say the iterator represents the fields `bar,
     /// b, foo` in that order. Then `saturate`:
     ///
-    /// - stores `fun bar foo => foo + bar + a` in a fresh thunk with the same environment as `self`
+    /// - stores `fun bar foo => foo + bar + a` in a fresh (say `thunk1`) thunk with the same environment as `self`
     ///   (in particular, `a` is bound)
-    /// - allocates a fresh variable, say `%1`, and binds it to the previous thunk in `env`
-    /// - returns the term `%1 foo bar`
+    /// - returns the term `<closure@thunk1>`
     pub fn saturate<I: DoubleEndedIterator<Item = Ident> + Clone>(self, fields: I) -> RichTerm {
         let deps = self.deps();
         let inner = Rc::try_unwrap(self.data)

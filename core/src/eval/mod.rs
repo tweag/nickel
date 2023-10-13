@@ -1095,8 +1095,8 @@ pub fn subst<C: Cache>(
             // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
             // It's a detail but it comes handy in tests, where we abuse partial equality over
             // terms - keeping closurized to `true` would require to do the same when building the
-            // expected result, which is annoying, as closurized is initialized to false by term
-            // builders.
+            // expected result, which is annoying, as closurized is initialized to false by default
+            // by term builders.
             record.attrs.closurized = false;
 
             RichTerm::new(Term::Record(record), pos)
