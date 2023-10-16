@@ -100,7 +100,7 @@ impl Closurize for RichTerm {
         //
         let pos = self.pos;
 
-        let idx = match_sharedterm! { self, with {
+        let idx = match_sharedterm!( match (self) {
                 // We should always find a generated variable in the environment, but this method is
                 // not fallible, so we just wrap it in a new closure which will
                 // give an unbound identifier error if it's ever evaluated.
@@ -112,8 +112,7 @@ impl Closurize for RichTerm {
                 },
                 // If we just need a normal closure, and we find a normal closure inside the thunk, we can just reuse it
                 Term::Closure(idx) if idx.deps().is_empty() && matches!(btype, BindingType::Normal) => idx,
-            }
-            else {
+            _ => {
                 // It's suspicious to wrap a closure with existing dependencies in a new closure
                 // with set dependencies, although I'm not sure it would actually break anything.
                 // We panic in debug mode to catch this case.
@@ -121,7 +120,7 @@ impl Closurize for RichTerm {
 
                 cache.add(Closure { body: self, env}, btype)
             }
-        };
+        });
 
         RichTerm::new(Term::Closure(idx), pos.into_inherited())
     }

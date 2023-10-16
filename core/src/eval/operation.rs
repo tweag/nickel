@@ -1826,11 +1826,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 .closurize(&mut self.cache, env1.clone())
                         }));
 
-                        ts.extend(ts1.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
-                                .closurize(&mut self.cache, env1.clone())
-                        }));
-
                         ts.extend(ts2.into_iter().map(|t| {
                             RuntimeContract::apply_all(t, ctrs_right.clone(), pos2)
                                 .closurize(&mut self.cache, env2.clone())
