@@ -344,20 +344,20 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         // it was accessed:
         let Closure { body, env } = self.cache.get(idx);
         let body = match_sharedterm!(match (body.term) {
+            Term::RuntimeError(EvalError::MissingFieldDef {
+                id,
+                metadata,
+                pos_record,
+                pos_access: TermPos::None,
+            }) => RichTerm::new(
                 Term::RuntimeError(EvalError::MissingFieldDef {
                     id,
                     metadata,
                     pos_record,
-                    pos_access: TermPos::None,
-                }) => RichTerm::new(
-                    Term::RuntimeError(EvalError::MissingFieldDef {
-                        id,
-                        metadata,
-                        pos_record,
-                        pos_access: pos,
-                    }),
-                    pos,
-                ),
+                    pos_access: pos,
+                }),
+                pos,
+            ),
             _ => {
                 body
             }

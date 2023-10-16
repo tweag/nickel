@@ -1037,12 +1037,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Array(ts, attrs) if !ts.is_empty() => {
                         let ts = ts
                             .into_iter()
-                            .map(|value| {
+                            .map(|t| {
                                 mk_term::op1(
                                     UnaryOp::Force {
                                         ignore_not_exported,
                                     },
-                                    value,
+                                    RuntimeContract::apply_all(
+                                        t,
+                                        attrs.pending_contracts.iter().cloned(),
+                                        pos.into_inherited(),
+                                    ),
                                 )
                                 .closurize(&mut self.cache, env.clone())
                             })
@@ -1052,9 +1056,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             // updated.
                             .collect::<Array>();
 
-                        // force [1 | Number] ~ [%1] {%1 -<  force (contract_app Number 1) }
-                        // %1 <- ... this a thunk
-                        // force [1 | Number] ~ [Closure (force (contract_app Number 1)]
                         let terms = ts.clone().into_iter();
                         let cont = RichTerm::new(Term::Array(ts, attrs), pos.into_inherited());
 

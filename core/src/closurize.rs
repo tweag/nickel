@@ -100,25 +100,35 @@ impl Closurize for RichTerm {
         //
         let pos = self.pos;
 
-        let idx = match_sharedterm!( match (self) {
-                // We should always find a generated variable in the environment, but this method is
-                // not fallible, so we just wrap it in a new closure which will
-                // give an unbound identifier error if it's ever evaluated.
-                Term::Var(id) if id.is_generated() => {
-                    env.get(&id.ident()).cloned().unwrap_or_else(|| {
-                        debug_assert!(false, "missing generated variable {id} in environment");
-                        cache.add(Closure { body: RichTerm::new(Term::Var(id), pos), env}, btype)
-                    })
-                },
-                // If we just need a normal closure, and we find a normal closure inside the thunk, we can just reuse it
-                Term::Closure(idx) if idx.deps().is_empty() && matches!(btype, BindingType::Normal) => idx,
+        let idx = match_sharedterm!(match (self) {
+            // We should always find a generated variable in the environment, but this method is
+            // not fallible, so we just wrap it in a new closure which will
+            // give an unbound identifier error if it's ever evaluated.
+            Term::Var(id) if id.is_generated() => {
+                env.get(&id.ident()).cloned().unwrap_or_else(|| {
+                    debug_assert!(false, "missing generated variable {id} in environment");
+                    cache.add(
+                        Closure {
+                            body: RichTerm::new(Term::Var(id), pos),
+                            env,
+                        },
+                        btype,
+                    )
+                })
+            }
+            // If we just need a normal closure, and we find a normal closure inside the thunk, we can just reuse it
+            Term::Closure(idx) if idx.deps().is_empty() && matches!(btype, BindingType::Normal) =>
+                idx,
             _ => {
                 // It's suspicious to wrap a closure with existing dependencies in a new closure
                 // with set dependencies, although I'm not sure it would actually break anything.
                 // We panic in debug mode to catch this case.
-                debug_assert!(!matches!((self.as_ref(), &btype), (Term::Closure(idx), BindingType::Revertible(_)) if !idx.deps().is_empty()), "wrapping a closure with non-empty deps in a new closure with different deps");
+                debug_assert!(
+                    !matches!((self.as_ref(), &btype), (Term::Closure(idx), BindingType::Revertible(_)) if !idx.deps().is_empty()),
+                    "wrapping a closure with non-empty deps in a new closure with different deps"
+                );
 
-                cache.add(Closure { body: self, env}, btype)
+                cache.add(Closure { body: self, env }, btype)
             }
         });
 
