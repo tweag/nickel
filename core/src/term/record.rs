@@ -13,12 +13,35 @@ pub struct RecordAttrs {
     /// If the record is an open record, ie ending with `..`. Open records have a different
     /// behavior when used as a record contract: they allow additional fields to be present.
     pub open: bool,
+    /// A record is closurized when each element is a [crate::term::Term::Closure] or a constant.
+    /// Note that closurization is _required_ for evaluated records that are passed to e.g.
+    /// [crate::eval::merge::merge] or other primitive operators. Non-closurized record are mostly
+    /// produced by the parser or when building Nickel terms programmatically. When encountered by
+    /// the main eval loop, they are closurized and the flag is set accordingly.
+    ///
+    /// Ideally, we would have a different AST representation for evaluation, where records would
+    /// be closurized by construction. In the meantime, while we need to cope with a unique AST
+    /// across the whole pipeline, we use this flag.
+    pub closurized: bool,
+}
+
+impl RecordAttrs {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the `closurized` flag to true and return the updated attributes.
+    pub fn closurized(mut self) -> Self {
+        self.closurized = true;
+        self
+    }
 }
 
 impl Combine for RecordAttrs {
     fn combine(left: Self, right: Self) -> Self {
         RecordAttrs {
             open: left.open || right.open,
+            closurized: left.closurized && right.closurized,
         }
     }
 }

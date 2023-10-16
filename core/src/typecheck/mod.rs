@@ -1472,6 +1472,7 @@ fn walk<V: TypecheckVisitor>(
         }
         Term::Sealed(_, t, _) => walk(state, ctxt, visitor, t),
         Term::Type(ty) => walk_type(state, ctxt, visitor, ty),
+        Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
    }
 }
 
@@ -1977,6 +1978,7 @@ fn check<V: TypecheckVisitor>(
                 Ok(())
             }
         }
+        Term::Closure(_) => unreachable!("should never see a closure at typechecking time"),
     }
 }
 

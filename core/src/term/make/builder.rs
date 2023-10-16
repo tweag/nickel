@@ -564,7 +564,17 @@ mod tests {
     #[test]
     fn open_record() {
         let t: RichTerm = Record::new().open().into();
-        assert_eq!(t, build_record(vec![], RecordAttrs { open: true }).into());
+        assert_eq!(
+            t,
+            build_record(
+                vec![],
+                RecordAttrs {
+                    open: true,
+                    ..Default::default()
+                }
+            )
+            .into()
+        );
     }
 
     #[test]

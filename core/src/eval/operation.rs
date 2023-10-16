@@ -16,6 +16,7 @@ use super::{
 use crate::nix_ffi;
 
 use crate::{
+    closurize::Closurize,
     error::{EvalError, IllegalPolymorphicTailAction},
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
@@ -26,13 +27,12 @@ use crate::{
     serialize::ExportFormat,
     stdlib::internals,
     term::{
-        array::{Array, ArrayAttrs},
+        array::{Array, ArrayAttrs, OutOfBoundError},
         make as mk_term,
         record::{self, Field, FieldMetadata, RecordData},
         string::NickelString,
         *,
     },
-    transform::Closurizable,
     typecheck::eq::{contract_eq, EvalEnvsRef},
 };
 
@@ -174,7 +174,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ) -> Result<Closure, EvalError> {
         let Closure {
             body: RichTerm { term: t, pos },
-            mut env,
+            env,
         } = clos;
         let pos_op_inh = pos_op.into_inherited();
 
@@ -515,8 +515,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .ok_or_else(|| EvalError::NotEnoughArgs(2, String::from("map"), pos_op))?;
                 match_sharedterm!(match (t) {
                     Term::Array(ts, attrs) => {
-                        let mut shared_env = Environment::new();
-                        let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+                        let f_as_var = f.body.closurize(&mut self.cache, f.env);
 
                         // Array elements are closurized to preserve laziness of data
                         // structures. It maintains the invariant that any data structure only
@@ -531,7 +530,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 );
 
                                 RichTerm::new(Term::App(f_as_var.clone(), t_with_ctrs), pos_op_inh)
-                                    .closurize(&mut self.cache, &mut shared_env, env.clone())
+                                    .closurize(&mut self.cache, env.clone())
                             })
                             .collect();
 
@@ -540,7 +539,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 Term::Array(ts, attrs.contracts_cleared().closurized()),
                                 pos_op_inh,
                             ),
-                            env: shared_env,
+                            env: Environment::new(),
                         })
                     }
                     _ => Err(mk_type_error!("map", "Array")),
@@ -576,19 +575,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     ));
                 };
 
-                let mut shared_env = Environment::new();
-                let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+                let f_closure = f.body.closurize(&mut self.cache, f.env);
 
                 // Array elements are closurized to preserve laziness of data structures. It
                 // maintains the invariant that any data structure only contain indices (that is,
                 // currently, variables).
                 let ts = (0..n_int)
                     .map(|n| {
-                        mk_app!(f_as_var.clone(), Term::Num(n.into())).closurize(
-                            &mut self.cache,
-                            &mut shared_env,
-                            env.clone(),
-                        )
+                        mk_app!(f_closure.clone(), Term::Num(n.into()))
+                            .closurize(&mut self.cache, env.clone())
                     })
                     .collect();
 
@@ -597,7 +592,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Array(ts, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     ),
-                    env: shared_env,
+                    env: Environment::new(),
                 })
             }
             UnaryOp::RecordMap() => {
@@ -622,8 +617,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             });
                         }
 
-                        let mut shared_env = Environment::new();
-                        let f_as_var = f.body.closurize(&mut self.cache, &mut env, f.env);
+                        let f_closure = f.body.closurize(&mut self.cache, f.env);
 
                         // As for `ArrayMap` (see above), we closurize the content of fields
 
@@ -631,17 +625,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             .fields
                             .into_iter()
                             .filter(|(_, field)| !field.is_empty_optional())
-                            .map_values_closurize(
-                                &mut self.cache,
-                                &mut shared_env,
-                                &env,
-                                |id, t| {
-                                    let pos = t.pos.into_inherited();
+                            .map_values_closurize(&mut self.cache, &env, |id, t| {
+                                let pos = t.pos.into_inherited();
 
-                                    mk_app!(f_as_var.clone(), mk_term::string(id.label()), t)
-                                        .with_pos(pos)
-                                },
-                            )
+                                mk_app!(f_closure.clone(), mk_term::string(id.label()), t)
+                                    .with_pos(pos)
+                            })
                             .map_err(|missing_field_err| {
                                 missing_field_err.into_eval_err(pos, pos_op)
                             })?;
@@ -651,7 +640,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 Term::Record(RecordData { fields, ..record }),
                                 pos_op_inh,
                             ),
-                            env: shared_env,
+                            env: Environment::new(),
                         })
                     }
                     _ => Err(mk_type_error!("record_map", "Record", 1)),
@@ -701,24 +690,22 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         })
                     }
                     Term::Array(ts, attrs) if !ts.is_empty() => {
-                        let mut shared_env = Environment::new();
-                        let terms =
-                            seq_terms(
-                                ts.into_iter().map(|t| {
-                                    let t_with_ctr = RuntimeContract::apply_all(
-                                        t,
-                                        attrs.pending_contracts.iter().cloned(),
-                                        pos.into_inherited(),
-                                    )
-                                    .closurize(&mut self.cache, &mut shared_env, env.clone());
-                                    t_with_ctr
-                                }),
-                                pos_op,
-                            );
+                        let terms = seq_terms(
+                            ts.into_iter().map(|t| {
+                                let t_with_ctr = RuntimeContract::apply_all(
+                                    t,
+                                    attrs.pending_contracts.iter().cloned(),
+                                    pos.into_inherited(),
+                                )
+                                .closurize(&mut self.cache, env.clone());
+                                t_with_ctr
+                            }),
+                            pos_op,
+                        );
 
                         Ok(Closure {
                             body: terms,
-                            env: shared_env,
+                            env: Environment::new(),
                         })
                     }
                     _ => {
@@ -1013,8 +1000,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 match_sharedterm!(match (t) {
                     Term::Record(record) if !record.fields.is_empty() => {
-                        let mut shared_env = Environment::new();
-
                         let fields = record
                             .fields
                             .into_iter()
@@ -1022,19 +1007,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 !(field.is_empty_optional()
                                     || (ignore_not_exported && field.metadata.not_exported))
                             })
-                            .map_values_closurize(
-                                &mut self.cache,
-                                &mut shared_env,
-                                &env,
-                                |_, value| {
-                                    mk_term::op1(
-                                        UnaryOp::Force {
-                                            ignore_not_exported,
-                                        },
-                                        value,
-                                    )
-                                },
-                            )
+                            .map_values_closurize(&mut self.cache, &env, |_, value| {
+                                mk_term::op1(
+                                    UnaryOp::Force {
+                                        ignore_not_exported,
+                                    },
+                                    value,
+                                )
+                            })
                             .map_err(|e| e.into_eval_err(pos, pos_op))?;
 
                         let terms = fields.clone().into_values().map(|field| {
@@ -1051,11 +1031,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
-                            env: shared_env,
+                            env: Environment::new(),
                         })
                     }
                     Term::Array(ts, attrs) if !ts.is_empty() => {
-                        let mut shared_env = Environment::new();
                         let ts = ts
                             .into_iter()
                             .map(|t| {
@@ -1069,15 +1048,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         pos.into_inherited(),
                                     ),
                                 )
-                                .closurize(
-                                    &mut self.cache,
-                                    &mut shared_env,
-                                    env.clone(),
-                                )
+                                .closurize(&mut self.cache, env.clone())
                             })
                             // It's important to collect here, otherwise the two usages below
                             // will each do their own .closurize(...) calls and end up with
-                            // different variables, which means that `cont` won't be properly
+                            // different closures, which means that `cont` won't be properly
                             // updated.
                             .collect::<Array>();
 
@@ -1086,7 +1061,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: seq_terms(terms, pos_op, cont),
-                            env: shared_env,
+                            env: Environment::new(),
                         })
                     }
                     _ => Ok(Closure {
@@ -1190,7 +1165,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 term: t2,
                 pos: pos2,
             },
-            env: mut env2,
+            env: env2,
         } = clos;
         let pos_op_inh = pos_op.into_inherited();
 
@@ -1393,16 +1368,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: env1,
                         }),
                         Term::Record(..) => {
-                            let mut new_env = Environment::new();
                             let closurized = RichTerm {
                                 term: t1,
                                 pos: pos1,
                             }
-                            .closurize(
-                                &mut self.cache,
-                                &mut new_env,
-                                env1,
-                            );
+                            .closurize(&mut self.cache, env1);
 
                             // Convert the record to the function `fun l x => MergeContract l x t1
                             // contract`.
@@ -1418,7 +1388,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             )
                             .with_pos(pos1.into_inherited());
 
-                            Ok(Closure { body, env: new_env })
+                            Ok(Closure {
+                                body,
+                                env: Environment::new(),
+                            })
                         }
                         _ => Err(mk_type_error!("apply_contract", "Contract", 1, t1, pos1)),
                     }
@@ -1448,8 +1421,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
             }
             BinaryOp::Eq() => {
-                let mut env = Environment::new();
-
                 let c1 = Closure {
                     body: RichTerm {
                         term: t1,
@@ -1465,7 +1436,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env: env2,
                 };
 
-                match eq(&mut self.cache, &mut env, c1, c2, pos_op_inh)? {
+                match eq(&mut self.cache, c1, c2, pos_op_inh)? {
                     EqResult::Bool(b) => match (b, self.stack.pop_eq()) {
                         (false, _) => {
                             self.stack.clear_eqs();
@@ -1479,12 +1450,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pos_op_inh,
                         ))),
                         (true, Some((c1, c2))) => {
-                            let t1 = c1.body.closurize(&mut self.cache, &mut env, c1.env);
-                            let t2 = c2.body.closurize(&mut self.cache, &mut env, c2.env);
+                            let t1 = c1.body.closurize(&mut self.cache, c1.env);
+                            let t2 = c2.body.closurize(&mut self.cache, c2.env);
 
                             Ok(Closure {
                                 body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
-                                env,
+                                env: Environment::new(),
                             })
                         }
                     },
@@ -1493,7 +1464,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         Ok(Closure {
                             body: RichTerm::new(Term::Op2(BinaryOp::Eq(), t1, t2), pos_op),
-                            env,
+                            env: Environment::new(),
                         })
                     }
                 }
@@ -1648,12 +1619,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         EvalError::NotEnoughArgs(3, String::from("insert"), pos_op)
                                     })?;
 
-                                let as_var = value_closure.body.closurize(
-                                    &mut self.cache,
-                                    &mut env2,
-                                    value_closure.env,
-                                );
-                                Some(as_var)
+                                let closurized = value_closure
+                                    .body
+                                    .closurize(&mut self.cache, value_closure.env);
+                                Some(closurized)
                             } else {
                                 None
                             };
@@ -1789,10 +1758,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // - chain issue: https://github.com/rust-lang/rust/issues/63340
                         let mut ts: Vec<RichTerm> = Vec::with_capacity(ts1.len() + ts2.len());
 
-                        let mut env = env1.clone();
-                        // TODO: Is there a cheaper way to "merge" two environements?
-                        env.extend(env2.iter_elems().map(|(k, v)| (*k, v.clone())));
-
                         // We have two sets of contracts from the LHS and RHS arrays.
                         // - Common contracts between the two sides can be put into
                         // `pending_contracts` of the resulting concatenation as they're
@@ -1814,7 +1779,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         // We basically compute the intersection (`ctr_common`),
                         // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                        let ctrs_left: Vec<_> = ctrs_left
+                        let ctrs_left_dedup: Vec<_> = ctrs_left
                             .into_iter()
                             .filter(|ctr| {
                                 // We don't deduplicate polymorphic contracts, because
@@ -1828,10 +1793,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     initial_env: &self.initial_env,
                                 };
 
-                                let twin_index = ctrs_right_sieve
-                                    .iter()
-                                    .filter_map(|ctr| ctr.as_ref())
-                                    .position(|other_ctr| {
+                                // We check if there is a remaining contract in
+                                // `ctrs_right_sieve` which matches `ctr`: in this case,
+                                // `twin_index` will hold its index.
+                                let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
+                                    other_ctr.as_ref().map_or(false, |other_ctr| {
                                         let envs_right = EvalEnvsRef {
                                             eval_env: &env2,
                                             initial_env: &self.initial_env,
@@ -1844,10 +1810,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             &other_ctr.contract,
                                             envs_right,
                                         )
-                                    });
+                                    })
+                                });
 
                                 if let Some(index) = twin_index {
-                                    ctrs_right_sieve[index] = None;
+                                    // unwrap(): we know that the contract at this index is
+                                    // `Some`, because all elements are initially some when
+                                    // creating `ctrs_right_sieve` and then we don't
+                                    // consider `None` values when computing a new `index`
+                                    // in the `position` above.
+                                    let common = ctrs_right_sieve[index].take().unwrap();
+                                    ctrs_common.push(common);
                                     false
                                 } else {
                                     true
@@ -1855,19 +1828,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                             .collect();
 
-                        let ctrs_right = ctrs_right_sieve.into_iter().flatten();
+                        let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
                         ts.extend(ts1.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
-                                .closurize(&mut self.cache, &mut env, env1.clone())
+                            RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
+                                .closurize(&mut self.cache, env1.clone())
                         }));
 
                         ts.extend(ts2.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_right.clone(), pos2).closurize(
-                                &mut self.cache,
-                                &mut env,
-                                env2.clone(),
-                            )
+                            RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
+                                .closurize(&mut self.cache, env2.clone())
                         }));
 
                         let attrs = ArrayAttrs {
@@ -1880,12 +1850,16 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 Term::Array(Array::new(Rc::from(ts)), attrs),
                                 pos_op_inh,
                             ),
-                            env,
+                            env: Environment::new(),
                         })
                     }
-                    _ => Err(mk_type_error!("(@)", "Array", 2, t2, pos2)),
+                    _ => {
+                        Err(mk_type_error!("(@)", "Array", 2, t2, pos2))
+                    }
                 }),
-                _ => Err(mk_type_error!("(@)", "Array", 1, t1, pos1)),
+                _ => {
+                    Err(mk_type_error!("(@)", "Array", 1, t1, pos1))
+                }
             }),
             BinaryOp::ArrayElemAt() => match (&*t1, &*t2) {
                 (Term::Array(ts, attrs), Term::Num(n)) => {
@@ -2121,7 +2095,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         let mut final_env = env2;
 
                         // Preserve the environment of the contract in the resulting array.
-                        let contract = rt3.closurize(&mut self.cache, &mut final_env, env3);
+                        let contract = rt3.closurize(&mut self.cache, env3);
                         RuntimeContract::push_dedup(
                             &self.initial_env,
                             &mut attrs.pending_contracts,
@@ -2163,7 +2137,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // due to a limitation of `match_sharedterm`: see the macro's
                         // documentation
                         let mut record_data = record_data;
-                        let term_original_env = env2.clone();
 
                         let mut contract_at_field = |id: LocIdent| {
                             let pos = contract_term.pos;
@@ -2172,11 +2145,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 RichTerm::new(Term::Str(id.into()), id.pos)
                             )
                             .with_pos(pos)
-                            .closurize(
-                                &mut self.cache,
-                                &mut env2,
-                                contract_env.clone(),
-                            )
+                            .closurize(&mut self.cache, contract_env.clone())
                         };
 
                         for (id, field) in record_data.fields.iter_mut() {
@@ -2185,10 +2154,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 label: label.clone(),
                             };
 
-                            crate::term::RuntimeContract::push_dedup(
+                            RuntimeContract::push_dedup(
                                 &self.initial_env,
                                 &mut field.pending_contracts,
-                                &term_original_env,
+                                &env2,
                                 runtime_ctr,
                                 &contract_env,
                             );
@@ -2202,13 +2171,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // We want recursive occurrences of fields to pick this new value as
                         // well: hence, we need to recompute the fixpoint, which is done by
                         // `fixpoint::revert`.
-                        let mut env = Environment::new();
-                        let reverted =
-                            super::fixpoint::revert(&mut self.cache, record_data, &mut env, &env2);
+                        let reverted = super::fixpoint::revert(&mut self.cache, record_data);
 
                         Ok(Closure {
                             body: RichTerm::new(reverted, pos2),
-                            env,
+                            env: Environment::new(),
                         })
                     }
                     _ => Err(mk_type_error!("record_lazy_app_ctr", "Record", 2, t2, pos2)),
@@ -2605,23 +2572,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Term::Record(tail),
                     ) => {
                         let mut r = r.clone();
-                        let mut env = env3;
 
-                        let tail_as_var = RichTerm::from(Term::Record(tail.clone())).closurize(
-                            &mut self.cache,
-                            &mut env,
-                            env4,
-                        );
+                        let tail_closurized = RichTerm::from(Term::Record(tail.clone()))
+                            .closurize(&mut self.cache, env4);
                         let fields = tail.fields.keys().map(|s| s.ident()).collect();
                         r.sealed_tail = Some(record::SealedTail::new(
                             *s,
                             label.clone(),
-                            tail_as_var,
+                            tail_closurized,
                             fields,
                         ));
 
                         let body = RichTerm::from(Term::Record(r));
-                        Ok(Closure { body, env })
+                        Ok(Closure { body, env: env3 })
                     }
                     (Term::SealingKey(_), Term::Lbl(_), Term::Record(_), _) => {
                         Err(EvalError::NAryPrimopTypeError {
@@ -2940,7 +2903,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                 let result = array.slice(start_as_usize, end_as_usize);
 
-                if let Err(crate::term::array::OutOfBoundError) = result {
+                if let Err(OutOfBoundError) = result {
                     return Err(EvalError::Other(
                         format!(
                             "array_slice: index out of bounds. Expected `start <= end <= {}`, but \
@@ -3105,7 +3068,6 @@ impl RecPriority {
 ///
 /// # Parameters
 ///
-/// - `env`: the final environment in which to closurize the operands of potential subequalities.
 /// - `c1`: the closure of the first operand.
 /// - `c2`: the closure of the second operand.
 /// - `pos_op`: the position of the equality operation, used for error diagnostics.
@@ -3116,7 +3078,6 @@ impl RecPriority {
 /// otherwise returns an [`EvalError`] indicating that the values cannot be compared.
 fn eq<C: Cache>(
     cache: &mut C,
-    env: &mut Environment,
     c1: Closure,
     c2: Closure,
     pos_op: TermPos,
@@ -3141,7 +3102,6 @@ fn eq<C: Cache>(
     fn gen_eqs<I, C: Cache>(
         cache: &mut C,
         mut it: I,
-        env: &mut Environment,
         env1: Environment,
         env2: Environment,
     ) -> EqResult
@@ -3164,11 +3124,7 @@ fn eq<C: Cache>(
                 })
                 .collect();
 
-            EqResult::Eqs(
-                t1.closurize(cache, env, env1),
-                t2.closurize(cache, env, env2),
-                eqs,
-            )
+            EqResult::Eqs(t1.closurize(cache, env1), t2.closurize(cache, env2), eqs)
         } else {
             EqResult::Bool(true)
         }
@@ -3262,7 +3218,7 @@ fn eq<C: Cache>(
                     })
                     .collect();
 
-                Ok(gen_eqs(cache, eqs?.into_iter(), env, env1, env2))
+                Ok(gen_eqs(cache, eqs?.into_iter(), env1, env2))
             }
         }
         (Term::Array(l1, a1), Term::Array(l2, a2)) if l1.len() == l2.len() => {
@@ -3271,22 +3227,20 @@ fn eq<C: Cache>(
 
             // We should apply all contracts here, otherwise we risk having wrong values, think
             // record contrats with default values, wrapped terms, etc.
-            let mut shared_env1 = env1.clone();
-            let mut shared_env2 = env2.clone();
 
             let mut eqs = l1
                 .into_iter()
                 .map(|t| {
                     let pos = t.pos.into_inherited();
                     RuntimeContract::apply_all(t, a1.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, &mut shared_env1, env1.clone())
+                        .closurize(cache, env1.clone())
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
                 .zip(l2.into_iter().map(|t| {
                     let pos = t.pos.into_inherited();
                     RuntimeContract::apply_all(t, a2.pending_contracts.iter().cloned(), pos)
-                        .closurize(cache, &mut shared_env2, env2.clone())
+                        .closurize(cache, env2.clone())
                 }))
                 .collect::<Vec<_>>();
 
@@ -3299,21 +3253,17 @@ fn eq<C: Cache>(
                             (
                                 Closure {
                                     body: t1,
-                                    env: shared_env1.clone(),
+                                    env: Environment::new(),
                                 },
                                 Closure {
                                     body: t2,
-                                    env: shared_env2.clone(),
+                                    env: Environment::new(),
                                 },
                             )
                         })
                         .collect::<Vec<_>>();
 
-                    Ok(EqResult::Eqs(
-                        t1.closurize(cache, env, shared_env1),
-                        t2.closurize(cache, env, shared_env2),
-                        eqs,
-                    ))
+                    Ok(EqResult::Eqs(t1, t2, eqs))
                 }
             }
         }
@@ -3341,7 +3291,6 @@ trait MapValuesClosurize: Sized {
     fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
-        shared_env: &mut Environment,
         env: &Environment,
         f: F,
     ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
@@ -3356,7 +3305,6 @@ where
     fn map_values_closurize<F, C: Cache>(
         self,
         cache: &mut C,
-        shared_env: &mut Environment,
         env: &Environment,
         mut f: F,
     ) -> Result<IndexMap<LocIdent, Field>, record::MissingFieldDefError>
@@ -3386,7 +3334,7 @@ where
                     pending_contracts: Vec::new(),
                     ..field
                 }
-                .closurize(cache, shared_env, env.clone());
+                .closurize(cache, env.clone());
 
                 Ok((id, field))
             })

@@ -75,6 +75,7 @@ use crate::term::record::FieldMetadata;
 use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
+    closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
     identifier::LocIdent,
@@ -88,7 +89,6 @@ use crate::{
         BinaryOp, BindingType, LetAttrs, RecordOpKind, RichTerm, RuntimeContract, StrChunk, Term,
         UnaryOp,
     },
-    transform::Closurizable,
 };
 
 use std::io::Write;
@@ -316,6 +316,56 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         Ok(field)
     }
 
+    fn enter_cache_index(
+        &mut self,
+        var: Option<LocIdent>,
+        mut idx: CacheIndex,
+        pos: TermPos,
+        env: Environment,
+    ) -> Result<Closure, EvalError> {
+        // idx may be a 1-counted RC, so we make sure we drop any reference to it from `env`, which
+        // is going to be discared anyway
+        std::mem::drop(env);
+
+        match self.cache.get_update_index(&mut idx) {
+            Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
+            Ok(None) => {}
+            Err(_blackholed_error) => {
+                return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
+            }
+        }
+
+        if let Some(var) = var {
+            self.call_stack.enter_var(var, pos);
+        }
+
+        // If we are fetching a recursive field from the environment that doesn't have
+        // a definition, we complete the error with the additional information of where
+        // it was accessed:
+        let Closure { body, env } = self.cache.get(idx);
+        let body = match_sharedterm!(match (body.term) {
+            Term::RuntimeError(EvalError::MissingFieldDef {
+                id,
+                metadata,
+                pos_record,
+                pos_access: TermPos::None,
+            }) => RichTerm::new(
+                Term::RuntimeError(EvalError::MissingFieldDef {
+                    id,
+                    metadata,
+                    pos_record,
+                    pos_access: pos,
+                }),
+                pos,
+            ),
+            _ => {
+                body
+            }
+        });
+
+        Ok(Closure { body, env })
+    }
+
     /// The main loop of evaluation.
     ///
     /// Implement the evaluation loop of the core language. The specific implementations of
@@ -386,47 +436,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::Var(x) => {
-                    let mut idx = env
+                    let idx = env
                         .get(&x.ident())
                         .or_else(|| self.initial_env.get(&x.ident()))
                         .cloned()
                         .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
-                    std::mem::drop(env); // idx may be a 1RC pointer
 
-                    match self.cache.get_update_index(&mut idx) {
-                        Ok(Some(idx_upd)) => self.stack.push_update_index(idx_upd),
-                        Ok(None) => {}
-                        Err(_blackholed_error) => {
-                            return Err(EvalError::InfiniteRecursion(self.call_stack.clone(), pos))
-                        }
-                    }
-
-                    self.call_stack.enter_var(*x, pos);
-
-                    // If we are fetching a recursive field from the environment that doesn't have
-                    // a definition, we complete the error with the additional information of where
-                    // it was accessed:
-                    let Closure { body, env } = self.cache.get(idx);
-                    let body = match_sharedterm!(match (body.term) {
-                        Term::RuntimeError(EvalError::MissingFieldDef {
-                            id,
-                            metadata,
-                            pos_record,
-                            pos_access: TermPos::None,
-                        }) => RichTerm::new(
-                            Term::RuntimeError(EvalError::MissingFieldDef {
-                                id,
-                                metadata,
-                                pos_record,
-                                pos_access: pos,
-                            }),
-                            pos,
-                        ),
-                        _ => body,
-                    });
-
-                    Closure { body, env }
+                    self.enter_cache_index(Some(*x), idx, pos, env)?
                 }
+                Term::Closure(idx) => self.enter_cache_index(None, idx.clone(), pos, env)?,
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
 
@@ -551,17 +569,50 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                 }
-                Term::RecRecord(record, dyn_fields, _) => {
-                    let rec_env =
-                        fixpoint::rec_env(&mut self.cache, record.fields.iter(), &env, pos)?;
-
-                    record.fields.iter().try_for_each(|(_, rt)| {
-                        fixpoint::patch_field(&mut self.cache, rt, &rec_env, &env)
-                    })?;
-
+                // Closurize the record if it's not already done. Usually this is done at the first
+                // time this record is evaluated.
+                Term::Record(data) if !data.attrs.closurized => {
+                    Closure {
+                        body: RichTerm::new(
+                            Term::Record(
+                                //TODO: avoid clone
+                                data.clone().closurize(&mut self.cache, env),
+                            ),
+                            pos,
+                        ),
+                        env: Environment::new(),
+                    }
+                }
+                Term::RecRecord(data, dyn_fields, deps) => {
                     //TODO: We should probably avoid cloning the record, using `match_sharedterm`
                     //instead of `match` in the main eval loop, if possible
-                    let static_part = RichTerm::new(Term::Record(record.clone()), pos);
+                    // We start by closurizing the fields, which might not be if the record is
+                    // coming out of the parser.
+                    // let static_part_data = RichTerm::new(Term::Record(record.clone()), pos);
+
+                    // We must avoid re-closurizing a recursive record that is already closurized
+                    // (coming from `merge`, for example), as the current representation is broken
+                    // if we add a new indirection. This should ideally be encoded in the Rust
+                    // type, once we have a different representation for runtime evaluation,
+                    // instead of relying on invariants. But for now, we have to live with it.
+                    let (mut static_part, dyn_fields) = if !data.attrs.closurized {
+                        closurize_rec_record(
+                            &mut self.cache,
+                            data.clone(),
+                            dyn_fields.clone(),
+                            deps.clone(),
+                            env,
+                        )
+                    } else {
+                        (data.clone(), dyn_fields.clone())
+                    };
+
+                    let rec_env =
+                        fixpoint::rec_env(&mut self.cache, static_part.fields.iter(), pos);
+
+                    for rt in static_part.fields.values_mut() {
+                        fixpoint::patch_field(&mut self.cache, rt, &rec_env);
+                    }
 
                     // Transform the static part `{stat1 = val1, ..., statn = valn}` and the
                     // dynamic part `{exp1 = dyn_val1, ..., expm = dyn_valm}` to a sequence of
@@ -579,55 +630,48 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // The `dyn_val` are given access to the recursive environment, but the
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
-                    let extended = dyn_fields
-                        .iter()
-                        .try_fold::<_, _, Result<RichTerm, EvalError>>(
-                            static_part,
-                            |acc, (name_as_term, field)| {
-                                let pos = if let Some(ref value) = field.value {
-                                    value.pos
-                                } else {
-                                    name_as_term.pos
-                                };
+                    let extended = dyn_fields.iter().cloned().fold(
+                        RichTerm::new(Term::Record(static_part.clone()), pos),
+                        |acc, (name_as_term, mut field)| {
+                            let pos = field
+                                .value
+                                .as_ref()
+                                .map(|v| v.pos)
+                                .unwrap_or(name_as_term.pos);
 
-                                fixpoint::patch_field(&mut self.cache, field, &rec_env, &env)?;
+                            fixpoint::patch_field(&mut self.cache, &mut field, &rec_env);
 
-                                let ext_kind = field.extension_kind();
-                                let Field {
-                                    metadata,
-                                    value,
-                                    pending_contracts,
-                                } = field;
+                            let ext_kind = field.extension_kind();
+                            let Field {
+                                metadata,
+                                value,
+                                pending_contracts,
+                            } = field;
 
-                                //TODO[LAZYPROP]: we should probably closurize the pending
-                                //contracts. It seems to work currently, but looks a bit fragile
-                                //with respect to refactoring/changes.
-                                let extend = mk_term::op2(
-                                    BinaryOp::DynExtend {
-                                        metadata: metadata.clone(),
-                                        pending_contracts: pending_contracts.clone(),
-                                        ext_kind,
-                                        op_kind: RecordOpKind::ConsiderAllFields,
-                                    },
-                                    name_as_term.clone(),
-                                    acc,
-                                );
+                            let extend = mk_term::op2(
+                                BinaryOp::DynExtend {
+                                    metadata: metadata.clone(),
+                                    pending_contracts: pending_contracts.clone(),
+                                    ext_kind,
+                                    op_kind: RecordOpKind::ConsiderAllFields,
+                                },
+                                name_as_term.clone(),
+                                acc,
+                            );
 
-                                let result = match value {
-                                    Some(value) => RichTerm::new(
-                                        Term::App(extend, value.clone()),
-                                        pos.into_inherited(),
-                                    ),
-                                    None => extend,
-                                };
-
-                                Ok(result)
-                            },
-                        )?;
+                            match value {
+                                Some(value) => RichTerm::new(
+                                    Term::App(extend, value.clone()),
+                                    pos.into_inherited(),
+                                ),
+                                None => extend,
+                            }
+                        },
+                    );
 
                     Closure {
                         body: extended.with_pos(pos),
-                        env,
+                        env: Environment::new(),
                     }
                 }
                 Term::ResolvedImport(id) => {
@@ -650,12 +694,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
-                    let mut local_env = Environment::new();
-
                     let closurized_array = terms
                         .clone()
                         .into_iter()
-                        .map(|t| t.closurize(&mut self.cache, &mut local_env, env.clone()))
+                        .map(|t| t.closurize(&mut self.cache, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
@@ -663,11 +705,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .iter()
                         .map(|ctr| {
                             RuntimeContract::new(
-                                ctr.contract.clone().closurize(
-                                    &mut self.cache,
-                                    &mut local_env,
-                                    env.clone(),
-                                ),
+                                ctr.contract.clone().closurize(&mut self.cache, env.clone()),
                                 ctr.label.clone(),
                             )
                         })
@@ -684,7 +722,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             ),
                             pos,
                         ),
-                        env: local_env,
+                        env: Environment::new(),
                     }
                 }
                 Term::ParseError(parse_error) => {
@@ -972,6 +1010,10 @@ pub fn subst<C: Cache>(
                 subst(cache, closure.body, initial_env, &closure.env)
             })
             .unwrap_or_else(|| RichTerm::new(Term::Var(id), pos)),
+        Term::Closure(idx) => {
+                let closure = cache.get(idx.clone());
+                subst(cache, closure.body, initial_env, &closure.env)
+        },
         v @ Term::Null
         | v @ Term::ParseError(_)
         | v @ Term::RuntimeError(_)
@@ -1047,14 +1089,24 @@ pub fn subst<C: Cache>(
             RichTerm::new(Term::Sealed(i, t, lbl), pos)
         }
         Term::Record(record) => {
-            let record = record
+            let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+
+            // [^subst-closurized-false]: After substitution, there's no closure in here anymore.
+            // It's a detail but it comes handy in tests, where we abuse partial equality over
+            // terms - keeping closurized to `true` would require to do the same when building the
+            // expected result, which is annoying, as closurized is initialized to false by default
+            // by term builders.
+            record.attrs.closurized = false;
 
             RichTerm::new(Term::Record(record), pos)
         }
         Term::RecRecord(record, dyn_fields, deps) => {
-            let record = record
+            let mut record = record
                 .map_defined_values(|_, value| subst(cache, value, initial_env, env));
+
+            // see [^subst-closurized-false]
+            record.attrs.closurized = false;
 
             let dyn_fields = dyn_fields
                 .into_iter()
@@ -1068,12 +1120,14 @@ pub fn subst<C: Cache>(
 
             RichTerm::new(Term::RecRecord(record, dyn_fields, deps), pos)
         }
-        Term::Array(ts, attrs) => {
+        Term::Array(ts, mut attrs) => {
             let ts = ts
                 .into_iter()
                 .map(|t| subst(cache, t, initial_env, env))
                 .collect();
 
+            // cd [^subst-closurized-false]
+            attrs.closurized = false;
             RichTerm::new(Term::Array(ts, attrs), pos)
         }
         Term::StrChunks(chunks) => {

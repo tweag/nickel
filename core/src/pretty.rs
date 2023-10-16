@@ -880,6 +880,7 @@ where
             Type(ty) => ty.pretty(allocator),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
+            Closure(idx) => allocator.text(format!("%<closure@{idx:p}>")),
         }
     }
 }

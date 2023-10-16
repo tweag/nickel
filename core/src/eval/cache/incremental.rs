@@ -342,7 +342,6 @@ impl Cache for IncCache {
     fn saturate<'a, I: DoubleEndedIterator<Item = &'a Ident> + Clone>(
         &mut self,
         idx: CacheIndex,
-        env: &mut Environment,
         fields: I,
     ) -> RichTerm {
         let node = self.store.get(idx).unwrap();
@@ -360,10 +359,7 @@ impl Cache for IncCache {
             fields.clone().filter(&mut deps_filter),
         ));
 
-        let fresh_var = Ident::fresh();
-        env.insert(fresh_var, node_as_function);
-
-        let as_function_closurized = RichTerm::from(Term::Var(fresh_var));
+        let as_function_closurized = RichTerm::from(Term::Closure(node_as_function));
         let args = fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(*id))));
 
         args.fold(as_function_closurized, |partial_app, arg| {

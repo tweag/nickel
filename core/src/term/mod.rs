@@ -20,6 +20,7 @@ use string::NickelString;
 use crate::{
     destructuring::RecordPattern,
     error::{EvalError, ParseError},
+    eval::cache::CacheIndex,
     eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
@@ -60,7 +61,7 @@ use std::{
 /// Parsed terms also need to store their position in the source for error reporting.  This is why
 /// this type is nested with [`RichTerm`].
 ///
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Term {
     /// The null value.
@@ -236,6 +237,89 @@ pub enum Term {
     /// behavior of `RuntimeError` behaves.
     #[serde(skip)]
     RuntimeError(EvalError),
+
+    #[serde(skip)]
+    /// A "pointer" (cache index, which can see as a kind of generic pointer to the memory managed
+    /// by the evaluation cache) to a term together with its environment. Unfortunately, this is an
+    /// evaluation object leaking into the AST: ideally, we would have one concrete syntax tree
+    /// coming out of the parser, and a different representation for later stages, storing closures
+    /// and whatnot.
+    ///
+    /// This is not the case yet, so in the meantime, we have to mix everything together. The
+    /// ability to store closures directly in the AST without having to generate a variable and bind
+    /// it in the environment is an important performance boost and we couldn't wait for the AST to
+    /// be split to implement it.
+    ///
+    /// For all intent of purpose, you should consider `Closure` as a "inline" variable: before its
+    /// introduction, it was encoded as a variable bound in the environment.
+    ///
+    /// This is a temporary solution, and will be removed in the future.
+    Closure(CacheIndex),
+}
+
+// PartialEq is mostly used for tests, when it's handy to compare something to an expected result.
+// Most of the instance aren't really meaningful to use outside of very simple cases, and you
+// should avoid comparing terms directly.
+// We have to implement this instance by hand because of the `Closure` node.
+impl PartialEq for Term {
+    #[track_caller]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
+            (Self::Num(l0), Self::Num(r0)) => l0 == r0,
+            (Self::Str(l0), Self::Str(r0)) => l0 == r0,
+            (Self::StrChunks(l0), Self::StrChunks(r0)) => l0 == r0,
+            (Self::Fun(l0, l1), Self::Fun(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::FunPattern(l0, l1, l2), Self::FunPattern(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
+            (Self::Lbl(l0), Self::Lbl(r0)) => l0 == r0,
+            (Self::Let(l0, l1, l2, l3), Self::Let(r0, r1, r2, r3)) => {
+                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
+            }
+            (Self::LetPattern(l0, l1, l2, l3), Self::LetPattern(r0, r1, r2, r3)) => {
+                l0 == r0 && l1 == r1 && l2 == r2 && l3 == r3
+            }
+            (Self::App(l0, l1), Self::App(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Var(l0), Self::Var(r0)) => l0 == r0,
+            (Self::Enum(l0), Self::Enum(r0)) => l0 == r0,
+            (Self::Record(l0), Self::Record(r0)) => l0 == r0,
+            (Self::RecRecord(l0, l1, l2), Self::RecRecord(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
+            (
+                Self::Match {
+                    cases: l_cases,
+                    default: l_default,
+                },
+                Self::Match {
+                    cases: r_cases,
+                    default: r_default,
+                },
+            ) => l_cases == r_cases && l_default == r_default,
+            (Self::Array(l0, l1), Self::Array(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Op1(l0, l1), Self::Op1(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Op2(l0, l1, l2), Self::Op2(r0, r1, r2)) => l0 == r0 && l1 == r1 && l2 == r2,
+            (Self::OpN(l0, l1), Self::OpN(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::SealingKey(l0), Self::SealingKey(r0)) => l0 == r0,
+            (Self::Sealed(l0, l1, l2), Self::Sealed(r0, r1, r2)) => {
+                l0 == r0 && l1 == r1 && l2 == r2
+            }
+            (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
+            (Self::Type(l0), Self::Type(r0)) => l0 == r0,
+            (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
+            (Self::RuntimeError(l0), Self::RuntimeError(r0)) => l0 == r0,
+            // We don't compare closure, because we can't, without the evaluation cache at hand.
+            // It's ok even if the cache index are the same: we implement PartialEq, so we can have
+            // `x != x`. In practice, this case shouldn't even be triggered, because tests usually
+            // compare simple terms without closures in it (or terms where closures have
+            // been substituted for their value).
+            (Self::Closure(_l0), Self::Closure(_r0)) => false,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
 
 /// A unique sealing key, introduced by polymorphic contracts.
@@ -731,23 +815,24 @@ impl Term {
     /// for records, `"Fun`" for functions, etc. If the term is not a WHNF, `None` is returned.
     pub fn type_of(&self) -> Option<String> {
         match self {
-            Term::Null => Some("Null"),
-            Term::Bool(_) => Some("Bool"),
-            Term::Num(_) => Some("Number"),
-            Term::Str(_) => Some("String"),
-            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function"),
-            Term::Match { .. } => Some("MatchExpression"),
-            Term::Lbl(_) => Some("Label"),
-            Term::Enum(_) => Some("Enum"),
-            Term::Record(..) | Term::RecRecord(..) => Some("Record"),
-            Term::Array(..) => Some("Array"),
-            Term::SealingKey(_) => Some("SealingKey"),
-            Term::Sealed(..) => Some("Sealed"),
-            Term::Annotated(..) => Some("Annotated"),
+            Term::Null => Some("Null".to_owned()),
+            Term::Bool(_) => Some("Bool".to_owned()),
+            Term::Num(_) => Some("Number".to_owned()),
+            Term::Str(_) => Some("String".to_owned()),
+            Term::Fun(_, _) | Term::FunPattern(_, _, _) => Some("Function".to_owned()),
+            Term::Match { .. } => Some("MatchExpression".to_owned()),
+            Term::Lbl(_) => Some("Label".to_owned()),
+            Term::Enum(_) => Some("Enum".to_owned()),
+            Term::Record(..) | Term::RecRecord(..) => Some("Record".to_owned()),
+            Term::Array(..) => Some("Array".to_owned()),
+            Term::SealingKey(_) => Some("SealingKey".to_owned()),
+            Term::Sealed(..) => Some("Sealed".to_owned()),
+            Term::Annotated(..) => Some("Annotated".to_owned()),
             Term::Let(..)
             | Term::LetPattern(..)
             | Term::App(_, _)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
@@ -758,7 +843,6 @@ impl Term {
             | Term::ParseError(_)
             | Term::RuntimeError(_) => None,
         }
-        .map(String::from)
     }
 
     /// Determine if a term is in evaluated form, called weak head normal form (WHNF).
@@ -781,6 +865,7 @@ impl Term {
             | Term::FunPattern(..)
             | Term::App(..)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
@@ -823,6 +908,7 @@ impl Term {
             | Term::App(_, _)
             | Term::Match { .. }
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Op1(..)
             | Term::Op2(..)
             | Term::OpN(..)
@@ -880,6 +966,7 @@ impl Term {
             | Term::Import(..)
             | Term::ResolvedImport(..)
             | Term::Type(_)
+            | Term::Closure(_)
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
@@ -1848,10 +1935,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, field)| {
-                        let field = field.traverse(f, order)?;
-                        Ok((id, field))
-                    })
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 RichTerm::new(
                     Term::Record(RecordData::new(
@@ -1869,10 +1953,7 @@ impl Traverse<RichTerm> for RichTerm {
                     .fields
                     .into_iter()
                     // For the conversion to work, note that we need a Result<(Ident,Field), E>
-                    .map(|(id, field)| {
-                        let field = field.traverse(f, order)?;
-                        Ok((id, field))
-                    })
+                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
                     .collect();
                 let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
                     .into_iter()
@@ -1955,6 +2036,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Str(_)
             | Term::Lbl(_)
             | Term::Var(_)
+            | Term::Closure(_)
             | Term::Enum(_)
             | Term::Import(_)
             | Term::ResolvedImport(_)
