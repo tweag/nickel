@@ -52,9 +52,10 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 let idx = match value.as_ref() {
                     Term::Closure(idx) => idx.clone(),
                     _ => {
-                        // If we are in this branch, `rt` must be a constant after the share normal
-                        // form transformation, hence it should not need an environment, which is
-                        // why it is dropped.
+                        // If we are in this branch, `value` must be a constant after closurization
+                        // (the evaluation of a recursive record starts by closurizing all fields
+                        // and contracts). Constants don't need an environment, which is why it is
+                        // dropped.
                         debug_assert!(value.as_ref().is_constant());
                         let closure = Closure {
                             body: value.clone(),
@@ -66,8 +67,6 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                 };
 
                 // We now need to wrap the binding in a value with contracts applied.
-                // Pending contracts might use identifiers from the current record's environment,
-                // so we start from in the environment of the original record.
                 let with_ctr_applied = RuntimeContract::apply_all(
                     RichTerm::new(Term::Closure(idx), value.pos),
                     field.pending_contracts.iter().cloned(),
@@ -76,7 +75,6 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
 
                 let final_closure = Closure {
                     body: with_ctr_applied,
-                    // FIXME: clean?
                     env: Environment::new(),
                 };
 
@@ -86,11 +84,11 @@ pub fn rec_env<'a, I: Iterator<Item = (&'a LocIdent, &'a Field)>, C: Cache>(
                     id: *id,
                     metadata: field.metadata.clone(),
                     pos_record,
-                    // The access is not yet known (there may not be any access, if this error is
-                    // never raised).
+                    // The access location is not yet known (there may not be any access, if the
+                    // current field is never used).
                     //
-                    // This field is filled by the evaluation function when a `MissingFieldDef` is
-                    // extracted from the environment.
+                    // This field is filled later by the evaluation function if this
+                    // `MissingFieldDef` is ever extracted from the environment.
                     pos_access: TermPos::None,
                 };
 
@@ -124,13 +122,13 @@ pub fn patch_field<C: Cache>(cache: &mut C, field: &mut Field, rec_env: &[(Ident
     //
     // ```
     // let Variant = match {
-    //   `num => Number,
-    //   `str => String,
-    //   `any => Dyn,
+    //   'num => Number,
+    //   'str => String,
+    //   'any => Dyn,
     // } in
     //
     // {
-    //   tag | default = `num,
+    //   tag | default = 'num,
     //   value | Variant tag,
     // }
     // ```
@@ -165,6 +163,6 @@ pub fn revert<C: Cache>(cache: &mut C, record_data: RecordData) -> Term {
     };
 
     // At run-time, we don't care about `RecordDeps`, because this information is already stored in
-    // the cache (formerly thunks in call-by-need). We set it to `None`.
+    // the cache (thunks in call-by-need mode). We set it to `None`.
     Term::RecRecord(record_data, Vec::new(), None)
 }
