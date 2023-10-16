@@ -102,7 +102,7 @@ impl Closurize for RichTerm {
 
         let idx = match_sharedterm! { self, with {
                 // We should always find a generated variable in the environment, but this method is
-                // not fallible, so we panic if we don't. We just wrap it in a new closure which will
+                // not fallible, so we just wrap it in a new closure which will
                 // give an unbound identifier error if it's ever evaluated.
                 Term::Var(id) if id.is_generated() => {
                     env.get(&id.ident()).cloned().unwrap_or_else(|| {
