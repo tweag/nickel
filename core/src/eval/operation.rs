@@ -1775,11 +1775,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // to retain the remaining ones.
                         let mut ctrs_right_sieve: Vec<_> =
                             attrs2.pending_contracts.into_iter().map(Some).collect();
-                        // let mut ctrs_common = Vec::new();
+                        let mut ctrs_common = Vec::new();
 
                         // We basically compute the intersection (`ctr_common`),
                         // `ctrs_left - ctr_common`, and `ctrs_right - ctr_common`.
-                        let ctrs_left: Vec<_> = ctrs_left
+                        let ctrs_left_dedup: Vec<_> = ctrs_left
                             .into_iter()
                             .filter(|ctr| {
                                 // We don't deduplicate polymorphic contracts, because
@@ -1793,10 +1793,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     initial_env: &self.initial_env,
                                 };
 
-                                let twin_index = ctrs_right_sieve
-                                    .iter()
-                                    .filter_map(|ctr| ctr.as_ref())
-                                    .position(|other_ctr| {
+                                // We check if there is a remaining contract in
+                                // `ctrs_right_sieve` which matches `ctr`: in this case,
+                                // `twin_index` will hold its index.
+                                let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
+                                    other_ctr.as_ref().map_or(false, |other_ctr| {
                                         let envs_right = EvalEnvsRef {
                                             eval_env: &env2,
                                             initial_env: &self.initial_env,
@@ -1809,10 +1810,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             &other_ctr.contract,
                                             envs_right,
                                         )
-                                    });
+                                    })
+                                });
 
                                 if let Some(index) = twin_index {
-                                    ctrs_right_sieve[index] = None;
+                                    // unwrap(): we know that the contract at this index is
+                                    // `Some`, because all elements are initially some when
+                                    // creating `ctrs_right_sieve` and then we don't
+                                    // consider `None` values when computing a new `index`
+                                    // in the `position` above.
+                                    let common = ctrs_right_sieve[index].take().unwrap();
+                                    ctrs_common.push(common);
                                     false
                                 } else {
                                     true
@@ -1820,21 +1828,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             })
                             .collect();
 
-                        let ctrs_right = ctrs_right_sieve.into_iter().flatten();
+                        let ctrs_right_dedup = ctrs_right_sieve.into_iter().flatten();
 
                         ts.extend(ts1.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_left.iter().cloned(), pos1)
+                            RuntimeContract::apply_all(t, ctrs_left_dedup.iter().cloned(), pos1)
                                 .closurize(&mut self.cache, env1.clone())
                         }));
 
                         ts.extend(ts2.into_iter().map(|t| {
-                            RuntimeContract::apply_all(t, ctrs_right.clone(), pos2)
+                            RuntimeContract::apply_all(t, ctrs_right_dedup.clone(), pos2)
                                 .closurize(&mut self.cache, env2.clone())
                         }));
 
                         let attrs = ArrayAttrs {
                             closurized: true,
-                            pending_contracts: Vec::new(),
+                            pending_contracts: ctrs_common,
                         };
 
                         Ok(Closure {
