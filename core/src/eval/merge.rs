@@ -505,7 +505,7 @@ fn fields_merge_closurize<'a, I: DoubleEndedIterator<Item = &'a LocIdent> + Clon
     Ok(RichTerm::from(Term::Closure(idx)))
 }
 
-/// Same as [Closurizable], but also revert the element if the term is a variable.
+/// Same as [Closurizable], but also revert the element if the term is a closure.
 pub(super) trait RevertClosurize {
     /// Revert the element at the index inside the term (if any)
     fn revert_closurize<C: Cache>(self, cache: &mut C) -> Self;

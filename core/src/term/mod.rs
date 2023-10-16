@@ -246,7 +246,7 @@ pub enum Term {
     /// and whatnot.
     ///
     /// This is not the case yet, so in the meantime, we have to mix everything together. The
-    /// ability to sotre closures directly in the AST without having to generate a variable a bind
+    /// ability to store closures directly in the AST without having to generate a variable and bind
     /// it in the environment is an important performance boost and we couldn't wait for the AST to
     /// be split to implement it.
     ///
@@ -314,7 +314,7 @@ impl PartialEq for Term {
             // We don't compare closure, because we can't, without the evaluation cache at hand.
             // It's ok even if the cache index are the same: we implement PartialEq, so we can have
             // `x != x`. In practice, this case shouldn't even be triggered, because tests usually
-            // compare simple terms without closures in it (or terms completely where closures have
+            // compare simple terms without closures in it (or terms where closures have
             // been substituted for their value).
             (Self::Closure(_l0), Self::Closure(_r0)) => false,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
