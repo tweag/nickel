@@ -258,12 +258,8 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol] is to have
         /// [interned](Interner::intern) the corresponding string first.
-        pub(crate) fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
-            // SAFETY: We are making the returned &str lifetime the same as our struct,
-            // which is okay here since the InnerInterner uses a typed_arena which prevents
-            // deallocations, so the reference will be valid while the InnerInterner exists,
-            // hence while the struct exists.
-            unsafe { std::mem::transmute::<&'_ str, &'slf str>(self.0.read().unwrap().lookup(sym)) }
+        pub(crate) fn lookup(&self, sym: Symbol) -> &'a str {
+            self.0.read().unwrap().lookup(sym)
         }
     }
 
@@ -315,7 +311,7 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol]
         /// is to have [interned](InnerInterner::intern) the corresponding string first.
-        fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
+        fn lookup(&self, sym: Symbol) -> &'a str {
             self.vec[sym.0 as usize]
         }
     }
