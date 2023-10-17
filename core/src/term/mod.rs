@@ -1865,6 +1865,9 @@ impl AsAny for RichTerm {
 }
 
 pub trait Traverse1: Any + AsAny {
+    // XXX: could have this return the Vec instead of mutating
+    // that would be a cleaner interface, but would allocate then immediately
+    // free an extra vec
     fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32;
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
     where
