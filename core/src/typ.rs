@@ -47,13 +47,12 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, AsAny, IndexMap,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
         RichTerm, Term, Traverse, Traverse1, TraverseOrder,
     },
 };
 
 use std::{
-    any::Any,
     collections::{HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Display},
@@ -606,16 +605,6 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
 
     pub fn is_flat(&self) -> bool {
         matches!(self, TypeF::Flat(_))
-    }
-}
-
-impl AsAny for RecordRows {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -1193,16 +1182,6 @@ impl Type {
             TypeF::Flat(f) => Some(f.clone()),
             _ => None,
         })
-    }
-}
-
-impl AsAny for Type {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 

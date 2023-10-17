@@ -188,16 +188,6 @@ impl Field {
     }
 }
 
-impl AsAny for Field {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 impl Traverse1 for Field {
     fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         let mut n = 0;

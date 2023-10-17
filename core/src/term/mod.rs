@@ -14,6 +14,7 @@ pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
+use as_any::{AsAny, Downcast};
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
@@ -47,7 +48,6 @@ use serde::{Deserialize, Serialize};
 pub use indexmap::IndexMap;
 
 use std::{
-    any::Any,
     cmp::{Ordering, PartialOrd},
     convert::Infallible,
     ffi::OsString,
@@ -451,16 +451,6 @@ impl RuntimeContract {
     }
 }
 
-impl AsAny for RuntimeContract {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 impl Traverse1 for RuntimeContract {
     fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         let Self { contract, label: _ } = self;
@@ -617,16 +607,6 @@ impl LabeledType {
     }
 }
 
-impl AsAny for LabeledType {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
 impl Traverse1 for LabeledType {
     // Note that this function doesn't traverse the label. which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
@@ -773,16 +753,6 @@ impl From<TypeAnnotation> for LetMetadata {
             annotation,
             ..Default::default()
         }
-    }
-}
-
-impl AsAny for TypeAnnotation {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -1849,22 +1819,7 @@ pub enum Instruction {
     Recurse,
 }
 
-pub trait AsAny {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-impl AsAny for RichTerm {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-pub trait Traverse1: Any + AsAny {
+pub trait Traverse1: AsAny {
     // XXX: could have this return the Vec instead of mutating
     // that would be a cleaner interface, but would allocate then immediately
     // free an extra vec
@@ -1926,7 +1881,7 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
                         }
                         TraverseOrder::TopDown => {
                             let next = unsafe { &mut *next };
-                            if let Some(next) = next.as_any_mut().downcast_mut::<T>() {
+                            if let Some(next) = next.downcast_mut::<T>() {
                                 *next = f(next.clone())?;
                             }
                         }
@@ -1940,7 +1895,7 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
                 }
                 Instruction::ApplyF => {
                     let next = unsafe { &mut *next };
-                    if let Some(next) = next.as_any_mut().downcast_mut::<T>() {
+                    if let Some(next) = next.downcast_mut::<T>() {
                         *next = f(next.clone())?;
                     }
                 }
@@ -1976,7 +1931,7 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
 
         while let Some(next) = todo.pop() {
             let scope = todo_s.pop().expect("todo_s and todo got out of sync");
-            let next_scope = match next.as_any().downcast_ref::<T>() {
+            let next_scope = match next.downcast_ref::<T>() {
                 Some(next) => {
                     let control = match scope.clone() {
                         Some(scope) => f(next, &*scope),
