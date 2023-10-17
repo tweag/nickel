@@ -47,12 +47,13 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        RichTerm, Term, Traverse, TraverseControl, TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, AsAny, IndexMap,
+        Instruction, RichTerm, Term, Traverse, Traverse1, TraverseOrder,
     },
 };
 
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     convert::Infallible,
     fmt::{self, Display},
@@ -513,6 +514,7 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
             TypeF::Bool => Ok(TypeF::Bool),
             TypeF::String => Ok(TypeF::String),
             TypeF::Symbol => Ok(TypeF::Symbol),
+            // XXX: is it a problem that this doesn't recurse in to flat types?
             TypeF::Flat(t) => Ok(TypeF::Flat(t)),
             TypeF::Arrow(dom, codom) => Ok(TypeF::Arrow(f(dom, state)?, f(codom, state)?)),
             TypeF::Var(i) => Ok(TypeF::Var(i)),
@@ -607,37 +609,49 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 }
 
-impl Traverse<Type> for RecordRows {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RecordRows, E>
-    where
-        F: FnMut(Type) -> Result<Type, E>,
-    {
-        // traverse keeps track of state in the FnMut function. try_map_state
-        // keeps track of it in a separate state variable. we can pass the
-        // former into the latter by treating the function itself as the state
-        let rows = self.0.try_map_state(
-            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
-            |rrows, f| Ok(Box::new(rrows.traverse(f, order)?)),
-            f,
-        )?;
-
-        Ok(RecordRows(rows))
+impl AsAny for RecordRows {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+impl Traverse1 for RecordRows {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        match &mut self.0 {
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => (),
+            RecordRowsF::Extend {
+                row: RecordRowF { id: _, typ },
+                tail,
+            } => {
+                todo.push((Instruction::Recurse, typ.as_mut()));
+                todo.push((Instruction::Recurse, tail.as_mut()))
+            }
+        }
+    }
+
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
         match &self.0 {
-            RecordRowsF::Extend { row, tail } => row
-                .typ
-                .traverse_ref(f, state)
-                .or_else(|| tail.traverse_ref(f, state)),
-            _ => None,
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => 0,
+            RecordRowsF::Extend {
+                row: RecordRowF { id: _, typ },
+                tail,
+            } => {
+                todo.push(typ.as_ref());
+                todo.push(tail.as_ref());
+                2
+            }
         }
     }
 }
+
+impl Traverse<Type> for RecordRows {}
 
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub LocIdent);
@@ -1181,51 +1195,53 @@ impl Type {
     }
 }
 
-impl Traverse<Type> for Type {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(Type) -> Result<Type, E>,
-    {
-        let pre_map = match order {
-            TraverseOrder::TopDown => f(self)?,
-            TraverseOrder::BottomUp => self,
-        };
+impl AsAny for Type {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-        // traverse keeps track of state in the FnMut function. try_map_state
-        // keeps track of it in a separate state variable. we can pass the
-        // former into the latter by treating the function itself as the state
-        let typ = pre_map.typ.try_map_state(
-            |ty, f| Ok(Box::new(ty.traverse(f, order)?)),
-            |rrows, f| rrows.traverse(f, order),
-            |erows, _| Ok(erows),
-            f,
-        )?;
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
 
-        let post_map = Type { typ, ..pre_map };
-
-        match order {
-            TraverseOrder::TopDown => Ok(post_map),
-            TraverseOrder::BottomUp => f(post_map),
+impl Traverse1 for Type {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        match &mut self.typ {
+            TypeF::Dyn
+            | TypeF::Number
+            | TypeF::Bool
+            | TypeF::String
+            | TypeF::Symbol
+            | TypeF::Var(_)
+            | TypeF::Enum(_)
+            | TypeF::Wildcard(_) => (),
+            // XXX: try_map_state doesn't recurse into flat types. therefore the
+            //      old implementation of traverse didn't either. should we?
+            TypeF::Flat(t) => todo.push((Instruction::Recurse, t)),
+            TypeF::Arrow(dom, codom) => {
+                todo.push((Instruction::Recurse, dom.as_mut()));
+                todo.push((Instruction::Recurse, codom.as_mut()));
+            }
+            TypeF::Forall {
+                var: _,
+                var_kind: _,
+                body,
+            } => todo.push((Instruction::Recurse, body.as_mut())),
+            TypeF::Record(rrows) => todo.push((Instruction::Recurse, rrows)),
+            TypeF::Dict {
+                type_fields,
+                flavour: _,
+            } => todo.push((Instruction::Recurse, type_fields.as_mut())),
+            TypeF::Array(t) => todo.push((Instruction::Recurse, t.as_mut())),
         }
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        let child_state = match f(self, state) {
-            TraverseControl::Continue => None,
-            TraverseControl::ContinueWithScope(s) => Some(s),
-            TraverseControl::SkipBranch => {
-                return None;
-            }
-            TraverseControl::Return(ret) => {
-                return Some(ret);
-            }
-        };
-        let state = child_state.as_ref().unwrap_or(state);
-
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let mut n = 0;
         match &self.typ {
             TypeF::Dyn
             | TypeF::Number
@@ -1234,55 +1250,49 @@ impl Traverse<Type> for Type {
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Enum(_)
-            | TypeF::Wildcard(_) => None,
-            TypeF::Flat(rt) => rt.traverse_ref(f, state),
-            TypeF::Arrow(t1, t2) => t1
-                .traverse_ref(f, state)
-                .or_else(|| t2.traverse_ref(f, state)),
-            TypeF::Forall { body: t, .. }
-            | TypeF::Dict { type_fields: t, .. }
-            | TypeF::Array(t) => t.traverse_ref(f, state),
-            TypeF::Record(rrows) => rrows.traverse_ref(f, state),
+            | TypeF::Wildcard(_) => (),
+            // XXX: try_map_state doesn't recurse into flat types. therefore the
+            //      old implementation of traverse didn't either. should we?
+            TypeF::Flat(t) => {
+                todo.push(t);
+                n = 1;
+            }
+            TypeF::Arrow(dom, codom) => {
+                todo.push(dom.as_ref());
+                todo.push(codom.as_ref());
+                n = 2;
+            }
+            TypeF::Forall {
+                var: _,
+                var_kind: _,
+                body,
+            } => {
+                todo.push(body.as_ref());
+                n = 1;
+            }
+            TypeF::Record(rrows) => {
+                todo.push(rrows);
+                n = 1;
+            }
+            TypeF::Dict {
+                type_fields,
+                flavour: _,
+            } => {
+                todo.push(type_fields.as_ref());
+                n = 1;
+            }
+            TypeF::Array(t) => {
+                todo.push(t.as_ref());
+                n = 1
+            }
         }
+        n
     }
 }
 
-impl Traverse<RichTerm> for Type {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        self.traverse(
-            &mut |ty: Type| match ty.typ {
-                TypeF::Flat(t) => t
-                    .traverse(f, order)
-                    .map(|t| Type::from(TypeF::Flat(t)).with_pos(ty.pos)),
-                _ => Ok(ty),
-            },
-            order,
-        )
-    }
+impl Traverse<Type> for Type {}
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.traverse_ref(
-            &mut |ty: &Type, s: &S| match &ty.typ {
-                TypeF::Flat(t) => {
-                    if let Some(ret) = t.traverse_ref(f, s) {
-                        TraverseControl::Return(ret)
-                    } else {
-                        TraverseControl::SkipBranch
-                    }
-                }
-                _ => TraverseControl::Continue,
-            },
-            state,
-        )
-    }
-}
+impl Traverse<RichTerm> for Type {}
 
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

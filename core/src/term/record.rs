@@ -188,48 +188,71 @@ impl Field {
     }
 }
 
-impl Traverse<RichTerm> for Field {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Field, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let annotation = self.metadata.annotation.traverse(f, order)?;
-        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
-
-        let metadata = FieldMetadata {
-            annotation,
-            ..self.metadata
-        };
-
-        let pending_contracts = self
-            .pending_contracts
-            .into_iter()
-            .map(|pending_contract| pending_contract.traverse(f, order))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(Field {
-            metadata,
-            value,
-            pending_contracts,
-        })
+impl AsAny for Field {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.metadata
-            .annotation
-            .traverse_ref(f, state)
-            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f, state)))
-            .or_else(|| {
-                self.pending_contracts
-                    .iter()
-                    .find_map(|c| c.traverse_ref(f, state))
-            })
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
+
+impl Traverse1 for Field {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        let Self {
+            value,
+            metadata:
+                FieldMetadata {
+                    doc: _,
+                    annotation,
+                    opt: _,
+                    not_exported: _,
+                    priority: _,
+                },
+            pending_contracts,
+        } = self;
+        todo.push((Instruction::Recurse, annotation));
+        if let Some(value) = value.as_mut() {
+            todo.push((Instruction::Recurse, value));
+        }
+        for pending_contract in pending_contracts {
+            todo.push((Instruction::Recurse, pending_contract));
+        }
+    }
+
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let mut n = 0;
+        let Self {
+            value,
+            metadata:
+                FieldMetadata {
+                    doc: _,
+                    annotation,
+                    opt: _,
+                    not_exported: _,
+                    priority: _,
+                },
+            pending_contracts,
+        } = self;
+        todo.push(annotation);
+        n += 1;
+        if let Some(value) = value.as_ref() {
+            todo.push(value);
+            n += 1;
+        }
+        for pending_contract in pending_contracts {
+            todo.push(pending_contract);
+            n += 1;
+        }
+        n
+    }
+}
+
+impl Traverse<RichTerm> for Field {}
 
 /// The base structure of a Nickel record.
 ///

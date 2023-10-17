@@ -24,7 +24,6 @@ use crate::{
     eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
-    match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
@@ -48,8 +47,8 @@ use serde::{Deserialize, Serialize};
 pub use indexmap::IndexMap;
 
 use std::{
+    any::Any,
     cmp::{Ordering, PartialOrd},
-    collections::VecDeque,
     convert::Infallible,
     ffi::OsString,
     fmt,
@@ -452,23 +451,33 @@ impl RuntimeContract {
     }
 }
 
-impl Traverse<RichTerm> for RuntimeContract {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let contract = self.contract.traverse(f, order)?;
-        Ok(RuntimeContract { contract, ..self })
+impl AsAny for RuntimeContract {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.contract.traverse_ref(f, state)
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
+
+impl Traverse1 for RuntimeContract {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        let Self { contract, label: _ } = self;
+        todo.push((Instruction::Recurse, contract))
+    }
+
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let Self { contract, label: _ } = self;
+        todo.push(contract);
+        1
+    }
+}
+
+impl Traverse<RichTerm> for RuntimeContract {}
 
 impl std::convert::TryFrom<LabeledType> for RuntimeContract {
     type Error = UnboundTypeVariableError;
@@ -607,26 +616,36 @@ impl LabeledType {
     }
 }
 
-impl Traverse<RichTerm> for LabeledType {
-    // Note that this function doesn't traverse the label, which is most often what you want. The
-    // terms that may hide in a label are mostly types used for error reporting, but are never
-    // evaluated.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<LabeledType, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let LabeledType { typ, label } = self;
-        typ.traverse(f, order).map(|typ| LabeledType { typ, label })
+impl AsAny for LabeledType {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.typ.traverse_ref(f, state)
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
+
+impl Traverse1 for LabeledType {
+    // Note that this function doesn't traverse the label. which is most often what you want. The
+    // terms that may hide in a label are mostly types used for error reporting, but are never
+    // evaluated.
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        let Self { typ, label: _ } = self;
+        todo.push((Instruction::Recurse, typ))
+    }
+
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let Self { typ, label: _ } = self;
+        todo.push(typ);
+        1
+    }
+}
+
+impl Traverse<RichTerm> for LabeledType {}
 
 /// A type and/or contract annotation.
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -755,36 +774,46 @@ impl From<TypeAnnotation> for LetMetadata {
     }
 }
 
-impl Traverse<RichTerm> for TypeAnnotation {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let TypeAnnotation { typ, contracts } = self;
-
-        let contracts = contracts
-            .into_iter()
-            .map(|labeled_ty| labeled_ty.traverse(f, order))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let typ = typ
-            .map(|labeled_ty| labeled_ty.traverse(f, order))
-            .transpose()?;
-
-        Ok(TypeAnnotation { typ, contracts })
+impl AsAny for TypeAnnotation {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.contracts
-            .iter()
-            .find_map(|c| c.traverse_ref(f, state))
-            .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f, state)))
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
+
+impl Traverse1 for TypeAnnotation {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        let Self { typ, contracts } = self;
+        for labeled_ty in contracts {
+            todo.push((Instruction::Recurse, labeled_ty));
+        }
+        if let Some(typ) = typ {
+            todo.push((Instruction::Recurse, typ));
+        }
+    }
+
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let Self { typ, contracts } = self;
+        let mut n = 0;
+        for labeled_ty in contracts {
+            todo.push(labeled_ty);
+            n += 1;
+        }
+        if let Some(typ) = typ {
+            todo.push(typ);
+            n += 1;
+        }
+        n
+    }
+}
+
+impl Traverse<RichTerm> for TypeAnnotation {}
 
 /// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
 /// interpolated expression.
@@ -1808,69 +1837,48 @@ impl<S, U> From<Option<U>> for TraverseControl<S, U> {
         }
     }
 }
+#[derive(PartialEq, Eq)]
+pub enum Instruction {
+    ApplyF,
+    Recurse,
+}
 
-pub trait Traverse<T>: Sized {
+pub trait AsAny {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+impl AsAny for RichTerm {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+pub trait Traverse1: Any + AsAny {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>);
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b;
+}
+
+pub trait Traverse<T: 'static>: Traverse1 + Sized {
     /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
     /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
     ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
     fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: FnMut(T) -> Result<T, E>;
-
-    /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
-    /// each object.
-    ///
-    /// Through its return value, `f` can short-circuit one branch of the traversal or
-    /// the entire traversal.
-    ///
-    /// This traversal can make use of "scoped" state. The `scope` argument is passed to
-    /// each callback, and the callback can optionally override that scope just for its
-    /// own subtree in the traversal. For example, when traversing a tree of terms you can
-    /// maintain an environment. Most of the time the environment should get passed around
-    /// unchanged, but a `Term::Let` should override the environment of its subtree. It
-    /// does this by returning a `TraverseControl::ContinueWithScope` that contains the
-    /// new environment.
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
-        scope: &S,
-    ) -> Option<U>;
-
-    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
-    where
+        Self: Clone,
         T: Clone,
+        F: FnMut(T) -> Result<T, E>,
     {
-        self.traverse_ref(
-            &mut |t, _state: &()| {
-                if let Some(s) = pred(t) {
-                    TraverseControl::Return(s)
-                } else {
-                    TraverseControl::Continue
-                }
-            },
-            &(),
-        )
-    }
-}
-
-impl Traverse<RichTerm> for RichTerm {
-    /// Traverse through all `RichTerm`s in the tree.
-    ///
-    /// This also recurses into the terms that are contained in `Type` subtrees.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        #[derive(PartialEq, Eq)]
-        enum Instruction {
-            ApplyF,
-            Recurse,
-        }
-        use Instruction::*;
-
         let mut root = self.clone();
-        let mut todo: Vec<(Instruction, *mut RichTerm)> = vec![(Recurse, &mut root)];
+        let mut todo: Vec<(Instruction, *mut dyn Traverse1)> =
+            vec![(Instruction::Recurse, &mut root)];
 
         while let Some((instruction, next)) = todo.pop() {
             // If TopDown, we don't need unsafe. We could just use a reference.
@@ -1895,108 +1903,185 @@ impl Traverse<RichTerm> for RichTerm {
             // let next = unsafe { &mut *next };
 
             match instruction {
-                ApplyF => {
-                    let next = unsafe { &mut *next };
-                    *next = f(next.clone())?;
-                }
-                Recurse => {
+                Instruction::Recurse => {
                     match order {
-                        TraverseOrder::TopDown => {
-                            let next = unsafe { &mut *next };
-                            *next = f(next.clone())?;
-                        }
                         // postpone f(next) until we've done all the children
                         // `todo` is a stack, so first on is last off
                         // NOTE: for stacked borrows (SB), this line must come
                         //       before casting `next` to a reference. For tree
                         //       borrows (TB), it doesn't make a difference.
-                        TraverseOrder::BottomUp => todo.push((ApplyF, next)),
+                        TraverseOrder::BottomUp => todo.push((Instruction::ApplyF, next)),
+                        TraverseOrder::TopDown => {
+                            let next = unsafe { &mut *next };
+                            if let Some(next) = next.as_any_mut().downcast_mut::<T>() {
+                                *next = f(next.clone())?;
+                            }
+                        }
                     };
 
                     let next = unsafe { &mut *next };
-                    match SharedTerm::make_mut(&mut next.term) {
-                        Term::Null
-                        | Term::Bool(_)
-                        | Term::Num(_)
-                        | Term::Str(_)
-                        | Term::Lbl(_)
-                        | Term::Var(_)
-                        | Term::Enum(_)
-                        | Term::Import(_)
-                        | Term::ResolvedImport(_)
-                        | Term::SealingKey(_)
-                        | Term::ParseError(_)
-                        | Term::RuntimeError(_) => (),
-                        Term::Fun(_, t)
-                        | Term::FunPattern(_, _, t)
-                        | Term::Op1(_, t)
-                        | Term::Sealed(_, t, _) => {
-                            todo.push((Recurse, t));
-                        }
-                        Term::Let(_, t1, t2, _)
-                        | Term::LetPattern(_, _, t1, t2)
-                        | Term::App(t1, t2)
-                        | Term::Op2(_, t1, t2) => {
-                            todo.push((Recurse, t1));
-                            todo.push((Recurse, t2));
-                        }
-                        Term::Match { cases, default } => {
-                            for (_, t) in cases {
-                                todo.push((Recurse, t));
-                            }
-                            if let Some(t) = default.as_mut() {
-                                todo.push((Recurse, t));
-                            }
-                        }
-                        Term::OpN(_, ts) => {
-                            for t in ts {
-                                todo.push((Recurse, t));
-                            }
-                        }
-                        // XXX: some of these traverse through fields, types,
-                        //      etc. in order to complete this transformation,
-                        //      we need another function in the Traverse trait,
-                        //      which modifies a `&mut Vec` passed in
-                        Term::Record(record) => {
-                            for (_, field) in &mut record.fields {
-                                *field = field.clone().traverse(f, order)?;
-                            }
-                        }
-                        Term::RecRecord(record, dyn_fields, _) => {
-                            for (_, field) in &mut record.fields {
-                                *field = field.clone().traverse(f, order)?;
-                            }
-                            for (id_t, field) in dyn_fields {
-                                todo.push((Recurse, id_t));
-                                *field = field.clone().traverse(f, order)?;
-                            }
-                        }
-                        // XXX: do we not need to traverse the contracts in attrs?
-                        Term::Array(ts, _attrs) => {
-                            for t in ts.make_mut() {
-                                todo.push((Recurse, t));
-                            }
-                        }
-                        Term::StrChunks(chunks) => {
-                            for chunk in chunks.iter_mut() {
-                                match chunk {
-                                    StrChunk::Literal(_) => (),
-                                    StrChunk::Expr(t, _) => {
-                                        todo.push((Recurse, t));
-                                    }
-                                }
-                            }
-                        }
-                        Term::Annotated(annot, term) => {
-                            *annot = annot.clone().traverse(f, order)?;
-                            todo.push((Recurse, term));
-                        }
-                        Term::Type(ty) => *ty = ty.clone().traverse(f, order)?,
+                    next.traverse_1(&mut todo);
+                }
+                Instruction::ApplyF => {
+                    let next = unsafe { &mut *next };
+                    if let Some(next) = next.as_any_mut().downcast_mut::<T>() {
+                        *next = f(next.clone())?;
                     }
                 }
             }
         }
         Ok(root)
+    }
+
+    /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
+    /// each object.
+    ///
+    /// Through its return value, `f` can short-circuit one branch of the traversal or
+    /// the entire traversal.
+    ///
+    /// This traversal can make use of "scoped" state. The `scope` argument is passed to
+    /// each callback, and the callback can optionally override that scope just for its
+    /// own subtree in the traversal. For example, when traversing a tree of terms you can
+    /// maintain an environment. Most of the time the environment should get passed around
+    /// unchanged, but a `Term::Let` should override the environment of its subtree. It
+    /// does this by returning a `TraverseControl::ContinueWithScope` that contains the
+    /// new environment.
+    fn traverse_ref<S, U>(
+        &self,
+        f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
+        scope: &S,
+    ) -> Option<U>
+    where
+        S: std::fmt::Debug,
+    {
+        let original_scope = scope;
+        let mut todo: Vec<&dyn Traverse1> = vec![self];
+        let mut todo_s: Vec<Option<Rc<S>>> = vec![None];
+
+        while let Some(next) = todo.pop() {
+            let scope = todo_s.pop().expect("todo_s and todo got out of sync");
+            let next_scope = match next.as_any().downcast_ref::<T>() {
+                Some(next) => {
+                    let control = match scope.clone() {
+                        Some(scope) => f(next, &*scope),
+                        None => f(next, original_scope),
+                    };
+                    match control {
+                        TraverseControl::Continue => scope,
+                        TraverseControl::ContinueWithScope(s) => Some(Rc::new(s)),
+                        TraverseControl::SkipBranch => continue,
+                        TraverseControl::Return(ret) => return Some(ret),
+                    }
+                }
+                None => scope,
+            };
+
+            let n = next.traverse_ref_1(&mut todo);
+            for _ in 0..n {
+                todo_s.push(next_scope.clone());
+            }
+        }
+        None
+    }
+
+    fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
+    where
+        T: Clone,
+    {
+        self.traverse_ref(
+            &mut |t, _state: &()| {
+                if let Some(s) = pred(t) {
+                    TraverseControl::Return(s)
+                } else {
+                    TraverseControl::Continue
+                }
+            },
+            &(),
+        )
+    }
+}
+
+impl Traverse1 for RichTerm {
+    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+        // XXX: could be match_sharedterm!
+        match SharedTerm::make_mut(&mut self.term) {
+            Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::Var(_)
+            | Term::Closure(_)
+            | Term::Enum(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::SealingKey(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => (),
+            Term::Fun(_, t)
+            | Term::FunPattern(_, _, t)
+            | Term::Op1(_, t)
+            | Term::Sealed(_, t, _) => {
+                todo.push((Instruction::Recurse, t));
+            }
+            Term::Let(_, t1, t2, _)
+            | Term::LetPattern(_, _, t1, t2)
+            | Term::App(t1, t2)
+            | Term::Op2(_, t1, t2) => {
+                todo.push((Instruction::Recurse, t1));
+                todo.push((Instruction::Recurse, t2));
+            }
+            Term::Match { cases, default } => {
+                for (_, t) in cases {
+                    todo.push((Instruction::Recurse, t));
+                }
+                if let Some(t) = default.as_mut() {
+                    todo.push((Instruction::Recurse, t));
+                }
+            }
+            Term::OpN(_, ts) => {
+                for t in ts {
+                    todo.push((Instruction::Recurse, t));
+                }
+            }
+            Term::Record(record) => {
+                for (_, field) in &mut record.fields {
+                    todo.push((Instruction::Recurse, field));
+                }
+            }
+            Term::RecRecord(record, dyn_fields, _) => {
+                for (_, field) in &mut record.fields {
+                    todo.push((Instruction::Recurse, field));
+                }
+                for (id_t, field) in dyn_fields {
+                    todo.push((Instruction::Recurse, id_t));
+                    todo.push((Instruction::Recurse, field));
+                }
+            }
+            // XXX: do we not need to traverse the contracts in attrs?
+            Term::Array(ts, _attrs) => {
+                for t in ts.make_mut() {
+                    todo.push((Instruction::Recurse, t));
+                }
+            }
+            Term::StrChunks(chunks) => {
+                for chunk in chunks.iter_mut() {
+                    match chunk {
+                        StrChunk::Literal(_) => (),
+                        StrChunk::Expr(t, _) => {
+                            todo.push((Instruction::Recurse, t));
+                        }
+                    }
+                }
+            }
+            Term::Annotated(annot, term) => {
+                todo.push((Instruction::Recurse, annot));
+                todo.push((Instruction::Recurse, term));
+            }
+            Term::Type(ty) => {
+                todo.push((Instruction::Recurse, ty));
+            }
+        }
     }
 
     // XXX: The implementation of the match statement here and above are nearly
@@ -2006,134 +2091,104 @@ impl Traverse<RichTerm> for RichTerm {
     // (3) stack vs queue.
     // (4) How we deal with traversing types. This will go away once we convert
     //     the other types to imperative style
-    fn traverse_ref<U>(&self, f: &mut dyn FnMut(&RichTerm) -> TraverseControl<U>) -> Option<U> {
-        let mut todo: VecDeque<&RichTerm> = VecDeque::from([self]);
-
-        while let Some(next) = todo.pop_front() {
-            match f(next) {
-                TraverseControl::Continue => (),
-                TraverseControl::SkipBranch => continue,
-                TraverseControl::Return(ret) => return Some(ret),
+    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
+    where
+        'a: 'b,
+    {
+        let mut n = 0;
+        match &*self.term {
+            Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::Var(_)
+            | Term::Closure(_)
+            | Term::Enum(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::SealingKey(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => (),
+            Term::StrChunks(chunks) => {
+                for ch in chunks {
+                    if let StrChunk::Expr(t, _) = ch {
+                        todo.push(t);
+                        n += 1;
+                    }
+                }
             }
-            match &*next.term {
-                Term::Null
-                | Term::Bool(_)
-                | Term::Num(_)
-                | Term::Str(_)
-                | Term::Lbl(_)
-                | Term::Var(_)
-                | Term::Closure(_)
-                | Term::Enum(_)
-                | Term::Import(_)
-                | Term::ResolvedImport(_)
-                | Term::SealingKey(_)
-                | Term::ParseError(_)
-                | Term::RuntimeError(_) => (),
-                Term::StrChunks(chunks) => {
-                    for ch in chunks {
-                        if let StrChunk::Expr(t, _) = ch {
-                            todo.push_back(t)
-                        }
-                    }
+            Term::Fun(_, t)
+            | Term::FunPattern(_, _, t)
+            | Term::Op1(_, t)
+            | Term::Sealed(_, t, _) => {
+                todo.push(t);
+                n = 1;
+            }
+            Term::Let(_, t1, t2, _)
+            | Term::LetPattern(_, _, t1, t2)
+            | Term::App(t1, t2)
+            | Term::Op2(_, t1, t2) => {
+                todo.push(t1);
+                todo.push(t2);
+                n = 2;
+            }
+            Term::Record(data) => {
+                for f in data.fields.values() {
+                    todo.push(f);
+                    n += 1;
                 }
-                Term::Fun(_, t)
-                | Term::FunPattern(_, _, t)
-                | Term::Op1(_, t)
-                | Term::Sealed(_, t, _) => todo.push_back(t),
-                Term::Let(_, t1, t2, _)
-                | Term::LetPattern(_, _, t1, t2)
-                | Term::App(t1, t2)
-                | Term::Op2(_, t1, t2) => {
-                    todo.push_back(t1);
-                    todo.push_back(t2);
+            }
+            Term::RecRecord(data, dyn_data, _) => {
+                for f in data.fields.values() {
+                    todo.push(f);
+                    n += 1;
                 }
-                Term::Record(data) => {
-                    if let Some(ret) = data.fields.values().find_map(|field| field.traverse_ref(f))
-                    {
-                        return Some(ret);
-                    }
+                for (id, field) in dyn_data {
+                    todo.push(id);
+                    todo.push(field);
+                    n += 2;
                 }
-                Term::RecRecord(data, dyn_data, _) => {
-                    if let Some(ret) = data
-                        .fields
-                        .values()
-                        .find_map(|field| field.traverse_ref(f))
-                        .or_else(|| {
-                            dyn_data.iter().find_map(|(id, field)| {
-                                id.traverse_ref(f).or_else(|| field.traverse_ref(f))
-                            })
-                        })
-                    {
-                        return Some(ret);
-                    }
+            }
+            Term::Match { cases, default } => {
+                for (_, t) in cases {
+                    todo.push(t);
+                    n += 1;
                 }
-                Term::Match { cases, default } => {
-                    for (_, t) in cases {
-                        todo.push_back(t);
-                    }
-                    if let Some(t) = default {
-                        todo.push_back(t);
-                    }
+                if let Some(t) = default {
+                    todo.push(t);
+                    n += 1;
                 }
-                Term::Array(ts, _) => {
-                    for t in ts.iter() {
-                        todo.push_back(t);
-                    }
+            }
+            Term::Array(ts, _) => {
+                for t in ts.iter() {
+                    todo.push(t);
+                    n += 1;
                 }
-                Term::OpN(_, ts) => {
-                    for t in ts {
-                        todo.push_back(t)
-                    }
+            }
+            Term::OpN(_, ts) => {
+                for t in ts {
+                    todo.push(t);
+                    n += 1;
                 }
-                Term::Annotated(annot, t) => {
-                    if let Some(ret) = annot.traverse_ref(f) {
-                        return Some(ret);
-                    }
-                    todo.push_back(t);
-                }
-                Term::Type(ty) => {
-                    if let Some(ret) = ty.traverse_ref(f) {
-                        return Some(ret);
-                    }
-                }
+            }
+            Term::Annotated(annot, t) => {
+                todo.push(annot);
+                todo.push(t);
+                n = 2;
+            }
+            Term::Type(ty) => {
+                todo.push(ty);
+                n = 1;
             }
         }
-        None
+        n
     }
 }
 
-impl Traverse<Type> for RichTerm {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
-    where
-        F: FnMut(Type) -> Result<Type, E>,
-    {
-        self.traverse(
-            &mut |rt: RichTerm| {
-                match_sharedterm!(match (rt.term) {
-                    Term::Type(ty) => ty
-                        .traverse(f, order)
-                        .map(|ty| RichTerm::new(Term::Type(ty), rt.pos)),
-                    _ => Ok(rt),
-                })
-            },
-            order,
-        )
-    }
+impl Traverse<RichTerm> for RichTerm {}
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.traverse_ref(
-            &mut |rt: &RichTerm, state: &S| match &*rt.term {
-                Term::Type(ty) => ty.traverse_ref(f, state).into(),
-                _ => TraverseControl::Continue,
-            },
-            state,
-        )
-    }
-}
+impl Traverse<Type> for RichTerm {}
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {
