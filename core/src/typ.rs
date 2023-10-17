@@ -48,7 +48,7 @@ use crate::{
     position::TermPos,
     term::{
         array::Array, make as mk_term, record::RecordData, string::NickelString, AsAny, IndexMap,
-        Instruction, RichTerm, Term, Traverse, Traverse1, TraverseOrder,
+        RichTerm, Term, Traverse, Traverse1, TraverseOrder,
     },
 };
 
@@ -620,15 +620,16 @@ impl AsAny for RecordRows {
 }
 
 impl Traverse1 for RecordRows {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         match &mut self.0 {
-            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => (),
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => 0,
             RecordRowsF::Extend {
                 row: RecordRowF { id: _, typ },
                 tail,
             } => {
-                todo.push((Instruction::Recurse, typ.as_mut()));
-                todo.push((Instruction::Recurse, tail.as_mut()))
+                todo.push(typ.as_mut());
+                todo.push(tail.as_mut());
+                2
             }
         }
     }
@@ -1206,7 +1207,8 @@ impl AsAny for Type {
 }
 
 impl Traverse1 for Type {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
+        let mut n = 0;
         match &mut self.typ {
             TypeF::Dyn
             | TypeF::Number
@@ -1218,23 +1220,40 @@ impl Traverse1 for Type {
             | TypeF::Wildcard(_) => (),
             // XXX: try_map_state doesn't recurse into flat types. therefore the
             //      old implementation of traverse didn't either. should we?
-            TypeF::Flat(t) => todo.push((Instruction::Recurse, t)),
+            TypeF::Flat(t) => {
+                todo.push(t);
+                n = 1;
+            }
             TypeF::Arrow(dom, codom) => {
-                todo.push((Instruction::Recurse, dom.as_mut()));
-                todo.push((Instruction::Recurse, codom.as_mut()));
+                todo.push(dom.as_mut());
+                todo.push(codom.as_mut());
+                n = 2;
             }
             TypeF::Forall {
                 var: _,
                 var_kind: _,
                 body,
-            } => todo.push((Instruction::Recurse, body.as_mut())),
-            TypeF::Record(rrows) => todo.push((Instruction::Recurse, rrows)),
+            } => {
+                todo.push(body.as_mut());
+                n = 1;
+            }
+            TypeF::Record(rrows) => {
+                todo.push(rrows);
+                n = 1;
+            }
             TypeF::Dict {
                 type_fields,
                 flavour: _,
-            } => todo.push((Instruction::Recurse, type_fields.as_mut())),
-            TypeF::Array(t) => todo.push((Instruction::Recurse, t.as_mut())),
+            } => {
+                todo.push(type_fields.as_mut());
+                n = 1;
+            }
+            TypeF::Array(t) => {
+                todo.push(t.as_mut());
+                n = 1;
+            }
         }
+        n
     }
 
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
@@ -1252,7 +1271,7 @@ impl Traverse1 for Type {
             | TypeF::Enum(_)
             | TypeF::Wildcard(_) => (),
             // XXX: try_map_state doesn't recurse into flat types. therefore the
-            //      old implementation of traverse didn't either. should we?
+            //      old implementation of traverse_ref didn't either. should we?
             TypeF::Flat(t) => {
                 todo.push(t);
                 n = 1;

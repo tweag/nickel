@@ -199,7 +199,8 @@ impl AsAny for Field {
 }
 
 impl Traverse1 for Field {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
+        let mut n = 0;
         let Self {
             value,
             metadata:
@@ -212,13 +213,17 @@ impl Traverse1 for Field {
                 },
             pending_contracts,
         } = self;
-        todo.push((Instruction::Recurse, annotation));
+        todo.push(annotation);
+        n += 1;
         if let Some(value) = value.as_mut() {
-            todo.push((Instruction::Recurse, value));
+            todo.push(value);
+            n += 1;
         }
         for pending_contract in pending_contracts {
-            todo.push((Instruction::Recurse, pending_contract));
+            todo.push(pending_contract);
+            n += 1;
         }
+        n
     }
 
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32

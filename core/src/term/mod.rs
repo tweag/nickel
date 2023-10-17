@@ -462,9 +462,10 @@ impl AsAny for RuntimeContract {
 }
 
 impl Traverse1 for RuntimeContract {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         let Self { contract, label: _ } = self;
-        todo.push((Instruction::Recurse, contract))
+        todo.push(contract);
+        1
     }
 
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
@@ -630,9 +631,10 @@ impl Traverse1 for LabeledType {
     // Note that this function doesn't traverse the label. which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
     // evaluated.
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         let Self { typ, label: _ } = self;
-        todo.push((Instruction::Recurse, typ))
+        todo.push(typ);
+        1
     }
 
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
@@ -785,14 +787,18 @@ impl AsAny for TypeAnnotation {
 }
 
 impl Traverse1 for TypeAnnotation {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
+        let mut n = 0;
         let Self { typ, contracts } = self;
         for labeled_ty in contracts {
-            todo.push((Instruction::Recurse, labeled_ty));
+            todo.push(labeled_ty);
+            n += 1;
         }
         if let Some(typ) = typ {
-            todo.push((Instruction::Recurse, typ));
+            todo.push(typ);
+            n += 1;
         }
+        n
     }
 
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
@@ -1859,7 +1865,7 @@ impl AsAny for RichTerm {
 }
 
 pub trait Traverse1: Any + AsAny {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>);
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32;
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
     where
         'a: 'b;
@@ -1877,10 +1883,11 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
         F: FnMut(T) -> Result<T, E>,
     {
         let mut root = self.clone();
-        let mut todo: Vec<(Instruction, *mut dyn Traverse1)> =
-            vec![(Instruction::Recurse, &mut root)];
+        let mut todo: Vec<*mut dyn Traverse1> = vec![&mut root];
+        let mut todo_i: Vec<Instruction> = vec![Instruction::Recurse];
 
-        while let Some((instruction, next)) = todo.pop() {
+        while let Some(next) = todo.pop() {
+            let instruction = todo_i.pop().expect("todo and todo_i got out of sync");
             // If TopDown, we don't need unsafe. We could just use a reference.
             // If BottomUp, we keep a reference to a parent and child node alive
             // at the same time on the `todo` stack.
@@ -1910,7 +1917,10 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
                         // NOTE: for stacked borrows (SB), this line must come
                         //       before casting `next` to a reference. For tree
                         //       borrows (TB), it doesn't make a difference.
-                        TraverseOrder::BottomUp => todo.push((Instruction::ApplyF, next)),
+                        TraverseOrder::BottomUp => {
+                            todo.push(next);
+                            todo_i.push(Instruction::ApplyF);
+                        }
                         TraverseOrder::TopDown => {
                             let next = unsafe { &mut *next };
                             if let Some(next) = next.as_any_mut().downcast_mut::<T>() {
@@ -1920,7 +1930,10 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
                     };
 
                     let next = unsafe { &mut *next };
-                    next.traverse_1(&mut todo);
+                    let n = next.traverse_1(&mut todo);
+                    for _ in 0..n {
+                        todo_i.push(Instruction::Recurse);
+                    }
                 }
                 Instruction::ApplyF => {
                     let next = unsafe { &mut *next };
@@ -2002,8 +2015,9 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
 }
 
 impl Traverse1 for RichTerm {
-    fn traverse_1(&mut self, todo: &mut Vec<(Instruction, *mut dyn Traverse1)>) {
+    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
         // XXX: could be match_sharedterm!
+        let mut n = 0;
         match SharedTerm::make_mut(&mut self.term) {
             Term::Null
             | Term::Bool(_)
@@ -2022,46 +2036,55 @@ impl Traverse1 for RichTerm {
             | Term::FunPattern(_, _, t)
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => {
-                todo.push((Instruction::Recurse, t));
+                todo.push(t);
+                n = 1;
             }
             Term::Let(_, t1, t2, _)
             | Term::LetPattern(_, _, t1, t2)
             | Term::App(t1, t2)
             | Term::Op2(_, t1, t2) => {
-                todo.push((Instruction::Recurse, t1));
-                todo.push((Instruction::Recurse, t2));
+                todo.push(t1);
+                todo.push(t2);
+                n = 2;
             }
             Term::Match { cases, default } => {
                 for (_, t) in cases {
-                    todo.push((Instruction::Recurse, t));
+                    todo.push(t);
+                    n += 1;
                 }
                 if let Some(t) = default.as_mut() {
-                    todo.push((Instruction::Recurse, t));
+                    todo.push(t);
+                    n += 1;
                 }
             }
             Term::OpN(_, ts) => {
                 for t in ts {
-                    todo.push((Instruction::Recurse, t));
+                    todo.push(t);
+                    n += 1;
                 }
             }
             Term::Record(record) => {
                 for (_, field) in &mut record.fields {
-                    todo.push((Instruction::Recurse, field));
+                    todo.push(field);
+                    n += 1;
                 }
             }
             Term::RecRecord(record, dyn_fields, _) => {
                 for (_, field) in &mut record.fields {
-                    todo.push((Instruction::Recurse, field));
+                    todo.push(field);
+                    n += 1;
                 }
                 for (id_t, field) in dyn_fields {
-                    todo.push((Instruction::Recurse, id_t));
-                    todo.push((Instruction::Recurse, field));
+                    todo.push(id_t);
+                    todo.push(field);
+                    n += 2;
                 }
             }
             // XXX: do we not need to traverse the contracts in attrs?
             Term::Array(ts, _attrs) => {
                 for t in ts.make_mut() {
-                    todo.push((Instruction::Recurse, t));
+                    todo.push(t);
+                    n += 1;
                 }
             }
             Term::StrChunks(chunks) => {
@@ -2069,19 +2092,23 @@ impl Traverse1 for RichTerm {
                     match chunk {
                         StrChunk::Literal(_) => (),
                         StrChunk::Expr(t, _) => {
-                            todo.push((Instruction::Recurse, t));
+                            todo.push(t);
+                            n += 1;
                         }
                     }
                 }
             }
             Term::Annotated(annot, term) => {
-                todo.push((Instruction::Recurse, annot));
-                todo.push((Instruction::Recurse, term));
+                todo.push(annot);
+                todo.push(term);
+                n = 2;
             }
             Term::Type(ty) => {
-                todo.push((Instruction::Recurse, ty));
+                todo.push(ty);
+                n = 1;
             }
         }
+        n
     }
 
     // XXX: The implementation of the match statement here and above are nearly
