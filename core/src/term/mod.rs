@@ -468,8 +468,6 @@ impl Traverse1 for RuntimeContract {
     }
 }
 
-impl Traverse<RichTerm> for RuntimeContract {}
-
 impl std::convert::TryFrom<LabeledType> for RuntimeContract {
     type Error = UnboundTypeVariableError;
 
@@ -626,8 +624,6 @@ impl Traverse1 for LabeledType {
         1
     }
 }
-
-impl Traverse<RichTerm> for LabeledType {}
 
 /// A type and/or contract annotation.
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -788,8 +784,6 @@ impl Traverse1 for TypeAnnotation {
         n
     }
 }
-
-impl Traverse<RichTerm> for TypeAnnotation {}
 
 /// A chunk of a string with interpolated expressions inside. Can be either a string literal or an
 /// interpolated expression.
@@ -1821,8 +1815,13 @@ pub enum Instruction {
 
 pub trait Traverse1: AsAny {
     // XXX: could have this return the Vec instead of mutating
-    // that would be a cleaner interface, but would allocate then immediately
-    // free an extra vec
+    // that would be a cleaner interface, and allow us to return a reference
+    // rather than a pointer from traverse_1, but would allocate then
+    // immediately free an extra vec
+    // these are meant to be implemented but not used directly. use the
+    // functions from Traverse instead
+    // XXX: the only difference between these (and the implementations) is the mutability of the references
+    // unfortunately, i think rust does not allow you to abstract over that difference.
     fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32;
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
     where
@@ -1972,9 +1971,13 @@ pub trait Traverse<T: 'static>: Traverse1 + Sized {
     }
 }
 
+// in theory {RichTerm,Type} could be much more generic, but in practice these
+// are the ones we want.
+impl<T: Traverse1> Traverse<RichTerm> for T {}
+impl<T: Traverse1> Traverse<Type> for T {}
+
 impl Traverse1 for RichTerm {
     fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
-        // XXX: could be match_sharedterm!
         let mut n = 0;
         match SharedTerm::make_mut(&mut self.term) {
             Term::Null
@@ -2069,13 +2072,6 @@ impl Traverse1 for RichTerm {
         n
     }
 
-    // XXX: The implementation of the match statement here and above are nearly
-    // identical, and it would be nice to unify them. The differences are:
-    // (1) mutable vs. immutable references,
-    // (2) the Recurse tacked onto everything
-    // (3) stack vs queue.
-    // (4) How we deal with traversing types. This will go away once we convert
-    //     the other types to imperative style
     fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
     where
         'a: 'b,
@@ -2170,10 +2166,6 @@ impl Traverse1 for RichTerm {
         n
     }
 }
-
-impl Traverse<RichTerm> for RichTerm {}
-
-impl Traverse<Type> for RichTerm {}
 
 impl From<RichTerm> for Term {
     fn from(rt: RichTerm) -> Self {

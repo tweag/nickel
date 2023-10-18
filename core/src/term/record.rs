@@ -247,8 +247,6 @@ impl Traverse1 for Field {
     }
 }
 
-impl Traverse<RichTerm> for Field {}
-
 /// The base structure of a Nickel record.
 ///
 /// Used to group together fields common to both the [super::Term::Record] and

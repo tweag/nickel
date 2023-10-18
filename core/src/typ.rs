@@ -641,8 +641,6 @@ impl Traverse1 for RecordRows {
     }
 }
 
-impl Traverse<Type> for RecordRows {}
-
 #[derive(Clone, Debug)]
 pub struct UnboundTypeVariableError(pub LocIdent);
 
@@ -1287,10 +1285,6 @@ impl Traverse1 for Type {
         n
     }
 }
-
-impl Traverse<Type> for Type {}
-
-impl Traverse<RichTerm> for Type {}
 
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
