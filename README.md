@@ -16,14 +16,14 @@ Nickel's salient traits are:
     implement. The reference interpreter can be called from many programming
     languages.
 - **Composable code**: the basic building blocks for computing are functions.
-    They are first-class citizens, which can be passed around, called and
+    They are first-class citizens, who can be passed around, called and
     composed.
 - **Composable data**: the basic building blocks for data are records
     (called *objects* in JSON). In Nickel, records can be merged at will,
     including associated metadata (documentation, default values, type
     contracts, etc).
 - **Typed, but only when it helps**: static types improve code quality, serve as
-    documentation and eliminate bugs early. But application-specific
+    documentation, and eliminate bugs early. But application-specific
     self-contained code will always evaluate to the same value, so type errors
     will show up at runtime anyway. Some JSON is hard to type. There, types are
     only a burden. Whereas reusable code - that is, *functions* - is evaluated
@@ -35,29 +35,29 @@ Nickel's salient traits are:
     a principled approach to checking assertions. The interpreter automatically
     inserts assertions at the boundary between typed and untyped code. Nickel
     lets users add arbitrary assertions of their own and easily understand why
-    when assertions fail.
+    assertions fail.
 
 The motto guiding Nickel's design is:
 > Great defaults, design for extensibility
 
 There should be a standard, clear path for common things. There should be no
-arbitrary restrictions that limit what you can do you the one day you need to go
+arbitrary restrictions that limit what you can do the one day you need to go
 beyond.
 
 ## Use cases
 
 Nickel is a good fit in any situation where you need to generate a complex
-configuration, be it for a single app, a machine, whole infrastructure, or a
+configuration, be it for a single app, a machine, a whole infrastructure, or a
 build system.
 
 The motivating use cases are in particular:
 
 - The [Nix package manager](https://nixos.org/): Nix is a declarative package
     manager using its own language for specifying packages. Nickel is an
-    evolution of the Nix language, while trying to overcome some of its
+    evolution of the Nix language while trying to overcome some of its
     limitations.
 - Infrastructure as code: infrastructure is becoming increasingly complex,
-    requiring a rigorous approach to deployment, modification and configuration.
+    requiring a rigorous approach to deployment, modification, and configuration.
     This is where a declarative approach also shines, as adopted by
     [Terraform](https://www.terraform.io/),
     [NixOps](https://github.com/NixOS/nixops) or
@@ -67,9 +67,10 @@ The motivating use cases are in particular:
     a specification of the dependency graph.
 
 Most aforementioned projects have their own bespoke configuration language. See
-[Comparison](#comparison). In
-general, application-specific languages might suffer from feature creep, lack of
-abstractions or just feel ad hoc. Nickel buys you more for less.
+[Comparison](#comparison). In general, application-specific languages might 
+suffer from feature creep, lack of abstractions, or just feel ad hoc. 
+
+Nickel gets you more for less.
 
 ## The Nickel ecosystem
 
@@ -77,8 +78,8 @@ Related projects that are part of the Nickel ecosystem:
 
 - [Terraform-Nickel](https://github.com/tweag/tf-ncl): write Terraform
     configuration with Nickel
-- [Nickel-Nix](https://github.com/nickel-lang/nickel-nix) (name subject to
-    change): batteries included environments with Nickel inside
+- [Organist](https://github.com/nickel-lang/organist): batteries included
+    development environments with Nickel
 - [json-schema-to-nickel](https://github.com/nickel-lang/json-schema-to-nickel):
     generate Nickel contracts from JSON schema specifications.
 - [rules_nickel](https://github.com/nickel-lang/rules_nickel): generate
@@ -148,7 +149,7 @@ the `nickel-lang-core` crate documentation).
   ```
 
 Use `nickel help` for a list of subcommands, and `nickel help <subcommand>`
-for help about a specific subcommand.
+for help with a specific subcommand.
 
 #### Editor Setup
 
@@ -256,23 +257,23 @@ The next steps we plan to work on are:
 
 - [CUE](https://cuelang.org/) is a configuration language with a focus on data
     validation. It introduces a new constraint system backed by a solid theory
-    which ensures strong guarantees about your code. It allows for very elegant
+    that ensures strong guarantees about your code. It allows for very elegant
     schema specifications. In return, the cost to pay is to abandon functions
     and
     [Turing-completeness](https://en.wikipedia.org/wiki/Turing_completeness).
-    Nickel's merge system is inspired by the one of CUE, even if since Nickel
+    Nickel's merge system is inspired by the one of CUE, even if Nickel
     does have general functions and is Turing-complete, they are necessarily
     different.
 - [Nix](https://nixos.org/): The Nix language, or *Nix expressions*, is one of
     the main inspirations for Nickel. It is a very simple yet powerful lazy
-    functional language. We strive to retain this simplicity, while adding
-    typing capabilities, modularity, and detaching the language from the Nix
+    functional language. We strive to retain this simplicity while adding
+    typing capabilities, modularity, and detachment from the language of the Nix
     package manager.
 - [Dhall](https://dhall-lang.org/) is a statically typed configuration language.
     It is also inspired by Nix, to which it adds a powerful static type system.
     However, this forces the programmer to annotate all of their code with types.
-- [Jsonnet](https://jsonnet.org/) is another language which could be dubbed as
-    "JSON with functions" (and others things as well). It is a lazy functional
+- [Jsonnet](https://jsonnet.org/) is another language that could be dubbed as
+    "JSON with functions" (and other things as well). It is a lazy functional
     language with object-oriented features, among which inheritance is similar
     to Nickel's merge system. One big difference with Nickel is the absence of
     typing.
@@ -283,7 +284,7 @@ The next steps we plan to work on are:
 - [Starlark](https://docs.bazel.build/versions/master/skylark/language.html) is
     the language of [Bazel](https://bazel.build/), which is a dialect of
     [Python](https://www.python.org/). It does not have types and recursion is
-    forbidden, making it not Turing-complete.
+    forbidden, making it not turing-complete.
 
 See [RATIONALE.md](./RATIONALE.md) for the design rationale and a more detailed
 comparison with these languages.
