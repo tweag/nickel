@@ -188,9 +188,9 @@ impl Field {
     }
 }
 
-impl Traverse1 for Field {
-    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
-        let mut n = 0;
+impl GetChildren for Field {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let mut rtrn = Vec::<&mut dyn GetChildren>::new();
         let Self {
             value,
             metadata:
@@ -203,24 +203,18 @@ impl Traverse1 for Field {
                 },
             pending_contracts,
         } = self;
-        todo.push(annotation);
-        n += 1;
+        rtrn.push(annotation);
         if let Some(value) = value.as_mut() {
-            todo.push(value);
-            n += 1;
+            rtrn.push(value);
         }
         for pending_contract in pending_contracts {
-            todo.push(pending_contract);
-            n += 1;
+            rtrn.push(pending_contract);
         }
-        n
+        rtrn
     }
 
-    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
-    where
-        'a: 'b,
-    {
-        let mut n = 0;
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let mut rtrn = Vec::<&dyn GetChildren>::new();
         let Self {
             value,
             metadata:
@@ -233,17 +227,14 @@ impl Traverse1 for Field {
                 },
             pending_contracts,
         } = self;
-        todo.push(annotation);
-        n += 1;
+        rtrn.push(annotation);
         if let Some(value) = value.as_ref() {
-            todo.push(value);
-            n += 1;
+            rtrn.push(value);
         }
         for pending_contract in pending_contracts {
-            todo.push(pending_contract);
-            n += 1;
+            rtrn.push(pending_contract);
         }
-        n
+        rtrn
     }
 }
 

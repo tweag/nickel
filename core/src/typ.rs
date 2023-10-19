@@ -47,8 +47,8 @@ use crate::{
     mk_app, mk_fun,
     position::TermPos,
     term::{
-        array::Array, make as mk_term, record::RecordData, string::NickelString, IndexMap,
-        RichTerm, Term, Traverse, Traverse1, TraverseOrder,
+        array::Array, make as mk_term, record::RecordData, string::NickelString, GetChildren,
+        IndexMap, RichTerm, Term, Traverse, TraverseOrder,
     },
 };
 
@@ -608,35 +608,24 @@ impl<Ty, RRows, ERows> TypeF<Ty, RRows, ERows> {
     }
 }
 
-impl Traverse1 for RecordRows {
-    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
+impl GetChildren for RecordRows {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
         match &mut self.0 {
-            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => 0,
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => vec![],
             RecordRowsF::Extend {
                 row: RecordRowF { id: _, typ },
                 tail,
-            } => {
-                todo.push(typ.as_mut());
-                todo.push(tail.as_mut());
-                2
-            }
+            } => vec![typ.as_mut(), tail.as_mut()],
         }
     }
 
-    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
-    where
-        'a: 'b,
-    {
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
         match &self.0 {
-            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => 0,
+            RecordRowsF::Empty | RecordRowsF::TailVar(_) | RecordRowsF::TailDyn => vec![],
             RecordRowsF::Extend {
                 row: RecordRowF { id: _, typ },
                 tail,
-            } => {
-                todo.push(typ.as_ref());
-                todo.push(tail.as_ref());
-                2
-            }
+            } => vec![typ.as_ref(), tail.as_ref()],
         }
     }
 }
@@ -1183,9 +1172,8 @@ impl Type {
     }
 }
 
-impl Traverse1 for Type {
-    fn traverse_1(&mut self, todo: &mut Vec<*mut dyn Traverse1>) -> u32 {
-        let mut n = 0;
+impl GetChildren for Type {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
         match &mut self.typ {
             TypeF::Dyn
             | TypeF::Number
@@ -1194,50 +1182,30 @@ impl Traverse1 for Type {
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Enum(_)
-            | TypeF::Wildcard(_) => (),
+            | TypeF::Wildcard(_) => vec![],
             // XXX: try_map_state doesn't recurse into flat types. therefore the
             //      old implementation of traverse didn't either. should we?
-            TypeF::Flat(t) => {
-                todo.push(t);
-                n = 1;
-            }
-            TypeF::Arrow(dom, codom) => {
-                todo.push(dom.as_mut());
-                todo.push(codom.as_mut());
-                n = 2;
-            }
+            TypeF::Flat(t) => vec![t],
+
+            TypeF::Arrow(dom, codom) => vec![dom.as_mut(), codom.as_mut()],
             TypeF::Forall {
                 var: _,
                 var_kind: _,
                 body,
-            } => {
-                todo.push(body.as_mut());
-                n = 1;
-            }
-            TypeF::Record(rrows) => {
-                todo.push(rrows);
-                n = 1;
-            }
+            } => vec![body.as_mut()],
+
+            TypeF::Record(rrows) => vec![rrows],
+
             TypeF::Dict {
                 type_fields,
                 flavour: _,
-            } => {
-                todo.push(type_fields.as_mut());
-                n = 1;
-            }
-            TypeF::Array(t) => {
-                todo.push(t.as_mut());
-                n = 1;
-            }
+            } => vec![type_fields.as_mut()],
+
+            TypeF::Array(t) => vec![t.as_mut()],
         }
-        n
     }
 
-    fn traverse_ref_1<'a, 'b>(&'a self, todo: &mut Vec<&'b dyn Traverse1>) -> u32
-    where
-        'a: 'b,
-    {
-        let mut n = 0;
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
         match &self.typ {
             TypeF::Dyn
             | TypeF::Number
@@ -1246,43 +1214,27 @@ impl Traverse1 for Type {
             | TypeF::Symbol
             | TypeF::Var(_)
             | TypeF::Enum(_)
-            | TypeF::Wildcard(_) => (),
+            | TypeF::Wildcard(_) => vec![],
             // XXX: try_map_state doesn't recurse into flat types. therefore the
-            //      old implementation of traverse_ref didn't either. should we?
-            TypeF::Flat(t) => {
-                todo.push(t);
-                n = 1;
-            }
-            TypeF::Arrow(dom, codom) => {
-                todo.push(dom.as_ref());
-                todo.push(codom.as_ref());
-                n = 2;
-            }
+            //      old implementation of traverse didn't either. should we?
+            TypeF::Flat(t) => vec![t],
+
+            TypeF::Arrow(dom, codom) => vec![dom.as_ref(), codom.as_ref()],
             TypeF::Forall {
                 var: _,
                 var_kind: _,
                 body,
-            } => {
-                todo.push(body.as_ref());
-                n = 1;
-            }
-            TypeF::Record(rrows) => {
-                todo.push(rrows);
-                n = 1;
-            }
+            } => vec![body.as_ref()],
+
+            TypeF::Record(rrows) => vec![rrows],
+
             TypeF::Dict {
                 type_fields,
                 flavour: _,
-            } => {
-                todo.push(type_fields.as_ref());
-                n = 1;
-            }
-            TypeF::Array(t) => {
-                todo.push(t.as_ref());
-                n = 1
-            }
+            } => vec![type_fields.as_ref()],
+
+            TypeF::Array(t) => vec![t.as_ref()],
         }
-        n
     }
 }
 
