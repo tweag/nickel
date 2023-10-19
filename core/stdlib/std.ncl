@@ -910,7 +910,7 @@
             if value == 0 then
               value
             else
-              std.contract.blame_with_message_message "Not zero" label
+              std.contract.blame_with_message "Not zero" label
           in
 
           0 | IsZero
