@@ -77,8 +77,8 @@ Related projects that are part of the Nickel ecosystem:
 
 - [Terraform-Nickel](https://github.com/tweag/tf-ncl): write Terraform
     configuration with Nickel
-- [Nickel-Nix](https://github.com/nickel-lang/nickel-nix) (name subject to
-    change): batteries included environments with Nickel inside
+- [Organist](https://github.com/nickel-lang/organist): batteries included
+    environments with Nickel inside
 - [json-schema-to-nickel](https://github.com/nickel-lang/json-schema-to-nickel):
     generate Nickel contracts from JSON schema specifications.
 - [rules_nickel](https://github.com/nickel-lang/rules_nickel): generate
@@ -243,7 +243,7 @@ language to be stable and the language to be useful for real-world applications.
 The next steps we plan to work on are:
 
 - Nix integration: being able to seamlessly use Nickel to write packages and
-  shells ([nickel-nix](https://github.com/nickel-lang/nickel-nix))
+  shells ([Organist](https://github.com/nickel-lang/organist))
 - Custom merge functions (second part of the
   [overriding
   proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
