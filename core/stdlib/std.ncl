@@ -1589,9 +1589,9 @@
         # Examples
 
         ```nickel
-        pipe 2 [ (+) 2, (+) 3 ]
+        std.function.pipe 2 [ (+) 2, (+) 3 ]
           => 7
-        pipe 'World [ std.string.from, fun s => "Hello, %{s}!" ]
+        std.function.pipe 'World [ std.string.from, fun s => "Hello, %{s}!" ]
           => "Hello, World!"
         ```
       "%%
