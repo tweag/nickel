@@ -243,7 +243,7 @@ language to be stable and the language to be useful for real-world applications.
 The next steps we plan to work on are:
 
 - Nix integration: being able to seamlessly use Nickel to write packages and
-  shells ([Orgnist](https://github.com/nickel-lang/organist))
+  shells ([Organist](https://github.com/nickel-lang/organist))
 - Custom merge functions (second part of the
   [overriding
   proposal](https://github.com/tweag/nickel/blob/9fd6e436c0db8f101d4eb26cf97c4993357a7c38/rfcs/001-overriding.md))
