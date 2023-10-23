@@ -1402,6 +1402,11 @@ fn walk<V: TypecheckVisitor>(
             }
 
             let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
+            for item in pattern_ty.iter() {
+                if let GenericUnifRecordRowsIteratorItem::Row(row) = item {
+                    visitor.visit_ident(&row.id, row.typ.clone());
+                }
+            }
             destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
 
             walk(state, ctxt, visitor, rt)
@@ -1770,6 +1775,12 @@ fn check<V: TypecheckVisitor>(
             if let Some(x) = x {
                 visitor.visit_ident(x, ty_let.clone());
                 ctxt.type_env.insert(x.ident(), ty_let);
+            }
+
+            for item in pattern_rows_type.iter() {
+                if let GenericUnifRecordRowsIteratorItem::Row(row) = item {
+                    visitor.visit_ident(&row.id, row.typ.clone());
+                }
             }
 
             destructuring::inject_pattern_variables(

@@ -1,0 +1,14 @@
+---
+source: lsp/nls/tests/main.rs
+expression: output
+---
+<0:7-0:8>[```nickel
+Number
+```]
+<0:15-0:16>[```nickel
+Number
+```]
+<0:26-0:27>[```nickel
+Number
+```]
+

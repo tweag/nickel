@@ -1,6 +1,7 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{Hover, HoverContents, HoverParams, LanguageString, MarkedString, Range};
 use nickel_lang_core::{
+    combine::Combine,
     identifier::Ident,
     position::RawSpan,
     term::{record::FieldMetadata, LabeledType, RichTerm, Term, UnaryOp},
@@ -16,12 +17,22 @@ use crate::{
     server::Server,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct HoverData {
     values: Vec<RichTerm>,
     metadata: Vec<FieldMetadata>,
-    span: RawSpan,
+    span: Option<RawSpan>,
     ty: Option<Type>,
+}
+
+impl Combine for HoverData {
+    fn combine(mut left: Self, right: Self) -> Self {
+        left.values.extend_from_slice(&right.values);
+        left.metadata.extend_from_slice(&right.metadata);
+        left.ty = left.ty.or(right.ty);
+        left.span = left.span.or(right.span);
+        left
+    }
 }
 
 fn annotated_contracts(rt: &RichTerm) -> &[LabeledType] {
@@ -61,7 +72,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
     let mut ret = HoverData {
         values: Vec::new(),
         metadata: Vec::new(),
-        span,
+        span: Some(span),
         ty,
     };
 
@@ -82,7 +93,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
 
 fn term_hover(rt: &RichTerm, server: &Server) -> Option<HoverData> {
     let ty = server.analysis.get_type(rt).cloned();
-    let span = rt.pos.into_opt()?;
+    let span = rt.pos.into_opt();
 
     match rt.as_ref() {
         Term::Op1(UnaryOp::StaticAccess(id), parent) => {
@@ -114,16 +125,15 @@ pub fn handle(
         .cache
         .position(&params.text_document_position_params)?;
 
-    let hover_data = server
+    let ident_hover_data = server
         .lookup_ident_by_position(pos)?
         .and_then(|ident| ident_hover(ident, server));
 
-    let hover_data = match hover_data {
-        Some(h) => Some(h),
-        None => server
-            .lookup_term_by_position(pos)?
-            .and_then(|rt| term_hover(rt, server)),
-    };
+    let term_hover_data = server
+        .lookup_term_by_position(pos)?
+        .and_then(|rt| term_hover(rt, server));
+
+    let hover_data = Combine::combine(ident_hover_data, term_hover_data);
 
     if let Some(hover) = hover_data {
         let mut contents = Vec::new();
@@ -159,7 +169,9 @@ pub fn handle(
             req_id,
             Hover {
                 contents: HoverContents::Array(contents),
-                range: Some(Range::from_span(&hover.span, server.cache.files())),
+                range: hover
+                    .span
+                    .map(|s| Range::from_span(&s, server.cache.files())),
             },
         ));
     } else {

@@ -11,9 +11,9 @@ Dyn
 <8:2-8:11>[```nickel
 Dyn
 ```, middle]
-<9:2-9:7>[```nickel
-Dyn
-```, middle]
+<9:2-9:7>[middle, ```nickel
+{ bar : Dyn }
+```]
 <9:2-9:11>[```nickel
 Dyn
 ```, ```nickel
