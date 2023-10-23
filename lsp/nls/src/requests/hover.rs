@@ -129,11 +129,18 @@ pub fn handle(
         .lookup_ident_by_position(pos)?
         .and_then(|ident| ident_hover(ident, server));
 
-    let term_hover_data = server
-        .lookup_term_by_position(pos)?
-        .and_then(|rt| term_hover(rt, server));
+    let term = server.lookup_term_by_position(pos)?;
+    let term_hover_data = term.and_then(|rt| term_hover(rt, server));
 
-    let hover_data = Combine::combine(ident_hover_data, term_hover_data);
+    // We combine the hover information from the term (which can have better type information)
+    // and the ident (which can have better metadata), but only when hovering over a `Var`.
+    // In general, the term and the ident can have different meanings (like when hovering over
+    // the `x` in `let x = ... in y`) and so it would be confusing to combine them.
+    let hover_data = if matches!(term.map(AsRef::as_ref), Some(Term::Var(_))) {
+        Combine::combine(ident_hover_data, term_hover_data)
+    } else {
+        ident_hover_data.or(term_hover_data)
+    };
 
     if let Some(hover) = hover_data {
         let mut contents = Vec::new();
