@@ -643,7 +643,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             let extend = mk_term::op2(
                                 BinaryOp::DynExtend {
                                     metadata,
-                                    pending_contracts: pending_contracts,
+                                    pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
                                 },
@@ -829,8 +829,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         return Ok(Closure {
                             body: RichTerm::new(
                                 Term::Match {
-                                    cases: cases,
-                                    default: default,
+                                    cases,
+                                    default,
                                 },
                                 pos,
                             ),
