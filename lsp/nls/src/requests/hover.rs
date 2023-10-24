@@ -26,9 +26,9 @@ struct HoverData {
 }
 
 impl Combine for HoverData {
-    fn combine(mut left: Self, right: Self) -> Self {
-        left.values.extend_from_slice(&right.values);
-        left.metadata.extend_from_slice(&right.metadata);
+    fn combine(mut left: Self, mut right: Self) -> Self {
+        left.values.append(&mut right.values);
+        left.metadata.append(&mut right.metadata);
         left.ty = left.ty.or(right.ty);
         left.span = left.span.or(right.span);
         left
