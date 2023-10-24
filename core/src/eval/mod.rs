@@ -1,37 +1,40 @@
 //! Evaluation of a Nickel term.
 //!
-//! The implementation of the Nickel abstract machine which evaluates a term. Note that this machine
-//! is not currently formalized somewhere and is just a convenient name to designate the current
-//! implementation.
+//! Implementation of the Nickel abstract machine. Note that this machine is not currently
+//! formalized somewhere and is just a convenient name to designate the current implementation.
 //!
 //! # The Nickel Abstract Machine
+//!
 //! The abstract machine is a stack machine composed of the following elements:
+//!
 //! - The term being currently evaluated
-//! - The main stack, storing arguments, cache indices and pending computations
+//! - The main stack, storing arguments, cache indices and pending computations (continuations)
 //! - A pair of [environment][Environment], mapping identifiers to [closures][Closure]:
-//!     * The initial environment contains builtin functions accessible from anywhere, and alive
-//!     during the whole evaluation
-//!     * The local environment contains the variables in scope of the current term and is subject
-//!     to garbage collection (currently reference counting based)
+//!     - The initial environment contains builtin functions accessible from anywhere, is immutable
+//!       and alive during the whole evaluation
+//!     - The local environment contains the variables in scope of the current term and is subject
+//!       to garbage collection (currently reference counting based)
 //! - A [callstack], mainly for error reporting purpose
 //!
 //! Depending on the shape of the current term, the following actions are performed:
 //!
 //! ## Core calculus
-//! - **Var(id)**: the term bound to `id` in the environment is fetched, and an update index is
-//!   pushed on the stack to indicate that once this term has been evaluated, the content of the
-//!   variable must be updated
-//! - **App(func, arg)**: a closure containing the argument and the current environment is pushed on
-//!   the stack, and the applied term `func` is evaluated
-//! - **Let(id, term, body)**: `term` is bound to `id` in the environment, and the machine proceeds
-//!   with the evaluation of the body
-//! - **Fun(id, body)**: Try to pop an argument from the stack. If there is some, we bound it to
-//!   `id` in the environment, and proceed with the body of the function. Otherwise, we are done:
-//!   the end result is an unapplied function
-//! - **Index on stack**: If the evaluation of the current term is done, and there is one (or
-//!   several) index on the stack, this means we have to perform an update. Consecutive indices are
-//!   popped from the stack and are updated to point to the current evaluated term.
-//! - **Import**: Import must have been resolved before the evaluation starts. An unresolved import
+//!
+//! - **variable (`id`)**: the term bound to `id` in the environment is fetched, and an update index is
+//!   pushed on the stack to indicate that once this term has been evaluated, the cached value for
+//!   this variable must be updated
+//! - **application `func arg`**: a closure containing the argument and the current environment is pushed on
+//!   the stack and the VM proceed with the evaluation of `func`
+//! - **`let id = term in body`**: `term` is bound to `id` in the environment and the VM proceeds
+//!   with the evaluation of `body`
+//! - **`fun id => body`**: tries to pop an argument from the stack. If there is one, we bind it to
+//!   `id` in the environment and proceed with the body of the function. Otherwise, we are done:
+//!   the end result is a (unapplied) function
+//! - **Index on stack**: if the evaluation of the current term is done, and there is one (or
+//!   several) index on the stack, this means we have to perform an evaluation cache update.
+//!   Consecutive indices are popped from the stack and are updated to point to the current evaluated
+//!   term.
+//! - **Import**: import must have been resolved before the evaluation starts. An unresolved import
 //!   causes an [`crate::error::EvalError::InternalError`]. A resolved import, identified by a
 //!   `FileId`, is retrieved from the import resolver and evaluation proceeds.
 //!
@@ -39,14 +42,15 @@
 //!
 //! Operators are strict by definition. To evaluate say `exp1 + exp2`, the following steps have to
 //! be performed:
+//!
 //! - `exp1` needs to be evaluated. The result must be saved somewhere, together with the resulting
 //! environment
-//! - `exp2`: same thing for `exp2`
+//! - same thing for `exp2`
 //! - Finally, the implementation of `+` can proceed with the computation
 //!
 //! We detail the case of binary operators, as the case of unary ones is similar and simpler.
 //!
-//! - **Op(op, first, second)**: push an `OpFirst` element on the stack, which saves the operator
+//! - **Op(op, first, second)**: pushes an `OpFirst` element on the stack, which saves the operator
 //! `op`, the second argument `second` and the current environment, and proceed with the evaluation
 //! of `first`
 //! - **OpFirst on stack**: if the evaluation of the current term is done and there is an `OpFirst`
@@ -67,8 +71,8 @@
 //! environment stores `Rc<RefCell<Closure>>` objects, which are reference-counted pointers to a
 //! mutable memory cell. This means that we do not deep copy everything everywhere, but this is
 //! probably suboptimal for a functional language and is unable to collect cyclic data, which may
-//! appear inside recursive records in the future. An adapted garbage collector is probably
-//! something to consider at some point.
+//! appear inside recursive records. A dedicated garbage collector is probably something to
+//! consider at some point.
 
 use crate::identifier::Ident;
 use crate::term::record::FieldMetadata;
