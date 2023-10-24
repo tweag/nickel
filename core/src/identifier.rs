@@ -59,7 +59,7 @@ impl From<Ident> for LocIdent {
 
 impl PartialOrd for Ident {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.label().partial_cmp(other.label())
+        Some(self.cmp(other))
     }
 }
 
@@ -151,7 +151,7 @@ pub const GEN_PREFIX: char = '%';
 
 impl PartialOrd for LocIdent {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.label().partial_cmp(other.label())
+        Some(self.cmp(other))
     }
 }
 
