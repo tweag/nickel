@@ -175,31 +175,33 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// empty local environment and drops the final environment.
     pub fn eval(&mut self, t: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_closure(Closure::atomic_closure(t))
-            .map(|(term, _)| term)
+            .map(|closure| closure.body)
     }
 
     /// Fully evaluate a Nickel term: the result is not a WHNF but to a value with all variables
     /// substituted.
     pub fn eval_full(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_full_closure(Closure::atomic_closure(t0))
-            .map(|(term, _)| term)
+            .map(|result| result.body)
     }
 
-    pub fn eval_full_closure(&mut self, t0: Closure) -> Result<(RichTerm, Environment), EvalError> {
-        self.eval_deep_closure(t0, false)
-            .map(|(term, env)| (subst(&self.cache, term, &self.initial_env, &env), env))
+    pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
+        self.eval_deep_closure(t0, false).map(|result| Closure {
+            body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+            env: result.env,
+        })
     }
 
     /// Like `eval_full`, but skips evaluating record fields marked `not_exported`.
     pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure(Closure::atomic_closure(t0), true)
-            .map(|(term, env)| subst(&self.cache, term, &self.initial_env, &env))
+            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
         self.eval_deep_closure(Closure::atomic_closure(t0), false)
-            .map(|(term, _)| term)
+            .map(|result| result.body)
     }
 
     /// Use a specific initial environment for evaluation. Usually, [VirtualMachine::prepare_eval]
@@ -216,7 +218,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         &mut self,
         mut closure: Closure,
         for_export: bool,
-    ) -> Result<(RichTerm, Environment), EvalError> {
+    ) -> Result<Closure, EvalError> {
         closure.body = mk_term::op1(
             UnaryOp::Force {
                 ignore_not_exported: for_export,
@@ -241,7 +243,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// environment.
     pub fn query_closure(&mut self, closure: Closure, path: QueryPath) -> Result<Field, EvalError> {
         let mut prev_pos = closure.body.pos;
-        let (rt, mut env) = self.eval_closure(closure)?;
+        let Closure { body: rt, mut env } = self.eval_closure(closure)?;
 
         let mut field: Field = rt.into();
 
@@ -281,13 +283,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     pending_contracts.into_iter(),
                                     prev_pos,
                                 );
-                                let (new_value, new_env) = self.eval_closure(Closure {
+                                let new_closure = self.eval_closure(Closure {
                                     body: value_with_ctr,
                                     env: env.clone(),
                                 })?;
-                                env = new_env;
+                                env = new_closure.env;
 
-                                Ok(new_value)
+                                Ok(new_closure.body)
                             })
                             .transpose()?;
 
@@ -386,10 +388,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Either:
     ///  - an evaluation error
     ///  - the evaluated term with its final environment
-    pub fn eval_closure(
-        &mut self,
-        mut clos: Closure,
-    ) -> Result<(RichTerm, Environment), EvalError> {
+    pub fn eval_closure(&mut self, mut clos: Closure) -> Result<Closure, EvalError> {
         loop {
             let Closure {
                 body:
@@ -400,24 +399,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 mut env,
             } = clos;
 
-            clos = match &*shared_term {
-                Term::Sealed(_, inner, lbl) => {
+            clos = match_sharedterm!(match (shared_term) {
+                Term::Sealed(key, inner, lbl) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        body: RichTerm {
-                            term: shared_term.clone(),
-                            pos,
-                        },
+                        body: RichTerm::new(Term::Sealed(key, inner.clone(), lbl.clone()), pos),
                         env: env.clone(),
                     };
+
                     // Update at the original index (the index which holds the result of the op) in
                     // both cases, even if we continue with a seq.
                     //
-                    // We do this because  we are on a `Sealed` term, and this is in WHNF, and if we
-                    // don't, we will be unwrapping a `Sealed` term and assigning the "unsealed"
-                    // value to the result of the `Seq` operation. See also:
+                    // We do this because we are on a `Sealed` term which is in weak head normal
+                    // form, and if we don't, we will be unwrapping a `Sealed` term and assigning
+                    // the "unsealed" value to the result of the `Seq` operation. See also:
                     // https://github.com/tweag/nickel/issues/123
                     update_at_indices(&mut self.cache, &mut self.stack, &closure);
+
+                    // We have to peek the stack to see what operation is coming next and decide
+                    // what to do.
+                    //
+                    // - If it's `unseal`, then we proceed with its evaluation, as `unseal` legitly
+                    //   operates on sealed terms.
+                    // - `seq` is the only primitive operation allowed to see through a sealed
+                    //   term. Indeed, `seq`-ing doesn't violate parametricity, `seq`-ing shouldn't
+                    //   be observable (that is, adding seq shouldn't change the semantics and
+                    //   suddenly make a program blame), and it's useful in practice to seq sealed
+                    //   terms such as in the implementation of `std.fold_left` to ensure we don't
+                    //   accumulate thunks in memory.
+                    // - If it's anything else, we raise an error right away because the
+                    //   corresponding polymorphic contract has been violated: a function tried to
+                    //   use a polymorphic sealed value.
                     match stack_item {
                         Some(OperationCont::Op2Second(BinaryOp::Unseal(), _, _, _)) => {
                             self.continuate_operation(closure)?
@@ -444,65 +456,57 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         .get(&x.ident())
                         .or_else(|| self.initial_env.get(&x.ident()))
                         .cloned()
-                        .ok_or(EvalError::UnboundIdentifier(*x, pos))?;
+                        .ok_or(EvalError::UnboundIdentifier(x, pos))?;
 
-                    self.enter_cache_index(Some(*x), idx, pos, env)?
+                    self.enter_cache_index(Some(x), idx, pos, env)?
                 }
-                Term::Closure(idx) => self.enter_cache_index(None, idx.clone(), pos, env)?,
+                Term::Closure(idx) => self.enter_cache_index(None, idx, pos, env)?,
                 Term::App(t1, t2) => {
                     self.call_stack.enter_app(pos);
 
                     self.stack.push_arg(
                         Closure {
-                            body: t2.clone(),
+                            body: t2,
                             env: env.clone(),
                         },
                         pos,
                     );
-                    Closure {
-                        body: t1.clone(),
-                        env,
-                    }
+                    Closure { body: t1, env }
                 }
-                Term::Let(x, s, t, LetAttrs { binding_type, rec }) => {
-                    let closure: Closure = Closure {
-                        body: s.clone(),
+                Term::Let(x, bound, body, LetAttrs { binding_type, rec }) => {
+                    let bound_closure: Closure = Closure {
+                        body: bound,
                         env: env.clone(),
                     };
 
-                    let idx = self.cache.add(closure, binding_type.clone());
+                    let idx = self.cache.add(bound_closure, binding_type);
 
                     // Patch the environment with the (x <- closure) binding
-                    if *rec {
+                    if rec {
                         let idx_ = idx.clone();
                         self.cache
                             .patch(idx_.clone(), |cl| cl.env.insert(x.ident(), idx_.clone()));
                     }
 
                     env.insert(x.ident(), idx);
-                    Closure {
-                        body: t.clone(),
-                        env,
-                    }
+
+                    Closure { body, env }
                 }
-                Term::Op1(op, t) => {
+                Term::Op1(op, arg) => {
                     self.stack.push_op_cont(
-                        OperationCont::Op1(op.clone(), t.pos),
+                        OperationCont::Op1(op, arg.pos),
                         self.call_stack.len(),
                         pos,
                     );
 
-                    Closure {
-                        body: t.clone(),
-                        env,
-                    }
+                    Closure { body: arg, env }
                 }
                 Term::Op2(op, fst, snd) => {
                     self.stack.push_op_cont(
                         OperationCont::Op2First(
-                            op.clone(),
+                            op,
                             Closure {
-                                body: snd.clone(),
+                                body: snd,
                                 env: env.clone(),
                             },
                             fst.pos,
@@ -510,31 +514,27 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.call_stack.len(),
                         pos,
                     );
-                    Closure {
-                        body: fst.clone(),
-                        env,
-                    }
+                    Closure { body: fst, env }
                 }
                 Term::OpN(op, args) => {
                     // Arguments are passed as a stack to the operation continuation, so we reverse
                     // the original list.
-                    let mut args_iter = args.iter();
+                    let mut args_iter = args.into_iter();
                     let fst = args_iter
                         .next()
-                        .cloned()
                         .ok_or_else(|| EvalError::NotEnoughArgs(op.arity(), op.to_string(), pos))?;
 
                     let pending: Vec<Closure> = args_iter
                         .rev()
                         .map(|t| Closure {
-                            body: t.clone(),
+                            body: t,
                             env: env.clone(),
                         })
                         .collect();
 
                     self.stack.push_op_cont(
                         OperationCont::OpN {
-                            op: op.clone(),
+                            op,
                             evaluated: Vec::with_capacity(pending.len() + 1),
                             pending,
                             current_pos: fst.pos,
@@ -546,7 +546,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Closure { body: fst, env }
                 }
                 Term::StrChunks(chunks) => {
-                    let mut chunks_iter = chunks.iter();
+                    let mut chunks_iter = chunks.into_iter();
                     match chunks_iter.next_back() {
                         None => Closure {
                             body: Term::Str(NickelString::new()).into(),
@@ -555,10 +555,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
                                 StrChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
-                                StrChunk::Expr(e, indent) => (e.clone(), *indent),
+                                StrChunk::Expr(e, indent) => (e.clone(), indent),
                             };
 
-                            self.stack.push_str_chunks(chunks_iter.cloned());
+                            self.stack.push_str_chunks(chunks_iter);
                             self.stack.push_str_acc(StrAccData {
                                 acc: String::new(),
                                 env: env.clone(),
@@ -578,21 +578,15 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 Term::Record(data) if !data.attrs.closurized => {
                     Closure {
                         body: RichTerm::new(
-                            Term::Record(
-                                //TODO: avoid clone
-                                data.clone().closurize(&mut self.cache, env),
-                            ),
+                            Term::Record(data.closurize(&mut self.cache, env)),
                             pos,
                         ),
                         env: Environment::new(),
                     }
                 }
                 Term::RecRecord(data, dyn_fields, deps) => {
-                    //TODO: We should probably avoid cloning the record, using `match_sharedterm`
-                    //instead of `match` in the main eval loop, if possible
                     // We start by closurizing the fields, which might not be if the record is
                     // coming out of the parser.
-                    // let static_part_data = RichTerm::new(Term::Record(record.clone()), pos);
 
                     // We must avoid re-closurizing a recursive record that is already closurized
                     // (coming from `merge`, for example), as the current representation is broken
@@ -600,15 +594,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // type, once we have a different representation for runtime evaluation,
                     // instead of relying on invariants. But for now, we have to live with it.
                     let (mut static_part, dyn_fields) = if !data.attrs.closurized {
-                        closurize_rec_record(
-                            &mut self.cache,
-                            data.clone(),
-                            dyn_fields.clone(),
-                            deps.clone(),
-                            env,
-                        )
+                        closurize_rec_record(&mut self.cache, data, dyn_fields, deps, env)
                     } else {
-                        (data.clone(), dyn_fields.clone())
+                        (data, dyn_fields)
                     };
 
                     let rec_env =
@@ -634,8 +622,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     // The `dyn_val` are given access to the recursive environment, but the
                     // recursive environment only contains the static fields, and not the dynamic
                     // fields.
-                    let extended = dyn_fields.iter().cloned().fold(
-                        RichTerm::new(Term::Record(static_part.clone()), pos),
+                    let extended = dyn_fields.into_iter().fold(
+                        RichTerm::new(Term::Record(static_part), pos),
                         |acc, (name_as_term, mut field)| {
                             let pos = field
                                 .value
@@ -654,20 +642,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                             let extend = mk_term::op2(
                                 BinaryOp::DynExtend {
-                                    metadata: metadata.clone(),
-                                    pending_contracts: pending_contracts.clone(),
+                                    metadata,
+                                    pending_contracts: pending_contracts,
                                     ext_kind,
                                     op_kind: RecordOpKind::ConsiderAllFields,
                                 },
-                                name_as_term.clone(),
+                                name_as_term,
                                 acc,
                             );
 
                             match value {
-                                Some(value) => RichTerm::new(
-                                    Term::App(extend, value.clone()),
-                                    pos.into_inherited(),
-                                ),
+                                Some(value) => {
+                                    RichTerm::new(Term::App(extend, value), pos.into_inherited())
+                                }
                                 None => extend,
                             }
                         },
@@ -679,7 +666,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ResolvedImport(id) => {
-                    if let Some(t) = self.import_resolver.get(*id) {
+                    if let Some(t) = self.import_resolver.get(id) {
                         Closure::atomic_closure(t)
                     } else {
                         return Err(EvalError::InternalError(
@@ -692,25 +679,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     return Err(EvalError::InternalError(
                         format!("Unresolved import ({})", path.to_string_lossy()),
                         pos,
-                    ))
+                    ));
                 }
                 // Closurize the array if it's not already done.
                 // This *should* make it unnecessary to call closurize in [operation].
                 // See the comment on the `BinaryOp::ArrayConcat` match arm.
                 Term::Array(terms, attrs) if !attrs.closurized => {
                     let closurized_array = terms
-                        .clone()
                         .into_iter()
                         .map(|t| t.closurize(&mut self.cache, env.clone()))
                         .collect();
 
                     let closurized_ctrs = attrs
                         .pending_contracts
-                        .iter()
+                        .into_iter()
                         .map(|ctr| {
                             RuntimeContract::new(
-                                ctr.contract.clone().closurize(&mut self.cache, env.clone()),
-                                ctr.label.clone(),
+                                ctr.contract.closurize(&mut self.cache, env.clone()),
+                                ctr.label,
                             )
                         })
                         .collect();
@@ -730,10 +716,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::ParseError(parse_error) => {
-                    return Err(EvalError::ParseError(parse_error.clone()));
+                    return Err(EvalError::ParseError(parse_error));
                 }
                 Term::RuntimeError(error) => {
-                    return Err(error.clone());
+                    return Err(error);
                 }
                 // For now, we simply erase annotations at runtime. They aren't accessible anyway
                 // (as opposed to field metadata) and don't change the operational semantics, as
@@ -748,7 +734,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     let static_contract = annot.static_contract();
                     let contracts = annot.pending_contracts()?;
                     let pos = inner.pos;
-                    let inner = inner.clone();
 
                     let inner_with_static = if let Some(static_ctr) = static_contract {
                         static_ctr?.apply(inner, pos)
@@ -770,12 +755,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     env,
                 },
                 // Continuation of operations and element update
-                _ if self.stack.is_top_idx() || self.stack.is_top_cont() => {
+                term if self.stack.is_top_idx() || self.stack.is_top_cont() => {
                     clos = Closure {
-                        body: RichTerm {
-                            term: shared_term,
-                            pos,
-                        },
+                        body: RichTerm::new(term, pos),
                         env,
                     };
                     if self.stack.is_top_idx() {
@@ -790,12 +772,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
                         env.insert(x.ident(), idx);
-                        Closure {
-                            body: t.clone(),
-                            env,
-                        }
+                        Closure { body: t, env }
                     } else {
-                        return Ok((RichTerm::new(Term::Fun(*x, t.clone()), pos), env));
+                        return Ok(Closure {
+                            body: RichTerm::new(Term::Fun(x, t.clone()), pos),
+                            env,
+                        });
                     }
                 }
                 // A match expression acts as a function (in Nickel, a match expression corresponds
@@ -813,10 +795,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         let has_default = default.is_some();
 
-                        if let Some(t) = default {
+                        if let Some(default) = default {
                             self.stack.push_arg(
                                 Closure {
-                                    body: t.clone(),
+                                    body: default,
                                     env: env.clone(),
                                 },
                                 pos,
@@ -826,7 +808,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         self.stack.push_arg(
                             Closure {
                                 body: RichTerm::new(
-                                    Term::Record(RecordData::with_field_values(cases.clone())),
+                                    Term::Record(RecordData::with_field_values(cases)),
                                     pos,
                                 ),
                                 env: env.clone(),
@@ -844,34 +826,52 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                         arg
                     } else {
-                        return Ok((
-                            RichTerm::new(
+                        return Ok(Closure {
+                            body: RichTerm::new(
                                 Term::Match {
-                                    cases: cases.clone(),
-                                    default: default.clone(),
+                                    cases: cases,
+                                    default: default,
                                 },
                                 pos,
                             ),
                             env,
-                        ));
+                        });
                     }
                 }
-                // Otherwise, this is either an ill-formed application, or we are done
-                t => {
-                    if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
-                        return Err(EvalError::NotAFunc(
-                            RichTerm {
-                                term: shared_term.clone(),
-                                pos,
-                            },
-                            arg.body,
-                            pos_app,
-                        ));
-                    } else {
-                        return Ok((RichTerm::new(t.clone(), pos), env));
+                // At this point, we've evaluated the current term to a weak head normal form.
+                _ => {
+                    let evaluated = Closure {
+                        body: RichTerm {
+                            term: shared_term,
+                            pos,
+                        },
+                        env,
+                    };
+
+                    // If there is a cache index update frame on the stack, we proceed with the
+                    // update of the corresponding cached value.
+                    if self.stack.is_top_idx() {
+                        update_at_indices(&mut self.cache, &mut self.stack, &evaluated);
+                        evaluated
+                    }
+                    // If there is a primitive operator continuation on the stack, we proceed with
+                    // the continuation.
+                    else if self.stack.is_top_cont() {
+                        self.continuate_operation(evaluated)?
+                    }
+                    // Otherwise, if the stack is non-empty, this is an ill-formed application (we
+                    // are supposed to evaluate an application, but the left hand side isn't a
+                    // function)
+                    else if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
+                        return Err(EvalError::NotAFunc(evaluated.body, arg.body, pos_app));
+                    }
+                    // Finally, if the stack is empty, it's all good: it just means we are done
+                    // evaluating.
+                    else {
+                        return Ok(evaluated);
                     }
                 }
-            }
+            })
         }
     }
 }
