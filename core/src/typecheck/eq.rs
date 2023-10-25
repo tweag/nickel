@@ -168,26 +168,6 @@ impl<C: Cache> FromEnv<C> for SimpleTermEnvironment {
     }
 }
 
-/// Dummy environment used when we only want to compare variables by name.
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct NoEnvironment;
-
-impl TermEnvironment for NoEnvironment {
-    fn get_then<F, T>(_env: &Self, _id: Ident, f: F) -> T
-    where
-        F: FnOnce(Option<(&RichTerm, &NoEnvironment)>) -> T,
-    {
-        f(None)
-    }
-
-    fn get_idx_then<F, T>(_env: &Self, _idx: &CacheIndex, f: F) -> T
-    where
-        F: FnOnce(Option<(&RichTerm, &NoEnvironment)>) -> T,
-    {
-        f(None)
-    }
-}
-
 /// State threaded through the type equality computation.
 #[derive(Copy, Clone, Default)]
 struct State {
@@ -252,15 +232,17 @@ pub fn contract_eq<E: TermEnvironment>(
 /// pretty-printing, where there is no notion of environment and the only thing that matters is
 /// that they are printed the same or not.
 ///
-/// Compute equality between two contracts, considering that two variables with the same name are
-/// equal.
+/// Compute equality between two contracts in an empty environment. This means that two variables
+/// with the same name are considered equal.
 pub fn type_eq_noenv(var_uid: usize, t1: &Type, t2: &Type) -> bool {
-    type_eq_bounded::<NoEnvironment>(
+    let empty = eval::Environment::new();
+
+    type_eq_bounded(
         &mut State::new(var_uid),
-        &GenericUnifType::<NoEnvironment>::from_type(t1.clone(), &NoEnvironment),
-        &NoEnvironment,
-        &GenericUnifType::<NoEnvironment>::from_type(t2.clone(), &NoEnvironment),
-        &NoEnvironment,
+        &GenericUnifType::from_type(t1.clone(), &empty),
+        &empty,
+        &GenericUnifType::from_type(t2.clone(), &empty),
+        &empty,
     )
 }
 
