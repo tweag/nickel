@@ -544,11 +544,10 @@ impl<EC: EvalCache> Program<EC> {
         } else {
             rt
         };
-        let doc: DocBuilder<_, ()> = rt.clone().pretty(&allocator);
+        let doc: DocBuilder<_, ()> = rt.pretty(&allocator);
         doc.render(80, out).map_err(IOError::from)?;
         writeln!(out).map_err(IOError::from)?;
 
-        println!("\n\n{rt:#?}");
         Ok(())
     }
 }
