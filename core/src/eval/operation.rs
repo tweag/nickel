@@ -1892,7 +1892,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
-                &self.initial_env,
                 RichTerm {
                     term: t1,
                     pos: pos1,
@@ -2087,7 +2086,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // Preserve the environment of the contract in the resulting array.
                         let contract = rt3.closurize(&mut self.cache, env3);
                         RuntimeContract::push_dedup(
-                            &self.initial_env,
                             &mut attrs.pending_contracts,
                             &final_env,
                             RuntimeContract::new(contract, lbl),
@@ -2145,7 +2143,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             };
 
                             RuntimeContract::push_dedup(
-                                &self.initial_env,
                                 &mut field.pending_contracts,
                                 &env2,
                                 runtime_ctr,
@@ -2479,7 +2476,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Lbl(lbl) => {
                         merge::merge(
                             &mut self.cache,
-                            &self.initial_env,
                             RichTerm {
                                 term: t2,
                                 pos: pos2,

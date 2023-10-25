@@ -249,9 +249,11 @@ impl ThunkData {
     pub fn closure_(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
-            InnerThunkData::Revertible { ref cached, ref orig, .. } => {
-                cached.as_ref().unwrap_or(orig)
-            }
+            InnerThunkData::Revertible {
+                ref cached,
+                ref orig,
+                ..
+            } => cached.as_ref().unwrap_or(orig),
         }
     }
 
@@ -439,7 +441,6 @@ impl Thunk {
     pub fn borrow_(&self) -> Ref<'_, Closure> {
         Ref::map(self.data.borrow(), ThunkData::closure_)
     }
-
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {

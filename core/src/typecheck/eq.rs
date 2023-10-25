@@ -133,8 +133,6 @@ impl TermEnvironment for eval::Environment {
     where
         F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
     {
-        debug_assert!(env.get(&id).is_some(), "unbound variable `{}`", id);
-
         match env.get(&id).map(eval::cache::lazy::Thunk::borrow) {
             Some(closure_ref) => f(Some((&closure_ref.body, &closure_ref.env))),
             None => f(None),
@@ -666,7 +664,7 @@ fn type_eq_bounded<E: TermEnvironment>(
         }
         (GenericUnifType::Constant(i1), GenericUnifType::Constant(i2)) => i1 == i2,
         (GenericUnifType::Contract(t1, env2), GenericUnifType::Contract(t2, env1)) => {
-            contract_eq_bounded::<E>(state, t1, &env1, t2, &env2)
+            contract_eq_bounded::<E>(state, t1, env1, t2, env2)
         }
         _ => false,
     }

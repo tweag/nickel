@@ -419,7 +419,6 @@ impl RuntimeContract {
     /// present in the vector, according to the notion of contract equality defined in
     /// [crate::typecheck::eq].
     pub fn push_dedup(
-        initial_env: &Environment,
         contracts: &mut Vec<RuntimeContract>,
         env1: &Environment,
         ctr: Self,
