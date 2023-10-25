@@ -143,7 +143,7 @@ impl TermEnvironment for eval::Environment {
     where
         F: FnOnce(Option<(&RichTerm, &eval::Environment)>) -> T,
     {
-        let closure_ref = idx.borrow_();
+        let closure_ref = idx.borrow_orig();
 
         f(Some((&closure_ref.body, &closure_ref.env)))
     }

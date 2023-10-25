@@ -56,20 +56,20 @@ pub struct ThunkData {
 /// = 1}`. The interpreter computes a fixpoint when evaluating a `RecRecord` away to a `Record`,
 /// equivalent to `let rec fixpoint = repr fixpoint in fixpoint`. We use a different vocabulary and
 /// representation, but this is what we essentially do. We're just hiding the details from the
-/// user and pretend recursive records are data that can be used as a normal record, because it's
-/// both simple and natural (for the user).
+/// user and pretend recursive records are data that can be used as a normal record because it's
+/// both simple and natural for the user.
 ///
-/// A naive representation of recursive records could be to always keep recursive records in their
-/// functional representation, and re-compute the fixpoint at each record operation, such as field
-/// access. While correct, this would be wasteful, because the result of the fixpoint computations
-/// is actually the same throughout most record operations (put differently, `self` doesn't
-/// change). But we can't just store the computed `fixpoint` in a normal thunk and forget
-/// about the original function, because upon merge, and more specifically upon recursive
-/// overriding, we do need to compute a new fixpoint.
+/// A naive representation of recursive records could be to store them as actual functions, and
+/// re-compute the fixpoint at each record operation, such as a field access. While correct, this
+/// would be wasteful, because the result of each fixpoint computation is actually the same
+/// throughout most record operations (put differently, `self` doesn't change often). But we can't
+/// just compute the fixpoint once, store it in a normal thunk and forget about the original
+/// function, because upon merge, and more specifically upon recursive overriding, we do need to
+/// compute a new fixpoint from the original function.
 ///
-/// Revertible thunks are a **memoization device** for the `fun self => ...` functional
-/// representation of a recursive record. First, note that there are several different but
-/// equivalent ways of encoding the example above as a function:
+/// Revertible thunks are a **memoization device** for the functional representation `fun self =>
+/// ...` of a recursive record. First, note that there are several different but equivalent ways of
+/// encoding the example above as a function:
 ///
 /// ```nickel
 /// fun self => { foo = self.bar + self.baz + 1, bar = 2, baz = 1 }
@@ -98,8 +98,8 @@ pub struct ThunkData {
 /// 1`), and the cached version is the application to `self` computed when we evaluated the
 /// recursive record to a normal record. The function arguments (that is, the intersection of the
 /// free variables of the expression with the set of fields) are stored inside `deps`. `deps`
-/// represent the other fields a specific field is depending on, and are guaranteed to appear free
-/// inside `orig`.
+/// represent the other fields a specific field is depending on, and those names guaranteed to
+/// appear free inside `orig`.
 ///
 /// In fact, unless there is an unbound identifier, `deps` should be exactly the set of free
 /// variables of `orig`.
@@ -150,10 +150,10 @@ impl ThunkData {
     /// called repeatedly.
     ///
     /// This function is similar in spirit to setting the cached value to be the explicit function
-    /// application given as built by `saturate`, but applied to arguments taken
-    /// from `rec_env`. The major difference is that `init_cached` avoids the creation of the
-    /// intermediate redex `(fun id1 .. id n => orig) %1 .. %n` as well as the intermediate thunks
-    /// and terms, because we can compute the result application right away, in-place.
+    /// application given as built by `saturate`, but applied to arguments taken from `rec_env`.
+    /// The major difference is that `init_cached` avoids the creation of the intermediate redex
+    /// `(fun id1 .. id n => orig) <closure@1> .. <closure@n>` as well as the intermediate thunks
+    /// and terms, because we can compute the application right away, in-place.
     pub fn init_cached(&mut self, rec_env: &[(Ident, Thunk)]) {
         match self.inner {
             InnerThunkData::Standard(_) => (),
@@ -192,8 +192,7 @@ impl ThunkData {
     /// Revert a thunk and abstract over the provided arguments to get back a function. The result
     /// is returned in a new, non-revertible, thunk.
     ///
-    /// Used by [Thunk::saturate]. See the corresponding documentation for more
-    /// details.
+    /// Used by [Thunk::saturate]. See the corresponding documentation for more details.
     ///
     /// # Example
     ///
@@ -246,7 +245,10 @@ impl ThunkData {
 
     /// Return a reference to the closure currently cached. Return the original expression if this
     /// thunk is a revertible thunk that hasn't been built yet.
-    pub fn closure_(&self) -> &Closure {
+    ///
+    /// This function is only used for contract equality checking on revertible thunks. In every
+    /// other cases, you should use [Self::closure] instead.
+    pub(crate) fn closure_or_orig(&self) -> &Closure {
         match self.inner {
             InnerThunkData::Standard(ref closure) => closure,
             InnerThunkData::Revertible {
@@ -426,25 +428,32 @@ impl Thunk {
         Ref::map(self.data.borrow(), ThunkData::closure)
     }
 
-    /// Immutably borrow the original expression stored in a thunk, even if it's a revertible
-    /// thunks that hasn't been built yet. Panic if there is another active mutable borrow.
-    ///
-    /// In general, no part of the interpreter should observe the intermediate state where a
-    /// revertible thunk is created but not built yet. There is however one exception: contrat
-    /// dedpulication, which happens as part of merging, need to work on the original expression -
-    /// and it doesn't have access to the recursive environment yet.
-    ///
-    /// This method is a leaking abstraction and isn't very satisfying - in the future, we hope to
-    /// have a proper setting for incremental computations and memoization, in which case
-    /// revertible thunks wouldn't be needed anymore and could be replaced by a traditional
-    /// function representation.
-    pub fn borrow_(&self) -> Ref<'_, Closure> {
-        Ref::map(self.data.borrow(), ThunkData::closure_)
-    }
-
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
         RefMut::map(self.data.borrow_mut(), |data| data.closure_mut())
+    }
+
+    /// Immutably borrow the original expression stored in a thunk, even if it's a revertible
+    /// thunks that hasn't been built yet (in which case the original expression is borrowed).
+    /// **Beware**: the resulting closure might thus have unbound variables (recursive references of a
+    /// freshly reverted thunks).
+    ///
+    /// Panic if there is another active mutable borrow.
+    ///
+    /// In general, no part of the interpreter should observe the intermediate state where a
+    /// revertible thunk has been created but hasn't been built yet. Please use [Self::borrow]
+    /// instead.
+    ///
+    /// There is, however, one exception: contract equality checks (needed for contract
+    /// deduplication), which happen as part of merging and need to work on freshly reverted thunks
+    /// which don't have their new recursive environment yet.
+    ///
+    /// This method is a leaking abstraction, which isn't very satisfying - in the future, we hope
+    /// to have a proper incremental evaluation cache which performs (incremental) memoization, in
+    /// which case revertible thunks wouldn't be needed anymore and could be replaced by a plain
+    /// function.
+    pub(crate) fn borrow_orig(&self) -> Ref<'_, Closure> {
+        Ref::map(self.data.borrow(), ThunkData::closure_or_orig)
     }
 
     /// Get an owned clone of the inner closure.
