@@ -469,12 +469,12 @@ impl<EC: EvalCache> Program<EC> {
             // other evaluation errors should however be reported to the user
             // instead of resulting in documentation being silently skipped.
 
-            let (rt, env) = match result {
+            let result = match result {
                 Err(EvalError::MissingFieldDef { .. }) => return Ok(t),
                 _ => result,
             }?;
 
-            match_sharedterm!(match (rt.term) {
+            match_sharedterm!(match (result.body.term) {
                 Term::Record(data) => {
                     let fields = data
                         .fields
@@ -485,12 +485,12 @@ impl<EC: EvalCache> Program<EC> {
                                 Field {
                                     value: field
                                         .value
-                                        .map(|rt| do_eval(vm, rt, env.clone()))
+                                        .map(|rt| do_eval(vm, rt, result.env.clone()))
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
                                         vm,
                                         field.pending_contracts,
-                                        env.clone(),
+                                        result.env.clone(),
                                     )?,
                                     ..field
                                 },
@@ -499,10 +499,10 @@ impl<EC: EvalCache> Program<EC> {
                         .collect::<Result<_, Error>>()?;
                     Ok(RichTerm::new(
                         Term::Record(RecordData { fields, ..data }),
-                        rt.pos,
+                        result.body.pos,
                     ))
                 }
-                _ => Ok(rt),
+                _ => Ok(result.body),
             })
         }
 

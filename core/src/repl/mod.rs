@@ -197,7 +197,7 @@ impl<EC: EvalCache> ReplImpl<EC> {
                         env: self.env.eval_env.clone(),
                     },
                 )?
-                .0
+                .body
                 .into())
             }
             ExtendedTerm::ToplevelLet(id, t) => {
@@ -232,7 +232,10 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         let term = self.prepare(None, term)?;
 
-        let (term, new_env) = self.vm.eval_closure(Closure {
+        let Closure {
+            body: term,
+            env: new_env,
+        } = self.vm.eval_closure(Closure {
             body: term,
             env: self.env.eval_env.clone(),
         })?;
