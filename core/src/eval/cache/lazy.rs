@@ -244,6 +244,17 @@ impl ThunkData {
         }
     }
 
+    /// Return a reference to the closure currently cached. Return the original expression if this
+    /// thunk is a revertible thunk that hasn't been built yet.
+    pub fn closure_(&self) -> &Closure {
+        match self.inner {
+            InnerThunkData::Standard(ref closure) => closure,
+            InnerThunkData::Revertible { ref cached, ref orig, .. } => {
+                cached.as_ref().unwrap_or(orig)
+            }
+        }
+    }
+
     /// Return a mutable reference to the closure currently cached.
     pub fn closure_mut(&mut self) -> &mut Closure {
         match self.inner {
@@ -410,8 +421,25 @@ impl Thunk {
 
     /// Immutably borrow the inner closure. Panic if there is another active mutable borrow.
     pub fn borrow(&self) -> Ref<'_, Closure> {
-        Ref::map(self.data.borrow(), |data| data.closure())
+        Ref::map(self.data.borrow(), ThunkData::closure)
     }
+
+    /// Immutably borrow the original expression stored in a thunk, even if it's a revertible
+    /// thunks that hasn't been built yet. Panic if there is another active mutable borrow.
+    ///
+    /// In general, no part of the interpreter should observe the intermediate state where a
+    /// revertible thunk is created but not built yet. There is however one exception: contrat
+    /// dedpulication, which happens as part of merging, need to work on the original expression -
+    /// and it doesn't have access to the recursive environment yet.
+    ///
+    /// This method is a leaking abstraction and isn't very satisfying - in the future, we hope to
+    /// have a proper setting for incremental computations and memoization, in which case
+    /// revertible thunks wouldn't be needed anymore and could be replaced by a traditional
+    /// function representation.
+    pub fn borrow_(&self) -> Ref<'_, Closure> {
+        Ref::map(self.data.borrow(), ThunkData::closure_)
+    }
+
 
     /// Mutably borrow the inner closure. Panic if there is any other active borrow.
     pub fn borrow_mut(&mut self) -> RefMut<'_, Closure> {
