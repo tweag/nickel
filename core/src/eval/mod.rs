@@ -399,6 +399,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 mut env,
             } = clos;
 
+            let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
+
             clos = match_sharedterm!(match (shared_term) {
                 Term::Sealed(key, inner, lbl) => {
                     let stack_item = self.stack.peek_op_cont();
@@ -754,21 +756,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     body: ty.contract()?,
                     env,
                 },
-                // Continuation of operations and element update
-                term if self.stack.is_top_idx() || self.stack.is_top_cont() => {
-                    clos = Closure {
-                        body: RichTerm::new(term, pos),
-                        env,
-                    };
-                    if self.stack.is_top_idx() {
-                        update_at_indices(&mut self.cache, &mut self.stack, &clos);
-                        clos
-                    } else {
-                        self.continuate_operation(clos)?
-                    }
-                }
-                // Function call
-                Term::Fun(x, t) => {
+                // Function call if there's no continuation on the stack (otherwise, the function
+                // is just an argument to a primop or to put in the eval cache)
+                Term::Fun(x, t) if !has_cont_on_stack => {
                     if let Some((idx, pos_app)) = self.stack.pop_arg_as_idx(&mut self.cache) {
                         self.call_stack.enter_fun(pos_app);
                         env.insert(x.ident(), idx);
@@ -788,7 +778,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 // found (let's call it `arg`), we evaluate `%match% arg cases default`, where
                 // `%match%` is the primitive operation `UnaryOp::Match` taking care of forcing the
                 // argument `arg` and doing the actual matching operation.
-                Term::Match { cases, default } => {
+                Term::Match { cases, default } if !has_cont_on_stack => {
                     if let Some((arg, pos_app)) = self.stack.pop_arg(&self.cache) {
                         // Setting the stack to be as if we would have evaluated an application
                         // `_ cases default`, where `default` is optional, and `_` is not relevant.
