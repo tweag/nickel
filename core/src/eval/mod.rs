@@ -553,7 +553,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Some(chunk) => {
                             let (arg, indent) = match chunk {
                                 StrChunk::Literal(s) => (Term::Str(s.into()).into(), 0),
-                                StrChunk::Expr(e, indent) => (e.clone(), indent),
+                                StrChunk::Expr(e, indent) => (e, indent),
                             };
 
                             self.stack.push_str_chunks(chunks_iter);
@@ -761,7 +761,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         Closure { body: t, env }
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(Term::Fun(x, t.clone()), pos),
+                            body: RichTerm::new(Term::Fun(x, t), pos),
                             env,
                         });
                     }
