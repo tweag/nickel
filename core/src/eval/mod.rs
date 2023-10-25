@@ -402,10 +402,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             let has_cont_on_stack = self.stack.is_top_idx() || self.stack.is_top_cont();
 
             clos = match_sharedterm!(match (shared_term) {
-                Term::Sealed(key, inner, lbl) => {
+                Term::Sealed(key, inner, label) => {
                     let stack_item = self.stack.peek_op_cont();
                     let closure = Closure {
-                        body: RichTerm::new(Term::Sealed(key, inner.clone(), lbl.clone()), pos),
+                        body: RichTerm::new(Term::Sealed(key, inner.clone(), label.clone()), pos),
                         env: env.clone(),
                     };
 
@@ -438,16 +438,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                         Some(OperationCont::Op1(UnaryOp::Seq(), _)) => {
                             // Then, evaluate / `Seq` the inner value.
-                            Closure {
-                                body: inner.clone(),
-                                env: env.clone(),
-                            }
+                            Closure { body: inner, env }
                         }
                         None | Some(..) => {
                             // This operation should not be allowed to evaluate a sealed term
                             return Err(EvalError::BlameError {
-                                evaluated_arg: lbl.get_evaluated_arg(&self.cache),
-                                label: lbl.clone(),
+                                evaluated_arg: label.get_evaluated_arg(&self.cache),
+                                label,
                                 call_stack: self.call_stack.clone(),
                             });
                         }
