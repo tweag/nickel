@@ -817,13 +817,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         arg
                     } else {
                         return Ok(Closure {
-                            body: RichTerm::new(
-                                Term::Match {
-                                    cases,
-                                    default,
-                                },
-                                pos,
-                            ),
+                            body: RichTerm::new(Term::Match { cases, default }, pos),
                             env,
                         });
                     }
