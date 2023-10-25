@@ -482,9 +482,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
                     // Patch the environment with the (x <- closure) binding
                     if rec {
-                        let idx_ = idx.clone();
                         self.cache
-                            .patch(idx_.clone(), |cl| cl.env.insert(x.ident(), idx_.clone()));
+                            .patch(idx.clone(), |cl| cl.env.insert(x.ident(), idx.clone()));
                     }
 
                     env.insert(x.ident(), idx);
