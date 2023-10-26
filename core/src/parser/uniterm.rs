@@ -586,15 +586,15 @@ impl VarKindCell {
 
 pub(super) trait FixTypeVars {
     /// Post-process a type at the right hand side of an annotation by replacing each unbound type
-    /// variable by a term variable with the same identifier seen as a custom contract
-    /// (`TypeF::Var(id)` to `TypeF::Flat(Term::Var(id))`).
+    /// variable `TypeF::Var(id)` by a term variable with the same identifier seen as a custom
+    /// contract `TypeF::Flat(Term::Var(id))`.
     ///
     /// Additionally, this passes determine the kind of a variable introduced by a forall binder.
     ///
     /// # Type variable fixing
     ///
     /// Since parsing is done bottom-up, and given the specification of the uniterm syntax for
-    /// variables occurring in types, we often can't know right away if a such a variable occurrence
+    /// variables occurring in types, we often can't know right away if such a variable occurrence
     /// will eventually be a type variable or a term variable seen as a custom contract.
     ///
     /// Take for example `a -> b`. At this stage, `a` and `b` could be both variables referring to a
@@ -767,6 +767,7 @@ impl FixTypeVars for RecordRows {
                 }
             }
         }
+
         helper(self, bound_vars, span, HashSet::new())
     }
 }
@@ -804,6 +805,8 @@ impl FixTypeVars for EnumRows {
 /// Fix the type variables of types appearing as annotations of record fields. See the in-code
 /// documentation of the private symbol `Types::fix_type_vars`.
 pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<(), ParseError> {
+    use std::rc::Rc;
+
     if let Some(LabeledType {
         typ: ref mut types, ..
     }) = metadata.annotation.typ
@@ -813,6 +816,11 @@ pub fn fix_field_types(metadata: &mut FieldMetadata, span: RawSpan) -> Result<()
 
     for ctr in metadata.annotation.contracts.iter_mut() {
         ctr.typ.fix_type_vars(span)?;
+
+        // Although type variables and term variables are currently printed the same, fixing the
+        // type stored in the label is still better, including to have proper deduplication of
+        // contracts when pretty printing the result of evaluation back.
+        ctr.label.typ = Rc::new(ctr.typ.clone());
     }
 
     Ok(())

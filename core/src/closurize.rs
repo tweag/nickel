@@ -295,6 +295,8 @@ pub fn should_share(t: &Term) -> bool {
     }
 }
 
+/// Closurize all the inner terms of a recursive record, including pending contracts and
+/// dynamically defined fields.
 pub fn closurize_rec_record<C: Cache>(
     cache: &mut C,
     data: RecordData,

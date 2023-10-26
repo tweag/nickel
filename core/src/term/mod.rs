@@ -27,7 +27,7 @@ use crate::{
     match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
-    typecheck::eq::{contract_eq, type_eq_noenv, EvalEnvsRef},
+    typecheck::eq::{contract_eq, type_eq_noenv},
 };
 
 use codespan::FileId;
@@ -419,24 +419,13 @@ impl RuntimeContract {
     /// present in the vector, according to the notion of contract equality defined in
     /// [crate::typecheck::eq].
     pub fn push_dedup(
-        initial_env: &Environment,
         contracts: &mut Vec<RuntimeContract>,
         env1: &Environment,
         ctr: Self,
         env2: &Environment,
     ) {
-        let envs1 = EvalEnvsRef {
-            eval_env: env1,
-            initial_env,
-        };
-
         for c in contracts.iter() {
-            let envs = EvalEnvsRef {
-                eval_env: env2,
-                initial_env,
-            };
-
-            if contract_eq::<EvalEnvsRef>(0, &c.contract, envs1, &ctr.contract, envs) {
+            if contract_eq(0, &c.contract, env1, &ctr.contract, env2) {
                 return;
             }
         }

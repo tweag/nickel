@@ -33,7 +33,7 @@ use crate::{
         string::NickelString,
         *,
     },
-    typecheck::eq::{contract_eq, EvalEnvsRef},
+    typecheck::eq::contract_eq,
 };
 
 use malachite::{
@@ -1788,27 +1788,17 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     return true;
                                 }
 
-                                let envs_left = EvalEnvsRef {
-                                    eval_env: &env1,
-                                    initial_env: &self.initial_env,
-                                };
-
                                 // We check if there is a remaining contract in
                                 // `ctrs_right_sieve` which matches `ctr`: in this case,
                                 // `twin_index` will hold its index.
                                 let twin_index = ctrs_right_sieve.iter().position(|other_ctr| {
                                     other_ctr.as_ref().map_or(false, |other_ctr| {
-                                        let envs_right = EvalEnvsRef {
-                                            eval_env: &env2,
-                                            initial_env: &self.initial_env,
-                                        };
-
-                                        contract_eq::<EvalEnvsRef>(
+                                        contract_eq(
                                             0,
                                             &ctr.contract,
-                                            envs_left,
+                                            &env1,
                                             &other_ctr.contract,
-                                            envs_right,
+                                            &env2,
                                         )
                                     })
                                 });
@@ -1902,7 +1892,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             },
             BinaryOp::Merge(merge_label) => merge::merge(
                 &mut self.cache,
-                &self.initial_env,
                 RichTerm {
                     term: t1,
                     pos: pos1,
@@ -2097,7 +2086,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         // Preserve the environment of the contract in the resulting array.
                         let contract = rt3.closurize(&mut self.cache, env3);
                         RuntimeContract::push_dedup(
-                            &self.initial_env,
                             &mut attrs.pending_contracts,
                             &final_env,
                             RuntimeContract::new(contract, lbl),
@@ -2155,7 +2143,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             };
 
                             RuntimeContract::push_dedup(
-                                &self.initial_env,
                                 &mut field.pending_contracts,
                                 &env2,
                                 runtime_ctr,
@@ -2489,7 +2476,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     Term::Lbl(lbl) => {
                         merge::merge(
                             &mut self.cache,
-                            &self.initial_env,
                             RichTerm {
                                 term: t2,
                                 pos: pos2,
