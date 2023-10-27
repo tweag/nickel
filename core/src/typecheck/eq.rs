@@ -74,6 +74,15 @@ pub trait TermEnvironment: Clone {
     where
         F: FnOnce(Option<(&RichTerm, &Self)>) -> T;
 
+    /// Cheap check that two environment are physically equal. By default, the implementation
+    /// always return `false`, which shouldn't change the result of contract equality: this check
+    /// is just used to avoid doing extra work in some cases, but it doesn't impact the result, as
+    /// long as `ptr_eq` is sound.
+    fn ptr_eq(_this: &Self, _that: &Self) -> bool {
+        // this.as_ptr() == that.as_ptr()
+        false
+    }
+
     /// When comparing closure, we don't get an identifier, but a cache index (a thunk).
     fn get_idx_then<F, T>(env: &Self, idx: &CacheIndex, f: F) -> T
     where
@@ -146,6 +155,10 @@ impl TermEnvironment for eval::Environment {
         let closure_ref = idx.borrow_orig();
 
         f(Some((&closure_ref.body, &closure_ref.env)))
+    }
+
+    fn ptr_eq(this: &Self, that: &Self) -> bool {
+        Self::ptr_eq(this, that)
     }
 }
 
@@ -260,7 +273,7 @@ fn contract_eq_bounded<E: TermEnvironment>(
     // Test for physical equality as both an optimization and a way to cheaply equate complex
     // contracts that happen to point to the same definition (while the purposely limited
     // structural checks below may reject the equality)
-    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) {
+    if term::SharedTerm::ptr_eq(&t1.term, &t2.term) && E::ptr_eq(env1, env2) {
         return true;
     }
 

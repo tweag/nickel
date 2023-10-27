@@ -72,11 +72,6 @@ struct OverrideInterface {
 }
 
 impl TermInterface {
-    /// Create a new, empty interface.
-    fn new() -> Self {
-        Self::default()
-    }
-
     /// Build a command description from this interface.
     ///
     /// This method recursively lists all existing field paths, and reports input fields (as
@@ -219,7 +214,7 @@ impl From<&RecordData> for TermInterface {
 
 impl From<&Term> for TermInterface {
     fn from(term: &Term) -> Self {
-        term.extract_interface().unwrap_or_else(TermInterface::new)
+        term.extract_interface().unwrap_or_default()
     }
 }
 
@@ -566,16 +561,16 @@ impl Customize for CustomizeMode {
         program.add_overrides(
             arg_matches
                 .ids()
-                .filter_map(|id| -> Option<FieldOverride> {
-                    (!matches!(
+                .filter(|id| {
+                    !matches!(
                         arg_matches.value_source(id.as_str()),
                         Some(ValueSource::DefaultValue)
-                    ) && id.as_str() != "override")
-                        .then(|| FieldOverride {
-                            path: cmd.args.get(id).unwrap().clone(),
-                            value: arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
-                            priority: MergePriority::default(),
-                        })
+                    ) && id.as_str() != "override"
+                })
+                .map(|id| FieldOverride {
+                    path: cmd.args.get(id).unwrap().clone(),
+                    value: arg_matches.get_one::<String>(id.as_str()).unwrap().clone(),
+                    priority: MergePriority::default(),
                 })
                 .chain(force_overrides),
         );
