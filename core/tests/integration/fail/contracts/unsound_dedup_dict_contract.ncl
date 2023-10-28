@@ -1,4 +1,5 @@
 # test.type = 'error'
+# eval = 'full'
 #
 # [test.metadata]
 # error = 'EvalError::BlameError'
