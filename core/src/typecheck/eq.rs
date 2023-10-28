@@ -124,6 +124,10 @@ impl TermEnvironment for SimpleTermEnvironment {
         );
         f(None)
     }
+
+    fn ptr_eq(this: &Self, that: &Self) -> bool {
+        GenericEnvironment::ptr_eq(&this.0, &that.0)
+    }
 }
 
 impl std::iter::FromIterator<(Ident, (RichTerm, SimpleTermEnvironment))> for SimpleTermEnvironment {
