@@ -155,12 +155,8 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     /// Checks quickly if two environments are obviously equal (when their components are
     /// physically equal as pointers or obviously equal such as being both empty).
     pub(crate) fn ptr_eq(this: &Self, that: &Self) -> bool {
-        // Check if the pointer to the previous layers are physically equal or both `None`
         let prev_layers_eq = match (&*this.previous.borrow(), &*that.previous.borrow()) {
-            (Some(ptr_this), Some(ptr_that)) => {
-                // Check that the current layers are equal, either both equal as pointers or both empty
-                Rc::ptr_eq(ptr_this, ptr_that)
-            }
+            (Some(ptr_this), Some(ptr_that)) => Rc::ptr_eq(ptr_this, ptr_that),
             (None, None) => true,
             _ => false,
         };
@@ -169,7 +165,6 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
             || Rc::ptr_eq(&this.current, &that.current);
 
         prev_layers_eq && curr_layers_eq
-        // Check that the current layers are equal, either both equal as pointers or both empty
     }
 }
 
