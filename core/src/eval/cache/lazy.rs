@@ -549,8 +549,9 @@ impl Thunk {
         };
 
         let as_function_closurized = RichTerm::from(Term::Closure(thunk_as_function));
-        let args =
-            fields.filter_map(|id| deps_filter(&id).then(|| RichTerm::from(Term::Var(id.into()))));
+        let args = fields
+            .filter(deps_filter)
+            .map(|id| RichTerm::from(Term::Var(id.into())));
 
         args.fold(as_function_closurized, |partial_app, arg| {
             RichTerm::from(Term::App(partial_app, arg))

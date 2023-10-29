@@ -151,6 +151,21 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
     fn was_cloned(&self) -> bool {
         Rc::strong_count(&self.current) > 1
     }
+
+    /// Checks quickly if two environments are obviously equal (when their components are
+    /// physically equal as pointers or obviously equal such as being both empty).
+    pub(crate) fn ptr_eq(this: &Self, that: &Self) -> bool {
+        let prev_layers_eq = match (&*this.previous.borrow(), &*that.previous.borrow()) {
+            (Some(ptr_this), Some(ptr_that)) => Rc::ptr_eq(ptr_this, ptr_that),
+            (None, None) => true,
+            _ => false,
+        };
+
+        let curr_layers_eq = (this.current.is_empty() && that.current.is_empty())
+            || Rc::ptr_eq(&this.current, &that.current);
+
+        prev_layers_eq && curr_layers_eq
+    }
 }
 
 impl<K: Hash + Eq, V: PartialEq> FromIterator<(K, V)> for Environment<K, V> {
