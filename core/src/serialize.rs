@@ -76,7 +76,9 @@ where
         }
     }
 
-    f64::rounding_from(n, RoundingMode::Nearest).serialize(serializer)
+    f64::rounding_from(n, RoundingMode::Nearest)
+        .0
+        .serialize(serializer)
 }
 
 /// Deserialize a Nickel number. As for parsing, we convert the number from a 64bits float
