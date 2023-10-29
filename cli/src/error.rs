@@ -6,7 +6,12 @@ use nickel_lang_core::{
 
 /// Errors related to mishandling the CLI.
 pub enum CliUsageError {
-    InvalidOverride { path: String },
+    /// Tried to override a field which doesn't exist.
+    UnknownFieldOverride { path: String },
+    /// Tried to assign a field which doesn't exist.
+    UnknownFieldAssignment { path: String },
+    /// Tried to override an defined field without the `--override` argument.
+    CantAssignNonInput { path: String, assignment: String },
 }
 
 pub enum Error {
@@ -39,14 +44,31 @@ impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
         _files: &mut Files<String>,
         _stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
+        fn mk_unknown_diags<FileId>(path: String, method: &str) -> Vec<Diagnostic<FileId>> {
+            vec![Diagnostic::error()
+                .with_message(format!("invalid {method}: unknown field `{path}`"))
+                .with_notes(vec![format!(
+                    "`{path}` doesn't refer to record field accessible from the root of the \
+                        configuration."
+                )])]
+        }
+
         match self {
-            CliUsageError::InvalidOverride { path } => {
+            CliUsageError::UnknownFieldOverride { path } => mk_unknown_diags(path, "override"),
+            CliUsageError::UnknownFieldAssignment { path } => mk_unknown_diags(path, "assignment"),
+            CliUsageError::CantAssignNonInput { path, assignment } => {
                 vec![Diagnostic::error()
-                    .with_message(format!("invalid override: unknown field `{path}`"))
-                    .with_notes(vec![format!(
-                        "`{path}` doesn't refer to record field accessible from the root of the \
-                        configuration and thus can't be the target of `--override`."
-                    )])]
+                    .with_message(format!("invalid assignment: `{path}` isn't an input"))
+                    .with_notes(vec![
+                        format!(
+                            "`{path}` already has a value and thus can't be assigned \
+                            without `--override`."
+                        ),
+                        format!(
+                            "If you really want to override this field, please use \
+                            `--override {assignment}` instead."
+                        ),
+                    ])]
             }
         }
     }

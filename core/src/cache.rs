@@ -3,6 +3,7 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
+use crate::identifier::LocIdent;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
@@ -15,6 +16,7 @@ use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, Wildcards};
 use crate::{eval, parser, transform};
+
 use codespan::{FileId, Files};
 use io::Read;
 use serde::Deserialize;
@@ -267,7 +269,7 @@ pub enum SourcePath {
     ReplInput(usize),
     ReplTypecheck,
     ReplQuery,
-    Override(Vec<String>),
+    Override(Vec<LocIdent>),
     Generated(String),
 }
 
@@ -295,7 +297,14 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplInput(idx) => format!("<repl-input-{idx}>").into(),
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
-            SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
+            SourcePath::Override(path) => format!(
+                "<override {}>",
+                path.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            )
+            .into(),
             SourcePath::Generated(description) => format!("<generated {}>", description).into(),
         }
     }

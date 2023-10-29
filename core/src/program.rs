@@ -114,7 +114,7 @@ impl QueryPath {
 #[derive(Clone)]
 pub struct FieldOverride {
     /// The field path identifying the (potentially nested) field to override.
-    pub path: Vec<String>,
+    pub path: Vec<LocIdent>,
     /// The overriding value.
     pub value: String,
     /// The priority associated with this override.
