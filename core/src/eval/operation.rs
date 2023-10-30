@@ -1279,7 +1279,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
 
                 // This is the equivalent of `truncate()` for `Number`
-                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down));
+                let quotient = Number::from(Integer::rounding_from(n1 / n2, RoundingMode::Down).0);
 
                 Ok(Closure::atomic_closure(RichTerm::new(
                     Term::Num(n1 - quotient * n2),
@@ -1303,7 +1303,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             n1.pow(n2_as_i64)
                         } else {
                             let result_as_f64 = f64::rounding_from(n1, RoundingMode::Nearest)
-                                .powf(f64::rounding_from(n2, RoundingMode::Nearest));
+                                .0
+                                .powf(f64::rounding_from(n2, RoundingMode::Nearest).0);
                             // The following conversion fails if the result is NaN or +/-infinity
                             Number::try_from_float_simplest(result_as_f64).map_err(|_| {
                                 EvalError::Other(

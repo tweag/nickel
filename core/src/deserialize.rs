@@ -20,7 +20,7 @@ macro_rules! deserialize_number {
             V: Visitor<'de>,
         {
             match unwrap_term(self)? {
-                Term::Num(n) => visitor.$visit($type::rounding_from(&n, RoundingMode::Nearest)),
+                Term::Num(n) => visitor.$visit($type::rounding_from(&n, RoundingMode::Nearest).0),
                 other => Err(RustDeserializationError::InvalidType {
                     expected: "Number".to_string(),
                     occurred: RichTerm::from(other).to_string(),
@@ -53,7 +53,7 @@ impl<'de> serde::Deserializer<'de> for RichTerm {
         match unwrap_term(self)? {
             Term::Null => visitor.visit_unit(),
             Term::Bool(v) => visitor.visit_bool(v),
-            Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest)),
+            Term::Num(v) => visitor.visit_f64(f64::rounding_from(v, RoundingMode::Nearest).0),
             Term::Str(v) => visitor.visit_string(v.into_inner()),
             Term::Enum(v) => visitor.visit_enum(EnumDeserializer {
                 variant: v.into_label(),
