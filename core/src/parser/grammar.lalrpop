@@ -472,6 +472,31 @@ pub StaticFieldPath: Vec<LocIdent> = <start: @L> <field_path: FieldPath> <end: @
         .collect()
 };
 
+// This rule is used to parse value assignment on the command line as part of
+// the customize mode, such as `foo.bar.enabled=true` in
+//
+//```
+//$ nickel export config.ncl -- foo.bar.enabled=true`
+//```
+//
+// The returned span (of the right-hand side of the equal sign) is required for
+// the CLI to extract the substring corresponding to the right-hand side,
+// although it's redundant with the position stored inside the returned
+// `RichTerm`. But this position might theoretically be None - we know it can't
+// in practice, because the Term rule inserts position information, but the
+// `TermPos` type alone can't ensure this invariant.
+//
+// We could just return a `Term` instead of a `RichTerm`, as position
+// information is already stored in the span. But the <Term> rule produces a
+// RichTerm anyway, so we just return it, instead of artificially deconstructing
+// it.
+//
+// This construct is only for the CLI, and isn't currently part of the grammar
+// for normal Nickel source code.
+pub CliFieldAssignment: (Vec<LocIdent>, RichTerm, RawSpan) =
+    <path: StaticFieldPath> "=" <start: @L> <value: WithPos<Term>> <end: @R>
+      => (path, value, mk_span(src_id, start, end));
+
 FieldPathElem: FieldPathElem = {
     <Ident> => FieldPathElem::Ident(<>),
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),

@@ -90,6 +90,7 @@ generate_lalrpop_parser_impl!(grammar::ExtendedTermParser, ExtendedTerm);
 generate_lalrpop_parser_impl!(grammar::TermParser, RichTerm);
 generate_lalrpop_parser_impl!(grammar::FixedTypeParser, Type);
 generate_lalrpop_parser_impl!(grammar::StaticFieldPathParser, Vec<LocIdent>);
+generate_lalrpop_parser_impl!(grammar::CliFieldAssignmentParser, (Vec<LocIdent>, RichTerm));
 
 /// Generic interface of the various specialized Nickel parsers.
 ///
