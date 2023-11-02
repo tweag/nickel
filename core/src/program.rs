@@ -63,40 +63,24 @@ impl QueryPath {
     /// only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
         use crate::parser::{
-            grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
+            grammar::StaticFieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
         };
 
         let input_id = cache.replace_string(SourcePath::Query, input);
         let s = cache.source(input_id);
 
-        let parser = FieldPathParser::new();
+        let parser = StaticFieldPathParser::new();
         let field_path = parser
             .parse_strict(input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
                     "because parsing of the query path failed, the error \
-                                              list must be non-empty, put .pop() failed",
+                    list must be non-empty, put .pop() failed",
                 )
             })?;
 
-        let path_as_idents: Result<Vec<LocIdent>, ParseError> = field_path
-            .into_iter()
-            .map(|elem| match elem {
-                FieldPathElem::Ident(ident) => Ok(ident),
-                FieldPathElem::Expr(expr) => {
-                    let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
-                        ParseError::InterpolationInQuery {
-                            input: s.into(),
-                            pos_path_elem: expr.pos,
-                        },
-                    )?;
-                    Ok(LocIdent::from(as_string))
-                }
-            })
-            .collect();
-
-        path_as_idents.map(QueryPath)
+        Ok(QueryPath(field_path))
     }
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the

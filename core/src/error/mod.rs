@@ -494,11 +494,11 @@ pub enum ParseError {
         /// The position of the type annotation.
         annot_span: RawSpan,
     },
-    /// The user provided a field path to run a metadata query, but the parsed field path contains
-    /// string interpolation.
-    InterpolationInQuery {
+    /// The user provided a field path on the CLI, which is expected to be only composed of
+    /// literals, but the parsed field path contains string interpolation.
+    InterpolationInStaticPath {
         input: String,
-        pos_path_elem: TermPos,
+        path_elem_span: RawSpan,
     },
     /// A duplicate binding was encountered in a record destructuring pattern.
     DuplicateIdentInRecordPattern {
@@ -711,6 +711,12 @@ impl ParseError {
                 }
                 InternalParseError::DisabledFeature { feature, span } => {
                     ParseError::DisabledFeature { feature, span }
+                }
+                InternalParseError::InterpolationInStaticPath { path_elem_span } => {
+                    ParseError::InterpolationInStaticPath {
+                        input: String::new(),
+                        path_elem_span,
+                    }
                 }
             },
         }
@@ -1788,12 +1794,12 @@ impl IntoDiagnostics<FileId> for ParseError {
                     record type."
                         .into(),
                 ]),
-            ParseError::InterpolationInQuery {
+            ParseError::InterpolationInStaticPath {
                 input,
-                pos_path_elem: path_elem_pos,
+                path_elem_span,
             } => Diagnostic::error()
                 .with_message("string interpolation is forbidden within a query")
-                .with_labels(vec![primary_alt(path_elem_pos.into_opt(), input, files)])
+                .with_labels(vec![primary(&path_elem_span)])
                 .with_notes(vec![
                     "Field paths don't support string interpolation when querying \
                         metadata."
