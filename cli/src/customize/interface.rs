@@ -2,8 +2,6 @@
 //! customize mode of the command-line.
 use super::*;
 
-const NICKEL_VALUE_NAME: &str = "NICKEL EXPRESSION";
-
 /// The interface of a configuration (a Nickel program) which represents all nested field paths
 /// that are accessible from the root term together with their associated metadata.
 ///
@@ -30,105 +28,6 @@ pub(super) struct CustomizableField {
     /// The path of the field.
     pub(super) path: FieldPath,
     pub(super) interface: FieldInterface,
-}
-
-impl TermInterface {
-    // /// Build a command description from this interface.
-    // ///
-    // /// This method recursively lists all existing field paths, and reports input fields (as
-    // /// defined per [FieldInterface::is_input]) as stand-alone arguments. For example, if the
-    // /// configuration contains:
-    // ///
-    // /// ```nickel
-    // /// foo.bar.baz | Number,
-    // /// ```
-    // ///
-    // /// This will give rise to a corresponding `--foo.bar.baz` argument listed in the `help` message
-    // /// which can be set.
-    // ///
-    // /// Non-input fields are still listed in the description of the `--override` command, which
-    // /// has the ability of setting any field.
-    // ///
-    // /// # Return
-    // ///
-    // /// In addition to the updated command, `build_cmd` returns a mapping from clap argument ids to
-    // /// their corresponding full field path as an array of fields.
-    // pub(super) fn build_cmd(&self) -> TermCommand {
-    // todo!()
-
-    // let clap_cmd = Command::new("customize-mode")
-    //     .about("Customize a Nickel configuration through the command line before exporting")
-    //     .after_help(EXPERIMENTAL_MSG)
-    //     .no_binary_name(true);
-    //
-    // let mut term_cmd = TermCommand::new(clap_cmd);
-    //
-    // for (id, field) in &self.fields {
-    //     term_cmd = field.add_args(term_cmd, vec![id.to_string()])
-    // }
-    //
-    // let mut overrides_list: Vec<String> = term_cmd
-    //     .overrides
-    //     .keys()
-    //     .take(OVERRIDES_LIST_MAX_COUNT)
-    //     .map(|field_path| format!("- {field_path}"))
-    //     .collect();
-    //
-    // if term_cmd.overrides.len() > OVERRIDES_LIST_MAX_COUNT {
-    //     overrides_list.push("- ...".into());
-    // }
-    //
-    // let has_override = term_cmd.inputs.contains_key("override");
-    // let has_help = term_cmd.inputs.contains_key("help");
-    //
-    // let override_arg_label = "override";
-    // let override_help = format!(
-    //     "Override any field of the configuration with a valid Nickel expression provided as \
-    //     a string. The new value will be merged with the configuration with a `force` \
-    //     priority.\n\n\
-    //     Overridable fields:\n{}\n\n",
-    //     overrides_list.join("\n")
-    // );
-    // let override_arg = clap::Arg::new(override_arg_label)
-    //     .long(override_arg_label)
-    //     .value_name(NICKEL_VALUE_NAME.to_owned())
-    //     .number_of_values(2)
-    //     .value_names(["field", "value"])
-    //     .action(ArgAction::Append)
-    //     .required(false)
-    //     .help(override_help);
-    //
-    // term_cmd.clap_cmd = term_cmd.clap_cmd.arg(override_arg);
-    //
-    // if has_help || has_override {
-    //     let conflict_field = if has_override {
-    //         "override"
-    //     } else if has_help {
-    //         "help"
-    //     } else {
-    //         // We tested in the parent `if` that one of those two booleans must be set
-    //         unreachable!()
-    //     };
-    //
-    //     let extra = if has_help && has_override {
-    //         ". The same applies to the conflicting `help` field"
-    //     } else {
-    //         ""
-    //     };
-    //
-    //     term_cmd.clap_cmd = term_cmd.clap_cmd.after_long_help(format!(
-    //         "\
-    //     [CONFLICT] This configuration has a field named `{conflict_field}` which conflicts \
-    //     with the built-in `--{conflict_field}` argument. To set this field to e.g. \
-    //     \"some_value\", use `--override {conflict_field} \"some_value\"` instead of \
-    //     `--{conflict_field} \"some_value\"`\
-    //     {extra}\n\n\
-    //     {EXPERIMENTAL_MSG}"
-    //     ));
-    // }
-    //
-    // term_cmd
-    // }
 }
 
 impl Combine for TermInterface {
@@ -278,26 +177,6 @@ impl From<&RecordRowF<&Type>> for FieldInterface {
 }
 
 impl FieldInterface {
-    /// Add a single argument to the CLI `cmd`, based on the interface of this field, and return
-    /// the updated command.
-    fn add_arg(&self, cmd: clap::Command, path: String) -> clap::Command {
-        let mut arg = clap::Arg::new(&path)
-            .long(path)
-            .value_name(self.value_name())
-            // TODO: Create clap argument groups
-            .required(!self.is_default());
-
-        if let Some(help) = &self.help() {
-            arg = arg.help(help);
-        };
-
-        if let Some(default) = self.default_value() {
-            arg = arg.default_value(default);
-        }
-
-        cmd.arg(arg)
-    }
-
     /// Define if a field is an input of a configuration that is intended to be filled, and will be
     /// given a dedicated CLI argument. If the field is not an input, it can only be overridden via
     /// `--override`.
@@ -333,48 +212,25 @@ impl FieldInterface {
         matches!(&self.subfields, Some(ref intf) if !intf.fields.is_empty())
     }
 
-    /// Return the default value, if any.
-    pub(super) fn default_value(&self) -> Option<String> {
-        match (&self.field.metadata.priority, &self.field.value) {
-            (MergePriority::Bottom, Some(value)) => Some(value.to_string()),
-            _ => None,
-        }
-    }
+    // /// Return the default value, if any.
+    // pub(super) fn default_value(&self) -> Option<String> {
+    //     match (&self.field.metadata.priority, &self.field.value) {
+    //         (MergePriority::Bottom, Some(value)) => Some(value.to_string()),
+    //         _ => None,
+    //     }
+    // }
 
-    /// Render a help message similar to the output of a metadata query to serve as an help text
-    /// for this argument.
-    pub(super) fn help(&self) -> Option<String> {
-        let mut output: Vec<u8> = Vec::new();
-
-        // We only need to render the documentation: the rest is printed separately as part of the
-        // clap command that is built.
-        let attributes = Attributes {
-            doc: true,
-            contract: false,
-            typ: false,
-            default: false,
-            value: false,
-        };
-
-        write_query_result(&mut output, &self.field, attributes)
-            .unwrap_or(false)
-            .then(|| {
-                String::from_utf8(output)
-                    .expect("the query printer should always output valid utf8")
-            })
-    }
-
-    fn value_name(&self) -> String {
-        let annotation = &self.field.metadata.annotation;
-
-        if annotation.is_empty() {
-            NICKEL_VALUE_NAME.into()
-        } else {
-            let anns: Vec<String> = annotation
-                .iter()
-                .map(|ctr| ctr.label.typ.to_string())
-                .collect();
-            anns.join(",")
-        }
-    }
+    // fn value_name(&self) -> String {
+    //     let annotation = &self.field.metadata.annotation;
+    //
+    //     if annotation.is_empty() {
+    //         NICKEL_VALUE_NAME.into()
+    //     } else {
+    //         let anns: Vec<String> = annotation
+    //             .iter()
+    //             .map(|ctr| ctr.label.typ.to_string())
+    //             .collect();
+    //         anns.join(",")
+    //     }
+    // }
 }

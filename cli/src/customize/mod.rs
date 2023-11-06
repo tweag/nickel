@@ -12,7 +12,6 @@ use nickel_lang_core::{
     identifier::LocIdent,
     program::{FieldPath, Program},
     repl::query_print,
-    repl::query_print::{write_query_result, Attributes},
     term::{
         record::{Field, RecordData},
         LabeledType, MergePriority, RuntimeContract, Term,

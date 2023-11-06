@@ -1795,7 +1795,7 @@ impl IntoDiagnostics<FileId> for ParseError {
                         .into(),
                 ]),
             ParseError::InterpolationInStaticPath {
-                input,
+                input: _,
                 path_elem_span,
             } => Diagnostic::error()
                 .with_message("string interpolation is forbidden within a query")
