@@ -21,15 +21,6 @@ pub(super) struct FieldInterface {
     pub(super) field: Field,
 }
 
-/// Description of a field which is a leaf, i.e. which doesn't contain other fields. Those are the
-/// fields that can be set from the customize command line.
-#[derive(Debug, Clone, Default)]
-pub(super) struct CustomizableField {
-    /// The path of the field.
-    pub(super) path: FieldPath,
-    pub(super) interface: FieldInterface,
-}
-
 impl Combine for TermInterface {
     fn combine(first: Self, second: Self) -> Self {
         let TermInterface { mut fields } = first;

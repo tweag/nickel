@@ -23,7 +23,7 @@ use crate::error::CliResult;
 
 pub mod interface;
 
-use interface::{CustomizableField, FieldInterface, TermInterface};
+use interface::{FieldInterface, TermInterface};
 
 /// The value name used through the CLI to indicate that an option accepts any Nickel expression as
 /// a value.
@@ -96,7 +96,7 @@ impl ListCommand {
             .inputs
             .iter()
             .map(|(path, field)| {
-                let extra = field.interface.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                let extra = field.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
                 format!("{path}{extra}")
             })
             .collect::<Vec<_>>();
@@ -107,7 +107,7 @@ impl ListCommand {
             .overrides
             .iter()
             .map(|(path, field)| {
-                let extra = field.interface.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                let extra = field.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
                 format!("{path}{extra}")
             })
             .collect::<Vec<_>>();
@@ -175,7 +175,7 @@ impl ShowCommand {
             .get(&path)
             .or(customizable_fields.overrides.get(&path))
         {
-            Some(field) => &field.interface.field,
+            Some(field) => &field.field,
             None => {
                 return CliResult::Err(crate::error::Error::CliUsage {
                     error: crate::error::CliUsageError::UnknownField { path },
@@ -194,8 +194,8 @@ impl ShowCommand {
 /// through the customize mode.
 #[derive(Clone, Debug, Default)]
 struct CustomizableFields {
-    inputs: HashMap<FieldPath, CustomizableField>,
-    overrides: HashMap<FieldPath, CustomizableField>,
+    inputs: HashMap<FieldPath, FieldInterface>,
+    overrides: HashMap<FieldPath, FieldInterface>,
 }
 
 impl CustomizableFields {
@@ -216,7 +216,7 @@ impl CustomizableFields {
         debug_assert!(!self.overrides.contains_key(&path));
 
         self.inputs
-            .insert(path.clone(), CustomizableField { path, interface });
+            .insert(path, interface);
     }
 
     /// Register a customizable field that can be overridden.
@@ -225,7 +225,7 @@ impl CustomizableFields {
         debug_assert!(!self.overrides.contains_key(&path));
 
         self.overrides
-            .insert(path.clone(), CustomizableField { path, interface });
+            .insert(path, interface);
     }
 
     /// Enrich the current list of customizable fields with the field(s) exposed by a given field
