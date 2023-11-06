@@ -1,16 +1,11 @@
-# capture = 'stderr'
+# capture = 'stdout'
 # command = ['export']
-# extra_args = [
-#  '--',
-#  'input.foo.bar="hello"',
-#  'input.foo.baz=[]',
-#  '--override',
-#  'unkonwn.field.path=null',
-# ]
+# extra_args = ['--', 'show', 'input.defaulted.subfield']
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,
   input.defaulted.subfield
+    | std.number.Integer
     | doc "Some documentation"
     | default = 2,
 

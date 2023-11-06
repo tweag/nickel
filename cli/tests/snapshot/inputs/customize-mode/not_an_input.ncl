@@ -1,6 +1,6 @@
 # capture = 'stderr'
 # command = ['export']
-# extra_args =['--', '--override.first', '"test"']
+# extra_args =['--', 'override.first="test"']
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,

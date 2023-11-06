@@ -1,0 +1,15 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unexpected token
+  ┌─ <cli-assignment>:1:14
+  │
+1 │ input.foo.bar=="hello"
+  │              ^^
+
+note: when parsing a field assignment on the command line
+ = A field assignment must be of the form `<field path>=<value>`, where `<field path>` is a dot-separated list of fields and `<value>` is a valid Nickel expression.
+ = For example: `config.database."$port"=8080`
+
+
