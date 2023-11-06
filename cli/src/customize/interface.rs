@@ -12,7 +12,7 @@ const NICKEL_VALUE_NAME: &str = "NICKEL EXPRESSION";
 #[derive(Debug, Clone, Default)]
 pub(super) struct TermInterface {
     // We use a BTreeMap so that the end result is being sorted as we build the interface.
-    pub(super) fields: BTreeMap<LocIdent, FieldInterface>,
+    pub(super) fields: HashMap<LocIdent, FieldInterface>,
 }
 
 /// The interface of a specific field. This fields can be itself a record and contain subfields.
@@ -28,7 +28,7 @@ pub(super) struct FieldInterface {
 #[derive(Debug, Clone, Default)]
 pub(super) struct CustomizableField {
     /// The path of the field.
-    pub(super) path: Vec<LocIdent>,
+    pub(super) path: FieldPath,
     pub(super) interface: FieldInterface,
 }
 

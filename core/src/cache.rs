@@ -3,11 +3,11 @@
 use crate::error::{Error, ImportError, ParseError, ParseErrors, TypecheckError};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::Closure;
-use crate::identifier::LocIdent;
 #[cfg(feature = "nix-experimental")]
 use crate::nix_ffi;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
+use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::array::Array;
 use crate::term::record::{Field, RecordData};
@@ -269,7 +269,8 @@ pub enum SourcePath {
     ReplInput(usize),
     ReplTypecheck,
     ReplQuery,
-    Override(Vec<LocIdent>),
+    CliFieldAssignment,
+    Override(FieldPath),
     Generated(String),
 }
 
@@ -297,14 +298,8 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplInput(idx) => format!("<repl-input-{idx}>").into(),
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
-            SourcePath::Override(path) => format!(
-                "<override {}>",
-                path.iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(".")
-            )
-            .into(),
+            SourcePath::CliFieldAssignment => "<cli-assignment>".into(),
+            SourcePath::Override(path) => format!("<override {path}>",).into(),
             SourcePath::Generated(description) => format!("<generated {}>", description).into(),
         }
     }

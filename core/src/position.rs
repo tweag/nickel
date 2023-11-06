@@ -3,7 +3,7 @@
 //! The positions defined in this module are represented by the id of the corresponding source and
 //! raw byte indices.  They are prefixed with Raw to differentiate them from codespan's types and
 //! indicate that they do not store human friendly data like lines and columns.
-use codespan::{ByteIndex, FileId};
+use codespan::{self, ByteIndex, FileId};
 use std::cmp::{max, min, Ordering};
 
 /// A position identified by a byte offset in a file.
@@ -64,6 +64,12 @@ impl RawSpan {
     /// Check whether this span contains a position.
     pub fn contains(&self, pos: RawPos) -> bool {
         self.src_id == pos.src_id && (self.start..self.end).contains(&pos.index)
+    }
+}
+
+impl From<RawSpan> for codespan::Span {
+    fn from(span: RawSpan) -> Self {
+        codespan::Span::new(span.start, span.end)
     }
 }
 

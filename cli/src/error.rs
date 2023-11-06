@@ -1,17 +1,24 @@
 use nickel_lang_core::{
-    error::{Diagnostic, Files, IntoDiagnostics},
+    error::{Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
     eval::cache::lazy::CBNCache,
     program::Program,
+    program::{FieldOverride, FieldPath},
 };
 
 /// Errors related to mishandling the CLI.
 pub enum CliUsageError {
     /// Tried to override a field which doesn't exist.
-    UnknownFieldOverride { path: String },
+    UnknownFieldOverride { path: FieldPath },
     /// Tried to assign a field which doesn't exist.
-    UnknownFieldAssignment { path: String },
+    UnknownFieldAssignment { path: FieldPath },
+    /// Tried to show information about a field which doesn't exist.
+    UnknownField { path: FieldPath },
     /// Tried to override an defined field without the `--override` argument.
-    CantAssignNonInput { path: String, assignment: String },
+    CantAssignNonInput { ovd: FieldOverride },
+    /// A parse error occurred when trying to parse an assignment.
+    AssignmentParseError { error: ParseError },
+    /// A parse error occurred when trying to parse a field path.
+    FieldPathParseError { error: ParseError },
 }
 
 pub enum Error {
@@ -36,15 +43,21 @@ pub enum Error {
         program: Program<CBNCache>,
         error: CliUsageError,
     },
+    /// Not an actual failure but a special early return to indicate that information was printed
+    /// during the usage of the customize mode, because a subcommand such as `list`, `show`, etc.
+    /// was used, and thus no customized program can be returned.
+    ///
+    /// Upon receiving this error, the caller should simply exit without proceeding with evaluation.
+    CustomizeInfoPrinted,
 }
 
-impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
+impl IntoDiagnostics<FileId> for CliUsageError {
     fn into_diagnostics(
         self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
+        files: &mut Files<String>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
-        fn mk_unknown_diags<FileId>(path: String, method: &str) -> Vec<Diagnostic<FileId>> {
+        fn mk_unknown_diags<FileId>(path: &FieldPath, method: &str) -> Vec<Diagnostic<FileId>> {
             vec![Diagnostic::error()
                 .with_message(format!("invalid {method}: unknown field `{path}`"))
                 .with_notes(vec![format!(
@@ -54,9 +67,12 @@ impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
         }
 
         match self {
-            CliUsageError::UnknownFieldOverride { path } => mk_unknown_diags(path, "override"),
-            CliUsageError::UnknownFieldAssignment { path } => mk_unknown_diags(path, "assignment"),
-            CliUsageError::CantAssignNonInput { path, assignment } => {
+            CliUsageError::UnknownFieldOverride { path } => mk_unknown_diags(&path, "override"),
+            CliUsageError::UnknownFieldAssignment { path } => mk_unknown_diags(&path, "assignment"),
+            CliUsageError::UnknownField { path } => mk_unknown_diags(&path, "query"),
+            CliUsageError::CantAssignNonInput {
+                ovd: FieldOverride { path, value, .. },
+            } => {
                 vec![Diagnostic::error()
                     .with_message(format!("invalid assignment: `{path}` isn't an input"))
                     .with_notes(vec![
@@ -66,9 +82,38 @@ impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
                         ),
                         format!(
                             "If you really want to override this field, please use \
-                            `--override {assignment}` instead."
+                            `--override '{path}={value}'` instead."
                         ),
                     ])]
+            }
+            CliUsageError::AssignmentParseError { error } => {
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("when parsing a field assignment on the command line")
+                        .with_notes(vec![
+                            "A field assignment must be of the form `<field path>=<value>`, \
+                            where `<field path>` is a dot-separated list of fields and `<value>` \
+                            is a valid Nickel expression."
+                                .to_owned(),
+                            "For example: `config.database.\"$port\"=8080`".to_owned(),
+                        ]),
+                );
+                diags
+            }
+            CliUsageError::FieldPathParseError { error } => {
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("when parsing a field path on the command line")
+                        .with_notes(vec![
+                            "A field path must be a dot-separated list of fields. Fields \
+                            with spaces or special characters must be properly quoted."
+                                .to_owned(),
+                            "For example: `config.database.\"$port\"`".to_owned(),
+                        ]),
+                );
+                diags
             }
         }
     }
@@ -156,6 +201,9 @@ impl Error {
             #[cfg(feature = "format")]
             Error::Format { error } => eprintln!("{error}"),
             Error::CliUsage { error, mut program } => program.report(error),
+            Error::CustomizeInfoPrinted => {
+                // Nothing to do, the caller should simply exit.
+            }
         }
     }
 }
