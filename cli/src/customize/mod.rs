@@ -94,16 +94,24 @@ impl ListCommand {
     fn run(self, customize_fields: &CustomizableFields) -> CliResult<()> {
         let mut inputs = customize_fields
             .inputs
-            .values()
-            .map(|field| field.path.to_string())
+            .iter()
+            .map(|(path, field)| {
+                let extra = field.interface.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                format!("{path}{extra}")
+            })
             .collect::<Vec<_>>();
+
         inputs.sort();
 
         let mut overrides = customize_fields
             .overrides
-            .values()
-            .map(|field| field.path.to_string())
+            .iter()
+            .map(|(path, field)| {
+                let extra = field.interface.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                format!("{path}{extra}")
+            })
             .collect::<Vec<_>>();
+
         overrides.sort();
 
         println!("Input fields:");

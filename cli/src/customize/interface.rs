@@ -212,25 +212,18 @@ impl FieldInterface {
         matches!(&self.subfields, Some(ref intf) if !intf.fields.is_empty())
     }
 
-    // /// Return the default value, if any.
-    // pub(super) fn default_value(&self) -> Option<String> {
-    //     match (&self.field.metadata.priority, &self.field.value) {
-    //         (MergePriority::Bottom, Some(value)) => Some(value.to_string()),
-    //         _ => None,
-    //     }
-    // }
+    /// Return the list of the type and contract annotations joined as a comma-separated string, if
+    /// any.
+    pub(super) fn type_and_contracts(&self) -> Option<String> {
+        let annotation = &self.field.metadata.annotation;
 
-    // fn value_name(&self) -> String {
-    //     let annotation = &self.field.metadata.annotation;
-    //
-    //     if annotation.is_empty() {
-    //         NICKEL_VALUE_NAME.into()
-    //     } else {
-    //         let anns: Vec<String> = annotation
-    //             .iter()
-    //             .map(|ctr| ctr.label.typ.to_string())
-    //             .collect();
-    //         anns.join(",")
-    //     }
-    // }
+        (!annotation.is_empty()).then(|| {
+            let anns: Vec<String> = annotation
+                .iter()
+                .map(|ctr| ctr.label.typ.to_string())
+                .collect();
+
+            anns.join(",")
+        })
+    }
 }
