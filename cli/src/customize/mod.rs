@@ -96,7 +96,10 @@ impl ListCommand {
             .inputs
             .iter()
             .map(|(path, field)| {
-                let extra = field.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                let extra = field
+                    .type_and_contracts()
+                    .map(|ctrs| format!(": <{ctrs}>"))
+                    .unwrap_or_default();
                 format!("{path}{extra}")
             })
             .collect::<Vec<_>>();
@@ -107,7 +110,10 @@ impl ListCommand {
             .overrides
             .iter()
             .map(|(path, field)| {
-                let extra = field.type_and_contracts().map(|ctrs| format!(": <{ctrs}>")).unwrap_or_default();
+                let extra = field
+                    .type_and_contracts()
+                    .map(|ctrs| format!(": <{ctrs}>"))
+                    .unwrap_or_default();
                 format!("{path}{extra}")
             })
             .collect::<Vec<_>>();
@@ -215,8 +221,7 @@ impl CustomizableFields {
         debug_assert!(!self.inputs.contains_key(&path));
         debug_assert!(!self.overrides.contains_key(&path));
 
-        self.inputs
-            .insert(path, interface);
+        self.inputs.insert(path, interface);
     }
 
     /// Register a customizable field that can be overridden.
@@ -224,8 +229,7 @@ impl CustomizableFields {
         debug_assert!(!self.inputs.contains_key(&path));
         debug_assert!(!self.overrides.contains_key(&path));
 
-        self.overrides
-            .insert(path, interface);
+        self.overrides.insert(path, interface);
     }
 
     /// Enrich the current list of customizable fields with the field(s) exposed by a given field
