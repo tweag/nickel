@@ -155,7 +155,7 @@ impl DoCommand {}
 
 #[derive(clap::Parser)]
 struct ShowCommand {
-    /// Print the documentation and metadata of a particular overridable field.
+    /// Print the documentation and metadata of a particular field.
     #[clap(value_name = "FIELD_PATH")]
     field: String,
 }

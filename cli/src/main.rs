@@ -57,7 +57,7 @@ fn main() -> ExitCode {
     }
 
     match result {
-        // CustomizeInfoPrinted is used for early return, but it's not actually an error for the
+        // CustomizeInfoPrinted is used for early return, but it's not actually an error from the
         // user's point of view.
         Ok(()) | Err(error::Error::CustomizeInfoPrinted) => ExitCode::SUCCESS,
         Err(error) => {

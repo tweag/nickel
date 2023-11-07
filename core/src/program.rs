@@ -124,10 +124,13 @@ impl FieldOverride {
     /// Parse an assignment `path.to.field=value` to a field override, with the priority given as a
     /// separate argument.
     ///
-    /// The parser actually entirely parse the `value` part to a [crate::term::RichTerm] (have it
-    /// accept anything after the equal sign is harder than actually parsing it), but what we need
-    /// at this point is just a string. Thus, `parse` uses the span to extract back the `value` part
-    /// of the input string.
+    /// Internally, the parser entirely parses the `value` part to a [crate::term::RichTerm] (have
+    /// it accept anything after the equal sign is in fact harder than actually parsing it), but
+    /// what we need at this point is just a string. Thus, `parse` uses the span to extract back
+    /// the `value` part of the input string.
+    ///
+    /// Theoretically, this means we parse two times the same string (the value part of an
+    /// assignment). In practice, we expect this cost to be completly neglectible.
     pub fn parse(
         cache: &mut Cache,
         assignment: String,
