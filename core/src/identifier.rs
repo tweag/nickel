@@ -321,9 +321,8 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol]
         /// is to have [interned](InnerInterner::intern) the corresponding string first.
-        #[allow(clippy::needless_lifetimes)]
-        fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
-            // The lifetime implicitly shrinks from 'internal 'slf, which
+        fn lookup(&self, sym: Symbol) -> &str {
+            // The lifetime implicitly shrinks from 'internal to 'self, which
             // prevents 'internal from leaking out.
             self.vec[sym.0 as usize]
         }
