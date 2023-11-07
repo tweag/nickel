@@ -168,13 +168,12 @@ impl From<&RecordRowF<&Type>> for FieldInterface {
 }
 
 impl FieldInterface {
-    /// Define if a field is an input of a configuration that is intended to be filled, and will be
-    /// given a dedicated CLI argument. If the field is not an input, it can only be overridden via
-    /// `--override`.
+    /// Define if a field is an input of a configuration that is intended to be filled. If the
+    /// field is not an input, it can only be overridden via `--override`.
     ///
     /// Currently, the difference is mostly conceptual: in practice, we simply gather the arguments
-    /// and their values, either via direct arguments or `--override` (although the latter sets a
-    /// different priority), and then merge the elaborated record with original term.
+    /// and their values, either via direct positional arguments or `--override` (although the
+    /// latter sets a different priority), and then merge the elaborated record with original term.
     ///
     /// However, from a user experience point of view, we want to make a clear distinction between
     /// filling a bespoke input of a configuration and overriding an existing value. The latter is
@@ -182,7 +181,7 @@ impl FieldInterface {
     ///
     /// Currently, the logic is simply that a field is an input if it doesn't have a definition or
     /// it has a default priority. This definition might evolve, as there are ongoing discussions
-    /// on what is should be the meaning of "input", "output", and if those concept should be made
+    /// on what is the meaning of "input", "output", and if those concept should be made
     /// first-class ([related issue](https://github.com/tweag/nickel/issues/1505)). For now, this
     /// logic seems to be a reasonable first approximation.
     pub(super) fn is_input(&self) -> bool {
