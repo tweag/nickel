@@ -1700,6 +1700,7 @@ dependencies = [
  "similar",
  "simple-counter",
  "strip-ansi-escapes",
+ "strsim",
  "termimad",
  "test-generator",
  "toml",
