@@ -32,6 +32,8 @@ use crate::{
     typ::{Type, TypeF, VarKindDiscriminant},
 };
 
+pub mod suggest;
+
 /// A general error occurring during either parsing or evaluation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
