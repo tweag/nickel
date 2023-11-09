@@ -452,7 +452,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                 })
                             }
                             _ => Err(EvalError::FieldMissing {
-                                name: id,
+                                id,
                                 field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
                                 operator: String::from("(.)"),
                                 pos_record: pos,
@@ -1568,7 +1568,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         })
                                     }
                                     _ => Err(EvalError::FieldMissing {
-                                        name: ident,
+                                        id: ident,
                                         field_names: record
                                             .field_names(RecordOpKind::IgnoreEmptyOpt),
                                         operator: String::from("(.$)"),
@@ -1691,7 +1691,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     let record = RecordData { fields, ..record };
 
                                     Err(EvalError::FieldMissing {
-                                        name: id.into(),
+                                        id: id.into(),
                                         field_names: record.field_names(op_kind),
                                         operator: String::from("record_remove"),
                                         pos_record: pos2,

@@ -100,7 +100,7 @@ pub enum EvalError {
     /// has been performed on a record missing that field.
     FieldMissing {
         // The name of the missing field.
-        name: LocIdent,
+        id: LocIdent,
         // The actual fields of the record used to suggest similar fields.
         field_names: Vec<LocIdent>,
         // The primitive operation that required the field to exist.
@@ -1063,7 +1063,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                         .with_message("applied here"),
                 ])],
             EvalError::FieldMissing {
-                name,
+                id: name,
                 field_names,
                 operator,
                 pos_record,

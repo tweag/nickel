@@ -300,7 +300,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         };
                     } else {
                         return Err(EvalError::FieldMissing {
-                            name: id,
+                            id,
                             field_names: record_data.field_names(RecordOpKind::ConsiderAllFields),
                             operator: String::from("query"),
                             pos_record: prev_pos,

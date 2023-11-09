@@ -253,9 +253,10 @@ impl PartialEq<Error> for ErrorExpectation {
                     _ => false,
                 }
             }
-            (EvalFieldMissing { field }, Error::EvalError(EvalError::FieldMissing(ident, ..))) => {
-                field == ident
-            }
+            (
+                EvalFieldMissing { field },
+                Error::EvalError(EvalError::FieldMissing { id: name, .. }),
+            ) => field == name.label(),
             (
                 EvalMissingFieldDef { field },
                 Error::EvalError(EvalError::MissingFieldDef { id, .. }),
