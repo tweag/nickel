@@ -420,6 +420,31 @@ impl RecordData {
             _ => Ok(None),
         }
     }
+
+    /// Return a vector of all the fields' names of this record sorted alphabetically, ignoring
+    /// optional fields without definitions.
+    pub fn field_names_without_opts(&self) -> Vec<LocIdent> {
+        self.field_names_impl(false)
+    }
+
+    /// Return a vector of all the fields' names of this record sorted alphabetically, including
+    /// optional fields without definitions.
+    pub fn field_names(&self) -> Vec<LocIdent> {
+        self.field_names_impl(true)
+    }
+
+    fn field_names_impl(&self, include_empty_opts: bool) -> Vec<LocIdent> {
+        let mut fields : Vec<LocIdent> = self
+            .fields
+            .iter()
+            // Ignore optional fields without definitions.
+            .filter(|(_, field)| include_empty_opts || !field.is_empty_optional())
+            .map(|(id, _)| *id)
+            .collect();
+
+        fields.sort_by(|id1, id2| id1.label().cmp(id2.label()));
+        fields
+    }
 }
 
 /// The sealed tail of a Nickel record under a polymorphic contract.
