@@ -299,12 +299,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             pending_contracts: Default::default(),
                         };
                     } else {
-                        return Err(EvalError::FieldMissing(
-                            id.to_string(),
-                            String::from("query"),
-                            RichTerm::new(Term::Record(record_data.clone()), prev_pos),
-                            id.pos,
-                        ));
+                        return Err(EvalError::FieldMissing {
+                            name: id,
+                            field_names: record_data.field_names(RecordOpKind::ConsiderAllFields),
+                            operator: String::from("query"),
+                            pos_record: prev_pos,
+                            pos_op: id.pos,
+                        });
                     }
                 }
                 Some(_) => {

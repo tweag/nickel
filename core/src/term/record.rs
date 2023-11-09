@@ -421,24 +421,19 @@ impl RecordData {
         }
     }
 
-    /// Return a vector of all the fields' names of this record sorted alphabetically, ignoring
-    /// optional fields without definitions.
-    pub fn field_names_without_opts(&self) -> Vec<LocIdent> {
-        self.field_names_impl(false)
-    }
-
-    /// Return a vector of all the fields' names of this record sorted alphabetically, including
-    /// optional fields without definitions.
-    pub fn field_names(&self) -> Vec<LocIdent> {
-        self.field_names_impl(true)
-    }
-
-    fn field_names_impl(&self, include_empty_opts: bool) -> Vec<LocIdent> {
-        let mut fields : Vec<LocIdent> = self
+    /// Return a vector of all the fields' names of this record sorted alphabetically.
+    ///
+    /// # Parameters
+    ///
+    /// - `op_kind` controls if we should ignore or include empty optional fields
+    pub fn field_names(&self, op_kind: RecordOpKind) -> Vec<LocIdent> {
+        let mut fields: Vec<LocIdent> = self
             .fields
             .iter()
             // Ignore optional fields without definitions.
-            .filter(|(_, field)| include_empty_opts || !field.is_empty_optional())
+            .filter(|(_, field)| {
+                matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+            })
             .map(|(id, _)| *id)
             .collect();
 

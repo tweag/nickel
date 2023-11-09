@@ -451,12 +451,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                     call_stack: std::mem::take(&mut self.call_stack),
                                 })
                             }
-                            _ => Err(EvalError::FieldMissing(
-                                id.into_label(),
-                                String::from("(.)"),
-                                RichTerm { term: t, pos },
+                            _ => Err(EvalError::FieldMissing {
+                                name: id,
+                                field_names: record.field_names(RecordOpKind::IgnoreEmptyOpt),
+                                operator: String::from("(.)"),
+                                pos_record: pos,
                                 pos_op,
-                            )),
+                            }),
                         }, //TODO include the position of operators on the stack
                     }
                 } else {
@@ -471,19 +472,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::FieldsOf() => match_sharedterm!(match (t) {
                 Term::Record(record) => {
-                    let mut fields: Vec<String> = record
-                        .fields
+                    let fields_as_terms: Array = record
+                        .field_names(RecordOpKind::IgnoreEmptyOpt)
                         .into_iter()
-                        // Ignore optional fields without definitions.
-                        .filter_map(|(id, field)| {
-                            (!field.is_empty_optional()).then(|| id.to_string())
-                        })
+                        .map(mk_term::string)
                         .collect();
-                    fields.sort();
-                    let terms = fields.into_iter().map(mk_term::string).collect();
 
                     Ok(Closure::atomic_closure(RichTerm::new(
-                        Term::Array(terms, ArrayAttrs::new().closurized()),
+                        Term::Array(fields_as_terms, ArrayAttrs::new().closurized()),
                         pos_op_inh,
                     )))
                 }
@@ -1571,15 +1567,14 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                             call_stack: std::mem::take(&mut self.call_stack),
                                         })
                                     }
-                                    _ => Err(EvalError::FieldMissing(
-                                        id.into_inner(),
-                                        String::from("(.$)"),
-                                        RichTerm {
-                                            term: t2,
-                                            pos: pos2,
-                                        },
+                                    _ => Err(EvalError::FieldMissing {
+                                        name: ident,
+                                        field_names: record
+                                            .field_names(RecordOpKind::IgnoreEmptyOpt),
+                                        operator: String::from("(.$)"),
+                                        pos_record: pos2,
                                         pos_op,
-                                    )),
+                                    }),
                                 },
                             }
                         } else {
@@ -1690,15 +1685,19 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                                         call_stack: std::mem::take(&mut self.call_stack),
                                     })
                                 }
-                                _ => Err(EvalError::FieldMissing(
-                                    id.into_inner(),
-                                    String::from("record_remove"),
-                                    RichTerm::new(
-                                        Term::Record(RecordData { fields, ..record }),
-                                        pos2,
-                                    ),
-                                    pos_op,
-                                )),
+                                _ => {
+                                    // We reconstruct the record's data to have access to
+                                    // `data.field_names()`
+                                    let record = RecordData { fields, ..record };
+
+                                    Err(EvalError::FieldMissing {
+                                        name: id.into(),
+                                        field_names: record.field_names(op_kind),
+                                        operator: String::from("record_remove"),
+                                        pos_record: pos2,
+                                        pos_op,
+                                    })
+                                }
                             }
                         } else {
                             Ok(Closure {

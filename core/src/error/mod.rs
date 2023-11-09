@@ -98,12 +98,18 @@ pub enum EvalError {
     ),
     /// A field access, or another record operation requiring the existence of a specific field,
     /// has been performed on a record missing that field.
-    FieldMissing(
-        /* field identifier */ String,
-        /* operator */ String,
-        RichTerm,
-        TermPos,
-    ),
+    FieldMissing {
+        // The name of the missing field.
+        name: LocIdent,
+        // The actual fields of the record used to suggest similar fields.
+        field_names: Vec<LocIdent>,
+        // The primitive operation that required the field to exist.
+        operator: String,
+        // The position of the record value which is missing the field.
+        pos_record: TermPos,
+        // The position of the primitive operation application.
+        pos_op: TermPos,
+    },
     /// Too few arguments were provided to a builtin function.
     NotEnoughArgs(
         /* required arg count */ usize,
@@ -1056,31 +1062,43 @@ impl IntoDiagnostics<FileId> for EvalError {
                     secondary_alt(pos_opt, format!("({}) ({})", t, arg), files)
                         .with_message("applied here"),
                 ])],
-            EvalError::FieldMissing(field, op, t, span_opt) => {
+            EvalError::FieldMissing {
+                name,
+                field_names,
+                operator,
+                pos_record,
+                pos_op,
+            } => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
-                let field = escape(&field);
+                let suggestion = suggest::find_best_match(&field_names, &name);
+                let field = escape(name.as_ref());
 
-                if let Some(span) = span_opt.into_opt() {
+                if let Some(span) = pos_op.into_opt() {
                     labels.push(
                         Label::primary(span.src_id, span.start.to_usize()..span.end.to_usize())
                             .with_message(format!("this requires the field `{field}` to exist")),
                     );
                 } else {
                     notes.push(format!(
-                        "The field `{field}` was required by the operator {op}"
+                        "The field `{field}` was required by the operator {operator}"
                     ));
                 }
 
-                if let Some(span) = t.pos.as_opt_ref() {
+                if let Some(span) = pos_record.as_opt_ref() {
                     labels.push(
                         secondary(span).with_message(format!("field `{field}` is missing here")),
                     );
                 }
 
+                if let Some(suggestion) = suggestion {
+                    notes.push(format!("Did you mean `{}`?", suggestion));
+                }
+
                 vec![Diagnostic::error()
                     .with_message(format!("missing field `{field}`"))
-                    .with_labels(labels)]
+                    .with_labels(labels)
+                    .with_notes(notes)]
             }
             EvalError::NotEnoughArgs(count, op, span_opt) => {
                 let mut labels = Vec::new();
