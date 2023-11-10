@@ -1087,7 +1087,7 @@ impl IntoDiagnostics<FileId> for EvalError {
 
                 if let Some(span) = pos_record.as_opt_ref() {
                     labels.push(
-                        secondary(span).with_message(format!("field `{field}` is missing here")),
+                        secondary(span).with_message(format!("this record lacks the field `{field}`")),
                     );
                 }
 

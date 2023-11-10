@@ -10,7 +10,7 @@ error: missing field `some_fild_nam`
 5 │ │ │   another_field_name = "another value",
 6 │ │ │ }).some_fild_nam
   │ ╰─│────────────────^ this requires the field `some_fild_nam` to exist
-  │   ╰──' field `some_fild_nam` is missing here
+  │   ╰──' this record lacks the field `some_fild_nam`
   │    
   = Did you mean `some_field_name`?
 
