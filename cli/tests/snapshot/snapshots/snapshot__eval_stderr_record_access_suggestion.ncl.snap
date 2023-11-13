@@ -1,0 +1,17 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing field `some_fild_nam`
+  ┌─ [INPUTS_PATH]/errors/record_access_suggestion.ncl:3:1
+  │    
+3 │ ╭ ╭ ({
+4 │ │ │   some_field_name = "some value",
+5 │ │ │   another_field_name = "another value",
+6 │ │ │ }).some_fild_nam
+  │ ╰─│────────────────^ this requires the field `some_fild_nam` to exist
+  │   ╰──' this record lacks the field `some_fild_nam`
+  │    
+  = Did you mean `some_field_name`?
+
+

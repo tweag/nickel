@@ -420,6 +420,26 @@ impl RecordData {
             _ => Ok(None),
         }
     }
+
+    /// Return a vector of all the fields' names of this record sorted alphabetically.
+    ///
+    /// # Parameters
+    ///
+    /// - `op_kind` controls if we should ignore or include empty optional fields
+    pub fn field_names(&self, op_kind: RecordOpKind) -> Vec<LocIdent> {
+        let mut fields: Vec<LocIdent> = self
+            .fields
+            .iter()
+            // Ignore optional fields without definitions.
+            .filter(|(_, field)| {
+                matches!(op_kind, RecordOpKind::ConsiderAllFields) || !field.is_empty_optional()
+            })
+            .map(|(id, _)| *id)
+            .collect();
+
+        fields.sort_by(|id1, id2| id1.label().cmp(id2.label()));
+        fields
+    }
 }
 
 /// The sealed tail of a Nickel record under a polymorphic contract.

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::{array::Array, CompiledRegex, Number, Term};
+use crate::identifier::{Ident, LocIdent};
 
 /// A Nickel string is really just a Rust `String`, overlayed with some
 /// methods implementing custom logic (in particular, functions which
@@ -26,6 +27,18 @@ where
 impl From<&NickelString> for String {
     fn from(s: &NickelString) -> Self {
         s.clone().into_inner()
+    }
+}
+
+impl From<NickelString> for Ident {
+    fn from(s: NickelString) -> Self {
+        Ident::from(s.0)
+    }
+}
+
+impl From<NickelString> for LocIdent {
+    fn from(s: NickelString) -> Self {
+        LocIdent::from(s.0)
     }
 }
 
