@@ -75,7 +75,6 @@
 //! consider at some point.
 
 use crate::identifier::Ident;
-use crate::term::record::FieldMetadata;
 use crate::term::string::NickelString;
 use crate::{
     cache::{Cache as ImportCache, Envs, ImportResolver},
@@ -229,12 +228,89 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self.eval_closure(closure)
     }
 
-    /// Query the value and the metadata of a record field in an expression.
+    /// Take a term and a field path, and evaluate until the corresponding field can be extracted.
+    /// Return the resulting field in its final environment.
     ///
-    /// Querying `foo.bar.baz` on a term `exp` will evaluate `exp.foo.bar` and extract the field
-    /// `baz`. The content of `baz` is evaluated as well, and variables are substituted, in order
-    /// to obtain a value that can be printed. The metadata and the evaluated value are returned as
-    /// a new field.
+    /// Note that this method doesn't evaluate the content of the field itself. Calling it with an
+    /// empty path simply returns the original expression unevaluated in an empty environment.
+    ///
+    /// For example, extracting `foo.bar.baz` on a term `exp` will evaluate `exp` to a record and
+    /// try to extract the field `foo`. If anything goes wrong (the result isn't a record or the
+    /// field `bar` doesn't exist), a proper error is raised. Otherwise, [extract_field] applies
+    /// the same recipe recursively and evaluate the content of the `foo` field extracted from
+    /// `exp` to a record, tries to extract `bar`, and so on.
+    pub fn extract_field(
+        &mut self,
+        t: RichTerm,
+        path: FieldPath,
+    ) -> Result<(Field, Environment), EvalError> {
+        let mut prev_pos = t.pos;
+
+        let mut field: Field = t.into();
+        let mut path = path.0.into_iter().peekable();
+        let mut env = Environment::new();
+
+        let Some(mut prev_id) = path.peek().cloned() else {
+            return Ok((field, env));
+        };
+
+        for id in path {
+            let Some(current_value) = field.value else {
+                return Err(EvalError::MissingFieldDef {
+                    id: prev_id,
+                    metadata: field.metadata,
+                    pos_record: prev_pos,
+                    pos_access: TermPos::None,
+                });
+            };
+
+            // We evaluate the fields' value, either to handle the next ident of the
+            // path, or to show the value if we are treating the last ident of the path
+
+            prev_pos = current_value.pos;
+
+            let curr_value_with_ctr = RuntimeContract::apply_all(
+                current_value,
+                field.pending_contracts.into_iter(),
+                prev_pos,
+            );
+
+            let current_evaled = self.eval_closure(Closure {
+                body: curr_value_with_ctr,
+                env,
+            })?;
+
+            env = current_evaled.env;
+
+            match current_evaled.body.term.into_owned() {
+                Term::Record(mut record_data) => {
+                    let Some(next_field) = record_data.fields.remove(&id) else {
+                        return Err(EvalError::FieldMissing(
+                            id.to_string(),
+                            String::from("extract_field"),
+                            RichTerm::new(Term::Record(record_data), prev_pos),
+                            id.pos,
+                        ));
+                    };
+
+                    field = next_field;
+                }
+                other => {
+                    //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
+                    return Err(EvalError::QueryNonRecord {
+                        pos: prev_pos,
+                        id,
+                        value: RichTerm::new(other, prev_pos),
+                    });
+                }
+            }
+
+            prev_id = id;
+        }
+
+        Ok((field, env))
+    }
+
     pub fn query(&mut self, t: RichTerm, path: FieldPath) -> Result<Field, EvalError> {
         self.query_closure(Closure::atomic_closure(t), path)
     }
@@ -242,82 +318,24 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
     /// environment.
     pub fn query_closure(&mut self, closure: Closure, path: FieldPath) -> Result<Field, EvalError> {
-        let mut prev_pos = closure.body.pos;
-        let Closure { body: rt, mut env } = self.eval_closure(closure)?;
+        // extract_field does almost what we want, but for querying, we evaluate the content of the
+        // field as well in order to report default values.
+        let (mut field, env) = self.extract_field(closure.body, path)?;
 
-        let mut field: Field = rt.into();
+        if let Some(value) = field.value.take() {
+            let value_with_ctr = RuntimeContract::apply_all(
+                value,
+                field.pending_contracts.iter().cloned(),
+                value.pos,
+            );
 
-        let mut path = path.0.into_iter().peekable();
-
-        let Some(mut prev_id) = path.peek().cloned() else {
-            return Ok(field);
-        };
-
-        for id in path {
-            match field.value.as_ref().map(|rt| rt.as_ref()) {
-                None => {
-                    return Err(EvalError::MissingFieldDef {
-                        id: prev_id,
-                        metadata: FieldMetadata::default(),
-                        pos_record: prev_pos,
-                        pos_access: TermPos::None,
-                    })
-                }
-                Some(Term::Record(record_data)) => {
-                    let mut next_field = record_data.fields.get(&id).cloned();
-
-                    if let Some(Field {
-                        metadata: metadata_next,
-                        value: mut value_next,
-                        pending_contracts,
-                    }) = next_field.take()
-                    {
-                        // We evaluate the fields' value, either to handle the next ident of the
-                        // path, or to show the value if we are treating the last ident of the path
-
-                        value_next = value_next
-                            .map(|value| -> Result<RichTerm, EvalError> {
-                                prev_pos = value.pos;
-                                let value_with_ctr = RuntimeContract::apply_all(
-                                    value,
-                                    pending_contracts.into_iter(),
-                                    prev_pos,
-                                );
-                                let new_closure = self.eval_closure(Closure {
-                                    body: value_with_ctr,
-                                    env: env.clone(),
-                                })?;
-                                env = new_closure.env;
-
-                                Ok(new_closure.body)
-                            })
-                            .transpose()?;
-
-                        field = Field {
-                            metadata: metadata_next.clone(),
-                            value: value_next,
-                            pending_contracts: Default::default(),
-                        };
-                    } else {
-                        return Err(EvalError::FieldMissing {
-                            id,
-                            field_names: record_data.field_names(RecordOpKind::ConsiderAllFields),
-                            operator: String::from("query"),
-                            pos_record: prev_pos,
-                            pos_op: id.pos,
-                        });
-                    }
-                }
-                Some(_) => {
-                    //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
-                    return Err(EvalError::QueryNonRecord {
-                        pos: prev_pos,
-                        id,
-                        value: field.value.unwrap(),
-                    });
-                }
-            }
-            prev_id = id;
+            field.value = Some(
+                self.eval_closure(Closure {
+                    body: value_with_ctr,
+                    env,
+                })?
+                .body,
+            );
         }
 
         Ok(field)

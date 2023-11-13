@@ -9,9 +9,9 @@ use crate::{
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
-    /// A field path to inspect. If omitted, we query the top level value.
-    #[arg(long, short)]
-    pub path: Option<String>,
+    /// Query a specific field of the configuration. If omitted, the top-level value is queried
+    #[arg(long, short, value_name = "FIELD_PATH")]
+    pub field: Option<String>,
 
     #[arg(long)]
     pub doc: bool,
@@ -55,12 +55,12 @@ impl QueryCommand {
     pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.inputs.prepare(&global)?;
 
-        if self.path.is_none() {
+        if self.field.is_none() {
             program.report(Warning::EmptyQueryPath)
         }
 
         let found = program
-            .query(std::mem::take(&mut self.path))
+            .query(self.field.take())
             .map(|field| {
                 query_print::write_query_result(
                     &mut std::io::stdout(),
