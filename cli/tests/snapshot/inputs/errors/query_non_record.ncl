@@ -1,3 +1,3 @@
 # capture = 'stderr'
-# command = [ 'query', '--path', 'value' ]
+# command = [ 'query', '--field', 'value' ]
 1
