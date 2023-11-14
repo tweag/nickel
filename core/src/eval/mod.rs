@@ -378,7 +378,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ) -> Result<Field, EvalError> {
         // extract_field does almost what we want, but for querying, we evaluate the content of the
         // field as well in order to print a potential default value.
-        let (mut field, env) = self.extract_field(closure.body, &path)?;
+        let (mut field, env) = self.extract_field(closure.body, path)?;
 
         if let Some(value) = field.value.take() {
             let pos = value.pos;
