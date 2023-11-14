@@ -325,7 +325,6 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 body: curr_value_with_ctr,
                 env,
             })?;
-
             env = current_evaled.env;
 
             match current_evaled.body.term.into_owned() {

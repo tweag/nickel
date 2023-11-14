@@ -176,7 +176,7 @@ impl<FileId> IntoDiagnostics<FileId> for Warning {
                 "For example, instead of querying the expression \
             `(import \"config.ncl\").module.input` with an empty path, query \
             `config.ncl` with the `module.input` path: \
-            \n`nickel query module.input -f config.ncl`"
+            \n`nickel query config.ncl --field module.input"
                     .into(),
             ])]
     }

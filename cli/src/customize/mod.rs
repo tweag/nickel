@@ -29,21 +29,23 @@ use interface::{FieldInterface, TermInterface};
 const ASSIGNMENT_SYNTAX: &str = "FIELD_PATH=NICKEL_EXPRESSION";
 
 const EXPERIMENTAL_MSG: &str =
-    "[WARNING] Customize mode is experimental. Its interface is subject to breaking changes.";
+    "WARNING: Customize mode is experimental. Its interface is subject to breaking changes.";
 
 /// For commands where full customization is allowed, combining extracting a target field and
 /// overriding arbitrary values of the configuration.
 #[derive(clap::Parser, Debug)]
 pub struct CustomizeMode {
-    /// Query a specific field of the configuration. If omitted, the top-level value is queried
-    #[arg(long, short, value_name = "FIELD_PATH")]
+    /// Only query or act on a specific field of the configuration. For example,
+    /// `nickel export config.ncl --field machines.servers.remote_builder` will only evaluate and
+    /// export the content of the `remote_builder` field.
+    #[arg(long, value_name = "FIELD_PATH")]
     pub field: Option<String>,
 
-    /// \[WARNING\] Customize mode is experimental. Its interface is subject to breaking changes.
+    /// WARNING: Customize mode is experimental. Its interface is subject to breaking changes.
     ///
     /// Customize mode turns the nickel invocation into a new CLI based on the configuration to be
     /// exported, where the value of fields can be set directly through CLI arguments. Print the
-    /// corresponding help (`nickel export <file.ncl> -- --help`) to see available options.
+    /// corresponding help (`nickel [COMMAND] <file.ncl> -- --help`) to see available options.
     #[arg(last = true)]
     pub customize_mode: Vec<OsString>,
 }
@@ -233,10 +235,18 @@ impl CustomizableFields {
 }
 
 pub trait Customize {
+    /// Customize the program with the given options.
     fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>>;
+    /// Return the value of the `field` argument, if specified and if supported by the current
+    /// customize variant.
+    fn field(&self) -> Option<&String> {
+        None
+    }
 }
 
 impl CustomizeOptions {
+    // Actually parse assignments and overrides from the command line and add them accordingly to
+    // `program`, given an interface of customizable fields.
     fn do_customize(
         self,
         customizable_fields: CustomizableFields,
@@ -301,11 +311,10 @@ impl CustomizeOptions {
     }
 }
 
-impl Customize for CustomizeMode {
-    // XXX: we should give a nice error message when someone tries to evaluate some
-    //      expression that has unset values, telling them they can set them using
-    //      this method
-    fn customize(&self, mut program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+impl CustomizeMode {
+    // Contains most of the actual implementation of the customizing logic for overriding, but
+    // doesn't set the extracted field.
+    fn customize_impl(&self, mut program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
         if self.customize_mode.is_empty() {
             return Ok(program);
         }
@@ -320,10 +329,7 @@ impl Customize for CustomizeMode {
         let opts = CustomizeOptions::parse_from(self.customize_mode.iter());
 
         match opts.command {
-            None => {
-                let program = opts.do_customize(customizable_fields, program)?;
-                program_with_field(program, self.field.clone())
-            }
+            None => opts.do_customize(customizable_fields, program),
             Some(CustomizeCommand::List(list_command)) => {
                 list_command.run(&customizable_fields)?;
                 Err(Error::CustomizeInfoPrinted)
@@ -332,18 +338,37 @@ impl Customize for CustomizeMode {
     }
 }
 
+impl Customize for CustomizeMode {
+    // XXX: we should give a nice error message when someone tries to evaluate some
+    //      expression that has unset values, telling them they can set them using
+    //      this method
+    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+        program_with_field(self.customize_impl(program)?, self.field.clone())
+    }
+
+    fn field(&self) -> Option<&String> {
+        self.field.as_ref()
+    }
+}
+
 /// For commands when no overriding is allowed, but a target field can still be specified, such as
 /// `nickel query` or `nickel doc`.
 #[derive(clap::Parser, Debug)]
 pub struct ExtractFieldOnly {
-    /// Query a specific field of the configuration. If omitted, the top-level value is queried
-    #[arg(long, short, value_name = "FIELD_PATH")]
+    /// Only query or act on a specific field of the configuration. For example,
+    /// `nickel export config.ncl --field machines.servers.remote_builder` will only evaluate and
+    /// export the content of the `remote_builder` field.
+    #[arg(long, value_name = "FIELD_PATH")]
     pub field: Option<String>,
 }
 
 impl Customize for ExtractFieldOnly {
     fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
         program_with_field(program, self.field.clone())
+    }
+
+    fn field(&self) -> Option<&String> {
+        self.field.as_ref()
     }
 }
 

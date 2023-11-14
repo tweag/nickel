@@ -2,17 +2,13 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    customize::ExtractFieldOnly,
+    customize::{ExtractFieldOnly, Customize},
     error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
-    /// Query a specific field of the configuration. If omitted, the top-level value is queried
-    #[arg(long, short, value_name = "FIELD_PATH")]
-    pub field: Option<String>,
-
     #[arg(long)]
     pub doc: bool,
 
@@ -55,7 +51,7 @@ impl QueryCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.inputs.prepare(&global)?;
 
-        if self.field.is_none() {
+        if self.inputs.customize_mode.field().is_none() {
             program.report(Warning::EmptyQueryPath)
         }
 

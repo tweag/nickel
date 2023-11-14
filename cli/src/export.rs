@@ -19,10 +19,6 @@ pub struct ExportCommand {
     #[arg(long, short, value_enum, default_value_t)]
     pub format: ExportFormat,
 
-    /// Export a specific field of the configuration
-    #[arg(long, short, value_name = "FIELD_PATH")]
-    pub field: Option<String>,
-
     /// Output file. Standard output by default
     #[arg(short, long)]
     pub output: Option<PathBuf>,

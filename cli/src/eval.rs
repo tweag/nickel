@@ -7,10 +7,6 @@ use crate::{
 
 #[derive(clap::Parser, Debug)]
 pub struct EvalCommand {
-    /// Evaluate a specific field of the configuration
-    #[arg(long, short, value_name = "FIELD_PATH")]
-    pub field: Option<String>,
-
     #[command(flatten)]
     pub input: InputOptions<CustomizeMode>,
 }
