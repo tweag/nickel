@@ -2,7 +2,7 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    customize::{ExtractFieldOnly, Customize},
+    customize::{Customize, ExtractFieldOnly},
     error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
