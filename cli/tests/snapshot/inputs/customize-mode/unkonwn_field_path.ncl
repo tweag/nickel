@@ -3,7 +3,7 @@
 # extra_args = [
 #  '--',
 #  'show',
-#  'unkonwn.field.path',
+#  'unknown.field.path',
 # ]
 {
   input.foo.bar | String,
