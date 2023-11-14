@@ -12,7 +12,7 @@ pub(super) struct TermInterface {
     pub(super) fields: HashMap<LocIdent, FieldInterface>,
 }
 
-/// The interface of a specific field. This fields can be itself a record and contain subfields.
+/// The interface of a specific field. This field can be itself a record and contain subfields.
 #[derive(Debug, Clone, Default)]
 pub(super) struct FieldInterface {
     /// The interface of the subfields of this field, if it's a record itself.
