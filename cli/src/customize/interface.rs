@@ -9,7 +9,6 @@ use super::*;
 /// `customize_mode` option.
 #[derive(Debug, Clone, Default)]
 pub(super) struct TermInterface {
-    // We use a BTreeMap so that the end result is being sorted as we build the interface.
     pub(super) fields: HashMap<LocIdent, FieldInterface>,
 }
 
