@@ -185,21 +185,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     }
 
     pub fn eval_full_closure(&mut self, t0: Closure) -> Result<Closure, EvalError> {
-        self.eval_deep_closure(t0, false).map(|result| Closure {
-            body: subst(&self.cache, result.body, &self.initial_env, &result.env),
-            env: result.env,
-        })
+        self.eval_deep_closure_impl(t0, false)
+            .map(|result| Closure {
+                body: subst(&self.cache, result.body, &self.initial_env, &result.env),
+                env: result.env,
+            })
     }
 
-    /// Like `eval_full`, but skips evaluating record fields marked `not_exported`.
+    /// Like [Self::eval_full], but skips evaluating record fields marked `not_exported`.
     pub fn eval_full_for_export(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(Closure::atomic_closure(t0), true)
+        self.eval_deep_closure_impl(Closure::atomic_closure(t0), true)
+            .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
+    }
+
+    /// Same as [Self::eval_full_for_export], but takes a closure as an argument instead of a term.
+    pub fn eval_full_for_export_closure(
+        &mut self,
+        closure: Closure,
+    ) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure_impl(closure, true)
             .map(|result| subst(&self.cache, result.body, &self.initial_env, &result.env))
     }
 
     /// Fully evaluates a Nickel term like `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self, t0: RichTerm) -> Result<RichTerm, EvalError> {
-        self.eval_deep_closure(Closure::atomic_closure(t0), false)
+        self.eval_deep_closure_impl(Closure::atomic_closure(t0), false)
+            .map(|result| result.body)
+    }
+
+    /// Same as [Self::eval_deep], but take a closure as an argument instead of a term.
+    pub fn eval_deep_closure(&mut self, closure: Closure) -> Result<RichTerm, EvalError> {
+        self.eval_deep_closure_impl(closure, false)
             .map(|result| result.body)
     }
 
@@ -213,7 +229,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         self
     }
 
-    fn eval_deep_closure(
+    fn eval_deep_closure_impl(
         &mut self,
         mut closure: Closure,
         for_export: bool,
@@ -239,15 +255,45 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// field `bar` doesn't exist), a proper error is raised. Otherwise, [extract_field] applies
     /// the same recipe recursively and evaluate the content of the `foo` field extracted from
     /// `exp` to a record, tries to extract `bar`, and so on.
-    pub fn extract_field(
+    fn extract_field(
         &mut self,
         t: RichTerm,
-        path: FieldPath,
+        path: &FieldPath,
+    ) -> Result<(Field, Environment), EvalError> {
+        self.extract_field_impl(t, path, false)
+    }
+
+    /// Same as [Self::extract_field], but also requires that the field value is defined and
+    /// returns the value directly.
+    ///
+    /// In theory, this could be handled by the caller of [Self::extract_field] instead of needing
+    /// a separate method. However, in practice, raising a proper error requires contextual
+    /// information (such as term positions) which is currently only available within the body of
+    /// the `extract_field` implementation, so it's easier to let the VM raise the error itself.
+    pub fn extract_field_value(
+        &mut self,
+        t: RichTerm,
+        path: &FieldPath,
+    ) -> Result<Closure, EvalError> {
+        let (field, env) = self.extract_field_impl(t, path, true)?;
+        // unwrap(): by definition, extract_field_impl(_, _, true) ensure that
+        // `field.value.is_some()`
+        Ok(Closure {
+            body: field.value.unwrap(),
+            env,
+        })
+    }
+
+    fn extract_field_impl(
+        &mut self,
+        t: RichTerm,
+        path: &FieldPath,
+        require_defined: bool,
     ) -> Result<(Field, Environment), EvalError> {
         let mut prev_pos = t.pos;
 
         let mut field: Field = t.into();
-        let mut path = path.0.into_iter().peekable();
+        let mut path = path.0.iter().peekable();
         let mut env = Environment::new();
 
         let Some(mut prev_id) = path.peek().cloned() else {
@@ -257,7 +303,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         for id in path {
             let Some(current_value) = field.value else {
                 return Err(EvalError::MissingFieldDef {
-                    id: prev_id,
+                    id: *prev_id,
                     metadata: field.metadata,
                     pos_record: prev_pos,
                     pos_access: TermPos::None,
@@ -284,7 +330,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
 
             match current_evaled.body.term.into_owned() {
                 Term::Record(mut record_data) => {
-                    let Some(next_field) = record_data.fields.remove(&id) else {
+                    let Some(next_field) = record_data.fields.remove(id) else {
                         return Err(EvalError::FieldMissing(
                             id.to_string(),
                             String::from("extract_field"),
@@ -299,7 +345,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     //unwrap(): if we enter this pattern branch, `field.value` must be `Some(_)`
                     return Err(EvalError::QueryNonRecord {
                         pos: prev_pos,
-                        id,
+                        id: *id,
                         value: RichTerm::new(other, prev_pos),
                     });
                 }
@@ -308,26 +354,38 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             prev_id = id;
         }
 
+        if field.value.is_none() && require_defined {
+            return Err(EvalError::MissingFieldDef {
+                id: *prev_id,
+                metadata: field.metadata,
+                pos_record: prev_pos,
+                pos_access: TermPos::None,
+            });
+        }
+
         Ok((field, env))
     }
 
-    pub fn query(&mut self, t: RichTerm, path: FieldPath) -> Result<Field, EvalError> {
+    pub fn query(&mut self, t: RichTerm, path: &FieldPath) -> Result<Field, EvalError> {
         self.query_closure(Closure::atomic_closure(t), path)
     }
 
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
     /// environment.
-    pub fn query_closure(&mut self, closure: Closure, path: FieldPath) -> Result<Field, EvalError> {
+    pub fn query_closure(
+        &mut self,
+        closure: Closure,
+        path: &FieldPath,
+    ) -> Result<Field, EvalError> {
         // extract_field does almost what we want, but for querying, we evaluate the content of the
-        // field as well in order to report default values.
-        let (mut field, env) = self.extract_field(closure.body, path)?;
+        // field as well in order to print a potential default value.
+        let (mut field, env) = self.extract_field(closure.body, &path)?;
 
         if let Some(value) = field.value.take() {
-            let value_with_ctr = RuntimeContract::apply_all(
-                value,
-                field.pending_contracts.iter().cloned(),
-                value.pos,
-            );
+            let pos = value.pos;
+
+            let value_with_ctr =
+                RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos);
 
             field.value = Some(
                 self.eval_closure(Closure {
@@ -349,7 +407,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
         env: Environment,
     ) -> Result<Closure, EvalError> {
         // idx may be a 1-counted RC, so we make sure we drop any reference to it from `env`, which
-        // is going to be discared anyway
+        // is going to be discarded anyway
         std::mem::drop(env);
 
         match self.cache.get_update_index(&mut idx) {

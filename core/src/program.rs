@@ -23,7 +23,7 @@
 use crate::{
     cache::*,
     error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
-    eval::{cache::Cache as EvalCache, VirtualMachine},
+    eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
     identifier::LocIdent,
     label::Label,
     metrics::increment,
@@ -59,9 +59,9 @@ impl FieldPath {
     ///
     /// # Post-conditions
     ///
-    /// If this function succeeds and returns `Ok(query_path)`, then `query_path.0` is non empty.
-    /// Indeed, there's no such thing as a valid empty field path. If `input` is empty, or consists
-    /// only of spaces, `parse` returns a parse error.
+    /// If this function succeeds and returns `Ok(field_path)`, then `field_path.0` is non empty.
+    /// Indeed, there's no such thing as a valid empty field path (at least from the parsing point
+    /// of view): if `input` is empty, or consists only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
         use crate::parser::{grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParser};
 
@@ -83,7 +83,7 @@ impl FieldPath {
     }
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
-    /// input is `None`, `Ok(QueryPath::default())` is returned (that is, an empty query path).
+    /// input is `None`, `Ok(FieldPath::default())` is returned (that is, an empty field path).
     pub fn parse_opt(cache: &mut Cache, input: Option<String>) -> Result<Self, ParseError> {
         Ok(input
             .map(|path| Self::parse(cache, path))
@@ -183,6 +183,10 @@ pub struct Program<EC: EvalCache> {
     /// an import referring to the corresponding isolated value. This stub is finally merged with
     /// the current program before being evaluated for import.
     overrides: Vec<FieldOverride>,
+    /// A specific field to act on. It is empty by default, which means that the whole program will
+    /// be evaluated, but it can be set by the user (for example by the `--field` argument of the
+    /// CLI) to evaluate only a specific field.
+    pub field: FieldPath,
 }
 
 impl<EC: EvalCache> Program<EC> {
@@ -219,6 +223,7 @@ impl<EC: EvalCache> Program<EC> {
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
+            field: FieldPath::new(),
         })
     }
 
@@ -236,6 +241,7 @@ impl<EC: EvalCache> Program<EC> {
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
+            field: FieldPath::new(),
         })
     }
 
@@ -261,6 +267,7 @@ impl<EC: EvalCache> Program<EC> {
             vm,
             color_opt: clap::ColorChoice::Auto.into(),
             overrides: Vec::new(),
+            field: FieldPath::new(),
         })
     }
 
@@ -306,56 +313,58 @@ impl<EC: EvalCache> Program<EC> {
             .clone())
     }
 
-    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment.
-    fn prepare_eval(&mut self) -> Result<RichTerm, Error> {
+    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
+    /// `self.overrides` isn't empty, generate the required merge parts and return a merge
+    /// expression including the overrides.
+    fn prepare_eval(&mut self) -> Result<Closure, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
-        if self.overrides.is_empty() {
-            return self.vm.prepare_eval(self.main_id);
-        }
+        let prepared = if self.overrides.is_empty() {
+            self.vm.prepare_eval(self.main_id)?
+        } else {
+            let mut record = builder::Record::new();
 
-        let mut record = builder::Record::new();
+            for ovd in self.overrides.iter().cloned() {
+                let value_file_id = self
+                    .vm
+                    .import_resolver_mut()
+                    .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
+                self.vm.prepare_eval(value_file_id)?;
+                record = record
+                    .path(ovd.path.0)
+                    .priority(ovd.priority)
+                    .value(Term::ResolvedImport(value_file_id));
+            }
 
-        for ovd in self.overrides.iter().cloned() {
-            let value_file_id = self
-                .vm
-                .import_resolver_mut()
-                .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
-            self.vm.prepare_eval(value_file_id)?;
-            record = record
-                .path(ovd.path.0)
-                .priority(ovd.priority)
-                .value(Term::ResolvedImport(value_file_id));
-        }
+            let t = self.vm.prepare_eval(self.main_id)?;
+            let built_record = record.build();
+            // For now, we can't do much better than using `Label::default`, but this is
+            // hazardous. `Label::default` was originally written for tests, and although it
+            // doesn't happen in practice as of today, it could theoretically generate invalid
+            // codespan file ids (because it creates a new file database on the spot just to
+            // generate a dummy file id).
+            // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
+            // without referring to any source position.
+            mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
+        };
 
-        let t = self.vm.prepare_eval(self.main_id)?;
-        let built_record = record.build();
-        // For now, we can't do much better than using `Label::default`, but this is
-        // hazardous. `Label::default` was originally written for tests, and although it
-        // doesn't happen in practice as of today, it could theoretically generate invalid
-        // codespan file ids (because it creates a new file database on the spot just to
-        // generate a dummy file id).
-        // We'll have to adapt `Label` and `MergeLabel` to be generated programmatically,
-        // without referring to any source position.
-        Ok(mk_term::op2(
-            BinaryOp::Merge(Label::default().into()),
-            t,
-            built_record,
-        ))
+        Ok(self.vm.extract_field_value(prepared, &self.field)?)
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
     pub fn eval(&mut self) -> Result<RichTerm, Error> {
-        let t = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
+
         self.vm.reset();
-        self.vm.eval(t).map_err(|e| e.into())
+        Ok(self.vm.eval_closure(prepared)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation.
     pub fn eval_full(&mut self) -> Result<RichTerm, Error> {
-        let t = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
+
         self.vm.reset();
-        self.vm.eval_full(t).map_err(|e| e.into())
+        Ok(self.vm.eval_full_closure(prepared)?.body)
     }
 
     /// Same as `eval`, but proceeds to a full evaluation. Optionally take a set of overrides that
@@ -372,24 +381,26 @@ impl<EC: EvalCache> Program<EC> {
     ///   an import referring to the corresponding isolated value. This stub is finally merged with
     ///   the current program before being evaluated for import.
     pub fn eval_full_for_export(&mut self) -> Result<RichTerm, Error> {
-        let t = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
+
         self.vm.reset();
-        self.vm.eval_full_for_export(t).map_err(|e| e.into())
+        Ok(self.vm.eval_full_for_export_closure(prepared)?)
     }
 
     /// Same as `eval_full`, but does not substitute all variables.
     pub fn eval_deep(&mut self) -> Result<RichTerm, Error> {
-        let t = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
+
         self.vm.reset();
-        self.vm.eval_deep(t).map_err(|e| e.into())
+        Ok(self.vm.eval_deep_closure(prepared)?)
     }
 
     /// Prepare for evaluation, then query the program for a field.
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
-        let rt = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
         let query_path = FieldPath::parse_opt(self.vm.import_resolver_mut(), path)?;
 
-        Ok(self.vm.query(rt, query_path)?)
+        Ok(self.vm.query_closure(prepared, &query_path)?)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.
@@ -492,11 +503,11 @@ impl<EC: EvalCache> Program<EC> {
     /// when evaluating a field, this field is just left as it is and the evaluation proceeds.
     #[cfg(feature = "doc")]
     pub fn eval_record_spine(&mut self) -> Result<RichTerm, Error> {
-        use crate::eval::{Closure, Environment};
+        use crate::eval::Environment;
         use crate::match_sharedterm;
         use crate::term::{record::RecordData, RuntimeContract};
 
-        let t = self.prepare_eval()?;
+        let prepared = self.prepare_eval()?;
 
         // Eval pending contracts as well, in order to extract more information from potential
         // record contract fields.
@@ -517,13 +528,13 @@ impl<EC: EvalCache> Program<EC> {
 
         fn do_eval<EC: EvalCache>(
             vm: &mut VirtualMachine<Cache, EC>,
-            t: RichTerm,
-            current_env: Environment,
+            term: RichTerm,
+            env: Environment,
         ) -> Result<RichTerm, Error> {
             vm.reset();
             let result = vm.eval_closure(Closure {
-                body: t.clone(),
-                env: current_env,
+                body: term.clone(),
+                env,
             });
 
             // We expect to hit `MissingFieldDef` errors. When a configuration
@@ -536,7 +547,7 @@ impl<EC: EvalCache> Program<EC> {
             // instead of resulting in documentation being silently skipped.
 
             let result = match result {
-                Err(EvalError::MissingFieldDef { .. }) => return Ok(t),
+                Err(EvalError::MissingFieldDef { .. }) => return Ok(term),
                 _ => result,
             }?;
 
@@ -551,7 +562,7 @@ impl<EC: EvalCache> Program<EC> {
                                 Field {
                                     value: field
                                         .value
-                                        .map(|rt| do_eval(vm, rt, result.env.clone()))
+                                        .map(|value| do_eval(vm, value, result.env.clone()))
                                         .transpose()?,
                                     pending_contracts: eval_contracts(
                                         vm,
@@ -563,6 +574,7 @@ impl<EC: EvalCache> Program<EC> {
                             ))
                         })
                         .collect::<Result<_, Error>>()?;
+
                     Ok(RichTerm::new(
                         Term::Record(RecordData { fields, ..data }),
                         result.body.pos,
@@ -572,7 +584,7 @@ impl<EC: EvalCache> Program<EC> {
             })
         }
 
-        do_eval(&mut self.vm, t, Environment::new())
+        do_eval(&mut self.vm, prepared.body, prepared.env)
     }
 
     /// Extract documentation from the program
