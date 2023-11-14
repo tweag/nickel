@@ -11,7 +11,7 @@ use nickel_lang_core::{
 
 use crate::{
     cli::GlobalOptions,
-    customize::NoCustomizeMode,
+    customize::ExtractFieldOnly,
     error::{CliResult, ResultErrorExt},
     input::{InputOptions, Prepare},
 };
@@ -56,7 +56,7 @@ pub struct DocCommand {
     pub format: crate::doc::DocFormat,
 
     #[command(flatten)]
-    pub input: InputOptions<NoCustomizeMode>,
+    pub input: InputOptions<ExtractFieldOnly>,
 }
 
 impl DocCommand {

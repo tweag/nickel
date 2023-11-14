@@ -315,8 +315,21 @@ impl<EC: EvalCache> Program<EC> {
 
     /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
     /// `self.overrides` isn't empty, generate the required merge parts and return a merge
-    /// expression including the overrides.
+    /// expression including the overrides. Extract the field corresponding to `self.field`, if not
+    /// empty.
     fn prepare_eval(&mut self) -> Result<Closure, Error> {
+        self.prepare_eval_impl(false)
+    }
+
+    /// Retrieve the parsed term, typecheck it, and generate a fresh initial environment. If
+    /// `self.overrides` isn't empty, generate the required merge parts and return a merge
+    /// expression including the overrides. DO NOT extract the field corresponding to `self.field`,
+    /// because query does it itself. Otherwise, we would lose the associated metadata.
+    fn prepare_query(&mut self) -> Result<Closure, Error> {
+        self.prepare_eval_impl(true)
+    }
+
+    fn prepare_eval_impl(&mut self, for_query: bool) -> Result<Closure, Error> {
         // If there are no overrides, we avoid the boilerplate of creating an empty record and
         // merging it with the current program
         let prepared = if self.overrides.is_empty() {
@@ -348,7 +361,13 @@ impl<EC: EvalCache> Program<EC> {
             mk_term::op2(BinaryOp::Merge(Label::default().into()), t, built_record)
         };
 
-        Ok(self.vm.extract_field_value(prepared, &self.field)?)
+        let result = if for_query {
+            Closure::atomic_closure(prepared)
+        } else {
+            self.vm.extract_field_value(prepared, &self.field)?
+        };
+
+        Ok(result)
     }
 
     /// Parse if necessary, typecheck and then evaluate the program.
@@ -395,12 +414,12 @@ impl<EC: EvalCache> Program<EC> {
         Ok(self.vm.eval_deep_closure(prepared)?)
     }
 
-    /// Prepare for evaluation, then query the program for a field.
-    pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
-        let prepared = self.prepare_eval()?;
-        let query_path = FieldPath::parse_opt(self.vm.import_resolver_mut(), path)?;
+    /// Prepare for evaluation, then fetch the metadata of `self.field`, or list the fields of the
+    /// whole program if `self.field` is empty.
+    pub fn query(&mut self) -> Result<Field, Error> {
+        let prepared = self.prepare_query()?;
 
-        Ok(self.vm.query_closure(prepared, &query_path)?)
+        Ok(self.vm.query_closure(prepared, &self.field)?)
     }
 
     /// Load, parse, and typecheck the program and the standard library, if not already done.

@@ -31,8 +31,14 @@ const ASSIGNMENT_SYNTAX: &str = "FIELD_PATH=NICKEL_EXPRESSION";
 const EXPERIMENTAL_MSG: &str =
     "[WARNING] Customize mode is experimental. Its interface is subject to breaking changes.";
 
+/// For commands where full customization is allowed, combining extracting a target field and
+/// overriding arbitrary values of the configuration.
 #[derive(clap::Parser, Debug)]
 pub struct CustomizeMode {
+    /// Query a specific field of the configuration. If omitted, the top-level value is queried
+    #[arg(long, short, value_name = "FIELD_PATH")]
+    pub field: Option<String>,
+
     /// \[WARNING\] Customize mode is experimental. Its interface is subject to breaking changes.
     ///
     /// Customize mode turns the nickel invocation into a new CLI based on the configuration to be
@@ -314,7 +320,10 @@ impl Customize for CustomizeMode {
         let opts = CustomizeOptions::parse_from(self.customize_mode.iter());
 
         match opts.command {
-            None => opts.do_customize(customizable_fields, program),
+            None => {
+                let program = opts.do_customize(customizable_fields, program)?;
+                program_with_field(program, self.field.clone())
+            }
             Some(CustomizeCommand::List(list_command)) => {
                 list_command.run(&customizable_fields)?;
                 Err(Error::CustomizeInfoPrinted)
@@ -323,6 +332,22 @@ impl Customize for CustomizeMode {
     }
 }
 
+/// For commands when no overriding is allowed, but a target field can still be specified, such as
+/// `nickel query` or `nickel doc`.
+#[derive(clap::Parser, Debug)]
+pub struct ExtractFieldOnly {
+    /// Query a specific field of the configuration. If omitted, the top-level value is queried
+    #[arg(long, short, value_name = "FIELD_PATH")]
+    pub field: Option<String>,
+}
+
+impl Customize for ExtractFieldOnly {
+    fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
+        program_with_field(program, self.field.clone())
+    }
+}
+
+/// For commands when no customization is allowed at all.
 #[derive(clap::Args, Debug)]
 pub struct NoCustomizeMode;
 
@@ -330,4 +355,25 @@ impl Customize for NoCustomizeMode {
     fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
         Ok(program)
     }
+}
+
+fn program_with_field(
+    mut program: Program<CBNCache>,
+    field: Option<String>,
+) -> CliResult<Program<CBNCache>> {
+    use super::error::{CliUsageError, Error};
+
+    if let Some(field) = field {
+        match program.parse_field_path(field) {
+            Ok(field_path) => program.field = field_path,
+            Err(error) => {
+                return Err(Error::CliUsage {
+                    error: CliUsageError::FieldPathParseError { error },
+                    program,
+                });
+            }
+        }
+    };
+
+    Ok(program)
 }

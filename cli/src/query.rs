@@ -2,7 +2,7 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    customize::NoCustomizeMode,
+    customize::ExtractFieldOnly,
     error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
@@ -29,7 +29,7 @@ pub struct QueryCommand {
     pub value: bool,
 
     #[command(flatten)]
-    pub inputs: InputOptions<NoCustomizeMode>,
+    pub inputs: InputOptions<ExtractFieldOnly>,
 }
 
 impl QueryCommand {
@@ -52,7 +52,7 @@ impl QueryCommand {
         }
     }
 
-    pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.inputs.prepare(&global)?;
 
         if self.field.is_none() {
@@ -60,7 +60,7 @@ impl QueryCommand {
         }
 
         let found = program
-            .query(self.field.take())
+            .query()
             .map(|field| {
                 query_print::write_query_result(
                     &mut std::io::stdout(),
