@@ -3,6 +3,7 @@ source: cli/tests/snapshot/main.rs
 expression: err
 ---
 error: invalid override: unknown field `unknown.field.path`
- = `unknown.field.path` doesn't refer to record field accessible from the root of the configuration.
+ = `unknown.field.path` doesn't refer to a record field accessible from the root of the configuration.
+ = Use `nickel <COMMAND> [OPTIONS] -- list` to show a list of available fields.
 
 
