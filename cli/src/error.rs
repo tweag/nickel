@@ -1,18 +1,27 @@
+//! Error handling for the CLI.
+
 use nickel_lang_core::{
     error::{Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
     eval::cache::lazy::CBNCache,
-    program::Program,
-    program::{FieldOverride, FieldPath},
+    program::{FieldOverride, FieldPath, Program},
 };
+
+/// Data about an unknown field error.
+pub struct UnknownFieldData {
+    /// The field that was unknown.
+    pub path: FieldPath,
+    /// The list of customizable fields used to suggest similar alternative fields.
+    pub field_list: Vec<FieldPath>,
+}
 
 /// Errors related to mishandling the CLI.
 pub enum CliUsageError {
     /// Tried to override a field which doesn't exist.
-    UnknownFieldOverride { path: FieldPath },
+    UnknownFieldOverride(UnknownFieldData),
     /// Tried to assign a field which doesn't exist.
-    UnknownFieldAssignment { path: FieldPath },
+    UnknownFieldAssignment(UnknownFieldData),
     /// Tried to show information about a field which doesn't exist.
-    UnknownField { path: FieldPath },
+    UnknownField(UnknownFieldData),
     /// Tried to override an defined field without the `--override` argument.
     CantAssignNonInput { ovd: FieldOverride },
     /// A parse error occurred when trying to parse an assignment.
@@ -57,19 +66,42 @@ impl IntoDiagnostics<FileId> for CliUsageError {
         files: &mut Files<String>,
         stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
-        fn mk_unknown_diags<FileId>(path: &FieldPath, method: &str) -> Vec<Diagnostic<FileId>> {
+        fn mk_unknown_diags<FileId>(
+            data: UnknownFieldData,
+            method: &str,
+        ) -> Vec<Diagnostic<FileId>> {
+            let mut notes = vec![format!(
+                "`{path}` doesn't refer to a record field accessible from the root of the \
+                 configuration.",
+                path = data.path
+            )];
+
+            let fields_as_strings: Vec<String> =
+                data.field_list.iter().map(ToString::to_string).collect();
+
+            nickel_lang_core::error::suggest::add_suggestion(
+                &mut notes,
+                &fields_as_strings,
+                &data.path.to_string(),
+            );
+
+            notes.push(
+                "Use `nickel <COMMAND> [OPTIONS] -- list` to show a list of available fields."
+                    .to_owned(),
+            );
+
             vec![Diagnostic::error()
-                .with_message(format!("invalid {method}: unknown field `{path}`"))
-                .with_notes(vec![format!(
-                    "`{path}` doesn't refer to record field accessible from the root of the \
-                        configuration."
-                )])]
+                .with_message(format!(
+                    "invalid {method}: unknown field `{path}`",
+                    path = data.path
+                ))
+                .with_notes(notes)]
         }
 
         match self {
-            CliUsageError::UnknownFieldOverride { path } => mk_unknown_diags(&path, "override"),
-            CliUsageError::UnknownFieldAssignment { path } => mk_unknown_diags(&path, "assignment"),
-            CliUsageError::UnknownField { path } => mk_unknown_diags(&path, "query"),
+            CliUsageError::UnknownFieldOverride(data) => mk_unknown_diags(data, "override"),
+            CliUsageError::UnknownFieldAssignment(data) => mk_unknown_diags(data, "assignment"),
+            CliUsageError::UnknownField(data) => mk_unknown_diags(data, "query"),
             CliUsageError::CantAssignNonInput {
                 ovd: FieldOverride { path, value, .. },
             } => {

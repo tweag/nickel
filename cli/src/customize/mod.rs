@@ -19,7 +19,7 @@ use nickel_lang_core::{
     typ::{RecordRowF, RecordRowsIteratorItem, Type, TypeF},
 };
 
-use crate::error::CliResult;
+use crate::error::{CliResult, CliUsageError, Error, UnknownFieldData};
 
 pub mod interface;
 
@@ -169,8 +169,8 @@ impl ShowCommand {
         let path = match program.parse_field_path(self.field) {
             Ok(path) => path,
             Err(parse_error) => {
-                return CliResult::Err(crate::error::Error::CliUsage {
-                    error: crate::error::CliUsageError::FieldPathParseError { error: parse_error },
+                return CliResult::Err(Error::CliUsage {
+                    error: CliUsageError::FieldPathParseError { error: parse_error },
                     program,
                 })
             }
@@ -183,8 +183,11 @@ impl ShowCommand {
         {
             Some(field) => &field.field,
             None => {
-                return CliResult::Err(crate::error::Error::CliUsage {
-                    error: crate::error::CliUsageError::UnknownField { path },
+                return CliResult::Err(Error::CliUsage {
+                    error: CliUsageError::UnknownField(UnknownFieldData {
+                        path,
+                        field_list: customizable_fields.field_list(),
+                    }),
                     program,
                 })
             }
@@ -255,6 +258,17 @@ impl CustomizableFields {
             }
         }
     }
+
+    /// Return a vector of all the paths of the input fields and the overridable fields. In case of
+    /// a unknown field error, this list is used to suggest similar-looking field paths that the
+    /// user could have meant instead.
+    fn field_list(&self) -> Vec<FieldPath> {
+        self.inputs
+            .keys()
+            .chain(self.overrides.keys())
+            .cloned()
+            .collect()
+    }
 }
 
 pub trait Customize {
@@ -277,9 +291,12 @@ impl CustomizeOptions {
 
                 if !customizable_fields.inputs.contains_key(&ovd.path) {
                     if customizable_fields.overrides.contains_key(&ovd.path) {
-                        Err(super::error::CliUsageError::CantAssignNonInput { ovd })
+                        Err(CliUsageError::CantAssignNonInput { ovd })
                     } else {
-                        Err(super::error::CliUsageError::UnknownFieldAssignment { path: ovd.path })
+                        Err(CliUsageError::UnknownFieldAssignment(UnknownFieldData {
+                            path: ovd.path,
+                            field_list: customizable_fields.field_list(),
+                        }))
                     }
                 } else {
                     Ok(ovd)
@@ -289,21 +306,24 @@ impl CustomizeOptions {
 
         let assignment_overrides = match assignment_overrides {
             Ok(assignment_overrides) => assignment_overrides,
-            Err(error) => return CliResult::Err(crate::error::Error::CliUsage { error, program }),
+            Err(error) => return CliResult::Err(Error::CliUsage { error, program }),
         };
 
-        let force_overrides: Result<Vec<_>, super::error::CliUsageError> = self
+        let force_overrides: Result<Vec<_>, CliUsageError> = self
             .ovd
             .into_iter()
             .map(|assignment| {
                 let ovd = program
                     .parse_override(assignment, MergePriority::Top)
-                    .map_err(|error| super::error::CliUsageError::AssignmentParseError { error })?;
+                    .map_err(|error| CliUsageError::AssignmentParseError { error })?;
 
                 if !customizable_fields.inputs.contains_key(&ovd.path)
                     && !customizable_fields.overrides.contains_key(&ovd.path)
                 {
-                    Err(super::error::CliUsageError::UnknownFieldOverride { path: ovd.path })
+                    Err(CliUsageError::UnknownFieldOverride(UnknownFieldData {
+                        path: ovd.path,
+                        field_list: customizable_fields.field_list(),
+                    }))
                 } else {
                     Ok(ovd)
                 }
@@ -312,7 +332,7 @@ impl CustomizeOptions {
 
         let force_overrides = match force_overrides {
             Ok(force_overrides) => force_overrides,
-            Err(error) => return CliResult::Err(crate::error::Error::CliUsage { error, program }),
+            Err(error) => return CliResult::Err(Error::CliUsage { error, program }),
         };
 
         program.add_overrides(assignment_overrides.into_iter().chain(force_overrides));
@@ -332,7 +352,7 @@ impl Customize for CustomizeMode {
         let evaled = match program.eval_record_spine() {
             Ok(evaled) => evaled,
             // We need a `return` control-flow to be able to take `program` out
-            Err(error) => return CliResult::Err(crate::error::Error::Program { error, program }),
+            Err(error) => return CliResult::Err(Error::Program { error, program }),
         };
 
         let customizable_fields = CustomizableFields::new(TermInterface::from(evaled.as_ref()));
@@ -342,11 +362,11 @@ impl Customize for CustomizeMode {
             None => opts.do_customize(customizable_fields, program),
             Some(CustomizeCommand::List(list_command)) => {
                 list_command.run(&customizable_fields)?;
-                Err(crate::error::Error::CustomizeInfoPrinted)
+                Err(Error::CustomizeInfoPrinted)
             }
             Some(CustomizeCommand::Show(show_command)) => {
                 show_command.run(program, &customizable_fields)?;
-                Err(crate::error::Error::CustomizeInfoPrinted)
+                Err(Error::CustomizeInfoPrinted)
             }
         }
     }

@@ -1077,7 +1077,6 @@ impl IntoDiagnostics<FileId> for EvalError {
             } => {
                 let mut labels = Vec::new();
                 let mut notes = Vec::new();
-                let suggestion = suggest::find_best_match(&field_names, &name);
                 let field = escape(name.as_ref());
 
                 if let Some(span) = pos_op.into_opt() {
@@ -1098,9 +1097,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     );
                 }
 
-                if let Some(suggestion) = suggestion {
-                    notes.push(format!("Did you mean `{}`?", suggestion));
-                }
+                suggest::add_suggestion(&mut notes, &field_names, &name);
 
                 vec![Diagnostic::error()
                     .with_message(format!("missing field `{field}`"))
