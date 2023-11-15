@@ -2,8 +2,4 @@
 source: cli/tests/snapshot/main.rs
 expression: out
 ---
-[38;5;240m•[39m [1mcontract[0m: [3mstd.number.Integer[0m
-[38;5;240m•[39m [1mdefault[0m: [3m2[0m
-[38;5;240m•[39m [1mdocumentation[0m: Some documentation
-
 

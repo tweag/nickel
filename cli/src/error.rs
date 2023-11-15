@@ -15,6 +15,7 @@ pub struct UnknownFieldData {
 }
 
 /// Errors related to mishandling the CLI.
+#[allow(dead_code)]
 pub enum CliUsageError {
     /// Tried to override a field which doesn't exist.
     UnknownFieldOverride(UnknownFieldData),

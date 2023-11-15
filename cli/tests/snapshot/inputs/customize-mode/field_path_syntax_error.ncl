@@ -1,8 +1,7 @@
 # capture = 'stderr'
-# command = ['export']
+# command = ['query']
 # extra_args = [
-#  '--',
-#  'show',
+#  '--path',
 #  'input.+foo.baz',
 # ]
 {

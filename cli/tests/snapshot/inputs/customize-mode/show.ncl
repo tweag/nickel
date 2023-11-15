@@ -1,6 +1,6 @@
 # capture = 'stdout'
-# command = ['export']
-# extra_args = ['--', 'show', 'input.defaulted.subfield']
+# command = ['query']
+# extra_args = ['--path', 'input.defaulted.subfield']
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,

@@ -12,3 +12,5 @@ Overridable fields (require `--override`):
 - override.second.subsecond.other
 - override.second.subsecond.subsubsecond
 
+Use the `query` subcommand to print a detailed description of a specific field. See `nickel help query`.
+

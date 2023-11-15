@@ -1,0 +1,11 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: unexpected token
+  ┌─ <query>:1:7
+  │
+1 │ input.+foo.baz
+  │       ^
+
+

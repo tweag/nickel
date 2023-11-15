@@ -11,7 +11,6 @@ use nickel_lang_core::{
     eval::cache::lazy::CBNCache,
     identifier::LocIdent,
     program::{FieldPath, Program},
-    repl::query_print,
     term::{
         record::{Field, RecordData},
         LabeledType, MergePriority, RuntimeContract, Term,
@@ -81,8 +80,6 @@ struct CustomizeOptions {
 
 #[derive(clap::Subcommand)]
 enum CustomizeCommand {
-    /// Show the documentation of a particular field.
-    Show(ShowCommand),
     /// List the input fields and the overridable fields of the configuration.
     List(ListCommand),
 }
@@ -130,6 +127,10 @@ impl ListCommand {
             println!("- {}", override_);
         }
 
+        println!(
+            "\nUse the `query` subcommand to print a detailed description of a specific field. \
+            See `nickel help query`."
+        );
         Ok(())
     }
 }
@@ -152,52 +153,6 @@ struct DoCommand {
 }
 
 impl DoCommand {}
-
-#[derive(clap::Parser)]
-struct ShowCommand {
-    /// Print the documentation and metadata of a particular field.
-    #[clap(value_name = "FIELD_PATH")]
-    field: String,
-}
-
-impl ShowCommand {
-    fn run(
-        self,
-        mut program: Program<CBNCache>,
-        customizable_fields: &CustomizableFields,
-    ) -> CliResult<()> {
-        let path = match program.parse_field_path(self.field) {
-            Ok(path) => path,
-            Err(parse_error) => {
-                return CliResult::Err(Error::CliUsage {
-                    error: CliUsageError::FieldPathParseError { error: parse_error },
-                    program,
-                })
-            }
-        };
-
-        let field = match customizable_fields
-            .inputs
-            .get(&path)
-            .or(customizable_fields.overrides.get(&path))
-        {
-            Some(field) => &field.field,
-            None => {
-                return CliResult::Err(Error::CliUsage {
-                    error: CliUsageError::UnknownField(UnknownFieldData {
-                        path,
-                        field_list: customizable_fields.field_list(),
-                    }),
-                    program,
-                })
-            }
-        };
-
-        query_print::write_query_result(&mut std::io::stdout(), field, Default::default()).unwrap();
-
-        Ok(())
-    }
-}
 
 /// Fields of the configuration which aren't themselves records and can be assigned or overridden
 /// through the customize mode.
@@ -362,10 +317,6 @@ impl Customize for CustomizeMode {
             None => opts.do_customize(customizable_fields, program),
             Some(CustomizeCommand::List(list_command)) => {
                 list_command.run(&customizable_fields)?;
-                Err(Error::CustomizeInfoPrinted)
-            }
-            Some(CustomizeCommand::Show(show_command)) => {
-                show_command.run(program, &customizable_fields)?;
                 Err(Error::CustomizeInfoPrinted)
             }
         }
