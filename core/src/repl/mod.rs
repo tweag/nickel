@@ -312,9 +312,9 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
 
         let mut query_path = FieldPath::parse(self.vm.import_resolver_mut(), path)?;
 
-        // remove(): this is safe because there is no such thing as an empty field path. If `path`
-        // is empty, the parser will error out. Hence, `QueryPath::parse` always returns a non-empty
-        // vector.
+        // remove(): this is safe because there is no such thing as an empty field path, at least
+        // when it comes out of the parser. If `path` is empty, the parser will error out. Hence,
+        // `FieldPath::parse` always returns a non-empty vector.
         let target = query_path.0.remove(0);
 
         let file_id = self
@@ -331,7 +331,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
                 body: self.vm.import_resolver().get_owned(file_id).unwrap(),
                 env: self.env.eval_env.clone(),
             },
-            query_path,
+            &query_path,
         )?)
     }
 

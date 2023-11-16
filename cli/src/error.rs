@@ -15,14 +15,11 @@ pub struct UnknownFieldData {
 }
 
 /// Errors related to mishandling the CLI.
-#[allow(dead_code)]
 pub enum CliUsageError {
     /// Tried to override a field which doesn't exist.
     UnknownFieldOverride(UnknownFieldData),
     /// Tried to assign a field which doesn't exist.
     UnknownFieldAssignment(UnknownFieldData),
-    /// Tried to show information about a field which doesn't exist.
-    UnknownField(UnknownFieldData),
     /// Tried to override an defined field without the `--override` argument.
     CantAssignNonInput { ovd: FieldOverride },
     /// A parse error occurred when trying to parse an assignment.
@@ -102,7 +99,6 @@ impl IntoDiagnostics<FileId> for CliUsageError {
         match self {
             CliUsageError::UnknownFieldOverride(data) => mk_unknown_diags(data, "override"),
             CliUsageError::UnknownFieldAssignment(data) => mk_unknown_diags(data, "assignment"),
-            CliUsageError::UnknownField(data) => mk_unknown_diags(data, "query"),
             CliUsageError::CantAssignNonInput {
                 ovd: FieldOverride { path, value, .. },
             } => {
@@ -140,10 +136,14 @@ impl IntoDiagnostics<FileId> for CliUsageError {
                     Diagnostic::note()
                         .with_message("when parsing a field path on the command line")
                         .with_notes(vec![
-                            "A field path must be a dot-separated list of fields. Fields \
-                            with spaces or special characters must be properly quoted."
+                            "A field path must be a dot-separated list of fields. Special \
+                            characters must be properly escaped, both for Nickel and for the \
+                            shell."
                                 .to_owned(),
-                            "For example: `config.database.\"$port\"`".to_owned(),
+                            "For example: a field path `config.\"$port\"` in Nickel source code \
+                            must be written `config.\\\"\\$port\\\"` or `'config.\"$port\"'` on \
+                            a POSIX shell"
+                                .to_owned(),
                         ]),
                 );
                 diags
@@ -176,7 +176,7 @@ impl<FileId> IntoDiagnostics<FileId> for Warning {
                 "For example, instead of querying the expression \
             `(import \"config.ncl\").module.input` with an empty path, query \
             `config.ncl` with the `module.input` path: \
-            \n`nickel query module.input -f config.ncl`"
+            \n`nickel query config.ncl --field module.input"
                     .into(),
             ])]
     }

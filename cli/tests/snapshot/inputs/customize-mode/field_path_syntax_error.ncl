@@ -1,7 +1,7 @@
 # capture = 'stderr'
 # command = ['query']
 # extra_args = [
-#  '--path',
+#  '--field',
 #  'input.+foo.baz',
 # ]
 {

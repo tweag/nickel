@@ -8,4 +8,8 @@ error: unexpected token
 1 │ input.+foo.baz
   │       ^
 
+note: when parsing a field path on the command line
+ = A field path must be a dot-separated list of fields. Special characters must be properly escaped, both for Nickel and for the shell.
+ = For example: a field path `config."$port"` in Nickel source code must be written `config.\"\$port\"` or `'config."$port"'` on a POSIX shell
+
 

@@ -2,17 +2,13 @@ use nickel_lang_core::repl::query_print;
 
 use crate::{
     cli::GlobalOptions,
-    customize::NoCustomizeMode,
+    customize::{Customize, ExtractFieldOnly},
     error::{CliResult, ResultErrorExt, Warning},
     input::{InputOptions, Prepare},
 };
 
 #[derive(clap::Parser, Debug)]
 pub struct QueryCommand {
-    /// A field path to inspect. If omitted, we query the top level value.
-    #[arg(long, short)]
-    pub path: Option<String>,
-
     #[arg(long)]
     pub doc: bool,
 
@@ -29,7 +25,7 @@ pub struct QueryCommand {
     pub value: bool,
 
     #[command(flatten)]
-    pub inputs: InputOptions<NoCustomizeMode>,
+    pub inputs: InputOptions<ExtractFieldOnly>,
 }
 
 impl QueryCommand {
@@ -52,15 +48,15 @@ impl QueryCommand {
         }
     }
 
-    pub fn run(mut self, global: GlobalOptions) -> CliResult<()> {
+    pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.inputs.prepare(&global)?;
 
-        if self.path.is_none() {
+        if self.inputs.customize_mode.field().is_none() {
             program.report(Warning::EmptyQueryPath)
         }
 
         let found = program
-            .query(std::mem::take(&mut self.path))
+            .query()
             .map(|field| {
                 query_print::write_query_result(
                     &mut std::io::stdout(),

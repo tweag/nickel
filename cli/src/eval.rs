@@ -14,6 +14,7 @@ pub struct EvalCommand {
 impl EvalCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.input.prepare(&global)?;
+
         program
             .eval_full()
             .map(|t| println!("{t}"))

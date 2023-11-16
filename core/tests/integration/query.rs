@@ -1,19 +1,37 @@
-use nickel_lang_core::term::{
-    make as mk_term,
-    record::{Field, FieldMetadata},
-    TypeAnnotation,
+use nickel_lang_core::{
+    eval::cache::lazy::CBNCache,
+    program::Program,
+    term::{
+        make as mk_term,
+        record::{Field, FieldMetadata},
+        TypeAnnotation,
+    },
 };
+
 use nickel_lang_utils::test_program::TestProgram;
+
+trait ProgramExt {
+    fn with_field_path(self, path: &str) -> Self;
+}
+
+impl ProgramExt for Program<CBNCache> {
+    fn with_field_path(mut self, path: &str) -> Self {
+        self.field = self.parse_field_path(path.to_owned()).unwrap();
+        self
+    }
+}
 
 #[test]
 pub fn test_query_metadata_basic() {
-    let mut program = TestProgram::new_from_source(
+    let result = TestProgram::new_from_source(
         "{val | doc \"Test basic\" = (1 + 1)}".as_bytes(),
         "regr_tests",
         std::io::stderr(),
     )
+    .unwrap()
+    .with_field_path("val")
+    .query()
     .unwrap();
-    let result = program.query(Some(String::from("val"))).unwrap();
 
     assert_eq!(result.metadata.doc, Some(String::from("Test basic")));
     assert_eq!(result.value.unwrap().without_pos(), mk_term::integer(2));
@@ -21,18 +39,20 @@ pub fn test_query_metadata_basic() {
 
 #[test]
 pub fn test_query_with_wildcard() {
-    let path = Some(String::from("value"));
+    let path = "value";
 
     /// Checks whether `lhs` and `rhs` both evaluate to terms with the same static type
     #[track_caller]
-    fn assert_types_eq(lhs: &str, rhs: &str, path: Option<String>) {
+    fn assert_types_eq(lhs: &str, rhs: &str, path: &str) {
         let term1 = TestProgram::new_from_source(lhs.as_bytes(), "regr_tests", std::io::stderr())
             .unwrap()
-            .query(path.clone())
+            .with_field_path(path)
+            .query()
             .unwrap();
         let term2 = TestProgram::new_from_source(rhs.as_bytes(), "regr_tests", std::io::stderr())
             .unwrap()
-            .query(path)
+            .with_field_path(path)
+            .query()
             .unwrap();
         if let (
             Field {
@@ -75,10 +95,13 @@ pub fn test_query_with_wildcard() {
     }
 
     // Without wildcard, the result has no type annotation
-    let mut program =
+    let result =
         TestProgram::new_from_source("{value = 10}".as_bytes(), "regr_tests", std::io::stderr())
+            .unwrap()
+            .with_field_path(path)
+            .query()
             .unwrap();
-    let result = program.query(path.clone()).unwrap();
+
     assert!(matches!(
         result,
         Field {
@@ -91,13 +114,13 @@ pub fn test_query_with_wildcard() {
     ));
 
     // With a wildcard, there is a type annotation, inferred to be Number
-    assert_types_eq("{value : _ = 10}", "{value : Number = 10}", path.clone());
+    assert_types_eq("{value : _ = 10}", "{value : Number = 10}", path);
 
     // Wildcard infers record type
     assert_types_eq(
         r#"{value : _ = {foo = "quux"}}"#,
         r#"{value : {foo: String} = {foo = "quux"}}"#,
-        path.clone(),
+        path,
     );
 
     // Wildcard infers function type, infers inside `let`
