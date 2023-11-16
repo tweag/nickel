@@ -1,3 +1,92 @@
+Version 1.3
+===========
+
+Version 1.3 includes several new optimizations following reports of long
+evaluation time for medium-sized codebase. The command-line interface (CLI) has
+been reworked to be more user-friendly, at the cost of breaking changes: see
+below. Finally, the LSP has seen continuous improvement as well.
+
+Breaking changes
+----------------
+
+* @vkleen improved the CLI UX in numerous ways in https://github.com/tweag/nickel/pull/1632
+  - The file argument is now argument positional. That is, instead of running
+    `nickel export -f config.ncl`, now use `nickel export config.ncl` instead.
+  - Every command which can take a file argument can now take several of them.
+    The program parsed from the files are then merged before applying the
+    action. For example, the new
+    `nickel export config1.ncl config2.ncl config3.ncl` is the equivalent of the
+    previous:
+    `nickel export <<< '(import "config1.ncl") & (import "config2.ncl") & (import "config3.ncl")'`
+  - Evaluation is now an explicit subcommand, instead of being the default
+    action. Instead of running `nickel -f config.ncl` to evaluate a file, use
+    `nickel eval config.ncl` instead.
+* Not a breaking change per se, because the customize mode is experimental, but
+  @yannham introduced a new syntax for customize mode in
+  https://github.com/tweag/nickel/pull/1709. Instead of dynamically generating a
+  CLI where arguments are field paths, the new customize mode CLI directly take
+  assignments written in a Nickel-like syntax as positional arguments. For
+  example, in 1.2, the command
+  `nickel eval -f confing.ncl -- \
+    --input.field1 '"Value"' --input.flag false \
+    --override output.bar 0`
+  now becomes
+  `nickel eval config.ncl -- \
+    'input.field1="Value"' input.flag=false \
+    --override output.bar=0`
+
+Fixes
+-----
+
+* Fix `record.update` by making `record.insert` act consistently by @yannham in https://github.com/tweag/nickel/pull/1669
+
+Tooling
+-------
+
+* LSP:
+  - implement type-based completion in the new completer by @jneem in https://github.com/tweag/nickel/pull/1577
+  - Improve context completion by @jneem in https://github.com/tweag/nickel/pull/1584
+  - Take the ancestor path into account when env-completing from uncles. by @jneem in https://github.com/tweag/nickel/pull/1661
+  - Add goto support for pattern bindings by @jneem in https://github.com/tweag/nickel/pull/1665
+  - Add cousin search to goto and hover by @jneem in https://github.com/tweag/nickel/pull/1670
+  - Improve hover output for let patterns by @jneem in https://github.com/tweag/nickel/pull/1696
+  - First prototype of contract evaluation by @jneem in https://github.com/tweag/nickel/pull/1672
+* LSP: a large refactoring work by @jneem to get rid of the old and
+  hard-to-maintain code analysis implementation
+  (https://github.com/tweag/nickel/pull/1623,
+    https://github.com/tweag/nickel/pull/1629,
+    https://github.com/tweag/nickel/pull/1658,
+    https://github.com/tweag/nickel/pull/1663)
+* Honor `nostdlib` in customize mode as well by @vkleen in https://github.com/tweag/nickel/pull/1634
+* Add the `list` subcommand to the customize mode by @yannham in https://github.com/tweag/nickel/pull/1709
+* add %eval_nix% primop for Nix interop by @Radvendii in
+  https://github.com/tweag/nickel/pull/1465 (requires to build with the
+  corresponding experimental feature enabled)
+* Get rid of shallow_repr and print full terms in error messages by @yannham in
+  https://github.com/tweag/nickel/pull/1676
+* Add suggestions to the error message when misspelling a record field by @yannham in https://github.com/tweag/nickel/pull/1710
+* Add a `--field` argument to subcommands to target a specific field whenever it makes sense by @yannham in https://github.com/tweag/nickel/pull/1712
+
+Optimizations
+-------------
+
+* Contract elision for static types by @yannham in https://github.com/tweag/nickel/pull/1671
+* Implement contract deduplication optimization by @yannham in https://github.com/tweag/nickel/pull/1631
+* Array contract deduplication by @yannham in https://github.com/tweag/nickel/pull/1674
+* Get rid of most generated variables by @yannham in https://github.com/tweag/nickel/pull/1679
+
+Documentation
+-------------
+
+* Fix invalid example code in doc of blame_with_message by @bgni in https://github.com/tweag/nickel/pull/1689
+* Fix doc, example code for pipe lacks prefix by @bgni in https://github.com/tweag/nickel/pull/1692
+* change nickel-nix to organist by @Radvendii in https://github.com/tweag/nickel/pull/1691
+
+## New Contributors
+
+* @bgni made their first contribution in https://github.com/tweag/nickel/pull/1689
+* @giorgiga made their first contribution in https://github.com/tweag/nickel/pull/1697
+
 Version 1.2
 ===========
 

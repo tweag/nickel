@@ -27,50 +27,50 @@ Other crates carry the version number of the Nickel language. These are
 - `nickel-lang-lsp`
 - `pyckel`
 
-Finally, update the version number in `doc/manual/introduction.md`.
-
 ### Prepare
 
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
    `git checkout -b X.Y.Z-release`
-2. Bump the overall version number in `Cargo.toml` to `X.Y.Z`. This will be
-   automatically propagated to the CLI, the Nickel language server and Pyckel.
-3. Bump the version number of the other crates in the workspace:
-   - `core/Cargo.toml`
+2. Bump the overall workspace version number in `Cargo.toml` to `X.Y.Z`. This
+   will be automatically propagated to the CLI, the Nickel language server and
+   Pyckel.
+3. Update the current version number mentioned in `doc/manual/introduction.md`
+   with the new one set in step 2. Grep for the previous version
+   number in the various README files, as the latest version is sometimes
+   mentioned, and update if needed.
+4. Bump the version number of `core` in `core/Cargo.toml` and
+   `wasm-repl/Cargo.toml`. The two versions must always be the same.
+
+   Bump the version of the other crates in the workspace **if needed** (usually,
+   it's safer to always bump the version of `core` because it's modified all the
+   time without special care about its public API, but the following crates are
+   often left untouched):
+
    - `lsp/lsp-harness/Cargo.toml`
    - `utils/Cargo.toml`
-   - `wasm-repl/Cargo.toml`
-   Afterwards, also adjust the version numbers in `Cargo.toml`. For example, in
+
+   Afterwards, also adjust the version numbers of the dependencies in
+   `Cargo.toml`. For example, in
 
    ```toml
       nickel-lang-core = { version = "0.1", path = "./core", default-features = false }
    ```
 
    adjust the version `0.1` to reflect the new version number.
-
-4. Make sure that everything builds: run `nix flake check` at the root of the
+5. Make sure that everything builds: run `nix flake check` at the root of the
    repository.
-5. Add the changelog since the last release in RELEASES.md. GitHub is able to
+6. Add the changelog since the last release in RELEASES.md. GitHub is able to
    automatically generate release notes: refer to [this
    guide](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes).
    While the output needs to be reworked, it's a useful starting point. Commit
    and push your changes.
-6. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
+7. Set the `stable` branch to point to your new `X.Y.Z-release`. Because the
    `stable` branch usually contains specific fixes, or cherry-picked commits,
-   we'll have to force push. We advise to first save the previous state in a
-   local branch:
+   we'll have to force push. First save the previous state in a local branch:
 
    ```console
    git checkout stable
    git branch stable-local-save
-   ```
-
-   If anything goes wrong, you can reset `stable` to its previous state:
-
-   ```console
-   git checkout stable
-   git reset --hard stable-local-save
-   git push --force-with-lease
    ```
 
    Update the `stable` branch:
@@ -78,6 +78,14 @@ Finally, update the version number in `doc/manual/introduction.md`.
    ```console
    git checkout stable
    git reset --hard X.Y.Z-release`
+   git push --force-with-lease
+   ```
+
+   If anything goes wrong, you can reset `stable` to its previous state:
+
+   ```console
+   git checkout stable
+   git reset --hard stable-local-save
    git push --force-with-lease
    ```
 
