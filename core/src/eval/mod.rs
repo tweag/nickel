@@ -252,10 +252,10 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     ///
     /// For example, extracting `foo.bar.baz` on a term `exp` will evaluate `exp` to a record and
     /// try to extract the field `foo`. If anything goes wrong (the result isn't a record or the
-    /// field `bar` doesn't exist), a proper error is raised. Otherwise, [extract_field] applies
-    /// the same recipe recursively and evaluate the content of the `foo` field extracted from
-    /// `exp` to a record, tries to extract `bar`, and so on.
-    fn extract_field(
+    /// field `bar` doesn't exist), a proper error is raised. Otherwise, [Self::extract_field]
+    /// applies the same recipe recursively and evaluate the content of the `foo` field extracted
+    /// from `exp` to a record, tries to extract `bar`, and so on.
+    pub fn extract_field(
         &mut self,
         t: RichTerm,
         path: &FieldPath,
@@ -269,7 +269,8 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// In theory, this could be handled by the caller of [Self::extract_field] instead of needing
     /// a separate method. However, in practice, raising a proper error requires contextual
     /// information (such as term positions) which is currently only available within the body of
-    /// the `extract_field` implementation, so it's easier to let the VM raise the error itself.
+    /// the `extract_field` implementation, so it's easier to let the callee raise the error
+    /// itself.
     pub fn extract_field_value(
         &mut self,
         t: RichTerm,
@@ -330,12 +331,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             match current_evaled.body.term.into_owned() {
                 Term::Record(mut record_data) => {
                     let Some(next_field) = record_data.fields.remove(id) else {
-                        return Err(EvalError::FieldMissing(
-                            id.to_string(),
-                            String::from("extract_field"),
-                            RichTerm::new(Term::Record(record_data), prev_pos),
-                            id.pos,
-                        ));
+                        return Err(EvalError::FieldMissing {
+                            id: *id,
+                            field_names: record_data.field_names(RecordOpKind::IgnoreEmptyOpt),
+                            operator: String::from("extract_field"),
+                            pos_record: prev_pos,
+                            pos_op: id.pos,
+                        });
                     };
 
                     field = next_field;

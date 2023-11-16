@@ -252,13 +252,13 @@ impl CustomizeOptions {
         customizable_fields: CustomizableFields,
         mut program: Program<CBNCache>,
     ) -> CliResult<Program<CBNCache>> {
-        let assignment_overrides: Result<Vec<_>, super::error::CliUsageError> = self
+        let assignment_overrides: Result<Vec<_>, CliUsageError> = self
             .assignment
             .into_iter()
             .map(|assignment| {
                 let ovd = program
                     .parse_override(assignment, MergePriority::default())
-                    .map_err(|error| super::error::CliUsageError::AssignmentParseError { error })?;
+                    .map_err(|error| CliUsageError::AssignmentParseError { error })?;
 
                 if !customizable_fields.inputs.contains_key(&ovd.path) {
                     if customizable_fields.overrides.contains_key(&ovd.path) {
@@ -386,8 +386,6 @@ fn program_with_field(
     mut program: Program<CBNCache>,
     field: Option<String>,
 ) -> CliResult<Program<CBNCache>> {
-    use super::error::{CliUsageError, Error};
-
     if let Some(field) = field {
         match program.parse_field_path(field) {
             Ok(field_path) => program.field = field_path,
