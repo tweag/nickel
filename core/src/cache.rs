@@ -88,6 +88,7 @@ pub struct Cache {
     wildcards: HashMap<FileId, Wildcards>,
     /// Whether processing should try to continue even in case of errors. Needed by the NLS.
     error_tolerance: ErrorTolerance,
+    import_paths: Vec<PathBuf>,
 
     #[cfg(debug_assertions)]
     /// Skip loading the stdlib, used for debugging purpose
@@ -323,6 +324,10 @@ pub enum SourceState {
 
 impl Cache {
     pub fn new(error_tolerance: ErrorTolerance) -> Self {
+        let import_paths = std::env::var("NICKEL_PATH")
+            .map(|paths| paths.split(':').map(PathBuf::from).collect())
+            .unwrap_or_default();
+
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
@@ -333,6 +338,8 @@ impl Cache {
             rev_imports: HashMap::new(),
             stdlib_ids: None,
             error_tolerance,
+
+            import_paths,
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
@@ -1310,16 +1317,38 @@ impl ImportResolver for Cache {
         parent: Option<FileId>,
         pos: &TermPos,
     ) -> Result<(ResolvedTerm, FileId), ImportError> {
-        let parent_path = parent.and_then(|p| self.get_path(p)).map(PathBuf::from);
-        let path_buf = with_parent(path, parent_path);
+        // `parent` is the file that did the import. We first look in its containing directory.
+        let mut parent_path = parent
+            .and_then(|p| self.get_path(p))
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        parent_path.pop();
+
+        let possible_parents: Vec<PathBuf> = std::iter::once(parent_path)
+            .chain(self.import_paths.iter().cloned())
+            .collect();
+
+        // Try to import from all possibilities, taking the first one that succeeds.
+        let (id_op, path_buf) = possible_parents
+            .iter()
+            .find_map(|parent| {
+                let mut path_buf = parent.clone();
+                path_buf.push(path);
+                self.get_or_add_file(&path_buf).ok().map(|x| (x, path_buf))
+            })
+            .ok_or_else(|| {
+                let parents = possible_parents
+                    .iter()
+                    .map(|p| p.to_string_lossy())
+                    .collect::<Vec<_>>();
+                ImportError::IOError(
+                    path.to_string_lossy().into_owned(),
+                    format!("could not find import (looked in [{}])", parents.join(", ")),
+                    *pos,
+                )
+            })?;
+
         let format = InputFormat::from_path(&path_buf).unwrap_or_default();
-        let id_op = self.get_or_add_file(&path_buf).map_err(|err| {
-            ImportError::IOError(
-                path_buf.to_string_lossy().into_owned(),
-                format!("{err}"),
-                *pos,
-            )
-        })?;
         let (result, file_id) = match id_op {
             CacheOp::Cached(id) => (ResolvedTerm::FromCache, id),
             CacheOp::Done(id) => (ResolvedTerm::FromFile { path: path_buf }, id),
@@ -1350,14 +1379,6 @@ impl ImportResolver for Cache {
             .get(&file_id)
             .and_then(|p| p.try_into().ok())
     }
-}
-
-/// Compute the path of a file relatively to a parent.
-fn with_parent(path: &OsStr, parent: Option<PathBuf>) -> PathBuf {
-    let mut path_buf = parent.unwrap_or_default();
-    path_buf.pop();
-    path_buf.push(Path::new(path));
-    path_buf
 }
 
 /// Normalize the path of a file for unique identification in the cache.
