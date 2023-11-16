@@ -35,11 +35,8 @@ const EXPERIMENTAL_MSG: &str =
 /// overriding arbitrary values of the configuration.
 #[derive(clap::Parser, Debug)]
 pub struct CustomizeMode {
-    /// Only query or act on a specific field of the configuration. For example,
-    /// `nickel export config.ncl --field machines.servers.remote_builder` will only evaluate and
-    /// export the content of the `remote_builder` field.
-    #[arg(long, value_name = "FIELD_PATH")]
-    pub field: Option<String>,
+    #[command(flatten)]
+    extract_field: ExtractFieldOnly,
 
     /// WARNING: Customize mode is experimental. Its interface is subject to breaking changes.
     ///
@@ -343,11 +340,14 @@ impl Customize for CustomizeMode {
     //      expression that has unset values, telling them they can set them using
     //      this method
     fn customize(&self, program: Program<CBNCache>) -> CliResult<Program<CBNCache>> {
-        program_with_field(self.customize_impl(program)?, self.field.clone())
+        program_with_field(
+            self.customize_impl(program)?,
+            self.extract_field.field.clone(),
+        )
     }
 
     fn field(&self) -> Option<&String> {
-        self.field.as_ref()
+        self.extract_field.field.as_ref()
     }
 }
 
