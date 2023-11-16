@@ -1,0 +1,8 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: invalid query: unknown field `unkonwn.field.path`
+ = `unkonwn.field.path` doesn't refer to record field accessible from the root of the configuration.
+
+

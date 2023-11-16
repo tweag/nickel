@@ -2,10 +2,10 @@
 # command = ['export']
 # extra_args = [
 #  '--',
-#  'input.foo.bar="hello"',
+#  'input.foo.bar=="hello"',
 #  'input.foo.baz=[]',
 #  '--override',
-#  'unknown.field.path=null',
+#  'unkonwn.field.path=null',
 # ]
 {
   input.foo.bar | String,

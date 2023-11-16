@@ -1,11 +1,8 @@
 # capture = 'stderr'
-# command = ['export']
+# command = ['query']
 # extra_args = [
-#  '--',
-#  'input.foo.bar="hello"',
-#  'input.foo.baz=[]',
-#  '--override',
-#  'unknown.field.path=null',
+#  '--path',
+#  'input.+foo.baz',
 # ]
 {
   input.foo.bar | String,

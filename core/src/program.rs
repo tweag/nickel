@@ -38,15 +38,16 @@ use std::path::PathBuf;
 
 use std::{
     ffi::OsString,
+    fmt,
     io::{self, Cursor, Read, Write},
     result::Result,
 };
 
-/// Attribute path provided when querying metadata.
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
-pub struct QueryPath(pub Vec<LocIdent>);
+/// A path of fields, that is a list, locating this field from the root of the configuration.
+#[derive(Clone, Default, PartialEq, Eq, Debug, Hash)]
+pub struct FieldPath(pub Vec<LocIdent>);
 
-impl QueryPath {
+impl FieldPath {
     pub fn new() -> Self {
         Self::default()
     }
@@ -62,41 +63,23 @@ impl QueryPath {
     /// Indeed, there's no such thing as a valid empty field path. If `input` is empty, or consists
     /// only of spaces, `parse` returns a parse error.
     pub fn parse(cache: &mut Cache, input: String) -> Result<Self, ParseError> {
-        use crate::parser::{
-            grammar::FieldPathParser, lexer::Lexer, utils::FieldPathElem, ErrorTolerantParser,
-        };
+        use crate::parser::{grammar::StaticFieldPathParser, lexer::Lexer, ErrorTolerantParser};
 
         let input_id = cache.replace_string(SourcePath::Query, input);
         let s = cache.source(input_id);
 
-        let parser = FieldPathParser::new();
+        let parser = StaticFieldPathParser::new();
         let field_path = parser
             .parse_strict(input_id, Lexer::new(s))
             // We just need to report an error here
             .map_err(|mut errs| {
                 errs.errors.pop().expect(
                     "because parsing of the query path failed, the error \
-                                              list must be non-empty, put .pop() failed",
+                    list must be non-empty, put .pop() failed",
                 )
             })?;
 
-        let path_as_idents: Result<Vec<LocIdent>, ParseError> = field_path
-            .into_iter()
-            .map(|elem| match elem {
-                FieldPathElem::Ident(ident) => Ok(ident),
-                FieldPathElem::Expr(expr) => {
-                    let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
-                        ParseError::InterpolationInQuery {
-                            input: s.into(),
-                            pos_path_elem: expr.pos,
-                        },
-                    )?;
-                    Ok(LocIdent::from(as_string))
-                }
-            })
-            .collect();
-
-        path_as_idents.map(QueryPath)
+        Ok(FieldPath(field_path))
     }
 
     /// As [`Self::parse`], but accepts an `Option` to accomodate for the absence of path. If the
@@ -109,16 +92,77 @@ impl QueryPath {
     }
 }
 
+impl fmt::Display for FieldPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::pretty::ident_quoted;
+
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(ident_quoted)
+                .collect::<Vec<_>>()
+                .join(".")
+        )
+    }
+}
+
 /// Several CLI commands accept additional overrides specified directly on the command line. They
 /// are represented by this structure.
 #[derive(Clone)]
 pub struct FieldOverride {
     /// The field path identifying the (potentially nested) field to override.
-    pub path: Vec<String>,
+    pub path: FieldPath,
     /// The overriding value.
     pub value: String,
     /// The priority associated with this override.
     pub priority: MergePriority,
+}
+
+impl FieldOverride {
+    /// Parse an assignment `path.to.field=value` to a field override, with the priority given as a
+    /// separate argument.
+    ///
+    /// Internally, the parser entirely parses the `value` part to a [crate::term::RichTerm] (have
+    /// it accept anything after the equal sign is in fact harder than actually parsing it), but
+    /// what we need at this point is just a string. Thus, `parse` uses the span to extract back
+    /// the `value` part of the input string.
+    ///
+    /// Theoretically, this means we parse two times the same string (the value part of an
+    /// assignment). In practice, we expect this cost to be completly neglectible.
+    pub fn parse(
+        cache: &mut Cache,
+        assignment: String,
+        priority: MergePriority,
+    ) -> Result<Self, ParseError> {
+        use crate::parser::{grammar::CliFieldAssignmentParser, lexer::Lexer, ErrorTolerantParser};
+
+        let input_id = cache.replace_string(SourcePath::CliFieldAssignment, assignment);
+        let s = cache.source(input_id);
+
+        let parser = CliFieldAssignmentParser::new();
+        let (path, _, span_value) = parser
+            .parse_strict(input_id, Lexer::new(s))
+            // We just need to report an error here
+            .map_err(|mut errs| {
+                errs.errors.pop().expect(
+                    "because parsing of the field assignment failed, the error \
+                    list must be non-empty, put .pop() failed",
+                )
+            })?;
+
+        let value = cache
+            .files()
+            .source_slice(span_value.src_id, span_value)
+            .expect("the span coming from the parser must be valid");
+
+        Ok(FieldOverride {
+            path: FieldPath(path),
+            value: value.to_owned(),
+            priority,
+        })
+    }
 }
 
 /// A Nickel program.
@@ -220,6 +264,28 @@ impl<EC: EvalCache> Program<EC> {
         })
     }
 
+    /// Parse an assignment of the form `path.to_field=value` as an override, with the provided
+    /// merge priority. Assignments are typically provided by the user on the command line, as part
+    /// of the customize mode.
+    ///
+    /// This method simply calls [FieldOverride::parse] with the [crate::cache::Cache] of the
+    /// current program.
+    pub fn parse_override(
+        &mut self,
+        assignment: String,
+        priority: MergePriority,
+    ) -> Result<FieldOverride, ParseError> {
+        FieldOverride::parse(self.vm.import_resolver_mut(), assignment, priority)
+    }
+
+    /// Parse a dot-separated field path of the form `path.to.field`.
+    ///
+    /// This method simply calls [FieldPath::parse] with the [crate::cache::Cache] of the current
+    /// program.
+    pub fn parse_field_path(&mut self, path: String) -> Result<FieldPath, ParseError> {
+        FieldPath::parse(self.vm.import_resolver_mut(), path)
+    }
+
     pub fn add_overrides(&mut self, overrides: impl IntoIterator<Item = FieldOverride>) {
         self.overrides.extend(overrides);
     }
@@ -257,7 +323,7 @@ impl<EC: EvalCache> Program<EC> {
                 .add_string(SourcePath::Override(ovd.path.clone()), ovd.value);
             self.vm.prepare_eval(value_file_id)?;
             record = record
-                .path(ovd.path)
+                .path(ovd.path.0)
                 .priority(ovd.priority)
                 .value(Term::ResolvedImport(value_file_id));
         }
@@ -321,7 +387,7 @@ impl<EC: EvalCache> Program<EC> {
     /// Prepare for evaluation, then query the program for a field.
     pub fn query(&mut self, path: Option<String>) -> Result<Field, Error> {
         let rt = self.prepare_eval()?;
-        let query_path = QueryPath::parse_opt(self.vm.import_resolver_mut(), path)?;
+        let query_path = FieldPath::parse_opt(self.vm.import_resolver_mut(), path)?;
 
         Ok(self.vm.query(rt, query_path)?)
     }

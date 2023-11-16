@@ -1,0 +1,22 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: missing field `unknown`
+   ┌─ <query>:1:1
+   │
+ 1 │ unknown.field.path
+   │ ^^^^^^^ this requires the field `unknown` to exist
+   │
+   ┌─ [INPUTS_PATH]/customize-mode/unknown_field_path.ncl:7:1
+   │  
+ 7 │ ╭ {
+ 8 │ │   input.foo.bar | String,
+ 9 │ │   input.foo.baz | Array Number,
+10 │ │   input.defaulted.subfield
+   · │
+20 │ │   }
+21 │ │ }
+   │ ╰─' this record lacks the field `unknown`
+
+

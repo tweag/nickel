@@ -2,28 +2,40 @@
 source: cli/tests/snapshot/main.rs
 expression: out
 ---
-Customize a Nickel configuration through the command line before exporting
+Customize a Nickel configuration through the command line
 
-Usage: customize-mode [OPTIONS] --input.foo.bar <String> --input.foo.baz <Array Number>
+Usage: customize-mode [OPTIONS] [FIELD_PATH=NICKEL_EXPRESSION]... [COMMAND]
+
+Commands:
+  list  List the input fields and the overridable fields of the configuration
+  help  Print this message or the help of the given subcommand(s)
+
+Arguments:
+  [FIELD_PATH=NICKEL_EXPRESSION]...
+          Assign a valid Nickel expression to an input field of the configuration. The new value
+          will be merged with the configuration with priority 0 (the one assigned by default in
+          Nickel when no explicit merge priority is provided).
+          
+          Assignment can only set input fields, that is fields without definition or fields with a
+          default value. To override an existing value, use `--override` instead.
+          
+          Note that you might have to escape special characters or enclose assignments in quotes to
+          prevent shell interpretation.
+          
+          Example: `nickel eval config.ncl -- 'http.enabled="yes"' protocol=\'ftp`
 
 Options:
-      --input.defaulted.subfield <NICKEL EXPRESSION>
-          • documentation: Some documentation
-           [default: 2]
-      --input.foo.bar <String>
+      --override <FIELD_PATH=NICKEL_EXPRESSION>
+          Override any field of the configuration with a valid Nickel expression. The new value will
+          be merged with the configuration with a `force` priority.
           
-      --input.foo.baz <Array Number>
+          Note that you might have to escape special characters or enclose assignments in quotes to
+          prevent shell interpretation.
           
-      --override <field> <value>
-          Override any field of the configuration with a valid Nickel expression provided as a
-          string. The new value will be merged with the configuration with a `force` priority.
-          
-          Overridable fields:
-          - override.first
-          - override.second.subsecond.other
-          - override.second.subsecond.subsubsecond
+          Example: `-- input.value=false --override m.count=2 --override m.type=\'server`
+
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 
 [WARNING] Customize mode is experimental. Its interface is subject to breaking changes.
 

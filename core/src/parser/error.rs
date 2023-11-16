@@ -137,6 +137,11 @@ pub enum ParseError {
         /// The position of the type annotation.
         annot_span: RawSpan,
     },
+    /// The user provided a field path on the CLI, which is expected to be only composed of
+    /// literals, but the parsed field path contains string interpolation.
+    InterpolationInStaticPath {
+        path_elem_span: RawSpan,
+    },
     DisabledFeature {
         feature: String,
         span: RawSpan,

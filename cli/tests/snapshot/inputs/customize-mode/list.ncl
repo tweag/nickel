@@ -1,12 +1,6 @@
-# capture = 'stderr'
+# capture = 'stdout'
 # command = ['export']
-# extra_args = [
-#  '--',
-#  'input.foo.bar="hello"',
-#  'input.foo.baz=[]',
-#  '--override',
-#  'unknown.field.path=null',
-# ]
+# extra_args = ['--', 'list']
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,

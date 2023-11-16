@@ -85,7 +85,7 @@ use crate::{
     identifier::LocIdent,
     match_sharedterm,
     position::TermPos,
-    program::QueryPath,
+    program::FieldPath,
     term::{
         array::ArrayAttrs,
         make as mk_term,
@@ -235,13 +235,13 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// `baz`. The content of `baz` is evaluated as well, and variables are substituted, in order
     /// to obtain a value that can be printed. The metadata and the evaluated value are returned as
     /// a new field.
-    pub fn query(&mut self, t: RichTerm, path: QueryPath) -> Result<Field, EvalError> {
+    pub fn query(&mut self, t: RichTerm, path: FieldPath) -> Result<Field, EvalError> {
         self.query_closure(Closure::atomic_closure(t), path)
     }
 
     /// Same as [VirtualMachine::query], but starts from a closure instead of a term in an empty
     /// environment.
-    pub fn query_closure(&mut self, closure: Closure, path: QueryPath) -> Result<Field, EvalError> {
+    pub fn query_closure(&mut self, closure: Closure, path: FieldPath) -> Result<Field, EvalError> {
         let mut prev_pos = closure.body.pos;
         let Closure { body: rt, mut env } = self.eval_closure(closure)?;
 

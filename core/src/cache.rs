@@ -7,6 +7,7 @@ use crate::eval::Closure;
 use crate::nix_ffi;
 use crate::parser::{lexer::Lexer, ErrorTolerantParser};
 use crate::position::TermPos;
+use crate::program::FieldPath;
 use crate::stdlib::{self as nickel_stdlib, StdlibModule};
 use crate::term::array::Array;
 use crate::term::record::{Field, RecordData};
@@ -15,6 +16,7 @@ use crate::transform::import_resolution;
 use crate::typ::UnboundTypeVariableError;
 use crate::typecheck::{self, type_check, Wildcards};
 use crate::{eval, parser, transform};
+
 use codespan::{FileId, Files};
 use io::Read;
 use serde::Deserialize;
@@ -267,7 +269,8 @@ pub enum SourcePath {
     ReplInput(usize),
     ReplTypecheck,
     ReplQuery,
-    Override(Vec<String>),
+    CliFieldAssignment,
+    Override(FieldPath),
     Generated(String),
 }
 
@@ -295,7 +298,8 @@ impl From<SourcePath> for OsString {
             SourcePath::ReplInput(idx) => format!("<repl-input-{idx}>").into(),
             SourcePath::ReplTypecheck => "<repl-typecheck>".into(),
             SourcePath::ReplQuery => "<repl-query>".into(),
-            SourcePath::Override(path) => format!("<override {}>", path.join(".")).into(),
+            SourcePath::CliFieldAssignment => "<cli-assignment>".into(),
+            SourcePath::Override(path) => format!("<override {path}>",).into(),
             SourcePath::Generated(description) => format!("<generated {}>", description).into(),
         }
     }

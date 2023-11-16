@@ -1,0 +1,16 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: out
+---
+Input fields:
+- input.defaulted.subfield
+- input.foo.bar: <String>
+- input.foo.baz: <Array Number>
+
+Overridable fields (require `--override`):
+- override.first
+- override.second.subsecond.other
+- override.second.subsecond.subsubsecond
+
+Use the `query` subcommand to print a detailed description of a specific field. See `nickel help query`.
+

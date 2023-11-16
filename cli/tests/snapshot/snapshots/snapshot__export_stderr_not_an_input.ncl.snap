@@ -2,11 +2,8 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: unexpected argument '--override.first' found
+error: invalid assignment: `override.first` isn't an input
+ = `override.first` already has a value and thus can't be assigned without `--override`.
+ = If you really want to override this field, please use `--override 'override.first="test"'` instead.
 
-  tip: a similar argument exists: '--override'
-
-Usage: customize-mode --input.foo.bar <String> --input.foo.baz <Array Number> --override <field> <value>
-
-For more information, try '--help'.
 

@@ -1,12 +1,34 @@
+//! Error handling for the CLI.
+
 use nickel_lang_core::{
-    error::{Diagnostic, Files, IntoDiagnostics},
+    error::{Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
     eval::cache::lazy::CBNCache,
-    program::Program,
+    program::{FieldOverride, FieldPath, Program},
 };
 
+/// Data about an unknown field error.
+pub struct UnknownFieldData {
+    /// The field that was unknown.
+    pub path: FieldPath,
+    /// The list of customizable fields used to suggest similar alternative fields.
+    pub field_list: Vec<FieldPath>,
+}
+
 /// Errors related to mishandling the CLI.
+#[allow(dead_code)]
 pub enum CliUsageError {
-    InvalidOverride { path: String },
+    /// Tried to override a field which doesn't exist.
+    UnknownFieldOverride(UnknownFieldData),
+    /// Tried to assign a field which doesn't exist.
+    UnknownFieldAssignment(UnknownFieldData),
+    /// Tried to show information about a field which doesn't exist.
+    UnknownField(UnknownFieldData),
+    /// Tried to override an defined field without the `--override` argument.
+    CantAssignNonInput { ovd: FieldOverride },
+    /// A parse error occurred when trying to parse an assignment.
+    AssignmentParseError { error: ParseError },
+    /// A parse error occurred when trying to parse a field path.
+    FieldPathParseError { error: ParseError },
 }
 
 pub enum Error {
@@ -31,22 +53,100 @@ pub enum Error {
         program: Program<CBNCache>,
         error: CliUsageError,
     },
+    /// Not an actual failure but a special early return to indicate that information was printed
+    /// during the usage of the customize mode, because a subcommand such as `list`, `show`, etc.
+    /// was used, and thus no customized program can be returned.
+    ///
+    /// Upon receiving this error, the caller should simply exit without proceeding with evaluation.
+    CustomizeInfoPrinted,
 }
 
-impl<FileId> IntoDiagnostics<FileId> for CliUsageError {
+impl IntoDiagnostics<FileId> for CliUsageError {
     fn into_diagnostics(
         self,
-        _files: &mut Files<String>,
-        _stdlib_ids: Option<&Vec<FileId>>,
+        files: &mut Files<String>,
+        stdlib_ids: Option<&Vec<FileId>>,
     ) -> Vec<Diagnostic<FileId>> {
+        fn mk_unknown_diags<FileId>(
+            data: UnknownFieldData,
+            method: &str,
+        ) -> Vec<Diagnostic<FileId>> {
+            let mut notes = vec![format!(
+                "`{path}` doesn't refer to a record field accessible from the root of the \
+                 configuration.",
+                path = data.path
+            )];
+
+            let fields_as_strings: Vec<String> =
+                data.field_list.iter().map(ToString::to_string).collect();
+
+            nickel_lang_core::error::suggest::add_suggestion(
+                &mut notes,
+                &fields_as_strings,
+                &data.path.to_string(),
+            );
+
+            notes.push(
+                "Use `nickel <COMMAND> [OPTIONS] -- list` to show a list of available fields."
+                    .to_owned(),
+            );
+
+            vec![Diagnostic::error()
+                .with_message(format!(
+                    "invalid {method}: unknown field `{path}`",
+                    path = data.path
+                ))
+                .with_notes(notes)]
+        }
+
         match self {
-            CliUsageError::InvalidOverride { path } => {
+            CliUsageError::UnknownFieldOverride(data) => mk_unknown_diags(data, "override"),
+            CliUsageError::UnknownFieldAssignment(data) => mk_unknown_diags(data, "assignment"),
+            CliUsageError::UnknownField(data) => mk_unknown_diags(data, "query"),
+            CliUsageError::CantAssignNonInput {
+                ovd: FieldOverride { path, value, .. },
+            } => {
                 vec![Diagnostic::error()
-                    .with_message(format!("invalid override: unknown field `{path}`"))
-                    .with_notes(vec![format!(
-                        "`{path}` doesn't refer to record field accessible from the root of the \
-                        configuration and thus can't be the target of `--override`."
-                    )])]
+                    .with_message(format!("invalid assignment: `{path}` isn't an input"))
+                    .with_notes(vec![
+                        format!(
+                            "`{path}` already has a value and thus can't be assigned \
+                            without `--override`."
+                        ),
+                        format!(
+                            "If you really want to override this field, please use \
+                            `--override '{path}={value}'` instead."
+                        ),
+                    ])]
+            }
+            CliUsageError::AssignmentParseError { error } => {
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("when parsing a field assignment on the command line")
+                        .with_notes(vec![
+                            "A field assignment must be of the form `<field path>=<value>`, \
+                            where `<field path>` is a dot-separated list of fields and `<value>` \
+                            is a valid Nickel expression."
+                                .to_owned(),
+                            "For example: `config.database.\"$port\"=8080`".to_owned(),
+                        ]),
+                );
+                diags
+            }
+            CliUsageError::FieldPathParseError { error } => {
+                let mut diags = IntoDiagnostics::into_diagnostics(error, files, stdlib_ids);
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("when parsing a field path on the command line")
+                        .with_notes(vec![
+                            "A field path must be a dot-separated list of fields. Fields \
+                            with spaces or special characters must be properly quoted."
+                                .to_owned(),
+                            "For example: `config.database.\"$port\"`".to_owned(),
+                        ]),
+                );
+                diags
             }
         }
     }
@@ -134,6 +234,9 @@ impl Error {
             #[cfg(feature = "format")]
             Error::Format { error } => eprintln!("{error}"),
             Error::CliUsage { error, mut program } => program.report(error),
+            Error::CustomizeInfoPrinted => {
+                // Nothing to do, the caller should simply exit.
+            }
         }
     }
 }

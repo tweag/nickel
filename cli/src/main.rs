@@ -56,10 +56,13 @@ fn main() -> ExitCode {
         metrics.report();
     }
 
-    if let Err(e) = result {
-        e.report();
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
+    match result {
+        // CustomizeInfoPrinted is used for early return, but it's not actually an error from the
+        // user's point of view.
+        Ok(()) | Err(error::Error::CustomizeInfoPrinted) => ExitCode::SUCCESS,
+        Err(error) => {
+            error.report();
+            ExitCode::FAILURE
+        }
     }
 }

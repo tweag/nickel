@@ -444,12 +444,60 @@ RecordLastField: RecordLastField = {
 };
 
 // A field path syntax in a field definition, as in `{foo."bar bar".baz = "value"}`.
-pub FieldPath: FieldPath = {
+FieldPath: FieldPath = {
     <mut elems: (<FieldPathElem> ".")*> <last: FieldPathElem> => {
         elems.push(last);
         elems
     }
 };
+
+// A field path which only contains static string literals, that is, without any
+// interpolated expression in it.
+pub StaticFieldPath: Vec<LocIdent> = <start: @L> <field_path: FieldPath> <end: @R> =>? {
+    field_path
+        .into_iter()
+        .map(|elem| match elem {
+            FieldPathElem::Ident(ident) => Ok(ident),
+            FieldPathElem::Expr(expr) => {
+                let as_string = expr.as_ref().try_str_chunk_as_static_str().ok_or(
+                    ParseError::InterpolationInStaticPath {
+                        path_elem_span: expr.pos
+                            .into_opt()
+                            .unwrap_or_else(|| mk_span(src_id, start, end)),
+                    },
+                )?;
+                Ok(LocIdent::new_with_pos(as_string, expr.pos))
+            }
+        })
+        .collect()
+};
+
+// This rule is used to parse value assignments on the command line as part of
+// the customize mode, such as `foo.bar.enabled=true` in
+//
+//```
+//$ nickel export config.ncl -- foo.bar.enabled=true`
+//```
+//
+// The returned span (of the right-hand side of the equal sign) is required for
+// the CLI to extract the substring corresponding to the right-hand side, here
+// `true`.
+//
+// It's redundant with the position stored inside the returned `RichTerm`. But
+// this position might theoretically be `None` - we know it can't in practice,
+// because the Term rule inserts position information, but the `TermPos` type
+// alone can't encode this invariant.
+//
+// We could just return a `Term` instead of a `RichTerm`, as position
+// information is already stored in the span. But the <Term> rule produces a
+// RichTerm anyway, so it's simpler to just return it instead of artificially
+// deconstructing it.
+//
+// This rule is currently only used for the CLI and isn't part of the grammar
+// for normal Nickel source code.
+pub CliFieldAssignment: (Vec<LocIdent>, RichTerm, RawSpan) =
+    <path: StaticFieldPath> "=" <start: @L> <value: WithPos<Term>> <end: @R>
+      => (path, value, mk_span(src_id, start, end));
 
 FieldPathElem: FieldPathElem = {
     <Ident> => FieldPathElem::Ident(<>),

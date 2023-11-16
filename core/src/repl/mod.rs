@@ -12,7 +12,7 @@ use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
 use crate::parser::{grammar, lexer, ErrorTolerantParser, ExtendedTerm};
-use crate::program::QueryPath;
+use crate::program::FieldPath;
 use crate::term::TraverseOrder;
 use crate::term::{record::Field, RichTerm, Term, Traverse};
 use crate::transform::import_resolution;
@@ -310,7 +310,7 @@ impl<EC: EvalCache> Repl for ReplImpl<EC> {
     fn query(&mut self, path: String) -> Result<Field, Error> {
         self.vm.reset();
 
-        let mut query_path = QueryPath::parse(self.vm.import_resolver_mut(), path)?;
+        let mut query_path = FieldPath::parse(self.vm.import_resolver_mut(), path)?;
 
         // remove(): this is safe because there is no such thing as an empty field path. If `path`
         // is empty, the parser will error out. Hence, `QueryPath::parse` always returns a non-empty

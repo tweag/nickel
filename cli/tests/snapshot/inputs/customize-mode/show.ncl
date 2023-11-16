@@ -1,16 +1,11 @@
-# capture = 'stderr'
-# command = ['export']
-# extra_args = [
-#  '--',
-#  'input.foo.bar="hello"',
-#  'input.foo.baz=[]',
-#  '--override',
-#  'unknown.field.path=null',
-# ]
+# capture = 'stdout'
+# command = ['query']
+# extra_args = ['--path', 'input.defaulted.subfield']
 {
   input.foo.bar | String,
   input.foo.baz | Array Number,
   input.defaulted.subfield
+    | std.number.Integer
     | doc "Some documentation"
     | default = 2,
 

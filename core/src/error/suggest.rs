@@ -47,3 +47,16 @@ where
 
     arg_max
 }
+
+/// Take diagnostic notes and add a generic note suggesting existing symbols that are similar to
+/// what the user typed thanks to [find_best_match], if any. If there is no match, `notes` is left
+/// unchanged.
+pub fn add_suggestion<S, I>(notes: &mut Vec<String>, symbols: &[S], user_input: &I)
+where
+    S: AsRef<str>,
+    I: AsRef<str>,
+{
+    if let Some(best_match) = find_best_match(symbols, user_input) {
+        notes.push(format!("Did you mean `{best_match}`?"));
+    }
+}
