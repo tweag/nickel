@@ -74,7 +74,7 @@ website.
 
 ## Current state and roadmap
 
-Nickel is currently released in version `1.2`. We expect the core design of the
+Nickel is currently released in version `1.3`. We expect the core design of the
 language to be stable and the language to be useful for real-world applications.
 The next steps we plan to work on are:
 
