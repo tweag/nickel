@@ -607,7 +607,7 @@
             for file in $(ls *.ncl | grep -v 'internals.ncl')
             do
               module=$(basename $file .ncl)
-              ${pkgs.lib.getExe self.packages."${system}".default} doc --format "${format}" -f "$module.ncl" \
+              ${pkgs.lib.getExe self.packages."${system}".default} doc --format "${format}" "$module.ncl" \
                 --output "$out/$module.${extension}"
             done
           '';
@@ -624,7 +624,7 @@
           ec2-ami = (import "${nixpkgs}/nixos/modules/virtualisation/amazon-ec2-amis.nix").latest.${ec2-region}.aarch64-linux.hvm-ebs;
           run-terraform = pkgs.writeShellScriptBin "run-terraform" ''
             set -e
-            ${pkgs.lib.getExe nickel} export > main.tf.json <<EOF
+            ${pkgs.lib.getExe nickel} export --output main.tf.json <<EOF
               ((import "main.ncl") & {
                 region = "${ec2-region}",
                 nixos-ami = "${ec2-ami}",
