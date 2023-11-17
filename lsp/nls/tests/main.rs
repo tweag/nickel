@@ -9,7 +9,7 @@ fn check_snapshots(path: &str) {
 
     let full_path = project_root().join(path);
 
-    let contents = std::fs::read_to_string(&full_path).unwrap();
+    let contents = std::fs::read_to_string(full_path).unwrap();
     let fixture = TestFixture::parse(&contents).unwrap();
     let mut harness = TestHarness::new();
 
