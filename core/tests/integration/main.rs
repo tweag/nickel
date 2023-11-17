@@ -200,6 +200,8 @@ enum ErrorExpectation {
     ParseTypedFieldWithoutDefinition,
     #[serde(rename = "ImportError::ParseError")]
     ImportParseError,
+    #[serde(rename = "ImportError::IoError")]
+    ImportIoError,
     #[serde(rename = "ExportError::NumberOutOfRange")]
     SerializeNumberOutOfRange,
 }
@@ -233,6 +235,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
             )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
+            | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
             | (
                 SerializeNumberOutOfRange,
                 Error::EvalError(EvalError::SerializationError(ExportError::NumberOutOfRange {
@@ -344,6 +347,7 @@ impl std::fmt::Display for ErrorExpectation {
                 "ParseError::TypedFieldWithoutDefinition".to_owned()
             }
             ImportParseError => "ImportError::ParseError".to_owned(),
+            ImportIoError => "ImportError::IoError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),
             EvalEqError => "EvalError::EqError".to_owned(),
