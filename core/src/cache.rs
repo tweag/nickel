@@ -324,10 +324,6 @@ pub enum SourceState {
 
 impl Cache {
     pub fn new(error_tolerance: ErrorTolerance) -> Self {
-        let import_paths = std::env::var("NICKEL_PATH")
-            .map(|paths| paths.split(':').map(PathBuf::from).collect())
-            .unwrap_or_default();
-
         Cache {
             files: Files::new(),
             file_ids: HashMap::new(),
@@ -338,12 +334,18 @@ impl Cache {
             rev_imports: HashMap::new(),
             stdlib_ids: None,
             error_tolerance,
-
-            import_paths,
+            import_paths: Vec::new(),
 
             #[cfg(debug_assertions)]
             skip_stdlib: false,
         }
+    }
+
+    pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
+    where
+        PathBuf: From<P>,
+    {
+        self.import_paths.extend(paths.map(PathBuf::from));
     }
 
     /// Same as [Self::add_file], but assume that the path is already normalized, and take the
