@@ -78,6 +78,7 @@
                 });
           })
         ];
+        config.allowUnfreePredicate = pkg: builtins.elem (pkg.pname or "") [ "terraform" ];
       };
 
       wasm-bindgen-cli =
