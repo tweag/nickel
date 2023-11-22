@@ -32,6 +32,10 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
         program.color_opt = global.color.into();
 
+        if let Ok(nickel_path) = std::env::var("NICKEL_PATH") {
+            program.add_import_paths(nickel_path.split(':'));
+        }
+
         #[cfg(debug_assertions)]
         if self.nostdlib {
             program.set_skip_stdlib();

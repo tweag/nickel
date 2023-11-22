@@ -297,6 +297,13 @@ impl<EC: EvalCache> Program<EC> {
         self.overrides.extend(overrides);
     }
 
+    pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
+    where
+        PathBuf: From<P>,
+    {
+        self.vm.import_resolver_mut().add_import_paths(paths);
+    }
+
     /// Only parse the program, don't typecheck or evaluate. returns the [`RichTerm`] AST
     pub fn parse(&mut self) -> Result<RichTerm, Error> {
         self.vm

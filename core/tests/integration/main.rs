@@ -63,12 +63,15 @@ fn run_test(test_case: TestCase<Test>, path: String) {
     let test = test_case.annotation.test;
 
     for _ in 0..repeat {
-        let p = TestProgram::new_from_source(
+        let mut p = TestProgram::new_from_source(
             Cursor::new(program.clone()),
             path.as_str(),
             std::io::stderr(),
         )
         .expect("");
+        if let Some(imports) = &test_case.annotation.nickel_path {
+            p.add_import_paths(imports.iter());
+        }
         match test.clone() {
             Expectation::Error(expected_err) => {
                 let err = eval_strategy.eval_program_to_err(p);
@@ -92,6 +95,7 @@ struct Test {
     test: Expectation,
     repeat: Option<usize>,
     eval: Option<EvalStrategy>,
+    nickel_path: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -196,6 +200,8 @@ enum ErrorExpectation {
     ParseTypedFieldWithoutDefinition,
     #[serde(rename = "ImportError::ParseError")]
     ImportParseError,
+    #[serde(rename = "ImportError::IoError")]
+    ImportIoError,
     #[serde(rename = "ExportError::NumberOutOfRange")]
     SerializeNumberOutOfRange,
 }
@@ -229,6 +235,7 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
             )
             | (ImportParseError, Error::ImportError(ImportError::ParseErrors(..)))
+            | (ImportIoError, Error::ImportError(ImportError::IOError(..)))
             | (
                 SerializeNumberOutOfRange,
                 Error::EvalError(EvalError::SerializationError(ExportError::NumberOutOfRange {
@@ -340,6 +347,7 @@ impl std::fmt::Display for ErrorExpectation {
                 "ParseError::TypedFieldWithoutDefinition".to_owned()
             }
             ImportParseError => "ImportError::ParseError".to_owned(),
+            ImportIoError => "ImportError::IoError".to_owned(),
             EvalBlameError => "EvalError::BlameError".to_owned(),
             EvalTypeError => "EvalError::TypeError".to_owned(),
             EvalEqError => "EvalError::EqError".to_owned(),
