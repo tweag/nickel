@@ -11,21 +11,7 @@ in
     enable = true;
     replace = true;
     name = runner-name;
-    package = pkgs.github-runner.override {
-      # nodejs v16 was marked as EOL ahead of its EOL in https://github.com/NixOS/nixpkgs/pull/229910
-      # It will reach EOL only on 2023-09-11
-      nodejs_16 = pkgs.nodejs_16.overrideAttrs (orig: {
-        meta =
-          orig.meta
-          // {
-            knownVulnerabilities =
-              lib.filter
-                (x: x != "This NodeJS release has reached its end of life. See https://nodejs.org/en/about/releases/.")
-                orig.meta.knownVulnerabilities;
-          };
-      });
-    };
-    nodeRuntimes = [ "node16" "node20" ];
+    nodeRuntimes = [ "node20" ];
     extraPackages = with pkgs; [
       gh
       docker
