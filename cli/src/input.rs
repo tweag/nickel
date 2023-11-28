@@ -14,6 +14,15 @@ pub struct InputOptions<Customize: clap::Args> {
     #[arg(long, global = true)]
     pub nostdlib: bool,
 
+    /// Adds a directory to the list of paths to search for imports in.
+    ///
+    /// When importing a file, nickel searches for it relative to the file doing the
+    /// import. If not found, it searches in the paths specified by `--import-path`.
+    /// If not found there, it searches in the (colon-separated) list of paths contained
+    /// in the environment variable `NICKEL_IMPORT_PATH`.
+    #[arg(long, short = 'I', global = true)]
+    pub import_path: Vec<PathBuf>,
+
     #[command(flatten)]
     pub customize_mode: Customize,
 }
@@ -32,7 +41,9 @@ impl<C: clap::Args + Customize> Prepare for InputOptions<C> {
 
         program.color_opt = global.color.into();
 
-        if let Ok(nickel_path) = std::env::var("NICKEL_PATH") {
+        program.add_import_paths(self.import_path.iter());
+
+        if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
             program.add_import_paths(nickel_path.split(':'));
         }
 

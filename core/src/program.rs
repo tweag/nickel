@@ -297,6 +297,7 @@ impl<EC: EvalCache> Program<EC> {
         self.overrides.extend(overrides);
     }
 
+    /// Adds import paths to the end of the list.
     pub fn add_import_paths<P>(&mut self, paths: impl Iterator<Item = P>)
     where
         PathBuf: From<P>,
