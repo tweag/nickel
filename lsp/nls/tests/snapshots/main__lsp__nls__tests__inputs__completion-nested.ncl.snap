@@ -4,5 +4,5 @@ expression: output
 ---
 [bar, baz, foo, one, std]
 [bar, baz, foo, std, two]
-[bar, baz, foo, std, three]
+[bar, baz, foo, quux, std, three]
 

@@ -18,4 +18,7 @@ Dyn
 ```, ```nickel
 Number
 ```, inner]
+<3:6-3:10>[```nickel
+Dyn
+```, longer path]
 
