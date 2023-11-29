@@ -47,7 +47,7 @@ jobs:
           accept-flake-config = true
 
     - name: Setup Cachix
-      uses: cachix/cachix-action@v12
+      uses: cachix/cachix-action@v13
       with:
         name: tweag-nickel
         authToken: '${{ secrets.CACHIX_TWEAG_NICKEL_AUTH_TOKEN }}'
