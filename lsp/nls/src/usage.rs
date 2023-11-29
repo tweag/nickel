@@ -164,7 +164,7 @@ impl UsageLookup {
                         }
                         TraverseControl::ContinueWithScope(new_env)
                     }
-                    Term::RecRecord(data, _interp_fields, _deps) => {
+                    Term::RecRecord(data, ..) | Term::Record(data) => {
                         let mut new_env = env.clone();
 
                         // Records are recursive and the order of fields is unimportant, so define
