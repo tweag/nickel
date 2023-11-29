@@ -59,7 +59,7 @@ documentation is relevant as well:
 Nickel is maintained by [Tweag][tweag]. The current lead maintainer is Yann
 Hamdaoui (@yannham).
 
-You can find some of us on our [matrix channel][matrix-nickel] (and in
+You can find some of us on our [discord channel][nickel-chat] (and in
 particular the Devs room), or fire an email at `nickel-lang@tweag.io`.
 
 ## Set up a development environment
@@ -123,4 +123,4 @@ minimizes back-and-forths with trusted authors.
 [doc-notes]: notes/
 [tweag]: https://www.tweag.io
 [rfcs]: ./rfcs/
-[matrix-nickel]: https://matrix.to/#/#nickel-lang:matrix.org
+[nickel-chat]: https://discord.gg/vYDnJYBmax
