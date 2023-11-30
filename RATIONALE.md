@@ -432,6 +432,22 @@ The main difference between Jsonnet and Nickel are types. Jsonnet does not
 feature static types, contracts or metadata, and thus can't type library code
 and has no principled approach to data validation.
 
+### KCL vs Nickel
+
+KCL is a configuration language with a python-like syntax and object-oriented
+schemas that support inheritance and mixins.
+The KCL typesystem feels more nominal and object-oriented than Nickel's:
+
+- in KCL you specify the name of the schema when you're writing out the object
+  that's supposed to conform to it; in Nickel, you can write out a record first
+  and then apply the contract at some later point
+- in KCL, schema inheritance and mixins are written explicitly; in Nickel, complex
+  contracts are built compositionally, by merging smaller ones.
+
+But the bigger difference is that KCL's schema validation is strict while Nickel's
+is lazy. This may make Nickel better suited to partial evaluation of large
+configurations.
+
 ### Comparison with other configuration languages
 <!-- Intentionally duplicated in `README.md`, please update the other one for
 any change done here -->
