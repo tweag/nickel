@@ -276,7 +276,7 @@ The next steps we plan to work on are:
     language with object-oriented features, among which inheritance is similar
     to Nickel's merge system. One big difference with Nickel is the absence of
     typing.
-- [KCL](https://kcl-lang.io/) is a typed configuration language whose validation
+- [KCL](https://kcl-lang.io/) is a gradually typed configuration language whose validation
     is based on object-oriented schemas that can be extended through inheritance.
     Unlike the languages above, its evaluation is strict.
 - [Pulumi](https://www.pulumi.com/) is not a language in itself, but a cloud
