@@ -276,6 +276,9 @@ The next steps we plan to work on are:
     language with object-oriented features, among which inheritance is similar
     to Nickel's merge system. One big difference with Nickel is the absence of
     typing.
+- [KCL](https://kcl-lang.io/) is a typed configuration language whose validation
+    is based on object-oriented schemas that can be extended through inheritance.
+    Unlike the languages above, its evaluation is strict.
 - [Pulumi](https://www.pulumi.com/) is not a language in itself, but a cloud
     tool (like Terraform) where you can use your preferred language for
     describing your infrastructure. This is a different approach to the problem,
@@ -300,6 +303,7 @@ any change done here -->
 | Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                               |
 | CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer |
 | Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                               |
+| KCL      | Dynamic                       | Yes        | Strict     | No                                               |
 | JSON     | None                          | No         | Strict     | No                                               |
 | YAML     | None                          | No         | N/A        | No                                               |
 | TOML     | None                          | No         | N/A        | No                                               |
