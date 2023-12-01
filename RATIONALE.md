@@ -465,7 +465,7 @@ any change done here -->
 | Dhall    | Static (requires annotations) | Restricted | Lazy       | No                                               |
 | CUE      | Static (everything is a type) | No         | Lazy       | No, but allowed in the separated scripting layer |
 | Jsonnet  | Dynamic                       | Yes        | Lazy       | No                                               |
-| KCL      | Dynamic                       | Yes        | Strict     | No                                               |
+| KCL      | Gradual (dynamic + static)    | Yes        | Strict     | No                                               |
 | JSON     | None                          | No         | Strict     | No                                               |
 | YAML     | None                          | No         | N/A        | No                                               |
 | TOML     | None                          | No         | N/A        | No                                               |
