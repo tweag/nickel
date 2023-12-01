@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fmt, fs,
     path::{Path, PathBuf},
 };
@@ -59,6 +60,8 @@ pub struct DocCommand {
     pub input: InputOptions<ExtractFieldOnly>,
 }
 
+const DEFAULT_OUT_DIR: &str = ".nickel/doc/";
+
 impl DocCommand {
     pub fn run(self, global: GlobalOptions) -> CliResult<()> {
         let mut program = self.input.prepare(&global)?;
@@ -67,59 +70,76 @@ impl DocCommand {
 
     fn export_doc(self, program: &mut Program<CacheImpl>) -> Result<(), Error> {
         let doc = program.extract_doc()?;
-        let mut out: Box<dyn std::io::Write> = if self.stdout {
-            Box::new(std::io::stdout())
+
+        let (mut out, out_path): (Box<dyn std::io::Write>, Option<Cow<'_, str>>) = if self.stdout {
+            (Box::new(std::io::stdout()), None)
         } else {
-            Box::new(
-                self.output
-                    .as_ref()
-                    .map(|output| {
-                        fs::File::create(output.clone()).map_err(|e| {
-                            Error::IOError(IOError(format!(
-                                "when opening or creating output file `{}`: {}",
-                                output.to_string_lossy(),
-                                e
-                            )))
-                        })
-                    })
-                    .unwrap_or_else(|| {
-                        let docpath = Path::new(".nickel/doc/");
-                        fs::create_dir_all(docpath).map_err(|e| {
-                            Error::IOError(IOError(format!(
-                                "when creating output path `{}`: {}",
-                                docpath.to_string_lossy(),
-                                e
-                            )))
-                        })?;
-                        let mut output_file = docpath.to_path_buf();
+            self.output
+                .as_ref()
+                .map(|output| -> Result<(Box<dyn std::io::Write>, _), Error> {
+                    let out = Box::new(fs::File::create(output.clone()).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when opening or creating output file `{}`: {}",
+                            output.to_string_lossy(),
+                            e
+                        )))
+                    })?);
 
-                        let mut has_file_name = false;
+                    Ok((out, Some(output.to_string_lossy())))
+                })
+                .unwrap_or_else(|| {
+                    let docpath = Path::new(DEFAULT_OUT_DIR);
 
-                        if let Some(path) = self.input.files.get(0) {
-                            if let Some(file_stem) = path.file_stem() {
-                                output_file.push(file_stem);
-                                has_file_name = true;
-                            }
+                    fs::create_dir_all(docpath).map_err(|e| {
+                        Error::IOError(IOError(format!(
+                            "when creating output path `{}`: {}",
+                            docpath.to_string_lossy(),
+                            e
+                        )))
+                    })?;
+
+                    let mut output_file = docpath.to_path_buf();
+
+                    let mut has_file_name = false;
+
+                    if let Some(path) = self.input.files.get(0) {
+                        if let Some(file_stem) = path.file_stem() {
+                            output_file.push(file_stem);
+                            has_file_name = true;
                         }
+                    }
 
-                        if !has_file_name {
-                            output_file.push("out");
-                        }
+                    if !has_file_name {
+                        output_file.push("out");
+                    }
 
-                        output_file.set_extension(self.format.extension());
+                    output_file.set_extension(self.format.extension());
+
+                    let out =
                         fs::File::create(output_file.clone().into_os_string()).map_err(|e| {
                             Error::IOError(IOError(format!(
                                 "when opening or creating output file `{}`: {}",
                                 output_file.to_string_lossy(),
                                 e
                             )))
-                        })
-                    })?,
-            )
+                        })?;
+
+                    Ok((
+                        Box::new(out),
+                        Some(Cow::Owned(output_file.to_string_lossy().into_owned())),
+                    ))
+                })?
         };
+
         match self.format {
             DocFormat::Json => doc.write_json(&mut out),
             DocFormat::Markdown => doc.write_markdown(&mut out),
+        }?;
+
+        if let Some(out_path) = out_path {
+            eprintln!("Documentation written to {}", out_path.as_ref());
         }
+
+        Ok(())
     }
 }
