@@ -27,7 +27,7 @@ meaning that basic arithmetic operations (addition, subtraction, division and
 multiplication) don't incur rounding errors. Numbers are deserialized as 64-bit
 floating point numbers, in line with common JSON implementations.
 
-Epxonentation is supported using the `std.number.pow` function. If the exponent
+Exponentation is supported using the `std.number.pow` function. If the exponent
 is exactly representable as an integer between `-2^63` and `2^64 - 1`, the
 result is computed exactly. However, raising a number to a non-integral power
 can incur rounding errors: both operands will be converted to the nearest 64-bit
