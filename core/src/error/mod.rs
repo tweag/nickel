@@ -32,6 +32,7 @@ use crate::{
     typ::{Type, TypeF, VarKindDiscriminant},
 };
 
+pub mod report;
 pub mod suggest;
 
 /// A general error occurring during either parsing or evaluation.
@@ -2281,73 +2282,4 @@ impl IntoDiagnostics<FileId> for ReplError {
             }
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct ColorOpt(pub(crate) clap::ColorChoice);
-
-impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color_choice: clap::ColorChoice) -> Self {
-        Self(color_choice)
-    }
-}
-
-impl From<ColorOpt> for ColorChoice {
-    fn from(c: ColorOpt) -> Self {
-        use std::io::{stdout, IsTerminal};
-
-        match c.0 {
-            clap::ColorChoice::Auto => {
-                if stdout().is_terminal() {
-                    ColorChoice::Auto
-                } else {
-                    ColorChoice::Never
-                }
-            }
-            clap::ColorChoice::Always => ColorChoice::Always,
-            clap::ColorChoice::Never => ColorChoice::Never,
-        }
-    }
-}
-
-impl Default for ColorOpt {
-    fn default() -> Self {
-        Self(clap::ColorChoice::Auto)
-    }
-}
-
-/// Pretty-print an error on stderr.
-///
-/// # Arguments
-///
-/// - `cache` is the file cache used during the evaluation, which is required by the reporting
-/// infrastructure to point at specific locations and print snippets when needed.
-pub fn report<E: IntoDiagnostics<FileId>>(cache: &mut Cache, error: E, color_opt: ColorOpt) {
-    let stdlib_ids = cache.get_all_stdlib_modules_file_id();
-    report_with(
-        &mut StandardStream::stderr(color_opt.into()).lock(),
-        cache.files_mut(),
-        stdlib_ids.as_ref(),
-        error,
-    )
-}
-
-/// Report an error on `stderr`, provided a file database and a list of stdlib file ids.
-pub fn report_with<E: IntoDiagnostics<FileId>>(
-    writer: &mut dyn WriteColor,
-    files: &mut Files<String>,
-    stdlib_ids: Option<&Vec<FileId>>,
-    error: E,
-) {
-    let config = codespan_reporting::term::Config::default();
-    let diagnostics = error.into_diagnostics(files, stdlib_ids);
-
-    let result = diagnostics
-        .iter()
-        .try_for_each(|d| codespan_reporting::term::emit(writer, &config, files, d));
-
-    match result {
-        Ok(()) => (),
-        Err(err) => panic!("error::report_with(): could not print an error on stderr: {err}"),
-    };
 }

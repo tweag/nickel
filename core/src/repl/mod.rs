@@ -7,7 +7,10 @@
 //! jupyter-kernel (which is not exactly user-facing, but still manages input/output and
 //! formatting), etc.
 use crate::cache::{Cache, Envs, ErrorTolerance, SourcePath};
-use crate::error::{Error, EvalError, IOError, ParseError, ParseErrors, ReplError};
+use crate::error::{
+    report::{self, ColorOpt, ErrorFormat},
+    Error, EvalError, IOError, IntoDiagnostics, ParseError, ParseErrors, ReplError,
+};
 use crate::eval::cache::Cache as EvalCache;
 use crate::eval::{Closure, VirtualMachine};
 use crate::identifier::LocIdent;
@@ -207,6 +210,10 @@ impl<EC: EvalCache> ReplImpl<EC> {
                 Ok(EvalResult::Bound(id))
             }
         }
+    }
+
+    fn report(&mut self, err: impl IntoDiagnostics<FileId>, color_opt: ColorOpt) {
+        report::report(self.cache_mut(), err, ErrorFormat::Text, color_opt);
     }
 }
 

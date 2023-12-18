@@ -1,7 +1,4 @@
 //! Serialization of an evaluated program to various data format.
-use malachite::{num::conversion::traits::RoundingFrom, rounding_modes::RoundingMode};
-use once_cell::sync::Lazy;
-
 use crate::{
     error::ExportError,
     identifier::LocIdent,
@@ -17,7 +14,11 @@ use serde::{
     ser::{Serialize, SerializeMap, SerializeSeq, Serializer},
 };
 
-use malachite::num::conversion::traits::IsInteger;
+use malachite::{
+    num::conversion::traits::{IsInteger, RoundingFrom},
+    rounding_modes::RoundingMode,
+};
+use once_cell::sync::Lazy;
 
 use std::{fmt, io, rc::Rc};
 

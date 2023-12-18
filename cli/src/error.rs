@@ -1,7 +1,7 @@
 //! Error handling for the CLI.
 
 use nickel_lang_core::{
-    error::{Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
+    error::{report::ErrorFormat, Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
     eval::cache::lazy::CBNCache,
     program::{FieldOverride, FieldPath, Program},
 };
@@ -215,9 +215,10 @@ impl<T> ResultErrorExt<T> for Result<T, nickel_lang_core::error::Error> {
 }
 
 impl Error {
-    pub fn report(self) {
+    /// Report this error on the standard error stream.
+    pub fn report(self, format: ErrorFormat) {
         match self {
-            Error::Program { mut program, error } => program.report(error),
+            Error::Program { mut program, error } => program.report(error, format),
             Error::Io { error } => {
                 eprintln!("{error}")
             }
@@ -233,7 +234,7 @@ impl Error {
             }
             #[cfg(feature = "format")]
             Error::Format { error } => eprintln!("{error}"),
-            Error::CliUsage { error, mut program } => program.report(error),
+            Error::CliUsage { error, mut program } => program.report(error, format),
             Error::CustomizeInfoPrinted => {
                 // Nothing to do, the caller should simply exit.
             }

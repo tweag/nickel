@@ -52,7 +52,7 @@ impl QueryCommand {
         let mut program = self.inputs.prepare(&global)?;
 
         if self.inputs.customize_mode.field().is_none() {
-            program.report(Warning::EmptyQueryPath)
+            program.report(Warning::EmptyQueryPath, global.error_format);
         }
 
         let found = program

@@ -22,7 +22,10 @@
 //! Each such value is added to the initial environment before the evaluation of the program.
 use crate::{
     cache::*,
-    error::{report, ColorOpt, Error, EvalError, IOError, IntoDiagnostics, ParseError},
+    error::{
+        report::{report, ColorOpt, ErrorFormat},
+        Error, EvalError, IOError, IntoDiagnostics, ParseError,
+    },
     eval::{cache::Cache as EvalCache, Closure, VirtualMachine},
     identifier::LocIdent,
     label::Label,
@@ -454,11 +457,11 @@ impl<EC: EvalCache> Program<EC> {
     }
 
     /// Wrapper for [`report`].
-    pub fn report<E>(&mut self, error: E)
+    pub fn report<E>(&mut self, error: E, format: ErrorFormat)
     where
         E: IntoDiagnostics<FileId>,
     {
-        report(self.vm.import_resolver_mut(), error, self.color_opt)
+        report(self.vm.import_resolver_mut(), error, format, self.color_opt)
     }
 
     /// Build an error report as a string and return it.
