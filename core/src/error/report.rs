@@ -95,10 +95,7 @@ pub fn report_with<E: IntoDiagnostics<FileId>>(
             codespan_reporting::term::emit(writer, &config, files, d).map_err(|err| err.to_string())
         }),
         ErrorFormat::Json => serde_json::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
-            .and_then(|_| {
-                eprintln!();
-                Ok(())
-            })
+            .map(|_| eprintln!())
             .map_err(|err| err.to_string()),
         ErrorFormat::Yaml => serde_yaml::to_writer(stderr, &DiagnosticsWrapper::from(diagnostics))
             .map_err(|err| err.to_string()),

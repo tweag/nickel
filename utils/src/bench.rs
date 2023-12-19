@@ -174,6 +174,7 @@ macro_rules! ncl_bench_group {
                 cache::{Envs, Cache, ErrorTolerance, ImportResolver},
                 eval::{VirtualMachine, cache::{CacheImpl, Cache as EvalCache}},
                 transform::import_resolution::strict::resolve_imports,
+                error::report::{report, ColorOpt, ErrorFormat},
             };
 
             let mut c: criterion::Criterion<_> = $config
@@ -212,10 +213,11 @@ macro_rules! ncl_bench_group {
                                 .with_initial_env(eval_env.clone());
 
                                 if let Err(e) = vm.eval(t) {
-                                    nickel_lang_core::error::report(
+                                    report(
                                         vm.import_resolver_mut(),
                                         e,
-                                        nickel_lang_core::error::ColorOpt::default()
+                                        ErrorFormat::Text,
+                                        ColorOpt::default(),
                                     );
                                     panic!("Error during bench evaluation");
                                 }

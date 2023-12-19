@@ -138,6 +138,8 @@ fn check_error_report(actual: impl AsRef<str>, expected: MessageExpectation) {
 }
 
 fn check_repl(content: String) {
+    use error::report::{report_with, ErrorFormat};
+
     let mut repl = ReplImpl::<CacheImpl>::new(std::io::sink());
     repl.load_stdlib().unwrap();
     for piece in content.split("\n\n") {
@@ -156,7 +158,7 @@ fn check_repl(content: String) {
                     let mut error = NoColor::new(Vec::<u8>::new());
                     let stdlib_ids = repl.cache_mut().get_all_stdlib_modules_file_id();
                     let files = repl.cache_mut().files_mut();
-                    error::report_with(&mut error, files, stdlib_ids.as_ref(), e);
+                    report_with(&mut error, files, stdlib_ids.as_ref(), e, ErrorFormat::Text);
 
                     check_error_report(String::from_utf8(error.into_inner()).unwrap(), expected);
                 }

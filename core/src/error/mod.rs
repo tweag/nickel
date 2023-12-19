@@ -821,6 +821,17 @@ pub trait IntoDiagnostics<FileId> {
     ) -> Vec<Diagnostic<FileId>>;
 }
 
+// Allow the use of a single `Diagnostic` directly as an error that can be reported by Nickel.
+impl<FileId> IntoDiagnostics<FileId> for Diagnostic<FileId> {
+    fn into_diagnostics(
+        self,
+        _files: &mut Files<String>,
+        _stdlib_ids: Option<&Vec<FileId>>,
+    ) -> Vec<Diagnostic<FileId>> {
+        vec![self]
+    }
+}
+
 // Helpers for the creation of codespan `Label`s
 
 /// Create a primary label from a span.

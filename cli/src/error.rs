@@ -1,7 +1,10 @@
 //! Error handling for the CLI.
 
 use nickel_lang_core::{
-    error::{report::ErrorFormat, Diagnostic, FileId, Files, IntoDiagnostics, ParseError},
+    error::{
+        report::{ColorOpt, ErrorFormat},
+        Diagnostic, FileId, Files, IntoDiagnostics, ParseError,
+    },
     eval::cache::lazy::CBNCache,
     program::{FieldOverride, FieldPath, Program},
 };
@@ -216,24 +219,44 @@ impl<T> ResultErrorExt<T> for Result<T, nickel_lang_core::error::Error> {
 
 impl Error {
     /// Report this error on the standard error stream.
-    pub fn report(self, format: ErrorFormat) {
+    pub fn report(self, format: ErrorFormat, color: ColorOpt) {
+        // Report a standalone error which doesn't actually refer to any source code.
+        let report_standalone = |main_label: &str, msg: Option<String>| {
+            use nickel_lang_core::{
+                cache::{Cache, ErrorTolerance},
+                error::report::report as core_report,
+            };
+
+            let mut dummy_cache = Cache::new(ErrorTolerance::Tolerant);
+            let diagnostic = Diagnostic::error()
+                .with_message(main_label)
+                .with_notes(msg.into_iter().collect());
+
+            core_report(&mut dummy_cache, diagnostic, format, color);
+        };
+
+        // We try to fit every error in a diagnostic. This makes sure all errors are rendered using
+        // the same format set (potentitally by default) by the `--error-format` flag. This also
+        // makes error styling more consistent.
         match self {
             Error::Program { mut program, error } => program.report(error, format),
             Error::Io { error } => {
-                eprintln!("{error}")
+                report_standalone("IO error", Some(error.to_string()));
             }
             #[cfg(feature = "repl")]
             Error::Repl { error } => {
                 use nickel_lang_core::repl::InitError;
                 match error {
-                    InitError::Stdlib => eprintln!("Failed to load the Nickel standard library"),
+                    InitError::Stdlib => {
+                        report_standalone("failed to initialize the standard library", None)
+                    }
                     InitError::ReadlineError(msg) => {
-                        eprintln!("Readline intialization failed: {msg}")
+                        report_standalone("failed to initialize the terminal interface", Some(msg))
                     }
                 }
             }
             #[cfg(feature = "format")]
-            Error::Format { error } => eprintln!("{error}"),
+            Error::Format { error } => report_standalone("format error", Some(error.to_string())),
             Error::CliUsage { error, mut program } => program.report(error, format),
             Error::CustomizeInfoPrinted => {
                 // Nothing to do, the caller should simply exit.
