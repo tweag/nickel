@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{Def, FieldResolver},
+    field_walker::{Def, EltId, FieldResolver},
     identifier::LocIdent,
     server::Server,
 };
@@ -40,7 +40,7 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             path.reverse();
             let (last, path) = path.split_last()?;
             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-            let parents = resolver.resolve_term_path(value, path.iter().copied());
+            let parents = resolver.resolve_term_path(value, path.iter().copied().map(EltId::Ident));
             parents
                 .iter()
                 .filter_map(|parent| parent.get_definition_pos(last.ident()))

@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_core::{
-    identifier::Ident,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
     typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
 
 use crate::{
-    field_walker::Def,
+    field_walker::{Def, EltId},
     identifier::LocIdent,
     position::PositionLookup,
     term::RichTermPtr,
@@ -19,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Parent {
     term: RichTerm,
-    child_name: Option<Ident>,
+    child_name: Option<EltId>,
 }
 
 impl From<RichTerm> for Parent {
@@ -54,7 +53,7 @@ impl ParentLookup {
                         if let Some(child) = &field.value {
                             let parent = Parent {
                                 term: rt.clone(),
-                                child_name: Some(name.ident()),
+                                child_name: Some(name.ident().into()),
                             };
                             child.traverse_ref(
                                 &mut |rt, parent| traversal(rt, parent, acc),
@@ -110,7 +109,7 @@ impl ParentLookup {
 /// `next` call.
 pub struct ParentChainIter<'a> {
     table: &'a ParentLookup,
-    path: Option<Vec<Ident>>,
+    path: Option<Vec<EltId>>,
     next: Option<Parent>,
 }
 
@@ -172,7 +171,7 @@ impl<'a> ParentChainIter<'a> {
         None
     }
 
-    pub fn path(&self) -> Option<&[Ident]> {
+    pub fn path(&self) -> Option<&[EltId]> {
         self.path.as_deref()
     }
 

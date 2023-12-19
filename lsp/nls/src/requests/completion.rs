@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use crate::{
     cache::CacheExt,
-    field_walker::{FieldHaver, FieldResolver},
+    field_walker::{Container, EltId, FieldResolver},
     identifier::LocIdent,
     incomplete,
     server::Server,
@@ -110,8 +110,9 @@ fn record_path_completion(term: RichTerm, server: &Server) -> Vec<CompletionItem
 
     let (start_term, path) = extract_static_path(term);
 
-    let defs = FieldResolver::new(server).resolve_term_path(&start_term, path.iter().copied());
-    defs.iter().flat_map(FieldHaver::completion_items).collect()
+    let defs = FieldResolver::new(server)
+        .resolve_term_path(&start_term, path.iter().copied().map(EltId::Ident));
+    defs.iter().flat_map(Container::completion_items).collect()
 }
 
 fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
@@ -131,7 +132,7 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
             resolver
                 .resolve_term(rt)
                 .iter()
-                .flat_map(FieldHaver::completion_items),
+                .flat_map(Container::completion_items),
         );
     }
 
@@ -144,7 +145,7 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
             // TODO: This adds our merge "cousins" to the environment, but we should also
             // be adding our merge "uncles" and "great-uncles".
             let records = resolver.resolve_term_path(&p, path.iter().rev().copied());
-            items.extend(records.iter().flat_map(FieldHaver::completion_items));
+            items.extend(records.iter().flat_map(Container::completion_items));
         }
     }
 
