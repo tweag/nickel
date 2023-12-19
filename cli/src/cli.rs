@@ -7,6 +7,8 @@ use crate::{
     pprint_ast::PprintAstCommand, query::QueryCommand, typecheck::TypecheckCommand,
 };
 
+use nickel_lang_core::error::report::ErrorFormat;
+
 #[cfg(feature = "repl")]
 use crate::repl::ReplCommand;
 
@@ -46,6 +48,10 @@ pub struct GlobalOptions {
     /// Configure when to output messages in color
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
+
+    /// Output error messages in a specific format.
+    #[arg(long, global = true, value_enum, default_value_t)]
+    pub error_format: ErrorFormat,
 
     #[cfg(feature = "metrics")]
     /// Print all recorded metrics at the very end of the program

@@ -30,6 +30,8 @@ fn main() -> ExitCode {
 
     let opts = <Options as clap::Parser>::parse();
 
+    let error_format = opts.global.error_format;
+    let color = opts.global.color;
     #[cfg(feature = "metrics")]
     let report_metrics = opts.global.metrics;
 
@@ -61,7 +63,7 @@ fn main() -> ExitCode {
         // user's point of view.
         Ok(()) | Err(error::Error::CustomizeInfoPrinted) => ExitCode::SUCCESS,
         Err(error) => {
-            error.report();
+            error.report(error_format, color.into());
             ExitCode::FAILURE
         }
     }

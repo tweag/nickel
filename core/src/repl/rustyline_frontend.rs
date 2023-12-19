@@ -3,10 +3,7 @@ use std::path::PathBuf;
 
 use super::{command::Command, *};
 
-use crate::{
-    error::{self, ColorOpt},
-    eval::cache::CacheImpl,
-};
+use crate::{error::report::ColorOpt, eval::cache::CacheImpl};
 
 use ansi_term::Style;
 use rustyline::{error::ReadlineError, Config, EditMode, Editor};
@@ -39,7 +36,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
     match repl.load_stdlib() {
         Ok(()) => (),
         Err(err) => {
-            error::report(repl.cache_mut(), err, color_opt);
+            repl.report(err, color_opt);
             return Err(InitError::Stdlib);
         }
     }
@@ -101,7 +98,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                         match repl.eval_full(&exp) {
                             Ok(EvalResult::Evaluated(rt)) => println!("{rt}"),
                             Ok(EvalResult::Bound(_)) => (),
-                            Err(err) => error::report(repl.cache_mut(), err, color_opt),
+                            Err(err) => repl.report(err, color_opt),
                         };
                         Ok(())
                     }
@@ -117,7 +114,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 };
 
                 if let Err(err) = result {
-                    error::report(repl.cache_mut(), err, color_opt);
+                    repl.report(err, color_opt);
                 } else {
                     println!();
                 }
@@ -126,7 +123,7 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
                 match repl.eval_full(&line) {
                     Ok(EvalResult::Evaluated(rt)) => println!("{rt}\n"),
                     Ok(EvalResult::Bound(_)) => (),
-                    Err(err) => error::report(repl.cache_mut(), err, color_opt),
+                    Err(err) => repl.report(err, color_opt),
                 };
             }
             Err(ReadlineError::Eof) => {
@@ -136,14 +133,11 @@ pub fn repl(histfile: PathBuf, color_opt: ColorOpt) -> Result<(), InitError> {
             Err(ReadlineError::Interrupted) => (),
             Err(err) => {
                 let _ = editor.save_history(&histfile);
-                error::report(
-                    repl.cache_mut(),
-                    Error::IOError(IOError(format!("{err}"))),
-                    color_opt,
-                );
+                repl.report(Error::IOError(IOError(format!("{err}"))), color_opt);
             }
         }
     };
+
     let _ = editor.save_history(&histfile);
     result
 }

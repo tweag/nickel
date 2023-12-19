@@ -39,9 +39,9 @@ assert_cmd = "2.0.11"
 assert_matches = "1.5.0"
 clap = "4.3"
 clap_complete = "4.3.2"
-codespan = "0.11"
+codespan = { version = "0.11", features = ["serialization"] }
 codespan-lsp = "0.11"
-codespan-reporting = "0.11"
+codespan-reporting = { version = "0.11", features = ["serialization"] }
 comrak = "0.17.0"
 criterion = "0.4"
 csv = "1"
