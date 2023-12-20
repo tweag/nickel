@@ -116,35 +116,38 @@ the `nickel-lang-core` crate documentation).
 2. Run your first program:
 
     ```console
-    $ nickel <<< 'let x = 2 in x + x'
-    4
+    $ nickel eval <<< '["hello", "world"] |> std.string.join ", "'
+    "hello, world"
     ```
 
     Or load it from a file:
 
     ```console
-    $ echo 'let s = "world" in "Hello, " ++ s' > program.ncl
-    $ nickel -f program.ncl
-    "Hello, world"
+    $ echo 'let s = "world" in "hello, %{s}"' > program.ncl
+    $ nickel eval program.ncl
+    "hello, world"
     ```
 
 3. Start a REPL:
 
     ```console
     $ nickel repl
-    nickel> let x = 2 in x + x
-    4
+    nickel> {"hello" = true, "world" = true, "universe" = false}
+      |> std.record.to_array
+      |> std.array.filter (fun {field, value} => value)
+      |> std.array.map (fun {field, value} => field)
+      |> std.string.join ", "
 
-    nickel>
+    "hello, world"
     ```
 
     Use `:help` for a list of available commands.
 4. Export your configuration to JSON, YAML or TOML:
 
   ```console
-  $ nickel export --format json <<< '{foo = "Hello, world!"}'
+  $ nickel export --format json <<< '{content = "hello, world"}'
   {
-    "foo": "Hello, world!"
+    "content": "hello, world"
   }
   ```
 
@@ -171,11 +174,10 @@ enabled when installing nickel with `cargo install` as of Nickel version 1.3.0.
 In this case, please use [Topiary](https://github.com/tweag/topiary/) separately
 to format Nickel source code.
 
-To format a Nickel source file, use `nickel format` (`-i` is short for
-`--in-place`):
+To format one or several Nickel source files, use `nickel format`:
 
 ```console
-nickel format -i -f my-config.ncl
+nickel format network.ncl container.ncl api.ncl
 ```
 
 Nickel uses [Topiary](https://github.com/tweag/topiary/) to format Nickel code
@@ -195,8 +197,8 @@ code editor.
    - **With Nix**: If you have [Nix](https://nixos.org/nix) installed:
 
      ```console
-     nix-shell
-     nix develop # if you use Nix Flakes
+     nix-shell # if you don't use Nix flakes
+     nix develop # if you use Nix flakes
      ```
 
      You will be dropped in a shell, ready to build. You can use
@@ -208,10 +210,17 @@ code editor.
 1. Build Nickel:
 
    ```console
-   cargo build --release
+   cargo build -p nickel-lang-cli --release
    ```
 
    And voilà! Generated files are placed in `target/release`.
+
+   You can directly build and run the Nickel binary and pass argument after `--`
+   by using `cargo run`:
+
+   ```console
+   cargo run --bin nickel -- eval foo.ncl
+   ```
 
 ### Test
 
@@ -243,8 +252,9 @@ You can find examples in the [`./examples`](./examples) directory.
 
 ## Current state and roadmap
 
-Nickel is currently released in version `1.0`. We expect the core design of the
+Nickel is currently released in version `1.3`. We expect the core design of the
 language to be stable and the language to be useful for real-world applications.
+
 The next steps we plan to work on are:
 
 - Nix integration: being able to seamlessly use Nickel to write packages and
