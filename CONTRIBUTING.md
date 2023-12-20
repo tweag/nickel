@@ -2,6 +2,10 @@
 
 Welcome, and thanks for considering contributing to the Nickel project!
 
+A great first step is to join our
+[![Discord](https://img.shields.io/badge/Discord-100000?style=flat&logo=Discord&logoColor=C3C3C3&labelColor=4179DA&color=010101)][discord]
+server.
+
 ## Contributing
 
 There are many useful ways to help which don't involve modifying the source of
@@ -124,3 +128,4 @@ minimizes back-and-forths with trusted authors.
 [tweag]: https://www.tweag.io
 [rfcs]: ./rfcs/
 [nickel-chat]: https://discord.gg/vYDnJYBmax
+[discord]: https://discord.gg/vYDnJYBmax

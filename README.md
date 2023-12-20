@@ -2,6 +2,7 @@
 
 [![Continuous integration](https://github.com/tweag/nickel/workflows/Continuous%20integration/badge.svg)](https://github.com/tweag/nickel/actions?query=branch%3Amaster)
 [![Website](https://img.shields.io/website-up-down-green-red/http/cv.lbesson.qc.to.svg)](https://nickel-lang.org)
+[![Discord](https://img.shields.io/badge/Discord-100000?style=flat&logo=Discord&logoColor=C3C3C3&labelColor=4179DA&color=010101)][discord]
 
 Nickel is the cheap configuration language.
 
@@ -149,6 +150,10 @@ the `nickel-lang-core` crate documentation).
 
 Use `nickel help` for a list of subcommands, and `nickel help <subcommand>`
 for help about a specific subcommand.
+
+To get in touch, you can join our
+[![Discord](https://img.shields.io/badge/Discord-100000?style=flat&logo=Discord&logoColor=C3C3C3&labelColor=4179DA&color=010101)][discord]
+server.
 
 #### Editor Setup
 
@@ -307,3 +312,5 @@ any change done here -->
 | JSON     | None                          | No         | Strict     | No                                               |
 | YAML     | None                          | No         | N/A        | No                                               |
 | TOML     | None                          | No         | N/A        | No                                               |
+
+[discord]: https://discord.gg/vYDnJYBmax
