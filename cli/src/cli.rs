@@ -49,7 +49,8 @@ pub struct GlobalOptions {
     #[arg(long, global = true, value_enum, default_value_t)]
     pub color: clap::ColorChoice,
 
-    /// Output error messages in a specific format.
+    /// Output error messages in a specific format. The schema of serialized errors reflects the
+    /// way they are currently rendered. This schema is not guaranteed to be stable yet.
     #[arg(long, global = true, value_enum, default_value_t)]
     pub error_format: ErrorFormat,
 
