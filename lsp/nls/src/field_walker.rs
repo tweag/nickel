@@ -49,7 +49,7 @@ impl Container {
                 .fields
                 .get(&id)
                 .map(|field| FieldContent::RecordField(field.clone())),
-            (Container::Dict(ty), EltId::Ident(id)) => Some(FieldContent::Type(ty.clone())),
+            (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
             (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ.clone())),
@@ -372,6 +372,21 @@ impl<'a> FieldResolver<'a> {
                     Vec::new()
                 }
             }
+            Term::Array(_, attrs) => attrs
+                .pending_contracts
+                .iter()
+                .filter_map(|ctr| {
+                    if let Term::Type(ty) = ctr.contract.as_ref() {
+                        if let TypeF::Array(elt_ty) = &ty.typ {
+                            Some(Container::Array((**elt_ty).clone()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache
@@ -407,6 +422,7 @@ impl<'a> FieldResolver<'a> {
         match &typ.typ {
             TypeF::Record(rows) => vec![Container::RecordType(rows.clone())],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields.as_ref().clone())],
+            TypeF::Array(elt_ty) => vec![Container::Array(elt_ty.as_ref().clone())],
             TypeF::Flat(rt) => self.resolve_term(rt),
             _ => Default::default(),
         }

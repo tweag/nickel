@@ -63,6 +63,19 @@ impl ParentLookup {
                     }
                     TraverseControl::SkipBranch
                 }
+                Term::Array(arr, _) => {
+                    for elt in arr.iter() {
+                        let parent = Parent {
+                            term: rt.clone(),
+                            child_name: Some(EltId::ArrayElt),
+                        };
+                        elt.traverse_ref(
+                            &mut |rt, parent| traversal(rt, parent, acc),
+                            &Some(parent),
+                        );
+                    }
+                    TraverseControl::SkipBranch
+                }
                 _ => TraverseControl::ContinueWithScope(Some(rt.clone().into())),
             }
         }
@@ -121,7 +134,11 @@ impl<'a> ParentChainIter<'a> {
             }
             if !matches!(
                 next.term.as_ref(),
-                Term::Record(_) | Term::RecRecord(..) | Term::Annotated(..) | Term::Op2(..)
+                Term::Record(_)
+                    | Term::RecRecord(..)
+                    | Term::Annotated(..)
+                    | Term::Op2(..)
+                    | Term::Array(..)
             ) {
                 self.path = None;
             }
@@ -346,5 +363,42 @@ impl TypeCollector {
             .map(|(id, uty)| (id, transform_type(uty)))
             .collect();
         CollectedTypes { terms, idents }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use assert_matches::assert_matches;
+    use nickel_lang_core::{identifier::Ident, term::Term};
+
+    use crate::{
+        field_walker::EltId,
+        position::tests::parse,
+        usage::{tests::locced, Environment, UsageLookup},
+    };
+
+    use super::ParentLookup;
+
+    #[test]
+    fn parent_chain() {
+        let (file, rt) = parse("{ foo = [{ bar = 1 }] }");
+        let bar_id = Ident::new("bar");
+        let bar = locced(bar_id, file, 11..14);
+
+        let parent = ParentLookup::new(&rt);
+        let usages = UsageLookup::new(&rt, &Environment::new());
+        let bar_rt = usages.def(&bar).unwrap().value().unwrap();
+
+        let p = parent.parent(bar_rt).unwrap();
+        assert_eq!(p.child_name, Some(EltId::Ident(bar_id)));
+        assert_matches!(p.term.as_ref(), Term::RecRecord(..));
+
+        let gp = parent.parent(&p.term).unwrap();
+        assert_eq!(gp.child_name, Some(EltId::ArrayElt));
+        assert_matches!(gp.term.as_ref(), Term::Array(..));
+
+        let ggp = parent.parent(&gp.term).unwrap();
+        assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
+        assert_matches!(ggp.term.as_ref(), Term::RecRecord(..));
     }
 }
