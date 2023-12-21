@@ -42,7 +42,7 @@ impl From<Ident> for EltId {
 }
 
 impl Container {
-    /// If this `FieldHaver` has a field named `id`, returns its value.
+    /// If this `Container` has a field named `id`, returns its value.
     fn get(&self, id: EltId) -> Option<FieldContent> {
         match (self, id) {
             (Container::RecordTerm(data), EltId::Ident(id)) => data
@@ -58,7 +58,7 @@ impl Container {
         }
     }
 
-    /// If this `FieldHaver` is a record term, try to retrieve the field named `id`.
+    /// If this `Container` is a record term, try to retrieve the field named `id`.
     fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &Field)> {
         match self {
             Container::RecordTerm(data) => data
@@ -81,7 +81,7 @@ impl Container {
         }
     }
 
-    /// Returns all fields in this `FieldHaver`, rendered as LSP completion items.
+    /// Returns all fields in this `Container`, rendered as LSP completion items.
     pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
         match self {
             Container::RecordTerm(data) => {
@@ -114,7 +114,7 @@ impl Container {
     }
 }
 
-/// [`FieldHaver`]s can have fields that are either record fields or types.
+/// [`Container`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
 enum FieldContent {
     RecordField(Field),

@@ -125,7 +125,7 @@ fn env_completion(rt: &RichTerm, server: &Server) -> Vec<CompletionItem> {
 
     // If the current term is a record, add its fields. (They won't be in the environment,
     // because that's the environment *of* the current term. And we don't want to treat
-    // all possible FieldHavers here, because for example if the current term is a Term::Var
+    // all possible Containers here, because for example if the current term is a Term::Var
     // that references a record, we don't want it.)
     if matches!(rt.as_ref(), Term::RecRecord(..)) {
         items.extend(
