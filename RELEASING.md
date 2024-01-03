@@ -7,9 +7,44 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ## Steps to make a release
 
+### Releasing script
+
+Since the 1.4 release, the `release.sh` script takes care of bumping versions
+numbers, updating local cross-dependencies, creating a clean release branch,
+updating the stable branch and publishing to crates.io.
+
+The covered steps are still described below for your information, but you
+shouldn't need to actually perform them manually.
+
+You'll still have to do the GitHub release, redeploy nickel-lang.org manually,
+and backport changes to `master`.
+
+#### Scrpt requirements
+
+- A relatively recent bash (> 4.3)
+- git
+- tomlq
+- You will need to be signed in to `crates.io` with a GitHub
+    account that is part of the [Nickel Core
+    team](https://github.com/orgs/nickel-lang/teams/core), and have a
+    `crates.io` API key saved locally on your machine (normally via `cargo
+    login`). For help with this, contact the Nickel maintainers.
+
+Once `master` is in a releasable state, start the script from the root of the
+`nickel` git repository with an argument that is either `major`, `minor` or
+`patch`, indicating how to bump the version number. For example:
+
+```console
+$./release.sh minor
+++ Nickel release script
+++
+++ This script will:
+[..]
+```
+
 ### About the version numbers
 
-Some of the crates in the Nickel workspace are libraries and not versioned
+Some of the crates in the Nickel workspace are libraries which are not versioned
 according to the version number of the language itself. These are
 
 - `nickel-lang-core`
@@ -19,7 +54,7 @@ according to the version number of the language itself. These are
 
 Their version numbers take the form `0.W.U` and their public APIs are not
 considered stable. Consequently we bump their versions to `0.(W+1).0` on every
-release.
+release (if needed).
 
 Other crates carry the version number of the Nickel language. These are
 
@@ -28,6 +63,10 @@ Other crates carry the version number of the Nickel language. These are
 - `pyckel`
 
 ### Prepare
+
+**IMPORTANT**: this section is covered by the `release.sh` script, and is only
+kept for information purpose. Usually, you shouldn't have to perform the
+following steps manually.
 
 1. Branch out from `master` to a dedicated branch `X.Y.Z-release`:
    `git checkout -b X.Y.Z-release`
@@ -90,6 +129,10 @@ Other crates carry the version number of the Nickel language. These are
    ```
 
 ### Release on crates.io
+
+**IMPORTANT**: this section is covered by the `release.sh` script, and is only
+kept for information purpose. Usually, you shouldn't have to perform the
+following steps manually.
 
 1. Remove references to `nickel-lang-utils` from the `[dev-dependencies]`
    sections of the crates to be published: `./core/Cargo.toml` for
