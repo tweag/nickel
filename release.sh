@@ -67,9 +67,8 @@ fn bumpDependencies() {
 
     # If we are looking at a crate's Cargo.toml file, the dependencies are
     # located at .dependencies. If we are looking at the workspace's Cargo.toml,
-    # the dependencies are located at .workspace.dependencies. `pathPrefix`
-    # is prepended to `.dependencies` when extracting dependencies to make
-    # things work in both case (for crates it's empty, for workspace it's ".workspace")
+    # the dependencies are located at .workspace.dependencies. This difference
+    # is abstracted away in `depsPath`
     local depsPath
 
     if [[ $1 == "workspace" ]]; then
@@ -107,10 +106,10 @@ echo <<EOF
 ++
 ++ This script will:
 ++
-++ - Automatically bump version numbers in Cargo.toml files"
-++ - Bump dependencies to local crates accordingly"
-++ - Commit and push the changes on a new release branch"
-++ - Make the stable branch point to the release branch"
+++ - Automatically bump version numbers in Cargo.toml files
+++ - Bump dependencies to local crates accordingly
+++ - Commit and push the changes on a new release branch
+++ - Make the stable branch point to the release branch
 ++ - Publish relevant crate to crates.io
 ++
 ++ Sanity checks (build, test, publish dry run etc.) are performed along the
