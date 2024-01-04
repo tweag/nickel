@@ -165,12 +165,14 @@ EOF
 
 confirm_proceed ""
 
+git switch master
+
 # Check that the working directory is clean
 if ! git status --untracked-files=no --porcelain; then
     confirm_proceed "Working directory is not clean"
 fi
 
-echo "\n++ Prepare release branch creation"
+echo "\n++ Prepare release branch from \'master\'"
 
 # Directories of subcrates following their own independent versioning
 local independentCrates=(core utils lsp/lsp-harness ./wasm-repl)
