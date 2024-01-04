@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+# Nickel release script
+#
+# This script automates part of the process of releasing a new version of
+# Nickel.
+#
+# [^tomlq-sed]: tomlq has an --in-place option that would make the update much
+# more pleasant. Unfortunately, tomlq works by transcoding to
+# JSON, passing the JSON to jq, and then transcoding back to
+# TOML, which has the very unpleasant effect of removing all
+# comments and changing entirely the formatting and the layout
+# of the file. Thus, we resort to good old and ugly sed.
+# This is of course less robust. For now, it seems largely sufficient, but it
+# might break in the future if the Cargo.toml files style change.
+
 # Perform clean up actions upon unexpected exit.
 cleanup() {
   echo "++ Unexpected exit. Cleaning up..."
@@ -113,7 +127,9 @@ update_dependencies() {
 
             if [[ $dependency_type == "string" ]]; then
                 echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${version_map[$dependency]}"
-                tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                # see [^tomlq-sed]
+                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                sed -i 's/\('"$dependency"'\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${version_map[$dependency]}"'"/g' "$path_cargo_toml"
             # Most of local crates use the workspace's version by default, i.e.
             # are of the form `foo_crate = { workspace = true }`. In that case,
             # the update is already taken care of when updating the workspace's
@@ -124,7 +140,9 @@ update_dependencies() {
                 # The dependency might be set to follow the workspace's version,
                 # in which case we don't touch it
 
-                tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                # see [^tomlq-sed]
+                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                sed -i 's/\('"$dependency"'\s*=\s*{\s*version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${version_map[$dependency]}"'"/g' "$path_cargo_toml"
             fi
 
             git add "$path_cargo_toml"
@@ -220,7 +238,9 @@ cleanup_actions+=("git switch master")
 
 report_progress "Bumping workspace version number..."
 
-tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
+# see [^tomlq-sed]
+# tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
+sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
 git add ./Cargo.toml
 cleanup_actions+=("git restore ./Cargo.toml")
 
@@ -235,7 +255,9 @@ for crate in "${independent_crates[@]}"; do
     read -p "$crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-      tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
+      # see [^tomlq-sed]
+      # tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
+      sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
       git add "$crate/Cargo.toml"
       cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
     fi
@@ -281,7 +303,7 @@ git branch -D stable-local-save &>/dev/null || true
 git checkout stable
 git branch stable-local-save
 
-confirm_proceed " -- Pushing the release branch to \'stable\' and making it the new default."
+confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default."
 
 git checkout stable
 git reset --hard "$release_branch"
@@ -297,7 +319,7 @@ echo "++ Prepare the release to crates.io"
 
 crates_to_publish=(core cli lsp/nls)
 
-report_progress "Removing \'nickel-lang-utils\' from dev-dependencies..."
+report_progress "Removing 'nickel-lang-utils' from dev-dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
     # Remove `nickel-lang-utils` from `dev-dependencies` of released crates.
@@ -306,9 +328,12 @@ for crate in "${crates_to_publish[@]}"; do
     # from dev-dependencies (which aren't required for proper publication on
     # crates.io)
     #
-    # Note that tomlq doesn't fail if the key doesn't exist, so we can blindly
-    # try to delete `nickel-lang-utils` even if it might not be there
-    tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
+    # see [^tomlq-sed]
+    # # Note that tomlq doesn't fail if the key doesn't exist, so we can blindly
+    # # try to delete `nickel-lang-utils` even if it might not be there
+    # tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
+    sed -i '/^nickel-lang-utils\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
+
     git add "$crate/Cargo.toml"
     cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
 done
