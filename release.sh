@@ -188,12 +188,16 @@ remove_topiary_dependency() {
     # version numbers, because the format feature is a list of strings, so we
     # resort to a stronger weapon: awk
     #
-    # The following script looks for the [feature] section, then for the default
-    # key, and finally remove "format" from the list of default features
+    # The following script looks for the [features] section, then for the default
+    # key and remove "format" from the list of default features. It also removes
+    # the feature format itself from the list of [features].
     awk -F'[\n= ]+' '
     {
-        if($0 ~ /^\[feature\]$/) { 
+        if($0 ~ /^\[features\]$/) { 
             a=1 
+        } 
+        else if(a==1 && $1=="format") { 
+            next 
         } 
         else if(a==1 && $0 ~ /^default ?= ?\[/) { 
             gsub(/"format",?|,"format"/,"") 
