@@ -6,6 +6,7 @@ cleanup() {
   set +e
 
   for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
+    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
     ${cleanup_actions[$i]} || true
   done
 
@@ -112,7 +113,7 @@ update_dependencies() {
 
             if [[ $dependency_type == "string" ]]; then
                 echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${version_map[$dependency]}"
-                tomlq -i $dependencies_path'."'"$dependency"'" = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
             # Most of local crates use the workspace's version by default, i.e.
             # are of the form `foo_crate = { workspace = true }`. In that case,
             # the update is already taken care of when updating the workspace's
@@ -123,7 +124,7 @@ update_dependencies() {
                 # The dependency might be set to follow the workspace's version,
                 # in which case we don't touch it
 
-                tomlq -i $dependencies_path'."'"$dependency"'".version = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
+                tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
             fi
 
             git add "$path_cargo_toml"
@@ -184,7 +185,7 @@ if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
     confirm_proceed "++ Working directory is not clean"
 fi
 
-git switch master
+git switch master > /dev/null
 
 echo "++ Prepare release branch from 'master'"
 
@@ -213,12 +214,13 @@ report_progress "Creating release branch..."
 
 release_branch="$new_workspace_version-release"
 
-git switch --create "$release_branch"
-cleanup_actions+=("git branch -d $release_branch; git switch master")
+git switch --create "$release_branch" > /dev/null
+cleanup_actions+=("git branch -d $release_branch")
+cleanup_actions+=("git switch master")
 
 report_progress "Bumping workspace version number..."
 
-tomlq -i '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
+tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
 git add ./Cargo.toml
 cleanup_actions+=("git restore ./Cargo.toml")
 
@@ -233,7 +235,7 @@ for crate in "${independent_crates[@]}"; do
     read -p "$crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-      tomlq -i '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
+      tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
       git add "$crate/Cargo.toml"
       cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
     fi
@@ -279,6 +281,8 @@ git branch -D stable-local-save &>/dev/null || true
 git checkout stable
 git branch stable-local-save
 
+confirm_proceed " -- Pushing the release branch to \'stable\' and making it the new default."
+
 git checkout stable
 git reset --hard "$release_branch"
 git push --force-with-lease
@@ -304,7 +308,7 @@ for crate in "${crates_to_publish[@]}"; do
     #
     # Note that tomlq doesn't fail if the key doesn't exist, so we can blindly
     # try to delete `nickel-lang-utils` even if it might not be there
-    tomlq -i 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
+    tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
     git add "$crate/Cargo.toml"
     cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
 done
