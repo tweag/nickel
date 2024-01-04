@@ -139,7 +139,7 @@ update_dependencies() {
             cleanup_actions+=('git restore '"$path_cargo_toml")
 
             if [[ $dependency_type == "string" ]]; then
-                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
+                report_progress "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
                 # see [^tomlq-sed]
                 # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${local_version_map[$dependency]}"'"' "$path_cargo_toml"
                 sed -i 's/\('"$dependency"'\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
@@ -149,7 +149,7 @@ update_dependencies() {
             # Cargo.toml, so we don't do anything if the dependency doesn't have
             # a version field
             elif [[ $dependency_type == "object" && $has_version == "true" ]]; then
-                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
+                report_progress "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
                 # The dependency might be set to follow the workspace's version,
                 # in which case we don't touch it
 
@@ -200,7 +200,7 @@ remove_topiary_dependency() {
             next 
         } 
         else if(a==1 && $0 ~ /^default ?= ?\[/) { 
-            gsub(/"format",?|,"format"/,"") 
+            gsub(/,"format"|"format",?/,"") 
         } 
         else if(a==1 && $0 ~ /^$/) {
             a=0 
