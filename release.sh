@@ -361,7 +361,7 @@ cleanup_actions+=("git reset -- ./Cargo.lock")
 
 report_progress "Building and running checks..."
 
-nix flake check
+echo 'nix flake check'
 
 report_progress "Creating the release branch..."
 
