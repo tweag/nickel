@@ -18,16 +18,15 @@
 
 # Perform clean up actions upon unexpected exit.
 cleanup() {
-  echo "++ NOCLEANUP mode (dev)"
-#  echo "++ Unexpected exit. Cleaning up..."
-#  set +e
-#
-#  for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
-#    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
-#    ${cleanup_actions[$i]} || true
-#  done
-#
-#  cleanup_actions=()
+  echo "++ Unexpected exit. Cleaning up..."
+  set +e
+
+  for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
+    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
+    ${cleanup_actions[$i]} || true
+  done
+
+  cleanup_actions=()
   exit 1
 }
 
@@ -382,12 +381,12 @@ cleanup_actions+=("git reset -- ./Cargo.lock")
 
 report_progress "Building and running checks..."
 
-echo 'nix flake check'
+nix flake check
 
 report_progress "Creating the release branch..."
 
 git commit -m "[release.sh] update to $new_workspace_version"
-echo 'git push -u origin "$release_branch"'
+git push -u origin "$release_branch"
 
 report_progress "Saving current 'stable' branch to 'stable-local-save'..."
 
@@ -400,9 +399,9 @@ report_progress "If anything goes wrong from now on, you can restore the previou
 
 confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
 
-echo 'git checkout stable'
-echo 'git reset --hard "$release_branch"'
-echo 'git push --force-with-lease'
+git checkout stable
+git reset --hard "$release_branch"
+git push --force-with-lease
 
 git checkout "$release_branch"
 
@@ -466,14 +465,15 @@ git restore ./Cargo.lock
 report_progress "Successfully installed locally. Trying a dry run of cargo publish..."
 
 cargo publish -p nickel-lang-core --dry-run
-cargo publish -p nickel-lang-cli --dry-run
-cargo publish -p nickel-lang-lsp --dry-run
-
-report_progress "Dry run successfully passed"
-confirm_proceed "Proceed with actual publication to crates.io ?"
-
+confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-core' to crates.io ?"
 cargo publish -p nickel-lang-core
+
+cargo publish -p nickel-lang-cli --dry-run
+confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-cli' to crates.io ?"
 cargo publish -p nickel-lang-cli
+
+cargo publish -p nickel-lang-lsp --dry-run
+confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-lsp' to crates.io ?"
 cargo publish -p nickel-lang-lsp
 
 report_progress "Cleaning up..."
