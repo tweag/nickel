@@ -200,7 +200,7 @@ remove_topiary_dependency() {
             next 
         } 
         else if(a==1 && $0 ~ /^default ?= ?\[/) { 
-            gsub(/,"format"|"format",?/,"") 
+            gsub(/, *"format"|"format" *,?/,"") 
         } 
         else if(a==1 && $0 ~ /^$/) {
             a=0 
