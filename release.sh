@@ -72,7 +72,7 @@ print_version_array() {
         result="$result.$component"
     done
 
-    echo "${version[0]}.${version[1]}.${version[2]}"
+    echo "$result"
 }
 
 # Go through a Cargo.toml file and bump all dependencies to local crates that are being updated (in practice, the crates populating version_map)
@@ -251,7 +251,7 @@ report_progress "Bumping workspace version number..."
 # see [^tomlq-sed]
 # tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
 sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
-cleanup_actions+=("git restore ./Cargo.toml") 
+cleanup_actions+=("git restore ./Cargo.toml")
 
 git add ./Cargo.toml
 cleanup_actions+=("git reset -- ./Cargo.lock")
@@ -264,21 +264,21 @@ for crate in "${independent_crates[@]}"; do
 
     new_crate_version=${crate_version_array[0]}.$((crate_version_array[1] + 1)).0
 
-    read -p " -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
+    read -p "  -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
     echo ""
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
       # see [^tomlq-sed]
       # tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
       sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
-      cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
+      cleanup_actions+=('git restore '"$crate/Cargo.toml")
 
       git add "$crate/Cargo.toml"
-      cleanup_actions+=("git reset -- \"$crate/Cargo.toml\"")
+      cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
     fi
 done
 
-read -n 1 -s -r -p " -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
+read -n 1 -s -r -p "  -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
 echo ""
 
 # Because the user might have updated the version numbers manually, we need to
