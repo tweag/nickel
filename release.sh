@@ -189,18 +189,19 @@ remove_format_feature() {
     # We first extract the list of dependencies that are required by the format
     # feature, because we'll need to remove them all (it'll include topiary, but
     # might not be limited to it)
-    # Those features start with a "dep:" prefix that we filter out using only
-    # bash features.
-    readarray -t deps_to_remove < <(tomlq -r '(.features.format | .[] | sub("dep:";""))' "$path_cargo_toml")
+    #
+    # We filter out dependencies (as `format = [..]` can also contain features,
+    # such as `nickel-lang-core/format`), and then remove the `dep:` prefix.
+    readarray -t deps_to_remove < <(tomlq -r '(.features.format | .[] | select(startswith("dep:")) | sub("dep:";""))' "$path_cargo_toml")
 
     # see [^tomlq-sed]
     # Removing the format feature is a bit more complicated than handling
     # version numbers, because the format feature is a list of strings, so we
     # resort to a stronger weapon: awk
     #
-    # The following script looks for the [features] section, then for the default
-    # key and remove "format" from the list of default features. It also removes
-    # the feature format itself from the list of [features].
+    # The following script looks for the `[features]` section, then for the
+    # `default` key and remove "format" from the list of default features. It
+    # also removes the feature format itself from the list of [features].
     awk -F'[\n= ]+' '
     {
         if($0 ~ /^\[features\]$/) { 
@@ -222,6 +223,7 @@ remove_format_feature() {
     # removed
     for dep in "${deps_to_remove[@]}"; do
         # see [^tomlq-sed]
+        report_progress "Removing dependency $dep from $path_cargo_toml"
         sed -i '/^'"$dep"'\s*=\s*{.*}$/d' "$path_cargo_toml"
     done
 
@@ -427,11 +429,15 @@ for crate in "${crates_to_publish[@]}"; do
     # tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
     sed -i '/^nickel-lang-utils\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
+done
+
+report_progress "Remove the format feature and topiary dependencies..."
+
+for crate in "${crates_to_publish[@]}"; do
+    remove_format_feature "$crate/Cargo.toml"
 
     git add "$crate/Cargo.toml"
     cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
-
-    remove_format_feature "$crate/Cargo.toml"
 done
 
 # Cargo requires to commit changes, but we'll reset them later
