@@ -19,11 +19,12 @@ shouldn't need to actually perform them manually.
 You'll still have to do the GitHub release, redeploy nickel-lang.org manually,
 and backport changes to `master`.
 
-#### Scrpt requirements
+#### Script requirements
 
 - A relatively recent bash (> 4.3)
 - git
 - tomlq
+- cargo
 - You will need to be signed in to `crates.io` with a GitHub
     account that is part of the [Nickel Core
     team](https://github.com/orgs/nickel-lang/teams/core), and have a
