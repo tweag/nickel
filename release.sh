@@ -302,34 +302,37 @@ for crate in "${all_crates[@]}"; do
     update_dependencies "crate" "$crate/Cargo.toml" version_map
 done
 
+# Patch workspace dependencies
 update_dependencies "workspace" "./Cargo.toml" version_map
 # We need to update the lockfile here, because we changed ./Cargo.toml but Nix
 # tries to build with --frozen, which will fail if the lockfile is outdated.
 cargo update > /dev/null
+cleanup_actions+=("git restore ./Cargo.lock")
 
-# Patch workspace dependencies
+git add ./Cargo.lock
+cleanup_actions+=("git reset -- ./Cargo.lock")
 
 report_progress "Building and running checks..."
 
 nix flake check
 
-report_progress "Pushing the release branch..."
+report_progress "Creating the release branch..."
 
-git commit -m "Bump version to $new_workspace_version"
-git push -u origin "$release_branch"
+git commit -m "[release.sh] update to $new_workspace_version"
+echo 'git push -u origin "$release_branch"'
 
-report_progress "Saving current \'stable\' branch to \'stable-local-save\'..."
+report_progress "Saving current 'stable' branch to 'stable-local-save'..."
 
 # Delete the branch if already present, but if not, don't fail
 git branch -D stable-local-save &>/dev/null || true
 git checkout stable
 git branch stable-local-save
 
-confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default."
+confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
 
-git checkout stable
-git reset --hard "$release_branch"
-git push --force-with-lease
+echo 'git checkout stable'
+echo 'git reset --hard "$release_branch"'
+echo 'git push --force-with-lease'
 
 report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
 
@@ -361,7 +364,7 @@ for crate in "${crates_to_publish[@]}"; do
 done
 
 # Cargo requires to commit changes, but we'll reset them later
-git commit -m "[release.sh] Remove nickel-lang-utils from dev-dependencies"
+git commit -m "[release.sh][tmp] remove nickel-lang-utils from dependencies"
 
 # We have had reproducibility issues before due to the fact that when installing
 # the version of say `nickel-lang-cli` from crates.io, Cargo doesn't pick the
@@ -372,7 +375,7 @@ git commit -m "[release.sh] Remove nickel-lang-utils from dev-dependencies"
 # This is a bit unsatisfactory, but a cheap way to have good faith that the
 # published version correctly builds and install is to temporarily delete
 # `Cargo.lock` and try to install the nickel crates locally
-report_progress "Trying to install \'nickel-lang-cli\' and \'nickel-lang-lsp\' locally... [WARNING: this will override your local Nickel installation]"
+report_progress "Trying to install 'nickel-lang-cli' and 'nickel-lang-lsp' locally... [WARNING: this will override your local Nickel installation]"
 
 rm -f ./Cargo.lock
 
@@ -415,3 +418,5 @@ cat <<EOF
 ++
 ++ Please refer to RELEASING.md for more details
 EOF
+
+exit 0
