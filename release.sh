@@ -92,7 +92,7 @@ print_version_array() {
 # ```
 update_dependencies() {
     local path_cargo_toml="$2"
-    local -n version_map=$3
+    local -n local_version_map=$3
 
     # If we are looking at a crate's Cargo.toml file, the dependencies are
     # located at .dependencies. If we are looking at the workspace's Cargo.toml,
@@ -119,7 +119,7 @@ update_dependencies() {
         # If the dependency is in the version map, it means that we might have
         # bumped it as part of the release process. In that case, we need to
         # update the dependency to the new version.
-        if [[ -v version_map["$dependency"] ]]; then
+        if [[ -v local_version_map["$dependency"] ]]; then
             # Cargo dependencies can be either specified as a simple version
             # string, as in
             # `foo_crate = "1.2.3"`
@@ -131,32 +131,32 @@ update_dependencies() {
             local has_version
 
             dependency_type=$(tomlq -r '('$dependencies_path'."'"$dependency"'" | type)' "$path_cargo_toml")
-            has_version=$(tomlq -r '('$dependencies_path'."'"$dependency"'" | has("version")' "$path_cargo_toml")
+            has_version=$(tomlq -r '('$dependencies_path'."'"$dependency"'" | has("version"))' "$path_cargo_toml")
 
-            cleanup_actions+=("git restore \"$path_cargo_toml\"")
+            cleanup_actions+=('git restore '"$path_cargo_toml")
 
             if [[ $dependency_type == "string" ]]; then
-                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${version_map[$dependency]}"
+                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
                 # see [^tomlq-sed]
-                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
-                sed -i 's/\('"$dependency"'\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${version_map[$dependency]}"'"/g' "$path_cargo_toml"
+                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${local_version_map[$dependency]}"'"' "$path_cargo_toml"
+                sed -i 's/\('"$dependency"'\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
             # Most of local crates use the workspace's version by default, i.e.
             # are of the form `foo_crate = { workspace = true }`. In that case,
             # the update is already taken care of when updating the workspace's
             # Cargo.toml, so we don't do anything if the dependency doesn't have
             # a version field
             elif [[ $dependency_type == "object" && $has_version == "true" ]]; then
-                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${version_map[$dependency]}"
+                echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
                 # The dependency might be set to follow the workspace's version,
                 # in which case we don't touch it
 
                 # see [^tomlq-sed]
-                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${version_map[$dependency]}"'"' "$path_cargo_toml"
-                sed -i 's/\('"$dependency"'\s*=\s*{\s*version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${version_map[$dependency]}"'"/g' "$path_cargo_toml"
+                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${local_version_map[$dependency]}"'"' "$path_cargo_toml"
+                sed -i 's/\('"$dependency"'\s*=\s*{\s*version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
             fi
 
             git add "$path_cargo_toml"
-            cleanup_actions+=("git reset -- \"$path_cargo_toml\"")
+            cleanup_actions+=('git reset -- '"$path_cargo_toml")
         fi
     done
 }
