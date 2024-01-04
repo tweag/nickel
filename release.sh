@@ -5,6 +5,8 @@
 # This script automates part of the process of releasing a new version of
 # Nickel.
 #
+# For requirements, see ./RELEASING.md.
+#
 # [^tomlq-sed]: tomlq has an --in-place option that would make the update much
 # more pleasant. Unfortunately, tomlq works by transcoding to
 # JSON, passing the JSON to jq, and then transcoding back to
@@ -301,6 +303,9 @@ for crate in "${all_crates[@]}"; do
 done
 
 update_dependencies "workspace" "./Cargo.toml" version_map
+# We need to update the lockfile here, because we changed ./Cargo.toml but Nix
+# tries to build with --frozen, which will fail if the lockfile is outdated.
+cargo update > /dev/null
 
 # Patch workspace dependencies
 
