@@ -133,6 +133,8 @@ update_dependencies() {
             dependency_type=$(tomlq -r '('$dependencies_path'."'"$dependency"'" | type)' "$path_cargo_toml")
             has_version=$(tomlq -r '('$dependencies_path'."'"$dependency"'" | has("version")' "$path_cargo_toml")
 
+            cleanup_actions+=("git restore \"$path_cargo_toml\"")
+
             if [[ $dependency_type == "string" ]]; then
                 echo "Patching cross-dependency $dependency in $path_cargo_toml to version ${version_map[$dependency]}"
                 # see [^tomlq-sed]
@@ -154,7 +156,7 @@ update_dependencies() {
             fi
 
             git add "$path_cargo_toml"
-            cleanup_actions+=("git restore \"$path_cargo_toml\"")
+            cleanup_actions+=("git reset -- \"$path_cargo_toml\"")
         fi
     done
 }
@@ -249,8 +251,10 @@ report_progress "Bumping workspace version number..."
 # see [^tomlq-sed]
 # tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
 sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
+cleanup_actions+=("git restore ./Cargo.toml") 
+
 git add ./Cargo.toml
-cleanup_actions+=("git restore ./Cargo.toml")
+cleanup_actions+=("git reset -- ./Cargo.lock")
 
 report_progress "Bumping other crates version numbers..."
 
@@ -266,8 +270,10 @@ for crate in "${independent_crates[@]}"; do
       # see [^tomlq-sed]
       # tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
       sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
-      git add "$crate/Cargo.toml"
       cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
+
+      git add "$crate/Cargo.toml"
+      cleanup_actions+=("git reset -- \"$crate/Cargo.toml\"")
     fi
 done
 
