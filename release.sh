@@ -210,7 +210,8 @@ echo ""
 
 # Check that the working directory is clean
 if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
-    confirm_proceed "++ Working directory is not clean"
+    confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
+
 fi
 
 git switch master > /dev/null
@@ -236,7 +237,7 @@ elif [[ $1 == "patch" ]]; then
     new_workspace_version=${workspace_version_array[0]}.${workspace_version_array[1]}.$((workspace_version_array[2] + 1))
 fi
 
-confirm_proceed "Updating to version $new_workspace_version"
+confirm_proceed "  -- Updating to version $new_workspace_version"
 
 report_progress "Creating release branch..."
 
@@ -251,10 +252,10 @@ report_progress "Bumping workspace version number..."
 # see [^tomlq-sed]
 # tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
 sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
-cleanup_actions+=("git restore ./Cargo.toml")
+cleanup_actions+=("git reset -- ./Cargo.toml")
 
 git add ./Cargo.toml
-cleanup_actions+=("git reset -- ./Cargo.lock")
+cleanup_actions+=("git restore ./Cargo.toml")
 
 report_progress "Bumping other crates version numbers..."
 
