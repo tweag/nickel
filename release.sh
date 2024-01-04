@@ -29,6 +29,7 @@ read_crate_version() {
 # If the user doesn't confirm, exit the script.
 confirm_proceed() {
   read -p "$1. Proceed (y/n)?" -n 1 -r
+  echo ""
 
   if [[ $REPLY =~ ^[Nn]$ ]]; then
     echo "++ Aborting..."
@@ -144,8 +145,13 @@ report_progress() {
 trap cleanup ERR
 set -eEuo pipefail
 
-if [[ "$1" != "major" && "$1" != "minor" && "$1" != "patch" ]]; then
-    echo "Invalid argument: $1" >&2
+arg="${1:-}"
+
+if [[ "$arg" == "" ]]; then
+    echo "Missing argument" >&2
+    print_usage_and_exit
+elif [[ "$arg" != "major" && "$arg" != "minor" && "$arg" != "patch" ]]; then
+    echo "Invalid argument: $arg" >&2
     print_usage_and_exit
 fi
 
@@ -167,17 +173,18 @@ cat <<EOF
 ++
 ++ Sanity checks (build, test, publish --dry-run etc.) are performed along the
 ++ way. In case of failure, this release script will its best to restore things
-to ++ the previous state as much as possible
+++ to the previous state as much as possible
 EOF
 
-confirm_proceed ""
-
-git switch master
+confirm_proceed "++"
+echo ""
 
 # Check that the working directory is clean
-if ! git status --untracked-files=no --porcelain; then
-    confirm_proceed "Working directory is not clean"
+if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
+    confirm_proceed "++ Working directory is not clean"
 fi
+
+git switch master
 
 echo "++ Prepare release branch from 'master'"
 
