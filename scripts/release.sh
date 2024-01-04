@@ -5,7 +5,7 @@
 # This script automates part of the process of releasing a new version of
 # Nickel.
 #
-# For requirements, see ./RELEASING.md.
+# For requirements, see RELEASING.md.
 #
 # [^tomlq-sed]: tomlq has an --in-place option that would make the update much
 # more pleasant. Unfortunately, tomlq works by transcoding to
