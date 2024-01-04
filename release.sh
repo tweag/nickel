@@ -44,7 +44,7 @@ read_crate_version() {
 # If the user doesn't confirm, exit the script.
 confirm_proceed() {
   read -p "$1. Proceed (y/n)?" -n 1 -r
-  echo ""
+  echo "\n"
 
   if [[ $REPLY =~ ^[Nn]$ ]]; then
     echo "++ Aborting..."
@@ -52,10 +52,10 @@ confirm_proceed() {
   fi
 }
 
-# Take a bash array representing a version (major, minor, patch) as an argument
-# and print the corresponding version string ("major.minor.patch")
-# This function uses nameref, so the argument must be a variable name and not a
-# value.
+# Take a bash array representing a version (major, minor, patch) or (minor,
+# patch) as an argument and print the corresponding version string
+# ("major.minor.patch") This function uses nameref, so the argument must be a
+# variable name and not a value.
 #
 # For example:
 # ```
@@ -64,6 +64,14 @@ confirm_proceed() {
 # ```
 print_version_array() {
     local -n version=$1
+    local result
+
+    result="${version[0]}"
+
+    for component in "${version[@]:1}"; do
+        result="$result.$component"
+    done
+
     echo "${version[0]}.${version[1]}.${version[2]}"
 }
 
