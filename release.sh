@@ -44,7 +44,7 @@ read_crate_version() {
 # If the user doesn't confirm, exit the script.
 confirm_proceed() {
   read -p "$1. Proceed (y/n)?" -n 1 -r
-  echo "\n"
+  echo ""
 
   if [[ $REPLY =~ ^[Nn]$ ]]; then
     echo "++ Aborting..."
@@ -264,7 +264,8 @@ for crate in "${independent_crates[@]}"; do
 
     new_crate_version=${crate_version_array[0]}.$((crate_version_array[1] + 1)).0
 
-    read -p "$crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
+    read -p " -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
+    echo ""
 
     if [[ $REPLY =~ ^[Yy]$ ]]; then
       # see [^tomlq-sed]
@@ -277,7 +278,8 @@ for crate in "${independent_crates[@]}"; do
     fi
 done
 
-read -n 1 -s -r -p "Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
+read -n 1 -s -r -p " -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
+echo ""
 
 # Because the user might have updated the version numbers manually, we need to
 # parse them again before updating cross-dependencies
