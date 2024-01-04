@@ -18,15 +18,16 @@
 
 # Perform clean up actions upon unexpected exit.
 cleanup() {
-  echo "++ Unexpected exit. Cleaning up..."
-  set +e
-
-  for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
-    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
-    ${cleanup_actions[$i]} || true
-  done
-
-  cleanup_actions=()
+  echo "++ NOCLEANUP mode (dev)"
+#  echo "++ Unexpected exit. Cleaning up..."
+#  set +e
+#
+#  for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
+#    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
+#    ${cleanup_actions[$i]} || true
+#  done
+#
+#  cleanup_actions=()
   exit 1
 }
 
