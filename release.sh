@@ -171,17 +171,27 @@ update_dependencies() {
 # GitHub release should support format, but the version published on crates.io
 # can't, for the time bing.
 #
-# For cargo to accept to publish our crates, we have to clean Topiary from
-# dependencies and remove the "format" feature from the list of features (to
-# disable the compilation of any code depending on Topiary).
-remove_topiary_dependency() {
+# For cargo to accept to publish our crates, we have to clean remove the
+# "format" feature from the list of features and from the list of default
+# features, as well as removing all the dependencies enabled by this feature
+# (even if they aren't used anymore, their mere presence in Cago.toml without
+# them being available on crates.io will prevent publication). 
+remove_format_feature() {
     local path_cargo_toml
     local tmpfile
 
     path_cargo_toml="$1"
     tmpfile="$path_cargo_toml.tmp"
+    local -a deps_to_remove
 
     cleanup_actions+=('git restore '"$path_cargo_toml")
+
+    # We first extract the list of dependencies that are required by the format
+    # feature, because we'll need to remove them all (it'll include topiary, but
+    # might not be limited to it)
+    # Those features start with a "dep:" prefix that we filter out using only
+    # bash features.
+    readarray -t deps_to_remove < <(tomlq -r '(.features.format | .[] | sub("dep:";""))' "$path_cargo_toml")
 
     # see [^tomlq-sed]
     # Removing the format feature is a bit more complicated than handling
@@ -208,8 +218,12 @@ remove_topiary_dependency() {
     } 
     1' "$path_cargo_toml" > "$tmpfile" && mv "$tmpfile" "$path_cargo_toml"
 
-    # We need to remove Topiary from dependencies as well
-    sed -i '/^topiary\s*=\s*{.*}$/d' "$path_cargo_toml"
+    # We remove all dependencies required by the format feature that we just
+    # removed
+    for dep in "${deps_to_remove[@]}"; do
+        # see [^tomlq-sed]
+        sed -i '/^'"$dep"'\s*=\s*{.*}$/d' "$path_cargo_toml"
+    done
 
     git add "$path_cargo_toml"
     cleanup_actions+=('git reset -- '"$path_cargo_toml")
@@ -417,7 +431,7 @@ for crate in "${crates_to_publish[@]}"; do
     git add "$crate/Cargo.toml"
     cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
 
-    remove_topiary_dependency "$crate/Cargo.toml"
+    remove_format_feature "$crate/Cargo.toml"
 done
 
 # Cargo requires to commit changes, but we'll reset them later
