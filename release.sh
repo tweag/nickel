@@ -163,6 +163,53 @@ update_dependencies() {
     done
 }
 
+# Currently, topiary isn't published on crates.io, so we can't publish crates
+# that depend on it.
+#
+# The version released on the stable branch, the release branch and in the
+# GitHub release should support format, but the version published on crates.io
+# can't, for the time bing.
+#
+# For cargo to accept to publish our crates, we have to clean Topiary from
+# dependencies and remove the "format" feature from the list of features (to
+# disable the compilation of any code depending on Topiary).
+remove_topiary_dependency() {
+    local path_cargo_toml
+    local tmpfile
+
+    path_cargo_toml="$1"
+    tmpfile="$path_cargo_toml.tmp"
+
+    cleanup_actions+=('git restore '"$path_cargo_toml")
+
+    # see [^tomlq-sed]
+    # Removing the format feature is a bit more complicated than handling
+    # version numbers, because the format feature is a list of strings, so we
+    # resort to a stronger weapon: awk
+    #
+    # The following script looks for the [feature] section, then for the default
+    # key, and finally remove "format" from the list of default features
+    awk -F'[\n= ]+' '
+    {
+        if($0 ~ /^\[feature\]$/) { 
+            a=1 
+        } 
+        else if(a==1 && $0 ~ /^default ?= ?\[/) { 
+            gsub(/"format",?|,"format"/,"") 
+        } 
+        else if(a==1 && $0 ~ /^$/) {
+            a=0 
+        }
+    } 
+    1' "$path_cargo_toml" > "$tmpfile" && mv "$tmpfile" "$path_cargo_toml"
+
+    # We need to remove Topiary from dependencies as well
+    sed -i '/^topiary\s*=\s*{.*}$/d' "$path_cargo_toml"
+
+    git add "$path_cargo_toml"
+    cleanup_actions+=('git reset -- '"$path_cargo_toml")
+}
+
 print_usage_and_exit() {
     echo "Usage: $0 <major|minor|patch>" >&2
     exit 1
@@ -328,13 +375,15 @@ git branch -D stable-local-save &>/dev/null || true
 git checkout stable
 git branch stable-local-save
 
+report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
+
 confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
 
 echo 'git checkout stable'
 echo 'git reset --hard "$release_branch"'
 echo 'git push --force-with-lease'
 
-report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
+git checkout "$release_branch"
 
 # Reset cleanup actions as creating and pushing the release branch was successful
 cleanup_actions=()
@@ -358,13 +407,17 @@ for crate in "${crates_to_publish[@]}"; do
     # # try to delete `nickel-lang-utils` even if it might not be there
     # tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
     sed -i '/^nickel-lang-utils\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
+    cleanup_actions+=('git restore '"$crate/Cargo.toml")
 
     git add "$crate/Cargo.toml"
-    cleanup_actions+=("git restore \"$crate/Cargo.toml\"")
+    cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
+
+    remove_topiary_dependency "$crate/Cargo.toml"
 done
 
 # Cargo requires to commit changes, but we'll reset them later
-git commit -m "[release.sh][tmp] remove nickel-lang-utils from dependencies"
+git commit -m "[release.sh][tmp] remove nickel-lang-utils and topiary from deps"
+cleanup_actions+=("git reset --hard HEAD~")
 
 # We have had reproducibility issues before due to the fact that when installing
 # the version of say `nickel-lang-cli` from crates.io, Cargo doesn't pick the
@@ -378,7 +431,6 @@ git commit -m "[release.sh][tmp] remove nickel-lang-utils from dependencies"
 report_progress "Trying to install 'nickel-lang-cli' and 'nickel-lang-lsp' locally... [WARNING: this will override your local Nickel installation]"
 
 rm -f ./Cargo.lock
-
 cleanup_actions+=("git restore ./Cargo.lock")
 
 cargo install --force --path ./cli
