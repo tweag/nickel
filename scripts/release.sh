@@ -140,7 +140,6 @@ update_dependencies() {
             if [[ $dependency_type == "string" ]]; then
                 report_progress "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
                 # see [^tomlq-sed]
-                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'" = "'"${local_version_map[$dependency]}"'"' "$path_cargo_toml"
                 sed -i 's/\('"$dependency"'\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
             # Most of local crates use the workspace's version by default, i.e.
             # are of the form `foo_crate = { workspace = true }`. In that case,
@@ -153,7 +152,6 @@ update_dependencies() {
                 # in which case we don't touch it
 
                 # see [^tomlq-sed]
-                # tomlq --in-place --toml-output $dependencies_path'."'"$dependency"'".version = "'"${local_version_map[$dependency]}"'"' "$path_cargo_toml"
                 sed -i 's/\('"$dependency"'\s*=\s*{\s*version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
             fi
 
@@ -167,14 +165,14 @@ update_dependencies() {
 # that depend on it.
 #
 # The version released on the stable branch, the release branch and in the
-# GitHub release should support format, but the version published on crates.io
-# can't, for the time bing.
+# GitHub release should support the format feature, but the version published on
+# crates.io can't, for the time being.
 #
-# For cargo to accept to publish our crates, we have to clean remove the
-# "format" feature from the list of features and from the list of default
-# features, as well as removing all the dependencies enabled by this feature
-# (even if they aren't used anymore, their mere presence in Cago.toml without
-# them being available on crates.io will prevent publication). 
+# For cargo to accept to publish our crates, we have to remove the "format"
+# feature from the list of features and from the list of default features, as
+# well as removing all the dependencies enabled by this feature (even if they
+# aren't used anymore, their mere presence in `Cargo.toml` without them being
+# available on crates.io is forbidden by cargo). 
 remove_format_feature() {
     local path_cargo_toml
     local tmpfile
@@ -200,7 +198,8 @@ remove_format_feature() {
     #
     # The following script looks for the `[features]` section, then for the
     # `default` key and remove "format" from the list of default features. It
-    # also removes the feature format itself from the list of [features].
+    # also removes the feature format key (and its value) itself from the
+    # [features] section.
     awk -F'[\n= ]+' '
     {
         if($0 ~ /^\[features\]$/) { 
@@ -235,7 +234,7 @@ print_usage_and_exit() {
     exit 1
 }
 
-# Report progress to the user with adated indentation
+# Report progress to the user with adapted indentation
 report_progress() {
     echo "  -- $1"
 }
@@ -253,7 +252,7 @@ elif [[ "$arg" != "major" && "$arg" != "minor" && "$arg" != "patch" ]]; then
     print_usage_and_exit
 fi
 
-# A stack of actions to perform upon unexpected error. Cleanup actions are are
+# A stack of actions to perform upon unexpected error. Cleanup actions are
 # indeed popped from the top of cleanup_actions (that is, in reverse order, when
 # seen as an array)
 cleanup_actions=()
@@ -267,7 +266,7 @@ cat <<EOF
 ++ - Bump local dependencies to local crates accordingly
 ++ - Commit and push the changes on a new release branch
 ++ - Make the remote 'stable' branch point to the release branch
-++ - Publish relevant crate to crates.io
+++ - Preprocess and publish relevant local crate to crates.io
 ++
 ++ Sanity checks (build, test, publish --dry-run etc.) are performed along the
 ++ way. In case of failure, this release script will its best to restore things
@@ -280,7 +279,6 @@ echo ""
 # Check that the working directory is clean
 if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
     confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
-
 fi
 
 git switch master > /dev/null
@@ -312,104 +310,113 @@ report_progress "Creating release branch..."
 
 release_branch="$new_workspace_version-release"
 
-git switch --create "$release_branch" > /dev/null
-cleanup_actions+=("git branch -d $release_branch")
-cleanup_actions+=("git switch master")
-
-report_progress "Bumping workspace version number..."
-
-# see [^tomlq-sed]
-# tomlq --in-place --toml-output '.workspace.package.version = "'"$new_workspace_version"'"' ./Cargo.toml
-sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
-cleanup_actions+=("git reset -- ./Cargo.toml")
-
-git add ./Cargo.toml
-cleanup_actions+=("git restore ./Cargo.toml")
-
-report_progress "Bumping other crates version numbers..."
-
-for crate in "${independent_crates[@]}"; do
-    crate_version_array=()
-    read_crate_version "$crate" crate_version_array
-
-    new_crate_version=${crate_version_array[0]}.$((crate_version_array[1] + 1)).0
-
-    read -p "  -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
+if git rev-parse --verify --quiet "$release_branch"; then
+   confirm_proceed "  -- [WARNING] The branch '$release_branch' already exists. The script will skip forward to publication to crates.io."
+else
+    git switch --create "$release_branch" > /dev/null
+    cleanup_actions+=("git branch -d $release_branch")
+    cleanup_actions+=("git switch master")
+    
+    report_progress "Bumping workspace version number..."
+    
+    # see [^tomlq-sed]
+    sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
+    cleanup_actions+=("git reset -- ./Cargo.toml")
+    
+    git add ./Cargo.toml
+    cleanup_actions+=("git restore ./Cargo.toml")
+    
+    report_progress "Bumping other crates version numbers..."
+    
+    for crate in "${independent_crates[@]}"; do
+        crate_version_array=()
+        read_crate_version "$crate" crate_version_array
+    
+        new_crate_version=${crate_version_array[0]}.$((crate_version_array[1] + 1)).0
+    
+        read -p "  -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
+        echo ""
+    
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+          # see [^tomlq-sed]
+          sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
+          cleanup_actions+=('git restore '"$crate/Cargo.toml")
+    
+          git add "$crate/Cargo.toml"
+          cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
+        fi
+    done
+    
+    read -n 1 -s -r -p "  -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
     echo ""
+    
+    # Because the user might have updated the version numbers manually, we need to
+    # parse them again before updating cross-dependencies
+    
+    declare -A version_map
+    
+    for crate in "${all_crates[@]}"; do
+        crate_version_array=()
+        read_crate_version "$crate" crate_version_array
+        crate_name=$(tomlq -r .package.name "$crate/Cargo.toml")
+        version_map[$crate_name]=$(print_version_array crate_version_array)
+    done
+    
+    report_progress "Updating cross-dependencies..."
+    
+    for crate in "${all_crates[@]}"; do
+        update_dependencies "crate" "$crate/Cargo.toml" version_map
+    done
+    
+    # Patch workspace dependencies
+    update_dependencies "workspace" "./Cargo.toml" version_map
+    # We need to update the lockfile here, because we changed ./Cargo.toml but Nix
+    # tries to build with --frozen, which will fail if the lockfile is outdated.
+    cargo update > /dev/null
+    cleanup_actions+=("git restore ./Cargo.lock")
+    
+    git add ./Cargo.lock
+    cleanup_actions+=("git reset -- ./Cargo.lock")
+    
+    report_progress "Building and running checks..."
+    
+    nix flake check
+    
+    report_progress "Creating the release branch..."
+    
+    git commit -m "[release.sh] update to $new_workspace_version"
+    git push -u origin "$release_branch"
+    
+    report_progress "Saving current 'stable' branch to 'stable-local-save'..."
+    
+    # Delete the branch if already present, but if not, don't fail
+    git branch -D stable-local-save &>/dev/null || true
+    git checkout stable
+    git branch stable-local-save
+    
+    report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
+    
+    confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
+    
+    git checkout stable
+    git reset --hard "$release_branch"
+    git push --force-with-lease
+    
+    git checkout "$release_branch"
+    
+    # Reset cleanup actions as creating and pushing the release branch was successful
+    cleanup_actions=()
+fi
 
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      # see [^tomlq-sed]
-      # tomlq --in-place --toml-output '.package.version = "'"$new_crate_version"'"' "$crate/Cargo.toml"
-      sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
-      cleanup_actions+=('git restore '"$crate/Cargo.toml")
-
-      git add "$crate/Cargo.toml"
-      cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
-    fi
-done
-
-read -n 1 -s -r -p "  -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
-echo ""
-
-# Because the user might have updated the version numbers manually, we need to
-# parse them again before updating cross-dependencies
-
-declare -A version_map
-
-for crate in "${all_crates[@]}"; do
-    crate_version_array=()
-    read_crate_version "$crate" crate_version_array
-    crate_name=$(tomlq -r .package.name "$crate/Cargo.toml")
-    version_map[$crate_name]=$(print_version_array crate_version_array)
-done
-
-report_progress "Updating cross-dependencies..."
-
-for crate in "${all_crates[@]}"; do
-    update_dependencies "crate" "$crate/Cargo.toml" version_map
-done
-
-# Patch workspace dependencies
-update_dependencies "workspace" "./Cargo.toml" version_map
-# We need to update the lockfile here, because we changed ./Cargo.toml but Nix
-# tries to build with --frozen, which will fail if the lockfile is outdated.
-cargo update > /dev/null
-cleanup_actions+=("git restore ./Cargo.lock")
-
-git add ./Cargo.lock
-cleanup_actions+=("git reset -- ./Cargo.lock")
-
-report_progress "Building and running checks..."
-
-nix flake check
-
-report_progress "Creating the release branch..."
-
-git commit -m "[release.sh] update to $new_workspace_version"
-git push -u origin "$release_branch"
-
-report_progress "Saving current 'stable' branch to 'stable-local-save'..."
-
-# Delete the branch if already present, but if not, don't fail
-git branch -D stable-local-save &>/dev/null || true
-git checkout stable
-git branch stable-local-save
-
-report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
-
-confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
-
-git checkout stable
-git reset --hard "$release_branch"
-git push --force-with-lease
-
-git checkout "$release_branch"
-
-# Reset cleanup actions as creating and pushing the release branch was successful
-cleanup_actions=()
-
-echo "++ Release branch successfully pushed!"
-echo "++ Prepare the release to crates.io"
+cat <<EOF
+++ Release branch successfully pushed!
+++ CAUTION: '$release_branch' won't be cleaned up automatically from there, even
+++          if the publication fails. If you call this script again with an
+++          existing release branch, you'll be asked if you want to resume from
+++          here.
+++
+++ Now preparing the release to crates.io
+EOF
 
 crates_to_publish=(core cli lsp/nls)
 
@@ -423,9 +430,6 @@ for crate in "${crates_to_publish[@]}"; do
     # crates.io)
     #
     # see [^tomlq-sed]
-    # # Note that tomlq doesn't fail if the key doesn't exist, so we can blindly
-    # # try to delete `nickel-lang-utils` even if it might not be there
-    # tomlq --in-place --toml-output 'del(.dev-dependencies."nickel-lang-utils")' "$crate/Cargo.toml"
     sed -i '/^nickel-lang-utils\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
 done
