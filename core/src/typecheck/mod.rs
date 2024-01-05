@@ -2106,7 +2106,7 @@ fn infer_with_annot<V: TypecheckVisitor>(
             },
             value_opt,
         ) if !contracts.is_empty() => {
-            let ctr = contracts.get(0).unwrap();
+            let ctr = contracts.first().unwrap();
             let LabeledType { typ: ty2, .. } = ctr;
 
             let uty2 = UnifType::from_type(ty2.clone(), &ctxt.term_env);
