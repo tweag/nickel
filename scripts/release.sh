@@ -317,8 +317,12 @@ report_progress "Creating release branch..."
 release_branch="$new_workspace_version-release"
 
 if git rev-parse --verify --quiet "$release_branch"; then
-   confirm_proceed "  -- [WARNING] The branch '$release_branch' already exists. The script will skip forward to publication to crates.io."
+    confirm_proceed "  -- [WARNING] The branch '$release_branch' already exists. The script will skip forward to publication to crates.io (but still run checks)."
    git switch "$release_branch"
+
+   report_progress "Building and running checks..."
+
+   nix flake check
 else
     git switch --create "$release_branch" > /dev/null
     cleanup_actions+=("git branch -d $release_branch")
