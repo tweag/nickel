@@ -32,7 +32,7 @@ pub fn format(mut input: impl Read, mut output: impl Write) -> Result<(), Format
         &grammar,
         topiary::Operation::Format {
             skip_idempotence: true,
-            tolerate_parsing_errors: true,
+            tolerate_parsing_errors: false,
         },
     )
     .map_err(FormatError)
