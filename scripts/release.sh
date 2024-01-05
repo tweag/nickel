@@ -38,6 +38,9 @@ read_crate_version() {
   local -n version_array=$2 # use nameref for indirection: this will populate the variable named by the first argument
   local version
   version=$(tomlq -r .package.version "$1/Cargo.toml")
+  # Shellcheck isn't able to understand that we're populating the caller's
+  # provided variable `version_array` via namerefs and claims it's unused.
+  # shellcheck disable=SC2034
   readarray -td'.' version_array <<< "$version"
 }
 
@@ -172,7 +175,7 @@ update_dependencies() {
 # feature from the list of features and from the list of default features, as
 # well as removing all the dependencies enabled by this feature (even if they
 # aren't used anymore, their mere presence in `Cargo.toml` without them being
-# available on crates.io is forbidden by cargo). 
+# available on crates.io is forbidden by cargo).
 remove_format_feature() {
     local path_cargo_toml
     local tmpfile
@@ -202,19 +205,19 @@ remove_format_feature() {
     # [features] section.
     awk -F'[\n= ]+' '
     {
-        if($0 ~ /^\[features\]$/) { 
-            a=1 
-        } 
-        else if(a==1 && $1=="format") { 
-            next 
-        } 
-        else if(a==1 && $0 ~ /^default ?= ?\[/) { 
-            gsub(/, *"format"|"format" *,?/,"") 
-        } 
-        else if(a==1 && $0 ~ /^$/) {
-            a=0 
+        if($0 ~ /^\[features\]$/) {
+            a=1
         }
-    } 
+        else if(a==1 && $1=="format") {
+            next
+        }
+        else if(a==1 && $0 ~ /^default ?= ?\[/) {
+            gsub(/, *"format"|"format" *,?/,"")
+        }
+        else if(a==1 && $0 ~ /^$/) {
+            a=0
+        }
+    }
     1' "$path_cargo_toml" > "$tmpfile" && mv "$tmpfile" "$path_cargo_toml"
 
     # We remove all dependencies required by the format feature that we just
@@ -315,98 +318,102 @@ release_branch="$new_workspace_version-release"
 
 if git rev-parse --verify --quiet "$release_branch"; then
    confirm_proceed "  -- [WARNING] The branch '$release_branch' already exists. The script will skip forward to publication to crates.io."
+   git switch "$release_branch"
 else
     git switch --create "$release_branch" > /dev/null
     cleanup_actions+=("git branch -d $release_branch")
     cleanup_actions+=("git switch master")
-    
+
     report_progress "Bumping workspace version number..."
-    
+
     # see [^tomlq-sed]
     sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_workspace_version"'"/g' ./Cargo.toml
     cleanup_actions+=("git reset -- ./Cargo.toml")
-    
+
     git add ./Cargo.toml
     cleanup_actions+=("git restore ./Cargo.toml")
-    
+
     report_progress "Bumping other crates version numbers..."
-    
+
     for crate in "${independent_crates[@]}"; do
         crate_version_array=()
         read_crate_version "$crate" crate_version_array
-    
+
         new_crate_version=${crate_version_array[0]}.$((crate_version_array[1] + 1)).0
-    
+
         read -p "  -- $crate is currently in version $(print_version_array crate_version_array). Bump to the next version $new_crate_version [if no, you'll have a pause later to manually bump those versions if needed] (y/n) ?" -n 1 -r
         echo ""
-    
+
         if [[ $REPLY =~ ^[Yy]$ ]]; then
           # see [^tomlq-sed]
           sed -i 's/^\(version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"$/\1'"$new_crate_version"'"/g' "$crate/Cargo.toml"
           cleanup_actions+=('git restore '"$crate/Cargo.toml")
-    
+
           git add "$crate/Cargo.toml"
           cleanup_actions+=('git reset -- '"$crate/Cargo.toml")
         fi
     done
-    
+
     read -n 1 -s -r -p "  -- Please manually update any crate version not automatically handled by this script so far if you need to, and then press any key to continue"
     echo ""
-    
+
     # Because the user might have updated the version numbers manually, we need to
     # parse them again before updating cross-dependencies
-    
+
     declare -A version_map
-    
+
     for crate in "${all_crates[@]}"; do
         crate_version_array=()
         read_crate_version "$crate" crate_version_array
         crate_name=$(tomlq -r .package.name "$crate/Cargo.toml")
+        # Shellcheck isn't able to understand that we're passing `version_map`
+        # to `update_dependencies` as a nameref and claims it's unused.
+        # shellcheck disable=SC2034
         version_map[$crate_name]=$(print_version_array crate_version_array)
     done
-    
+
     report_progress "Updating cross-dependencies..."
-    
+
     for crate in "${all_crates[@]}"; do
         update_dependencies "crate" "$crate/Cargo.toml" version_map
     done
-    
+
     # Patch workspace dependencies
     update_dependencies "workspace" "./Cargo.toml" version_map
     # We need to update the lockfile here, because we changed ./Cargo.toml but Nix
     # tries to build with --frozen, which will fail if the lockfile is outdated.
     cargo update > /dev/null
     cleanup_actions+=("git restore ./Cargo.lock")
-    
+
     git add ./Cargo.lock
     cleanup_actions+=("git reset -- ./Cargo.lock")
-    
+
     report_progress "Building and running checks..."
-    
+
     nix flake check
-    
+
     report_progress "Creating the release branch..."
-    
+
     git commit -m "[release.sh] update to $new_workspace_version"
     git push -u origin "$release_branch"
-    
+
     report_progress "Saving current 'stable' branch to 'stable-local-save'..."
-    
+
     # Delete the branch if already present, but if not, don't fail
     git branch -D stable-local-save &>/dev/null || true
     git checkout stable
     git branch stable-local-save
-    
+
     report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
-    
+
     confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
-    
+
     git checkout stable
     git reset --hard "$release_branch"
     git push --force-with-lease
-    
+
     git checkout "$release_branch"
-    
+
     # Reset cleanup actions as creating and pushing the release branch was successful
     cleanup_actions=()
 fi
