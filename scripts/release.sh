@@ -276,6 +276,9 @@ EOF
 confirm_proceed "++"
 echo ""
 
+# Moving to the root of the git project
+cd "$(git rev-parse --show-toplevel)"
+
 # Check that the working directory is clean
 if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
     confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
@@ -295,7 +298,7 @@ workspace_version_array=()
 readarray -td'.' workspace_version_array <<< "$workspace_version"
 
 # We checked at the beginning of the script that $1 was either "major", "minor"
-# or "patch", so we don't need to handle cath-all case.
+# or "patch", so we don't need to handle the cath-all case.
 if [[ $1 == "major" ]]; then
     new_workspace_version=$((workspace_version_array[0] + 1)).0.0
 elif [[ $1 == "minor" ]]; then
