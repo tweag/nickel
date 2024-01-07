@@ -106,6 +106,10 @@ impl TermEnvironment for SimpleTermEnvironment {
     where
         F: FnOnce(Option<(&RichTerm, &SimpleTermEnvironment)>) -> T,
     {
+        // See https://github.com/rust-lang/rust-clippy/issues/11764. It's been fixed upstream, but
+        // hasn't landed in a clippy release yet. We can remove the allow(clippy) once it does
+        // land.
+        #[allow(clippy::map_identity)]
         f(env.0.get(&id).map(|(rt, env)| (rt, env)))
     }
 
