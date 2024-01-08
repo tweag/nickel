@@ -114,11 +114,8 @@ update_dependencies() {
         exit 1
     fi
 
-    local dependencies_raw
     local -a dependencies
-
-    dependencies_raw=$(tomlq -r '('$dependencies_path' | keys[])' "$path_cargo_toml")
-    readarray -t dependencies <<< "$dependencies_raw"
+    readarray -t dependencies < <(tomlq -r '('$dependencies_path' | keys[])' "$path_cargo_toml")
 
     for dependency in "${dependencies[@]}"; do
         # If the dependency is in the version map, it means that we might have
@@ -151,10 +148,11 @@ update_dependencies() {
             # a version field
             elif [[ $dependency_type == "object" && $has_version == "true" ]]; then
                 report_progress "Patching cross-dependency $dependency in $path_cargo_toml to version ${local_version_map[$dependency]}"
-                # The dependency might be set to follow the workspace's version,
-                # in which case we don't touch it
-
                 # see [^tomlq-sed]
+                # the regexp below recognizes dependencies of the form
+                # `foo_crate = { version = "1.2.3", features = ["bar"], ..etc }`
+                # Note that version must come first, which is the case currently
+                # throughout the codebase
                 sed -i 's/\('"$dependency"'\s*=\s*{\s*version\s*=\s*"\)[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?"/\1'"${local_version_map[$dependency]}"'"/g' "$path_cargo_toml"
             fi
 
@@ -418,9 +416,11 @@ else
 
     git checkout "$release_branch"
 
-    # Reset cleanup actions as creating and pushing the release branch was successful
-    cleanup_actions=()
+    echo "++ Release branch successfully pushed!"
 fi
+
+# Reset cleanup actions as creating and pushing the release branch was successful
+cleanup_actions=()
 
 cat <<EOF
 ++ Release branch successfully pushed!
@@ -470,7 +470,8 @@ cleanup_actions+=("git reset --hard HEAD~")
 # This is a bit unsatisfactory, but a cheap way to have good faith that the
 # published version correctly builds and install is to temporarily delete
 # `Cargo.lock` and try to install the nickel crates locally
-report_progress "Trying to install 'nickel-lang-cli' and 'nickel-lang-lsp' locally... [WARNING: this will override your local Nickel installation]"
+report_progress "Trying to install 'nickel-lang-cli' and 'nickel-lang-lsp' locally..."
+report_progress "[WARNING] This will override your local Nickel installation"
 
 rm -f ./Cargo.lock
 cleanup_actions+=("git restore ./Cargo.lock")
