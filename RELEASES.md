@@ -1,3 +1,26 @@
+Next version (planned as 1.4)
+=============================
+
+Breaking changes
+----------------
+
+* The curried dot operator added in Nickel 1.3 was implemented the wrong way:
+    the arguments were flipped, meaning that `(.) foo bar` was `bar."%{foo}"`
+    instead of the expected `foo."%{bar}"`. While the initial flipped
+    implementation seems more useful for piping operations using the reverse
+    application operator `|>`, it's inconsistent with all other curried
+    operators, where `(<operator>)` is always defined as `fun x y => x
+    <operator> y`. To ensure consistency, and because the initial behavior was
+    an oversight and not a conscious design decision, we decided to change the
+    definition of `(.)` to match the other curried operator by flipping its
+    arguments.
+
+    To fill the gap, Nickel 1.4 introduces `std.record.get` with the same
+    definition as the `(.)` introduced in Nickel 1.3. To migrate from 1.3 to
+    1.4, you can either flip the arguments of the curried dot as a function
+    `(.)` whenever possible, or you can just replace it with the new
+    `std.record.get`.
+
 Version 1.3
 ===========
 
