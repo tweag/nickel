@@ -9,7 +9,7 @@ crates and dependent repositories (such as the website) in a consistent state.
 
 ### Releasing script
 
-**IMPORTANT**: Since the 1.4 release, `scrpts/release.sh` takes care of bumping
+**IMPORTANT**: Since the 1.4 release, `scripts/release.sh` takes care of bumping
 versions numbers, updating local cross-dependencies, creating a clean release
 branch, updating the stable branch and publishing to crates.io.
 
