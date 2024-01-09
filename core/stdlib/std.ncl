@@ -1416,7 +1416,57 @@
                       fun end_index =>
                         ArraySliceArray end_index -> Dyn
                     )
-              )
+              ),
+
+        HasField
+          | doc m%%"
+              **Warning**: this is an unstable item. It might be renamed,
+              modified or deleted in any subsequent minor Nickel version.
+
+              A function contract for 2-ary functions which checks that second
+              argument is a record that contains the first argument as a field.
+              This contract is parametrized by the return type of the function.
+
+              This contract blames only if the arguments are of the right type
+              but don't satisfy the tested condition (the first is a string and
+              the second is a record). The type of arguments is assumed to be
+              checked by an associated static type annotation. For example, if
+              the first argument is a number, this contract silently passes.
+
+              ## Example
+
+              ```nickel
+              let f | HasField Dyn = fun field record => record."%{field}" in
+              (f "foo" { foo = 1, bar = 2 })
+              + (f "baz" { foo = 1, bar = 2 })
+              ```
+
+              In this example, the first call to `f` won't blame, but the second
+              will, as `baz` isn't a field of the record argument.
+            "%%
+          =
+            # capture the `contract.label` module to avoid name collisions with
+            # local contract argument `label`
+            let label_module = label in
+            let attach_message = label_module.with_message "missing field" in
+
+            fun Codomain =>
+              let HasFieldSecond = fun field label value =>
+                if %typeof% field == 'String
+                && %typeof% value == 'Record
+                && !(%has_field% field value) then
+                  label
+                  |> attach_message
+                  |> label_module.append_note
+                    "The record given as an argument lacks the required field `%{field}`."
+                  |> blame
+                else
+                  value
+              in
+
+              DependentFun
+                Dyn
+                (fun field => HasFieldSecond field -> Codomain),
       }
   },
 
@@ -1892,6 +1942,37 @@
         ```
       "%
       = fun field r => %has_field% field r,
+
+    get
+      : forall a. String -> { _ : a } -> a
+      | std.contract.unstable.HasField Dyn
+      | doc m%%"
+        Returns the field of a record with the given name.
+
+        `std.record.get field record` is just `record."%{field}"`. The latter
+        form is more idiomatic and should be generally preferred.
+
+        However, `std.record.get` can come in handy when a proper function is
+        expected, typically in a sequence of operations chained with the reverse
+        application operator `|>`.
+
+        Trying to extract a field which doesn't exist will result in a contract
+        error.
+
+        # Examples
+
+        ```nickel
+        std.record.get "one" { one = 1, two = 2 } =>
+          1
+        { one = 1, two = 2, string = "three"}
+        |> std.record.to_array
+        |> std.array.filter (fun { field, value } => std.is_number value)
+        |> std.record.from_array
+        |> std.record.get "two"
+          => 2
+        ```
+      "%%
+      = fun field r => r."%{field}",
 
     insert
       : forall a. String -> a -> { _ : a } -> { _ : a }

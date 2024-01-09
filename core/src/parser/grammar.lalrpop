@@ -814,15 +814,28 @@ CurriedOp: RichTerm = {
             mk_term::op1(
                 UnaryOp::BoolNot(),
                 Term::Op2(BinaryOp::Eq(),
-                    mk_term::var("x2"),
-                    mk_term::var("x1")
+                    mk_term::var("x1"),
+                    mk_term::var("x2")
                 )
             )
             .with_pos(mk_pos(src_id, l, r))
         ),
+    //`foo.bar` is a static
+    // record access, but when used in a curried form, it's a dynamic record
+    // access (that is, `(.) foo bar` is `foo."%{bar}"`). It turns out a dynamic
+    // record access takes the record as the last argument, in the style of the
+    // stdlib. If we want `(.) foo bar` to be `foo."%{bar}"`, we thus have to
+    // flip the arguments.
     <l: @L> "." <r: @R> =>
-        InfixOp::from(BinaryOp::DynAccess())
-            .eta_expand(mk_pos(src_id, l, r)),
+        mk_fun!(
+            "x1",
+            "x2",
+            mk_term::op2(
+                BinaryOp::DynAccess(),
+                mk_term::var("x2"),
+                mk_term::var("x1"),
+            ).with_pos(mk_pos(src_id, l, r))
+        ),
     //<l: @L> "->" <r: @R> =>?
     //    UniTerm::from(
     //        mk_fun!("x1", "x2",
