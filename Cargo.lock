@@ -1708,7 +1708,7 @@ dependencies = [
  "toml",
  "topiary",
  "topiary-queries",
- "tree-sitter-nickel 0.1.0",
+ "tree-sitter-nickel",
  "typed-arena",
  "unicode-segmentation",
  "void",
@@ -2986,8 +2986,8 @@ dependencies = [
 
 [[package]]
 name = "topiary"
-version = "0.2.3"
-source = "git+https://github.com/tweag/topiary.git?rev=8299a04bf83c4a2774cbbff7a036c022efa939b3#8299a04bf83c4a2774cbbff7a036c022efa939b3"
+version = "0.3.0"
+source = "git+https://github.com/tweag/topiary.git?rev=9ae9ef49c2fa968d15107b817864ff6627e0983e#9ae9ef49c2fa968d15107b817864ff6627e0983e"
 dependencies = [
  "clap 4.4.7",
  "futures",
@@ -3003,7 +3003,7 @@ dependencies = [
  "tree-sitter-bash",
  "tree-sitter-facade",
  "tree-sitter-json",
- "tree-sitter-nickel 0.0.1",
+ "tree-sitter-nickel",
  "tree-sitter-ocaml",
  "tree-sitter-ocamllex",
  "tree-sitter-query",
@@ -3015,8 +3015,8 @@ dependencies = [
 
 [[package]]
 name = "topiary-queries"
-version = "0.2.3"
-source = "git+https://github.com/tweag/topiary.git?rev=8299a04bf83c4a2774cbbff7a036c022efa939b3#8299a04bf83c4a2774cbbff7a036c022efa939b3"
+version = "0.3.0"
+source = "git+https://github.com/tweag/topiary.git?rev=9ae9ef49c2fa968d15107b817864ff6627e0983e#9ae9ef49c2fa968d15107b817864ff6627e0983e"
 
 [[package]]
 name = "tree-sitter"
@@ -3060,18 +3060,8 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-nickel"
-version = "0.0.1"
-source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=b1a4718601ebd29a62bf3a7fd1069a99ccf48093#b1a4718601ebd29a62bf3a7fd1069a99ccf48093"
-dependencies = [
- "cc",
- "tree-sitter",
-]
-
-[[package]]
-name = "tree-sitter-nickel"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e95267764f0648c768e4da3e4c31b96bc5716446497dfa8b6296924b149f64a"
+source = "git+https://github.com/nickel-lang/tree-sitter-nickel?rev=091b5dcc7d138901bcc162da9409c0bb626c0d27#091b5dcc7d138901bcc162da9409c0bb626c0d27"
 dependencies = [
  "cc",
  "tree-sitter",
