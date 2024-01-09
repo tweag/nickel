@@ -1,5 +1,8 @@
-# capture = 'stderr'
-# command = ['eval']
+# test.type = 'error'
+# eval = 'full'
+#
+# [test.metadata]
+# error = 'EvalError::BlameError'
 let record = {
   foo = 1,
   bar = "two",
