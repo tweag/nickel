@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{FieldHaver, FieldResolver},
+    field_walker::{Container, EltId, FieldResolver},
     identifier::LocIdent,
     server::Server,
 };
@@ -50,13 +50,13 @@ fn nickel_string(s: String) -> MarkedString {
 }
 
 fn values_and_metadata_from_field(
-    parents: Vec<FieldHaver>,
+    parents: Vec<Container>,
     ident: Ident,
 ) -> (Vec<RichTerm>, Vec<FieldMetadata>) {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
     for parent in parents {
-        if let FieldHaver::RecordTerm(r) = parent {
+        if let Container::RecordTerm(r) = parent {
             if let Some(field) = r.fields.get(&ident) {
                 values.extend(field.value.iter().cloned());
                 metadata.push(field.metadata.clone());
@@ -79,7 +79,7 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
     if let Some(def) = server.analysis.get_def(&ident) {
         let resolver = FieldResolver::new(server);
         if let Some(((last, path), val)) = def.path().split_last().zip(def.value()) {
-            let parents = resolver.resolve_term_path(val, path.iter().copied());
+            let parents = resolver.resolve_term_path(val, path.iter().copied().map(EltId::Ident));
             let (values, metadata) = values_and_metadata_from_field(parents, *last);
             ret.values = values;
             ret.metadata = metadata;

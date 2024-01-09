@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_core::{
-    identifier::Ident,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
     typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
 };
 
 use crate::{
-    field_walker::Def,
+    field_walker::{Def, EltId},
     identifier::LocIdent,
     position::PositionLookup,
     term::RichTermPtr,
@@ -19,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Parent {
     term: RichTerm,
-    child_name: Option<Ident>,
+    child_name: Option<EltId>,
 }
 
 impl From<RichTerm> for Parent {
@@ -54,13 +53,26 @@ impl ParentLookup {
                         if let Some(child) = &field.value {
                             let parent = Parent {
                                 term: rt.clone(),
-                                child_name: Some(name.ident()),
+                                child_name: Some(name.ident().into()),
                             };
                             child.traverse_ref(
                                 &mut |rt, parent| traversal(rt, parent, acc),
                                 &Some(parent),
                             );
                         }
+                    }
+                    TraverseControl::SkipBranch
+                }
+                Term::Array(arr, _) => {
+                    for elt in arr.iter() {
+                        let parent = Parent {
+                            term: rt.clone(),
+                            child_name: Some(EltId::ArrayElt),
+                        };
+                        elt.traverse_ref(
+                            &mut |rt, parent| traversal(rt, parent, acc),
+                            &Some(parent),
+                        );
                     }
                     TraverseControl::SkipBranch
                 }
@@ -110,7 +122,7 @@ impl ParentLookup {
 /// `next` call.
 pub struct ParentChainIter<'a> {
     table: &'a ParentLookup,
-    path: Option<Vec<Ident>>,
+    path: Option<Vec<EltId>>,
     next: Option<Parent>,
 }
 
@@ -122,7 +134,11 @@ impl<'a> ParentChainIter<'a> {
             }
             if !matches!(
                 next.term.as_ref(),
-                Term::Record(_) | Term::RecRecord(..) | Term::Annotated(..) | Term::Op2(..)
+                Term::Record(_)
+                    | Term::RecRecord(..)
+                    | Term::Annotated(..)
+                    | Term::Op2(..)
+                    | Term::Array(..)
             ) {
                 self.path = None;
             }
@@ -172,7 +188,7 @@ impl<'a> ParentChainIter<'a> {
         None
     }
 
-    pub fn path(&self) -> Option<&[Ident]> {
+    pub fn path(&self) -> Option<&[EltId]> {
         self.path.as_deref()
     }
 
@@ -347,5 +363,42 @@ impl TypeCollector {
             .map(|(id, uty)| (id, transform_type(uty)))
             .collect();
         CollectedTypes { terms, idents }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use assert_matches::assert_matches;
+    use nickel_lang_core::{identifier::Ident, term::Term};
+
+    use crate::{
+        field_walker::EltId,
+        position::tests::parse,
+        usage::{tests::locced, Environment, UsageLookup},
+    };
+
+    use super::ParentLookup;
+
+    #[test]
+    fn parent_chain() {
+        let (file, rt) = parse("{ foo = [{ bar = 1 }] }");
+        let bar_id = Ident::new("bar");
+        let bar = locced(bar_id, file, 11..14);
+
+        let parent = ParentLookup::new(&rt);
+        let usages = UsageLookup::new(&rt, &Environment::new());
+        let bar_rt = usages.def(&bar).unwrap().value().unwrap();
+
+        let p = parent.parent(bar_rt).unwrap();
+        assert_eq!(p.child_name, Some(EltId::Ident(bar_id)));
+        assert_matches!(p.term.as_ref(), Term::RecRecord(..));
+
+        let gp = parent.parent(&p.term).unwrap();
+        assert_eq!(gp.child_name, Some(EltId::ArrayElt));
+        assert_matches!(gp.term.as_ref(), Term::Array(..));
+
+        let ggp = parent.parent(&gp.term).unwrap();
+        assert_matches!(ggp.child_name, Some(EltId::Ident(_)));
+        assert_matches!(ggp.term.as_ref(), Term::RecRecord(..));
     }
 }

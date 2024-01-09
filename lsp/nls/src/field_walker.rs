@@ -13,35 +13,55 @@ use nickel_lang_core::{
 
 use crate::{identifier::LocIdent, requests::completion::CompletionItem, server::Server};
 
-/// A `FieldHaver` is something that... has fields.
+/// A `Container` is something that has elements.
 ///
-/// You can use a [`FieldResolver`] to resolve terms, or terms with paths, to `FieldHaver`s.
+/// The elements could have names (e.g. in a record) or not (e.g. in an array).
+///
+/// You can use a [`FieldResolver`] to resolve terms, or terms with paths, to `Container`s.
 #[derive(Clone, Debug, PartialEq)]
-pub enum FieldHaver {
+pub enum Container {
     RecordTerm(RecordData),
     Dict(Type),
     RecordType(RecordRows),
+    Array(Type),
 }
 
-impl FieldHaver {
-    /// If this `FieldHaver` has a field named `id`, returns its value.
-    fn get(&self, id: Ident) -> Option<FieldContent> {
-        match self {
-            FieldHaver::RecordTerm(data) => data
+/// A `ChildId` identifies an element of a container.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EltId {
+    /// A named element, for example of an array.
+    Ident(Ident),
+    /// An array element.
+    ArrayElt,
+}
+
+impl From<Ident> for EltId {
+    fn from(id: Ident) -> Self {
+        EltId::Ident(id)
+    }
+}
+
+impl Container {
+    /// If this `Container` has a field named `id`, returns its value.
+    fn get(&self, id: EltId) -> Option<FieldContent> {
+        match (self, id) {
+            (Container::RecordTerm(data), EltId::Ident(id)) => data
                 .fields
                 .get(&id)
                 .map(|field| FieldContent::RecordField(field.clone())),
-            FieldHaver::Dict(ty) => Some(FieldContent::Type(ty.clone())),
-            FieldHaver::RecordType(rows) => rows
+            (Container::Dict(ty), EltId::Ident(_)) => Some(FieldContent::Type(ty.clone())),
+            (Container::RecordType(rows), EltId::Ident(id)) => rows
                 .find_path(&[id])
                 .map(|row| FieldContent::Type(row.typ.clone())),
+            (Container::Array(ty), EltId::ArrayElt) => Some(FieldContent::Type(ty.clone())),
+            _ => None,
         }
     }
 
-    /// If this `FieldHaver` is a record term, try to retrieve the field named `id`.
+    /// If this `Container` is a record term, try to retrieve the field named `id`.
     fn get_field_and_loc(&self, id: Ident) -> Option<(LocIdent, &Field)> {
         match self {
-            FieldHaver::RecordTerm(data) => data
+            Container::RecordTerm(data) => data
                 .fields
                 .get_key_value(&id)
                 .map(|(id, fld)| (LocIdent::from(*id), fld)),
@@ -51,19 +71,20 @@ impl FieldHaver {
 
     pub fn get_definition_pos(&self, id: Ident) -> Option<LocIdent> {
         match self {
-            FieldHaver::RecordTerm(data) => data
+            Container::RecordTerm(data) => data
                 .fields
                 .get_key_value(&id)
                 .map(|(id, _field)| (*id).into()),
-            FieldHaver::RecordType(rows) => rows.find_path(&[id]).map(|r| r.id.into()),
-            FieldHaver::Dict(_) => None,
+            Container::RecordType(rows) => rows.find_path(&[id]).map(|r| r.id.into()),
+            Container::Dict(_) => None,
+            Container::Array(_) => None,
         }
     }
 
-    /// Returns all fields in this `FieldHaver`, rendered as LSP completion items.
+    /// Returns all fields in this `Container`, rendered as LSP completion items.
     pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
         match self {
-            FieldHaver::RecordTerm(data) => {
+            Container::RecordTerm(data) => {
                 let iter = data.fields.iter().map(|(id, val)| CompletionItem {
                     label: ident_quoted(id),
                     detail: metadata_detail(&val.metadata),
@@ -73,8 +94,10 @@ impl FieldHaver {
                 });
                 Box::new(iter)
             }
-            FieldHaver::Dict(_) => Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>,
-            FieldHaver::RecordType(rows) => {
+            Container::Dict(_) | Container::Array(_) => {
+                Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>
+            }
+            Container::RecordType(rows) => {
                 let iter = rows.iter().filter_map(|r| match r {
                     RecordRowsIteratorItem::TailDyn => None,
                     RecordRowsIteratorItem::TailVar(_) => None,
@@ -91,7 +114,7 @@ impl FieldHaver {
     }
 }
 
-/// [`FieldHaver`]s can have fields that are either record fields or types.
+/// [`Container`]s can have fields that are either record fields or types.
 #[derive(Clone, Debug, PartialEq)]
 enum FieldContent {
     RecordField(Field),
@@ -219,8 +242,8 @@ impl<'a> FieldResolver<'a> {
     pub fn resolve_term_path(
         &self,
         rt: &RichTerm,
-        path: impl Iterator<Item = Ident>,
-    ) -> Vec<FieldHaver> {
+        path: impl Iterator<Item = EltId>,
+    ) -> Vec<Container> {
         let mut fields = self.resolve_term(rt);
 
         for id in path {
@@ -286,11 +309,13 @@ impl<'a> FieldResolver<'a> {
         ret
     }
 
-    fn resolve_def_with_path(&self, def: &Def) -> Vec<FieldHaver> {
+    fn resolve_def_with_path(&self, def: &Def) -> Vec<Container> {
         let mut fields = Vec::new();
 
         if let Some(val) = def.value() {
-            fields.extend_from_slice(&self.resolve_term_path(val, def.path().iter().copied()))
+            fields.extend_from_slice(
+                &self.resolve_term_path(val, def.path().iter().copied().map(EltId::Ident)),
+            )
         }
         if let Some(meta) = def.metadata() {
             fields.extend(self.resolve_annot(&meta.annotation));
@@ -306,7 +331,7 @@ impl<'a> FieldResolver<'a> {
         fields
     }
 
-    fn resolve_annot(&'a self, annot: &'a TypeAnnotation) -> impl Iterator<Item = FieldHaver> + 'a {
+    fn resolve_annot(&'a self, annot: &'a TypeAnnotation) -> impl Iterator<Item = Container> + 'a {
         annot
             .contracts
             .iter()
@@ -319,10 +344,10 @@ impl<'a> FieldResolver<'a> {
     /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
     /// heuristics. For example, it knows that the fields defined on a merge of two records
     /// are the fields defined on either record.
-    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<FieldHaver> {
+    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<Container> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
-                vec![FieldHaver::RecordTerm(data.clone())]
+                vec![Container::RecordTerm(data.clone())]
             }
             Term::Var(id) => {
                 let id = LocIdent::from(*id);
@@ -358,7 +383,7 @@ impl<'a> FieldResolver<'a> {
             }
             Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => self.resolve_term(body),
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                self.resolve_term_path(term, std::iter::once(id.ident()))
+                self.resolve_term_path(term, std::iter::once(id.ident().into()))
             }
             Term::Annotated(annot, term) => {
                 let defs = self.resolve_annot(annot);
@@ -378,10 +403,11 @@ impl<'a> FieldResolver<'a> {
         combine(term_fields, typ_fields)
     }
 
-    fn resolve_type(&self, typ: &Type) -> Vec<FieldHaver> {
+    fn resolve_type(&self, typ: &Type) -> Vec<Container> {
         match &typ.typ {
-            TypeF::Record(rows) => vec![FieldHaver::RecordType(rows.clone())],
-            TypeF::Dict { type_fields, .. } => vec![FieldHaver::Dict(type_fields.as_ref().clone())],
+            TypeF::Record(rows) => vec![Container::RecordType(rows.clone())],
+            TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields.as_ref().clone())],
+            TypeF::Array(elt_ty) => vec![Container::Array(elt_ty.as_ref().clone())],
             TypeF::Flat(rt) => self.resolve_term(rt),
             _ => Default::default(),
         }
