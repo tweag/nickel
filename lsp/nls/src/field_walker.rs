@@ -372,21 +372,6 @@ impl<'a> FieldResolver<'a> {
                     Vec::new()
                 }
             }
-            Term::Array(_, attrs) => attrs
-                .pending_contracts
-                .iter()
-                .filter_map(|ctr| {
-                    if let Term::Type(ty) = ctr.contract.as_ref() {
-                        if let TypeF::Array(elt_ty) = &ty.typ {
-                            Some(Container::Array((**elt_ty).clone()))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
             Term::ResolvedImport(file_id) => self
                 .server
                 .cache
