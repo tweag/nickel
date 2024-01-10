@@ -405,7 +405,7 @@ else
     nix flake check
 
     report_progress "Checks run successfully."
-    confirm_proceed "  -- Please add the releases notes to RELEASES.md if not already done, commit, and then press 'y'."
+    confirm_proceed "  -- Please add the release notes to RELEASES.md if not already done. Save but don't commit. Then press 'y'."
 
     report_progress "Pusing the release branch..."
 
