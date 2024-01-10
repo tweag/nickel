@@ -52,6 +52,7 @@ sha2.workspace = true
 md-5.workspace = true
 unicode-segmentation.workspace = true
 indoc.workspace = true
+as-any.workspace = true
 
 termimad = { workspace = true, optional = true }
 ansi_term = { workspace = true, optional = true }

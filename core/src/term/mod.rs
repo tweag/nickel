@@ -14,6 +14,7 @@ pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
+use as_any::{AsAny, Downcast};
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
@@ -24,7 +25,6 @@ use crate::{
     eval::Environment,
     identifier::LocIdent,
     label::{Label, MergeLabel},
-    match_sharedterm,
     position::TermPos,
     typ::{Type, UnboundTypeVariableError},
     typecheck::eq::{contract_eq, type_eq_noenv},
@@ -439,21 +439,15 @@ impl RuntimeContract {
     }
 }
 
-impl Traverse<RichTerm> for RuntimeContract {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let contract = self.contract.traverse(f, order)?;
-        Ok(RuntimeContract { contract, ..self })
+impl GetChildren for RuntimeContract {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let Self { contract, label: _ } = self;
+        vec![contract]
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.contract.traverse_ref(f, state)
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let Self { contract, label: _ } = self;
+        vec![contract]
     }
 }
 
@@ -594,24 +588,18 @@ impl LabeledType {
     }
 }
 
-impl Traverse<RichTerm> for LabeledType {
-    // Note that this function doesn't traverse the label, which is most often what you want. The
+impl GetChildren for LabeledType {
+    // Note that this function doesn't traverse the label. which is most often what you want. The
     // terms that may hide in a label are mostly types used for error reporting, but are never
     // evaluated.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<LabeledType, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let LabeledType { typ, label } = self;
-        typ.traverse(f, order).map(|typ| LabeledType { typ, label })
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let Self { typ, label: _ } = self;
+        vec![typ]
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.typ.traverse_ref(f, state)
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let Self { typ, label: _ } = self;
+        vec![typ]
     }
 }
 
@@ -742,34 +730,29 @@ impl From<TypeAnnotation> for LetMetadata {
     }
 }
 
-impl Traverse<RichTerm> for TypeAnnotation {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let TypeAnnotation { typ, contracts } = self;
-
-        let contracts = contracts
-            .into_iter()
-            .map(|labeled_ty| labeled_ty.traverse(f, order))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let typ = typ
-            .map(|labeled_ty| labeled_ty.traverse(f, order))
-            .transpose()?;
-
-        Ok(TypeAnnotation { typ, contracts })
+impl GetChildren for TypeAnnotation {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let mut rtrn: Vec<&mut dyn GetChildren> = Vec::new();
+        let Self { typ, contracts } = self;
+        for contract in contracts {
+            rtrn.push(contract);
+        }
+        if let Some(typ) = typ {
+            rtrn.push(typ);
+        }
+        rtrn
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.contracts
-            .iter()
-            .find_map(|c| c.traverse_ref(f, state))
-            .or_else(|| self.typ.as_ref().and_then(|t| t.traverse_ref(f, state)))
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let mut rtrn = Vec::<&dyn GetChildren>::new();
+        let Self { typ, contracts } = self;
+        for contract in contracts {
+            rtrn.push(contract);
+        }
+        if let Some(typ) = typ {
+            rtrn.push(typ);
+        }
+        rtrn
     }
 }
 
@@ -1795,15 +1778,110 @@ impl<S, U> From<Option<U>> for TraverseControl<S, U> {
         }
     }
 }
+#[derive(PartialEq, Eq)]
+pub enum Instruction {
+    ApplyF,
+    Recurse,
+}
 
-pub trait Traverse<T>: Sized {
+pub trait GetChildren: AsAny {
+    // These are meant to be implemented but not used directly. use the
+    // functions from Traverse instead
+    //
+    // The only difference between these (and their implementations) is the
+    // mutability of the references. Unfortunately, rust does not allow you to
+    // abstract over that difference.
+    //
+    // We return a Vec of dyn references so that we can keep recursing no matter
+    // what, and we ensure GetChildren implements AsAny so we can cast down to
+    // specific types.
+    //
+    // PERFORMANCE: it might be faster to pass the Vec in as an argument and
+    // modify it in-place. That would avoid allocating an extra Vec just to
+    // discard it immediately after.
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren>;
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren>;
+}
+
+pub trait Traverse<T: 'static>: GetChildren + Sized {
     /// Apply a transformation on a object containing syntactic elements of type `T` (terms, types,
     /// etc.) by mapping a faillible function `f` on each such node as prescribed by the order.
     ///
     /// `f` may return a generic error `E` and use the state `S` which is passed around.
     fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Self, E>
     where
-        F: FnMut(T) -> Result<T, E>;
+        Self: Clone,
+        T: Clone,
+        F: FnMut(T) -> Result<T, E>,
+    {
+        let mut root = self.clone();
+        let mut todo: Vec<*mut dyn GetChildren> = vec![&mut root];
+        let mut todo_i: Vec<Instruction> = vec![Instruction::Recurse];
+
+        while let Some(next) = todo.pop() {
+            let instruction = todo_i.pop().expect("todo and todo_i got out of sync");
+            // SAFETY: If the TraverseOrder is TopDown, we don't need unsafe. We
+            // could just keep references in `todo`.
+            //
+            // If BottomUp, we need to keep a mutable pointer to a parent and
+            // child node alive at the same time on the `todo` stack, so we can
+            // apply `f` as we come back up.
+            //
+            // This is safe because we always finish with all the children
+            // before we touch the parent. It's morally the same as
+            //
+            // let parent = &mut <node>;
+            // for child in &mut parent.children {
+            //   child.traverse()
+            // }
+            // f(parent)
+            //
+            // which is valid safe code. Except we want to avoid recursion, so we have to keep the
+            // parent around on the heap while we're iterating through the
+            // children, and the borrow checker doesn't know when we're
+            // accessing them.
+            //
+            // However, this deals with very finicky aliasing rules. It is
+            // best to run some of the tests through `miri` if any of this code
+            // changes for any reason.
+
+            match instruction {
+                Instruction::Recurse => {
+                    match order {
+                        TraverseOrder::BottomUp => {
+                            // Postpone f(next) until we've done all the children.
+                            // `todo` is a stack, so first on is last off
+                            // NOTE: For stacked borrows (SB), this must come
+                            // before casting `next` to a reference. For tree
+                            // borrows (TB), it doesn't make a difference.
+                            todo.push(next);
+                            todo_i.push(Instruction::ApplyF);
+                        }
+                        TraverseOrder::TopDown => {
+                            let next = unsafe { &mut *next };
+                            if let Some(next) = next.downcast_mut::<T>() {
+                                *next = f(next.clone())?;
+                            }
+                        }
+                    };
+
+                    let next = unsafe { &mut *next };
+                    let children = next.get_children_mut();
+                    for child in children {
+                        todo.push(child);
+                        todo_i.push(Instruction::Recurse);
+                    }
+                }
+                Instruction::ApplyF => {
+                    let next = unsafe { &mut *next };
+                    if let Some(next) = next.downcast_mut::<T>() {
+                        *next = f(next.clone())?;
+                    }
+                }
+            }
+        }
+        Ok(root)
+    }
 
     /// Recurse through the tree of objects top-down (a.k.a. pre-order), applying `f` to
     /// each object.
@@ -1822,7 +1900,40 @@ pub trait Traverse<T>: Sized {
         &self,
         f: &mut dyn FnMut(&T, &S) -> TraverseControl<S, U>,
         scope: &S,
-    ) -> Option<U>;
+    ) -> Option<U>
+    where
+        S: std::fmt::Debug,
+    {
+        let original_scope = scope;
+        let mut todo: Vec<&dyn GetChildren> = vec![self];
+        let mut todo_s: Vec<Option<Rc<S>>> = vec![None];
+
+        while let Some(next) = todo.pop() {
+            let scope = todo_s.pop().expect("todo_s and todo got out of sync");
+            let next_scope = match next.downcast_ref::<T>() {
+                Some(next) => {
+                    let control = match scope.clone() {
+                        Some(scope) => f(next, &*scope),
+                        None => f(next, original_scope),
+                    };
+                    match control {
+                        TraverseControl::Continue => scope,
+                        TraverseControl::ContinueWithScope(s) => Some(Rc::new(s)),
+                        TraverseControl::SkipBranch => continue,
+                        TraverseControl::Return(ret) => return Some(ret),
+                    }
+                }
+                None => scope,
+            };
+
+            let children = next.get_children_ref();
+            for child in children {
+                todo.push(child);
+                todo_s.push(next_scope.clone());
+            }
+        }
+        None
+    }
 
     fn find_map<S>(&self, mut pred: impl FnMut(&T) -> Option<S>) -> Option<S>
     where
@@ -1841,182 +1952,97 @@ pub trait Traverse<T>: Sized {
     }
 }
 
-impl Traverse<RichTerm> for RichTerm {
-    /// Traverse through all `RichTerm`s in the tree.
-    ///
-    /// This also recurses into the terms that are contained in `Type` subtrees.
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let rt = match order {
-            TraverseOrder::TopDown => f(self)?,
-            TraverseOrder::BottomUp => self,
-        };
-        let pos = rt.pos;
+// in theory {RichTerm,Type} could be much more generic, but in practice these
+// are the ones we want.
+impl<T: GetChildren> Traverse<RichTerm> for T {}
+impl<T: GetChildren> Traverse<Type> for T {}
 
-        let result = match_sharedterm!(match (rt.term) {
-            Term::Fun(id, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Fun(id, t), pos)
+impl GetChildren for RichTerm {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let mut rtrn = Vec::<&mut dyn GetChildren>::new();
+        match SharedTerm::make_mut(&mut self.term) {
+            Term::Null
+            | Term::Bool(_)
+            | Term::Num(_)
+            | Term::Str(_)
+            | Term::Lbl(_)
+            | Term::Var(_)
+            | Term::Closure(_)
+            | Term::Enum(_)
+            | Term::Import(_)
+            | Term::ResolvedImport(_)
+            | Term::SealingKey(_)
+            | Term::ParseError(_)
+            | Term::RuntimeError(_) => (),
+            Term::Fun(_, t)
+            | Term::FunPattern(_, _, t)
+            | Term::Op1(_, t)
+            | Term::Sealed(_, t, _) => {
+                rtrn.push(t);
             }
-            Term::FunPattern(id, d, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::FunPattern(id, d, t), pos)
-            }
-            Term::Let(id, t1, t2, attrs) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Let(id, t1, t2, attrs), pos)
-            }
-            Term::LetPattern(id, pat, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::LetPattern(id, pat, t1, t2), pos)
-            }
-            Term::App(t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::App(t1, t2), pos)
+            Term::Let(_, t1, t2, _)
+            | Term::LetPattern(_, _, t1, t2)
+            | Term::App(t1, t2)
+            | Term::Op2(_, t1, t2) => {
+                rtrn.push(t1);
+                rtrn.push(t2);
             }
             Term::Match { cases, default } => {
-                // The annotation on `map_res` use Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let cases_result: Result<IndexMap<LocIdent, RichTerm>, E> = cases
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, t)| t.traverse(f, order).map(|t_ok| (id, t_ok)))
-                    .collect();
-
-                let default = default.map(|t| t.traverse(f, order)).transpose()?;
-
-                RichTerm::new(
-                    Term::Match {
-                        cases: cases_result?,
-                        default,
-                    },
-                    pos,
-                )
+                for (_, t) in cases {
+                    rtrn.push(t);
+                }
+                if let Some(t) = default.as_mut() {
+                    rtrn.push(t);
+                }
             }
-            Term::Op1(op, t) => {
-                let t = t.traverse(f, order)?;
-                RichTerm::new(Term::Op1(op, t), pos)
-            }
-            Term::Op2(op, t1, t2) => {
-                let t1 = t1.traverse(f, order)?;
-                let t2 = t2.traverse(f, order)?;
-                RichTerm::new(Term::Op2(op, t1, t2), pos)
-            }
-            Term::OpN(op, ts) => {
-                let ts_res: Result<Vec<RichTerm>, E> =
-                    ts.into_iter().map(|t| t.traverse(f, order)).collect();
-                RichTerm::new(Term::OpN(op, ts_res?), pos)
-            }
-            Term::Sealed(i, t1, lbl) => {
-                let t1 = t1.traverse(f, order)?;
-                RichTerm::new(Term::Sealed(i, t1, lbl), pos)
+            Term::OpN(_, ts) => {
+                for t in ts {
+                    rtrn.push(t);
+                }
             }
             Term::Record(record) => {
-                // The annotation on `fields_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-                    .fields
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,RichTerm), E>
-                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-                    .collect();
-                RichTerm::new(
-                    Term::Record(RecordData::new(
-                        fields_res?,
-                        record.attrs,
-                        record.sealed_tail,
-                    )),
-                    pos,
-                )
+                for (_, field) in &mut record.fields {
+                    rtrn.push(field);
+                }
             }
-            Term::RecRecord(record, dyn_fields, deps) => {
-                // The annotation on `map_res` uses Result's corresponding trait to convert from
-                // Iterator<Result> to a Result<Iterator>
-                let static_fields_res: Result<IndexMap<LocIdent, Field>, E> = record
-                    .fields
-                    .into_iter()
-                    // For the conversion to work, note that we need a Result<(Ident,Field), E>
-                    .map(|(id, field)| Ok((id, field.traverse(f, order)?)))
-                    .collect();
-                let dyn_fields_res: Result<Vec<(RichTerm, Field)>, E> = dyn_fields
-                    .into_iter()
-                    .map(|(id_t, field)| {
-                        let id_t = id_t.traverse(f, order)?;
-                        let field = field.traverse(f, order)?;
-
-                        Ok((id_t, field))
-                    })
-                    .collect();
-                RichTerm::new(
-                    Term::RecRecord(
-                        RecordData::new(static_fields_res?, record.attrs, record.sealed_tail),
-                        dyn_fields_res?,
-                        deps,
-                    ),
-                    pos,
-                )
+            Term::RecRecord(record, dyn_fields, _) => {
+                for (_, field) in &mut record.fields {
+                    rtrn.push(field);
+                }
+                for (id_t, field) in dyn_fields {
+                    rtrn.push(id_t);
+                    rtrn.push(field);
+                }
             }
-            Term::Array(ts, attrs) => {
-                let ts_res = Array::new(
-                    ts.into_iter()
-                        .map(|t| t.traverse(f, order))
-                        .collect::<Result<Rc<[_]>, _>>()?,
-                );
-
-                RichTerm::new(Term::Array(ts_res, attrs), pos)
+            // XXX: do we not need to traverse the contracts in attrs?
+            Term::Array(ts, _attrs) => {
+                for t in ts.make_mut() {
+                    rtrn.push(t);
+                }
             }
             Term::StrChunks(chunks) => {
-                let chunks_res: Result<Vec<StrChunk<RichTerm>>, E> = chunks
-                    .into_iter()
-                    .map(|chunk| match chunk {
-                        chunk @ StrChunk::Literal(_) => Ok(chunk),
-                        StrChunk::Expr(t, indent) => {
-                            Ok(StrChunk::Expr(t.traverse(f, order)?, indent))
+                for chunk in chunks.iter_mut() {
+                    match chunk {
+                        StrChunk::Literal(_) => (),
+                        StrChunk::Expr(t, _) => {
+                            rtrn.push(t);
                         }
-                    })
-                    .collect();
-
-                RichTerm::new(Term::StrChunks(chunks_res?), pos)
+                    }
+                }
             }
             Term::Annotated(annot, term) => {
-                let annot = annot.traverse(f, order)?;
-                let term = term.traverse(f, order)?;
-                RichTerm::new(Term::Annotated(annot, term), pos)
+                rtrn.push(annot);
+                rtrn.push(term);
             }
             Term::Type(ty) => {
-                RichTerm::new(Term::Type(ty.traverse(f, order)?), pos)
+                rtrn.push(ty);
             }
-            _ => rt,
-        });
-
-        match order {
-            TraverseOrder::TopDown => Ok(result),
-            TraverseOrder::BottomUp => f(result),
         }
+        rtrn
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        let child_state = match f(self, state) {
-            TraverseControl::Continue => None,
-            TraverseControl::ContinueWithScope(s) => Some(s),
-            TraverseControl::SkipBranch => {
-                return None;
-            }
-            TraverseControl::Return(ret) => {
-                return Some(ret);
-            }
-        };
-        let state = child_state.as_ref().unwrap_or(state);
-
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let mut rtrn = Vec::<&dyn GetChildren>::new();
         match &*self.term {
             Term::Null
             | Term::Bool(_)
@@ -2030,82 +2056,68 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ParseError(_)
-            | Term::RuntimeError(_) => None,
-            Term::StrChunks(chunks) => chunks.iter().find_map(|ch| {
-                if let StrChunk::Expr(term, _) = ch {
-                    term.traverse_ref(f, state)
-                } else {
-                    None
+            | Term::RuntimeError(_) => (),
+            Term::StrChunks(chunks) => {
+                for ch in chunks {
+                    if let StrChunk::Expr(t, _) = ch {
+                        rtrn.push(t);
+                    }
                 }
-            }),
+            }
             Term::Fun(_, t)
             | Term::FunPattern(_, _, t)
             | Term::Op1(_, t)
-            | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
+            | Term::Sealed(_, t, _) => {
+                rtrn.push(t);
+            }
             Term::Let(_, t1, t2, _)
             | Term::LetPattern(_, _, t1, t2)
             | Term::App(t1, t2)
-            | Term::Op2(_, t1, t2) => t1
-                .traverse_ref(f, state)
-                .or_else(|| t2.traverse_ref(f, state)),
-            Term::Record(data) => data
-                .fields
-                .values()
-                .find_map(|field| field.traverse_ref(f, state)),
-            Term::RecRecord(data, dyn_data, _) => data
-                .fields
-                .values()
-                .find_map(|field| field.traverse_ref(f, state))
-                .or_else(|| {
-                    dyn_data.iter().find_map(|(id, field)| {
-                        id.traverse_ref(f, state)
-                            .or_else(|| field.traverse_ref(f, state))
-                    })
-                }),
-            Term::Match { cases, default } => cases
-                .iter()
-                .find_map(|(_id, t)| t.traverse_ref(f, state))
-                .or_else(|| default.as_ref().and_then(|t| t.traverse_ref(f, state))),
-            Term::Array(ts, _) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-            Term::OpN(_, ts) => ts.iter().find_map(|t| t.traverse_ref(f, state)),
-            Term::Annotated(annot, t) => t
-                .traverse_ref(f, state)
-                .or_else(|| annot.traverse_ref(f, state)),
-            Term::Type(ty) => ty.traverse_ref(f, state),
+            | Term::Op2(_, t1, t2) => {
+                rtrn.push(t1);
+                rtrn.push(t2);
+            }
+            Term::Record(data) => {
+                for f in data.fields.values() {
+                    rtrn.push(f);
+                }
+            }
+            Term::RecRecord(data, dyn_data, _) => {
+                for f in data.fields.values() {
+                    rtrn.push(f);
+                }
+                for (id, field) in dyn_data {
+                    rtrn.push(id);
+                    rtrn.push(field);
+                }
+            }
+            Term::Match { cases, default } => {
+                for (_, t) in cases {
+                    rtrn.push(t);
+                }
+                if let Some(t) = default {
+                    rtrn.push(t);
+                }
+            }
+            Term::Array(ts, _) => {
+                for t in ts.iter() {
+                    rtrn.push(t);
+                }
+            }
+            Term::OpN(_, ts) => {
+                for t in ts {
+                    rtrn.push(t);
+                }
+            }
+            Term::Annotated(annot, t) => {
+                rtrn.push(annot);
+                rtrn.push(t);
+            }
+            Term::Type(ty) => {
+                rtrn.push(ty);
+            }
         }
-    }
-}
-
-impl Traverse<Type> for RichTerm {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<RichTerm, E>
-    where
-        F: FnMut(Type) -> Result<Type, E>,
-    {
-        self.traverse(
-            &mut |rt: RichTerm| {
-                match_sharedterm!(match (rt.term) {
-                    Term::Type(ty) => ty
-                        .traverse(f, order)
-                        .map(|ty| RichTerm::new(Term::Type(ty), rt.pos)),
-                    _ => Ok(rt),
-                })
-            },
-            order,
-        )
-    }
-
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&Type, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.traverse_ref(
-            &mut |rt: &RichTerm, state: &S| match &*rt.term {
-                Term::Type(ty) => ty.traverse_ref(f, state).into(),
-                _ => TraverseControl::Continue,
-            },
-            state,
-        )
+        rtrn
     }
 }
 

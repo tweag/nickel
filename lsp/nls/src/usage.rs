@@ -234,7 +234,7 @@ pub(crate) mod tests {
         let x2 = locced(x, file, 17..18);
         let table = UsageLookup::new(&rt, &Environment::new());
 
-        assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x1, x2]);
+        assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x2, x1]);
         assert_eq!(table.def(&x1), table.def(&x2));
         assert_eq!(table.def(&x0), table.def(&x1));
 

@@ -32,6 +32,7 @@ pub fn transform_no_free_vars(
     wildcards: Option<&Wildcards>,
 ) -> Result<RichTerm, UnboundTypeVariableError> {
     let rt = rt.traverse(
+        // XXX: this could be Infallible
         &mut |mut rt: RichTerm| -> Result<RichTerm, UnboundTypeVariableError> {
             // Start by substituting any wildcard with its inferred type
             if let Some(wildcards) = wildcards {

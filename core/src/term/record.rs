@@ -188,46 +188,53 @@ impl Field {
     }
 }
 
-impl Traverse<RichTerm> for Field {
-    fn traverse<F, E>(self, f: &mut F, order: TraverseOrder) -> Result<Field, E>
-    where
-        F: FnMut(RichTerm) -> Result<RichTerm, E>,
-    {
-        let annotation = self.metadata.annotation.traverse(f, order)?;
-        let value = self.value.map(|v| v.traverse(f, order)).transpose()?;
-
-        let metadata = FieldMetadata {
-            annotation,
-            ..self.metadata
-        };
-
-        let pending_contracts = self
-            .pending_contracts
-            .into_iter()
-            .map(|pending_contract| pending_contract.traverse(f, order))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(Field {
-            metadata,
+impl GetChildren for Field {
+    fn get_children_mut(&mut self) -> Vec<&mut dyn GetChildren> {
+        let mut rtrn = Vec::<&mut dyn GetChildren>::new();
+        let Self {
             value,
+            metadata:
+                FieldMetadata {
+                    doc: _,
+                    annotation,
+                    opt: _,
+                    not_exported: _,
+                    priority: _,
+                },
             pending_contracts,
-        })
+        } = self;
+        rtrn.push(annotation);
+        if let Some(value) = value.as_mut() {
+            rtrn.push(value);
+        }
+        for pending_contract in pending_contracts {
+            rtrn.push(pending_contract);
+        }
+        rtrn
     }
 
-    fn traverse_ref<S, U>(
-        &self,
-        f: &mut dyn FnMut(&RichTerm, &S) -> TraverseControl<S, U>,
-        state: &S,
-    ) -> Option<U> {
-        self.metadata
-            .annotation
-            .traverse_ref(f, state)
-            .or_else(|| self.value.as_ref().and_then(|v| v.traverse_ref(f, state)))
-            .or_else(|| {
-                self.pending_contracts
-                    .iter()
-                    .find_map(|c| c.traverse_ref(f, state))
-            })
+    fn get_children_ref(&self) -> Vec<&dyn GetChildren> {
+        let mut rtrn = Vec::<&dyn GetChildren>::new();
+        let Self {
+            value,
+            metadata:
+                FieldMetadata {
+                    doc: _,
+                    annotation,
+                    opt: _,
+                    not_exported: _,
+                    priority: _,
+                },
+            pending_contracts,
+        } = self;
+        rtrn.push(annotation);
+        if let Some(value) = value.as_ref() {
+            rtrn.push(value);
+        }
+        for pending_contract in pending_contracts {
+            rtrn.push(pending_contract);
+        }
+        rtrn
     }
 }
 
