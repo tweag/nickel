@@ -382,9 +382,10 @@ else
 
     # Patch workspace dependencies
     update_dependencies "workspace" "./Cargo.toml" version_map
-    # We need to update the lockfile here, because we changed ./Cargo.toml but Nix
-    # tries to build with --frozen, which will fail if the lockfile is outdated.
-    cargo update > /dev/null
+    # We need to update the lockfile here, at least for the dependencies that we
+    # might have bumped. We changed ./Cargo.toml but Nix tries to build with
+    # --frozen, which will fail if the lockfile is outdated.
+    cargo update "${!version_map[@]}" > /dev/null
     cleanup_actions+=("git restore ./Cargo.lock")
 
     git add ./Cargo.lock
