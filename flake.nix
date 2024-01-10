@@ -23,10 +23,10 @@
     nix-input.url = "github:nixos/nix";
   };
 
-  nixConfig = {
-    extra-substituters = [ "https://tweag-nickel.cachix.org" ];
-    extra-trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
-  };
+  # nixConfig = {
+  #   extra-substituters = [ "https://tweag-nickel.cachix.org" ];
+  #   extra-trusted-public-keys = [ "tweag-nickel.cachix.org-1:GIthuiK4LRgnW64ALYEoioVUQBWs0jexyoYVeLDBwRA=" ];
+  # };
 
   outputs =
     { self
