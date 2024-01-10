@@ -395,7 +395,10 @@ else
 
     nix flake check
 
-    report_progress "Creating the release branch..."
+    report_progress "Checks run successfully."
+    confirm_proceed "  -- Please add the releases notes to RELEASES.md if not already done, commit, and then press 'y'."
+
+    report_progress "Pusing the release branch..."
 
     git commit -m "[release.sh] update to $new_workspace_version"
     git push -u origin "$release_branch"
@@ -409,7 +412,7 @@ else
 
     report_progress "If anything goes wrong from now on, you can restore the previous stable branch by resetting stable to stable-local-save"
 
-    confirm_proceed " -- Pushing the release branch to 'stable' and making it the new default"
+    confirm_proceed "  -- Pushing the release branch to 'stable' and making it the new default"
 
     git checkout stable
     git reset --hard "$release_branch"
