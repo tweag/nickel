@@ -1,5 +1,7 @@
-Next version (planned as 1.4)
-=============================
+Version 1.4
+===========
+
+Nickel 1.4 is a maintenance release, at the exception of a breaking change (see below).
 
 Breaking changes
 ----------------
@@ -20,6 +22,29 @@ Breaking changes
     1.4, you can either flip the arguments of the curried dot as a function
     `(.)` whenever possible, or you can just replace it with the new
     `std.record.get`.
+
+    (implemented by @yannham in https://github.com/tweag/nickel/pull/1752)
+
+Tooling
+-------
+
+* Search for imports in NICKEL_IMPORT_PATH by @jneem in https://github.com/tweag/nickel/pull/1716
+* Add a cli param --import-path to specify the search path by @jneem in https://github.com/tweag/nickel/pull/1721
+* LSP: Fix hover on assignments to subrecords by @jneem in https://github.com/tweag/nickel/pull/1725
+* Print something when nickel doc succeeds by @yannham in https://github.com/tweag/nickel/pull/1729
+* Add --error-format flag to serialize err diagnostics by @yannham in https://github.com/tweag/nickel/pull/1740
+* LSP: get record completion in arrays by @jneem in https://github.com/tweag/nickel/pull/1746
+
+Core language
+-------------
+
+* Support importing txt files as strings by @Quantum64 in https://github.com/tweag/nickel/pull/1734
+
+Fixes
+-----
+
+* `nickel format`: don't fail silently on invalid input anymore by @yannham in https://github.com/tweag/nickel/pull/1749
+* Update Topiary dependencies to correctly handle `(.)` in `nickel format` by @yannham in https://github.com/tweag/nickel/pull/1753
 
 Version 1.3
 ===========
