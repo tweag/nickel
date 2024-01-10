@@ -16,15 +16,24 @@
 # This is of course less robust. For now, it seems largely sufficient, but it
 # might break in the future if the Cargo.toml files style change.
 
+# In some cases it can be useful to leave the workspace in the state it was to
+# finish the release manually. In that case, set this variable to false.
+DO_CLEANUP=true
+
 # Perform clean up actions upon unexpected exit.
 cleanup() {
-  echo "++ Unexpected exit. Cleaning up..."
   set +e
 
-  for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
-    echo "++ Running cleanup action: ${cleanup_actions[$i]}"
-    ${cleanup_actions[$i]} || true
-  done
+  if [[ $DO_CLEANUP == true ]]; then
+    echo "++ Unexpected exit. Cleaning up..."
+
+    for ((i=${#cleanup_actions[@]}-1; i>=0; i--)); do
+      echo "++ Running cleanup action: ${cleanup_actions[$i]}"
+      ${cleanup_actions[$i]} || true
+    done
+  else
+    echo "++ Unexpected exit. Leaving the workspace in its current state (DO_CLEANUP=$DO_CLEANUP)."
+  fi
 
   cleanup_actions=()
   exit 1
@@ -314,13 +323,13 @@ report_progress "Creating release branch..."
 
 release_branch="$new_workspace_version-release"
 
-if git rev-parse --verify --quiet "$release_branch"; then
+if git rev-parse --verify --quiet "$release_branch" > /dev/null; then
     confirm_proceed "  -- [WARNING] The branch '$release_branch' already exists. The script will skip forward to publication to crates.io (but still run checks)."
-   git switch "$release_branch"
+    git switch "$release_branch"
 
-   report_progress "Building and running checks..."
+    report_progress "Building and running checks..."
 
-   nix flake check
+    nix flake check
 else
     git switch --create "$release_branch" > /dev/null
     cleanup_actions+=("git branch -d $release_branch")
@@ -438,7 +447,7 @@ EOF
 
 crates_to_publish=(core cli lsp/nls)
 
-report_progress "Removing 'nickel-lang-utils' from dev-dependencies..."
+report_progress "Removing 'nickel-lang-utils' and 'lsp-test-harness' from dev-dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
     # Remove `nickel-lang-utils` from `dev-dependencies` of released crates.
@@ -448,7 +457,8 @@ for crate in "${crates_to_publish[@]}"; do
     # crates.io)
     #
     # see [^tomlq-sed]
-    sed -i '/^nickel-lang-utils\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
+    sed -i '/^nickel-lang-utils\.workspace\s*=\s*true\s*$/d' "$crate/Cargo.toml"
+    sed -i '/^lsp-harness\.workspace\s*=\s*true\s*$/d' "$crate/Cargo.toml"
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
 done
 
@@ -485,23 +495,31 @@ cargo install --force --path ./lsp/nls
 
 git restore ./Cargo.lock
 
-report_progress "Successfully installed locally. Trying a dry run of cargo publish..."
+report_progress "Successfully installed locally. Trying a dry run of cargo publish 'nickel-lang-core'"
 
 cargo publish -p nickel-lang-core --dry-run
-confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-core' to crates.io ?"
+confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-core' to crates.io ?"
 cargo publish -p nickel-lang-core
 
+report_progress "'nickel-lang-core' published successfully"
+report_progress "Trying a dry run of cargo publish 'nickel-lang-cli'"
+
 cargo publish -p nickel-lang-cli --dry-run
-confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-cli' to crates.io ?"
+confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-cli' to crates.io ?"
 cargo publish -p nickel-lang-cli
 
+report_progress "'nickel-lang-cli' published successfully"
+report_progress "Trying a dry run of cargo publish 'nickel-lang-lsp'"
+
 cargo publish -p nickel-lang-lsp --dry-run
-confirm_proceed "Dry run successful. Proceed with actual publication of 'nickel-lang-lsp' to crates.io ?"
+confirm_proceed "  -- Dry run successful. Proceed with actual publication of 'nickel-lang-lsp' to crates.io ?"
 cargo publish -p nickel-lang-lsp
 
+report_progress "'nickel-lang-lsp' published successfully"
 report_progress "Cleaning up..."
 
-# Undo the previous commit removing `nickel-lang-utils` from dev-dependencies
+# Undo the previous commit removing `nickel-lang-utils` and other stuff from
+# dependencies prior to publication
 git reset --hard HEAD~
 
 cleanup_actions=()
