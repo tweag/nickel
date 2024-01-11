@@ -37,7 +37,8 @@ pub struct UsageLookup {
     // This could be made more general (we might want to map arbitrary positions to
     // environments) but its enough for us now.
     def_table: HashMap<RawSpan, Environment>,
-    usage_table: HashMap<LocIdent, Vec<LocIdent>>,
+    // Maps from spans of idents to the places where they are referenced.
+    usage_table: HashMap<RawSpan, Vec<LocIdent>>,
     // The list of all the symbols (and their locations) in the document.
     //
     // Currently, variables bound in `let` bindings and record fields count as symbols.
@@ -53,9 +54,9 @@ impl UsageLookup {
     }
 
     /// Return all the usages of `ident`.
-    pub fn usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
+    pub fn usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
         self.usage_table
-            .get(ident)
+            .get(span)
             .map(|v| v.iter())
             .unwrap_or([].iter())
     }
@@ -185,7 +186,9 @@ impl UsageLookup {
                     Term::Var(id) => {
                         let id = LocIdent::from(*id);
                         if let Some(def) = env.get(&id.ident) {
-                            self.usage_table.entry(def.ident()).or_default().push(id);
+                            if let Some(span) = def.ident().pos.into_opt() {
+                                self.usage_table.entry(span).or_default().push(id);
+                            }
                         }
                         TraverseControl::Continue
                     }
@@ -234,7 +237,10 @@ pub(crate) mod tests {
         let x2 = locced(x, file, 17..18);
         let table = UsageLookup::new(&rt, &Environment::new());
 
-        assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x1, x2]);
+        assert_eq!(
+            table.usages(&x0.pos.unwrap()).cloned().collect::<Vec<_>>(),
+            vec![x1, x2]
+        );
         assert_eq!(table.def(&x1), table.def(&x2));
         assert_eq!(table.def(&x0), table.def(&x1));
 
@@ -254,9 +260,21 @@ pub(crate) mod tests {
         let baz1 = locced("baz", file, 56..59);
         let table = UsageLookup::new(&rt, &Environment::new());
 
-        assert_eq!(table.usages(&x0).cloned().collect::<Vec<_>>(), vec![x1]);
-        assert_eq!(table.usages(&a0).cloned().collect::<Vec<_>>(), vec![a1]);
-        assert_eq!(table.usages(&baz0).cloned().collect::<Vec<_>>(), vec![baz1]);
+        assert_eq!(
+            table.usages(&x0.pos.unwrap()).cloned().collect::<Vec<_>>(),
+            vec![x1]
+        );
+        assert_eq!(
+            table.usages(&a0.pos.unwrap()).cloned().collect::<Vec<_>>(),
+            vec![a1]
+        );
+        assert_eq!(
+            table
+                .usages(&baz0.pos.unwrap())
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![baz1]
+        );
 
         let x_def = table.def(&x1).unwrap();
         assert_eq!(x_def.ident(), x0);

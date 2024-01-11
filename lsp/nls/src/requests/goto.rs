@@ -1,6 +1,9 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceParams};
-use nickel_lang_core::term::{record::FieldMetadata, RichTerm, Term, UnaryOp};
+use nickel_lang_core::{
+    position::RawSpan,
+    term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
+};
 use serde_json::Value;
 
 use crate::{
@@ -11,7 +14,7 @@ use crate::{
     server::Server,
 };
 
-fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option<Vec<LocIdent>> {
+fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option<Vec<RawSpan>> {
     let resolver = FieldResolver::new(server);
     let ret = match (term.as_ref(), ident) {
         (Term::Var(id), _) => {
@@ -19,16 +22,23 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             let def = server.analysis.get_def(&id)?;
             let cousins = resolver.get_cousin_defs(def);
             if cousins.is_empty() {
-                vec![def.ident()]
+                vec![def.ident().pos.unwrap()]
             } else {
-                cousins.into_iter().map(|(loc, _)| loc).collect()
+                cousins
+                    .into_iter()
+                    .filter_map(|(loc, _)| loc.pos.into_opt())
+                    .collect()
             }
         }
         (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
             let parents = resolver.resolve_term(parent);
             parents
                 .iter()
-                .filter_map(|parent| parent.get_definition_pos(id.ident()))
+                .filter_map(|parent| {
+                    parent
+                        .get_definition_pos(id.ident())
+                        .and_then(|def| def.pos.into_opt())
+                })
                 .collect()
         }
         (Term::LetPattern(_, pat, value, _), Some(hovered_id)) => {
@@ -43,8 +53,16 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             let parents = resolver.resolve_term_path(value, path.iter().copied().map(EltId::Ident));
             parents
                 .iter()
-                .filter_map(|parent| parent.get_definition_pos(last.ident()))
+                .filter_map(|parent| {
+                    parent
+                        .get_definition_pos(last.ident())
+                        .and_then(|def| def.pos.into_opt())
+                })
                 .collect()
+        }
+        (Term::ResolvedImport(file), _) => {
+            let pos = server.cache.terms().get(file)?.term.pos;
+            vec![pos.into_opt()?]
         }
         _ => {
             return None;
@@ -53,8 +71,8 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
     Some(ret)
 }
 
-fn ids_to_locations(ids: impl IntoIterator<Item = LocIdent>, server: &Server) -> Vec<Location> {
-    let mut spans: Vec<_> = ids.into_iter().filter_map(|id| id.pos.into_opt()).collect();
+fn ids_to_locations(ids: impl IntoIterator<Item = RawSpan>, server: &Server) -> Vec<Location> {
+    let mut spans: Vec<_> = ids.into_iter().collect();
 
     // The sort order of our response is a little arbitrary. But we want to deduplicate, and we
     // don't want the response to be random.
@@ -113,20 +131,26 @@ pub fn handle_references(
     // Maybe the position is pointing straight at the definition already.
     // In that case, def_locs won't have the definition yet; so add it.
     if let Some(id) = server.lookup_ident_by_position(pos)? {
-        def_locs.push(id);
-        if let Some(parent) = term {
-            // If `id` is a field name in a record, we can search through cousins
-            // to find more definitions.
-            if matches!(parent.as_ref(), Term::RecRecord(..) | Term::Record(_)) {
-                let def = Def::Field {
-                    ident: id,
-                    value: None,
-                    record: parent.clone(),
-                    metadata: FieldMetadata::default(),
-                };
-                let resolver = FieldResolver::new(server);
-                let cousins = resolver.get_cousin_defs(&def);
-                def_locs.extend(cousins.into_iter().map(|(loc, _)| loc))
+        if let Some(span) = id.pos.into_opt() {
+            def_locs.push(span);
+            if let Some(parent) = term {
+                // If `id` is a field name in a record, we can search through cousins
+                // to find more definitions.
+                if matches!(parent.as_ref(), Term::RecRecord(..) | Term::Record(_)) {
+                    let def = Def::Field {
+                        ident: id,
+                        value: None,
+                        record: parent.clone(),
+                        metadata: FieldMetadata::default(),
+                    };
+                    let resolver = FieldResolver::new(server);
+                    let cousins = resolver.get_cousin_defs(&def);
+                    def_locs.extend(
+                        cousins
+                            .into_iter()
+                            .filter_map(|(loc, _)| loc.pos.into_opt()),
+                    )
+                }
             }
         }
     }
@@ -137,7 +161,7 @@ pub fn handle_references(
     let mut usages: Vec<_> = def_locs
         .iter()
         .flat_map(|id| server.analysis.get_usages(id))
-        .cloned()
+        .filter_map(|id| id.pos.into_opt())
         .collect();
 
     if params.context.include_declaration {

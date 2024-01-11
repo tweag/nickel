@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use codespan::FileId;
 use nickel_lang_core::{
+    position::RawSpan,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
     typecheck::{reporting::NameReg, TypeTables, TypecheckVisitor, UnifType},
@@ -272,15 +273,15 @@ impl AnalysisRegistry {
         self.analysis.get(&file)?.usage_lookup.def(ident)
     }
 
-    pub fn get_usages(&self, ident: &LocIdent) -> impl Iterator<Item = &LocIdent> {
+    pub fn get_usages(&self, span: &RawSpan) -> impl Iterator<Item = &LocIdent> {
         fn inner<'a>(
             slf: &'a AnalysisRegistry,
-            ident: &LocIdent,
+            span: &RawSpan,
         ) -> Option<impl Iterator<Item = &'a LocIdent>> {
-            let file = ident.pos.as_opt_ref()?.src_id;
-            Some(slf.analysis.get(&file)?.usage_lookup.usages(ident))
+            let file = span.src_id;
+            Some(slf.analysis.get(&file)?.usage_lookup.usages(span))
         }
-        inner(self, ident).into_iter().flatten()
+        inner(self, span).into_iter().flatten()
     }
 
     pub fn get_env(&self, rt: &RichTerm) -> Option<&crate::usage::Environment> {
