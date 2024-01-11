@@ -8,6 +8,11 @@ in
 ### [[request]]
 ### type = "GotoDefinition"
 ### textDocument.uri = "file:///goto.ncl"
+### position = { line = 1, character = 16 }
+###
+### [[request]]
+### type = "GotoDefinition"
+### textDocument.uri = "file:///goto.ncl"
 ### position = { line = 3, character = 2 }
 ###
 ### [[request]]
