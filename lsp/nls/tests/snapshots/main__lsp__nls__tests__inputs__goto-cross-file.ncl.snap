@@ -2,6 +2,7 @@
 source: lsp/nls/tests/main.rs
 expression: output
 ---
+file:///dep.ncl:0:0-0:15
 file:///goto.ncl:1:2-1:8
 file:///dep.ncl:0:2-0:5
 
