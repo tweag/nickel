@@ -283,6 +283,7 @@ Forall: Type =
 // also includes previous levels).
 Applicative: UniTerm = {
     Atom,
+    <EnumVariant> => <>.into(),
     AsUniTerm<WithPos<TypeArray>>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> =>
         UniTerm::from(mk_app!(t1, t2)),
@@ -698,6 +699,10 @@ EnumTag: LocIdent = {
   "raw enum tag" => <>.into(),
   <StringEnumTag> => <>.into(),
 };
+
+EnumVariant: RichTerm =
+    <tag: EnumTag> ".." "(" <arg: Term> ")" =>
+        RichTerm::from(Term::EnumVariant(tag, arg));
 
 ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),

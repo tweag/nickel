@@ -1456,6 +1456,7 @@ fn walk<V: TypecheckVisitor>(
                     walk(state, ctxt.clone(), visitor, t)
                 })
         }
+        Term::EnumVariant(_, t) => walk(state, ctxt, visitor, t),
         Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
@@ -1852,6 +1853,28 @@ fn check<V: TypecheckVisitor>(
             let row = state.table.fresh_erows_uvar(ctxt.var_level);
             ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
+        }
+        Term::EnumVariant(_id, _t) => {
+            // TODO: actually typecheck ADTs
+            ty
+            .unify(mk_uniftype::dynamic(), state, &ctxt)
+            .map_err(|err| err.into_typecheck_err(state, rt.pos))
+
+
+            // let row = state.table.fresh_erows_uvar(ctxt.var_level);
+            // let ty_elts = state.table.fresh_type_uvar(ctxt.var_level);
+            //
+            // ty.unify(mk_uniftype::array(ty_elts.clone()), state, &ctxt)
+            //     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+            //
+            // terms
+            //     .iter()
+            //     .try_for_each(|t| -> Result<(), TypecheckError> {
+            //         check(state, ctxt.clone(), visitor, t, ty_elts.clone())
+            //     })
+            //
+            // ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
+            //     .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`. In other words, the checking rule is not the same depending on the target

@@ -770,6 +770,12 @@ where
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
+            EnumVariant(id, data) => allocator
+                .text("'")
+                .append(allocator.text(ident_quoted(id)))
+                .append("(")
+                .append(data.pretty(allocator))
+                .append(")"),
             Record(record_data) => allocator.record(record_data, &[]),
             RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
             Match { cases, default } => docs![

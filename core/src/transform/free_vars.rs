@@ -88,7 +88,7 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::App(t1, t2) => {
+            Term::App(t1, t2) | Term::Op2(_, t1, t2) => {
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(free_vars);
             }
@@ -97,17 +97,14 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::Op1(_, t) => t.collect_free_vars(free_vars),
-            Term::Op2(_, t1, t2) => {
-                t1.collect_free_vars(free_vars);
-                t2.collect_free_vars(free_vars);
+            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant(_, t) => {
+                t.collect_free_vars(free_vars)
             }
             Term::OpN(_, ts) => {
                 for t in ts {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::Sealed(_, t, _) => t.collect_free_vars(free_vars),
             Term::Record(record) => {
                 for t in record.fields.values_mut() {
                     t.collect_free_vars(free_vars);
