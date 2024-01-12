@@ -22,13 +22,6 @@ def lambda_handler(event, context):
             "LaunchTemplateId": launch_template_id,
             "Version": "$Latest"
         },
-        InstanceMarketOptions={
-            "MarketType": "spot",
-            "SpotOptions": {
-                "SpotInstanceType": "one-time",
-                "InstanceInterruptionBehavior": "terminate",
-            },
-        },
         TagSpecifications=[
             {
                 "ResourceType": "instance",
