@@ -901,17 +901,23 @@ where
         match &self.0 {
             EnumRowsF::Empty => allocator.nil(),
             EnumRowsF::TailVar(id) => docs![allocator, ";", allocator.line(), id.to_string()],
-            EnumRowsF::Extend { row, tail } => docs![
-                allocator,
-                "'",
-                ident_quoted(row),
+            EnumRowsF::Extend { row, tail } => {
+                let mut result = allocator
+                    .text("'")
+                    .append(allocator.text(ident_quoted(&row.id)));
+
+                if let Some(typ) = row.typ.as_ref() {
+                    result = result
+                        .append(allocator.text(":"))
+                        .append(typ.pretty(allocator));
+                }
+
                 if let EnumRowsF::Extend { .. } = tail.0 {
-                    docs![allocator, ",", allocator.line()]
-                } else {
-                    allocator.nil()
-                },
-                tail.as_ref()
-            ],
+                    result = result.append(allocator.text(",").append(allocator.line()));
+                }
+
+                result.append(tail.as_ref())
+            }
         }
     }
 }

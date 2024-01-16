@@ -34,7 +34,10 @@ macro_rules! mk_uty_enum_row {
     ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
         $crate::typecheck::UnifEnumRows::concrete(
             $crate::typ::EnumRowsF::Extend {
-                row: LocIdent::from($id),
+                row: $crate::typ::EnumRowF {
+                    id: LocIdent::from($id),
+                    typ: None,
+                },
                 tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))
             }
         )

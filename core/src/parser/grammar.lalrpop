@@ -1001,6 +1001,7 @@ TypeBuiltin: Type = {
 
 TypeAtom: Type = {
     <TypeBuiltin>,
+    // TODO[adts]: have a separate rule for enum, and accept argument for rows
     "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
@@ -1016,7 +1017,12 @@ TypeAtom: Type = {
                         None => EnumRowsF::Empty,
                     }
                 ),
-                |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
+                |erows, row_id| {
+                    EnumRows(EnumRowsF::Extend {
+                        row: EnumRowF { id: row_id, typ: None },
+                        tail: Box::new(erows)
+                    })
+                }
             );
             Type::from(TypeF::Enum(ty))
     },
@@ -1026,14 +1032,14 @@ TypeAtom: Type = {
             flavour: DictTypeFlavour::Type
         })
     },
-    // Although a dictionary contracts isn't really a type, we treat it like as
-    // a type for now - at least syntactically - as they are represented using a
+    // Although a dictionary contracts isn't really a type, we treat them as
+    // types for now - at least syntactically - as they are represented using a
     // `TypeF::Dict` constructor in the AST. This just simpler for many reasons
     // (error reporting of contracts and in particular type paths, LSP, and so
     // on.)
     //
     // However, note that we use a fixed type as an argument. This has the
-    // effect of preventing dictionary contracts from catpuring type variables
+    // effect of preventing dictionary contracts from capturing type variables
     // that could be in scope. For example, we want `forall a. {_ | a}` to fail
     // (see https://github.com/tweag/nickel/issues/1228). Fixing type variables
     // right away inside the dictionary contract (before the enclosing `forall`

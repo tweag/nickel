@@ -487,7 +487,7 @@ where
 ///
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row, or if it is a enum row.
-fn rows_as_map<E: TermEnvironment>(
+fn rrows_as_map<E: TermEnvironment>(
     erows: &GenericUnifRecordRows<E>,
 ) -> Option<IndexMap<LocIdent, &GenericUnifType<E>>> {
     let map: Option<IndexMap<LocIdent, _>> = erows
@@ -503,16 +503,18 @@ fn rows_as_map<E: TermEnvironment>(
     map
 }
 
-/// Convert enum rows to a hashset.
+/// Convert enum rows to a hashmap.
 ///
 /// Require the rows to be closed (i.e. the last element must be `RowEmpty`), otherwise `None` is
 /// returned. `None` is returned as well if a type encountered is not row type, or if it is a
 /// record row.
-fn rows_as_set(erows: &UnifEnumRows) -> Option<HashSet<LocIdent>> {
-    let set: Option<HashSet<_>> = erows
+fn erows_as_map<E: TermEnvironment>(
+    erows: &GenericUnifEnumRows<E>,
+) -> Option<IndexMap<LocIdent, Option<&GenericUnifType<E>>>> {
+    let set: Option<IndexMap<LocIdent, Option<_>>> = erows
         .iter()
         .map(|item| match item {
-            UnifEnumRowsIteratorItem::Row(id) => Some(*id),
+            GenericUnifEnumRowsIteratorItem::Row(EnumRowF { id, typ: types }) => Some((id, types)),
             _ => None,
         })
         .collect();
@@ -582,9 +584,34 @@ fn type_eq_bounded<E: TermEnvironment>(
                         && type_eq_bounded(state, t1, env1, t2, env2)
                 }
                 (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
-                    let rows1 = rows_as_set(uty1);
-                    let rows2 = rows_as_set(uty2);
-                    rows1.is_some() && rows2.is_some() && rows1 == rows2
+                    // let rows1 = rows_as_set(uty1);
+                    // let rows2 = rows_as_set(uty2);
+                    // rows1.is_some() && rows2.is_some() && rows1 == rows2
+                    //
+                    fn type_eq_bounded_wrapper<E: TermEnvironment>(
+                        state: &mut State,
+                        uty1: &Option<&GenericUnifType<E>>,
+                        env1: &E,
+                        uty2: &Option<&GenericUnifType<E>>,
+                        env2: &E,
+                    ) -> bool {
+                        match (uty1, uty2) {
+                            (Some(uty1), Some(uty2)) => {
+                                type_eq_bounded(state, *uty1, env1, *uty2, env2)
+                            }
+                            (None, None) => true,
+                            _ => false,
+                        }
+                    }
+
+                    let map1 = erows_as_map(uty1);
+                    let map2 = erows_as_map(uty2);
+
+                    map1.zip(map2)
+                        .map(|(m1, m2)| {
+                            map_eq(type_eq_bounded_wrapper, state, &m1, env1, &m2, env2)
+                        })
+                        .unwrap_or(false)
                 }
                 (TypeF::Record(uty1), TypeF::Record(uty2)) => {
                     fn type_eq_bounded_wrapper<E: TermEnvironment>(
@@ -597,8 +624,8 @@ fn type_eq_bounded<E: TermEnvironment>(
                         type_eq_bounded(state, *uty1, env1, *uty2, env2)
                     }
 
-                    let map1 = rows_as_map(uty1);
-                    let map2 = rows_as_map(uty2);
+                    let map1 = rrows_as_map(uty1);
+                    let map2 = rrows_as_map(uty2);
 
                     map1.zip(map2)
                         .map(|(m1, m2)| {
@@ -639,9 +666,9 @@ fn type_eq_bounded<E: TermEnvironment>(
                             body1.subst(var1, &GenericUnifRecordRows::Constant(cst_id)),
                             body2.subst(var2, &GenericUnifRecordRows::Constant(cst_id)),
                         ),
-                        VarKind::EnumRows => (
-                            body1.subst(var1, &UnifEnumRows::Constant(cst_id)),
-                            body2.subst(var2, &UnifEnumRows::Constant(cst_id)),
+                        VarKind::EnumRows { .. } => (
+                            body1.subst(var1, &GenericUnifEnumRows::Constant(cst_id)),
+                            body2.subst(var2, &GenericUnifEnumRows::Constant(cst_id)),
                         ),
                     };
 

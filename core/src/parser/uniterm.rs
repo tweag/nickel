@@ -13,8 +13,8 @@ use crate::{
         LabeledType, MergePriority, RichTerm, Term, TypeAnnotation,
     },
     typ::{
-        DictTypeFlavour, EnumRows, EnumRowsIteratorItem, RecordRow, RecordRows, RecordRowsF, Type,
-        TypeF, VarKind,
+        DictTypeFlavour, EnumRows, EnumRowsF, RecordRow, RecordRows, RecordRowsF, Type, TypeF,
+        VarKind,
     },
 };
 
@@ -778,27 +778,41 @@ impl FixTypeVars for EnumRows {
         bound_vars: BoundVarEnv,
         span: RawSpan,
     ) -> Result<(), ParseError> {
-        // An enum row doesn't contain any subtypes (beside other enum rows). No term variable can
-        // appear in it, so we don't have to traverse for fixing type variables properly.
-        //
-        // However, the second task of the fix_type_vars phase is to determine the variable kind of
-        // forall binders: here, we do need to check if the tail of this enum is an enum row type
-        // variable.
-        let mut iter = self
-            .iter()
-            .skip_while(|item| matches!(item, EnumRowsIteratorItem::Row(_)));
-        match iter.next() {
-            Some(EnumRowsIteratorItem::TailVar(id)) => {
-                if let Some(cell) = bound_vars.get(&id.ident()) {
-                    cell.try_set(VarKind::EnumRows)
+        fn helper(
+            erows: &mut EnumRows,
+            bound_vars: BoundVarEnv,
+            span: RawSpan,
+            mut maybe_excluded: HashSet<Ident>,
+        ) -> Result<(), ParseError> {
+            match erows.0 {
+                EnumRowsF::Empty => Ok(()),
+                // We can't have a contract in tail position, so we don't fix `TailVar`. However, we
+                // have to set the correct kind for the corresponding forall binder.
+                EnumRowsF::TailVar(ref id) => {
+                    if let Some(cell) = bound_vars.get(&id.ident()) {
+                        cell.try_set(VarKind::EnumRows {
+                            excluded: maybe_excluded,
+                        })
                         .map_err(|_| ParseError::TypeVariableKindMismatch { ty_var: *id, span })?;
+                    }
+                    Ok(())
                 }
-                Ok(())
+                EnumRowsF::Extend {
+                    ref mut row,
+                    ref mut tail,
+                } => {
+                    maybe_excluded.insert(row.id.ident());
+
+                    if let Some(ref mut typ) = row.typ {
+                        typ.fix_type_vars_env(bound_vars.clone(), span)?;
+                    }
+
+                    helper(tail, bound_vars, span, maybe_excluded)
+                }
             }
-            // unreachable(): we consumed all the rows item via the `skip_while()` call above
-            Some(EnumRowsIteratorItem::Row(_)) => unreachable!(),
-            None => Ok(()),
         }
+
+        helper(self, bound_vars, span, HashSet::new())
     }
 }
 

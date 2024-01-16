@@ -78,8 +78,11 @@ pub struct RecordRowF<Ty> {
 /// `EnumRowF` is the same as `EnumRow` and doesn't have any type parameter. We introduce the alias
 /// nonetheless for consistency with other parametrized type definitions. See [`TypeF`] for more
 /// details.
-pub type EnumRowF = LocIdent;
-pub type EnumRow = EnumRowF;
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EnumRowF<Ty> {
+    pub id: LocIdent,
+    pub typ: Option<Ty>,
+}
 
 /// Generic sequence of record rows potentially with a type variable or `Dyn` in tail position.
 ///
@@ -110,9 +113,9 @@ pub enum RecordRowsF<Ty, RRows> {
 /// - `ERows` is the recursive unfolding of enum rows (the tail of this row sequence). In practice,
 ///   a wrapper around `EnumRowsF`.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum EnumRowsF<ERows> {
+pub enum EnumRowsF<Ty, ERows> {
     Empty,
-    Extend { row: EnumRowF, tail: ERows },
+    Extend { row: EnumRowF<Ty>, tail: ERows },
     TailVar(LocIdent),
 }
 
@@ -128,13 +131,11 @@ pub enum EnumRowsF<ERows> {
 pub enum VarKind {
     #[default]
     Type,
-    EnumRows,
     /// `excluded` keeps track of which rows appear somewhere alongside the tail, and therefore
     /// cannot appear in the tail. For instance `forall r. { ; r } -> { x : Number ; r }` assumes
-    /// `r` does not already contain an `x` field.
-    RecordRows {
-        excluded: HashSet<Ident>,
-    },
+    EnumRows { excluded: HashSet<Ident> },
+    /// Same as for [Self::EnumRows].
+    RecordRows { excluded: HashSet<Ident> },
 }
 
 /// Equivalent to `std::mem::Discriminant<VarKind>`, but we can do things like match on it
@@ -152,7 +153,7 @@ impl From<&VarKind> for VarKindDiscriminant {
     fn from(vk: &VarKind) -> Self {
         match vk {
             VarKind::Type => VarKindDiscriminant::Type,
-            VarKind::EnumRows => VarKindDiscriminant::EnumRows,
+            VarKind::EnumRows { .. } => VarKindDiscriminant::EnumRows,
             VarKind::RecordRows { .. } => VarKindDiscriminant::RecordRows,
         }
     }
@@ -302,9 +303,11 @@ pub enum TypeF<Ty, RRows, ERows> {
 // `RecordRow` itself potentially contains occurrences of `Type` and `RecordRows`, which need to
 // be boxed. Hence, we don't need to additionally box `RecordRow`.
 
+/// Concrete, recursive definition for an enum row.
+pub type EnumRow = EnumRowF<Box<Type>>;
 /// Concrete, recursive definition for enum rows.
 #[derive(Clone, PartialEq, Debug)]
-pub struct EnumRows(pub EnumRowsF<Box<EnumRows>>);
+pub struct EnumRows(pub EnumRowsF<Box<Type>, Box<EnumRows>>);
 /// Concrete, recursive definition for a record row.
 pub type RecordRow = RecordRowF<Box<Type>>;
 #[derive(Clone, PartialEq, Debug)]
@@ -406,13 +409,13 @@ impl<Ty, RRows> RecordRowsF<Ty, RRows> {
         FTy: FnMut(Ty) -> TyO,
         FRRows: FnMut(RRows) -> RRowsO,
     {
-        let f_ty_lifted = |rrow: Ty| -> Result<TyO, ()> { Ok(f_ty(rrow)) };
-        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, ()> { Ok(f_rrows(rrows)) };
+        let f_ty_lifted = |rrow: Ty| -> Result<TyO, Infallible> { Ok(f_ty(rrow)) };
+        let f_rrows_lifted = |rrows: RRows| -> Result<RRowsO, Infallible> { Ok(f_rrows(rrows)) };
         self.try_map(f_ty_lifted, f_rrows_lifted).unwrap()
     }
 }
 
-impl<ERows> EnumRowsF<ERows> {
+impl<Ty, ERows> EnumRowsF<Ty, ERows> {
     /// Map functions over the tail of enum rows. The mutable state ( `S`) is threaded through the
     /// calls to the mapped function. The function is fallible and may return an error `E`, which
     /// causes `try_map_state` to return early with the same error.
@@ -425,18 +428,26 @@ impl<ERows> EnumRowsF<ERows> {
     ///
     /// Note that `f_erows` is just mapped once. Map isn't a recursive operation. It's however a
     /// building block to express recursive operations: as an example, see [RecordRows::traverse].
-    pub fn try_map_state<ERowsO, FERows, S, E>(
+    pub fn try_map_state<TyO, ERowsO, FTy, FERows, S, E>(
         self,
+        mut f_ty: FTy,
         f_erows: FERows,
         state: &mut S,
-    ) -> Result<EnumRowsF<ERowsO>, E>
+    ) -> Result<EnumRowsF<TyO, ERowsO>, E>
     where
+        FTy: FnMut(Ty, &mut S) -> Result<TyO, E>,
         FERows: FnOnce(ERows, &mut S) -> Result<ERowsO, E>,
     {
         match self {
             EnumRowsF::Empty => Ok(EnumRowsF::Empty),
-            EnumRowsF::Extend { row, tail } => Ok(EnumRowsF::Extend {
-                row,
+            EnumRowsF::Extend {
+                row: EnumRowF { id, typ },
+                tail,
+            } => Ok(EnumRowsF::Extend {
+                row: EnumRowF {
+                    id,
+                    typ: typ.map(|ty| f_ty(ty, state)).transpose()?,
+                },
                 tail: f_erows(tail, state)?,
             }),
             EnumRowsF::TailVar(id) => Ok(EnumRowsF::TailVar(id)),
@@ -444,35 +455,53 @@ impl<ERows> EnumRowsF<ERows> {
     }
 
     /// Variant of `try_map_state` without threaded state.
-    pub fn try_map<ERowsO, FERows, E>(self, mut f_erows: FERows) -> Result<EnumRowsF<ERowsO>, E>
+    pub fn try_map<TyO, ERowsO, FTy, FERows, E>(
+        self,
+        mut f_ty: FTy,
+        mut f_erows: FERows,
+    ) -> Result<EnumRowsF<TyO, ERowsO>, E>
     where
+        FTy: FnMut(Ty) -> Result<TyO, E>,
         FERows: FnMut(ERows) -> Result<ERowsO, E>,
     {
+        let f_ty_lifted = |erow: Ty, _: &mut ()| -> Result<TyO, E> { f_ty(erow) };
         let f_erows_lifted = |erows: ERows, _: &mut ()| -> Result<ERowsO, E> { f_erows(erows) };
-        self.try_map_state(f_erows_lifted, &mut ())
+
+        self.try_map_state(f_ty_lifted, f_erows_lifted, &mut ())
     }
 
     /// Variant of `try_map_state` with infallible functions.
-    pub fn map_state<ERowsO, FERows, S>(
+    pub fn map_state<TyO, ERowsO, FTy, FERows, S>(
         self,
+        mut f_ty: FTy,
         mut f_erows: FERows,
         state: &mut S,
-    ) -> EnumRowsF<ERowsO>
+    ) -> EnumRowsF<TyO, ERowsO>
     where
+        FTy: FnMut(Ty, &mut S) -> TyO,
         FERows: FnMut(ERows, &mut S) -> ERowsO,
     {
+        let f_ty_lifted = |erow: Ty, state: &mut S| -> Result<TyO, ()> { Ok(f_ty(erow, state)) };
         let f_erows_lifted =
             |erows: ERows, state: &mut S| -> Result<ERowsO, ()> { Ok(f_erows(erows, state)) };
-        self.try_map_state(f_erows_lifted, state).unwrap()
+        self.try_map_state(f_ty_lifted, f_erows_lifted, state)
+            .unwrap()
     }
 
     /// Variant of `try_map_state` without threaded state and with infallible functions.
-    pub fn map<ERowsO, FERows>(self, mut f_erows: FERows) -> EnumRowsF<ERowsO>
+    pub fn map<TyO, ERowsO, FTy, FERows>(
+        self,
+        mut f_ty: FTy,
+        mut f_erows: FERows,
+    ) -> EnumRowsF<TyO, ERowsO>
     where
+        FTy: FnMut(Ty) -> TyO,
         FERows: FnMut(ERows) -> ERowsO,
     {
-        let f_erows_lifted = |erows: ERows, _: &mut ()| -> ERowsO { f_erows(erows) };
-        self.map_state(f_erows_lifted, &mut ())
+        let f_ty_lifted = |erow: Ty| -> Result<TyO, Infallible> { Ok(f_ty(erow)) };
+        let f_erows_lifted = |erows: ERows| -> Result<ERowsO, Infallible> { Ok(f_erows(erows)) };
+
+        self.try_map(f_ty_lifted, f_erows_lifted).unwrap()
     }
 }
 
@@ -707,17 +736,18 @@ impl<'a> Iterator for RecordRowsIterator<'a, Type, RecordRows> {
     }
 }
 
-pub struct EnumRowsIterator<'a, ERows> {
+pub struct EnumRowsIterator<'a, Ty, ERows> {
     pub(crate) erows: Option<&'a ERows>,
+    pub(crate) ty: std::marker::PhantomData<Ty>,
 }
 
-pub enum EnumRowsIteratorItem<'a> {
+pub enum EnumRowsIteratorItem<'a, Ty> {
     TailVar(&'a LocIdent),
-    Row(&'a EnumRowF),
+    Row(EnumRowF<&'a Ty>),
 }
 
-impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
-    type Item = EnumRowsIteratorItem<'a>;
+impl<'a> Iterator for EnumRowsIterator<'a, Type, EnumRows> {
+    type Item = EnumRowsIteratorItem<'a, Type>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.erows.and_then(|next| match next.0 {
@@ -731,7 +761,10 @@ impl<'a> Iterator for EnumRowsIterator<'a, EnumRows> {
             }
             EnumRowsF::Extend { ref row, ref tail } => {
                 self.erows = Some(tail);
-                Some(EnumRowsIteratorItem::Row(row))
+                Some(EnumRowsIteratorItem::Row(EnumRowF {
+                    id: row.id,
+                    typ: row.typ.as_ref().map(AsRef::as_ref),
+                }))
             }
         })
     }
@@ -759,10 +792,11 @@ impl EnumRows {
         let value_arg = LocIdent::from("x");
         let label_arg = LocIdent::from("l");
 
+        // TODO: actually implement the right contract for enum variants
         for row in self.iter() {
             match row {
-                EnumRowsIteratorItem::Row(id) => {
-                    cases.insert(*id, mk_term::var(value_arg));
+                EnumRowsIteratorItem::Row(row) => {
+                    cases.insert(row.id, mk_term::var(value_arg));
                 }
                 EnumRowsIteratorItem::TailVar(_) => {
                     has_tail = true;
@@ -805,8 +839,11 @@ impl EnumRows {
         Ok(mk_app!(internals::enums(), case))
     }
 
-    pub fn iter(&self) -> EnumRowsIterator<EnumRows> {
-        EnumRowsIterator { erows: Some(self) }
+    pub fn iter(&self) -> EnumRowsIterator<Type, EnumRows> {
+        EnumRowsIterator {
+            erows: Some(self),
+            ty: std::marker::PhantomData,
+        }
     }
 }
 
@@ -1094,13 +1131,7 @@ impl Type {
                 let sealing_key = Term::SealingKey(*sy);
                 let contract = match var_kind {
                     VarKind::Type => mk_app!(internals::forall_var(), sealing_key.clone()),
-                    VarKind::EnumRows => {
-                        // Enums do not need to exclude any rows, so we pass the empty array
-                        let excluded_ncl: RichTerm =
-                            Term::Array(Default::default(), Default::default()).into();
-                        mk_app!(internals::forall_tail(), sealing_key.clone(), excluded_ncl)
-                    }
-                    VarKind::RecordRows { excluded } => {
+                    VarKind::RecordRows { excluded } | VarKind::EnumRows { excluded } => {
                         let excluded_ncl: RichTerm = Term::Array(
                             Array::from_iter(
                                 excluded

@@ -166,7 +166,11 @@ impl NameReg {
                     reg.gen_cst_name(id, VarKindDiscriminant::EnumRows).into(),
                 )),
                 UnifEnumRows::Concrete { erows, .. } => {
-                    let mapped = erows.map(|erows| Box::new(erows_to_type(reg, table, *erows)));
+                    let mapped = erows.map_state(
+                        |btyp, reg| Box::new(reg.to_type(table, *btyp)),
+                        |erows, reg| Box::new(erows_to_type(reg, table, *erows)),
+                        reg,
+                    );
                     EnumRows(mapped)
                 }
             }
