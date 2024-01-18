@@ -26,19 +26,11 @@ pub enum ErrorFormat {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ColorOpt(pub(crate) clap::ColorChoice);
 
-impl From<clap::ColorChoice> for ColorOpt {
-    fn from(color_choice: clap::ColorChoice) -> Self {
-        Self(color_choice)
-    }
-}
-
-impl From<ColorOpt> for ColorChoice {
-    fn from(c: ColorOpt) -> Self {
-        use std::io::{stdout, IsTerminal};
-
-        match c.0 {
+impl ColorOpt {
+    fn for_terminal(self, is_terminal: bool) -> ColorChoice {
+        match self.0 {
             clap::ColorChoice::Auto => {
-                if stdout().is_terminal() {
+                if is_terminal {
                     ColorChoice::Auto
                 } else {
                     ColorChoice::Never
@@ -47,6 +39,12 @@ impl From<ColorOpt> for ColorChoice {
             clap::ColorChoice::Always => ColorChoice::Always,
             clap::ColorChoice::Never => ColorChoice::Never,
         }
+    }
+}
+
+impl From<clap::ColorChoice> for ColorOpt {
+    fn from(color_choice: clap::ColorChoice) -> Self {
+        Self(color_choice)
     }
 }
 
@@ -68,9 +66,11 @@ pub fn report<E: IntoDiagnostics<FileId>>(
     format: ErrorFormat,
     color_opt: ColorOpt,
 ) {
+    use std::io::{stderr, IsTerminal};
+
     let stdlib_ids = cache.get_all_stdlib_modules_file_id();
     report_with(
-        &mut StandardStream::stderr(color_opt.into()).lock(),
+        &mut StandardStream::stderr(color_opt.for_terminal(stderr().is_terminal())).lock(),
         cache.files_mut(),
         stdlib_ids.as_ref(),
         error,
