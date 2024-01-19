@@ -2,7 +2,8 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: contract broken by the caller of `range_step`: invalid range step
+error: contract broken by the caller of `range_step`
+       invalid range step
     ┌─ <stdlib/std.ncl>:624:9
     │
 624 │       | std.contract.unstable.RangeFun (std.contract.unstable.RangeStep -> Dyn)

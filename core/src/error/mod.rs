@@ -1589,13 +1589,24 @@ is None but last_arrow_elem is Some"
             .filter(|diag| !label::ContractDiagnostic::is_empty(diag));
         let head_contract_diagnostic = contract_diagnostics.next();
 
-        let mut msg = format!("{}{msg_addendum}", title(&label));
+        // The addendum and the custom contract diagnostic are important, so we want to display
+        // them as part of the main error message. However, they can make the message quite long.
+        // To avoid clutter, we display each component on a new line, indented with respect to the
+        // initial "error: "
+        let new_msg_block = "\n       ";
+        let mut msg = title(&label);
+
+        if !msg_addendum.is_empty() {
+            // unwrap(): write shouldn't fail on a String
+            write!(&mut msg, "{new_msg_block}{msg_addendum}").unwrap();
+        }
 
         if let Some(contract_msg) = head_contract_diagnostic
             .as_ref()
             .and_then(|diag| diag.message.as_ref())
         {
-            write!(&mut msg, ": {}", &super::escape(contract_msg)).unwrap();
+            // unwrap(): write shouldn't fail on a String
+            write!(&mut msg, "{new_msg_block}{}", &super::escape(contract_msg)).unwrap();
         }
 
         let contract_notes = head_contract_diagnostic

@@ -2,7 +2,8 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: contract broken by a value: extra field `b`
+error: contract broken by a value
+       extra field `b`
   ┌─ [INPUTS_PATH]/errors/destructuring_closed_fail.ncl:3:11
   │
 3 │ let {a} = {a=1, b=2}
