@@ -321,7 +321,7 @@ TypeArray: Type = "Array" <t: AsType<Atom>> =>
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
 RecordOperationChain: RichTerm = {
-    <t: AsTerm<Atom>> "." <id: Ident> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
+    <t: AsTerm<Atom>> "." <id: ExtendedIdent> => mk_term::op1(UnaryOp::StaticAccess(id), t).with_pos(id.pos),
     <t: AsTerm<Atom>> "." <t_id: WithPos<StrChunks>> => mk_access(t_id, t),
 };
 
@@ -500,7 +500,7 @@ pub CliFieldAssignment: (Vec<LocIdent>, RichTerm, RawSpan) =
       => (path, value, mk_span(src_id, start, end));
 
 FieldPathElem: FieldPathElem = {
-    <Ident> => FieldPathElem::Ident(<>),
+    <ExtendedIdent> => FieldPathElem::Ident(<>),
     <WithPos<StrChunks>> => FieldPathElem::Expr(<>),
 };
 
@@ -556,6 +556,30 @@ Match: Match = {
 
 // A default annotation in a pattern.
 DefaultAnnot: RichTerm = "?" <t: Term> => t;
+
+// A metadata keyword returned as an indent. In some positions, those are
+// considered valid identifiers. See ExtendedIdent below.
+MetadataKeyword: LocIdent = {
+    "doc" => LocIdent::new("doc"),
+    "default" => LocIdent::new("default"),
+    "force" => LocIdent::new("force"),
+    "priority" => LocIdent::new("priority"),
+    "optional" => LocIdent::new("optional"),
+    "not_exported" => LocIdent::new("not_exported"),
+};
+
+// We allow metadata keywords (optional, default, doc, etc.) as field names
+// because:
+//
+//  1. There are many metadata keywords, and it's annoying to quote them all
+//  (and they might be growing, which is causing backward compatibility issues)
+//  2. Metadata keyword can't appear anywhere in field position (and vice-versa), so there's no clash.
+//
+// Thus, for fields, ExtendedIdent is use in place of Ident.
+ExtendedIdent: LocIdent = {
+    <WithPos<MetadataKeyword>>,
+    <Ident>,
+};
 
 Ident: LocIdent = <l:@L> <i: "identifier"> <r:@R> =>
     LocIdent::new_with_pos(i, mk_pos(src_id, l, r));
