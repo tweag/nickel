@@ -2,7 +2,8 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: contract broken by the caller of `at`: invalid array indexing
+error: contract broken by the caller of `at`
+       invalid array indexing
     ┌─ <stdlib/std.ncl>:162:9
     │
 162 │       | std.contract.unstable.IndexedArrayFun

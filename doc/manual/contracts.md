@@ -139,11 +139,13 @@ appropriate error messages. Let us try:
       std.contract.blame_with_message "not a string" label
 
 > 1 | IsFoo
-error: contract broken by a value: not a string
+error: contract broken by a value
+       not a string
 [...]
 
 > "a" | IsFoo
-error: contract broken by a value: not equal to "foo"
+error: contract broken by a value
+       not equal to "foo"
 [...]
 
 > "foo" | IsFoo
@@ -421,7 +423,8 @@ By default, record contracts are closed, meaning that additional fields are forb
 > let Contract = {foo | String}
 
 > {foo = "a", bar = 1} | Contract
-error: contract broken by a value: extra field `bar`
+error: contract broken by a value
+       extra field `bar`
 [...]
 ```
 
@@ -495,7 +498,8 @@ be what you want:
   }
 
 > {sub_field.foo = "a", sub_field.bar = "b"} | ContractPipe
-error: contract broken by the value of `sub_field`: extra field `bar`
+error: contract broken by the value of `sub_field`
+       extra field `bar`
 [...]
 
 > {sub_field.foo = "a", sub_field.bar = "b"} | ContractEq
@@ -653,7 +657,8 @@ always failing contract `std.FailWith` to observe where evaluation takes place:
 * documentation: Some information
 
 > config.fail
-error: contract broken by the value of `fail`: ooch
+error: contract broken by the value of `fail`
+       ooch
 [...]
 ```
 
@@ -831,7 +836,8 @@ it check anything, though?
   }
 
 > config."0"
-error: contract broken by a value: field name `not_a_number` is not a number
+error: contract broken by a value
+       field name `not_a_number` is not a number
 [...]
 
 > let config | NumberBoolDict = {
@@ -839,7 +845,8 @@ error: contract broken by a value: field name `not_a_number` is not a number
   }
 
 > config."0"
-error: contract broken by a value: field `0` is not a boolean
+error: contract broken by a value
+       field `0` is not a boolean
 [...]
 ```
 
