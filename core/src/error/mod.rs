@@ -28,7 +28,7 @@ use crate::{
     position::{RawSpan, TermPos},
     repl,
     serialize::ExportFormat,
-    term::{record::FieldMetadata, Number, RichTerm},
+    term::{record::FieldMetadata, Number, RichTerm, Term},
     typ::{Type, TypeF, VarKindDiscriminant},
 };
 
@@ -148,6 +148,15 @@ pub enum EvalError {
     },
     /// A non-equatable term was compared for equality.
     EqError { eq_pos: TermPos, term: RichTerm },
+    /// A value didn't match any branch of a `match` expression at runtime.
+    NonExhaustiveMatch {
+        /// The list of expected patterns. Currently, those are just enum tags.
+        expected: Vec<LocIdent>,
+        /// The original term matched
+        found: RichTerm,
+        /// The position of the `match` expression
+        pos: TermPos,
+    },
     /// Tried to query a field of something that wasn't a record.
     QueryNonRecord {
         /// Position of the original unevaluated expression.
@@ -1240,6 +1249,39 @@ impl IntoDiagnostics<FileId> for EvalError {
                 vec![Diagnostic::error()
                     .with_message("cannot compare values for equality")
                     .with_labels(labels)]
+            }
+            EvalError::NonExhaustiveMatch {
+                expected,
+                found,
+                pos,
+            } => {
+                let tag_list = expected
+                    .into_iter()
+                    .map(|tag| {
+                        // We let the pretty printer handle proper formatting
+                        RichTerm::from(Term::Enum(tag)).to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let mut labels = Vec::new();
+
+                if let Some(span) = pos.into_opt() {
+                    labels.push(primary(&span).with_message("in this match expression"));
+                }
+
+                labels.push(
+                    secondary_term(&found, files)
+                        .with_message("this value doesn't match any branch"),
+                );
+
+                vec![Diagnostic::error()
+                    .with_message("non-exhaustive pattern matching")
+                    .with_labels(labels)
+                    .with_notes(vec![
+                        format!("This match expression isn't exhaustive, matching only the following pattern(s): `{tag_list}`"),
+                        "But it has been applied to an argument which doesn't match any of those patterns".to_owned(),
+                    ])]
             }
             EvalError::IllegalPolymorphicTailAccess {
                 action,
