@@ -100,7 +100,7 @@ impl<K: Hash + Eq, V: PartialEq> Environment<K, V> {
 
     /// Creates an iterator that visits all layers from the most recent one to the oldest.
     /// The element iterator type is `Rc<HashMap<K, V>>`.
-    pub fn iter_layers(&self) -> EnvLayerIter<'_, K, V> {
+    pub fn iter_layers<'slf>(&'slf self) -> EnvLayerIter<'slf, K, V> {
         EnvLayerIter {
             env: if !self.was_cloned() {
                 Some(NonNull::from(self))

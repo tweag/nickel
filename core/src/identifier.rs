@@ -240,9 +240,11 @@ mod interner {
     /// The interner, which serves a double purpose: it pre-allocates space
     /// so that [Ident](super::Ident) labels are created faster
     /// and it makes it so that labels are stored only once, saving space.
-    pub(crate) struct Interner<'a>(RwLock<InnerInterner<'a>>);
+    // NOTE: We set the lifetime parameter of InnerInterner to 'static since
+    // it's arbitrary, and there's no reason to expose it to users of Interner
+    pub(crate) struct Interner(RwLock<InnerInterner<'static>>);
 
-    impl<'a> Interner<'a> {
+    impl Interner {
         /// Creates an empty [Interner].
         pub(crate) fn new() -> Self {
             Self(RwLock::new(InnerInterner::new()))
@@ -258,28 +260,32 @@ mod interner {
         ///
         /// This operation cannot fails since the only way to have a [Symbol] is to have
         /// [interned](Interner::intern) the corresponding string first.
-        pub(crate) fn lookup(&self, sym: Symbol) -> &str {
+        pub(crate) fn lookup<'slf>(&'slf self, sym: Symbol) -> &'slf str {
             // SAFETY: We are making the returned &str lifetime the same as our struct,
             // which is okay here since the InnerInterner uses a typed_arena which prevents
             // deallocations, so the reference will be valid while the InnerInterner exists,
             // hence while the struct exists.
-            unsafe { std::mem::transmute(self.0.read().unwrap().lookup(sym)) }
+            unsafe { std::mem::transmute::<&'_ str, &'slf str>(self.0.read().unwrap().lookup(sym)) }
         }
     }
 
     /// The main part of the Interner.
-    struct InnerInterner<'a> {
+    /// 'internal should never be exposed to the outside, as it is an
+    /// implementation detail and could be set to anything. It should be treated
+    /// within the implementation of InnerInterner as the lifetime of the object
+    /// itself, since that's what it is turned into in the `lookup()` method.
+    struct InnerInterner<'internal> {
         /// Preallocates space where strings are stored.
         arena: Mutex<Arena<u8>>,
 
         /// Prevents the arena from creating different [Symbols](Symbol) for the same string.
-        map: HashMap<&'a str, Symbol>,
+        map: HashMap<&'internal str, Symbol>,
 
         /// Allows retrieving a string from a [Symbol].
-        vec: Vec<&'a str>,
+        vec: Vec<&'internal str>,
     }
 
-    impl<'a> InnerInterner<'a> {
+    impl<'internal> InnerInterner<'internal> {
         /// Creates an empty [InnerInterner].
         fn new() -> Self {
             Self {
@@ -299,9 +305,12 @@ mod interner {
             // This is okay since the lifetime of the arena is identical to the one of the struct.
             // It is also okay to use it from inside the mutex, since typed_arena does not allow
             // deallocation, so references are valid until the arena drop, which is tied to the
-            // struct drop.
+            // struct drop. Since there is no 'self lifetime, we use 'internal instead, which
+            // at least has 'internal: 'self.
             let in_string = unsafe {
-                std::mem::transmute(self.arena.lock().unwrap().alloc_str(string.as_ref()))
+                std::mem::transmute::<&'_ str, &'internal str>(
+                    self.arena.lock().unwrap().alloc_str(string.as_ref()),
+                )
             };
             let sym = Symbol(self.vec.len() as u32);
             self.vec.push(in_string);
@@ -313,6 +322,8 @@ mod interner {
         /// This operation cannot fails since the only way to have a [Symbol]
         /// is to have [interned](InnerInterner::intern) the corresponding string first.
         fn lookup(&self, sym: Symbol) -> &str {
+            // The lifetime implicitly shrinks from 'internal to 'self, which
+            // prevents 'internal from leaking out.
             self.vec[sym.0 as usize]
         }
     }
