@@ -1,0 +1,20 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: non-exhaustive pattern matching
+   ┌─ [INPUTS_PATH]/errors/non_exhaustive_match.ncl:7:9
+   │  
+ 6 │   let x = if true then 'a else 'b in
+   │                        -- this value doesn't match any branch
+ 7 │   let f = match {
+   │ ╭─────────^
+ 8 │ │   'c => "hello",
+ 9 │ │   'd => "adios",
+10 │ │ }
+   │ ╰─^ in this match expression
+   │  
+   = This match expression isn't exhaustive, matching only the following pattern(s): `'c, 'd`
+   = But it has been applied to an argument which doesn't match any of those patterns
+
+

@@ -315,6 +315,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     .stack
                     .pop_arg(&self.cache)
                     .expect("missing arg for match");
+
                 let default = if has_default {
                     Some(
                         self.stack
@@ -351,9 +352,11 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                             env: cases_env,
                         })
                         .or(default)
-                        .ok_or_else(||
-                        // ? We should have a dedicated error for unmatched pattern
-                        mk_type_error!("match", "Enum"))
+                        .ok_or_else(|| EvalError::NonExhaustiveMatch {
+                            expected: cases.keys().copied().collect(),
+                            found: RichTerm::new(Term::Enum(*en), pos),
+                            pos: pos_op_inh,
+                        })
                 } else if let Some(clos) = default {
                     Ok(clos)
                 } else {
