@@ -64,7 +64,7 @@ use crate::{
         TypeAnnotation,
     },
     typ::*,
-    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row},
+    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_record_row},
 };
 
 use std::{
@@ -1923,7 +1923,7 @@ fn check<V: TypecheckVisitor>(
             // ANY enum, since it's more permissive and there's no loss of information.
 
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
-            // `a` is a enum type determined by the matched tags and `b` is the type of each match
+            // `a` is an enum type determined by the patterns and `b` is the type of each match
             // arm.
             let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
             let return_type = state.table.fresh_type_uvar(ctxt.var_level);
@@ -1978,27 +1978,18 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::EnumVariant(_id, _t) => {
-            // TODO[adts]: actually typecheck ADTs
-            ty.unify(mk_uniftype::dynamic(), state, &ctxt)
-                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-
-            let row = state.table.fresh_erows_uvar(ctxt.var_level);
+        Term::EnumVariant(id, t) => {
+            let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
             let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
 
-            Ok(())
-            //
-            // ty.unify(mk_uniftype::array(ty_elts.clone()), state, &ctxt)
-            //     .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
-            //
-            // terms
-            //     .iter()
-            //     .try_for_each(|t| -> Result<(), TypecheckError> {
-            //         check(state, ctxt.clone(), visitor, t, ty_elts.clone())
-            //     })
-            //
-            // ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
-            //     .map_err(|err| err.into_typecheck_err(state, rt.pos))
+            // We match the expected type against `[| 'id ty_arg, row_tail |]`, where `row_tail` is
+            // a free unification variable, to ensure it has the right shape and extract the
+            // subcomponents.
+            ty.unify(mk_uty_enum!((*id, ty_arg.clone()); row_tail), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // Once we have a type for the argument, we check the variant's data against it.
+            check(state, ctxt, visitor, t, ty_arg)
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`. In other words, the checking rule is not the same depending on the target
@@ -2065,8 +2056,8 @@ fn check<V: TypecheckVisitor>(
                     .collect();
 
                 let rows = field_types.iter().fold(
-                    mk_uty_row!(),
-                    |acc, (id, row_ty)| mk_uty_row!((*id, row_ty.clone()); acc),
+                    mk_uty_record_row!(),
+                    |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
                 );
 
                 ty.unify(mk_uty_record!(; rows), state, &ctxt)
@@ -2279,8 +2270,8 @@ fn infer_with_annot<V: TypecheckVisitor>(
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
         //
-        // TODO: we might have something to with the visitor to clear the current metadata.
-        // It looks like it may be unduly attached to the next field definition, which is not
+        // TODO: we might have something to do with the visitor to clear the current metadata. It
+        // looks like it may be unduly attached to the next field definition, which is not
         // critical, but still a bug.
         _ => {
             let inferred = annot
@@ -2318,7 +2309,7 @@ fn infer<V: TypecheckVisitor>(
         }
         // Theoretically, we need to instantiate the type of the head of the primop application,
         // that is, the primop itself. In practice, `get_uop_type`,`get_bop_type` and
-        // `get_nop_type` return type that are already instantiated with free unification
+        // `get_nop_type` return types that are already instantiated with free unification
         // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
         // the type of a primop is currently always monomorphic.
         Term::Op1(op, t) => {

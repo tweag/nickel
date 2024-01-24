@@ -1392,7 +1392,7 @@ impl Unify for UnifEnumRows {
                                     .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
                             }
                             (None, None) => (),
-                            _ => {
+                            (Some(typ), None) | (None, Some(typ)) => {
                                 return Err(RowUnifError::RowMismatch(
                                     id,
                                     //TODO[adts]: have a proper error for this
