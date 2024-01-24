@@ -907,9 +907,18 @@ where
                     .append(allocator.text(ident_quoted(&row.id)));
 
                 if let Some(typ) = row.typ.as_ref() {
-                    result = result
-                        .append(allocator.text(":"))
-                        .append(typ.pretty(allocator));
+                    let ty_parenthesized = if typ.fmt_is_atom() {
+                        typ.pretty(allocator)
+                    } else {
+                        allocator
+                            .text("(")
+                            .append(allocator.line_())
+                            .append(typ.pretty(allocator))
+                            .append(allocator.line_())
+                            .append(")")
+                    };
+
+                    result = result.append(allocator.text(" ")).append(ty_parenthesized);
                 }
 
                 if let EnumRowsF::Extend { .. } = tail.0 {

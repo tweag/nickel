@@ -1374,7 +1374,12 @@ impl Unify for UnifEnumRows {
                     let (ty2_result, t2_without_row) =
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
-                        uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).unwrap();
+                        uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
+                            RemoveRowError::Missing => RowUnifError::MissingRow(id),
+                            //TODO[adts]: do not use dynamic below, but have a proper type for
+                            //unsatisfied constraint for enum rows, I guess
+                            RemoveRowError::Conflict => RowUnifError::UnsatConstr(id, mk_uniftype::dynamic()),
+                        })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
                     // means that `t2` could be successfully extended with the row `id typ`, in

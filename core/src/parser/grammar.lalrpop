@@ -317,7 +317,7 @@ Applicative: UniTerm = {
 TypeArray: Type = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
-    // it doens't compile.
+    // it doesn't compile.
     Type::from(TypeF::Array(Box::new(t)));
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
@@ -999,10 +999,17 @@ TypeBuiltin: Type = {
      "String" => Type::from(TypeF::String),
 }
 
+TypeEnumRow: EnumRow = <id: EnumTag> <typ: (AsType<Atom>)?> => {
+    EnumRow {
+        id,
+        typ: typ.map(Box::new),
+    }
+};
+
 TypeAtom: Type = {
     <TypeBuiltin>,
     // TODO[adts]: have a separate rule for enum, and accept argument for rows
-    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
+    "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -1017,14 +1024,15 @@ TypeAtom: Type = {
                         None => EnumRowsF::Empty,
                     }
                 ),
-                |erows, row_id| {
+                |erows, row| {
                     EnumRows(EnumRowsF::Extend {
-                        row: EnumRowF { id: row_id, typ: None },
+                        row,
                         tail: Box::new(erows)
                     })
                 }
             );
-            Type::from(TypeF::Enum(ty))
+
+        Type::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Type>> "}" => {
         Type::from(TypeF::Dict {
