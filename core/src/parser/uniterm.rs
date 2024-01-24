@@ -568,6 +568,15 @@ impl VarKindCell {
                 ex1.extend(ex2);
                 Ok(())
             }
+            (
+                Some(VarKind::EnumRows {
+                    excluded: ref mut ex1,
+                }),
+                VarKind::EnumRows { excluded: ex2 },
+            ) => {
+                ex1.extend(ex2);
+                Ok(())
+            }
             _ => Err(VarKindMismatch),
         }
     }

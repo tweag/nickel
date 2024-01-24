@@ -120,6 +120,7 @@ pub enum Term {
     Enum(LocIdent),
     /// An applied enum variant (an algebraic data type). In Nickel ADTs can have at most one
     /// argument, but one can just use a record to pass multiple arguments.
+    #[serde(skip)]
     EnumVariant(LocIdent, RichTerm),
 
     /// A record, mapping identifiers to terms.
