@@ -248,7 +248,9 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Return the resulting field in its final environment.
     ///
     /// Note that this method doesn't evaluate the content of the field itself. Calling it with an
-    /// empty path simply returns the original expression unevaluated in an empty environment.
+    /// empty path simply returns the original expression unevaluated in an empty environment. If
+    /// you need to evaluate the value later, don't forget to apply pending contracts stored in the
+    /// field.
     ///
     /// For example, extracting `foo.bar.baz` on a term `exp` will evaluate `exp` to a record and
     /// try to extract the field `foo`. If anything goes wrong (the result isn't a record or the
@@ -266,23 +268,37 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     /// Same as [Self::extract_field], but also requires that the field value is defined and
     /// returns the value directly.
     ///
-    /// In theory, this could be handled by the caller of [Self::extract_field] instead of needing
-    /// a separate method. However, in practice, raising a proper error requires contextual
-    /// information (such as term positions) which is currently only available within the body of
-    /// the `extract_field` implementation, so it's easier to let the callee raise the error
-    /// itself.
+    /// This method also applies potential pending contracts to the value.
+    ///
+    /// In theory, extracting the value could be done manually after calling to
+    /// [Self::extract_field], instead of needing a separate method.
+    ///
+    /// However, once [Self::extract_field] returns, most contextual information required to raise
+    /// a proper error if the field is missing (e.g. positions) has been lost. So, if the returned
+    /// field's value is `None`, we would have a hard time reporting a good error message. On the
+    /// other hand, [Self::extract_field_value] raises the error earlier, when the context is still
+    /// available.
     pub fn extract_field_value(
         &mut self,
         t: RichTerm,
         path: &FieldPath,
     ) -> Result<Closure, EvalError> {
         let (field, env) = self.extract_field_impl(t, path, true)?;
+
         // unwrap(): by definition, extract_field_impl(_, _, true) ensure that
         // `field.value.is_some()`
-        Ok(Closure {
-            body: field.value.unwrap(),
+        let value = field.value.unwrap();
+        let pos = value.pos;
+
+        let value_with_ctr =
+            RuntimeContract::apply_all(value, field.pending_contracts.iter().cloned(), pos);
+
+        let Closure { body, env } = self.eval_closure(Closure {
+            body: value_with_ctr,
             env,
-        })
+        })?;
+
+        Ok(Closure { body, env })
     }
 
     fn extract_field_impl(
@@ -326,6 +342,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 body: curr_value_with_ctr,
                 env,
             })?;
+
             env = current_evaled.env;
 
             match current_evaled.body.term.into_owned() {
