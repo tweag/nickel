@@ -159,11 +159,6 @@ impl IntoIterator for Array {
         // - Move out the elements inside out inner view.
         // - Drop the rest of the elements when we're dropped
         // Otherwise, we clone everything.
-        //
-        // If we start as a shared reference, we could become the only reference
-        // later, but we clone everything anyways, so we don't end up in an
-        // invalid in-between state where some terms have been freed manually
-        // and others haven't.
 
         let inner = if Rc::strong_count(&self.inner) != 1 || Rc::weak_count(&self.inner) != 0 {
             IntoIterInner::Shared(self.inner)
@@ -214,14 +209,14 @@ impl Iterator for IntoIter {
         } else {
             let term = match &mut self.inner {
                 IntoIterInner::Shared(inner) => inner.get(self.idx).cloned(),
-                IntoIterInner::Owned(inner) => unsafe {
-                    Rc::get_mut(inner)
-                        .expect("non-unique Rc after checking for uniqueness")
-                        .get_mut(self.idx)
-                        .map(ManuallyDrop::take)
-                },
+                IntoIterInner::Owned(inner) => Rc::get_mut(inner)
+                    .expect("non-unique Rc after checking for uniqueness")
+                    .get_mut(self.idx)
+                    // SAFETY: We already checcked that we have the only
+                    // reference to inner, and after this we increment idx, and
+                    // we never access elements with indexes less than idx
+                    .map(|t| unsafe { ManuallyDrop::take(t) }),
             };
-
             self.idx += 1;
             term
         }
@@ -234,7 +229,13 @@ impl Drop for IntoIter {
         if let IntoIterInner::Owned(inner) = &mut self.inner {
             let inner = Rc::get_mut(inner).expect("non-unique Rc after checking for uniqueness");
             for term in &mut inner[self.idx..self.end] {
-                unsafe { ManuallyDrop::drop(term) }
+                // SAFETY: Wwe already checked that we have the only reference
+                // to inner, and once we are done dropping the remaining
+                // elements, `inner` will get dropped and there will be no
+                // remaining references.
+                unsafe {
+                    let _ = ManuallyDrop::take(term);
+                }
             }
         }
     }
