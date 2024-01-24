@@ -218,7 +218,7 @@ impl Iterator for IntoIter {
                     Rc::get_mut(inner)
                         .expect("non-unique Rc after checking for uniqueness")
                         .get_mut(self.idx)
-                        .map(|t| ManuallyDrop::take(t))
+                        .map(ManuallyDrop::take)
                 },
             };
 
