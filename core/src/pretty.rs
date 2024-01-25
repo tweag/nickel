@@ -773,7 +773,7 @@ where
             EnumVariant(id, data) => allocator
                 .text("'")
                 .append(allocator.text(ident_quoted(id)))
-                .append("(")
+                .append("..(")
                 .append(data.pretty(allocator))
                 .append(")"),
             Record(record_data) => allocator.record(record_data, &[]),
