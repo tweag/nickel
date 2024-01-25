@@ -584,10 +584,6 @@ fn type_eq_bounded<E: TermEnvironment>(
                         && type_eq_bounded(state, t1, env1, t2, env2)
                 }
                 (TypeF::Enum(uty1), TypeF::Enum(uty2)) => {
-                    // let rows1 = rows_as_set(uty1);
-                    // let rows2 = rows_as_set(uty2);
-                    // rows1.is_some() && rows2.is_some() && rows1 == rows2
-                    //
                     fn type_eq_bounded_wrapper<E: TermEnvironment>(
                         state: &mut State,
                         uty1: &Option<&GenericUnifType<E>>,
