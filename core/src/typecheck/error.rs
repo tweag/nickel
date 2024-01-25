@@ -24,7 +24,7 @@ pub enum RowUnifError {
     RecordRowMismatch(LocIdent, Box<UnifError>),
     /// There were two incompatible definitions for the same enum row.
     ///
-    /// Because enum row have an optional argument, there might not be any underlying unification
+    /// Because enum rows have an optional argument, there might not be any underlying unification
     /// error (e.g. one of the row has an argument, and the other does not). This is why the
     /// underlying unification error is optional, as opposed to record rows.
     EnumRowMismatch(LocIdent, Option<Box<UnifError>>),
@@ -90,7 +90,7 @@ pub enum UnifError {
     RecordRowMismatch(LocIdent, UnifType, UnifType, Box<UnifError>),
     /// There are two incompatible definitions for the same row.
     ///
-    /// Because enum row have an optional argument, there might not be any underlying unification
+    /// Because enum rows have an optional argument, there might not be any underlying unification
     /// error (e.g. one of the row has an argument, and the other does not). This is why the
     /// underlying unification error is optional, as opposed to record rows.
     EnumRowMismatch(LocIdent, UnifType, UnifType, Option<Box<UnifError>>),
