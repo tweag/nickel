@@ -29,7 +29,7 @@ use crate::{
     position::{RawSpan, TermPos},
     repl,
     serialize::ExportFormat,
-    term::{record::FieldMetadata, Number, RichTerm},
+    term::{record::FieldMetadata, Number, RichTerm, Term},
     typ::{EnumRow, Type, TypeF, VarKindDiscriminant},
 };
 

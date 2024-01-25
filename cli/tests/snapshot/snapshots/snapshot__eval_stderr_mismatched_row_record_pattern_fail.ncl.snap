@@ -2,7 +2,7 @@
 source: cli/tests/snapshot/main.rs
 expression: err
 ---
-error: incompatible rows declaration
+error: incompatible record rows declaration
   ┌─ [INPUTS_PATH]/errors/mismatched_row_record_pattern_fail.ncl:4:13
   │
 4 │   let { x : { a : Number } = { a : String } } = { x = { a = true } } 
