@@ -16,6 +16,11 @@
 # This is of course less robust. For now, it seems largely sufficient, but it
 # might break in the future if the Cargo.toml files style change.
 
+# Where to branch off the release. Ideally that would be specified as an
+# argument. For the time being, having a variable makes it at least a bit
+# flexible.
+NICKEL_RELEASE_BASE_BRANCH="1.4.1-tentative-release"
+
 # Perform clean up actions upon unexpected exit.
 cleanup() {
   echo "++ Unexpected exit. Cleaning up..."
@@ -285,9 +290,9 @@ if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
     confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
 fi
 
-git switch master > /dev/null
+git switch "$NICKEL_RELEASE_BASE_BRANCH" > /dev/null
 
-echo "++ Prepare release branch from 'master'"
+echo "++ Prepare release branch from '$NICKEL_RELEASE_BASE_BRANCH'"
 
 # Directories of subcrates following their own independent versioning
 independent_crates=(core utils lsp/lsp-harness ./wasm-repl)
@@ -324,7 +329,7 @@ if git rev-parse --verify --quiet "$release_branch"; then
 else
     git switch --create "$release_branch" > /dev/null
     cleanup_actions+=("git branch -d $release_branch")
-    cleanup_actions+=("git switch master")
+    cleanup_actions+=('git switch '"$NICKEL_RELEASE_BASE_BRANCH")
 
     report_progress "Bumping workspace version number..."
 
