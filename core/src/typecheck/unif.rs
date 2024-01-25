@@ -420,8 +420,8 @@ impl UnifTable {
     ///
     /// The whole point of variable levels is to forbid some unsound unifications of a unification
     /// variable with a rigid type variable. For performance reasons, those levels aren't
-    /// propagated immediatly when unifying a variable with a concrete type (or another variable),
-    /// but lazily stored at the level of types (see [VarLevel]).
+    /// propagated immediatly when unifying a variable with a concrete type, but lazily stored at
+    /// the level of types (see [VarLevel]).
     ///
     /// However, unifying with a rigid type variable is an instance that requires levels to be up
     /// to date. In this case, this function must be called before checking variable levels.
