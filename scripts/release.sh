@@ -19,6 +19,13 @@
 # In some cases it can be useful to leave the workspace in the state it was to
 # finish the release manually. In that case, set this variable to false.
 DO_CLEANUP=true
+# Where to branch off the release. It's `master` most of the time, but for patch
+# releases it's common to not release current master but just cherry pick a few
+# commits on top of the previous release.
+#
+# Ideally that would be specified as an argument. For the time being, having a
+# variable makes it at least a bit more flexible than harcoding master.
+RELEASE_BASE_BRANCH="master"
 
 # Perform clean up actions upon unexpected exit.
 cleanup() {
@@ -294,9 +301,9 @@ if [[ -n $(git status --untracked-files=no --porcelain) ]]; then
     confirm_proceed "++ [WARNING] Working directory is not clean. The cleanup code of this script might revert some of your uncommited changes"
 fi
 
-git switch master > /dev/null
+git switch "$RELEASE_BASE_BRANCH" > /dev/null
 
-echo "++ Prepare release branch from 'master'"
+echo "++ Prepare release branch from '$RELEASE_BASE_BRANCH'"
 
 # Directories of subcrates following their own independent versioning
 independent_crates=(core utils lsp/lsp-harness ./wasm-repl)
@@ -333,7 +340,7 @@ if git rev-parse --verify --quiet "$release_branch" > /dev/null; then
 else
     git switch --create "$release_branch" > /dev/null
     cleanup_actions+=("git branch -d $release_branch")
-    cleanup_actions+=("git switch master")
+    cleanup_actions+=('git switch '"$RELEASE_BASE_BRANCH")
 
     report_progress "Bumping workspace version number..."
 
@@ -462,6 +469,20 @@ for crate in "${crates_to_publish[@]}"; do
     cleanup_actions+=('git restore '"$crate/Cargo.toml")
 done
 
+report_progress "Removing 'lsp-harness' from dev-dependencies..."
+
+for crate in "${crates_to_publish[@]}"; do
+    # Remove `nickel-lang-utils` from `dev-dependencies` of released crates.
+    # Indeed, `nickel-lang-utils` is only used for testing or benchmarking and
+    # it creates a circular dependency. We just don't publish it and cut it off
+    # from dev-dependencies (which aren't required for proper publication on
+    # crates.io)
+    #
+    # see [^tomlq-sed]
+    sed -i '/^lsp-harness\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
+    cleanup_actions+=('git restore '"$crate/Cargo.toml")
+done
+
 report_progress "Remove the format feature and topiary dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
@@ -518,8 +539,7 @@ cargo publish -p nickel-lang-lsp
 report_progress "'nickel-lang-lsp' published successfully"
 report_progress "Cleaning up..."
 
-# Undo the previous commit removing `nickel-lang-utils` and other stuff from
-# dependencies prior to publication
+# Undo the previous commit massaging dependencies, and restore Cargo.lock.
 git reset --hard HEAD~
 
 cleanup_actions=()
