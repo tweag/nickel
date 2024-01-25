@@ -1971,7 +1971,7 @@ fn check<V: TypecheckVisitor>(
             let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
             let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
 
-            // We match the expected type against `[| 'id ty_arg, row_tail |]`, where `row_tail` is
+            // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
             // a free unification variable, to ensure it has the right shape and extract the
             // components.
             ty.unify(mk_uty_enum!((*id, ty_arg.clone()); row_tail), state, &ctxt)
