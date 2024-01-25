@@ -1320,3 +1320,10 @@ impl Display for Type {
         crate::pretty::fmt_pretty(&self, f)
     }
 }
+
+//TODO[adts]: generalize this boiler plate to a macro, and other subcomponent of types
+impl Display for EnumRow {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        crate::pretty::fmt_pretty(&self, f)
+    }
+}

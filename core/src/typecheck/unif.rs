@@ -1370,14 +1370,13 @@ impl Unify for UnifEnumRows {
                         erows: erows2,
                         var_levels_data: var_levels2,
                     };
-                    // TODO[adts]: fix this, now we might have to unify types
                     let (ty2_result, t2_without_row) =
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
                         uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
                             RemoveRowError::Missing => RowUnifError::MissingRow(id),
                             //TODO[adts]: do not use dynamic below, but have a proper type for
-                            //unsatisfied constraint for enum rows, I guess
+                            // unsatisfied constraint for enum rows, I guess
                             RemoveRowError::Conflict => RowUnifError::UnsatConstr(id, mk_uniftype::dynamic()),
                         })?;
 
@@ -1388,17 +1387,14 @@ impl Unify for UnifEnumRows {
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
                         match (typ, ty2) {
                             (Some(typ), Some(ty2)) => {
-                                typ.unify(ty2, state, ctxt)
-                                    .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
+                                typ.unify(ty2, state, ctxt).map_err(|err| {
+                                    RowUnifError::EnumRowMismatch(id, Some(Box::new(err)))
+                                })?;
+                            }
+                            (Some(_), None) | (None, Some(_)) => {
+                                return Err(RowUnifError::EnumRowMismatch(id, None));
                             }
                             (None, None) => (),
-                            (Some(typ), None) | (None, Some(typ)) => {
-                                return Err(RowUnifError::RowMismatch(
-                                    id,
-                                    //TODO[adts]: have a proper error for this
-                                    todo!("missing error case"),
-                                ));
-                            }
                         }
                     }
 
@@ -1522,7 +1518,7 @@ impl Unify for UnifRecordRows {
                     // row
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
                         typ.unify(ty2, state, ctxt)
-                            .map_err(|err| RowUnifError::RowMismatch(id, Box::new(err)))?;
+                            .map_err(|err| RowUnifError::RecordRowMismatch(id, Box::new(err)))?;
                     }
 
                     tail.unify(urrows2_without_ty2, state, ctxt)

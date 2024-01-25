@@ -224,7 +224,10 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::EvalError(EvalError::MergeIncompatibleArgs { .. }),
             )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
-            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..)))
+            | (
+                TypecheckRowMismatch,
+                Error::TypecheckError(TypecheckError::RecordRowMismatch(..)),
+            )
             | (
                 TypecheckMissingDynTail,
                 Error::TypecheckError(TypecheckError::MissingDynTail(..)),
