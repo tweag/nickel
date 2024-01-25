@@ -466,23 +466,12 @@ impl<E: TermEnvironment + Clone> GenericUnifEnumRows<E> {
 
 impl<E: TermEnvironment> GenericUnifEnumRows<E> {
     /// Return an iterator producing immutable references to individual rows.
-    pub fn iter(&self) -> EnumRowsIterator<GenericUnifType<E>, GenericUnifEnumRows<E>> {
+    pub(super) fn iter(&self) -> EnumRowsIterator<GenericUnifType<E>, GenericUnifEnumRows<E>> {
         EnumRowsIterator {
             erows: Some(self),
             ty: std::marker::PhantomData,
         }
     }
-    //
-    // /// Create concrete generic unification enum rows. Compute the variable levels data from the
-    // /// subcomponents.
-    // pub fn concrete(erows: UnifEnumRowsUnrolling) -> Self {
-    //     let upper_bound = erows.var_level_upper_bound();
-    //
-    //     UnifEnumRows::Concrete {
-    //         erows,
-    //         var_levels_data: VarLevelsData::new_from_bound(upper_bound),
-    //     }
-    // }
 }
 
 impl<E: TermEnvironment + Clone> GenericUnifRecordRows<E> {
@@ -1984,7 +1973,7 @@ fn check<V: TypecheckVisitor>(
 
             // We match the expected type against `[| 'id ty_arg, row_tail |]`, where `row_tail` is
             // a free unification variable, to ensure it has the right shape and extract the
-            // subcomponents.
+            // components.
             ty.unify(mk_uty_enum!((*id, ty_arg.clone()); row_tail), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 

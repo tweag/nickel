@@ -58,9 +58,9 @@ macro_rules! mk_uty_enum_row {
     };
 }
 
-/// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_uty_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
-/// tail}. The tail can be omitted, in which case the empty row is uses as a tail instead.
+/// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`. `mk_uty_row!((id1,
+/// ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn; tail}`. The tail can be
+/// omitted, in which case the empty row is uses as a tail instead.
 #[macro_export]
 macro_rules! mk_uty_record_row {
     () => {
