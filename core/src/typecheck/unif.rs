@@ -1007,7 +1007,7 @@ impl UnifTable {
         let rest = std::mem::take(&mut self.pending_erows_updates)
             .into_iter()
             .filter(|id| {
-                // unwrap(): if a unification variable has been push on the update stack, it has
+                // unwrap(): if a unification variable has been pushed on the update stack, it has
                 // been been by `assign_erows`, and thus MUST have been assigned to something.
                 let erows = self.erows[*id].value.take().unwrap();
                 let (new_erows, delay) = update_erows(self, erows, constant_level);
