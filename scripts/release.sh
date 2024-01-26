@@ -472,11 +472,9 @@ done
 report_progress "Removing 'lsp-harness' from dev-dependencies..."
 
 for crate in "${crates_to_publish[@]}"; do
-    # Remove `nickel-lang-utils` from `dev-dependencies` of released crates.
-    # Indeed, `nickel-lang-utils` is only used for testing or benchmarking and
-    # it creates a circular dependency. We just don't publish it and cut it off
-    # from dev-dependencies (which aren't required for proper publication on
-    # crates.io)
+    # Remove `lsp-harness` from `dev-dependencies` of released crates.
+    # `lsp-harness` is only used for testing the LSP and isn't published on 
+    # crates.io, so we cut it off as well
     #
     # see [^tomlq-sed]
     sed -i '/^lsp-harness\.workspace\s*=\s*true$/d' "$crate/Cargo.toml"
