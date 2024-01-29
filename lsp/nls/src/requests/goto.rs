@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{Def, EltId, FieldResolver},
+    field_walker::{Def, FieldResolver},
     identifier::LocIdent,
     server::Server,
 };
@@ -20,7 +20,7 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
         (Term::Var(id), _) => {
             let id = LocIdent::from(*id);
             let def = server.analysis.get_def(&id)?;
-            let cousins = resolver.get_cousin_defs(def);
+            let cousins = resolver.cousin_defs(def);
             if cousins.is_empty() {
                 vec![def.ident().pos.unwrap()]
             } else {
@@ -31,12 +31,12 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             }
         }
         (Term::Op1(UnaryOp::StaticAccess(id), parent), _) => {
-            let parents = resolver.resolve_term(parent);
+            let parents = resolver.resolve_record(parent);
             parents
                 .iter()
                 .filter_map(|parent| {
                     parent
-                        .get_definition_pos(id.ident())
+                        .field_loc(id.ident())
                         .and_then(|def| def.pos.into_opt())
                 })
                 .collect()
@@ -50,12 +50,12 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
             path.reverse();
             let (last, path) = path.split_last()?;
             let path: Vec<_> = path.iter().map(|id| id.ident()).collect();
-            let parents = resolver.resolve_term_path(value, path.iter().copied().map(EltId::Ident));
+            let parents = resolver.resolve_path(value, path.iter().copied());
             parents
                 .iter()
                 .filter_map(|parent| {
                     parent
-                        .get_definition_pos(last.ident())
+                        .field_loc(last.ident())
                         .and_then(|def| def.pos.into_opt())
                 })
                 .collect()
@@ -144,7 +144,7 @@ pub fn handle_references(
                         metadata: FieldMetadata::default(),
                     };
                     let resolver = FieldResolver::new(server);
-                    let cousins = resolver.get_cousin_defs(&def);
+                    let cousins = resolver.cousin_defs(&def);
                     def_locs.extend(
                         cousins
                             .into_iter()

@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     cache::CacheExt,
     diagnostic::LocationCompat,
-    field_walker::{Container, EltId, FieldResolver},
+    field_walker::{FieldResolver, Record},
     identifier::LocIdent,
     server::Server,
 };
@@ -50,17 +50,15 @@ fn nickel_string(s: String) -> MarkedString {
 }
 
 fn values_and_metadata_from_field(
-    parents: Vec<Container>,
+    parents: Vec<Record>,
     ident: Ident,
 ) -> (Vec<RichTerm>, Vec<FieldMetadata>) {
     let mut values = Vec::new();
     let mut metadata = Vec::new();
     for parent in parents {
-        if let Container::RecordTerm(r) = parent {
-            if let Some(field) = r.fields.get(&ident) {
-                values.extend(field.value.iter().cloned());
-                metadata.push(field.metadata.clone());
-            }
+        if let Some(field) = parent.field(ident) {
+            values.extend(field.value.iter().cloned());
+            metadata.push(field.metadata.clone());
         }
     }
     (values, metadata)
@@ -79,12 +77,12 @@ fn ident_hover(ident: LocIdent, server: &Server) -> Option<HoverData> {
     if let Some(def) = server.analysis.get_def(&ident) {
         let resolver = FieldResolver::new(server);
         if let Some(((last, path), val)) = def.path().split_last().zip(def.value()) {
-            let parents = resolver.resolve_term_path(val, path.iter().copied().map(EltId::Ident));
+            let parents = resolver.resolve_path(val, path.iter().copied());
             let (values, metadata) = values_and_metadata_from_field(parents, *last);
             ret.values = values;
             ret.metadata = metadata;
         } else if def.path().is_empty() {
-            let cousins = resolver.get_cousin_defs(def);
+            let cousins = resolver.cousin_defs(def);
             if cousins.is_empty() {
                 ret.values.extend(def.value().into_iter().cloned());
             } else {
@@ -108,7 +106,7 @@ fn term_hover(rt: &RichTerm, server: &Server) -> Option<HoverData> {
     match rt.as_ref() {
         Term::Op1(UnaryOp::StaticAccess(id), parent) => {
             let resolver = FieldResolver::new(server);
-            let parents = resolver.resolve_term(parent);
+            let parents = resolver.resolve_record(parent);
             let (values, metadata) = values_and_metadata_from_field(parents, id.ident());
             Some(HoverData {
                 values,

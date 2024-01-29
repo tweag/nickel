@@ -13,16 +13,87 @@ use nickel_lang_core::{
 
 use crate::{identifier::LocIdent, requests::completion::CompletionItem, server::Server};
 
+/// Either a record term or a record type.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Record {
+    RecordTerm(RecordData),
+    RecordType(RecordRows),
+}
+
+impl Record {
+    pub fn field_and_loc(&self, id: Ident) -> Option<(LocIdent, Option<&Field>)> {
+        match self {
+            Record::RecordTerm(data) => data
+                .fields
+                .get_key_value(&id)
+                .map(|(id, fld)| (LocIdent::from(*id), Some(fld))),
+            Record::RecordType(rows) => rows.find_path(&[id]).map(|r| (r.id.into(), None)),
+        }
+    }
+
+    pub fn field_loc(&self, id: Ident) -> Option<LocIdent> {
+        self.field_and_loc(id).map(|pair| pair.0)
+    }
+
+    pub fn field(&self, id: Ident) -> Option<&Field> {
+        self.field_and_loc(id).and_then(|pair| pair.1)
+    }
+
+    /// Returns a [`CompletionItem`] for every field in this record.
+    pub fn completion_items(&self) -> Vec<CompletionItem> {
+        match self {
+            Record::RecordTerm(data) => data
+                .fields
+                .iter()
+                .map(|(id, val)| CompletionItem {
+                    label: ident_quoted(id),
+                    detail: metadata_detail(&val.metadata),
+                    kind: Some(CompletionItemKind::Property),
+                    documentation: metadata_doc(&val.metadata),
+                    ident: Some((*id).into()),
+                })
+                .collect(),
+            Record::RecordType(rows) => rows
+                .iter()
+                .filter_map(|r| match r {
+                    RecordRowsIteratorItem::TailDyn => None,
+                    RecordRowsIteratorItem::TailVar(_) => None,
+                    RecordRowsIteratorItem::Row(r) => Some(CompletionItem {
+                        label: ident_quoted(&r.id),
+                        kind: Some(CompletionItemKind::Property),
+                        detail: Some(r.typ.to_string()),
+                        ..Default::default()
+                    }),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<Container> for Record {
+    type Error = ();
+
+    fn try_from(c: Container) -> Result<Self, Self::Error> {
+        match c {
+            Container::RecordTerm(r) => Ok(Record::RecordTerm(r)),
+            Container::RecordType(r) => Ok(Record::RecordType(r)),
+            Container::Dict(_) => Err(()),
+            Container::Array(_) => Err(()),
+        }
+    }
+}
+
 /// A `Container` is something that has elements.
 ///
 /// The elements could have names (e.g. in a record) or not (e.g. in an array).
-///
-/// You can use a [`FieldResolver`] to resolve terms, or terms with paths, to `Container`s.
+/// The public interface of this module is only interested in the record
+/// variants (see [`Record`]), but our internal resolution functions also need
+/// to be transparent to other types of containers.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Container {
+enum Container {
     RecordTerm(RecordData),
-    Dict(Type),
     RecordType(RecordRows),
+    Dict(Type),
     Array(Type),
 }
 
@@ -66,50 +137,6 @@ impl Container {
                 .get_key_value(&id)
                 .map(|(id, fld)| (LocIdent::from(*id), fld)),
             _ => None,
-        }
-    }
-
-    pub fn get_definition_pos(&self, id: Ident) -> Option<LocIdent> {
-        match self {
-            Container::RecordTerm(data) => data
-                .fields
-                .get_key_value(&id)
-                .map(|(id, _field)| (*id).into()),
-            Container::RecordType(rows) => rows.find_path(&[id]).map(|r| r.id.into()),
-            Container::Dict(_) => None,
-            Container::Array(_) => None,
-        }
-    }
-
-    /// Returns all fields in this `Container`, rendered as LSP completion items.
-    pub fn completion_items(&self) -> impl Iterator<Item = CompletionItem> + '_ {
-        match self {
-            Container::RecordTerm(data) => {
-                let iter = data.fields.iter().map(|(id, val)| CompletionItem {
-                    label: ident_quoted(id),
-                    detail: metadata_detail(&val.metadata),
-                    kind: Some(CompletionItemKind::Property),
-                    documentation: metadata_doc(&val.metadata),
-                    ident: Some((*id).into()),
-                });
-                Box::new(iter)
-            }
-            Container::Dict(_) | Container::Array(_) => {
-                Box::new(std::iter::empty()) as Box<dyn Iterator<Item = _>>
-            }
-            Container::RecordType(rows) => {
-                let iter = rows.iter().filter_map(|r| match r {
-                    RecordRowsIteratorItem::TailDyn => None,
-                    RecordRowsIteratorItem::TailVar(_) => None,
-                    RecordRowsIteratorItem::Row(r) => Some(CompletionItem {
-                        label: ident_quoted(&r.id),
-                        kind: Some(CompletionItemKind::Property),
-                        detail: Some(r.typ.to_string()),
-                        ..Default::default()
-                    }),
-                });
-                Box::new(iter)
-            }
         }
     }
 }
@@ -216,7 +243,24 @@ impl Def {
     }
 }
 
-/// Contains the context needed to resolve fields.
+fn filter_records(containers: Vec<Container>) -> Vec<Record> {
+    containers
+        .into_iter()
+        .filter_map(|c| c.try_into().ok())
+        .collect()
+}
+
+/// Contains the context needed to resolve records and fields.
+///
+/// "Resolution" here is a kind of baby evaluation, where we can resolve
+/// - variables to their definitions,
+/// - static accesses to the fields they refer to,
+/// - imports to the imported term,
+/// - ...and a few other things.
+///
+/// Because this resolution takes merges into account, a single term can resolve
+/// to multiple results. For example, resolving the path `foo` in the term
+/// `({foo = {...}} & {foo = {...}})` will return both values of `foo`.
 #[derive(Clone)]
 pub struct FieldResolver<'a> {
     server: &'a Server,
@@ -236,20 +280,36 @@ impl<'a> FieldResolver<'a> {
         }
     }
 
-    /// Resolve a record path iteratively.
+    /// Finds all the records that are descended from `rt` at the given path.
     ///
-    /// Returns all the field-having objects that the final path element refers to.
-    pub fn resolve_term_path(
+    /// For example, if `rt` is { foo.bar = { ...1 } } & { foo.bar = { ...2 } }`
+    /// and `path` is ['foo', 'bar'] then this will return `{ ...1 }` and `{ ...2 }`.
+    pub fn resolve_path(&self, rt: &RichTerm, path: impl Iterator<Item = Ident>) -> Vec<Record> {
+        filter_records(self.containers_at_path(rt, path))
+    }
+
+    /// If this term resolves to one or more records, return them all.
+    pub fn resolve_record(&self, rt: &RichTerm) -> Vec<Record> {
+        filter_records(self.resolve_container(rt))
+    }
+
+    /// Finds all the containers that are descended from `rt` at the given path.
+    ///
+    /// The path can mix field access and array "accesses". The array accesses are only used
+    /// in array types -- we never actually index an array value -- but they can be used,
+    /// for example, to see that `{ foo | Array { bar | { baz | Number } } }` evaluated
+    /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
+    fn containers_at_path(
         &self,
         rt: &RichTerm,
-        path: impl Iterator<Item = EltId>,
+        path: impl Iterator<Item = impl Into<EltId>>,
     ) -> Vec<Container> {
-        let mut fields = self.resolve_term(rt);
+        let mut fields = self.resolve_container(rt);
 
-        for id in path {
+        for id in path.map(Into::into) {
             let values = fields
                 .iter()
-                .filter_map(|haver| haver.get(id))
+                .filter_map(|container| container.get(id))
                 .collect::<Vec<_>>();
             fields.clear();
 
@@ -257,7 +317,7 @@ impl<'a> FieldResolver<'a> {
                 match value {
                     FieldContent::RecordField(field) => {
                         if let Some(val) = &field.value {
-                            fields.extend_from_slice(&self.resolve_term(val))
+                            fields.extend_from_slice(&self.resolve_container(val))
                         }
                         fields.extend(self.resolve_annot(&field.metadata.annotation));
                     }
@@ -287,23 +347,32 @@ impl<'a> FieldResolver<'a> {
     /// ```nickel
     /// { bar = { foo = 1 } } | { bar | { foo | Number | doc "blah blah" } }
     /// ```
-    pub fn get_cousin_defs(&self, def: &Def) -> Vec<(LocIdent, Field)> {
-        let mut ret = Vec::new();
+    pub fn cousin_defs(&self, def: &Def) -> Vec<(LocIdent, Field)> {
         if let Some(parent) = def.parent_record() {
-            if let Some(mut ancestors) = self.server.analysis.get_parent_chain(parent) {
-                while let Some(ancestor) = ancestors.next_merge() {
-                    // We're traversing up the tree starting at the parent, so this is the
-                    // path to the parent (not the original def).
-                    if let Some(parent_path) = ancestors.path() {
-                        let uncles = self.resolve_term_path(&ancestor, parent_path.iter().copied());
-                        ret.extend(
-                            uncles
-                                .iter()
-                                .filter_map(|uncle| uncle.get_field_and_loc(def.ident().ident))
-                                .map(|(loc, fld)| (loc, fld.clone())),
-                        )
-                    }
-                }
+            let uncles = self.cousin_containers(parent);
+            uncles
+                .iter()
+                .filter_map(|uncle| uncle.get_field_and_loc(def.ident().ident))
+                .map(|(loc, fld)| (loc, fld.clone()))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Find all records that are "cousins" of this term.
+    ///
+    /// See [`FieldResolver::cousin_defs`] for more detail.
+    pub fn cousin_records(&self, rt: &RichTerm) -> Vec<Record> {
+        filter_records(self.cousin_containers(rt))
+    }
+
+    fn cousin_containers(&self, rt: &RichTerm) -> Vec<Container> {
+        let mut ret = Vec::new();
+        if let Some(mut ancestors) = self.server.analysis.get_parent_chain(rt) {
+            while let Some(ancestor) = ancestors.next_merge() {
+                let path = ancestors.path().unwrap_or_default();
+                ret.extend(self.containers_at_path(&ancestor, path.iter().rev().copied()));
             }
         }
         ret
@@ -314,17 +383,17 @@ impl<'a> FieldResolver<'a> {
 
         if let Some(val) = def.value() {
             fields.extend_from_slice(
-                &self.resolve_term_path(val, def.path().iter().copied().map(EltId::Ident)),
+                &self.containers_at_path(val, def.path().iter().copied().map(EltId::Ident)),
             )
         }
         if let Some(meta) = def.metadata() {
             fields.extend(self.resolve_annot(&meta.annotation));
         }
 
-        for (_, field) in self.get_cousin_defs(def) {
+        for (_, field) in self.cousin_defs(def) {
             fields.extend(self.resolve_annot(&field.metadata.annotation));
             if let Some(val) = &field.value {
-                fields.extend(self.resolve_term(val));
+                fields.extend(self.resolve_container(val));
             }
         }
 
@@ -339,12 +408,8 @@ impl<'a> FieldResolver<'a> {
             .flat_map(|lty| self.resolve_type(&lty.typ).into_iter())
     }
 
-    /// Find all the fields that are defined on a term.
-    ///
-    /// This a best-effort thing; it doesn't do full evaluation but it has some reasonable
-    /// heuristics. For example, it knows that the fields defined on a merge of two records
-    /// are the fields defined on either record.
-    pub fn resolve_term(&self, rt: &RichTerm) -> Vec<Container> {
+    /// Find all the containers that a term resolves to.
+    fn resolve_container(&self, rt: &RichTerm) -> Vec<Container> {
         let term_fields = match rt.term.as_ref() {
             Term::Record(data) | Term::RecRecord(data, ..) => {
                 vec![Container::RecordTerm(data.clone())]
@@ -376,18 +441,20 @@ impl<'a> FieldResolver<'a> {
                 .server
                 .cache
                 .get_ref(*file_id)
-                .map(|term| self.resolve_term(term))
+                .map(|term| self.resolve_container(term))
                 .unwrap_or_default(),
             Term::Op2(BinaryOp::Merge(_), t1, t2) => {
-                combine(self.resolve_term(t1), self.resolve_term(t2))
+                combine(self.resolve_container(t1), self.resolve_container(t2))
             }
-            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => self.resolve_term(body),
+            Term::Let(_, _, body, _) | Term::LetPattern(_, _, _, body) => {
+                self.resolve_container(body)
+            }
             Term::Op1(UnaryOp::StaticAccess(id), term) => {
-                self.resolve_term_path(term, std::iter::once(id.ident().into()))
+                self.containers_at_path(term, std::iter::once(id.ident()))
             }
             Term::Annotated(annot, term) => {
                 let defs = self.resolve_annot(annot);
-                defs.chain(self.resolve_term(term)).collect()
+                defs.chain(self.resolve_container(term)).collect()
             }
             Term::Type(typ) => self.resolve_type(typ),
             _ => Default::default(),
@@ -408,7 +475,7 @@ impl<'a> FieldResolver<'a> {
             TypeF::Record(rows) => vec![Container::RecordType(rows.clone())],
             TypeF::Dict { type_fields, .. } => vec![Container::Dict(type_fields.as_ref().clone())],
             TypeF::Array(elt_ty) => vec![Container::Array(elt_ty.as_ref().clone())],
-            TypeF::Flat(rt) => self.resolve_term(rt),
+            TypeF::Flat(rt) => self.resolve_container(rt),
             _ => Default::default(),
         }
     }
