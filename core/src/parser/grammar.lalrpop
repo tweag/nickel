@@ -1040,7 +1040,7 @@ TypeAtom: Type = {
             flavour: DictTypeFlavour::Type
         })
     },
-    // Although a dictionary contracts isn't really a type, we treat them as
+    // Although dictionary contracts aren't really types, we treat them as
     // types for now - at least syntactically - as they are represented using a
     // `TypeF::Dict` constructor in the AST. This just simpler for many reasons
     // (error reporting of contracts and in particular type paths, LSP, and so
