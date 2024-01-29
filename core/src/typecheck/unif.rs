@@ -1030,110 +1030,105 @@ impl UnifTable {
 /// Number |]`.
 pub type RowConstr = HashMap<VarId, HashSet<Ident>>;
 
-/// Check that unifying a variable with a type doesn't violate record rows constraints, and update
-/// the row constraints of the unified type accordingly if needed.
-///
-/// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type
-/// or another unification variable which could be later unified with a row type itself, the
-/// following operations are required:
-///
-/// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden by
-///    a row constraint on `p`.
-/// 2. If `uty` is either a unification variable `u` or a row type ending with a unification
-///    variable `u`, we must add the constraints of `p` to the constraints of `u`. Indeed, take the
-///    following situation: `p` appears in a row type `{a: Number ; p}`, hence has a constraint that
-///    it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If we
-///    don't constrain `u`, `u` could be unified later with a row type `{a : String}` which violates
-///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
-///    `u` must inherit all the constraints of `p`.
-// TODO[adts]: make this a trait
-pub fn constr_unify_rrows(
-    constr: &mut RowConstr,
-    var_id: VarId,
-    urrows: &UnifRecordRows,
-) -> Result<(), RowUnifError> {
-    fn do_unify(
-        constr: &mut RowConstr,
-        var_id: VarId,
-        var_constr: HashSet<Ident>,
-        rrows: &UnifRecordRows,
-    ) -> Result<(), RowUnifError> {
-        match rrows {
-            UnifRecordRows::Concrete {
-                rrows: RecordRowsF::Extend { row, .. },
-                ..
-            } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
-                row.id,
-                UnifType::concrete(TypeF::Record(rrows.clone())),
-            )),
-            UnifRecordRows::Concrete {
-                rrows: RecordRowsF::Extend { tail, .. },
-                ..
-            } => do_unify(constr, var_id, var_constr, tail),
-            UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
-                if let Some(tail_constr) = constr.get_mut(id) {
-                    tail_constr.extend(var_constr);
-                } else {
-                    constr.insert(*id, var_constr);
+trait PropagateConstrs {
+    /// Check that unifying a variable with a type doesn't violate rows constraints, and update the
+    /// row constraints of the unified type accordingly if needed.
+    ///
+    /// When a unification variable `UnifVar(p)` is unified with a type `uty` which is either a row type
+    /// or another unification variable which could be later unified with a row type itself, the
+    /// following operations are required:
+    ///
+    /// 1. If `uty` is a concrete row, check that it doesn't contain an identifier which is forbidden by
+    ///    a row constraint on `p`.
+    /// 2. If `uty` is either a unification variable `u` or a row type ending with a unification
+    ///    variable `u`, we must add the constraints of `p` to the constraints of `u`. Indeed, take the
+    ///    following situation: `p` appears in a row type `{a: Number ; p}`, hence has a constraint that
+    ///    it must not contain a field `a`. Then `p` is unified with a fresh type variable `u`. If we
+    ///    don't constrain `u`, `u` could be unified later with a row type `{a : String}` which violates
+    ///    the original constraint on `p`. Thus, when unifying `p` with `u` or a row ending with `u`,
+    ///    `u` must inherit all the constraints of `p`.
+    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError>;
+}
+
+impl PropagateConstrs for UnifRecordRows {
+    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
+        fn do_unify(
+            constr: &mut RowConstr,
+            var_id: VarId,
+            var_constr: HashSet<Ident>,
+            rrows: &UnifRecordRows,
+        ) -> Result<(), RowUnifError> {
+            match rrows {
+                UnifRecordRows::Concrete {
+                    rrows: RecordRowsF::Extend { row, .. },
+                    ..
+                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
+                    row.id,
+                    UnifType::concrete(TypeF::Record(rrows.clone())),
+                )),
+                UnifRecordRows::Concrete {
+                    rrows: RecordRowsF::Extend { tail, .. },
+                    ..
+                } => do_unify(constr, var_id, var_constr, tail),
+                UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
+                    if let Some(tail_constr) = constr.get_mut(id) {
+                        tail_constr.extend(var_constr);
+                    } else {
+                        constr.insert(*id, var_constr);
+                    }
+
+                    Ok(())
                 }
-
-                Ok(())
+                _ => Ok(()),
             }
-            _ => Ok(()),
         }
-    }
 
-    if let Some(var_constr) = constr.remove(&var_id) {
-        do_unify(constr, var_id, var_constr, urrows)
-    } else {
-        Ok(())
+        if let Some(var_constr) = constr.remove(&var_id) {
+            do_unify(constr, var_id, var_constr, self)
+        } else {
+            Ok(())
+        }
     }
 }
 
-/// Check that unifying a variable with a type doesn't violate record rows constraints, and update
-/// the row constraints of the unified type accordingly if needed.
-///
-/// Same as [constr_unify_rrows] but for enum rows. See [constr_unify_rrows] for more details.
-pub fn constr_unify_erows(
-    constr: &mut RowConstr,
-    var_id: VarId,
-    uerows: &UnifEnumRows,
-) -> Result<(), RowUnifError> {
-    fn do_unify(
-        constr: &mut RowConstr,
-        var_id: VarId,
-        var_constr: HashSet<Ident>,
-        erows: &UnifEnumRows,
-    ) -> Result<(), RowUnifError> {
-        match erows {
-            UnifEnumRows::Concrete {
-                erows: EnumRowsF::Extend { row, .. },
-                ..
-            } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
-                row.id,
-                UnifType::concrete(TypeF::Enum(erows.clone())),
-            )),
-            UnifEnumRows::Concrete {
-                erows: EnumRowsF::Extend { tail, .. },
-                ..
-            } => do_unify(constr, var_id, var_constr, tail),
-            UnifEnumRows::UnifVar { id, .. } if *id != var_id => {
-                if let Some(tail_constr) = constr.get_mut(id) {
-                    tail_constr.extend(var_constr);
-                } else {
-                    constr.insert(*id, var_constr);
+impl PropagateConstrs for UnifEnumRows {
+    fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
+        fn do_unify(
+            constr: &mut RowConstr,
+            var_id: VarId,
+            var_constr: HashSet<Ident>,
+            erows: &UnifEnumRows,
+        ) -> Result<(), RowUnifError> {
+            match erows {
+                UnifEnumRows::Concrete {
+                    erows: EnumRowsF::Extend { row, .. },
+                    ..
+                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
+                    row.id,
+                    UnifType::concrete(TypeF::Enum(erows.clone())),
+                )),
+                UnifEnumRows::Concrete {
+                    erows: EnumRowsF::Extend { tail, .. },
+                    ..
+                } => do_unify(constr, var_id, var_constr, tail),
+                UnifEnumRows::UnifVar { id, .. } if *id != var_id => {
+                    if let Some(tail_constr) = constr.get_mut(id) {
+                        tail_constr.extend(var_constr);
+                    } else {
+                        constr.insert(*id, var_constr);
+                    }
+
+                    Ok(())
                 }
-
-                Ok(())
+                _ => Ok(()),
             }
-            _ => Ok(()),
         }
-    }
 
-    if let Some(var_constr) = constr.remove(&var_id) {
-        do_unify(constr, var_id, var_constr, uerows)
-    } else {
-        Ok(())
+        if let Some(var_constr) = constr.remove(&var_id) {
+            do_unify(constr, var_id, var_constr, self)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -1416,7 +1411,7 @@ impl Unify for UnifEnumRows {
                     }
                 }
 
-                constr_unify_erows(state.constr, id, &uerows)?;
+                uerows.propagate_constrs(state.constr, id)?;
                 state.table.assign_erows(id, uerows);
                 Ok(())
             }
@@ -1539,7 +1534,7 @@ impl Unify for UnifRecordRows {
                     }
                 }
 
-                constr_unify_rrows(state.constr, id, &urrows)?;
+                urrows.propagate_constrs(state.constr, id)?;
                 state.table.assign_rrows(id, urrows);
                 Ok(())
             }
@@ -1692,7 +1687,8 @@ impl RemoveRow for UnifRecordRows {
                     tail: Box::new(tail_var.clone()),
                 });
 
-                constr_unify_rrows(state.constr, var_id, &tail_extended)
+                tail_extended
+                    .propagate_constrs(state.constr, var_id)
                     .map_err(|_| RemoveRowError::Conflict)?;
                 state.table.assign_rrows(var_id, tail_extended);
 
@@ -1762,7 +1758,8 @@ impl RemoveRow for UnifEnumRows {
                     tail: Box::new(tail_var.clone()),
                 });
 
-                constr_unify_erows(state.constr, var_id, &tail_extended)
+                tail_extended
+                    .propagate_constrs(state.constr, var_id)
                     .map_err(|_| RemoveRowError::Conflict)?;
                 state.table.assign_erows(var_id, tail_extended);
 
