@@ -1006,34 +1006,35 @@ TypeEnumRow: EnumRow = <id: EnumTag> <typ: (AsType<Atom>)?> => {
     }
 };
 
+TypeEnum: Type = "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
+    let ty = rows.into_iter()
+        .chain(last.into_iter())
+        // As we build row types as a linked list via a fold on the original
+        // iterator, the order of identifiers is reversed. This not a big deal
+        // but it's less confusing to the user to print them in the original
+        // order for error reporting.
+        .rev()
+        .fold(
+            EnumRows(
+                match tail {
+                    Some(id) => EnumRowsF::TailVar(id),
+                    None => EnumRowsF::Empty,
+                }
+            ),
+            |erows, row| {
+                EnumRows(EnumRowsF::Extend {
+                    row,
+                    tail: Box::new(erows)
+                })
+            }
+        );
+
+    Type::from(TypeF::Enum(ty))
+};
+
 TypeAtom: Type = {
     <TypeBuiltin>,
-    // TODO[adts]: have a separate rule for enum, and accept argument for rows
-    "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
-        let ty = rows.into_iter()
-            .chain(last.into_iter())
-            // As we build row types as a linked list via a fold on the original
-            // iterator, the order of identifiers is reversed. This not a big deal
-            // but it's less confusing to the user to print them in the original
-            // order for error reporting.
-            .rev()
-            .fold(
-                EnumRows(
-                    match tail {
-                        Some(id) => EnumRowsF::TailVar(id),
-                        None => EnumRowsF::Empty,
-                    }
-                ),
-                |erows, row| {
-                    EnumRows(EnumRowsF::Extend {
-                        row,
-                        tail: Box::new(erows)
-                    })
-                }
-            );
-
-        Type::from(TypeF::Enum(ty))
-    },
+    <TypeEnum>,
     "{" "_" ":" <t: WithPos<Type>> "}" => {
         Type::from(TypeF::Dict {
             type_fields: Box::new(t),
