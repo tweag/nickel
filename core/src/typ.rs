@@ -72,12 +72,15 @@ pub struct RecordRowF<Ty> {
     pub typ: Ty,
 }
 
-/// An enum row, which is just an identifier. An enum type is a set of identifiers, represented as
-/// a sequence of `EnumRow`s, ending potentially with a type variable tail position.
+/// An enum row, mapping an identifier to an optional type. If the associated type is `None`, this
+/// represent a bare (unapplied) enum tag such as `'foo`. If the enum is applied (a variant), the
+/// type is store in `typ`. An enum type is a set of enum rows, represented as a sequence of
+/// `EnumRow`s, ending potentially with a type variable tail position.
 ///
-/// `EnumRowF` is the same as `EnumRow` and doesn't have any type parameter. We introduce the alias
-/// nonetheless for consistency with other parametrized type definitions. See [`TypeF`] for more
-/// details.
+/// # Type parameters
+///
+/// As other types with the `F` suffix, this type is parametrized by one or more recursive
+/// unfoldings (here, `Ty` for `TypeF`). See [`TypeF`] for more details.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EnumRowF<Ty> {
     pub id: LocIdent,
