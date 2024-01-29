@@ -295,7 +295,7 @@ impl<'a> FieldResolver<'a> {
 
     /// Finds all the containers that are descended from `rt` at the given path.
     ///
-    /// The path can mix field access and array "accesses." The array accesses are only used
+    /// The path can mix field access and array "accesses". The array accesses are only used
     /// in array types -- we never actually index an array value -- but they can be used,
     /// for example, to see that `{ foo | Array { bar | { baz | Number } } }` evaluated
     /// at the path `["foo", EltId::ArrayElt, "bar"]` is the record `{ baz | Number }`.
