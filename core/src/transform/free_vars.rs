@@ -97,7 +97,7 @@ impl CollectFreeVars for RichTerm {
                     t.collect_free_vars(free_vars);
                 }
             }
-            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant(_, t) => {
+            Term::Op1(_, t) | Term::Sealed(_, t, _) | Term::EnumVariant { arg: t, .. } => {
                 t.collect_free_vars(free_vars)
             }
             Term::OpN(_, ts) => {

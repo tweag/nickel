@@ -1569,7 +1569,7 @@ fn walk<V: TypecheckVisitor>(
                     walk(state, ctxt.clone(), visitor, t)
                 })
         }
-        Term::EnumVariant(_, t) => walk(state, ctxt, visitor, t),
+        Term::EnumVariant { arg: t, ..} => walk(state, ctxt, visitor, t),
         Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
@@ -1967,18 +1967,18 @@ fn check<V: TypecheckVisitor>(
             ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
         }
-        Term::EnumVariant(id, t) => {
+        Term::EnumVariant { tag, arg, .. } => {
             let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
             let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
 
             // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
             // a free unification variable, to ensure it has the right shape and extract the
             // components.
-            ty.unify(mk_uty_enum!((*id, ty_arg.clone()); row_tail), state, &ctxt)
+            ty.unify(mk_uty_enum!((*tag, ty_arg.clone()); row_tail), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
 
             // Once we have a type for the argument, we check the variant's data against it.
-            check(state, ctxt, visitor, t, ty_arg)
+            check(state, ctxt, visitor, arg, ty_arg)
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`. In other words, the checking rule is not the same depending on the target

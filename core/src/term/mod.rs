@@ -123,7 +123,11 @@ pub enum Term {
     /// version with one argument. Note that one can just use a record to store multiple named
     /// values in the argument.
     #[serde(skip)]
-    EnumVariant(LocIdent, RichTerm),
+    EnumVariant {
+        tag: LocIdent,
+        arg: RichTerm,
+        attrs: EnumVariantAttrs,
+    },
 
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
@@ -474,6 +478,36 @@ impl std::convert::TryFrom<LabeledType> for RuntimeContract {
     }
 }
 
+/// The attributes of a enum variant.
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct EnumVariantAttrs {
+    /// An enum variant is closurized if its argument is a [crate::term::Term::Closure] or a
+    /// constant.
+    ///
+    /// When initially produced by the parser, data structures such as enum variants or arrays
+    /// aren't closurized. At the first evaluation, they will be turned into closurized versions,
+    /// by allocating cache nodes (think thunks) for non constant elements. Once done, this flag is
+    /// set to `true`.
+    ///
+    /// Ideally, we would have a different AST representation for evaluation, where enum variants
+    /// would always be closurized. In the meantime, while we need to cope with a unique AST across
+    /// the whole pipeline, we use this flag to remember closurization.
+    pub closurized: bool,
+}
+
+impl EnumVariantAttrs {
+    /// Create new enum variant attributes. By default, the `closurized` flag is set to `false`.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Set the `closurized` flag to `true`.
+    pub fn closurized(mut self) -> Self {
+        self.closurized = true;
+        self
+    }
+}
+
 /// The attributes of a let binding.
 #[derive(Debug, Default, Eq, PartialEq, Clone)]
 pub struct LetAttrs {
@@ -817,7 +851,7 @@ impl Term {
             Term::Match { .. } => Some("MatchExpression".to_owned()),
             Term::Lbl(_) => Some("Label".to_owned()),
             Term::Enum(_) => Some("Enum".to_owned()),
-            Term::EnumVariant(_, _) => Some("Enum".to_owned()),
+            Term::EnumVariant { .. } => Some("Enum".to_owned()),
             Term::Record(..) | Term::RecRecord(..) => Some("Record".to_owned()),
             Term::Array(..) => Some("Array".to_owned()),
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
@@ -840,7 +874,21 @@ impl Term {
         }
     }
 
-    /// Determine if a term is in evaluated form, called weak head normal form (WHNF).
+    /// Determine if a term is in evaluated form, called weak head normal form (WHNF). This test is
+    /// purely syntactic, which has the non-obvious consequence that some terms might be in WHNF
+    /// according to [Self::is_whnf] but might still be evaluated further.
+    ///
+    /// This is due to implementation details of the evaluation around closurization. The first
+    /// time an array or a record is evaluated, it will be closurized - thunks will be allocated to
+    /// store its elements and make them shareable. Thus, if `self` is `Term::Array(data, attrs)`
+    /// with `attrs.closurized` set to `false`, evaluation will rewrite it to a different array,
+    /// although in the surface language of Nickel, arrays are weak head normal forms.
+    ///
+    /// For everything happening pre-evaluation, you probably shouldn't care about this subtlety
+    /// and you can use `is_whnf` directly.
+    ///
+    /// However, at run-time, in particular if the property you care about is "is this term going
+    /// to be evaluate further", then you should use [Self::is_eff_whnf] instead.
     pub fn is_whnf(&self) -> bool {
         match self {
             Term::Null
@@ -852,7 +900,7 @@ impl Term {
             | Term::Match {..}
             | Term::Lbl(_)
             | Term::Enum(_)
-            | Term::EnumVariant(_, _)
+            | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::Array(..)
             | Term::SealingKey(_) => true,
@@ -875,6 +923,24 @@ impl Term {
             | Term::ParseError(_)
             | Term::RuntimeError(_) => false,
         }
+    }
+
+    /// Helper used by [Self::is_eff_whnf] to determine if a term is a data structure that hasn't
+    /// been closurized yet.
+    fn is_unclosurized_datastructure(&self) -> bool {
+        match self {
+            Term::Array(_, attrs) => !attrs.closurized,
+            Term::Record(data) | Term::RecRecord(data, ..) => !data.attrs.closurized,
+            Term::EnumVariant { attrs, .. } => !attrs.closurized,
+            _ => false,
+        }
+    }
+
+    /// Determine if an expression is an effective weak head normal form, that is a value that
+    /// won't be evaluated further by the virtual machine. Being an effective WHNF implies being a
+    /// WHNF, but the converse isn't true. See [Self::is_whnf] for more details.
+    pub fn is_eff_whnf(&self) -> bool {
+        self.is_whnf() && !self.is_unclosurized_datastructure()
     }
 
     /// Determine if a term is annotated.
@@ -916,7 +982,7 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
-            | Term::EnumVariant(_, _)
+            | Term::EnumVariant { .. }
             | Term::RuntimeError(_) => false,
         }
     }
@@ -931,7 +997,7 @@ impl Term {
             | Term::StrChunks(..)
             | Term::Lbl(..)
             | Term::Enum(..)
-            | Term::EnumVariant(_, _)
+            | Term::EnumVariant {..}
             | Term::Record(..)
             | Term::RecRecord(..)
             | Term::Array(..)
@@ -2051,7 +2117,7 @@ impl Traverse<RichTerm> for RichTerm {
             }),
             Term::Fun(_, t)
             | Term::FunPattern(_, _, t)
-            | Term::EnumVariant(_, t)
+            | Term::EnumVariant { arg: t, .. }
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
             Term::Let(_, t1, t2, _)
