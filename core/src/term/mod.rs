@@ -119,7 +119,9 @@ pub enum Term {
     /// An enum tag, or equivalently, an enum variant without any argument.
     Enum(LocIdent),
     /// An applied enum variant (an algebraic data type). In Nickel ADTs can have at most one
-    /// argument, but one can just use a record to pass multiple arguments.
+    /// argument: [Self::Enum] is the version with no argument, and [Self::EnumVariant] is the
+    /// version with one argument. Note that one can just use a record to store multiple named
+    /// values in the argument.
     #[serde(skip)]
     EnumVariant(LocIdent, RichTerm),
 
