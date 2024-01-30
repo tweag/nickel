@@ -25,7 +25,8 @@ pub fn handle_document_symbols(
         .filter_map(|ident| {
             let (file_id, span) = ident.pos.into_opt()?.to_range();
             let range =
-                codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span).ok()?;
+                crate::codespan_lsp::byte_span_to_range(server.cache.files(), file_id, span)
+                    .ok()?;
             let ty = type_lookups.idents.get(&ident);
 
             #[allow(deprecated)] // because the `deprecated` field is... wait for it... deprecated.

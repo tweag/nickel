@@ -124,12 +124,10 @@ impl CacheExt for Cache {
             .file_id(uri)?
             .ok_or_else(|| crate::error::Error::FileNotFound(uri.clone()))?;
         let pos = lsp_pos.position;
-        let idx =
-            codespan_lsp::position_to_byte_index(self.files(), file_id, &pos).map_err(|_| {
-                crate::error::Error::InvalidPosition {
-                    pos,
-                    file: uri.clone(),
-                }
+        let idx = crate::codespan_lsp::position_to_byte_index(self.files(), file_id, &pos)
+            .map_err(|_| crate::error::Error::InvalidPosition {
+                pos,
+                file: uri.clone(),
             })?;
 
         Ok(RawPos::new(file_id, ByteIndex(idx as u32)))

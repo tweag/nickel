@@ -409,17 +409,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codespan-lsp"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc4159b76af02757139baf42c0c971c6dc155330999fbfd8eddb29b97fb2db68"
-dependencies = [
- "codespan-reporting",
- "lsp-types",
- "url",
-]
-
-[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1708,7 +1697,6 @@ dependencies = [
  "assert_matches",
  "clap 4.4.18",
  "codespan",
- "codespan-lsp",
  "codespan-reporting",
  "criterion",
  "csv",
