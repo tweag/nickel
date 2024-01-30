@@ -1079,6 +1079,18 @@ where
     }
 }
 
+/// Generate an implementation of `fmt::Display` for types that implement `Pretty`.
+#[macro_export]
+macro_rules! impl_display_from_pretty {
+    ($ty:ty) => {
+        impl std::fmt::Display for $ty {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                $crate::pretty::fmt_pretty(&self, f)
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use pretty::BoxAllocator;

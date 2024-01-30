@@ -23,6 +23,7 @@ use crate::{
     eval::cache::CacheIndex,
     eval::Environment,
     identifier::LocIdent,
+    impl_display_from_pretty,
     label::{Label, MergeLabel},
     match_sharedterm,
     position::TermPos,
@@ -2208,17 +2209,8 @@ impl From<Term> for RichTerm {
     }
 }
 
-impl fmt::Display for RichTerm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        crate::pretty::fmt_pretty(&self, f)
-    }
-}
-
-impl fmt::Display for Term {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        crate::pretty::fmt_pretty(&self, f)
-    }
-}
+impl_display_from_pretty!(RichTerm);
+impl_display_from_pretty!(Term);
 
 /// Allows to match on SharedTerm without taking ownership of the matched part
 /// until the match. In the wildcard pattern, we don't take ownership, so we can

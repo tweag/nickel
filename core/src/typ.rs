@@ -43,6 +43,7 @@
 use crate::{
     error::{EvalError, ParseError, ParseErrors, TypecheckError},
     identifier::{Ident, LocIdent},
+    impl_display_from_pretty,
     label::Polarity,
     mk_app, mk_fun,
     position::TermPos,
@@ -55,7 +56,6 @@ use crate::{
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
-    fmt::{self, Display},
 };
 
 /// A record row, mapping an identifier to a type. A record type is a dictionary mapping
@@ -1318,15 +1318,8 @@ impl Traverse<RichTerm> for Type {
     }
 }
 
-impl Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        crate::pretty::fmt_pretty(&self, f)
-    }
-}
-
-//TODO[adts]: generalize this boiler plate to a macro, and other subcomponent of types
-impl Display for EnumRow {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        crate::pretty::fmt_pretty(&self, f)
-    }
-}
+impl_display_from_pretty!(Type);
+impl_display_from_pretty!(EnumRow);
+impl_display_from_pretty!(EnumRows);
+impl_display_from_pretty!(RecordRow);
+impl_display_from_pretty!(RecordRows);
