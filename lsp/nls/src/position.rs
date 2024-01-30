@@ -2,11 +2,12 @@ use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
+    destructuring::Pattern,
     position::TermPos,
     term::{RichTerm, Term, Traverse, TraverseControl},
 };
 
-use crate::{identifier::LocIdent, term::RichTermPtr};
+use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
 
 /// Turn a collection of "nested" ranges into a collection of disjoint ranges.
 ///
@@ -125,12 +126,12 @@ impl PositionLookup {
             match term.as_ref() {
                 Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
                 Term::FunPattern(id, pat, _) | Term::LetPattern(id, pat, _, _) => {
-                    let ids = pat.matches.iter().flat_map(|m| {
-                        m.to_flattened_bindings()
-                            .into_iter()
-                            .map(|(_path, id, _)| id)
-                    });
-                    idents.extend(ids.chain(*id).chain(pat.rest))
+                    let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
+
+                    // TODO[pattern]: what about aliased record patterns?
+                    if let Pattern::RecordPattern(record_pat) = &pat.pattern {
+                        idents.extend(ids.chain(*id).chain(record_pat.rest))
+                    }
                 }
                 Term::Var(id) => idents.push(*id),
                 Term::Record(data) | Term::RecRecord(data, _, _) => {

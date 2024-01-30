@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destructuring::{FieldPattern, Match, RecordPattern},
+    destructuring::{FieldPattern, LocPattern, Pattern, RecordPattern},
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
@@ -51,11 +51,11 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::FunPattern(id, dest_pat, body) => {
+            Term::FunPattern(id, pat, body) => {
                 let mut fresh = HashSet::new();
 
                 body.collect_free_vars(&mut fresh);
-                bind_pattern(dest_pat, &mut fresh);
+                pat.remove_bindings(&mut fresh);
                 if let Some(id) = id {
                     fresh.remove(&id.ident());
                 }
@@ -76,12 +76,12 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(id, dest_pat, t1, t2) => {
+            Term::LetPattern(id, pat, t1, t2) => {
                 let mut fresh = HashSet::new();
 
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(&mut fresh);
-                bind_pattern(dest_pat, &mut fresh);
+                pat.remove_bindings(&mut fresh);
                 if let Some(id) = id {
                     fresh.remove(&id.ident());
                 }
@@ -234,41 +234,49 @@ impl CollectFreeVars for Field {
     }
 }
 
-/// Remove the variables bound by a destructuring pattern from a set of free variables.
-fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
-    let RecordPattern { matches, rest, .. } = dest_pat;
-    for m in matches {
-        bind_match(m, free_vars);
-    }
+trait RemoveBindings {
+    /// For a binding form that introduces new variables in scope, typically patterns, remove the
+    /// variable introduced by this binding form from the provided set of free variables.
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>);
+}
 
-    if let Some(rest) = rest {
-        free_vars.remove(&rest.ident());
+impl RemoveBindings for Pattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        match self {
+            Pattern::Any(id) => {
+                working_set.remove(&id.ident());
+            }
+            Pattern::RecordPattern(record_pat) => {
+                record_pat.remove_bindings(working_set);
+            }
+            Pattern::AliasedPattern { alias, pattern } => {
+                working_set.remove(&alias.ident());
+                pattern.remove_bindings(working_set);
+            }
+        }
     }
 }
 
-/// Remove the variables bound by a match expression (constituents of a destructuring pattern) from
-/// a set of free variables.
-fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
-    match m {
-        Match::Assign(_, _, FieldPattern::Ident(ident)) => {
-            free_vars.remove(&ident.ident());
+impl RemoveBindings for LocPattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        self.pattern.remove_bindings(working_set);
+    }
+}
+
+impl RemoveBindings for FieldPattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        self.pattern.remove_bindings(working_set);
+    }
+}
+
+impl RemoveBindings for RecordPattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        for m in &self.patterns {
+            m.remove_bindings(working_set);
         }
-        Match::Assign(_, _, FieldPattern::RecordPattern(sub_pattern)) => {
-            bind_pattern(sub_pattern, free_vars);
-        }
-        Match::Assign(
-            _,
-            _,
-            FieldPattern::AliasedRecordPattern {
-                alias,
-                pattern: sub_pattern,
-            },
-        ) => {
-            free_vars.remove(&alias.ident());
-            bind_pattern(sub_pattern, free_vars);
-        }
-        Match::Simple(id, _) => {
-            free_vars.remove(&id.ident());
+
+        if let Some(rest) = self.rest {
+            working_set.remove(&rest.ident());
         }
     }
 }

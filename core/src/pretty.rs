@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::destructuring::{self, FieldPattern, RecordPattern};
+use crate::destructuring::{self, Pattern, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::record::RecordData;
@@ -539,7 +539,7 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &FieldPattern
+impl<'a, D, A> Pretty<'a, D, A> for &Pattern
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -547,10 +547,10 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
-            FieldPattern::Ident(id) => allocator.as_string(id),
-            FieldPattern::RecordPattern(rp) => rp.pretty(allocator),
-            FieldPattern::AliasedRecordPattern { alias, pattern } => {
-                docs![allocator, alias.to_string(), " @ ", pattern]
+            Pattern::Any(id) => allocator.as_string(id),
+            Pattern::RecordPattern(rp) => rp.pretty(allocator),
+            Pattern::AliasedPattern { alias, pattern } => {
+                docs![allocator, alias.to_string(), " @ ", &pattern.pattern]
             }
         }
     }
@@ -564,7 +564,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         let RecordPattern {
-            matches,
+            patterns: matches,
             open,
             rest,
             ..
@@ -573,17 +573,11 @@ where
             allocator,
             allocator.line(),
             allocator.intersperse(
-                matches.iter().map(|m| {
-                    let (id, field, pattern_opt) = match m {
-                        destructuring::Match::Simple(id, field) => (id, field, None),
-                        destructuring::Match::Assign(id, field, pattern) => {
-                            (id, field, Some(pattern))
-                        }
-                    };
+                matches.iter().map(|field_pat| {
                     docs![
                         allocator,
-                        id.to_string(),
-                        match field {
+                        field_pat.matched_id.to_string(),
+                        match &field_pat.decoration {
                             Field {
                                 value: Some(value),
                                 metadata:
@@ -604,13 +598,14 @@ where
                                 ),
                                 allocator.line(),
                                 "? ",
-                                allocator.atom(value),
+                                allocator.atom(&value),
                             ],
-                            _ => allocator.field_metadata(&field.metadata, false),
+                            field => allocator.field_metadata(&field.metadata, false),
                         },
-                        match pattern_opt {
-                            Some(pattern) => docs![allocator, allocator.line(), "= ", pattern],
-                            _ => allocator.nil(),
+                        match &field_pat.pattern.pattern {
+                            destructuring::Pattern::Any(id) if *id == field_pat.matched_id =>
+                                allocator.nil(),
+                            pat => docs![allocator, allocator.line(), "= ", pat],
                         },
                         ","
                     ]
@@ -692,11 +687,11 @@ where
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = self;
-                while let FunPattern(id, dst, t) = rt {
+                while let FunPattern(id, pat, t) = rt {
                     params.push(if let Some(id) = id {
-                        docs![allocator, id.to_string(), " @ ", dst]
+                        docs![allocator, id.to_string(), " @ ", &pat.pattern]
                     } else {
-                        dst.pretty(allocator)
+                        pat.pattern.pretty(allocator)
                     });
                     rt = t.as_ref();
                 }
@@ -750,7 +745,7 @@ where
                 } else {
                     allocator.nil()
                 },
-                pattern,
+                &pattern.pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     annot.pretty(allocator)
                 } else {

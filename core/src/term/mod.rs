@@ -18,7 +18,7 @@ use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
 use crate::{
-    destructuring::RecordPattern,
+    destructuring::LocPattern,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,
@@ -95,7 +95,7 @@ pub enum Term {
 
     /// A function able to destruct its arguments.
     #[serde(skip)]
-    FunPattern(Option<LocIdent>, RecordPattern, RichTerm),
+    FunPattern(Option<LocIdent>, LocPattern, RichTerm),
 
     /// A blame label.
     #[serde(skip)]
@@ -107,7 +107,7 @@ pub enum Term {
 
     /// A destructuring let-binding.
     #[serde(skip)]
-    LetPattern(Option<LocIdent>, RecordPattern, RichTerm, RichTerm),
+    LetPattern(Option<LocIdent>, LocPattern, RichTerm, RichTerm),
 
     /// An application.
     #[serde(skip)]
@@ -2482,7 +2482,7 @@ pub mod make {
     where
         T1: Into<RichTerm>,
         T2: Into<RichTerm>,
-        D: Into<RecordPattern>,
+        D: Into<LocPattern>,
         I: Into<LocIdent>,
     {
         Term::LetPattern(id.map(|i| i.into()), pat.into(), t1.into(), t2.into()).into()

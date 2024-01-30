@@ -21,9 +21,9 @@
 //! to enforce mode, and is switched back to walk mode when entering an expression annotated with a
 //! contract. Type and contract annotations thus serve as a switch for the typechecking mode.
 //!
-//! Note that the static typing part is based on the bidirectional typing framework, which defines
-//! two different modes. Thus, the enforce mode is itself divided again into **checking** mode and
-//! **inference** mode.
+//! Note that the static typing part (enforce mode) is based on the bidirectional typing framework,
+//! which defines two different modes. Thus, the enforce mode is itself divided again into
+//! **checking** mode and **inference** mode.
 //!
 //! # Type inference
 //!
@@ -83,6 +83,7 @@ pub mod mk_uniftype;
 pub mod eq;
 pub mod unif;
 
+use destructuring::PatternTypes;
 use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
 use indexmap::IndexMap;
@@ -1471,8 +1472,8 @@ fn walk<V: TypecheckVisitor>(
                 ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             }
 
-            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
-            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
+            let (_, pat_bindings) = pat.pattern.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
+            ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
             walk(state, ctxt, visitor, t)
         }
         Term::Array(terms, _) => terms
@@ -1514,13 +1515,12 @@ fn walk<V: TypecheckVisitor>(
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
 
-            let pattern_ty = destructuring::build_pattern_type_walk_mode(state, &ctxt, pat)?;
-            for item in pattern_ty.iter() {
-                if let GenericUnifRecordRowsIteratorItem::Row(row) = item {
-                    visitor.visit_ident(&row.id, row.typ.clone());
-                }
+            let (_, pat_bindings) = pat.pattern.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
+
+            for (id, typ) in pat_bindings {
+                visitor.visit_ident(&id, typ.clone());
+                ctxt.type_env.insert(id.ident(), typ);
             }
-            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, pattern_ty);
 
             walk(state, ctxt, visitor, rt)
         }
@@ -1819,8 +1819,11 @@ fn check<V: TypecheckVisitor>(
             check(state, ctxt, visitor, t, trg)
         }
         Term::FunPattern(x, pat, t) => {
-            let src_rows_ty = destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
-            let src = UnifType::concrete(TypeF::Record(src_rows_ty.clone()));
+            let (pat_ty, pat_bindings) =
+                pat.pattern
+                    .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
+
+            let src = pat_ty;
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
@@ -1829,7 +1832,11 @@ fn check<V: TypecheckVisitor>(
                 ctxt.type_env.insert(x.ident(), src);
             }
 
-            destructuring::inject_pattern_variables(state, &mut ctxt.type_env, pat, src_rows_ty);
+            for (id, typ) in pat_bindings {
+                visitor.visit_ident(&id, typ.clone());
+                ctxt.type_env.insert(id.ident(), typ);
+            }
+
             ty.unify(arr, state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
             check(state, ctxt, visitor, t, trg)
@@ -1874,15 +1881,16 @@ fn check<V: TypecheckVisitor>(
         }
         Term::LetPattern(x, pat, re, rt) => {
             // The inferred type of the pattern w/ unification vars
-            let pattern_rows_type =
-                destructuring::build_pattern_type_check_mode(state, &ctxt, pat)?;
-            let pattern_type = UnifType::concrete(TypeF::Record(pattern_rows_type.clone()));
+            let (pat_ty, pat_bindings) =
+                pat.pattern
+                    .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
+
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);
 
             ty_let
                 .clone()
-                .unify(pattern_type, state, &ctxt)
+                .unify(pat_ty, state, &ctxt)
                 .map_err(|e| e.into_typecheck_err(state, re.pos))?;
 
             check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
@@ -1892,18 +1900,10 @@ fn check<V: TypecheckVisitor>(
                 ctxt.type_env.insert(x.ident(), ty_let);
             }
 
-            for item in pattern_rows_type.iter() {
-                if let GenericUnifRecordRowsIteratorItem::Row(row) = item {
-                    visitor.visit_ident(&row.id, row.typ.clone());
-                }
+            for (id, typ) in pat_bindings {
+                visitor.visit_ident(&id, typ.clone());
+                ctxt.type_env.insert(id.ident(), typ);
             }
-
-            destructuring::inject_pattern_variables(
-                state,
-                &mut ctxt.type_env,
-                pat,
-                pattern_rows_type,
-            );
 
             check(state, ctxt, visitor, rt, ty)
         }
@@ -2814,7 +2814,7 @@ pub trait TypecheckVisitor {
     /// inference kicks in.
     fn visit_term(&mut self, _term: &RichTerm, _ty: UnifType) {}
 
-    /// Record the type of an identifier.
+    /// Record the type of a bound identifier.
     fn visit_ident(&mut self, _ident: &LocIdent, _new_type: UnifType) {}
 }
 
