@@ -1111,6 +1111,11 @@ pub fn subst<C: Cache>(
         // substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
         | v @ Term::Type(_) => RichTerm::new(v, pos),
+        Term::EnumVariant(tag, t) => {
+            let t = subst(cache, t, initial_env, env);
+
+            RichTerm::new(Term::EnumVariant(tag, t), pos)
+        }
         Term::Let(id, t1, t2, attrs) => {
             let t1 = subst(cache, t1, initial_env, env);
             let t2 = subst(cache, t2, initial_env, env);

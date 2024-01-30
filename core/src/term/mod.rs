@@ -116,8 +116,14 @@ pub enum Term {
     #[serde(skip)]
     Var(LocIdent),
 
-    /// An enum variant.
+    /// An enum tag, or equivalently, an enum variant without any argument.
     Enum(LocIdent),
+    /// An applied enum variant (an algebraic data type). In Nickel ADTs can have at most one
+    /// argument: [Self::Enum] is the version with no argument, and [Self::EnumVariant] is the
+    /// version with one argument. Note that one can just use a record to store multiple named
+    /// values in the argument.
+    #[serde(skip)]
+    EnumVariant(LocIdent, RichTerm),
 
     /// A record, mapping identifiers to terms.
     #[serde(serialize_with = "crate::serialize::serialize_record")]
@@ -811,6 +817,7 @@ impl Term {
             Term::Match { .. } => Some("MatchExpression".to_owned()),
             Term::Lbl(_) => Some("Label".to_owned()),
             Term::Enum(_) => Some("Enum".to_owned()),
+            Term::EnumVariant(_, _) => Some("Enum".to_owned()),
             Term::Record(..) | Term::RecRecord(..) => Some("Record".to_owned()),
             Term::Array(..) => Some("Array".to_owned()),
             Term::SealingKey(_) => Some("SealingKey".to_owned()),
@@ -845,6 +852,7 @@ impl Term {
             | Term::Match {..}
             | Term::Lbl(_)
             | Term::Enum(_)
+            | Term::EnumVariant(_, _)
             | Term::Record(..)
             | Term::Array(..)
             | Term::SealingKey(_) => true,
@@ -908,11 +916,13 @@ impl Term {
             | Term::RecRecord(..)
             | Term::Type(_)
             | Term::ParseError(_)
+            | Term::EnumVariant(_, _)
             | Term::RuntimeError(_) => false,
         }
     }
 
-    /// determine if a term is atomic
+    /// Determine if a term is an atom of the surface syntax. Atoms are basic elements of the
+    /// syntax that can freely substituted without being parenthesized.
     pub fn is_atom(&self) -> bool {
         match self {
             Term::Null
@@ -921,6 +931,7 @@ impl Term {
             | Term::StrChunks(..)
             | Term::Lbl(..)
             | Term::Enum(..)
+            | Term::EnumVariant(_, _)
             | Term::Record(..)
             | Term::RecRecord(..)
             | Term::Array(..)
@@ -2040,6 +2051,7 @@ impl Traverse<RichTerm> for RichTerm {
             }),
             Term::Fun(_, t)
             | Term::FunPattern(_, _, t)
+            | Term::EnumVariant(_, t)
             | Term::Op1(_, t)
             | Term::Sealed(_, t, _) => t.traverse_ref(f, state),
             Term::Let(_, t1, t2, _)

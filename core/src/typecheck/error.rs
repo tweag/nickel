@@ -20,8 +20,14 @@ pub enum RowUnifError {
     ExtraRow(LocIdent),
     /// The RHS had a additional `Dyn` tail.
     ExtraDynTail(),
-    /// There were two incompatible definitions for the same row.
-    RowMismatch(LocIdent, Box<UnifError>),
+    /// There were two incompatible definitions for the same record row.
+    RecordRowMismatch(LocIdent, Box<UnifError>),
+    /// There were two incompatible definitions for the same enum row.
+    ///
+    /// Because enum rows have an optional argument, there might not be any underlying unification
+    /// error (e.g. one of the row has an argument, and the other does not). This is why the
+    /// underlying unification error is optional, as opposed to record rows.
+    EnumRowMismatch(LocIdent, Option<Box<UnifError>>),
     /// A [row constraint][super::RowConstr] was violated.
     UnsatConstr(LocIdent, UnifType),
     /// Tried to unify a type constant with another different type.
@@ -54,7 +60,12 @@ impl RowUnifError {
             RowUnifError::MissingDynTail() => UnifError::MissingDynTail(left, right),
             RowUnifError::ExtraRow(id) => UnifError::ExtraRow(id, left, right),
             RowUnifError::ExtraDynTail() => UnifError::ExtraDynTail(left, right),
-            RowUnifError::RowMismatch(id, err) => UnifError::RowMismatch(id, left, right, err),
+            RowUnifError::RecordRowMismatch(id, err) => {
+                UnifError::RecordRowMismatch(id, left, right, err)
+            }
+            RowUnifError::EnumRowMismatch(id, err) => {
+                UnifError::EnumRowMismatch(id, left, right, err)
+            }
             RowUnifError::UnsatConstr(id, uty) => UnifError::RowConflict(id, uty, left, right),
             RowUnifError::WithConst(c, k, uty) => UnifError::WithConst(c, k, uty),
             RowUnifError::ConstMismatch(k, c1, c2) => UnifError::ConstMismatch(k, c1, c2),
@@ -76,7 +87,13 @@ pub enum UnifError {
     /// Tried to unify two incompatible types.
     TypeMismatch(UnifType, UnifType),
     /// There are two incompatible definitions for the same row.
-    RowMismatch(LocIdent, UnifType, UnifType, Box<UnifError>),
+    RecordRowMismatch(LocIdent, UnifType, UnifType, Box<UnifError>),
+    /// There are two incompatible definitions for the same row.
+    ///
+    /// Because enum rows have an optional argument, there might not be any underlying unification
+    /// error (e.g. one of the row has an argument, and the other does not). This is why the
+    /// underlying unification error is optional, as opposed to record rows.
+    EnumRowMismatch(LocIdent, UnifType, UnifType, Option<Box<UnifError>>),
     /// Tried to unify two distinct type constants.
     ConstMismatch(VarKindDiscriminant, usize, usize),
     /// Tried to unify two rows, but an identifier of the LHS was absent from the RHS.
@@ -143,11 +160,22 @@ impl UnifError {
                 names_reg.to_type(state.table, ty2),
                 pos_opt,
             ),
-            UnifError::RowMismatch(ident, uty1, uty2, err) => TypecheckError::RowMismatch(
+            UnifError::RecordRowMismatch(ident, uty1, uty2, err) => {
+                TypecheckError::RecordRowMismatch(
+                    ident,
+                    names_reg.to_type(state.table, uty1),
+                    names_reg.to_type(state.table, uty2),
+                    Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None)),
+                    pos_opt,
+                )
+            }
+            UnifError::EnumRowMismatch(ident, uty1, uty2, err) => TypecheckError::EnumRowMismatch(
                 ident,
                 names_reg.to_type(state.table, uty1),
                 names_reg.to_type(state.table, uty2),
-                Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None)),
+                err.map(|err| {
+                    Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None))
+                }),
                 pos_opt,
             ),
             // TODO: for now, failure to unify with a type constant causes the same error as a

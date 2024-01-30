@@ -2,7 +2,7 @@ use crate::{
     destructuring::{FieldPattern, Match, RecordPattern},
     error::TypecheckError,
     identifier::LocIdent,
-    mk_uty_row,
+    mk_uty_record_row,
     term::{IndexMap, LabeledType},
     typ::{RecordRowF, RecordRowsF, TypeF},
     typecheck::{UnifRecordRow, Unify},
@@ -68,7 +68,7 @@ fn build_pattern_type(
             // We use a dynamic tail here since we're in walk mode,
             // but if/when we remove dynamic record tails this could
             // likely be made an empty tail with no impact.
-            TypecheckMode::Walk => mk_uty_row!(; RecordRowsF::TailDyn),
+            TypecheckMode::Walk => mk_uty_record_row!(; RecordRowsF::TailDyn),
             TypecheckMode::Check => state.table.fresh_rrows_uvar(ctxt.var_level),
         }
     } else {

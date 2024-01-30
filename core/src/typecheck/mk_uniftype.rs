@@ -19,7 +19,10 @@ macro_rules! mk_uty_arrow {
 }
 
 /// Multi-ary enum row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_uty_enum_row!(id1, .., idn; tail)` correspond to `<id1, .., idn | tail>.
+/// `mk_uty_enum_row!(id1, .., idn; tail)` correspond to `[| 'id1, .., 'idn; tail |]. With the
+/// addition of algebraic data types (enum variants), individual rows can also take an additional
+/// type parameter, specificed as a tuple: for example, `mk_uty_enum_row!(id1, (id2, ty2); tail)`
+/// is `[| 'id1, 'id2 ty2; tail |]`.
 #[macro_export]
 macro_rules! mk_uty_enum_row {
     () => {
@@ -31,21 +34,35 @@ macro_rules! mk_uty_enum_row {
     (; $tail:expr) => {
         $crate::typecheck::UnifEnumRows::from($tail)
     };
-    ( $id:expr $(, $ids:expr )* $(; $tail:expr)?) => {
+    ( ($id:expr, $ty:expr) $(, $rest:tt )* $(; $tail:expr)? ) => {
         $crate::typecheck::UnifEnumRows::concrete(
             $crate::typ::EnumRowsF::Extend {
-                row: LocIdent::from($id),
-                tail: Box::new($crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?))
+                row: $crate::typ::EnumRowF {
+                    id: $crate::identifier::LocIdent::from($id),
+                    typ: Some(Box::new($ty.into())),
+                },
+                tail: Box::new($crate::mk_uty_enum_row!($( $rest ),* $(; $tail)?))
+            }
+        )
+    };
+    ( $id:expr $(, $rest:tt )* $(; $tail:expr)? ) => {
+        $crate::typecheck::UnifEnumRows::concrete(
+            $crate::typ::EnumRowsF::Extend {
+                row: $crate::typ::EnumRowF {
+                    id: $crate::identifier::LocIdent::from($id),
+                    typ: None,
+                },
+                tail: Box::new($crate::mk_uty_enum_row!($( $rest ),* $(; $tail)?))
             }
         )
     };
 }
 
-/// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`.
-/// `mk_uty_row!((id1, ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn |
-/// tail}. The tail can be omitted, in which case the empty row is uses as a tail instead.
+/// Multi-ary record row constructor for types implementing `Into<TypeWrapper>`. `mk_uty_row!((id1,
+/// ty1), .., (idn, tyn); tail)` correspond to `{id1: ty1, .., idn: tyn; tail}`. The tail can be
+/// omitted, in which case the empty row is uses as a tail instead.
 #[macro_export]
-macro_rules! mk_uty_row {
+macro_rules! mk_uty_record_row {
     () => {
         $crate::typecheck::UnifRecordRows::Concrete {
             rrows: $crate::typ::RecordRowsF::Empty,
@@ -59,10 +76,10 @@ macro_rules! mk_uty_row {
         $crate::typecheck::UnifRecordRows::concrete(
             $crate::typ::RecordRowsF::Extend {
                 row: $crate::typ::RecordRowF {
-                    id: LocIdent::from($id),
+                    id: $crate::identifier::LocIdent::from($id),
                     typ: Box::new($ty.into()),
                 },
-                tail: Box::new($crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)),
+                tail: Box::new($crate::mk_uty_record_row!($(($ids, $tys)),* $(; $tail)?)),
             }
         )
     };
@@ -71,10 +88,10 @@ macro_rules! mk_uty_row {
 /// Wrapper around `mk_uty_enum_row!` to build an enum type from an enum row.
 #[macro_export]
 macro_rules! mk_uty_enum {
-    ($( $ids:expr ),* $(; $tail:expr)?) => {
+    ($( $args:tt )*) => {
         $crate::typecheck::UnifType::concrete(
             $crate::typ::TypeF::Enum(
-                $crate::mk_uty_enum_row!($( $ids ),* $(; $tail)?)
+                $crate::mk_uty_enum_row!($( $args )*)
             )
         )
     };
@@ -86,7 +103,7 @@ macro_rules! mk_uty_record {
     ($(($ids:expr, $tys:expr)),* $(; $tail:expr)?) => {
         $crate::typecheck::UnifType::concrete(
             $crate::typ::TypeF::Record(
-                $crate::mk_uty_row!($(($ids, $tys)),* $(; $tail)?)
+                $crate::mk_uty_record_row!($(($ids, $tys)),* $(; $tail)?)
             )
         )
     };

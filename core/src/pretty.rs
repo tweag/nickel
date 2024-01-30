@@ -770,6 +770,12 @@ where
             },
             Var(id) => allocator.as_string(id),
             Enum(id) => allocator.text("'").append(allocator.text(ident_quoted(id))),
+            EnumVariant(id, data) => allocator
+                .text("'")
+                .append(allocator.text(ident_quoted(id)))
+                .append("..(")
+                .append(data.pretty(allocator))
+                .append(")"),
             Record(record_data) => allocator.record(record_data, &[]),
             RecRecord(record_data, dyn_fields, _) => allocator.record(record_data, dyn_fields),
             Match { cases, default } => docs![
@@ -895,18 +901,46 @@ where
         match &self.0 {
             EnumRowsF::Empty => allocator.nil(),
             EnumRowsF::TailVar(id) => docs![allocator, ";", allocator.line(), id.to_string()],
-            EnumRowsF::Extend { row, tail } => docs![
-                allocator,
-                "'",
-                ident_quoted(row),
+            EnumRowsF::Extend { row, tail } => {
+                let mut result = row.pretty(allocator);
+
                 if let EnumRowsF::Extend { .. } = tail.0 {
-                    docs![allocator, ",", allocator.line()]
-                } else {
-                    allocator.nil()
-                },
-                tail.as_ref()
-            ],
+                    result = result.append(allocator.text(",").append(allocator.line()));
+                }
+
+                result.append(tail.as_ref())
+            }
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &EnumRow
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        let mut result = allocator
+            .text("'")
+            .append(allocator.text(ident_quoted(&self.id)));
+
+        if let Some(typ) = self.typ.as_ref() {
+            let ty_parenthesized = if typ.fmt_is_atom() {
+                typ.pretty(allocator)
+            } else {
+                allocator
+                    .text("(")
+                    .append(allocator.line_())
+                    .append(typ.pretty(allocator))
+                    .append(allocator.line_())
+                    .append(")")
+            };
+
+            result = result.append(allocator.text(" ")).append(ty_parenthesized);
+        }
+
+        result
     }
 }
 
@@ -921,14 +955,9 @@ where
             RecordRowsF::Empty => allocator.nil(),
             RecordRowsF::TailDyn => docs![allocator, ";", allocator.line(), "Dyn"],
             RecordRowsF::TailVar(id) => docs![allocator, ";", allocator.line(), id.to_string()],
-            RecordRowsF::Extend {
-                row: RecordRowF { id, typ },
-                tail,
-            } => docs![
+            RecordRowsF::Extend { row, tail } => docs![
                 allocator,
-                ident_quoted(id),
-                " : ",
-                typ.as_ref(),
+                row,
                 if let RecordRowsF::Extend { .. } = tail.0 {
                     docs![allocator, ",", allocator.line()]
                 } else {
@@ -937,6 +966,17 @@ where
                 tail.as_ref()
             ],
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &RecordRow
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        docs![allocator, ident_quoted(&self.id), " : ", self.typ.as_ref(),]
     }
 }
 

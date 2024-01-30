@@ -63,11 +63,8 @@ use crate::{
         record::Field, LabeledType, RichTerm, StrChunk, Term, Traverse, TraverseOrder,
         TypeAnnotation,
     },
-    typ::{
-        EnumRow, EnumRows, EnumRowsF, EnumRowsIterator, RecordRowF, RecordRows, RecordRowsF,
-        RecordRowsIterator, Type, TypeF, VarKind, VarKindDiscriminant,
-    },
-    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_row},
+    typ::*,
+    {mk_uty_arrow, mk_uty_enum, mk_uty_enum_row, mk_uty_record, mk_uty_record_row},
 };
 
 use std::{
@@ -129,7 +126,9 @@ pub enum GenericUnifRecordRows<E: TermEnvironment + Clone> {
     },
 }
 
-pub type UnifEnumRowsUnrolling = EnumRowsF<Box<UnifEnumRows>>;
+pub type GenericUnifEnumRow<E> = EnumRowF<Box<GenericUnifType<E>>>;
+pub type GenericUnifEnumRowsUnrolling<E> =
+    EnumRowsF<Box<GenericUnifType<E>>, Box<GenericUnifEnumRows<E>>>;
 
 /// Unifiable enum rows. Same shape as [`crate::typ::EnumRows`] but where each tail may be a
 /// unification variable (or a constant).
@@ -137,9 +136,9 @@ pub type UnifEnumRowsUnrolling = EnumRowsF<Box<UnifEnumRows>>;
 /// Enum rows don't store any type (they are just a sequence of identifiers), so there is no
 /// `GenericUnifEnumRows` taking an additional `E` parameter.
 #[derive(Clone, PartialEq, Debug)]
-pub enum UnifEnumRows {
+pub enum GenericUnifEnumRows<E: TermEnvironment + Clone> {
     Concrete {
-        erows: UnifEnumRowsUnrolling,
+        erows: GenericUnifEnumRowsUnrolling<E>,
         /// Additional metadata related to unification variable levels update. See [VarLevelsData].
         var_levels_data: VarLevelsData,
     },
@@ -193,15 +192,15 @@ impl VarLevelsData {
         }
     }
 
-    /// Create new variable levels data with an upper bound that there is no unification variable
-    /// in the attached type and no pending level update.
+    /// Create new variable levels data with an upper bound which indicates that there is no
+    /// unification variable in the attached type and no pending level update.
     pub fn new_no_uvars() -> Self {
         Self::new_from_bound(VarLevel::NO_VAR)
     }
 }
 
-// Unification types and variants that store an upper bound on the level of the unification
-// variables they contain, or for which an upper bound can be computed quickly (in constant time).
+/// Unification types and variants that store an upper bound on the level of the unification
+/// variables they contain, or for which an upper bound can be computed quickly (in constant time).
 trait VarLevelUpperBound {
     // Return an upper bound on the level of the unification variables contained in `self`.
     // Depending on the implementer, the level might refer to different kind of unification
@@ -229,34 +228,36 @@ impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifTypeUnrolling<E> {
             }
             TypeF::Arrow(domain, codomain) => max(
                 domain.var_level_upper_bound(),
-                codomain.var_level_upper_bound()
+                codomain.var_level_upper_bound(),
             ),
             TypeF::Forall { body, .. } => body.var_level_upper_bound(),
             TypeF::Enum(erows) => erows.var_level_upper_bound(),
             TypeF::Record(rrows) => rrows.var_level_upper_bound(),
             TypeF::Dict { type_fields, .. } => type_fields.var_level_upper_bound(),
             TypeF::Array(ty_elts) => ty_elts.var_level_upper_bound(),
-            TypeF::Wildcard(_)
-            | TypeF::Var(_)
+            TypeF::Wildcard(_) | TypeF::Var(_) => VarLevel::NO_VAR,
             // This should be unreachable, but let's not panic in release mode nonetheless
-            | TypeF::Flat(_) => VarLevel::NO_VAR,
+            TypeF::Flat(_) => {
+                debug_assert!(false, "unexpected Flat type in var_level_upper_bound");
+                VarLevel::NO_VAR
+            }
         }
     }
 }
 
-impl VarLevelUpperBound for UnifEnumRows {
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifEnumRows<E> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
-            UnifEnumRows::Concrete {
+            GenericUnifEnumRows::Concrete {
                 var_levels_data, ..
             } => var_levels_data.upper_bound,
-            UnifEnumRows::UnifVar { init_level, .. } => *init_level,
-            UnifEnumRows::Constant(_) => VarLevel::NO_VAR,
+            GenericUnifEnumRows::UnifVar { init_level, .. } => *init_level,
+            GenericUnifEnumRows::Constant(_) => VarLevel::NO_VAR,
         }
     }
 }
 
-impl VarLevelUpperBound for UnifEnumRowsUnrolling {
+impl<E: TermEnvironment> VarLevelUpperBound for GenericUnifEnumRowsUnrolling<E> {
     fn var_level_upper_bound(&self) -> VarLevel {
         match self {
             // A var that hasn't be instantiated yet isn't a unification variable
@@ -351,7 +352,7 @@ pub enum GenericUnifType<E: TermEnvironment> {
 }
 
 type GenericUnifTypeUnrolling<E> =
-    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, UnifEnumRows>;
+    TypeF<Box<GenericUnifType<E>>, GenericUnifRecordRows<E>, GenericUnifEnumRows<E>>;
 
 impl<E: TermEnvironment> GenericUnifType<E> {
     /// Create a concrete generic unification type. Compute the variable levels data from the
@@ -379,6 +380,18 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
+impl<E: TermEnvironment> GenericUnifEnumRows<E> {
+    /// Create concrete generic enum rows. Compute the variable levels data from the subcomponents.
+    pub fn concrete(typ: GenericUnifEnumRowsUnrolling<E>) -> Self {
+        let upper_bound = typ.var_level_upper_bound();
+
+        GenericUnifEnumRows::Concrete {
+            erows: typ,
+            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+        }
+    }
+}
+
 impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUnifRecordRows<E> {
     type Error = ();
 
@@ -387,10 +400,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUn
             GenericUnifRecordRows::Concrete { rrows, .. } => {
                 let converted: RecordRowsF<Box<Type>, Box<RecordRows>> = rrows.try_map(
                     |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
-                    |urrows| {
-                        let rrows: RecordRows = (*urrows).try_into()?;
-                        Ok(Box::new(rrows))
-                    },
+                    |urrows| Ok(Box::new(GenericUnifRecordRows::try_into(*urrows)?)),
                 )?;
                 Ok(RecordRows(converted))
             }
@@ -399,14 +409,16 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<RecordRows> for GenericUn
     }
 }
 
-impl std::convert::TryInto<EnumRows> for UnifEnumRows {
+impl<E: TermEnvironment> std::convert::TryInto<EnumRows> for GenericUnifEnumRows<E> {
     type Error = ();
 
     fn try_into(self) -> Result<EnumRows, ()> {
         match self {
-            UnifEnumRows::Concrete { erows, .. } => {
-                let converted: EnumRowsF<Box<EnumRows>> =
-                    erows.try_map(|erows| Ok(Box::new(UnifEnumRows::try_into(*erows)?)))?;
+            GenericUnifEnumRows::Concrete { erows, .. } => {
+                let converted: EnumRowsF<Box<Type>, Box<EnumRows>> = erows.try_map(
+                    |uty| Ok(Box::new(GenericUnifType::try_into(*uty)?)),
+                    |uerows| Ok(Box::new(GenericUnifEnumRows::try_into(*uerows)?)),
+                )?;
                 Ok(EnumRows(converted))
             }
             _ => Err(()),
@@ -426,7 +438,7 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType
                         Ok(Box::new(ty))
                     },
                     GenericUnifRecordRows::try_into,
-                    UnifEnumRows::try_into,
+                    GenericUnifEnumRows::try_into,
                 )?;
                 Ok(Type::from(converted))
             }
@@ -442,31 +454,22 @@ impl<E: TermEnvironment + Clone> std::convert::TryInto<Type> for GenericUnifType
     }
 }
 
-// As opposed to `UnifType` and `UnifRecordRows` which can contain types and thus contracts, with
-// all the subtleties associated with contract equality checking (see `typecheck::eq` module), we
-// can convert enum rows directly to unifiable enum rows without additional data: instead of
-// implementing a function `from_enum_rows`, we rather implement the more natural trait
-// `From<EnumRows>`.
-impl From<EnumRows> for UnifEnumRows {
-    fn from(erows: EnumRows) -> Self {
-        UnifEnumRows::concrete(erows.0.map(|erows| Box::new(UnifEnumRows::from(*erows))))
+impl<E: TermEnvironment + Clone> GenericUnifEnumRows<E> {
+    pub fn from_enum_rows(erows: EnumRows, env: &E) -> Self {
+        let f_erow = |ty: Box<Type>| Box::new(GenericUnifType::from_type(*ty, env));
+        let f_erows =
+            |erows: Box<EnumRows>| Box::new(GenericUnifEnumRows::from_enum_rows(*erows, env));
+
+        GenericUnifEnumRows::concrete(erows.0.map(f_erow, f_erows))
     }
 }
 
-impl UnifEnumRows {
+impl<E: TermEnvironment> GenericUnifEnumRows<E> {
     /// Return an iterator producing immutable references to individual rows.
-    pub fn iter(&self) -> EnumRowsIterator<UnifEnumRows> {
-        EnumRowsIterator { erows: Some(self) }
-    }
-
-    /// Create concrete generic unification enum rows. Compute the variable levels data from the
-    /// subcomponents.
-    pub fn concrete(erows: UnifEnumRowsUnrolling) -> Self {
-        let upper_bound = erows.var_level_upper_bound();
-
-        UnifEnumRows::Concrete {
-            erows,
-            var_levels_data: VarLevelsData::new_from_bound(upper_bound),
+    pub(super) fn iter(&self) -> EnumRowsIterator<GenericUnifType<E>, GenericUnifEnumRows<E>> {
+        EnumRowsIterator {
+            erows: Some(self),
+            ty: std::marker::PhantomData,
         }
     }
 }
@@ -493,16 +496,16 @@ impl<E: TermEnvironment> GenericUnifRecordRows<E> {
     }
 }
 
-// A type which contains variables that can be substituted with values of type `T`.
+/// A type which contains variables that can be substituted with values of type `T`.
 trait Subst<T: Clone>: Sized {
-    // Substitute all variables of identifier `id` with `to`.
+    /// Substitute all variables of identifier `id` with `to`.
     fn subst(self, id: &LocIdent, to: &T) -> Self {
         self.subst_levels(id, to).0
     }
 
-    // Must be implemented by implementers of this trait.
-    // In addition to performing substitution, this method threads variable levels upper bounds to
-    // compute new upper bounds efficiently.
+    /// Must be filled by implementers of this trait.
+    /// In addition to performing substitution, this method threads variable levels upper bounds to
+    /// compute new upper bounds efficiently.
     fn subst_levels(self, id: &LocIdent, to: &T) -> (Self, VarLevel);
 }
 
@@ -513,7 +516,11 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
                 typ: TypeF::Var(var_id),
                 var_levels_data,
             } if var_id == id.ident() => {
+                // A free type variable isn't (yet) a unification variable, so it shouldn't have a
+                // level set at this point. During instantiation, it might be substituted for a
+                // unification variable by this very function, and will then inherit this level.
                 debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
+
                 (to.clone(), to.var_level_upper_bound())
             }
             GenericUnifType::Concrete {
@@ -534,7 +541,11 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifType<E> {
                             *upper_bound = max(*upper_bound, new_ub);
                             new_rrows
                         },
-                        |erows, _| erows,
+                        |erows, upper_bound| {
+                            let (new_erows, new_ub) = erows.subst_levels(id, to);
+                            *upper_bound = max(*upper_bound, new_ub);
+                            new_erows
+                        },
                         &mut upper_bound,
                     ),
                     var_levels_data: VarLevelsData {
@@ -594,6 +605,47 @@ impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifRecordRows<E> 
     }
 }
 
+impl<E: TermEnvironment> Subst<GenericUnifType<E>> for GenericUnifEnumRows<E> {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifType<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifEnumRows::Concrete {
+                erows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::NO_VAR;
+
+                let new_erows = erows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |erows, upper_bound| {
+                        let (new_erows, new_ub) = erows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_erows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_uerows = GenericUnifEnumRows::Concrete {
+                    erows: new_erows,
+                    var_levels_data: VarLevelsData {
+                        upper_bound,
+                        ..var_levels_data
+                    },
+                };
+
+                (new_uerows, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_upper_bound();
+                (self, upper_bound)
+            }
+        }
+    }
+}
+
 impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> {
     fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
         match self {
@@ -614,7 +666,11 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifType<E> 
                         *upper_bound = max(*upper_bound, new_ub);
                         new_rrows
                     },
-                    |erows, _| erows,
+                    |erows, upper_bound| {
+                        let (new_erows, new_ub) = erows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        new_erows
+                    },
                     &mut upper_bound,
                 );
 
@@ -681,8 +737,46 @@ impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifRecordRo
     }
 }
 
-impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<E: TermEnvironment> Subst<GenericUnifRecordRows<E>> for GenericUnifEnumRows<E> {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifRecordRows<E>) -> (Self, VarLevel) {
+        match self {
+            GenericUnifEnumRows::Concrete {
+                erows,
+                var_levels_data,
+            } => {
+                let mut upper_bound = VarLevel::NO_VAR;
+
+                let new_erows = erows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
+                    |erows, upper_bound| {
+                        let (new_erows, new_ub) = erows.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_erows)
+                    },
+                    &mut upper_bound,
+                );
+
+                let new_uerows = GenericUnifEnumRows::Concrete {
+                    erows: new_erows,
+                    var_levels_data,
+                };
+
+                (new_uerows, upper_bound)
+            }
+            _ => {
+                let upper_bound = self.var_level_upper_bound();
+                (self, upper_bound)
+            }
+        }
+    }
+}
+
+impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifType<E> {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifType::Concrete {
                 typ,
@@ -727,8 +821,8 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifType<E> {
     }
 }
 
-impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifRecordRows<E> {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
         match self {
             GenericUnifRecordRows::Concrete {
                 rrows,
@@ -769,23 +863,29 @@ impl<E: TermEnvironment> Subst<UnifEnumRows> for GenericUnifRecordRows<E> {
     }
 }
 
-impl Subst<UnifEnumRows> for UnifEnumRows {
-    fn subst_levels(self, id: &LocIdent, to: &UnifEnumRows) -> (Self, VarLevel) {
+impl<E: TermEnvironment> Subst<GenericUnifEnumRows<E>> for GenericUnifEnumRows<E> {
+    fn subst_levels(self, id: &LocIdent, to: &GenericUnifEnumRows<E>) -> (Self, VarLevel) {
         match self {
-            UnifEnumRows::Concrete {
+            GenericUnifEnumRows::Concrete {
                 erows: EnumRowsF::TailVar(var_id),
                 var_levels_data,
             } if var_id == *id => {
                 debug_assert!(var_levels_data.upper_bound == VarLevel::NO_VAR);
+
                 (to.clone(), to.var_level_upper_bound())
             }
-            UnifEnumRows::Concrete {
+            GenericUnifEnumRows::Concrete {
                 erows,
                 var_levels_data,
             } => {
                 let mut upper_bound = VarLevel::NO_VAR;
 
                 let new_erows = erows.map_state(
+                    |ty, upper_bound| {
+                        let (new_ty, new_ub) = ty.subst_levels(id, to);
+                        *upper_bound = max(*upper_bound, new_ub);
+                        Box::new(new_ty)
+                    },
                     |erows, upper_bound| {
                         let (new_erows, new_ub) = erows.subst_levels(id, to);
                         *upper_bound = max(*upper_bound, new_ub);
@@ -794,7 +894,7 @@ impl Subst<UnifEnumRows> for UnifEnumRows {
                     &mut upper_bound,
                 );
 
-                let new_uerows = UnifEnumRows::Concrete {
+                let new_uerows = GenericUnifEnumRows::Concrete {
                     erows: new_erows,
                     var_levels_data: VarLevelsData {
                         upper_bound,
@@ -823,7 +923,7 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
             ty => GenericUnifType::concrete(ty.map(
                 |ty_| Box::new(GenericUnifType::from_type(*ty_, env)),
                 |rrows| GenericUnifRecordRows::from_record_rows(rrows, env),
-                UnifEnumRows::from,
+                |erows| GenericUnifEnumRows::from_enum_rows(erows, env),
             )),
         }
     }
@@ -831,10 +931,15 @@ impl<E: TermEnvironment + Clone> GenericUnifType<E> {
 
 type UnifTypeUnrolling = GenericUnifTypeUnrolling<SimpleTermEnvironment>;
 type UnifRecordRowsUnrolling = GenericUnifRecordRowsUnrolling<SimpleTermEnvironment>;
+type UnifEnumRowsUnrolling = GenericUnifEnumRowsUnrolling<SimpleTermEnvironment>;
+
+pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
 
 pub type UnifRecordRow = GenericUnifRecordRow<SimpleTermEnvironment>;
 pub type UnifRecordRows = GenericUnifRecordRows<SimpleTermEnvironment>;
-pub type UnifType = GenericUnifType<SimpleTermEnvironment>;
+
+pub type UnifEnumRow = GenericUnifEnumRow<SimpleTermEnvironment>;
+pub type UnifEnumRows = GenericUnifEnumRows<SimpleTermEnvironment>;
 
 impl UnifRecordRows {
     /// Extract the concrete [`RecordRows`] corresponding to a [`UnifRecordRows`]. Free unification
@@ -877,7 +982,10 @@ impl UnifEnumRows {
             },
             UnifEnumRows::Constant(_) => EnumRows(EnumRowsF::Empty),
             UnifEnumRows::Concrete { erows, .. } => {
-                let mapped = erows.map(|erows| Box::new(erows.into_erows(table)));
+                let mapped = erows.map(
+                    |ty| Box::new(ty.into_type(table)),
+                    |erows| Box::new(erows.into_erows(table)),
+                );
                 EnumRows(mapped)
             }
         }
@@ -979,8 +1087,8 @@ impl From<RecordRowsF<Box<UnifType>, Box<UnifRecordRows>>> for UnifRecordRows {
     }
 }
 
-impl From<EnumRowsF<Box<UnifEnumRows>>> for UnifEnumRows {
-    fn from(erows: EnumRowsF<Box<UnifEnumRows>>) -> Self {
+impl From<EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>> for UnifEnumRows {
+    fn from(erows: EnumRowsF<Box<UnifType>, Box<UnifEnumRows>>) -> Self {
         UnifEnumRows::concrete(erows)
     }
 }
@@ -1041,42 +1149,47 @@ impl<'a, E: TermEnvironment> Iterator
 }
 
 /// Iterator items produced by [`EnumRowsIterator`].
-pub enum UnifEnumRowsIteratorItem<'a> {
+pub enum GenericUnifEnumRowsIteratorItem<'a, E: TermEnvironment> {
     TailVar(&'a LocIdent),
     TailUnifVar { id: VarId, init_level: VarLevel },
     TailConstant(VarId),
-    Row(&'a EnumRow),
+    Row(EnumRowF<&'a GenericUnifType<E>>),
 }
 
-impl<'a> Iterator for EnumRowsIterator<'a, UnifEnumRows> {
-    type Item = UnifEnumRowsIteratorItem<'a>;
+impl<'a, E: TermEnvironment> Iterator
+    for EnumRowsIterator<'a, GenericUnifType<E>, GenericUnifEnumRows<E>>
+{
+    type Item = GenericUnifEnumRowsIteratorItem<'a, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.erows.and_then(|next| match next {
-            UnifEnumRows::Concrete { erows, .. } => match erows {
+            GenericUnifEnumRows::Concrete { erows, .. } => match erows {
                 EnumRowsF::Empty => {
                     self.erows = None;
                     None
                 }
                 EnumRowsF::TailVar(id) => {
                     self.erows = None;
-                    Some(UnifEnumRowsIteratorItem::TailVar(id))
+                    Some(GenericUnifEnumRowsIteratorItem::TailVar(id))
                 }
                 EnumRowsF::Extend { row, tail } => {
                     self.erows = Some(tail);
-                    Some(UnifEnumRowsIteratorItem::Row(row))
+                    Some(GenericUnifEnumRowsIteratorItem::Row(EnumRowF {
+                        id: row.id,
+                        typ: row.typ.as_ref().map(|ty| ty.as_ref()),
+                    }))
                 }
             },
-            UnifEnumRows::UnifVar { id, init_level } => {
+            GenericUnifEnumRows::UnifVar { id, init_level } => {
                 self.erows = None;
-                Some(UnifEnumRowsIteratorItem::TailUnifVar {
+                Some(GenericUnifEnumRowsIteratorItem::TailUnifVar {
                     id: *id,
                     init_level: *init_level,
                 })
             }
-            UnifEnumRows::Constant(var_id) => {
+            GenericUnifEnumRows::Constant(var_id) => {
                 self.erows = None;
-                Some(UnifEnumRowsIteratorItem::TailConstant(*var_id))
+                Some(GenericUnifEnumRowsIteratorItem::TailConstant(*var_id))
             }
         })
     }
@@ -1456,6 +1569,7 @@ fn walk<V: TypecheckVisitor>(
                     walk(state, ctxt.clone(), visitor, t)
                 })
         }
+        Term::EnumVariant(_, t) => walk(state, ctxt, visitor, t),
         Term::Op1(_, t) => walk(state, ctxt.clone(), visitor, t),
         Term::Op2(_, t1, t2) => {
             walk(state, ctxt.clone(), visitor, t1)?;
@@ -1798,7 +1912,7 @@ fn check<V: TypecheckVisitor>(
             // ANY enum, since it's more permissive and there's no loss of information.
 
             // A match expression is a special kind of function. Thus it's typed as `a -> b`, where
-            // `a` is a enum type determined by the matched tags and `b` is the type of each match
+            // `a` is an enum type determined by the patterns and `b` is the type of each match
             // arm.
             let arg_type = state.table.fresh_type_uvar(ctxt.var_level);
             let return_type = state.table.fresh_type_uvar(ctxt.var_level);
@@ -1852,6 +1966,19 @@ fn check<V: TypecheckVisitor>(
             let row = state.table.fresh_erows_uvar(ctxt.var_level);
             ty.unify(mk_uty_enum!(*id; row), state, &ctxt)
                 .map_err(|err| err.into_typecheck_err(state, rt.pos))
+        }
+        Term::EnumVariant(id, t) => {
+            let row_tail = state.table.fresh_erows_uvar(ctxt.var_level);
+            let ty_arg = state.table.fresh_type_uvar(ctxt.var_level);
+
+            // We match the expected type against `[| 'id ty_arg; row_tail |]`, where `row_tail` is
+            // a free unification variable, to ensure it has the right shape and extract the
+            // components.
+            ty.unify(mk_uty_enum!((*id, ty_arg.clone()); row_tail), state, &ctxt)
+                .map_err(|err| err.into_typecheck_err(state, rt.pos))?;
+
+            // Once we have a type for the argument, we check the variant's data against it.
+            check(state, ctxt, visitor, t, ty_arg)
         }
         // If some fields are defined dynamically, the only potential type that works is `{_ : a}`
         // for some `a`. In other words, the checking rule is not the same depending on the target
@@ -1918,8 +2045,8 @@ fn check<V: TypecheckVisitor>(
                     .collect();
 
                 let rows = field_types.iter().fold(
-                    mk_uty_row!(),
-                    |acc, (id, row_ty)| mk_uty_row!((*id, row_ty.clone()); acc),
+                    mk_uty_record_row!(),
+                    |acc, (id, row_ty)| mk_uty_record_row!((*id, row_ty.clone()); acc),
                 );
 
                 ty.unify(mk_uty_record!(; rows), state, &ctxt)
@@ -2132,8 +2259,8 @@ fn infer_with_annot<V: TypecheckVisitor>(
         // its type to be either the first annotation defined if any, or `Dyn` otherwise.
         // We can only hit this case for record fields.
         //
-        // TODO: we might have something to with the visitor to clear the current metadata.
-        // It looks like it may be unduly attached to the next field definition, which is not
+        // TODO: we might have something to do with the visitor to clear the current metadata. It
+        // looks like it may be unduly attached to the next field definition, which is not
         // critical, but still a bug.
         _ => {
             let inferred = annot
@@ -2171,7 +2298,7 @@ fn infer<V: TypecheckVisitor>(
         }
         // Theoretically, we need to instantiate the type of the head of the primop application,
         // that is, the primop itself. In practice, `get_uop_type`,`get_bop_type` and
-        // `get_nop_type` return type that are already instantiated with free unification
+        // `get_nop_type` return types that are already instantiated with free unification
         // variables, to save building a polymorphic type to only instantiate it immediately. Thus,
         // the type of a primop is currently always monomorphic.
         Term::Op1(op, t) => {
@@ -2325,6 +2452,23 @@ fn replace_wildcards_with_var(
         ))
     }
 
+    fn replace_erows(
+        table: &mut UnifTable,
+        ctxt: &Context,
+        wildcard_vars: &mut Vec<UnifType>,
+        erows: EnumRows,
+    ) -> UnifEnumRows {
+        UnifEnumRows::concrete(erows.0.map_state(
+            |ty, (table, wildcard_vars)| {
+                Box::new(replace_wildcards_with_var(table, ctxt, wildcard_vars, *ty))
+            },
+            |erows, (table, wildcard_vars)| {
+                Box::new(replace_erows(table, ctxt, wildcard_vars, *erows))
+            },
+            &mut (table, wildcard_vars),
+        ))
+    }
+
     match ty.typ {
         TypeF::Wildcard(i) => get_wildcard_var(table, ctxt.var_level, wildcard_vars, i),
         TypeF::Flat(t) => UnifType::Contract(t, ctxt.term_env.clone()),
@@ -2334,7 +2478,7 @@ fn replace_wildcards_with_var(
             },
             |rrows, (table, wildcard_vars)| replace_rrows(table, ctxt, wildcard_vars, rrows),
             // Enum rows contain neither wildcards nor contracts
-            |erows, _| UnifEnumRows::from(erows),
+            |erows, (table, wildcard_vars)| replace_erows(table, ctxt, wildcard_vars, erows),
             &mut (table, wildcard_vars),
         )),
     }
@@ -2617,7 +2761,7 @@ fn instantiate_foralls(
                     state.constr.insert(fresh_uid, excluded);
                 }
             }
-            VarKind::EnumRows => {
+            VarKind::EnumRows { excluded } => {
                 let fresh_uid = state.table.fresh_erows_var_id(ctxt.var_level);
                 let uvar = match inst {
                     ForallInst::Constant => UnifEnumRows::Constant(fresh_uid),
@@ -2628,6 +2772,10 @@ fn instantiate_foralls(
                 };
                 state.names.insert((fresh_uid, kind), var.ident());
                 ty = body.subst(&var, &uvar);
+
+                if inst == ForallInst::UnifVar {
+                    state.constr.insert(fresh_uid, excluded);
+                }
             }
         };
     }

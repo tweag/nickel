@@ -180,8 +180,10 @@ enum ErrorExpectation {
     TypecheckExtraRow { ident: String },
     #[serde(rename = "TypecheckError::RowConflict")]
     TypecheckRowConflict { row: String },
-    #[serde(rename = "TypecheckError::RowMismatch")]
-    TypecheckRowMismatch,
+    #[serde(rename = "TypecheckError::RecordRowMismatch")]
+    TypecheckRecordRowMismatch,
+    #[serde(rename = "TypecheckError::EnumRowMismatch")]
+    TypecheckEnumRowMismatch,
     #[serde(rename = "TypecheckError::ExtraDynTail")]
     TypecheckExtraDynTail,
     #[serde(rename = "TypecheckError::MissingDynTail")]
@@ -224,7 +226,14 @@ impl PartialEq<Error> for ErrorExpectation {
                 Error::EvalError(EvalError::MergeIncompatibleArgs { .. }),
             )
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
-            | (TypecheckRowMismatch, Error::TypecheckError(TypecheckError::RowMismatch(..)))
+            | (
+                TypecheckRecordRowMismatch,
+                Error::TypecheckError(TypecheckError::RecordRowMismatch(..)),
+            )
+            | (
+                TypecheckEnumRowMismatch,
+                Error::TypecheckError(TypecheckError::EnumRowMismatch(..)),
+            )
             | (
                 TypecheckMissingDynTail,
                 Error::TypecheckError(TypecheckError::MissingDynTail(..)),
@@ -385,7 +394,8 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckExtraRow { ident } => {
                 format!("TypecheckError::ExtraRow({ident})")
             }
-            TypecheckRowMismatch => "TypecheckError::RowMismatch".to_owned(),
+            TypecheckRecordRowMismatch => "TypecheckError::RecordRowMismatch".to_owned(),
+            TypecheckEnumRowMismatch => "TypecheckError::EnumRowMismatch".to_owned(),
             TypecheckRowConflict { row } => {
                 format!("TypecheckError::RowConflict({row})")
             }

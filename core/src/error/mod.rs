@@ -3,6 +3,7 @@
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
 use crate::cache::Cache;
+use crate::typ::EnumRowsIteratorItem;
 
 pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
@@ -29,7 +30,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, Number, RichTerm, Term},
-    typ::{Type, TypeF, VarKindDiscriminant},
+    typ::{EnumRow, Type, TypeF, VarKindDiscriminant},
 };
 
 pub mod report;
@@ -257,13 +258,26 @@ pub enum TypecheckError {
         /* the actual type */ Type,
         TermPos,
     ),
-    /// Two incompatible kind (enum vs record) have been deduced for the same identifier of a row
-    /// type.
-    RowMismatch(
+    /// The actual (inferred or annotated) record row type of an expression is incompatible with
+    /// its expected record row type. Specialized version of [Self::TypeMismatch] with additional
+    /// row-specific information.
+    RecordRowMismatch(
         LocIdent,
         /* the expected row type (whole) */ Type,
         /* the actual row type (whole) */ Type,
         /* error at the given row */ Box<TypecheckError>,
+        TermPos,
+    ),
+    /// The actual (inferred or annotated) enum row type of an expression is incompatible with its
+    /// expected enum row type. Specialized version of [Self::TypeMismatch] with additional
+    /// row-specific information.
+    EnumRowMismatch(
+        LocIdent,
+        /* the expected row type (whole) */ Type,
+        /* the actual row type (whole) */ Type,
+        /* The error at the given row, if both enum arguments were `Some(_)` but they failed to
+         * unify */
+        Option<Box<TypecheckError>>,
         TermPos,
     ),
     /// Two incompatible types have been deduced for the same identifier of a row type.
@@ -2006,7 +2020,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                         String::from(last_note),
                     ])]
             }
-            TypecheckError::RowMismatch(ident, expd, actual, mut err, span_opt) => {
+            TypecheckError::RecordRowMismatch(ident, expd, actual, mut err, span_opt) => {
                 // If the unification error is on a nested field, we will have a succession of
                 // `RowMismatch` errors wrapping the underlying error. In this case, instead of
                 // showing a cascade of similar error messages, we determine the full path of the
@@ -2014,7 +2028,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // error followed by the underlying error.
                 let mut path = vec![ident.ident()];
 
-                while let TypecheckError::RowMismatch(id_next, _, _, next, _) = *err {
+                while let TypecheckError::RecordRowMismatch(id_next, _, _, next, _) = *err {
                     path.push(id_next.ident());
                     err = next;
                 }
@@ -2026,8 +2040,6 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     .collect();
                 let field = path_str.join(".");
 
-                //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
-                //than doing this match.
                 let mk_expected_row_msg = |field, ty| {
                     format!("Expected an expression of a record type with the row `{field}: {ty}`")
                 };
@@ -2035,6 +2047,8 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                     format!("Found an expression of a record type with the row `{field}: {ty}`")
                 };
 
+                //TODO: we should rather have RowMismatch hold a rows, instead of a general type,
+                //than doing this match.
                 let note1 = if let TypeF::Record(rrows) = &expd.typ {
                     match rrows.find_path(path.as_slice()) {
                         Some(row) => mk_expected_row_msg(&field, row.typ),
@@ -2054,7 +2068,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 };
 
                 let mut diags = vec![Diagnostic::error()
-                    .with_message("incompatible rows declaration")
+                    .with_message("incompatible record rows declaration")
                     .with_labels(mk_expr_label(&span_opt))
                     .with_notes(vec![
                         note1,
@@ -2073,6 +2087,70 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 ));
                 diags
             }
+            TypecheckError::EnumRowMismatch(ident, expd, actual, err, span_opt) => {
+                let mk_expected_row_msg = |row| {
+                    format!("Expected an expression of an enum type with the enum row `{row}`")
+                };
+                let mk_inferred_row_msg =
+                    |row| format!("Found an expression of an enum type with the enum row `{row}`");
+
+                let find_row = |row_item: EnumRowsIteratorItem<'_, Type>| match row_item {
+                    EnumRowsIteratorItem::Row(row) if row.id.ident() == ident.ident() => {
+                        Some(EnumRow {
+                            id: row.id,
+                            typ: row.typ.cloned().map(Box::new),
+                        })
+                    }
+                    _ => None,
+                };
+
+                //TODO: we should rather have RowMismatch hold enum rows, instead of a general
+                //type, to avoid doing this match.
+                let note1 = if let TypeF::Enum(erows) = &expd.typ {
+                    if let Some(row) = erows.iter().find_map(find_row) {
+                        mk_expected_row_msg(row)
+                    } else {
+                        mk_expected_msg(&expd)
+                    }
+                } else {
+                    mk_expected_msg(&expd)
+                };
+
+                let note2 = if let TypeF::Enum(erows) = &actual.typ {
+                    if let Some(row) = erows.iter().find_map(find_row) {
+                        mk_inferred_row_msg(row)
+                    } else {
+                        mk_inferred_msg(&expd)
+                    }
+                } else {
+                    mk_inferred_msg(&actual)
+                };
+
+                let mut diags = vec![Diagnostic::error()
+                    .with_message("incompatible enum rows declaration")
+                    .with_labels(mk_expr_label(&span_opt))
+                    .with_notes(vec![
+                        note1,
+                        note2,
+                        format!("Could not match the two declarations of `{ident}`"),
+                    ])];
+
+                // We generate a diagnostic for the underlying error if any, but append a prefix to
+                // the error message to make it clear that this is not a separate error but a more
+                // precise description of why the unification of a row failed.
+                if let Some(err) = err {
+                    diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter().map(
+                        |mut diag| {
+                            diag.message =
+                                format!("while typing enum row `{ident}`: {}", diag.message);
+                            diag
+                        },
+                    ));
+                }
+
+                diags
+            }
+
             TypecheckError::RowConflict(ident, conflict, _expd, _actual, span_opt) => {
                 vec![Diagnostic::error()
                     .with_message("multiple rows declaration")

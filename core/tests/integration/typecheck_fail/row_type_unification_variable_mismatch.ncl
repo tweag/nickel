@@ -2,7 +2,7 @@
 # repeat = 5
 #
 # [test.metadata]
-# error = 'TypecheckError::RowMismatch'
+# error = 'TypecheckError::RecordRowMismatch'
 
 # Regression test following [#841](https://github.com/tweag/nickel/issues/841).
 # Checks that type mismatches occurring in the tail of a row type with

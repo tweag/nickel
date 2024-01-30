@@ -283,6 +283,7 @@ Forall: Type =
 // also includes previous levels).
 Applicative: UniTerm = {
     Atom,
+    <EnumVariant> => <>.into(),
     AsUniTerm<WithPos<TypeArray>>,
     <t1: AsTerm<Applicative>> <t2: AsTerm<Atom>> =>
         UniTerm::from(mk_app!(t1, t2)),
@@ -316,7 +317,7 @@ Applicative: UniTerm = {
 TypeArray: Type = "Array" <t: AsType<Atom>> =>
     // For some reason, we have to bind the type into a `t`
     // rather than using the usual `<>` placeholder, otherwise,
-    // it doens't compile.
+    // it doesn't compile.
     Type::from(TypeF::Array(Box::new(t)));
 
 // A record operation chain, such as `{foo = data}.bar.baz`.
@@ -699,6 +700,10 @@ EnumTag: LocIdent = {
   <StringEnumTag> => <>.into(),
 };
 
+EnumVariant: RichTerm =
+    <tag: EnumTag> ".." "(" <arg: Term> ")" =>
+        RichTerm::from(Term::EnumVariant(tag, arg));
+
 ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),
     "multstr literal" => ChunkLiteralPart::Str(<>),
@@ -994,9 +999,17 @@ TypeBuiltin: Type = {
      "String" => Type::from(TypeF::String),
 }
 
+TypeEnumRow: EnumRow = <id: EnumTag> <typ: (AsType<Atom>)?> => {
+    EnumRow {
+        id,
+        typ: typ.map(Box::new),
+    }
+};
+
 TypeAtom: Type = {
     <TypeBuiltin>,
-    "[|" <rows:(<EnumTag> ",")*> <last: (<EnumTag>)?> <tail: (";" <Ident>)?> "|]" => {
+    // TODO[adts]: have a separate rule for enum, and accept argument for rows
+    "[|" <rows:(<TypeEnumRow> ",")*> <last: (<TypeEnumRow>)?> <tail: (";" <Ident>)?> "|]" => {
         let ty = rows.into_iter()
             .chain(last.into_iter())
             // As we build row types as a linked list via a fold on the original
@@ -1011,9 +1024,15 @@ TypeAtom: Type = {
                         None => EnumRowsF::Empty,
                     }
                 ),
-                |erows, row| EnumRows(EnumRowsF::Extend { row, tail: Box::new(erows) })
+                |erows, row| {
+                    EnumRows(EnumRowsF::Extend {
+                        row,
+                        tail: Box::new(erows)
+                    })
+                }
             );
-            Type::from(TypeF::Enum(ty))
+
+        Type::from(TypeF::Enum(ty))
     },
     "{" "_" ":" <t: WithPos<Type>> "}" => {
         Type::from(TypeF::Dict {
@@ -1021,14 +1040,14 @@ TypeAtom: Type = {
             flavour: DictTypeFlavour::Type
         })
     },
-    // Although a dictionary contracts isn't really a type, we treat it like as
-    // a type for now - at least syntactically - as they are represented using a
+    // Although dictionary contracts aren't really types, we treat them as
+    // types for now - at least syntactically - as they are represented using a
     // `TypeF::Dict` constructor in the AST. This just simpler for many reasons
     // (error reporting of contracts and in particular type paths, LSP, and so
     // on.)
     //
     // However, note that we use a fixed type as an argument. This has the
-    // effect of preventing dictionary contracts from catpuring type variables
+    // effect of preventing dictionary contracts from capturing type variables
     // that could be in scope. For example, we want `forall a. {_ | a}` to fail
     // (see https://github.com/tweag/nickel/issues/1228). Fixing type variables
     // right away inside the dictionary contract (before the enclosing `forall`
