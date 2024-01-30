@@ -14,7 +14,7 @@ use lsp_types::{
     ClientCapabilities, DidChangeTextDocumentParams, DidOpenTextDocumentParams,
     GotoDefinitionParams, GotoDefinitionResponse, InitializeParams, InitializedParams, Position,
     TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-    VersionedTextDocumentIdentifier,
+    VersionedTextDocumentIdentifier, WorkDoneProgressParams,
 };
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -166,6 +166,7 @@ impl Server {
             workspace_folders: None,
             client_info: None,
             locale: None,
+            work_done_progress_params: WorkDoneProgressParams::default(),
         })?;
         self.send_notification::<Initialized>(InitializedParams {})
     }

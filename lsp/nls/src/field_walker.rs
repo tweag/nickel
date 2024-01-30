@@ -48,7 +48,7 @@ impl Record {
                 .map(|(id, val)| CompletionItem {
                     label: ident_quoted(id),
                     detail: metadata_detail(&val.metadata),
-                    kind: Some(CompletionItemKind::Property),
+                    kind: Some(CompletionItemKind::PROPERTY),
                     documentation: metadata_doc(&val.metadata),
                     ident: Some((*id).into()),
                 })
@@ -60,7 +60,7 @@ impl Record {
                     RecordRowsIteratorItem::TailVar(_) => None,
                     RecordRowsIteratorItem::Row(r) => Some(CompletionItem {
                         label: ident_quoted(&r.id),
-                        kind: Some(CompletionItemKind::Property),
+                        kind: Some(CompletionItemKind::PROPERTY),
                         detail: Some(r.typ.to_string()),
                         ..Default::default()
                     }),
@@ -236,7 +236,7 @@ impl Def {
         CompletionItem {
             label: ident_quoted(&self.ident().into()),
             detail: self.metadata().and_then(metadata_detail),
-            kind: Some(CompletionItemKind::Property),
+            kind: Some(CompletionItemKind::PROPERTY),
             documentation: self.metadata().and_then(metadata_doc),
             ..Default::default()
         }

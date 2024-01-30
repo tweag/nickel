@@ -33,7 +33,7 @@ pub fn handle_document_symbols(
             Some(DocumentSymbol {
                 name: ident.ident.to_string(),
                 detail: ty.map(Type::to_string),
-                kind: SymbolKind::Variable,
+                kind: SymbolKind::VARIABLE,
                 tags: None,
                 range,
                 selection_range: range,

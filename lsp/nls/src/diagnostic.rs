@@ -57,11 +57,11 @@ impl LocationCompat for lsp_types::Location {
 impl DiagnosticCompat for lsp_types::Diagnostic {
     fn from_codespan(diagnostic: Diagnostic<FileId>, files: &mut Files<String>) -> Vec<Self> {
         let severity = Some(match diagnostic.severity {
-            diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::Warning,
-            diagnostic::Severity::Error => lsp_types::DiagnosticSeverity::Error,
-            diagnostic::Severity::Warning => lsp_types::DiagnosticSeverity::Warning,
-            diagnostic::Severity::Note => lsp_types::DiagnosticSeverity::Information,
-            diagnostic::Severity::Help => lsp_types::DiagnosticSeverity::Hint,
+            diagnostic::Severity::Bug => lsp_types::DiagnosticSeverity::WARNING,
+            diagnostic::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
+            diagnostic::Severity::Warning => lsp_types::DiagnosticSeverity::WARNING,
+            diagnostic::Severity::Note => lsp_types::DiagnosticSeverity::INFORMATION,
+            diagnostic::Severity::Help => lsp_types::DiagnosticSeverity::HINT,
         });
 
         diagnostic
