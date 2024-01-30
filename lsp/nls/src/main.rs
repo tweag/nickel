@@ -8,6 +8,7 @@ use lsp_server::Connection;
 mod actions;
 mod analysis;
 mod cache;
+mod codespan_lsp;
 mod command;
 mod diagnostic;
 mod error;

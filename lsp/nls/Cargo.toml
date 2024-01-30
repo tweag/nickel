@@ -30,7 +30,6 @@ lalrpop-util.workspace = true
 clap = { workspace = true, features = ["derive"] }
 codespan.workspace = true
 codespan-reporting.workspace = true
-codespan-lsp.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 regex.workspace = true

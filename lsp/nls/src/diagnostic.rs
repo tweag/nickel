@@ -2,8 +2,10 @@ use std::ops::Range;
 
 use codespan::{FileId, Files};
 use codespan_reporting::diagnostic::{self, Diagnostic};
-use lsp_types::{NumberOrString, Position};
+use lsp_types::NumberOrString;
 use nickel_lang_core::position::RawSpan;
+
+use crate::codespan_lsp::byte_span_to_range;
 
 /// Convert [codespan_reporting::diagnostic::Diagnostic] into a list of another type
 /// Diagnostics tend to contain a list of labels pointing to errors in the code which
@@ -28,29 +30,10 @@ pub trait LocationCompat: Sized {
 
 impl LocationCompat for lsp_types::Range {
     fn from_codespan(file_id: &FileId, range: &Range<usize>, files: &Files<String>) -> Self {
-        let start = files.location(*file_id, range.start as u32);
-        let end = files.location(*file_id, range.end as u32);
-
-        let (line_start, col_start, line_end, col_end) = match (start, end) {
-            (Ok(start_loc), Ok(end_loc)) => (
-                start_loc.line.0,
-                start_loc.column.0,
-                end_loc.line.0,
-                end_loc.column.0,
-            ),
-            (Ok(loc), _) | (_, Ok(loc)) => (loc.line.0, loc.column.0, loc.line.0, loc.column.0),
-            _ => (0, 0, 0, 0),
-        };
-        lsp_types::Range {
-            start: Position {
-                line: line_start,
-                character: col_start,
-            },
-            end: Position {
-                line: line_end,
-                character: col_end,
-            },
-        }
+        byte_span_to_range(files, *file_id, range.clone()).unwrap_or(lsp_types::Range {
+            start: Default::default(),
+            end: Default::default(),
+        })
     }
 
     fn from_span(span: &RawSpan, files: &Files<String>) -> Self {
