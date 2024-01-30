@@ -666,6 +666,21 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                         }
                     }
                 }
+                // Closurize the argument of an enum variant if it's not already done. Usually this is done at the first
+                // time the variant is evaluated.
+                Term::EnumVariant { tag, arg, attrs } if !attrs.closurized => {
+                    Closure {
+                        body: RichTerm::new(
+                            Term::EnumVariant {
+                                tag,
+                                arg: arg.closurize(&mut self.cache, env),
+                                attrs: attrs.closurized(),
+                            },
+                            pos,
+                        ),
+                        env: Environment::new(),
+                    }
+                }
                 // Closurize the record if it's not already done. Usually this is done at the first
                 // time this record is evaluated.
                 Term::Record(data) if !data.attrs.closurized => {
@@ -1111,10 +1126,10 @@ pub fn subst<C: Cache>(
         // substitution. Not recursing should be fine, though, because a type in term position
         // turns into a contract, and we don't substitute inside contracts either currently.
         | v @ Term::Type(_) => RichTerm::new(v, pos),
-        Term::EnumVariant(tag, t) => {
-            let t = subst(cache, t, initial_env, env);
+        Term::EnumVariant { tag, arg, attrs } => {
+            let arg = subst(cache, arg, initial_env, env);
 
-            RichTerm::new(Term::EnumVariant(tag, t), pos)
+            RichTerm::new(Term::EnumVariant { tag, arg, attrs }, pos)
         }
         Term::Let(id, t1, t2, attrs) => {
             let t1 = subst(cache, t1, initial_env, env);

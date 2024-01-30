@@ -572,11 +572,11 @@ impl Thunk {
 
     /// Determine if a thunk is worth being put on the stack for future update.
     ///
-    /// Typically, WHNFs and annotated values will not be evaluated to a simpler expression and are
-    /// not worth updating.
+    /// Typically, expressions in weak head normal form (more precisely, in [effective weak head
+    /// normal form][crate::term::Term::is_eff_whnf]) won't evaluate further and their update can
+    /// be skipped.
     pub fn should_update(&self) -> bool {
-        let term = &self.borrow().body.term;
-        !term.is_whnf() && !term.is_annotated()
+        !self.borrow().body.term.is_eff_whnf()
     }
 
     /// Return a clone of the potential field dependencies stored in a revertible thunk. See

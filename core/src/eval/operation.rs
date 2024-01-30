@@ -3127,9 +3127,18 @@ fn eq<C: Cache>(
         (Term::Lbl(l1), Term::Lbl(l2)) => Ok(EqResult::Bool(l1 == l2)),
         (Term::SealingKey(s1), Term::SealingKey(s2)) => Ok(EqResult::Bool(s1 == s2)),
         (Term::Enum(id1), Term::Enum(id2)) => Ok(EqResult::Bool(id1.ident() == id2.ident())),
-        (Term::EnumVariant(id1, arg1), Term::EnumVariant(id2, arg2))
-            if id1.ident() == id2.ident() =>
-        {
+        (
+            Term::EnumVariant {
+                tag: tag1,
+                arg: arg1,
+                ..
+            },
+            Term::EnumVariant {
+                tag: tag2,
+                arg: arg2,
+                ..
+            },
+        ) if tag1.ident() == tag2.ident() => {
             Ok(gen_eqs(cache, std::iter::once((arg1, arg2)), env1, env2))
         }
         (Term::Record(r1), Term::Record(r2)) => {

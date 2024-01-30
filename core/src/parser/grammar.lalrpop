@@ -702,7 +702,7 @@ EnumTag: LocIdent = {
 
 EnumVariant: RichTerm =
     <tag: EnumTag> ".." "(" <arg: Term> ")" =>
-        RichTerm::from(Term::EnumVariant(tag, arg));
+        RichTerm::from(Term::EnumVariant { tag, arg, attrs: Default::default() });
 
 ChunkLiteralPart: ChunkLiteralPart = {
     "str literal" => ChunkLiteralPart::Str(<>),
