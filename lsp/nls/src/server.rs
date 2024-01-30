@@ -86,6 +86,11 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new(ErrorTolerance::Tolerant);
+
+        if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
+            cache.add_import_paths(nickel_path.split(':'));
+        }
+
         // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
         let initial_ctxt = cache.mk_type_ctxt().unwrap();
