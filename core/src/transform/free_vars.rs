@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destructuring::{FieldPattern, Match, RecordPattern},
+    destructuring::{Pattern, FieldPattern, RecordPattern},
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
@@ -248,18 +248,18 @@ fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
 
 /// Remove the variables bound by a match expression (constituents of a destructuring pattern) from
 /// a set of free variables.
-fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
+fn bind_match(m: &FieldPattern, free_vars: &mut HashSet<Ident>) {
     match m {
-        Match::Assign(_, _, FieldPattern::Ident(ident)) => {
+        FieldPattern::Assign(_, _, Pattern::Any(ident)) => {
             free_vars.remove(&ident.ident());
         }
-        Match::Assign(_, _, FieldPattern::RecordPattern(sub_pattern)) => {
+        FieldPattern::Assign(_, _, Pattern::RecordPattern(sub_pattern)) => {
             bind_pattern(sub_pattern, free_vars);
         }
-        Match::Assign(
+        FieldPattern::Assign(
             _,
             _,
-            FieldPattern::AliasedRecordPattern {
+            Pattern::AliasedPattern {
                 alias,
                 pattern: sub_pattern,
             },
@@ -267,7 +267,7 @@ fn bind_match(m: &Match, free_vars: &mut HashSet<Ident>) {
             free_vars.remove(&alias.ident());
             bind_pattern(sub_pattern, free_vars);
         }
-        Match::Simple(id, _) => {
+        FieldPattern::Simple(id, _) => {
             free_vars.remove(&id.ident());
         }
     }

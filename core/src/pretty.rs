@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::destructuring::{self, FieldPattern, RecordPattern};
+use crate::destructuring::{self, Pattern, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::record::RecordData;
@@ -494,7 +494,7 @@ where
     }
 }
 
-impl<'a, D, A> Pretty<'a, D, A> for &FieldPattern
+impl<'a, D, A> Pretty<'a, D, A> for &Pattern
 where
     D: NickelAllocatorExt<'a, A>,
     D::Doc: Clone,
@@ -502,9 +502,9 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
-            FieldPattern::Ident(id) => allocator.as_string(id),
-            FieldPattern::RecordPattern(rp) => rp.pretty(allocator),
-            FieldPattern::AliasedRecordPattern { alias, pattern } => {
+            Pattern::Any(id) => allocator.as_string(id),
+            Pattern::RecordPattern(rp) => rp.pretty(allocator),
+            Pattern::AliasedPattern { alias, pattern } => {
                 docs![allocator, alias.to_string(), " @ ", pattern]
             }
         }
@@ -530,8 +530,8 @@ where
             allocator.intersperse(
                 matches.iter().map(|m| {
                     let (id, field, pattern_opt) = match m {
-                        destructuring::Match::Simple(id, field) => (id, field, None),
-                        destructuring::Match::Assign(id, field, pattern) => {
+                        destructuring::FieldPattern::Simple(id, field) => (id, field, None),
+                        destructuring::FieldPattern::Assign(id, field, pattern) => {
                             (id, field, Some(pattern))
                         }
                     };

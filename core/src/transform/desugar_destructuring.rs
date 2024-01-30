@@ -30,7 +30,7 @@
 //!     <do_something>
 //! ) in ...
 //! ```
-use crate::destructuring::{FieldPattern, Match, RecordPattern};
+use crate::destructuring::{Pattern, FieldPattern, RecordPattern};
 use crate::identifier::LocIdent;
 use crate::match_sharedterm;
 use crate::term::{
@@ -159,7 +159,7 @@ fn bind_open_field(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm
     Term::Let(
         var,
         matches.iter().fold(Term::Var(x).into(), |x, m| match m {
-            Match::Simple(i, _) | Match::Assign(i, _, _) => op2(
+            FieldPattern::Simple(i, _) | FieldPattern::Assign(i, _, _) => op2(
                 DynRemove(RecordOpKind::default()),
                 Term::Str((*i).into()),
                 x,
@@ -177,7 +177,7 @@ fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let pos = body.pos;
     let RecordPattern { matches, .. } = pat;
     matches.iter().fold(body, move |t, m| match m {
-        Match::Simple(id, _) => RichTerm::new(
+        FieldPattern::Simple(id, _) => RichTerm::new(
             Term::Let(
                 *id,
                 op1(StaticAccess(*id), Term::Var(x)),
@@ -186,7 +186,7 @@ fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             ),
             pos,
         ),
-        Match::Assign(f, _, FieldPattern::Ident(id)) => desugar(RichTerm::new(
+        FieldPattern::Assign(f, _, Pattern::Any(id)) => desugar(RichTerm::new(
             Term::Let(
                 *id,
                 op1(StaticAccess(*f), Term::Var(x)),
@@ -198,7 +198,7 @@ fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             ),
             pos,
         )),
-        Match::Assign(f, _, FieldPattern::RecordPattern(pattern)) => desugar(RichTerm::new(
+        FieldPattern::Assign(f, _, Pattern::RecordPattern(pattern)) => desugar(RichTerm::new(
             Term::LetPattern(
                 None,
                 pattern.clone(),
@@ -207,7 +207,7 @@ fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
             ),
             pos,
         )),
-        Match::Assign(f, _, FieldPattern::AliasedRecordPattern { alias, pattern }) => {
+        FieldPattern::Assign(f, _, Pattern::AliasedPattern { alias, pattern }) => {
             desugar(RichTerm::new(
                 Term::LetPattern(
                     Some(*alias),

@@ -1,5 +1,5 @@
 use crate::{
-    destructuring::{FieldPattern, Match, RecordPattern},
+    destructuring::{Pattern, FieldPattern, RecordPattern},
     error::TypecheckError,
     identifier::LocIdent,
     mk_uty_record_row,
@@ -79,7 +79,7 @@ fn build_pattern_type(
     };
 
     let mut rows = pat.matches.iter().map(|m| match m {
-        Match::Simple(id, field) => Ok(RecordRowF {
+        FieldPattern::Simple(id, field) => Ok(RecordRowF {
             id: *id,
             typ: Box::new(new_leaf_type(
                 state,
@@ -88,7 +88,7 @@ fn build_pattern_type(
                 field.metadata.annotation.typ.clone(),
             )),
         }),
-        Match::Assign(id, field, FieldPattern::Ident(_)) => Ok(RecordRowF {
+        FieldPattern::Assign(id, field, Pattern::Any(_)) => Ok(RecordRowF {
             id: *id,
             typ: Box::new(new_leaf_type(
                 state,
@@ -97,11 +97,11 @@ fn build_pattern_type(
                 field.metadata.annotation.typ.clone(),
             )),
         }),
-        Match::Assign(
+        FieldPattern::Assign(
             id,
             field,
-            FieldPattern::RecordPattern(r_pat)
-            | FieldPattern::AliasedRecordPattern { pattern: r_pat, .. },
+            Pattern::RecordPattern(r_pat)
+            | Pattern::AliasedPattern { pattern: r_pat, .. },
         ) => {
             let row_tys = build_pattern_type(state, ctxt, r_pat, mode)?;
             let ty = UnifType::concrete(TypeF::Record(row_tys));
@@ -149,15 +149,15 @@ pub fn inject_pattern_variables(
     let mut type_map = RecordTypes::from(&pat_ty);
 
     pat.matches.iter().for_each(|m| match m {
-        Match::Simple(id, ..) => {
+        FieldPattern::Simple(id, ..) => {
             let ty = type_map.get_type(id);
             env.insert(id.ident(), ty);
         }
-        Match::Assign(id, _, FieldPattern::Ident(bind_id)) => {
+        FieldPattern::Assign(id, _, Pattern::Any(bind_id)) => {
             let ty = type_map.get_type(id);
             env.insert(bind_id.ident(), ty);
         }
-        Match::Assign(id, _, FieldPattern::RecordPattern(pat)) => {
+        FieldPattern::Assign(id, _, Pattern::RecordPattern(pat)) => {
             let ty = type_map.get_type(id);
 
             // Since we don't have a `bind_id` in this branch,
@@ -183,7 +183,7 @@ pub fn inject_pattern_variables(
             };
             inject_pattern_variables(state, env, pat, rs)
         }
-        Match::Assign(id, _, FieldPattern::AliasedRecordPattern { alias, pattern }) => {
+        FieldPattern::Assign(id, _, Pattern::AliasedPattern { alias, pattern }) => {
             let ty = type_map.get_type(id);
 
             env.insert(alias.ident(), ty.clone());

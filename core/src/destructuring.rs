@@ -1,6 +1,5 @@
 //! In this module, you have the main structures used in the destructuring feature of nickel.
 //! Also, there are implementation managing the generation of a contract from a pattern.
-
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{
@@ -16,35 +15,36 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum FieldPattern {
-    /// An assignment match like `{ ..., a = b, ... }`
-    Ident(LocIdent),
-    /// A nested record pattern like `{ ..., a = { b, c }, ... }`
+pub enum Pattern {
+    /// A simple pattern consisting of an identifier. Match anything and bind the result to the
+    /// corresponding identfier.
+    Any(LocIdent),
+    /// A record pattern as in `{ ..., a = { b, c }, ... }`
     RecordPattern(RecordPattern),
-    /// An aliased nested record pattern like `{ ..., a = b @ { c, d }, ... }`
-    AliasedRecordPattern {
+    /// An aliased pattern as in `{ ..., a = b @ { c, d }, ... }`
+    AliasedPattern {
         alias: LocIdent,
-        pattern: RecordPattern,
+        pattern: Box<Pattern>,
     },
 }
 
-/// A match field in a `Destruct` pattern. Every field can be annotated with a type, with contracts
-/// or with a default value.
+/// A match field in a record pattern. Every field can be annotated with a type, with contracts or
+/// with a default value.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Match {
+pub enum FieldPattern {
     /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
     /// first field of this variant. Any annotations or metadata associated with `a` go into
     /// the `Field` field, and `b` goes into the `FieldPattern` field, which can actually be a
     /// nested destruct pattern.
-    Assign(LocIdent, Field, FieldPattern),
+    Assign(LocIdent, Field, Pattern),
     /// Simple binding. the `Ident` is bind to a variable with the same name.
     Simple(LocIdent, Field),
 }
 
-impl Match {
+impl FieldPattern {
     fn ident(&self) -> LocIdent {
         match self {
-            Match::Assign(ident, ..) | Match::Simple(ident, ..) => *ident,
+            FieldPattern::Assign(ident, ..) | FieldPattern::Simple(ident, ..) => *ident,
         }
     }
 }
@@ -54,7 +54,7 @@ impl Match {
 pub enum LastMatch {
     /// The last field is a normal match. In this case the pattern is "closed" so every record
     /// fields should be matched.
-    Match(Box<Match>),
+    Match(Box<FieldPattern>),
     /// The pattern is "open" `, ..}`. Optionally you can bind a record containing the remaining
     /// fields to an `Identifier` using the syntax `, ..y}`.
     Ellipsis(Option<LocIdent>),
@@ -63,7 +63,7 @@ pub enum LastMatch {
 /// A destructured record pattern
 #[derive(Debug, PartialEq, Clone)]
 pub struct RecordPattern {
-    pub matches: Vec<Match>,
+    pub matches: Vec<FieldPattern>,
     pub open: bool,
     pub rest: Option<LocIdent>,
     pub span: RawSpan,
@@ -124,7 +124,7 @@ impl RecordPattern {
         let typ = Type {
             typ: TypeF::Flat(
                 Term::Record(RecordData::new(
-                    self.inner().into_iter().map(Match::as_binding).collect(),
+                    self.inner().into_iter().map(FieldPattern::as_binding).collect(),
                     RecordAttrs {
                         open: is_open,
                         ..Default::default()
@@ -146,7 +146,7 @@ impl RecordPattern {
     }
 
     /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
-    pub fn inner(self) -> Vec<Match> {
+    pub fn inner(self) -> Vec<FieldPattern> {
         self.matches
     }
 
@@ -156,12 +156,12 @@ impl RecordPattern {
     }
 }
 
-impl Match {
+impl FieldPattern {
     /// Convert the `Match` to a field binding with metadata. It's used to generate the record
     /// contract representing a record pattern destructuring.
     pub fn as_binding(self) -> (LocIdent, Field) {
         match self {
-            Match::Assign(id, field, FieldPattern::Ident(_)) | Match::Simple(id, field) => {
+            FieldPattern::Assign(id, field, Pattern::Any(_)) | FieldPattern::Simple(id, field) => {
                 (id, field)
             }
 
@@ -170,11 +170,11 @@ impl Match {
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            Match::Assign(
+            FieldPattern::Assign(
                 id,
                 mut field,
-                FieldPattern::RecordPattern(pattern)
-                | FieldPattern::AliasedRecordPattern { pattern, .. },
+                Pattern::RecordPattern(pattern)
+                | Pattern::AliasedPattern { pattern, .. },
             ) => {
                 let span = RawSpan::fuse(id.pos.unwrap(), pattern.span).unwrap();
                 field
@@ -198,7 +198,7 @@ impl Match {
 
         fn flatten_matches(
             id: &LocIdent,
-            matches: &[Match],
+            matches: &[FieldPattern],
         ) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
             matches
                 .iter()
@@ -211,14 +211,14 @@ impl Match {
         }
 
         match self {
-            Match::Simple(id, field) => vec![(vec![*id], *id, field.clone())],
-            Match::Assign(id, field, FieldPattern::Ident(bind_id)) => {
+            FieldPattern::Simple(id, field) => vec![(vec![*id], *id, field.clone())],
+            FieldPattern::Assign(id, field, Pattern::Any(bind_id)) => {
                 vec![(vec![*id], *bind_id, field.clone())]
             }
-            Match::Assign(
+            FieldPattern::Assign(
                 id,
                 field,
-                FieldPattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
+                Pattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
             ) => {
                 let span = get_span(id, pattern);
                 let pattern = pattern.clone();
@@ -231,10 +231,10 @@ impl Match {
 
                 flatten_matches(id, matches)
             }
-            Match::Assign(
+            FieldPattern::Assign(
                 id,
                 field,
-                FieldPattern::AliasedRecordPattern {
+                Pattern::AliasedPattern {
                     alias: bind_id,
                     pattern: ref pattern @ RecordPattern { ref matches, .. },
                 },
