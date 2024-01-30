@@ -11,7 +11,7 @@ use lsp_types::{
 };
 use nickel_lang_core::{
     cache::{CacheError, CacheOp, SourcePath},
-    error::IntoDiagnostics,
+    error::{ImportError, IntoDiagnostics},
 };
 
 use crate::{
@@ -46,12 +46,32 @@ pub fn handle_open(server: &mut Server, params: DidOpenTextDocumentParams) -> Re
         },
     );
     let path = uri_to_path(&params.text_document.uri)?;
+
+    // Invalidate the cache of every file that tried, but failed, to import a file
+    // with a name like this.
+    let invalid = path
+        .file_name()
+        .and_then(|name| server.failed_imports.remove(name))
+        .unwrap_or_default();
+    for rev_dep in &invalid {
+        server.analysis.remove(*rev_dep);
+        // Reset the cached state (Parsed is the earliest one) so that it will
+        // re-resolve its imports.
+        server
+            .cache
+            .update_state(*rev_dep, nickel_lang_core::cache::EntryState::Parsed);
+    }
+
     let file_id = server
         .cache
         .add_string(SourcePath::Path(path), params.text_document.text);
     server.file_uris.insert(file_id, params.text_document.uri);
 
     parse_and_typecheck(server, file_id)?;
+
+    for rev_dep in &invalid {
+        parse_and_typecheck(server, *rev_dep)?;
+    }
     Trace::reply(id);
     Ok(())
 }
@@ -97,6 +117,19 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
     Ok(())
 }
 
+// Make a record of I/O errors in imports so that we can retry them when appropriate.
+fn associate_failed_import(server: &mut Server, err: &nickel_lang_core::error::Error) {
+    if let nickel_lang_core::error::Error::ImportError(ImportError::IOError(name, _, pos)) = &err {
+        if let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt()) {
+            server
+                .failed_imports
+                .entry(filename.to_owned())
+                .or_default()
+                .insert(pos.src_id);
+        }
+    }
+}
+
 pub(crate) fn typecheck(
     server: &mut Server,
     file_id: FileId,
@@ -112,7 +145,10 @@ pub(crate) fn typecheck(
         .map_err(|error| match error {
             CacheError::Error(tc_error) => tc_error
                 .into_iter()
-                .flat_map(|err| err.into_diagnostics(server.cache.files_mut(), None))
+                .flat_map(|err| {
+                    associate_failed_import(server, &err);
+                    err.into_diagnostics(server.cache.files_mut(), None)
+                })
                 .collect(),
             CacheError::NotParsed => unreachable!(),
         })
