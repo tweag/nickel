@@ -22,3 +22,28 @@ fn check_snapshots(path: &str) {
 
     insta::assert_snapshot!(path, output);
 }
+
+#[test]
+fn refresh_missing_imports() {
+    let _ = env_logger::try_init();
+    let mut harness = TestHarness::new();
+
+    let url = |s: &str| lsp_types::Url::from_file_path(s).unwrap();
+    harness.send_file(url("/test.ncl"), "import \"dep.ncl\"");
+    let diags = harness.wait_for_diagnostics().diagnostics;
+    assert_eq!(1, diags.len());
+    assert!(diags[0].message.contains("import of dep.ncl failed"));
+
+    // Now provide the import.
+    harness.send_file(url("/dep.ncl"), "42");
+
+    // Check that we get back clean diagnostics for both files.
+    // (LSP doesn't define the order, but we happen to know it)
+    let diags = harness.wait_for_diagnostics();
+    assert_eq!(diags.uri.path(), "/dep.ncl");
+    assert!(diags.diagnostics.is_empty());
+
+    let diags = harness.wait_for_diagnostics();
+    assert_eq!(diags.uri.path(), "/test.ncl");
+    assert!(diags.diagnostics.is_empty());
+}

@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+};
 
 use anyhow::Result;
 use codespan::FileId;
@@ -48,6 +51,14 @@ pub struct Server {
     pub analysis: AnalysisRegistry,
     pub initial_ctxt: Context,
     pub initial_term_env: crate::usage::Environment,
+
+    /// A map associating imported files with failed imports. This allows us to
+    /// invalidate the cached version of a file when one of its imports becomes available.
+    ///
+    /// The keys in this map are the filenames (just the basename; no directory) of the
+    /// files that failed to import, and the values in this map are the file ids that tried
+    /// to import it.
+    pub failed_imports: HashMap<OsString, HashSet<FileId>>,
 }
 
 impl Server {
@@ -86,6 +97,11 @@ impl Server {
 
     pub fn new(connection: Connection) -> Server {
         let mut cache = Cache::new(ErrorTolerance::Tolerant);
+
+        if let Ok(nickel_path) = std::env::var("NICKEL_IMPORT_PATH") {
+            cache.add_import_paths(nickel_path.split(':'));
+        }
+
         // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
         let initial_ctxt = cache.mk_type_ctxt().unwrap();
@@ -96,6 +112,7 @@ impl Server {
             analysis: AnalysisRegistry::default(),
             initial_ctxt,
             initial_term_env: crate::usage::Environment::new(),
+            failed_imports: HashMap::new(),
         }
     }
 
