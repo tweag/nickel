@@ -56,7 +56,7 @@ impl Server {
             text_document_sync: Some(TextDocumentSyncCapability::Options(
                 TextDocumentSyncOptions {
                     open_close: Some(true),
-                    change: Some(TextDocumentSyncKind::Full),
+                    change: Some(TextDocumentSyncKind::FULL),
                     ..TextDocumentSyncOptions::default()
                 },
             )),

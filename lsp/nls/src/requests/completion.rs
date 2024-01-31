@@ -254,9 +254,9 @@ fn handle_import_completion(
         })
         .map(|entry| {
             let kind = if entry.file {
-                CompletionItemKind::File
+                CompletionItemKind::FILE
             } else {
-                CompletionItemKind::Folder
+                CompletionItemKind::FOLDER
             };
             lsp_types::CompletionItem {
                 label: entry
