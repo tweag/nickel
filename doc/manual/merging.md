@@ -621,9 +621,9 @@ error: missing definition for `required_field2`
    8 │     & { foo.required_field1 = "here" }
      │             ------------------------ in this record
      │
-     ┌─ <stdlib/std.ncl>:2949:18
+     ┌─ <stdlib/std.ncl>:2991:18
      │
-2949 │     = fun x y => %deep_seq% x y,
+2991 │     = fun x y => %deep_seq% x y,
      │                  ------------ accessed here
 ```
 

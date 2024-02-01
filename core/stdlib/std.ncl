@@ -747,6 +747,48 @@
         let last = %elem_at% array last_index in
         let rest = %array_slice% 0 last_index array in
         fold_right f last rest,
+
+    zip_with
+      : forall a b c. (a -> b -> c) -> Array a -> Array b -> Array c
+      | doc m%"
+          `zip_with f xs ys` combines the arrays `xs` and `ys` using the
+          operation `f`. The resulting array's length will be the smaller of the
+          lengths of `xs` and `ys`.
+
+          # Examples
+
+          ```nickel
+          std.array.zip_with (+) [1, 2, 3] [4, 5, 6]
+            => [5, 7, 9]
+          std.array.zip_with (*) [1, 2] [4, 5, 6]
+            => [4, 10]
+          std.array.zip_with (-) [1, 2, 3] [4, 5]
+            => [-3, -3]
+          ```
+        "%
+      = fun f xs ys =>
+        std.array.generate
+          (fun i => f (std.array.at i xs) (std.array.at i ys))
+          (std.number.min (std.array.length xs) (std.array.length ys)),
+
+    imap
+      : forall a b. (Number -> a -> b) -> Array a -> Array b
+      | doc m%"
+          Applies a function to every element in the given array while passing
+          its (0-based) index. That is,
+          `imap f [ x1, x2, ... ]` is `[ f 0 x1, f 1 x2, ... ]`.
+
+          # Examples
+
+          ```nickel
+          std.array.map (fun i x => i + x + 1) [ 1, 2, 3 ] =>
+            [ 2, 4, 6 ]
+          ```
+        "%
+      = fun f xs =>
+        xs
+        |> std.array.length
+        |> std.array.generate (fun i => f i (std.array.at i xs)),
   },
 
   contract = {
