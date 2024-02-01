@@ -771,6 +771,25 @@
           std.array.generate
           (std.number.min (std.array.length xs) (std.array.length ys))
           (fun i => f (std.array.at i xs) (std.array.at i ys)),
+
+    imap
+      : forall a b. (Number -> a -> b) -> Array a -> Array b
+      | doc m%"
+          Applies a function to every element in the given array while passing
+          its (0-based) index. That is,
+          `imap f [ x1, x2, ... ]` is `[ f 0 x1, f 1 x2, ... ]`.
+
+          # Examples
+
+          ```nickel
+          std.array.map (fun i x => i + x + 1) [ 1, 2, 3 ] =>
+            [ 2, 4, 6 ]
+          ```
+        "%
+      = fun f xs =>
+        xs
+        |> std.array.length
+        |> std.array.generate (fun i => f i (std.array.at i xs)),
   },
 
   contract = {

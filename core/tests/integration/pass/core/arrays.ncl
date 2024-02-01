@@ -46,5 +46,7 @@ let {check, ..} = import "../lib/assert.ncl" in
   std.array.zip_with (+) [1, 2, 3] [4, 5, 6] == [5, 7, 9],
   std.array.zip_with (*) [1, 2] [4, 5, 6] == [4, 10],
   std.array.zip_with (-) [1, 2, 3] [4, 5] == [-3, -3],
+
+  std.array.imap (+) [1, 2, 3] == [1, 3, 5],
 ]
 |> check
