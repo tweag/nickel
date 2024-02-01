@@ -21,11 +21,12 @@ There are four basic kinds of values in Nickel :
 
 ### Numeric values
 
-Nickel has support for numbers, positive and negative, with or without
-decimals. Internally, those numbers are stored as arbitrary precision rationals,
-meaning that basic arithmetic operations (addition, subtraction, division and
-multiplication) don't incur rounding errors. Numbers are deserialized as 64-bit
-floating point numbers, in line with common JSON implementations.
+Nickel has support for numbers, positive and negative, with or without a
+fractional part. Internally, those numbers are stored as arbitrary precision
+rationals, meaning that basic arithmetic operations (addition, subtraction,
+division and multiplication) don't incur rounding errors. Numbers are
+deserialized as 64-bit floating point numbers, in line with common JSON
+implementations.
 
 Exponentiation is supported using the `std.number.pow` function. If the exponent
 is exactly representable as an integer between `-2^63` and `2^64 - 1`, the
@@ -39,8 +40,18 @@ fit exactly into a 64-bit signed integer or a 64-bit unsigned integer. They
 are serialized as a 64-bit float otherwise. The latter conversion might lose
 precision as well, for example when serializing `1/3`.
 
-Here are some examples of number literals in Nickel; scientific notation for
-decimal is supported:
+Number literals can be written in:
+
+- decimal representation
+- hexadecimal representation with a leading `0x`
+- octal representation with a leading `0o`
+- binary representation with a leading `0b`
+
+The decimal representation supports scientific notation and an optional
+fractional part delimited by `.`, while other representations only support
+integers.
+
+Here are some examples of number literals in Nickel:
 
 ```nickel #lines
 1
@@ -49,6 +60,9 @@ decimal is supported:
 -3e-3
 -1000000
 -6.8
+0xFF15a
+0b001101
+0o77012
 ```
 
 There are some predefined operators for working with numbers:
@@ -65,6 +79,7 @@ There are some predefined operators for working with numbers:
 > not `a-b`. `1-2` works as expected, because `1` and `2` aren't identifiers.
 
 Numbers can be compared using the following operators:
+
 | Operator | Description      | Example   |
 |:--------:|:----------------:|:---------:|
 | ==       | Equal            | `5 == 5`  |
@@ -75,14 +90,15 @@ Numbers can be compared using the following operators:
 | <=       | Smaller or Equal | `-1 <= 6` |
 
 In the table below, you will find the operators sorted from highest to lowest precedence:
-|       Operators      | Associativity | Remark                                        |
-|:--------------------:|:-------------:|-----------------------------------------------|
+
+|       Operators      | Associativity | Remark                                         |
+|:--------------------:|:-------------:|------------------------------------------------|
 |       `( ... )`      |               | parentheses always have the highest precedence |
-|          `-`         |               | unary negation (as in `-1`)                   |
-|     `*`, `/`, `%`    | left-to-right |                                               |
-|       `+`, `-`       | left-to-right | binary addition and subtraction               |
-| `<`, `>`, `=<`, `>=` | left-to-right |                                               |
-|      `==`, `!=`      | left-to-right |                                               |
+|          `-`         |               | unary negation (as in `-1`)                    |
+|     `*`, `/`, `%`    | left-to-right |                                                |
+|       `+`, `-`       | left-to-right | binary addition and subtraction                |
+| `<`, `>`, `=<`, `>=` | left-to-right |                                                |
+|      `==`, `!=`      | left-to-right |                                                |
 
 ### Boolean values
 

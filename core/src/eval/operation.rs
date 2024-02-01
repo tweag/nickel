@@ -21,7 +21,7 @@ use crate::{
     identifier::LocIdent,
     label::{ty_path, Polarity, TypeVarData},
     match_sharedterm, mk_app, mk_fun, mk_opn, mk_record,
-    parser::utils::parse_number,
+    parser::utils::parse_number_sci,
     position::TermPos,
     serialize,
     serialize::ExportFormat,
@@ -862,7 +862,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
             }
             UnaryOp::NumFromStr() => {
                 if let Term::Str(s) = &*t {
-                    let n = parse_number(s).map_err(|_| {
+                    let n = parse_number_sci(s).map_err(|_| {
                         EvalError::Other(
                             format!("num_from_string: invalid number literal `{}`", s.as_str()),
                             pos,

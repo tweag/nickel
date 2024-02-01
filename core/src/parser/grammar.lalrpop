@@ -363,10 +363,17 @@ UniRecord: UniRecord = {
     },
 };
 
+NumberLiteral: Number = {
+    <"dec num literal">,
+    <"hex num literal">,
+    <"oct num literal">,
+    <"bin num literal">,
+};
+
 Atom: UniTerm = {
     "(" <AsUniTerm<CurriedOp>> ")",
     "(" <UniTerm> ")",
-    "num literal" => UniTerm::from(Term::Num(<>)),
+    NumberLiteral => UniTerm::from(Term::Num(<>)),
     "null" => UniTerm::from(Term::Null),
     Bool => UniTerm::from(Term::Bool(<>)),
     AsUniTerm<StrChunks>,
@@ -1067,7 +1074,7 @@ TypeAtom: Type = {
     },
 }
 
-SignedNumLiteral: Number = <sign: "-"?> <value: "num literal"> => {
+SignedNumLiteral: Number = <sign: "-"?> <value: NumberLiteral> => {
     if sign.is_some() {
         -value
     } else {
@@ -1084,7 +1091,10 @@ extern {
         "str literal" => Token::Str(StringToken::Literal(<String>)),
         "str esc char" => Token::Str(StringToken::EscapedChar(<char>)),
         "multstr literal" => Token::MultiStr(MultiStringToken::Literal(<String>)),
-        "num literal" => Token::Normal(NormalToken::NumLiteral(<Number>)),
+        "dec num literal" => Token::Normal(NormalToken::DecNumLiteral(<Number>)),
+        "hex num literal" => Token::Normal(NormalToken::HexNumLiteral(<Number>)),
+        "oct num literal" => Token::Normal(NormalToken::OctNumLiteral(<Number>)),
+        "bin num literal" => Token::Normal(NormalToken::BinNumLiteral(<Number>)),
 
         "raw enum tag" => Token::Normal(NormalToken::RawEnumTag(<&'input str>)),
         "'\"" => Token::Normal(NormalToken::StrEnumTagBegin),

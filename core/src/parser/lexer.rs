@@ -31,7 +31,7 @@
 //! that the coming characters must be lexed as string tokens, and not as normal tokens.
 use super::{
     error::{LexicalError, ParseError},
-    utils::parse_number,
+    utils::{parse_number_base, parse_number_sci},
 };
 use crate::term::Number;
 use logos::Logos;
@@ -71,8 +71,14 @@ pub enum NormalToken<'input> {
     // regex for checking identifiers at ../lsp/nls/src/requests/completion.rs
     #[regex("_?[a-zA-Z][_a-zA-Z0-9-']*")]
     Identifier(&'input str),
-    #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number(lex.slice()))]
-    NumLiteral(Number),
+    #[regex("[0-9]*\\.?[0-9]+([eE][+\\-]?[0-9]+)?", |lex| parse_number_sci(lex.slice()))]
+    DecNumLiteral(Number),
+    #[regex("0x[A-Fa-f0-9]+", |lex| parse_number_base(16, &lex.slice()[2..]))]
+    HexNumLiteral(Number),
+    #[regex("0o[0-7]+", |lex| parse_number_base(8, &lex.slice()[2..]))]
+    OctNumLiteral(Number),
+    #[regex("0b[01]+", |lex| parse_number_base(2, &lex.slice()[2..]))]
+    BinNumLiteral(Number),
 
     // **IMPORTANT**
     // This regex should be kept in sync with the one for Identifier above.
