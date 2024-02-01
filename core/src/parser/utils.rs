@@ -27,12 +27,18 @@ use crate::{
     typ::Type,
 };
 
-use malachite::num::conversion::traits::FromSciString;
+use malachite::num::conversion::traits::{FromSciString, FromStringBase};
 
 pub struct ParseNumberError;
 
-pub fn parse_number(slice: &str) -> Result<Rational, ParseNumberError> {
+pub fn parse_number_sci(slice: &str) -> Result<Rational, ParseNumberError> {
     Rational::from_sci_string(slice).ok_or(ParseNumberError)
+}
+
+pub fn parse_number_base(base: u8, slice: &str) -> Result<Rational, ParseNumberError> {
+    Ok(Rational::from(
+        Integer::from_string_base(base, slice).ok_or(ParseNumberError)?,
+    ))
 }
 
 /// Distinguish between the standard string opening delimiter `"`, the multi-line string
