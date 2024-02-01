@@ -747,6 +747,30 @@
         let last = %elem_at% array last_index in
         let rest = %array_slice% 0 last_index array in
         fold_right f last rest,
+
+    zip_with
+      : forall a b c. (a -> b -> c) -> Array a -> Array b -> Array c
+      | doc m%"
+          `zip_with f xs ys` combines the arrays `xs` and `ys` using the
+          operation `f`. The resulting array's length will be the smaller of the
+          lengths of `xs` and `ys`.
+
+          # Examples
+
+          ```nickel
+          std.array.zip_with (+) [1, 2, 3] [4, 5, 6]
+            => [5, 7, 9]
+          std.array.zip_with (*) [1, 2] [4, 5, 6]
+            => [4, 10]
+          std.array.zip_with (-) [1, 2, 3] [4, 5]
+            => [-3, -3]
+          ```
+        "%
+      = fun f xs ys =>
+        std.function.flip
+          std.array.generate
+          (std.number.min (std.array.length xs) (std.array.length ys))
+          (fun i => f (std.array.at i xs) (std.array.at i ys)),
   },
 
   contract = {

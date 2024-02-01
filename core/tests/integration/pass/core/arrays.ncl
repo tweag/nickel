@@ -42,5 +42,9 @@ let {check, ..} = import "../lib/assert.ncl" in
     let all = fun pred array => foldr and true (%map% array pred) in
     let isZ = fun x => x == 0 in
     all isZ [0, 0, 0, 1] == false,
+
+  std.array.zip_with (+) [1, 2, 3] [4, 5, 6] == [5, 7, 9],
+  std.array.zip_with (*) [1, 2] [4, 5, 6] == [4, 10],
+  std.array.zip_with (-) [1, 2, 3] [4, 5] == [-3, -3],
 ]
 |> check
