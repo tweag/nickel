@@ -10,10 +10,10 @@ use lsp_types::{
     notification::{Notification, PublishDiagnostics},
     request::{
         Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest, References,
-        Request as LspRequest,
+        Rename, Request as LspRequest,
     },
     CompletionParams, DocumentFormattingParams, DocumentSymbolParams, GotoDefinitionParams,
-    HoverParams, PublishDiagnosticsParams, ReferenceParams, Url,
+    HoverParams, PublishDiagnosticsParams, ReferenceParams, RenameParams, Url,
 };
 pub use output::LspDebug;
 use serde::Deserialize;
@@ -43,6 +43,7 @@ pub enum Request {
     Completion(CompletionParams),
     Formatting(DocumentFormattingParams),
     Hover(HoverParams),
+    Rename(RenameParams),
     Symbols(DocumentSymbolParams),
 }
 
@@ -142,6 +143,7 @@ impl TestHarness {
             Request::Formatting(f) => self.request::<Formatting>(f),
             Request::Hover(h) => self.request::<HoverRequest>(h),
             Request::References(r) => self.request::<References>(r),
+            Request::Rename(r) => self.request::<Rename>(r),
             Request::Symbols(s) => self.request::<DocumentSymbolRequest>(s),
         }
     }
