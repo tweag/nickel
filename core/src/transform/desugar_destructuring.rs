@@ -138,13 +138,13 @@ pub fn desugar(rt: RichTerm) -> RichTerm {
 fn bind_open_field(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let (matches, var) = match pat {
         RecordPattern {
-            matches,
+            patterns: matches,
             open: true,
             rest: Some(x),
             ..
         } => (matches, *x),
         RecordPattern {
-            matches,
+            patterns: matches,
             open: true,
             rest: None,
             ..
@@ -175,7 +175,7 @@ fn bind_open_field(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm
 /// part. For that, see `bind_open_field`.
 fn destruct_term(x: LocIdent, pat: &RecordPattern, body: RichTerm) -> RichTerm {
     let pos = body.pos;
-    let RecordPattern { matches, .. } = pat;
+    let RecordPattern { patterns: matches, .. } = pat;
     matches.iter().fold(body, move |t, m| match m {
         FieldPattern::Simple(id, _) => RichTerm::new(
             Term::Let(

@@ -78,7 +78,7 @@ fn build_pattern_type(
         }
     };
 
-    let mut rows = pat.matches.iter().map(|m| match m {
+    let mut rows = pat.patterns.iter().map(|m| match m {
         FieldPattern::Simple(id, field) => Ok(RecordRowF {
             id: *id,
             typ: Box::new(new_leaf_type(
@@ -148,7 +148,7 @@ pub fn inject_pattern_variables(
     let pat_ty = pat_ty.into_root(state.table);
     let mut type_map = RecordTypes::from(&pat_ty);
 
-    pat.matches.iter().for_each(|m| match m {
+    pat.patterns.iter().for_each(|m| match m {
         FieldPattern::Simple(id, ..) => {
             let ty = type_map.get_type(id);
             env.insert(id.ident(), ty);

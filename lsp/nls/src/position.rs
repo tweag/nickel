@@ -125,7 +125,7 @@ impl PositionLookup {
             match term.as_ref() {
                 Term::Fun(id, _) | Term::Let(id, _, _, _) => idents.push(*id),
                 Term::FunPattern(id, pat, _) | Term::LetPattern(id, pat, _, _) => {
-                    let ids = pat.matches.iter().flat_map(|m| {
+                    let ids = pat.patterns.iter().flat_map(|m| {
                         m.to_flattened_bindings()
                             .into_iter()
                             .map(|(_path, id, _)| id)

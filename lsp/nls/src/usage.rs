@@ -116,7 +116,7 @@ impl UsageLookup {
                             new_env.insert_def(Def::Fn { ident });
                         }
 
-                        for m in &pat.matches {
+                        for m in &pat.patterns {
                             for (_path, id, _field) in m.to_flattened_bindings() {
                                 new_env.insert_def(Def::Fn { ident: id.into() });
                             }
@@ -151,7 +151,7 @@ impl UsageLookup {
                             self.add_sym(def);
                         }
 
-                        for m in &pat.matches {
+                        for m in &pat.patterns {
                             for (path, id, _field) in m.to_flattened_bindings() {
                                 let path = path.iter().map(|i| i.ident()).rev().collect();
                                 let def = Def::Let {

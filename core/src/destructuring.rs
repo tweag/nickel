@@ -1,5 +1,4 @@
-//! In this module, you have the main structures used in the destructuring feature of nickel.
-//! Also, there are implementation managing the generation of a contract from a pattern.
+//! Pattern matching and destructuring of Nickel values.
 use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{
@@ -19,52 +18,66 @@ pub enum Pattern {
     /// A simple pattern consisting of an identifier. Match anything and bind the result to the
     /// corresponding identfier.
     Any(LocIdent),
-    /// A record pattern as in `{ ..., a = { b, c }, ... }`
+    /// A record pattern as in `{ a = { b, c } }`
     RecordPattern(RecordPattern),
-    /// An aliased pattern as in `{ ..., a = b @ { c, d }, ... }`
+    /// An aliased pattern as in `x @ { a = b @ { c, d }, ..}`
     AliasedPattern {
         alias: LocIdent,
-        pattern: Box<Pattern>,
+        pattern: Box<LocPattern>,
     },
 }
 
-/// A match field in a record pattern. Every field can be annotated with a type, with contracts or
+#[derive(Debug, PartialEq, Clone)]
+pub struct LocPattern {
+    pattern: Pattern,
+    span: RawSpan,
+}
+
+/// A field pattern inside a record pattern. Every field can be annotated with a type, contracts or
 /// with a default value.
 #[derive(Debug, PartialEq, Clone)]
-pub enum FieldPattern {
-    /// `{..., a=b, ...}` will bind the field `a` of the record to variable `b`. Here, `a` is the
-    /// first field of this variant. Any annotations or metadata associated with `a` go into
-    /// the `Field` field, and `b` goes into the `FieldPattern` field, which can actually be a
-    /// nested destruct pattern.
-    Assign(LocIdent, Field, Pattern),
-    /// Simple binding. the `Ident` is bind to a variable with the same name.
-    Simple(LocIdent, Field),
+pub struct FieldPattern {
+    /// The name of the matched field. For example, in `{..., foo = {bar, baz}, ...}`, the matched
+    /// identifier is `foo`.
+    pub matched_id: LocIdent,
+    /// The potentital decoration of the pattern, such as a type annotation, contract annotations,
+    /// or a default value.
+    pub decoration: Field,
+    /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
+    /// sign, is considered to be `{foo=foo, bar=bar}`. In this case, `pattern` will be
+    /// [Pattern::Any].
+    pub pattern: LocPattern,
+    pub span: RawSpan,
 }
 
-impl FieldPattern {
-    fn ident(&self) -> LocIdent {
-        match self {
-            FieldPattern::Assign(ident, ..) | FieldPattern::Simple(ident, ..) => *ident,
-        }
-    }
-}
-
-/// Last match field of a `Destruct`.
+/// The last match in a data structure pattern. This can either be a normal match, or an ellipsis
+/// which can capture the rest of the data structure. The type parameter `P` is the type of the
+/// pattern of the data structure: currently, ellipsis matches are only supported for record, but
+/// we'll probably support them for arrays as well.
+///
+/// # Example
+///
+/// - In `{foo={}, bar}`, the last match is an normal match.
+/// - In `{foo={}, bar, ..}`, the last match is a non-capturing ellipsis.
+/// - In `{foo={}, bar, ..rest}`, the last match is a capturing ellipsis.
 #[derive(Debug, PartialEq, Clone)]
-pub enum LastMatch {
+pub enum LastPattern<P> {
     /// The last field is a normal match. In this case the pattern is "closed" so every record
     /// fields should be matched.
-    Match(Box<FieldPattern>),
+    Normal(Box<P>),
     /// The pattern is "open" `, ..}`. Optionally you can bind a record containing the remaining
     /// fields to an `Identifier` using the syntax `, ..y}`.
     Ellipsis(Option<LocIdent>),
 }
 
-/// A destructured record pattern
+/// A record pattern.
 #[derive(Debug, PartialEq, Clone)]
 pub struct RecordPattern {
-    pub matches: Vec<FieldPattern>,
+    /// The patterns for each field in the record.
+    pub patterns: Vec<FieldPattern>,
+    /// If the pattern is open, i.e. if it ended with an ellipsis, capturing the rest or not.
     pub open: bool,
+    /// If the pattern is open and the rest is captured, the capturing identifier is stored here.
     pub rest: Option<LocIdent>,
     pub span: RawSpan,
 }
@@ -93,8 +106,8 @@ impl RecordPattern {
     pub fn check_matches(&self) -> Result<(), ParseError> {
         let mut matches = HashMap::new();
 
-        for m in self.matches.iter() {
-            let binding = m.ident();
+        for pat in self.patterns.iter() {
+            let binding = pat.matched_id;
             let label = binding.label().to_owned();
             match matches.entry(label) {
                 Entry::Occupied(occupied_entry) => {
@@ -119,14 +132,16 @@ impl RecordPattern {
     }
 
     fn into_contract_with_span(self, span: RawSpan) -> LabeledType {
-        let is_open = self.is_open();
         let pos = TermPos::Original(span);
         let typ = Type {
             typ: TypeF::Flat(
                 Term::Record(RecordData::new(
-                    self.inner().into_iter().map(FieldPattern::as_binding).collect(),
+                    self.patterns
+                        .into_iter()
+                        .map(FieldPattern::as_binding)
+                        .collect(),
                     RecordAttrs {
-                        open: is_open,
+                        open: self.open,
                         ..Default::default()
                     },
                     None,
@@ -144,38 +159,20 @@ impl RecordPattern {
             },
         }
     }
-
-    /// Get the inner vector of `Matches` of the pattern. If `Empty` return a empty vector.
-    pub fn inner(self) -> Vec<FieldPattern> {
-        self.matches
-    }
-
-    /// Is this pattern open? Does it finish with `, ..}` form?
-    pub fn is_open(&self) -> bool {
-        self.open
-    }
 }
 
 impl FieldPattern {
-    /// Convert the `Match` to a field binding with metadata. It's used to generate the record
-    /// contract representing a record pattern destructuring.
+    /// Convert this field pattern to a field binding with metadata. It's used to generate the
+    /// record contract representing a record pattern destructuring.
     pub fn as_binding(self) -> (LocIdent, Field) {
-        match self {
-            FieldPattern::Assign(id, field, Pattern::Any(_)) | FieldPattern::Simple(id, field) => {
-                (id, field)
-            }
-
+        match self.pattern.pattern {
+            Pattern::Any(_) => (self.matched_id, self.decoration),
             // In this case we fuse spans of the `Ident` (LHS) with the destruct (RHS)
             // because we can have two cases:
             //
             // - extra field on the destructuring `d`
             // - missing field on the `id`
-            FieldPattern::Assign(
-                id,
-                mut field,
-                Pattern::RecordPattern(pattern)
-                | Pattern::AliasedPattern { pattern, .. },
-            ) => {
+            Pattern::RecordPattern(pattern) | Pattern::AliasedPattern { pattern, .. } => {
                 let span = RawSpan::fuse(id.pos.unwrap(), pattern.span).unwrap();
                 field
                     .metadata
@@ -218,7 +215,12 @@ impl FieldPattern {
             FieldPattern::Assign(
                 id,
                 field,
-                Pattern::RecordPattern(ref pattern @ RecordPattern { ref matches, .. }),
+                Pattern::RecordPattern(
+                    ref pattern @ RecordPattern {
+                        patterns: ref matches,
+                        ..
+                    },
+                ),
             ) => {
                 let span = get_span(id, pattern);
                 let pattern = pattern.clone();
@@ -236,7 +238,11 @@ impl FieldPattern {
                 field,
                 Pattern::AliasedPattern {
                     alias: bind_id,
-                    pattern: ref pattern @ RecordPattern { ref matches, .. },
+                    pattern:
+                        ref pattern @ RecordPattern {
+                            patterns: ref matches,
+                            ..
+                        },
                 },
             ) => {
                 let span = get_span(id, pattern);

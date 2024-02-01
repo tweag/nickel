@@ -519,7 +519,7 @@ where
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         let RecordPattern {
-            matches,
+            patterns: matches,
             open,
             rest,
             ..

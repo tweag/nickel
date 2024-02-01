@@ -43,7 +43,7 @@ fn get_defs(term: &RichTerm, ident: Option<LocIdent>, server: &Server) -> Option
         }
         (Term::LetPattern(_, pat, value, _), Some(hovered_id)) => {
             let (mut path, _, _) = pat
-                .matches
+                .patterns
                 .iter()
                 .flat_map(|m| m.to_flattened_bindings())
                 .find(|(_path, bound_id, _)| bound_id.ident() == hovered_id.ident)?;

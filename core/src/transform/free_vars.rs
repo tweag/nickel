@@ -236,7 +236,7 @@ impl CollectFreeVars for Field {
 
 /// Remove the variables bound by a destructuring pattern from a set of free variables.
 fn bind_pattern(dest_pat: &RecordPattern, free_vars: &mut HashSet<Ident>) {
-    let RecordPattern { matches, rest, .. } = dest_pat;
+    let RecordPattern { patterns: matches, rest, .. } = dest_pat;
     for m in matches {
         bind_match(m, free_vars);
     }
