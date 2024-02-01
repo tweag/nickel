@@ -767,10 +767,9 @@
           ```
         "%
       = fun f xs ys =>
-        std.function.flip
-          std.array.generate
-          (std.number.min (std.array.length xs) (std.array.length ys))
-          (fun i => f (std.array.at i xs) (std.array.at i ys)),
+        std.array.generate
+          (fun i => f (std.array.at i xs) (std.array.at i ys))
+          (std.number.min (std.array.length xs) (std.array.length ys)),
 
     imap
       : forall a b. (Number -> a -> b) -> Array a -> Array b
