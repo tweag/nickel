@@ -3,5 +3,5 @@ source: lsp/nls/tests/main.rs
 expression: output
 ---
 file:///offsets.ncl:1:45-1:48
-[file:///offsets.ncl:1:45-1:48]
+[file:///offsets.ncl:1:45-1:48, file:///offsets.ncl:2:2-2:5]
 

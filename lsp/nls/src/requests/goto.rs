@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{GotoDefinitionParams, GotoDefinitionResponse, Location, ReferenceParams};
 use nickel_lang_core::position::RawSpan;
@@ -66,7 +68,7 @@ pub fn handle_references(
     // In that case, def_locs won't have the definition yet; so add it.
     def_locs.extend(ident.and_then(|id| id.pos.into_opt()));
 
-    let mut usages: Vec<_> = def_locs
+    let mut usages: HashSet<_> = def_locs
         .iter()
         .flat_map(|id| server.analysis.get_usages(id))
         .filter_map(|id| id.pos.into_opt())
@@ -74,6 +76,10 @@ pub fn handle_references(
 
     if params.context.include_declaration {
         usages.extend(def_locs.iter().cloned());
+    }
+
+    for span in def_locs {
+        usages.extend(server.get_field_refs(span));
     }
 
     let locations = ids_to_locations(usages, server);

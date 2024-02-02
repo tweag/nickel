@@ -352,7 +352,15 @@ impl Server {
     }
 
     /// Finds all the locations at which a term (or possibly an ident within a term) is "defined".
+    ///
+    /// "Ident within a term" applies when the term is a record or a pattern binding, so that we
+    /// can refer to fields in a record, or specific idents in a pattern binding.
+    ///
+    /// The return value contains all the spans of all the definition locations. It's a span instead
+    /// of a `LocIdent` because when `term` is an import, the definition location is the whole
+    /// included file. In every other case, the definition location will be the span of a LocIdent.
     pub fn get_defs(&self, term: &RichTerm, ident: Option<LocIdent>) -> Vec<RawSpan> {
+        // The inner function returning Option is just for ?-early-return convenience.
         fn inner(
             server: &Server,
             term: &RichTerm,
@@ -428,5 +436,44 @@ impl Server {
         }
 
         inner(self, term, ident).unwrap_or_default()
+    }
+
+    /// If `span` is pointing at the identifier binding a record field, returns
+    /// all the places that the record field is referenced.
+    ///
+    /// This is a sort of inverse of `get_defs`, at least when the argument to `get_defs`
+    /// is a static access: the spans returned by this function are exactly the static accesses
+    /// that, when passed to `get_defs`, return `span`.
+    ///
+    /// This function can be expensive, because it calls `get_defs` on every static access
+    /// that could potentially be referencing this field.
+    pub fn get_field_refs(&self, span: RawSpan) -> Vec<RawSpan> {
+        // The inner function returning Option is just for ?-early-return convenience.
+        fn inner(server: &Server, span: RawSpan) -> Option<Vec<RawSpan>> {
+            let ident = server.lookup_ident_by_position(span.start_pos()).ok()??;
+            let term = server.lookup_term_by_position(span.start_pos()).ok()??;
+
+            if let Term::RecRecord(..) | Term::Record(_) = term.as_ref() {
+                let accesses = server.analysis.get_static_accesses(ident.ident);
+                Some(
+                    accesses
+                        .into_iter()
+                        .filter_map(|access| {
+                            let Term::Op1(UnaryOp::StaticAccess(id), _) = access.as_ref() else {
+                                return None;
+                            };
+                            if server.get_defs(&access, None).contains(&span) {
+                                id.pos.into_opt()
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        }
+        inner(self, span).unwrap_or_default()
     }
 }
