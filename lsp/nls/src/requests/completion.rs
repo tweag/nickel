@@ -172,11 +172,12 @@ pub fn handle_completion(
 
     let term = server.lookup_term_by_position(pos)?.cloned();
 
-    if let Some(Term::Import(import)) = term.as_ref().map(|t| t.term.as_ref()) {
+    // TODO(vkleen): we need to decide if laziness of imports will be respected by the LSP
+    if let Some(Term::Import { path, strict: _ }) = term.as_ref().map(|t| t.term.as_ref()) {
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {
-            let completions = handle_import_completion(import, &params, server).unwrap_or_default();
+            let completions = handle_import_completion(path, &params, server).unwrap_or_default();
             server.reply(Response::new_ok(id.clone(), completions));
         }
         return Ok(());

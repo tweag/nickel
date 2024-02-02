@@ -144,7 +144,8 @@ pub mod tolerant {
     {
         let term = rt.as_ref();
         match term {
-            Term::Import(path) => match resolver.resolve(path, parent, &rt.pos) {
+            // TODO(vkleen): actually implement laziness
+            Term::Import { path, strict: _ } => match resolver.resolve(path, parent, &rt.pos) {
                 Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },

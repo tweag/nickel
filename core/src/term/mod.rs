@@ -205,7 +205,7 @@ pub enum Term {
 
     /// An unresolved import.
     #[serde(skip)]
-    Import(OsString),
+    Import { path: OsString, strict: bool },
 
     /// A resolved import (which has already been loaded and parsed).
     #[serde(skip)]
@@ -316,7 +316,16 @@ impl PartialEq for Term {
                 l0 == r0 && l1 == r1 && l2 == r2
             }
             (Self::Annotated(l0, l1), Self::Annotated(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Import(l0), Self::Import(r0)) => l0 == r0,
+            (
+                Self::Import {
+                    path: p0,
+                    strict: s0,
+                },
+                Self::Import {
+                    path: p1,
+                    strict: s1,
+                },
+            ) => p0 == p1 && s0 == s1,
             (Self::ResolvedImport(l0), Self::ResolvedImport(r0)) => l0 == r0,
             (Self::Type(l0), Self::Type(r0)) => l0 == r0,
             (Self::ParseError(l0), Self::ParseError(r0)) => l0 == r0,
@@ -866,7 +875,7 @@ impl Term {
             | Term::Op1(_, _)
             | Term::Op2(_, _, _)
             | Term::OpN(..)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::Type(_)
@@ -916,7 +925,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -977,7 +986,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::StrChunks(_)
             | Term::RecRecord(..)
@@ -1030,7 +1039,7 @@ impl Term {
             | Term::OpN(..)
             | Term::Sealed(..)
             | Term::Annotated(..)
-            | Term::Import(..)
+            | Term::Import { .. }
             | Term::ResolvedImport(..)
             | Term::Type(_)
             | Term::Closure(_)
@@ -2105,7 +2114,7 @@ impl Traverse<RichTerm> for RichTerm {
             | Term::Var(_)
             | Term::Closure(_)
             | Term::Enum(_)
-            | Term::Import(_)
+            | Term::Import { .. }
             | Term::ResolvedImport(_)
             | Term::SealingKey(_)
             | Term::ParseError(_)
@@ -2549,7 +2558,11 @@ pub mod make {
     where
         S: Into<OsString>,
     {
-        Term::Import(path.into()).into()
+        Term::Import {
+            path: path.into(),
+            strict: true,
+        }
+        .into()
     }
 
     pub fn integer(n: impl Into<i64>) -> RichTerm {
