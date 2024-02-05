@@ -162,24 +162,51 @@ impl PatternTypes for FieldPattern {
         ctxt: &Context,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
-        let ty_row = self
-            .pattern
-            .pattern
-            .pattern_types_inj(bindings, state, ctxt, mode)?;
+        // If there is a static type annotations in a nested record patterns then we need to unify
+        // them with the pattern type we've built to ensure (1) that they're mutually compatible
+        // and (2) that we assign the annotated types to the right unification variables.
+        let ty_row = match (
+            &self.decoration.metadata.annotation.typ,
+            &self.pattern.pattern,
+            mode,
+        ) {
+            // However, in walk mode, we only do that when the nested pattern isn't a leaf (i.e.
+            // `Any`) for backward-compatibility reasons.
+            //
+            // Before this function was refactored, Nickel has been allowing things like `let {foo
+            // : Number} = {foo = 1} in foo` in walk mode, which would fail to typecheck with the
+            // generic approach: the pattern is parsed as `{foo : Number = foo}`, the second
+            // occurrence of `foo` gets type `Dyn` in walk mode, but `Dyn` fails to unify with
+            // `Number`. In this case, we don't recursively call `pattern_types_inj` in the first
+            // place and just declare that the type of `foo` is `Number`.
+            //
+            // This special case should probably be ruled out, requiring the users to use `let {foo
+            // | Number}` instead, at least outside of a statically typed code block. But before
+            // this happens, we special case the old behavior and eschew unification.
+            (Some(annot_ty), PatternData::Any(id), TypecheckMode::Walk) => {
+                let ty_row = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                bindings.push((*id, ty_row.clone()));
+                ty_row
+            }
+            (Some(annot_ty), _, _) => {
+                let pos = annot_ty.typ.pos;
+                let annot_uty = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
 
-        // If there are type annotations within nested record patterns
-        // then we need to unify them with the pattern type we've built
-        // to ensure (1) that they're mutually compatible and (2) that
-        // we assign the annotated types to the right unification variables.
-        if let Some(annot_ty) = &self.decoration.metadata.annotation.typ {
-            let pos = annot_ty.typ.pos;
-            let annot_uty = UnifType::from_type(annot_ty.typ.clone(), &ctxt.term_env);
+                let ty_row = self
+                    .pattern
+                    .pattern_types_inj(bindings, state, ctxt, mode)?;
 
-            ty_row
-                .clone()
-                .unify(annot_uty, state, ctxt)
-                .map_err(|e| e.into_typecheck_err(state, pos))?;
-        }
+                ty_row
+                    .clone()
+                    .unify(annot_uty, state, ctxt)
+                    .map_err(|e| e.into_typecheck_err(state, pos))?;
+
+                ty_row
+            }
+            _ => self
+                .pattern
+                .pattern_types_inj(bindings, state, ctxt, mode)?,
+        };
 
         Ok(RecordRowF {
             id: self.matched_id,

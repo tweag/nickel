@@ -624,7 +624,7 @@ where
                         match &field_pat.pattern.pattern {
                             destructuring::PatternData::Any(id) if *id == field_pat.matched_id =>
                                 allocator.nil(),
-                            pat => docs![allocator, allocator.line(), "= ", pat],
+                            _ => docs![allocator, allocator.line(), "= ", &field_pat.pattern],
                         },
                         ","
                     ]
@@ -699,7 +699,7 @@ where
                 let mut params = vec![];
                 let mut rt = self;
                 while let FunPattern(pat, t) = rt {
-                    params.push(pat.pattern.pretty(allocator));
+                    params.push(pat.pretty(allocator));
                     rt = t.as_ref();
                 }
                 docs![
@@ -747,7 +747,7 @@ where
             LetPattern(pattern, rt, body) => docs![
                 allocator,
                 "let ",
-                &pattern.pattern,
+                pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     annot.pretty(allocator)
                 } else {

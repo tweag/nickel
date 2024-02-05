@@ -175,14 +175,6 @@ fn variables() {
 }
 
 #[test]
-fn functions() {
-    assert_eq!(
-        crate::transform::desugar_destructuring::desugar_fun(parse_without_pos("fun x => x")),
-        mk_term::id()
-    );
-}
-
-#[test]
 fn lets() {
     assert_matches!(parse("let x1 = x2 in x3"), Ok(..));
     assert_matches!(parse("x (let x1 = x2 in x3) y"), Ok(..));
