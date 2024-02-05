@@ -41,22 +41,11 @@ trait InjectBindings {
     );
 }
 
-impl Bindings for LocPattern {
+impl Bindings for Pattern {
     fn bindings(&self) -> Vec<(Vec<LocIdent>, LocIdent, Field)> {
         let mut bindings = Vec::new();
         self.inject_bindings(&mut bindings, Vec::new(), None);
         bindings
-    }
-}
-
-impl InjectBindings for LocPattern {
-    fn inject_bindings(
-        &self,
-        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
-        path: Vec<LocIdent>,
-        parent_deco: Option<&Field>,
-    ) {
-        self.pattern.inject_bindings(bindings, path, parent_deco);
     }
 }
 
@@ -67,16 +56,31 @@ impl InjectBindings for Pattern {
         path: Vec<LocIdent>,
         parent_deco: Option<&Field>,
     ) {
+        if let Some(alias) = self.alias {
+            bindings.push((
+                path.clone(),
+                alias,
+                parent_deco.cloned().unwrap_or_default(),
+            ));
+        }
+
+        self.pattern.inject_bindings(bindings, path, parent_deco);
+    }
+}
+
+impl InjectBindings for PatternData {
+    fn inject_bindings(
+        &self,
+        bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
+        path: Vec<LocIdent>,
+        parent_deco: Option<&Field>,
+    ) {
         match self {
-            Pattern::Any(id) => {
+            PatternData::Any(id) => {
                 bindings.push((path, *id, parent_deco.cloned().unwrap_or_default()))
             }
-            Pattern::RecordPattern(record_pat) => {
+            PatternData::RecordPattern(record_pat) => {
                 record_pat.inject_bindings(bindings, path, parent_deco)
-            }
-            Pattern::AliasedPattern { alias, pattern } => {
-                pattern.inject_bindings(bindings, path.clone(), parent_deco.clone());
-                bindings.push((path, *alias, parent_deco.cloned().unwrap_or_default()));
             }
         }
     }

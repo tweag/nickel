@@ -10,7 +10,7 @@ use super::error::ParseError;
 
 use crate::{
     combine::Combine,
-    destructuring::{LocPattern, Pattern},
+    destructuring::{Pattern, PatternData},
     eval::{
         merge::{merge_doc, split},
         operation::RecPriority,
@@ -651,33 +651,26 @@ pub fn mk_merge_label(src_id: FileId, l: usize, r: usize) -> MergeLabel {
 /// and is recursive because recursive let-patterns are currently not supported.
 pub fn mk_let(
     rec: bool,
-    pat: LocPattern,
+    pat: Pattern,
     t1: RichTerm,
     t2: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
     match pat.pattern {
-        Pattern::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
-        Pattern::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
+        PatternData::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
+        PatternData::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
         _ if rec => Err(ParseError::RecursiveLetPattern(span)),
-        Pattern::AliasedPattern { alias, pattern } => {
-            Ok(mk_term::let_pat(Some(alias), *pattern, t1, t2))
-        }
-        _ => {
-            let id: Option<LocIdent> = None;
-            Ok(mk_term::let_pat(id, pat, t1, t2))
-        }
+        _ => Ok(mk_term::let_pat(pat, t1, t2)),
     }
 }
 
 /// Generate a `Fun` or a `FunPattern` (depending on `assgn` having a pattern or not)
 /// from the parsing of a function definition. This function panics if the definition
 /// somehow has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
-pub fn mk_fun(pat: LocPattern, body: RichTerm) -> Term {
+pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
     match pat.pattern {
-        Pattern::Any(id) => Term::Fun(id, body),
-        Pattern::AliasedPattern { alias, pattern } => Term::FunPattern(Some(alias), *pattern, body),
-        _ => Term::FunPattern(None, pat, body),
+        PatternData::Any(id) => Term::Fun(id, body),
+        _ => Term::FunPattern(pat, body),
     }
 }
 

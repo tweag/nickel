@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::destructuring::{self, Pattern, RecordPattern, RecordPatternTail};
+use crate::destructuring::{self, Pattern, PatternData, RecordPattern, RecordPatternTail};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::record::RecordData;
@@ -546,12 +546,32 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        let alias_prefix = if let Some(alias) = self.alias {
+            docs![
+                allocator,
+                alias.to_string(),
+                allocator.space(),
+                "@",
+                allocator.space()
+            ]
+        } else {
+            allocator.nil()
+        };
+
+        docs![allocator, alias_prefix, &self.pattern]
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &PatternData
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
-            Pattern::Any(id) => allocator.as_string(id),
-            Pattern::RecordPattern(rp) => rp.pretty(allocator),
-            Pattern::AliasedPattern { alias, pattern } => {
-                docs![allocator, alias.to_string(), " @ ", &pattern.pattern]
-            }
+            PatternData::Any(id) => allocator.as_string(id),
+            PatternData::RecordPattern(rp) => rp.pretty(allocator),
         }
     }
 }
@@ -602,7 +622,7 @@ where
                             field => allocator.field_metadata(&field.metadata, false),
                         },
                         match &field_pat.pattern.pattern {
-                            destructuring::Pattern::Any(id) if *id == field_pat.matched_id =>
+                            destructuring::PatternData::Any(id) if *id == field_pat.matched_id =>
                                 allocator.nil(),
                             pat => docs![allocator, allocator.line(), "= ", pat],
                         },
@@ -678,12 +698,8 @@ where
             FunPattern(..) => {
                 let mut params = vec![];
                 let mut rt = self;
-                while let FunPattern(id, pat, t) = rt {
-                    params.push(if let Some(id) = id {
-                        docs![allocator, id.to_string(), " @ ", &pat.pattern]
-                    } else {
-                        pat.pattern.pretty(allocator)
-                    });
+                while let FunPattern(pat, t) = rt {
+                    params.push(pat.pattern.pretty(allocator));
                     rt = t.as_ref();
                 }
                 docs![
@@ -728,14 +744,9 @@ where
             .append(allocator.line())
             .append(body.pretty(allocator).nest(2))
             .group(),
-            LetPattern(opt_id, pattern, rt, body) => docs![
+            LetPattern(pattern, rt, body) => docs![
                 allocator,
                 "let ",
-                if let Some(id) = opt_id {
-                    docs![allocator, id.to_string(), " @ "]
-                } else {
-                    allocator.nil()
-                },
                 &pattern.pattern,
                 if let Annotated(annot, _) = rt.as_ref() {
                     annot.pretty(allocator)

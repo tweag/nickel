@@ -1466,14 +1466,10 @@ fn walk<V: TypecheckVisitor>(
             ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
             walk(state, ctxt, visitor, t)
         }
-        Term::FunPattern(id, pat, t) => {
-            if let Some(id) = id {
-                // The parameter of an unannotated function is always assigned type `Dyn`.
-                ctxt.type_env.insert(id.ident(), mk_uniftype::dynamic());
-            }
-
-            let (_, pat_bindings) = pat.pattern.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
+        Term::FunPattern(pat, t) => {
+            let (_, pat_bindings) = pat.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
+
             walk(state, ctxt, visitor, t)
         }
         Term::Array(terms, _) => terms
@@ -1506,15 +1502,22 @@ fn walk<V: TypecheckVisitor>(
 
             walk(state, ctxt, visitor, rt)
         }
-        Term::LetPattern(x, pat, re, rt) => {
+        Term::LetPattern(pat, re, rt) => {
             let ty_let = binding_type(state, re.as_ref(), &ctxt, false);
+
             walk(state, ctxt.clone(), visitor, re)?;
 
-            if let Some(x) = x {
-                visitor.visit_ident(x, ty_let.clone());
-                ctxt.type_env.insert(x.ident(), ty_let);
+            // In the case of a let-binding, we want to guess a better type than `Dyn` when we can
+            // do so cheaply for the whole pattern.
+            if let Some(alias) = &pat.alias {
+                visitor.visit_ident(alias, ty_let.clone());
+                ctxt.type_env.insert(alias.ident(), ty_let);
             }
 
+            // [^separate-alias-treatment]: Note that we call `pattern_types` on the inner pattern
+            // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
+            // This is on purpose, as the alias has been treated separately, so we don't want to
+            // shadow it with a less precise type.
             let (_, pat_bindings) = pat.pattern.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
 
             for (id, typ) in pat_bindings {
@@ -1818,7 +1821,8 @@ fn check<V: TypecheckVisitor>(
             ctxt.type_env.insert(x.ident(), src);
             check(state, ctxt, visitor, t, trg)
         }
-        Term::FunPattern(x, pat, t) => {
+        Term::FunPattern(pat, t) => {
+            // See [^separate-alias-treatment].
             let (pat_ty, pat_bindings) =
                 pat.pattern
                     .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
@@ -1827,9 +1831,9 @@ fn check<V: TypecheckVisitor>(
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
             let arr = mk_uty_arrow!(src.clone(), trg.clone());
 
-            if let Some(x) = x {
-                visitor.visit_ident(x, src.clone());
-                ctxt.type_env.insert(x.ident(), src);
+            if let Some(alias) = &pat.alias {
+                visitor.visit_ident(alias, src.clone());
+                ctxt.type_env.insert(alias.ident(), src);
             }
 
             for (id, typ) in pat_bindings {
@@ -1879,8 +1883,8 @@ fn check<V: TypecheckVisitor>(
             }
             check(state, ctxt, visitor, rt, ty)
         }
-        Term::LetPattern(x, pat, re, rt) => {
-            // The inferred type of the pattern w/ unification vars
+        Term::LetPattern(pat, re, rt) => {
+            // See [^separate-alias-treatment].
             let (pat_ty, pat_bindings) =
                 pat.pattern
                     .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
@@ -1895,9 +1899,9 @@ fn check<V: TypecheckVisitor>(
 
             check(state, ctxt.clone(), visitor, re, ty_let.clone())?;
 
-            if let Some(x) = x {
-                visitor.visit_ident(x, ty_let.clone());
-                ctxt.type_env.insert(x.ident(), ty_let);
+            if let Some(alias) = &pat.alias {
+                visitor.visit_ident(alias, ty_let.clone());
+                ctxt.type_env.insert(alias.ident(), ty_let);
             }
 
             for (id, typ) in pat_bindings {

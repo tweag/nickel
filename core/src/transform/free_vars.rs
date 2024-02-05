@@ -51,14 +51,11 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::FunPattern(id, pat, body) => {
+            Term::FunPattern(pat, body) => {
                 let mut fresh = HashSet::new();
 
                 body.collect_free_vars(&mut fresh);
                 pat.remove_bindings(&mut fresh);
-                if let Some(id) = id {
-                    fresh.remove(&id.ident());
-                }
 
                 free_vars.extend(fresh);
             }
@@ -76,15 +73,12 @@ impl CollectFreeVars for RichTerm {
 
                 free_vars.extend(fresh);
             }
-            Term::LetPattern(id, pat, t1, t2) => {
+            Term::LetPattern(pat, t1, t2) => {
                 let mut fresh = HashSet::new();
 
                 t1.collect_free_vars(free_vars);
                 t2.collect_free_vars(&mut fresh);
                 pat.remove_bindings(&mut fresh);
-                if let Some(id) = id {
-                    fresh.remove(&id.ident());
-                }
 
                 free_vars.extend(fresh);
             }
@@ -240,26 +234,26 @@ trait RemoveBindings {
     fn remove_bindings(&self, working_set: &mut HashSet<Ident>);
 }
 
-impl RemoveBindings for Pattern {
+impl RemoveBindings for PatternData {
     fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
         match self {
-            Pattern::Any(id) => {
+            PatternData::Any(id) => {
                 working_set.remove(&id.ident());
             }
-            Pattern::RecordPattern(record_pat) => {
+            PatternData::RecordPattern(record_pat) => {
                 record_pat.remove_bindings(working_set);
-            }
-            Pattern::AliasedPattern { alias, pattern } => {
-                working_set.remove(&alias.ident());
-                pattern.remove_bindings(working_set);
             }
         }
     }
 }
 
-impl RemoveBindings for LocPattern {
+impl RemoveBindings for Pattern {
     fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
         self.pattern.remove_bindings(working_set);
+
+        if let Some(alias) = self.alias {
+            working_set.remove(&alias.ident());
+        }
     }
 }
 

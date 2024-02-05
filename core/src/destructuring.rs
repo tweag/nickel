@@ -14,22 +14,24 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Pattern {
+pub enum PatternData {
     /// A simple pattern consisting of an identifier. Match anything and bind the result to the
     /// corresponding identfier.
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
     RecordPattern(RecordPattern),
-    /// An aliased pattern as in `x @ { a = b @ { c, d }, ..}`
-    AliasedPattern {
-        alias: LocIdent,
-        pattern: Box<LocPattern>,
-    },
 }
 
+/// A generic pattern, that can appear in a match expression (not yet implemented) or in a
+/// destructuring let-binding.
 #[derive(Debug, PartialEq, Clone)]
-pub struct LocPattern {
-    pub pattern: Pattern,
+pub struct Pattern {
+    /// The content of this pattern
+    pub pattern: PatternData,
+    /// A potential alias for this pattern, capturing the whole matched value. In the source
+    /// language, an alias is introduced by `x @ <pattern>`, where `x` is an arbitrary identifier.
+    pub alias: Option<LocIdent>,
+    /// The span of the pattern in the source.
     pub span: RawSpan,
 }
 
@@ -46,7 +48,7 @@ pub struct FieldPattern {
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
     /// sign, is considered to be `{foo=foo, bar=bar}`. In this case, `pattern` will be
     /// [Pattern::Any].
-    pub pattern: LocPattern,
+    pub pattern: Pattern,
     pub span: RawSpan,
 }
 
@@ -176,17 +178,16 @@ pub trait ElaborateContract {
     fn elaborate_contract(&self) -> Option<LabeledType>;
 }
 
-impl ElaborateContract for Pattern {
+impl ElaborateContract for PatternData {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         match self {
-            Pattern::Any(_) => None,
-            Pattern::RecordPattern(pat) => pat.elaborate_contract(),
-            Pattern::AliasedPattern { pattern, .. } => pattern.elaborate_contract(),
+            PatternData::Any(_) => None,
+            PatternData::RecordPattern(pat) => pat.elaborate_contract(),
         }
     }
 }
 
-impl ElaborateContract for LocPattern {
+impl ElaborateContract for Pattern {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         self.pattern.elaborate_contract()
     }

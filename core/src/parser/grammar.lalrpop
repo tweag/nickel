@@ -520,29 +520,18 @@ LastFieldPat: LastPattern<FieldPattern> = {
 
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
-Pattern: LocPattern = {
-    <l: @L> <id:(<Ident> "@")?> <record_pat: RecordPattern> <r: @R> => {
-        let record_pat_span = record_pat.span;
-        let record_pat = Pattern::RecordPattern(record_pat);
-
-        let pattern = if let Some(alias) = id {
-            Pattern::AliasedPattern {
-                alias,
-                pattern: Box::new(LocPattern {
-                    pattern: record_pat,
-                    span: record_pat_span,
-                }),
-            }
-        } else {
-            record_pat
-        };
-
-        LocPattern { pattern, span: mk_span(src_id, l, r) }
+Pattern: Pattern = {
+    <l: @L> <alias:(<Ident> "@")?> <record_pat: RecordPattern> <r: @R> => {
+        Pattern {
+           alias,
+           pattern: PatternData::RecordPattern(record_pat),
+           span: mk_span(src_id, l, r),
+        }
     },
     Ident => {
         let span = <>.pos.unwrap();
 
-        LocPattern { pattern: Pattern::Any(<>), span }
+        Pattern { pattern: PatternData::Any(<>), alias: None, span }
     },
 };
 
@@ -589,11 +578,12 @@ FieldPattern: FieldPattern = {
         FieldPattern {
             matched_id,
             decoration,
-            pattern: LocPattern {
-                pattern: Pattern::Any(matched_id),
+            pattern: Pattern {
+                pattern: PatternData::Any(matched_id),
                 //unwrap(): the position of an parsed identifier should always
                 //be defined
                 span: matched_id.pos.unwrap(),
+                alias: None,
             },
             span: mk_span(src_id, l, r)
         }

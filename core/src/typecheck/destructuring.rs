@@ -1,5 +1,5 @@
 use crate::{
-    destructuring::{FieldPattern, Pattern, RecordPattern, RecordPatternTail},
+    destructuring::*,
     error::TypecheckError,
     identifier::LocIdent,
     mk_uty_record_row,
@@ -112,27 +112,42 @@ impl PatternTypes for Pattern {
         ctxt: &Context,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
+        let typ = self
+            .pattern
+            .pattern_types_inj(bindings, state, ctxt, mode)?;
+
+        if let Some(alias) = self.alias {
+            bindings.push((alias, typ.clone()));
+        }
+
+        Ok(typ)
+    }
+}
+
+impl PatternTypes for PatternData {
+    type PatType = UnifType;
+
+    fn pattern_types_inj(
+        &self,
+        bindings: &mut Vec<(LocIdent, UnifType)>,
+        state: &mut State,
+        ctxt: &Context,
+        mode: TypecheckMode,
+    ) -> Result<Self::PatType, TypecheckError> {
         match self {
-            Pattern::Any(id) => {
+            PatternData::Any(id) => {
                 let typ = match mode {
                     TypecheckMode::Walk => mk_uniftype::dynamic(),
                     TypecheckMode::Enforce => state.table.fresh_type_uvar(ctxt.var_level),
                 };
+
                 bindings.push((*id, typ.clone()));
 
                 Ok(typ)
             }
-            Pattern::RecordPattern(record_pat) => Ok(UnifType::concrete(TypeF::Record(
+            PatternData::RecordPattern(record_pat) => Ok(UnifType::concrete(TypeF::Record(
                 record_pat.pattern_types_inj(bindings, state, ctxt, mode)?,
             ))),
-            Pattern::AliasedPattern { alias, pattern } => {
-                let typ = pattern
-                    .pattern
-                    .pattern_types_inj(bindings, state, ctxt, mode)?;
-
-                bindings.push((*alias, typ.clone()));
-                Ok(typ)
-            }
         }
     }
 }

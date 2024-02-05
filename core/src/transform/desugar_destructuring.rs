@@ -55,9 +55,8 @@ use crate::term::{
 /// destructuring patterns to be desugared in children nodes.
 pub fn transform_one(rt: RichTerm) -> RichTerm {
     match_sharedterm!(match (rt.term) {
-        Term::LetPattern(id, pat, bound, body) =>
-            RichTerm::new(desugar_let(id, pat, bound, body), rt.pos),
-        Term::FunPattern(id, pat, body) => RichTerm::new(desugar_fun(id, pat, body), rt.pos),
+        Term::LetPattern(pat, bound, body) => RichTerm::new(desugar_let(pat, bound, body), rt.pos),
+        Term::FunPattern(pat, body) => RichTerm::new(desugar_fun(pat, body), rt.pos),
         _ => rt,
     })
 }
@@ -67,14 +66,14 @@ pub fn transform_one(rt: RichTerm) -> RichTerm {
 /// A function `fun <pat> => body` is desugared to `fun x => let <pat> = x in body`. The inner
 /// destructuring let isn't desugared further, as the general program transformation machinery will
 /// take care of transforming the body of the function in a second step.
-pub fn desugar_fun(id: Option<LocIdent>, pat: LocPattern, body: RichTerm) -> Term {
-    let id = id.unwrap_or_else(LocIdent::fresh);
+pub fn desugar_fun(mut pat: Pattern, body: RichTerm) -> Term {
+    let id = pat.alias.take().unwrap_or_else(LocIdent::fresh);
     let pos_body = body.pos;
 
     Term::Fun(
         id,
         RichTerm::new(
-            Term::LetPattern(None, pat, Term::Var(id).into(), body),
+            Term::LetPattern(pat, Term::Var(id).into(), body),
             // TODO: should we use rt.pos?
             pos_body,
         ),
@@ -83,7 +82,7 @@ pub fn desugar_fun(id: Option<LocIdent>, pat: LocPattern, body: RichTerm) -> Ter
 
 /// Elaborate a contract from the pattern if it is a record pattern and applies to the value before
 /// actually destructuring it. Then convert the let pattern to a sequence of normal let-bindings.
-pub fn desugar_let(id: Option<LocIdent>, pat: LocPattern, bound: RichTerm, body: RichTerm) -> Term {
+pub fn desugar_let(pat: Pattern, bound: RichTerm, body: RichTerm) -> Term {
     let contract = pat.elaborate_contract();
 
     let annotated = {
@@ -98,15 +97,6 @@ pub fn desugar_let(id: Option<LocIdent>, pat: LocPattern, bound: RichTerm, body:
             ),
             t_pos,
         )
-    };
-
-    let pat = if let Some(alias) = id {
-        Pattern::AliasedPattern {
-            alias,
-            pattern: Box::new(pat),
-        }
-    } else {
-        pat.pattern
     };
 
     pat.desugar(annotated, body)
@@ -124,30 +114,32 @@ trait Desugar {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term;
 }
 
-impl Desugar for LocPattern {
+impl Desugar for Pattern {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
-        self.pattern.desugar(destr, body)
+        // If the pattern is aliased, `x @ <pat>` matching `destr`, we introduce a heading
+        // let-binding `let x = destruct in <elaborated>`, where `<elaborated>` is the desugaring
+        // of `<pat>` matching `x` followed by the original `body`.
+        if let Some(alias) = self.alias {
+            let pos = body.pos;
+            let inner = RichTerm::new(
+                self.pattern
+                    .desugar(RichTerm::new(Term::Var(alias), alias.pos), body),
+                pos,
+            );
+
+            Term::Let(alias, destr, inner, LetAttrs::default())
+        } else {
+            self.pattern.desugar(destr, body)
+        }
     }
 }
 
-impl Desugar for Pattern {
+impl Desugar for PatternData {
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
         match self {
             // If the pattern is an unconstrained identifier, we just bind it to the value.
-            Pattern::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
-            Pattern::RecordPattern(pat) => pat.desugar(destr, body),
-            // If the pattern is aliased, `x @ <pat>` matching `destruct`, we introduce a heading
-            // let-binding `let x = destruct in <elaborated>`, where `<elaborated>` is the
-            // desugaring of `<pat>` matching `x`.
-            Pattern::AliasedPattern { alias, pattern } => {
-                let pos = body.pos;
-                let inner = RichTerm::new(
-                    pattern.desugar(RichTerm::new(Term::Var(alias), alias.pos), body),
-                    pos,
-                );
-
-                Term::Let(alias, destr, inner, LetAttrs::default())
-            }
+            PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
+            PatternData::RecordPattern(pat) => pat.desugar(destr, body),
         }
     }
 }
