@@ -189,21 +189,10 @@ impl Desugar for RecordPattern {
 fn bind_rest(pat: &RecordPattern, destr: RichTerm, body: RichTerm) -> RichTerm {
     let capture_var = match pat {
         RecordPattern {
-            open: true,
-            rest: Some(x),
+            tail: RecordPatternTail::Capture(x),
             ..
         } => *x,
-        RecordPattern {
-            open: true,
-            rest: None,
-            ..
-        }
-        | RecordPattern {
-            open: false,
-            rest: None,
-            ..
-        } => return body,
-        _ => panic!("A closed pattern can not have a rest binding"),
+        _ => return body,
     };
 
     Term::Let(

@@ -75,11 +75,22 @@ pub enum LastPattern<P> {
 pub struct RecordPattern {
     /// The patterns for each field in the record.
     pub patterns: Vec<FieldPattern>,
-    /// If the pattern is open, i.e. if it ended with an ellipsis, capturing the rest or not.
-    pub open: bool,
-    /// If the pattern is open and the rest is captured, the capturing identifier is stored here.
-    pub rest: Option<LocIdent>,
+    /// The tail of the pattern, indicating if the pattern is open, i.e. if it ended with an
+    /// ellipsis, capturing the rest or not.
+    pub tail: RecordPatternTail,
     pub span: RawSpan,
+}
+
+/// The tail of a record pattern which might capture the rest of the record.
+#[derive(Debug, PartialEq, Clone)]
+pub enum RecordPatternTail {
+    /// The pattern is closed, i.e. it doesn't allow more fields. For example, `{foo, bar}`.
+    Empty,
+    /// The pattern ends with an ellipsis, making it open. For example, `{foo, bar, ..}`.
+    Open,
+    /// The pattern ends with an ellispis and a variable capturing the rest of the record. For
+    /// example, `{foo, bar, ..rest}`.
+    Capture(LocIdent),
 }
 
 impl RecordPattern {
@@ -123,6 +134,15 @@ impl RecordPattern {
         }
 
         Ok(())
+    }
+
+    /// Check if this record contract is open, meaning that it accepts additional fields to be
+    /// present, whether the rest is captured or not.
+    pub fn is_open(&self) -> bool {
+        matches!(
+            self.tail,
+            RecordPatternTail::Open | RecordPatternTail::Capture(_)
+        )
     }
 }
 
@@ -184,7 +204,7 @@ impl ElaborateContract for RecordPattern {
                         .map(FieldPattern::as_record_binding)
                         .collect(),
                     RecordAttrs {
-                        open: self.open,
+                        open: self.is_open(),
                         ..Default::default()
                     },
                     None,

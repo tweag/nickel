@@ -1,5 +1,5 @@
 use crate::{
-    destructuring::{FieldPattern, Pattern, RecordPattern},
+    destructuring::{FieldPattern, Pattern, RecordPattern, RecordPatternTail},
     error::TypecheckError,
     identifier::LocIdent,
     mk_uty_record_row,
@@ -71,7 +71,7 @@ impl PatternTypes for RecordPattern {
         ctxt: &Context,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
-        let tail = if self.open {
+        let tail = if self.is_open() {
             match mode {
                 // We use a dynamic tail here since we're in walk mode,
                 // but if/when we remove dynamic record tails this could
@@ -86,7 +86,7 @@ impl PatternTypes for RecordPattern {
             }
         };
 
-        if let Some(rest) = self.rest {
+        if let RecordPatternTail::Capture(rest) = self.tail {
             bindings.push((rest, UnifType::concrete(TypeF::Record(tail.clone()))));
         }
 

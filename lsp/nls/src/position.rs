@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
-    destructuring::Pattern,
+    destructuring::{Pattern, RecordPatternTail},
     position::TermPos,
     term::{RichTerm, Term, Traverse, TraverseControl},
 };
@@ -128,9 +128,15 @@ impl PositionLookup {
                 Term::FunPattern(id, pat, _) | Term::LetPattern(id, pat, _, _) => {
                     let ids = pat.bindings().into_iter().map(|(_path, id, _)| id);
 
+                    idents.extend(ids);
+                    idents.extend(*id);
+
                     // TODO[pattern]: what about aliased record patterns?
+                    // TODO[pattern]: what about nested patterns with tails?
                     if let Pattern::RecordPattern(record_pat) = &pat.pattern {
-                        idents.extend(ids.chain(*id).chain(record_pat.rest))
+                        if let RecordPatternTail::Capture(rest) = &record_pat.tail {
+                            idents.push(*rest)
+                        }
                     }
                 }
                 Term::Var(id) => idents.push(*id),

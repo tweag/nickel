@@ -4,7 +4,7 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destructuring::{FieldPattern, LocPattern, Pattern, RecordPattern},
+    destructuring::*,
     identifier::Ident,
     term::{
         record::{Field, FieldDeps, RecordDeps},
@@ -275,7 +275,7 @@ impl RemoveBindings for RecordPattern {
             m.remove_bindings(working_set);
         }
 
-        if let Some(rest) = self.rest {
+        if let RecordPatternTail::Capture(rest) = self.tail {
             working_set.remove(&rest.ident());
         }
     }

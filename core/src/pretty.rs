@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::destructuring::{self, Pattern, RecordPattern};
+use crate::destructuring::{self, Pattern, RecordPattern, RecordPatternTail};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
 use crate::term::record::RecordData;
@@ -565,8 +565,7 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         let RecordPattern {
             patterns: matches,
-            open,
-            rest,
+            tail,
             ..
         } = self;
         docs![
@@ -613,19 +612,11 @@ where
                 }),
                 allocator.line()
             ),
-            if *open {
-                docs![
-                    allocator,
-                    allocator.line(),
-                    "..",
-                    if let Some(rest) = rest {
-                        allocator.as_string(rest)
-                    } else {
-                        allocator.nil()
-                    },
-                ]
-            } else {
-                allocator.nil()
+            match tail {
+                RecordPatternTail::Empty => allocator.nil(),
+                RecordPatternTail::Open => docs![allocator, allocator.line(), ".."],
+                RecordPatternTail::Capture(id) =>
+                    docs![allocator, allocator.line(), "..", id.ident().to_string()],
             },
         ]
         .nest(2)

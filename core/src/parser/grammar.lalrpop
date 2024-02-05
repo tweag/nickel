@@ -549,17 +549,22 @@ Pattern: LocPattern = {
 // A full pattern at the left-hand side of a destructuring let.
 RecordPattern: RecordPattern = {
     <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
-        let (open, rest) = match last {
+        let tail = match last {
             Some(LastPattern::Normal(m)) => {
                 field_pats.push(*m);
-                (false,None)
+                RecordPatternTail::Empty
             },
-            Some(LastPattern::Ellipsis(rest)) => (true, rest),
-            _ => (false, None),
+            Some(LastPattern::Ellipsis(Some(captured))) => {
+                RecordPatternTail::Capture(captured)
+            }
+            Some(LastPattern::Ellipsis(None)) => {
+                RecordPatternTail::Open
+            }
+            None => RecordPatternTail::Empty,
         };
 
         let span = mk_span(src_id, start, end);
-        let pattern = RecordPattern { patterns: field_pats, open, rest, span };
+        let pattern = RecordPattern { patterns: field_pats, tail, span };
         pattern.check_matches()?;
         Ok(pattern)
     },
