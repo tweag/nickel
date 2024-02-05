@@ -173,7 +173,9 @@ pub fn handle_completion(
     let term = server.lookup_term_by_position(pos)?.cloned();
 
     // TODO(vkleen): we need to decide if laziness of imports will be respected by the LSP
-    if let Some(Term::Import { path, strict: _ }) = term.as_ref().map(|t| t.term.as_ref()) {
+    if let Some(Term::Import { path } | Term::LazyImport { path, .. }) =
+        term.as_ref().map(|t| t.term.as_ref())
+    {
         // Don't respond with anything if trigger is a `.`, as that may be the
         // start of a relative file path `./`, or the start of a file extension
         if !matches!(trigger, Some(".")) {

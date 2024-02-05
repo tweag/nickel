@@ -144,11 +144,30 @@ pub mod tolerant {
     {
         let term = rt.as_ref();
         match term {
-            // TODO(vkleen): actually implement laziness
-            Term::Import { path, strict: _ } => match resolver.resolve(path, parent, &rt.pos) {
+            // Only strict imports are resolved at program transformation time
+            Term::Import { path, .. } => match resolver.resolve(path, parent, &rt.pos) {
                 Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },
+            // For lazy imports we just record the parent file where we encountered it
+            Term::LazyImport {
+                path,
+                parent: old_parent,
+                ..
+            } => {
+                // There should never be an ambiguity about which file is the parent of this import
+                debug_assert!(old_parent.is_none());
+                (
+                    RichTerm::new(
+                        Term::LazyImport {
+                            path: path.clone(),
+                            parent,
+                        },
+                        rt.pos,
+                    ),
+                    None,
+                )
+            }
             _ => (rt, None),
         }
     }

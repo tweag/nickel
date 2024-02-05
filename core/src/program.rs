@@ -212,12 +212,7 @@ impl<EC: EvalCache> Program<EC> {
         // The top-level files will always be evaluated, so strict imports are appropriate
         let merge_term = paths
             .into_iter()
-            .map(|f| {
-                RichTerm::from(Term::Import {
-                    path: f.into(),
-                    strict: true,
-                })
-            })
+            .map(|f| RichTerm::from(Term::Import { path: f.into() }))
             .reduce(|acc, f| mk_term::op2(BinaryOp::Merge(Label::default().into()), acc, f))
             .unwrap();
         let main_id = cache.add_string(

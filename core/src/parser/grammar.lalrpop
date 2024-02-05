@@ -251,11 +251,10 @@ UniTerm: UniTerm = {
     },
     "import" <s: StandardStaticString> => UniTerm::from(Term::Import {
         path: OsString::from(s),
-        strict: true,
     }),
-    "import" "lazy" <s: StandardStaticString> => UniTerm::from(Term::Import {
+    "import" "lazy" <s: StandardStaticString> => UniTerm::from(Term::LazyImport {
         path: OsString::from(s),
-        strict: false,
+        parent: None,
     }),
 };
 

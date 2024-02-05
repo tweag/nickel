@@ -924,14 +924,14 @@ where
             SealingKey(sym) => allocator.text(format!("%<sealing key: {sym}>")),
             Sealed(_i, _rt, _lbl) => allocator.text("%<sealed>"),
             Annotated(annot, rt) => allocator.atom(rt).append(annot.pretty(allocator)),
-            Import { path, strict } => docs![
+            Import { path } => docs![
                 allocator,
                 "import ",
-                if *strict {
-                    allocator.nil()
-                } else {
-                    allocator.text("%lazy% ")
-                },
+                allocator.as_string(path.to_string_lossy()).double_quotes()
+            ],
+            LazyImport { path, parent: _ } => docs![
+                allocator,
+                "import %lazy% ",
                 allocator.as_string(path.to_string_lossy()).double_quotes()
             ],
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
