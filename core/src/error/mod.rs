@@ -146,7 +146,10 @@ pub enum EvalError {
         call_stack: CallStack,
     },
     /// A non-equatable term was compared for equality.
-    EqError { eq_pos: TermPos, term: RichTerm },
+    EqError {
+        eq_pos: TermPos,
+        term: RichTerm,
+    },
     /// A value didn't match any branch of a `match` expression at runtime.
     NonExhaustiveMatch {
         /// The list of expected patterns. Currently, those are just enum tags.
@@ -165,6 +168,7 @@ pub enum EvalError {
         /// Evaluated expression
         value: RichTerm,
     },
+    ImportError(ImportError),
     /// An unexpected internal error.
     InternalError(String, TermPos),
     /// Errors occurring rarely enough to not deserve a dedicated variant.
@@ -1364,6 +1368,7 @@ impl IntoDiagnostics<FileId> for EvalError {
                     .with_message("tried to query field of a non-record")
                     .with_labels(vec![label])]
             }
+            EvalError::ImportError(err) => err.into_diagnostics(files, stdlib_ids),
         }
     }
 }

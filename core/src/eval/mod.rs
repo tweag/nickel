@@ -784,7 +784,12 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                     }
                 }
                 Term::LazyImport { path, parent } => {
-                    todo!()
+                    match self.import_resolver.resolve(&path, parent, &pos) {
+                        Ok((_, file_id)) => {
+                            todo!();
+                        }
+                        Err(err) => return Err(EvalError::ImportError(err)),
+                    }
                 }
                 Term::Import { path } => {
                     return Err(EvalError::InternalError(
