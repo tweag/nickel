@@ -1325,6 +1325,7 @@
                 (fun start => RangeSecond start -> Codomain),
 
         IndexedArrayFun
+          | [| 'Index, 'Split |] -> Dyn -> Dyn
           | doc m%"
               **Warning**: this is an unstable item. It might be renamed,
               modified or deleted in any subsequent minor Nickel version.
@@ -1379,15 +1380,13 @@
               else
                 value
             in
-            let contract
-              | [| 'Index, 'Split |] -> Dyn -> Dyn
-              = fun type label function =>
-                DependentFun
-                  ArrayIndexFirst
-                  (fun index => ArrayIndexSecond type index -> Dyn)
-                  label
-                  function
-              in contract,
+            let contract = fun type label function =>
+              DependentFun
+                ArrayIndexFirst
+                (fun index => ArrayIndexSecond type index -> Dyn)
+                label
+                function
+            in contract,
 
         ArraySliceFun
           | doc m%"
