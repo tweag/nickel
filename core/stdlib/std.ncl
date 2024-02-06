@@ -1362,7 +1362,7 @@
               if %typeof% min_size == 'Number && %typeof% value == 'Array then
                 if min_size >= %length% value then
                   let index_as_str = %to_str% min_size in
-                  let max_as_str = %to_str% (%length% value - 1) in
+                  let max_as_str = %to_str% (%length% value) in
                   let note =
                     if %length% value == 0 then
                       "Can't index into an empty array"
