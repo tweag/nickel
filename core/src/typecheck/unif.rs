@@ -1062,10 +1062,11 @@ impl PropagateConstrs for UnifRecordRows {
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { row, .. },
                     ..
-                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
-                    row.id,
-                    UnifType::concrete(TypeF::Record(rrows.clone())),
-                )),
+                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::RecordRowConflict {
+                    id: row.id,
+                    row_type: *row.typ.clone(),
+                    rrows: rrows.clone(),
+                }),
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { tail, .. },
                     ..
@@ -1103,10 +1104,11 @@ impl PropagateConstrs for UnifEnumRows {
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { row, .. },
                     ..
-                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::UnsatConstr(
-                    row.id,
-                    UnifType::concrete(TypeF::Enum(erows.clone())),
-                )),
+                } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::EnumRowConflict {
+                    id: row.id,
+                    row_type: row.typ.as_ref().map(|typ| *typ.clone()),
+                    erows: erows.clone(),
+                }),
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { tail, .. },
                     ..
@@ -1187,24 +1189,22 @@ impl Unify for UnifType {
                 (TypeF::Arrow(s1s, s1t), TypeF::Arrow(s2s, s2t)) => {
                     s1s.clone()
                         .unify((*s2s).clone(), state, ctxt)
-                        .map_err(|err| {
-                            UnifError::DomainMismatch(
-                                UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
-                                UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
-                                Box::new(err),
-                            )
+                        .map_err(|err| UnifError::DomainMismatch {
+                            expected: UnifType::concrete(TypeF::Arrow(s1s.clone(), s1t.clone())),
+                            inferred: UnifType::concrete(TypeF::Arrow(s2s.clone(), s2t.clone())),
+                            mismatch: Box::new(err),
                         })?;
                     s1t.clone()
                         .unify((*s2t).clone(), state, ctxt)
-                        .map_err(|err| {
-                            UnifError::CodomainMismatch(
-                                UnifType::concrete(TypeF::Arrow(s1s, s1t)),
-                                UnifType::concrete(TypeF::Arrow(s2s, s2t)),
-                                Box::new(err),
-                            )
+                        .map_err(|err| UnifError::CodomainMismatch {
+                            expected: UnifType::concrete(TypeF::Arrow(s1s, s1t)),
+                            inferred: UnifType::concrete(TypeF::Arrow(s2s, s2t)),
+                            mismatch: Box::new(err),
                         })
                 }
-                (TypeF::Flat(s), TypeF::Flat(t)) => Err(UnifError::IncomparableFlatTypes(s, t)),
+                (TypeF::Flat(expected), TypeF::Flat(inferred)) => {
+                    Err(UnifError::IncomparableFlatTypes { expected, inferred })
+                }
                 (TypeF::Enum(erows1), TypeF::Enum(erows2)) => erows1
                     .clone()
                     .unify(erows2.clone(), state, ctxt)
@@ -1267,10 +1267,10 @@ impl Unify for UnifType {
                 (TypeF::Var(ident), _) | (_, TypeF::Var(ident)) => {
                     Err(UnifError::UnboundTypeVariable(ident.into()))
                 }
-                (ty1, ty2) => Err(UnifError::TypeMismatch(
-                    UnifType::concrete(ty1),
-                    UnifType::concrete(ty2),
-                )),
+                (ty1, ty2) => Err(UnifError::TypeMismatch {
+                    expected: UnifType::concrete(ty1),
+                    inferred: UnifType::concrete(ty2),
+                }),
             },
             (UnifType::UnifVar { id, .. }, uty) | (uty, UnifType::UnifVar { id, .. }) => {
                 // [^check-unif-var-level]: If we are unifying a variable with a rigid type
@@ -1295,11 +1295,17 @@ impl Unify for UnifType {
                 Ok(())
             }
             (UnifType::Constant(i1), UnifType::Constant(i2)) if i1 == i2 => Ok(()),
-            (UnifType::Constant(i1), UnifType::Constant(i2)) => {
-                Err(UnifError::ConstMismatch(VarKindDiscriminant::Type, i1, i2))
-            }
+            (UnifType::Constant(i1), UnifType::Constant(i2)) => Err(UnifError::ConstMismatch {
+                var_kind: VarKindDiscriminant::Type,
+                expected_const_id: i1,
+                inferred_const_id: i2,
+            }),
             (ty, UnifType::Constant(i)) | (UnifType::Constant(i), ty) => {
-                Err(UnifError::WithConst(VarKindDiscriminant::Type, i, ty))
+                Err(UnifError::WithConst {
+                    var_kind: VarKindDiscriminant::Type,
+                    expected_const_id: i,
+                    inferred: ty,
+                })
             }
             (UnifType::Contract(t1, env1), UnifType::Contract(t2, env2))
                 if eq::contract_eq(state.table.max_uvars_count(), &t1, &env1, &t2, &env2) =>
@@ -1307,7 +1313,10 @@ impl Unify for UnifType {
                 Ok(())
             }
             (uty1 @ UnifType::Contract(..), uty2) | (uty1, uty2 @ UnifType::Contract(..)) => {
-                Err(UnifError::TypeMismatch(uty1, uty2))
+                Err(UnifError::TypeMismatch {
+                    expected: uty1,
+                    inferred: uty2,
+                })
             }
         }
     }
@@ -1365,14 +1374,19 @@ impl Unify for UnifEnumRows {
                         erows: erows2,
                         var_levels_data: var_levels2,
                     };
+
+                    // [^rows-clone-error-reporting]: We need a copy in case of a conflict for
+                    // error reporting purpose. We could avoid the clone once we have shareable
+                    // unification types (`Rc` or arena pointers), but for now, `remove_row`
+                    // destructures it, so it seems hard to avoid.
+                    let uerows2_copy = uerows2.clone();
+
                     let (ty2_result, t2_without_row) =
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
                         uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
                             RemoveRowError::Missing => RowUnifError::MissingRow(id),
-                            //TODO[adts]: do not use dynamic below, but have a proper type for
-                            // unsatisfied constraint for enum rows, I guess
-                            RemoveRowError::Conflict => RowUnifError::UnsatConstr(id, mk_uniftype::dynamic()),
+                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict { id, row_type: typ.as_ref().map(|typ| *typ.clone()), erows: uerows2_copy },
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1383,11 +1397,14 @@ impl Unify for UnifEnumRows {
                         match (typ, ty2) {
                             (Some(typ), Some(ty2)) => {
                                 typ.unify(ty2, state, ctxt).map_err(|err| {
-                                    RowUnifError::EnumRowMismatch(id, Some(Box::new(err)))
+                                    RowUnifError::EnumRowMismatch {
+                                        id,
+                                        mismatch: Some(Box::new(err)),
+                                    }
                                 })?;
                             }
                             (Some(_), None) | (None, Some(_)) => {
-                                return Err(RowUnifError::EnumRowMismatch(id, None));
+                                return Err(RowUnifError::EnumRowMismatch { id, mismatch: None });
                             }
                             (None, None) => (),
                         }
@@ -1416,16 +1433,20 @@ impl Unify for UnifEnumRows {
                 Ok(())
             }
             (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) if i1 == i2 => Ok(()),
-            (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => Err(
-                RowUnifError::ConstMismatch(VarKindDiscriminant::EnumRows, i1, i2),
-            ),
+            (UnifEnumRows::Constant(i1), UnifEnumRows::Constant(i2)) => {
+                Err(RowUnifError::ConstMismatch {
+                    var_kind: VarKindDiscriminant::EnumRows,
+                    expected_const_id: i1,
+                    inferred_const_id: i2,
+                })
+            }
             (uerows, UnifEnumRows::Constant(i)) | (UnifEnumRows::Constant(i), uerows) => {
                 //TODO ROWS: should we refactor RowUnifError as well?
-                Err(RowUnifError::WithConst(
-                    VarKindDiscriminant::EnumRows,
-                    i,
-                    UnifType::concrete(TypeF::Enum(uerows)),
-                ))
+                Err(RowUnifError::WithConst {
+                    var_kind: VarKindDiscriminant::EnumRows,
+                    expected_const_id: i,
+                    inferred: UnifType::concrete(TypeF::Enum(uerows)),
+                })
             }
         }
     }
@@ -1459,8 +1480,8 @@ impl Unify for UnifRecordRows {
                 }
                 (RecordRowsF::Empty, RecordRowsF::Empty)
                 | (RecordRowsF::TailDyn, RecordRowsF::TailDyn) => Ok(()),
-                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail()),
-                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail()),
+                (RecordRowsF::Empty, RecordRowsF::TailDyn) => Err(RowUnifError::ExtraDynTail),
+                (RecordRowsF::TailDyn, RecordRowsF::Empty) => Err(RowUnifError::MissingDynTail),
                 (
                     RecordRowsF::Empty,
                     RecordRowsF::Extend {
@@ -1500,11 +1521,19 @@ impl Unify for UnifRecordRows {
                         rrows: rrows2,
                         var_levels_data: var_levels2,
                     };
+
+                    // see [^rows-clone-error-reporting]
+                    let urrows2_copy = urrows2.clone();
+
                     let (ty2_result, urrows2_without_ty2) = urrows2
                         .remove_row(&id, &typ, state, ctxt.var_level)
                         .map_err(|err| match err {
                             RemoveRowError::Missing => RowUnifError::MissingRow(id),
-                            RemoveRowError::Conflict => RowUnifError::UnsatConstr(id, *typ.clone()),
+                            RemoveRowError::Conflict => RowUnifError::RecordRowConflict {
+                                id,
+                                row_type: *typ.clone(),
+                                rrows: urrows2_copy,
+                            },
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1512,8 +1541,12 @@ impl Unify for UnifRecordRows {
                     // which case we don't have to perform additional unification for this specific
                     // row
                     if let RemoveRowResult::Extracted(ty2) = ty2_result {
-                        typ.unify(ty2, state, ctxt)
-                            .map_err(|err| RowUnifError::RecordRowMismatch(id, Box::new(err)))?;
+                        typ.unify(ty2, state, ctxt).map_err(|err| {
+                            RowUnifError::RecordRowMismatch {
+                                id,
+                                mismatch: Box::new(err),
+                            }
+                        })?;
                     }
 
                     tail.unify(urrows2_without_ty2, state, ctxt)
@@ -1539,16 +1572,19 @@ impl Unify for UnifRecordRows {
                 Ok(())
             }
             (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) if i1 == i2 => Ok(()),
-            (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => Err(
-                RowUnifError::ConstMismatch(VarKindDiscriminant::RecordRows, i1, i2),
-            ),
+            (UnifRecordRows::Constant(i1), UnifRecordRows::Constant(i2)) => {
+                Err(RowUnifError::ConstMismatch {
+                    var_kind: VarKindDiscriminant::RecordRows,
+                    expected_const_id: i1,
+                    inferred_const_id: i2,
+                })
+            }
             (urrows, UnifRecordRows::Constant(i)) | (UnifRecordRows::Constant(i), urrows) => {
-                //TODO ROWS: should we refactor RowUnifError as well?
-                Err(RowUnifError::WithConst(
-                    VarKindDiscriminant::RecordRows,
-                    i,
-                    UnifType::concrete(TypeF::Record(urrows)),
-                ))
+                Err(RowUnifError::WithConst {
+                    var_kind: VarKindDiscriminant::RecordRows,
+                    expected_const_id: i,
+                    inferred: UnifType::concrete(TypeF::Record(urrows)),
+                })
             }
         }
     }
