@@ -578,7 +578,7 @@
 
           # Preconditions
 
-          In `split_at inded value`, `index` must be a positive integer such
+          In `split_at index value`, `index` must be a positive integer such
           that `0 <= index <= std.array.length value`.
 
           # Examples
