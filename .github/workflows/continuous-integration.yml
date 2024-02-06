@@ -33,6 +33,24 @@ jobs:
 
     steps:
 
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@v1.3.1
+      if: runner.os == 'ubuntu-latest'
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB. Currently we don't seem to need
+        # this extra disk space
+        tool-cache: false
+
+        # we might turn some of those off to trade CI time for less space saving
+        # if this step turns out to be too slow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
     - name: Checking out the repository
       uses: actions/checkout@v4
       with:
