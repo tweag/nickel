@@ -1,8 +1,8 @@
 use std::fmt;
 
-use crate::destructuring::{self, Pattern, PatternData, RecordPattern, RecordPatternTail};
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
+use crate::term::pattern::{Pattern, PatternData, RecordPattern, RecordPatternTail};
 use crate::term::record::RecordData;
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -558,7 +558,7 @@ where
             allocator.nil()
         };
 
-        docs![allocator, alias_prefix, &self.pattern]
+        docs![allocator, alias_prefix, &self.data]
     }
 }
 
@@ -571,7 +571,7 @@ where
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
         match self {
             PatternData::Any(id) => allocator.as_string(id),
-            PatternData::RecordPattern(rp) => rp.pretty(allocator),
+            PatternData::Record(rp) => rp.pretty(allocator),
         }
     }
 }
@@ -596,7 +596,7 @@ where
                     docs![
                         allocator,
                         field_pat.matched_id.to_string(),
-                        match &field_pat.decoration {
+                        match &field_pat.extra {
                             Field {
                                 value: Some(value),
                                 metadata:
@@ -617,13 +617,12 @@ where
                                 ),
                                 allocator.line(),
                                 "? ",
-                                allocator.atom(&value),
+                                allocator.atom(value),
                             ],
                             field => allocator.field_metadata(&field.metadata, false),
                         },
-                        match &field_pat.pattern.pattern {
-                            destructuring::PatternData::Any(id) if *id == field_pat.matched_id =>
-                                allocator.nil(),
+                        match &field_pat.pattern.data {
+                            PatternData::Any(id) if *id == field_pat.matched_id => allocator.nil(),
                             _ => docs![allocator, allocator.line(), "= ", &field_pat.pattern],
                         },
                         ","

@@ -10,7 +10,6 @@ use super::error::ParseError;
 
 use crate::{
     combine::Combine,
-    destructuring::{Pattern, PatternData},
     eval::{
         merge::{merge_doc, split},
         operation::RecPriority,
@@ -19,6 +18,7 @@ use crate::{
     label::{Label, MergeKind, MergeLabel},
     mk_app, mk_fun,
     position::{RawSpan, TermPos},
+    term::pattern::{Pattern, PatternData},
     term::{
         make as mk_term,
         record::{Field, FieldMetadata, RecordAttrs, RecordData},
@@ -656,7 +656,7 @@ pub fn mk_let(
     t2: RichTerm,
     span: RawSpan,
 ) -> Result<RichTerm, ParseError> {
-    match pat.pattern {
+    match pat.data {
         PatternData::Any(id) if rec => Ok(mk_term::let_rec_in(id, t1, t2)),
         PatternData::Any(id) => Ok(mk_term::let_in(id, t1, t2)),
         _ if rec => Err(ParseError::RecursiveLetPattern(span)),
@@ -668,7 +668,7 @@ pub fn mk_let(
 /// from the parsing of a function definition. This function panics if the definition
 /// somehow has neither an `Ident` nor a non-`Empty` `Destruct` pattern.
 pub fn mk_fun(pat: Pattern, body: RichTerm) -> Term {
-    match pat.pattern {
+    match pat.data {
         PatternData::Any(id) => Term::Fun(id, body),
         _ => Term::FunPattern(pat, body),
     }

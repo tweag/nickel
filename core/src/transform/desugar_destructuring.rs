@@ -38,9 +38,9 @@
 //!     <do_something>
 //! ) in ...
 //! ```
-use crate::destructuring::*;
 use crate::identifier::LocIdent;
 use crate::match_sharedterm;
+use crate::term::pattern::*;
 use crate::term::{
     make::{op1, op2},
     BinaryOp::DynRemove,
@@ -122,14 +122,14 @@ impl Desugar for Pattern {
         if let Some(alias) = self.alias {
             let pos = body.pos;
             let inner = RichTerm::new(
-                self.pattern
+                self.data
                     .desugar(RichTerm::new(Term::Var(alias), alias.pos), body),
                 pos,
             );
 
             Term::Let(alias, destr, inner, LetAttrs::default())
         } else {
-            self.pattern.desugar(destr, body)
+            self.data.desugar(destr, body)
         }
     }
 }
@@ -139,7 +139,7 @@ impl Desugar for PatternData {
         match self {
             // If the pattern is an unconstrained identifier, we just bind it to the value.
             PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
-            PatternData::RecordPattern(pat) => pat.desugar(destr, body),
+            PatternData::Record(pat) => pat.desugar(destr, body),
         }
     }
 }

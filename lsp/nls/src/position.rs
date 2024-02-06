@@ -2,9 +2,11 @@ use std::ops::Range;
 
 use codespan::ByteIndex;
 use nickel_lang_core::{
-    destructuring::{PatternData, RecordPatternTail},
     position::TermPos,
-    term::{RichTerm, Term, Traverse, TraverseControl},
+    term::{
+        pattern::{PatternData, RecordPatternTail},
+        RichTerm, Term, Traverse, TraverseControl,
+    },
 };
 
 use crate::{identifier::LocIdent, pattern::Bindings, term::RichTermPtr};
@@ -133,7 +135,7 @@ impl PositionLookup {
 
                     // TODO[pattern]: what about aliased record patterns?
                     // TODO[pattern]: what about nested patterns with tails?
-                    if let PatternData::RecordPattern(record_pat) = &pat.pattern {
+                    if let PatternData::Record(record_pat) = &pat.data {
                         if let RecordPatternTail::Capture(rest) = &record_pat.tail {
                             idents.push(*rest)
                         }

@@ -1,8 +1,8 @@
 use crate::{
-    destructuring::*,
     error::TypecheckError,
     identifier::LocIdent,
     mk_uty_record_row,
+    term::pattern::*,
     typ::{RecordRowF, RecordRowsF, TypeF},
 };
 
@@ -15,6 +15,8 @@ pub(super) enum TypecheckMode {
     Walk,
     Enforce,
 }
+
+pub type TypeBindings = Vec<(LocIdent, UnifType)>;
 
 pub(super) trait PatternTypes {
     /// The type produced by the pattern. Depending on the nature of the pattern, this type may
@@ -36,7 +38,7 @@ pub(super) trait PatternTypes {
         state: &mut State,
         ctxt: &Context,
         mode: TypecheckMode,
-    ) -> Result<(Self::PatType, Vec<(LocIdent, UnifType)>), TypecheckError> {
+    ) -> Result<(Self::PatType, TypeBindings), TypecheckError> {
         let mut bindings = Vec::new();
         let typ = self.pattern_types_inj(&mut bindings, state, ctxt, mode)?;
         Ok((typ, bindings))
@@ -112,9 +114,7 @@ impl PatternTypes for Pattern {
         ctxt: &Context,
         mode: TypecheckMode,
     ) -> Result<Self::PatType, TypecheckError> {
-        let typ = self
-            .pattern
-            .pattern_types_inj(bindings, state, ctxt, mode)?;
+        let typ = self.data.pattern_types_inj(bindings, state, ctxt, mode)?;
 
         if let Some(alias) = self.alias {
             bindings.push((alias, typ.clone()));
@@ -145,7 +145,7 @@ impl PatternTypes for PatternData {
 
                 Ok(typ)
             }
-            PatternData::RecordPattern(record_pat) => Ok(UnifType::concrete(TypeF::Record(
+            PatternData::Record(record_pat) => Ok(UnifType::concrete(TypeF::Record(
                 record_pat.pattern_types_inj(bindings, state, ctxt, mode)?,
             ))),
         }
@@ -166,8 +166,8 @@ impl PatternTypes for FieldPattern {
         // them with the pattern type we've built to ensure (1) that they're mutually compatible
         // and (2) that we assign the annotated types to the right unification variables.
         let ty_row = match (
-            &self.decoration.metadata.annotation.typ,
-            &self.pattern.pattern,
+            &self.extra.metadata.annotation.typ,
+            &self.pattern.data,
             mode,
         ) {
             // However, in walk mode, we only do that when the nested pattern isn't a leaf (i.e.

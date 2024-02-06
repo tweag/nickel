@@ -55,12 +55,12 @@ use crate::{
     mk_opn,
     mk_fun,
     identifier::LocIdent,
-    destructuring::*,
     term::{
         *,
         record::{RecordAttrs, Field, FieldMetadata},
         array::Array,
         make as mk_term,
+        pattern::*,
     },
     typ::*,
     position::{TermPos, RawSpan},
@@ -524,14 +524,14 @@ Pattern: Pattern = {
     <l: @L> <alias:(<Ident> "@")?> <record_pat: RecordPattern> <r: @R> => {
         Pattern {
            alias,
-           pattern: PatternData::RecordPattern(record_pat),
+           data: PatternData::Record(record_pat),
            span: mk_span(src_id, l, r),
         }
     },
     Ident => {
         let span = <>.pos.unwrap();
 
-        Pattern { pattern: PatternData::Any(<>), alias: None, span }
+        Pattern { data: PatternData::Any(<>), alias: None, span }
     },
 };
 
@@ -554,7 +554,7 @@ RecordPattern: RecordPattern = {
 
         let span = mk_span(src_id, start, end);
         let pattern = RecordPattern { patterns: field_pats, tail, span };
-        pattern.check_matches()?;
+        pattern.check_dup()?;
         Ok(pattern)
     },
 };
@@ -563,23 +563,23 @@ RecordPattern: RecordPattern = {
 FieldPattern: FieldPattern = {
     <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?>
       "=" <pattern: Pattern> <r: @R> => {
-        let decoration = metadata_with_default(anns, default);
+        let extra = metadata_with_default(anns, default);
 
         FieldPattern {
             matched_id,
-            decoration,
+            extra,
             pattern,
             span: mk_span(src_id, l, r),
         }
     },
     <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?> <r: @R> => {
-        let decoration = metadata_with_default(anns, default);
+        let extra = metadata_with_default(anns, default);
 
         FieldPattern {
             matched_id,
-            decoration,
+            extra,
             pattern: Pattern {
-                pattern: PatternData::Any(matched_id),
+                data: PatternData::Any(matched_id),
                 //unwrap(): the position of an parsed identifier should always
                 //be defined
                 span: matched_id.pos.unwrap(),

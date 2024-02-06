@@ -19,7 +19,7 @@ pub enum PatternData {
     /// corresponding identfier.
     Any(LocIdent),
     /// A record pattern as in `{ a = { b, c } }`
-    RecordPattern(RecordPattern),
+    Record(RecordPattern),
 }
 
 /// A generic pattern, that can appear in a match expression (not yet implemented) or in a
@@ -27,7 +27,7 @@ pub enum PatternData {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Pattern {
     /// The content of this pattern
-    pub pattern: PatternData,
+    pub data: PatternData,
     /// A potential alias for this pattern, capturing the whole matched value. In the source
     /// language, an alias is introduced by `x @ <pattern>`, where `x` is an arbitrary identifier.
     pub alias: Option<LocIdent>,
@@ -42,12 +42,12 @@ pub struct FieldPattern {
     /// The name of the matched field. For example, in `{..., foo = {bar, baz}, ...}`, the matched
     /// identifier is `foo`.
     pub matched_id: LocIdent,
-    /// The potentital decoration of the pattern, such as a type annotation, contract annotations,
-    /// or a default value.
-    pub decoration: Field,
+    /// Potential extra annotations of this field pattern, such as a type annotation, contract
+    /// annotations, or a default value, represented as record field.
+    pub extra: Field,
     /// The pattern on the right-hand side of the `=`. A pattern like `{foo, bar}`, without the `=`
-    /// sign, is considered to be `{foo=foo, bar=bar}`. In this case, `pattern` will be
-    /// [Pattern::Any].
+    /// sign, is parsed as `{foo=foo, bar=bar}`. In this case, `pattern.data` will be
+    /// [PatternData::Any].
     pub pattern: Pattern,
     pub span: RawSpan,
 }
@@ -56,6 +56,8 @@ pub struct FieldPattern {
 /// which can capture the rest of the data structure. The type parameter `P` is the type of the
 /// pattern of the data structure: currently, ellipsis matches are only supported for record, but
 /// we'll probably support them for arrays as well.
+///
+/// This enum is mostly used during parsing.
 ///
 /// # Example
 ///
@@ -116,13 +118,13 @@ impl RecordPattern {
     ///
     /// This function aims to raise errors in the first case, but maintain the
     /// behaviour in the second case.
-    pub fn check_matches(&self) -> Result<(), ParseError> {
-        let mut matches = HashMap::new();
+    pub fn check_dup(&self) -> Result<(), ParseError> {
+        let mut bindings = HashMap::new();
 
         for pat in self.patterns.iter() {
             let binding = pat.matched_id;
             let label = binding.label().to_owned();
-            match matches.entry(label) {
+            match bindings.entry(label) {
                 Entry::Occupied(occupied_entry) => {
                     return Err(ParseError::DuplicateIdentInRecordPattern {
                         ident: binding,
@@ -149,10 +151,10 @@ impl RecordPattern {
 }
 
 impl FieldPattern {
-    /// Convert this field pattern to a field binding with metadata. It's used to generate the
+    /// Convert this field pattern to a record field binding with metadata. Used to generate the
     /// record contract associated to a record pattern.
     pub fn as_record_binding(&self) -> (LocIdent, Field) {
-        let mut decoration = self.decoration.clone();
+        let mut decoration = self.extra.clone();
 
         // If the inner pattern gives rise to a contract, add it the to the field decoration.
         decoration
@@ -167,10 +169,10 @@ impl FieldPattern {
 
 // We don't implement elaborate_contract for `FieldPattern`, which is of a slightly different
 // nature (it's a part of a record pattern). Instead, we call to `FieldPattern::as_record_binding`,
-// which takes care of elaborating to an appropriate record field.
+// which takes care of elaborating a field pattern to an appropriate record field.
 pub trait ElaborateContract {
     /// Elaborate a contract from this pattern. The contract will check both the structure of the
-    /// matched value (e.g. the presence of fields in a record) and incoporate user provided
+    /// matched value (e.g. the presence of fields in a record) and incoporate user-provided
     /// contracts and annotations, as well as default values.
     ///
     /// Some patterns don't give rise to any contract (e.g. `Any`), in which case this function
@@ -182,14 +184,14 @@ impl ElaborateContract for PatternData {
     fn elaborate_contract(&self) -> Option<LabeledType> {
         match self {
             PatternData::Any(_) => None,
-            PatternData::RecordPattern(pat) => pat.elaborate_contract(),
+            PatternData::Record(pat) => pat.elaborate_contract(),
         }
     }
 }
 
 impl ElaborateContract for Pattern {
     fn elaborate_contract(&self) -> Option<LabeledType> {
-        self.pattern.elaborate_contract()
+        self.data.elaborate_contract()
     }
 }
 

@@ -4,8 +4,8 @@
 //! the recursive fields that actually appear in the definition of each field when computing the
 //! fixpoint.
 use crate::{
-    destructuring::*,
     identifier::Ident,
+    term::pattern::*,
     term::{
         record::{Field, FieldDeps, RecordDeps},
         IndexMap, RichTerm, SharedTerm, StrChunk, Term,
@@ -240,7 +240,7 @@ impl RemoveBindings for PatternData {
             PatternData::Any(id) => {
                 working_set.remove(&id.ident());
             }
-            PatternData::RecordPattern(record_pat) => {
+            PatternData::Record(record_pat) => {
                 record_pat.remove_bindings(working_set);
             }
         }
@@ -249,7 +249,7 @@ impl RemoveBindings for PatternData {
 
 impl RemoveBindings for Pattern {
     fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
-        self.pattern.remove_bindings(working_set);
+        self.data.remove_bindings(working_set);
 
         if let Some(alias) = self.alias {
             working_set.remove(&alias.ident());

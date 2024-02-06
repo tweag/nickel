@@ -74,20 +74,20 @@ use std::{
     num::NonZeroU16,
 };
 
-mod destructuring;
 pub mod error;
 pub mod operation;
+mod pattern;
 pub mod reporting;
 #[macro_use]
 pub mod mk_uniftype;
 pub mod eq;
 pub mod unif;
 
-use destructuring::PatternTypes;
 use eq::{SimpleTermEnvironment, TermEnvironment};
 use error::*;
 use indexmap::IndexMap;
 use operation::{get_bop_type, get_nop_type, get_uop_type};
+use pattern::PatternTypes;
 use unif::*;
 
 /// The max depth parameter used to limit the work performed when inferring the type of the stdlib.
@@ -1467,7 +1467,7 @@ fn walk<V: TypecheckVisitor>(
             walk(state, ctxt, visitor, t)
         }
         Term::FunPattern(pat, t) => {
-            let (_, pat_bindings) = pat.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
+            let (_, pat_bindings) = pat.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
             ctxt.type_env.extend(pat_bindings.into_iter().map(|(id, typ)| (id.ident(), typ)));
 
             walk(state, ctxt, visitor, t)
@@ -1518,7 +1518,7 @@ fn walk<V: TypecheckVisitor>(
             // data, which doesn't take into account the potential heading alias `x @ <pattern>`.
             // This is on purpose, as the alias has been treated separately, so we don't want to
             // shadow it with a less precise type.
-            let (_, pat_bindings) = pat.pattern.pattern_types(state, &ctxt, destructuring::TypecheckMode::Walk)?;
+            let (_, pat_bindings) = pat.data.pattern_types(state, &ctxt, pattern::TypecheckMode::Walk)?;
 
             for (id, typ) in pat_bindings {
                 visitor.visit_ident(&id, typ.clone());
@@ -1824,8 +1824,8 @@ fn check<V: TypecheckVisitor>(
         Term::FunPattern(pat, t) => {
             // See [^separate-alias-treatment].
             let (pat_ty, pat_bindings) =
-                pat.pattern
-                    .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
+                pat.data
+                    .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
 
             let src = pat_ty;
             let trg = state.table.fresh_type_uvar(ctxt.var_level);
@@ -1886,8 +1886,8 @@ fn check<V: TypecheckVisitor>(
         Term::LetPattern(pat, re, rt) => {
             // See [^separate-alias-treatment].
             let (pat_ty, pat_bindings) =
-                pat.pattern
-                    .pattern_types(state, &ctxt, destructuring::TypecheckMode::Enforce)?;
+                pat.data
+                    .pattern_types(state, &ctxt, pattern::TypecheckMode::Enforce)?;
 
             // The inferred type of the expr being bound
             let ty_let = binding_type(state, re.as_ref(), &ctxt, true);

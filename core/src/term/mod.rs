@@ -10,15 +10,16 @@
 //! It also features types and type annotations, and other typechecking or contracts-related
 //! constructs (label, symbols, etc.).
 pub mod array;
+pub mod pattern;
 pub mod record;
 pub mod string;
 
 use array::{Array, ArrayAttrs};
+use pattern::Pattern;
 use record::{Field, FieldDeps, FieldMetadata, RecordData, RecordDeps};
 use string::NickelString;
 
 use crate::{
-    destructuring::Pattern,
     error::{EvalError, ParseError},
     eval::cache::CacheIndex,
     eval::Environment,

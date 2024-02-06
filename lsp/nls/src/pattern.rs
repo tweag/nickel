@@ -1,10 +1,13 @@
 //! Pattern analysis.
 
-use nickel_lang_core::{destructuring::*, identifier::LocIdent, term::record::Field};
+use nickel_lang_core::{
+    identifier::LocIdent,
+    term::{pattern::*, record::Field},
+};
 
 pub(super) trait Bindings {
-    /// Returns a list of all variables bound by this pattern, together with the path to the field they
-    /// match and the associated decoration.
+    /// Returns a list of all variables bound by this pattern, together with the path to the field
+    /// they match and the associated extra annotations.
     ///
     /// # Example
     ///
@@ -19,9 +22,9 @@ pub(super) trait Bindings {
 }
 
 trait InjectBindings {
-    /// Same as [Self::bindings], but work relative to a current path inside a pattern and injects
-    /// the bindings into a working vector instead of returning the result. This method is mostly
-    /// used internally and is the one performing the actual work.
+    /// Same as [Bindings::bindings], but work relative to a current path inside a pattern and
+    /// injects the bindings into a working vector instead of returning the result. This method is
+    /// mostly used internally and is the one performing the actual work.
     ///
     /// Other modules of the LSP should use [Bindings::bindings] directly.
     ///
@@ -29,15 +32,15 @@ trait InjectBindings {
     ///
     /// - `bindings`: the vector to inject the bindings into.
     /// - `path`: the field path to the sub-pattern being analysed.
-    /// - `decoration`: the decoration associated with a potential parent field pattern. For
-    ///   example, when injecting the bindings of `{foo ? 5 = x @ y @ z}`, all the introduced
-    ///   variables should refer to the decoration of `foo`. This decoration is thus passed along
-    ///   when calling to the sub-patterns' [Bindings::inject_bindings].
+    /// - `parent_extra`: the extra annotations associated with a potential parent field pattern.
+    ///   For example, when injecting the bindings of `{foo ? 5 = x @ y @ z}`, all the introduced
+    ///   variables should refer to default annotation of `foo`. This annotation is thus passed
+    ///   along when calling to the sub-patterns' [Self::inject_bindings].
     fn inject_bindings(
         &self,
         bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
         path: Vec<LocIdent>,
-        parent_deco: Option<&Field>,
+        parent_extra: Option<&Field>,
     );
 }
 
@@ -64,7 +67,7 @@ impl InjectBindings for Pattern {
             ));
         }
 
-        self.pattern.inject_bindings(bindings, path, parent_deco);
+        self.data.inject_bindings(bindings, path, parent_deco);
     }
 }
 
@@ -79,7 +82,7 @@ impl InjectBindings for PatternData {
             PatternData::Any(id) => {
                 bindings.push((path, *id, parent_deco.cloned().unwrap_or_default()))
             }
-            PatternData::RecordPattern(record_pat) => {
+            PatternData::Record(record_pat) => {
                 record_pat.inject_bindings(bindings, path, parent_deco)
             }
         }
@@ -91,11 +94,11 @@ impl InjectBindings for RecordPattern {
         &self,
         bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
         path: Vec<LocIdent>,
-        _parent_deco: Option<&Field>,
+        _parent_extra: Option<&Field>,
     ) {
         for field_pat in self.patterns.iter() {
-            // Field patterns have their own decoration, so there's no need to propagate
-            // `parent_deco` any further
+            // Field patterns have their own annotation, so there's no need to propagate
+            // `parent_extra` any further
             field_pat.inject_bindings(bindings, path.clone(), None);
         }
     }
@@ -106,10 +109,10 @@ impl InjectBindings for FieldPattern {
         &self,
         bindings: &mut Vec<(Vec<LocIdent>, LocIdent, Field)>,
         mut path: Vec<LocIdent>,
-        _parent_deco: Option<&Field>,
+        _parent_extra: Option<&Field>,
     ) {
         path.push(self.matched_id);
         self.pattern
-            .inject_bindings(bindings, path, Some(&self.decoration));
+            .inject_bindings(bindings, path, Some(&self.extra));
     }
 }
