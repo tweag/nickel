@@ -35,7 +35,7 @@ jobs:
 
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@v1.3.1
-      if: runner.os == 'ubuntu-latest'
+      if: runner.os == 'Linux'
       with:
         # this might remove tools that are actually needed,
         # if set to "true" but frees about 6 GB. Currently we don't seem to need
