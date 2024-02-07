@@ -32,14 +32,17 @@ fn check_idempotent(path: &str) {
     file.read_to_string(&mut buffer)
         .expect("Fail to read content of test file");
 
-    let rt = parse(&buffer).unwrap();
-    let pretty_rt = format!("{}", &rt);
-    let double_pretty = format!("{}", &parse(&pretty_rt).unwrap());
+    // Some test samples don't even parse (on purpose, as they are test for parse errors), so we
+    // only proceed with samples that do.
+    if let Ok(rt) = parse(&buffer) {
+        let pretty_rt = format!("{}", &rt);
+        let double_pretty = format!("{}", &parse(&pretty_rt).unwrap());
 
-    diff(&pretty_rt, &double_pretty);
+        diff(&pretty_rt, &double_pretty);
+    }
 }
 
-#[test_resources("core/tests/integration/pass/**/*.ncl")]
+#[test_resources("core/tests/integration/inputs/**/*.ncl")]
 fn pretty_integration_tests(path: &str) {
     check_idempotent(path)
 }
