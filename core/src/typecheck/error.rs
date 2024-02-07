@@ -173,7 +173,7 @@ impl RowUnifError {
 
 /// Error during the unification of two types.
 ///
-/// In each variant, `expected` and `inferred` refers to the two type that failed to unify.
+/// In each variant, `expected` and `inferred` refers to the two types that failed to unify.
 #[derive(Debug, PartialEq)]
 pub enum UnifError {
     /// Tried to unify two incompatible types.
