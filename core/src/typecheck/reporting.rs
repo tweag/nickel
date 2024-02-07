@@ -214,3 +214,25 @@ impl ToType for UnifEnumRows {
         }
     }
 }
+
+impl ToType for UnifEnumRow {
+    type Target = EnumRow;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        EnumRow {
+            id: self.id,
+            typ: self.typ.map(|typ| Box::new(typ.to_type(reg, table))),
+        }
+    }
+}
+
+impl ToType for UnifRecordRow {
+    type Target = RecordRow;
+
+    fn to_type(self, reg: &mut NameReg, table: &UnifTable) -> Self::Target {
+        RecordRow {
+            id: self.id,
+            typ: Box::new(self.typ.to_type(reg, table)),
+        }
+    }
+}

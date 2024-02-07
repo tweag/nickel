@@ -1,7 +1,7 @@
 //! Internal error types for typechecking.
 use super::{
     reporting::{self, ToType},
-    State, UnifEnumRows, UnifRecordRows, UnifType, VarId,
+    State, UnifEnumRow, UnifRecordRow, UnifType, VarId,
 };
 use crate::{
     error::TypecheckError,
@@ -40,24 +40,9 @@ pub enum RowUnifError {
         mismatch: Option<Box<UnifError>>,
     },
     /// A [row constraint][super::RowConstr] was violated.
-    RecordRowConflict {
-        id: LocIdent,
-        /// The type of the new row that conflicts with an existing row.
-        row_type: UnifType,
-        /// The record rows that were checked for row constraints before being extended with the
-        /// conflicting row.
-        rrows: UnifRecordRows,
-    },
+    RecordRowConflict(UnifRecordRow),
     /// A [row constraint][super::RowConstr] was violated.
-    EnumRowConflict {
-        /// The id of the conflicting row.
-        id: LocIdent,
-        /// The type of the new row that conflicts with an existing row.
-        row_type: Option<UnifType>,
-        /// The enum rows that were checked for row constraints (and thus in the process of being
-        /// extended by unifying their tail with other record rows).
-        erows: UnifEnumRows,
-    },
+    EnumRowConflict(UnifEnumRow),
     /// Tried to unify a type constant with another different type.
     WithConst {
         var_kind: VarKindDiscriminant,
@@ -122,25 +107,13 @@ impl RowUnifError {
                 inferred,
                 mismatch: unif_error,
             },
-            RowUnifError::RecordRowConflict {
-                id,
-                row_type,
-                rrows,
-            } => UnifError::RecordRowConflict {
-                id,
-                row_type,
-                rrows,
+            RowUnifError::RecordRowConflict(row) => UnifError::RecordRowConflict {
+                row,
                 expected,
                 inferred,
             },
-            RowUnifError::EnumRowConflict {
-                id,
-                row_type,
-                erows,
-            } => UnifError::EnumRowConflict {
-                id,
-                row_type,
-                erows,
+            RowUnifError::EnumRowConflict(row) => UnifError::EnumRowConflict {
+                row,
                 expected,
                 inferred,
             },
@@ -237,13 +210,8 @@ pub enum UnifError {
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
     RecordRowConflict {
-        /// The id of the conflicting row.
-        id: LocIdent,
-        /// The type of the new row that conflicts with an existing row.
-        row_type: UnifType,
-        /// The record rows that were checked for row constraints (and thus in the process of being
-        /// extended by unifying their tail with other record rows).
-        rrows: UnifRecordRows,
+        /// The row that conflicts with an existing one.
+        row: UnifRecordRow,
         /// The original expected type that led to the row conflict (when unified with the inferred
         /// type).
         expected: UnifType,
@@ -254,13 +222,8 @@ pub enum UnifError {
     /// Tried to unify a unification variable with a row type violating the [row
     /// constraints][super::RowConstr] of the variable.
     EnumRowConflict {
-        /// The id of the conflicting row.
-        id: LocIdent,
-        /// The type of the new row that conflicts with an existing row.
-        row_type: Option<UnifType>,
-        /// The enum rows that were checked for row constraints (and thus in the process of being
-        /// extended by unifying their tail with other record rows).
-        erows: UnifEnumRows,
+        /// The row that conflicts with an existing one.
+        row: UnifEnumRow,
         /// The original expected type that led to the row conflict (when unified with the inferred
         /// type).
         expected: UnifType,
@@ -438,29 +401,21 @@ impl UnifError {
                 pos,
             },
             UnifError::RecordRowConflict {
-                id,
-                row_type,
-                rrows,
+                row,
                 expected,
                 inferred,
             } => TypecheckError::RecordRowConflict {
-                id,
-                row_type: row_type.to_type(names_reg, state.table),
-                record_type: rrows.to_type(names_reg, state.table),
+                row: row.to_type(names_reg, state.table),
                 expected: expected.to_type(names_reg, state.table),
                 inferred: inferred.to_type(names_reg, state.table),
                 pos,
             },
             UnifError::EnumRowConflict {
-                id,
-                row_type,
-                erows,
+                row,
                 expected,
                 inferred,
             } => TypecheckError::EnumRowConflict {
-                id,
-                row_type: row_type.map(|typ| typ.to_type(names_reg, state.table)),
-                enum_type: erows.to_type(names_reg, state.table),
+                row: row.to_type(names_reg, state.table),
                 expected: expected.to_type(names_reg, state.table),
                 inferred: inferred.to_type(names_reg, state.table),
                 pos,

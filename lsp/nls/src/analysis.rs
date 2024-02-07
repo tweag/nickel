@@ -5,7 +5,10 @@ use nickel_lang_core::{
     position::RawSpan,
     term::{BinaryOp, RichTerm, Term, Traverse, TraverseControl},
     typ::{Type, TypeF},
-    typecheck::{reporting::{NameReg, ToType}, TypeTables, TypecheckVisitor, UnifType},
+    typecheck::{
+        reporting::{NameReg, ToType},
+        TypeTables, TypecheckVisitor, UnifType,
+    },
 };
 
 use crate::{

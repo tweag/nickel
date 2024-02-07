@@ -28,7 +28,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, Number, RichTerm, Term},
-    typ::{EnumRow, EnumRows, EnumRowsIteratorItem, RecordRows, Type, TypeF, VarKindDiscriminant},
+    typ::{EnumRow, RecordRow, Type, TypeF, VarKindDiscriminant},
 };
 
 pub mod report;
@@ -289,23 +289,18 @@ pub enum TypecheckError {
     /// which corresponds to the direct failure to unify `{ .. , x: T1, .. }` and `{ .., x: T2, ..
     /// }`.
     RecordRowConflict {
-        id: LocIdent,
-        /// The type of the row tha couldn't be added to the record type, because it already existed
-        /// with a different type assignement.
-        row_type: Type,
-        /// While the inferred and expected type always refer to the starting point of the unification
-        /// failure, this one is more precise and corresponds to the specific record type that failed
-        /// to be extended because it already contained a row for `id`.
-        record_type: RecordRows,
+        /// The row that couldn't be added to the record type, because it already existed with a
+        /// different type assignement.
+        row: RecordRow,
         expected: Type,
         inferred: Type,
         pos: TermPos,
     },
     /// Same as [Self::RecordRowConflict] but for enum types.
     EnumRowConflict {
-        id: LocIdent,
-        row_type: Option<Type>,
-        enum_type: EnumRows,
+        /// The row that couldn't be added to the record type, because it already existed with a
+        /// different type assignement.
+        row: EnumRow,
         expected: Type,
         inferred: Type,
         pos: TermPos,
@@ -1918,6 +1913,16 @@ impl IntoDiagnostics<FileId> for ParseError {
     }
 }
 
+// let find_row = |row_item: EnumRowsIteratorItem<'_, Type>| match row_item {
+//                     EnumRowsIteratorItem::Row(row) if row.id.ident() == id.ident() => {
+//                         Some(EnumRow {
+//                             id: row.id,
+//                             typ: row.typ.cloned().map(Box::new),
+//                         })
+//                     }
+//                     _ => None,
+//                 };
+
 impl IntoDiagnostics<FileId> for TypecheckError {
     fn into_diagnostics(
         self,
@@ -2144,20 +2149,10 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 let mk_inferred_row_msg =
                     |row| format!("Found an expression of an enum type with the enum row `{row}`");
 
-                let find_row = |row_item: EnumRowsIteratorItem<'_, Type>| match row_item {
-                    EnumRowsIteratorItem::Row(row) if row.id.ident() == id.ident() => {
-                        Some(EnumRow {
-                            id: row.id,
-                            typ: row.typ.cloned().map(Box::new),
-                        })
-                    }
-                    _ => None,
-                };
-
                 //TODO: we should rather have RowMismatch hold enum rows, instead of a general
                 //type, to avoid doing this match.
                 let note1 = if let TypeF::Enum(erows) = &expected.typ {
-                    if let Some(row) = erows.iter().find_map(find_row) {
+                    if let Some(row) = erows.find_row(id.ident()) {
                         mk_expected_row_msg(row)
                     } else {
                         mk_expected_msg(&expected)
@@ -2167,7 +2162,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 };
 
                 let note2 = if let TypeF::Enum(erows) = &inferred.typ {
-                    if let Some(row) = erows.iter().find_map(find_row) {
+                    if let Some(row) = erows.find_row(id.ident()) {
                         mk_inferred_row_msg(row)
                     } else {
                         mk_inferred_msg(&expected)
@@ -2201,54 +2196,76 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 diags
             }
             TypecheckError::RecordRowConflict {
-                id,
-                row_type,
-                record_type: _,
-                expected: _,
-                inferred: _,
+                row,
+                expected,
+                inferred,
                 pos,
             } => {
-                vec![Diagnostic::error()
-                    .with_message("multiple rows declaration")
-                    .with_labels(mk_expr_label(&pos))
-                    .with_notes(vec![
-                        format!(
-                            "Found an expression of a record type `{row_type}` \
-                            with the row `{id}`"
-                        ),
-                        format!(
-                            "But this type appears inside another row type, \
-                            which already has a declaration for the field `{id}`"
-                        ),
-                        String::from(
-                            "A type cannot have two conflicting declarations for the same row",
-                        ),
-                    ])]
+                let mut diags = Vec::new();
+
+                diags.push(
+                    Diagnostic::error()
+                        .with_message("multiple record row declarations")
+                        .with_labels(mk_expr_label(&pos))
+                        .with_notes(vec![
+                            format!("Found an expression with the row `{row}`"),
+                            format!(
+                                "But this row appears inside another record type, \
+                                which already has a diffent declaration for the field `{}`",
+                                row.id
+                            ),
+                            String::from(
+                                "A type cannot have two conflicting declarations for the same row",
+                            ),
+                        ]),
+                );
+
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("while matching types")
+                        .with_notes(vec![
+                            format!("Expected type {expected}"),
+                            format!("With inferred type {inferred}"),
+                        ]),
+                );
+
+                diags
             }
             TypecheckError::EnumRowConflict {
-                id,
-                row_type,
-                enum_type,
-                expected: _,
-                inferred: _,
+                row,
+                expected,
+                inferred,
                 pos,
             } => {
-                vec![Diagnostic::error()
-                    .with_message("multiple rows declaration")
-                    .with_labels(mk_expr_label(&pos))
-                    .with_notes(vec![
-                        format!(
-                            "Found an expression of a enum type `{enum_type}` \
-                            with the row `{id}`"
-                        ),
-                        format!(
-                            "But this type appears inside another row type, \
-                            which already has a declaration for the field `{id}`"
-                        ),
-                        String::from(
-                            "A type cannot have two conflicting declarations for the same row",
-                        ),
-                    ])]
+                let mut diags = Vec::new();
+
+                diags.push(
+                    Diagnostic::error()
+                        .with_message("multiple enum row declarations")
+                        .with_labels(mk_expr_label(&pos))
+                        .with_notes(vec![
+                            format!("Found an expression with the row `{row}`"),
+                            format!(
+                                "But this row appears inside another enum type, \
+                                which already has a diffent declaration for the tag `{}`",
+                                row.id
+                            ),
+                            String::from(
+                                "A type cannot have two conflicting declarations for the same row",
+                            ),
+                        ]),
+                );
+
+                diags.push(
+                    Diagnostic::note()
+                        .with_message("while matching types")
+                        .with_notes(vec![
+                            format!("Expected type {expected}"),
+                            format!("With inferred type {inferred}"),
+                        ]),
+                );
+
+                diags
             }
             TypecheckError::ArrowTypeMismatch {
                 expected,

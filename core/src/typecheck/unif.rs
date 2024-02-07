@@ -1052,7 +1052,7 @@ trait PropagateConstrs {
 
 impl PropagateConstrs for UnifRecordRows {
     fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
-        fn do_unify(
+        fn propagate(
             constr: &mut RowConstr,
             var_id: VarId,
             var_constr: HashSet<Ident>,
@@ -1065,12 +1065,11 @@ impl PropagateConstrs for UnifRecordRows {
                 } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::RecordRowConflict {
                     id: row.id,
                     row_type: *row.typ.clone(),
-                    rrows: rrows.clone(),
                 }),
                 UnifRecordRows::Concrete {
                     rrows: RecordRowsF::Extend { tail, .. },
                     ..
-                } => do_unify(constr, var_id, var_constr, tail),
+                } => propagate(constr, var_id, var_constr, tail),
                 UnifRecordRows::UnifVar { id, .. } if *id != var_id => {
                     if let Some(tail_constr) = constr.get_mut(id) {
                         tail_constr.extend(var_constr);
@@ -1085,7 +1084,7 @@ impl PropagateConstrs for UnifRecordRows {
         }
 
         if let Some(var_constr) = constr.remove(&var_id) {
-            do_unify(constr, var_id, var_constr, self)
+            propagate(constr, var_id, var_constr, self)
         } else {
             Ok(())
         }
@@ -1094,7 +1093,7 @@ impl PropagateConstrs for UnifRecordRows {
 
 impl PropagateConstrs for UnifEnumRows {
     fn propagate_constrs(&self, constr: &mut RowConstr, var_id: VarId) -> Result<(), RowUnifError> {
-        fn do_unify(
+        fn propagate(
             constr: &mut RowConstr,
             var_id: VarId,
             var_constr: HashSet<Ident>,
@@ -1107,12 +1106,11 @@ impl PropagateConstrs for UnifEnumRows {
                 } if var_constr.contains(&row.id.ident()) => Err(RowUnifError::EnumRowConflict {
                     id: row.id,
                     row_type: row.typ.as_ref().map(|typ| *typ.clone()),
-                    erows: erows.clone(),
                 }),
                 UnifEnumRows::Concrete {
                     erows: EnumRowsF::Extend { tail, .. },
                     ..
-                } => do_unify(constr, var_id, var_constr, tail),
+                } => propagate(constr, var_id, var_constr, tail),
                 UnifEnumRows::UnifVar { id, .. } if *id != var_id => {
                     if let Some(tail_constr) = constr.get_mut(id) {
                         tail_constr.extend(var_constr);
@@ -1127,7 +1125,7 @@ impl PropagateConstrs for UnifEnumRows {
         }
 
         if let Some(var_constr) = constr.remove(&var_id) {
-            do_unify(constr, var_id, var_constr, self)
+            propagate(constr, var_id, var_constr, self)
         } else {
             Ok(())
         }
@@ -1375,18 +1373,12 @@ impl Unify for UnifEnumRows {
                         var_levels_data: var_levels2,
                     };
 
-                    // [^rows-clone-error-reporting]: We need a copy in case of a conflict for
-                    // error reporting purpose. We could avoid the clone once we have shareable
-                    // unification types (`Rc` or arena pointers), but for now, `remove_row`
-                    // destructures it, so it seems hard to avoid.
-                    let uerows2_copy = uerows2.clone();
-
                     let (ty2_result, t2_without_row) =
                         //TODO[adts]: it's ugly to create a temporary Option just to please the
                         //Box/Nobox types, we should find a better signature for remove_row
                         uerows2.remove_row(&id, &typ.clone().map(|typ| *typ), state, ctxt.var_level).map_err(|err| match err {
                             RemoveRowError::Missing => RowUnifError::MissingRow(id),
-                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict { id, row_type: typ.as_ref().map(|typ| *typ.clone()), erows: uerows2_copy },
+                            RemoveRowError::Conflict => RowUnifError::EnumRowConflict { id, row_type: typ.as_ref().map(|typ| *typ.clone()) },
                         })?;
 
                     // The alternative to this if-condition is `RemoveRowResult::Extended`, which
@@ -1522,9 +1514,6 @@ impl Unify for UnifRecordRows {
                         var_levels_data: var_levels2,
                     };
 
-                    // see [^rows-clone-error-reporting]
-                    let urrows2_copy = urrows2.clone();
-
                     let (ty2_result, urrows2_without_ty2) = urrows2
                         .remove_row(&id, &typ, state, ctxt.var_level)
                         .map_err(|err| match err {
@@ -1532,7 +1521,6 @@ impl Unify for UnifRecordRows {
                             RemoveRowError::Conflict => RowUnifError::RecordRowConflict {
                                 id,
                                 row_type: *typ.clone(),
-                                rrows: urrows2_copy,
                             },
                         })?;
 
