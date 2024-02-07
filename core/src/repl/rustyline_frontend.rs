@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use super::{command::Command, *};
 
-use crate::{error::report::ColorOpt, eval::cache::CacheImpl};
+use crate::{cache::ImportCache, error::report::ColorOpt, eval::cache::CacheImpl};
 
 use ansi_term::Style;
 use rustyline::{error::ReadlineError, Config, EditMode, Editor};

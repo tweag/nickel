@@ -10,7 +10,7 @@ use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, Url,
 };
 use nickel_lang_core::{
-    cache::{CacheError, CacheOp, SourcePath},
+    cache::{CacheError, CacheOp, ImportCache, SourcePath},
     error::{ImportError, IntoDiagnostics},
 };
 
@@ -127,8 +127,10 @@ pub fn handle_save(server: &mut Server, params: DidChangeTextDocumentParams) -> 
 
 // Make a record of I/O errors in imports so that we can retry them when appropriate.
 fn associate_failed_import(server: &mut Server, err: &nickel_lang_core::error::Error) {
-    if let nickel_lang_core::error::Error::ImportError(ImportError::IOError(name, _, pos)) = &err {
-        if let Some((filename, pos)) = PathBuf::from(name).file_name().zip(pos.into_opt()) {
+    if let nickel_lang_core::error::Error::ImportError(ImportError::IOError { path, pos, .. }) =
+        &err
+    {
+        if let Some((filename, pos)) = PathBuf::from(path).file_name().zip(pos.into_opt()) {
             server
                 .failed_imports
                 .entry(filename.to_owned())

@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use nickel_lang_core::{
-    cache::SourcePath,
+    cache::{ImportCache, SourcePath},
     parser::lexer::{self, NormalToken, SpannedToken, Token},
     position::RawSpan,
     term::{RichTerm, Term},

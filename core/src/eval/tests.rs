@@ -1,6 +1,7 @@
 use super::cache::CacheImpl;
 use super::*;
 use crate::cache::resolvers::{DummyResolver, SimpleResolver};
+use crate::cache::{ImportCache, SourcePath};
 use crate::error::ImportError;
 use crate::label::Label;
 use crate::parser::{grammar, lexer, ErrorTolerantParser};
@@ -119,21 +120,23 @@ fn asking_for_various_types() {
 fn imports() {
     let mut vm = VirtualMachine::new(SimpleResolver::new(), std::io::sink());
     vm.import_resolver_mut()
-        .add_source(String::from("two"), String::from("1 + 1"));
+        .add_string(SourcePath::Path("two".into()), String::from("1 + 1"));
     vm.import_resolver_mut()
-        .add_source(String::from("lib"), String::from("{f = true}"));
-    vm.import_resolver_mut()
-        .add_source(String::from("bad"), String::from("^$*/.23ab 0°@"));
-    vm.import_resolver_mut().add_source(
-        String::from("nested"),
+        .add_string(SourcePath::Path("lib".into()), String::from("{f = true}"));
+    vm.import_resolver_mut().add_string(
+        SourcePath::Path("bad".into()),
+        String::from("^$*/.23ab 0°@"),
+    );
+    vm.import_resolver_mut().add_string(
+        SourcePath::Path("nested".into()),
         String::from("let x = import \"two\" in x + 1"),
     );
-    vm.import_resolver_mut().add_source(
-        String::from("cycle"),
+    vm.import_resolver_mut().add_string(
+        SourcePath::Path("cycle".into()),
         String::from("let x = import \"cycle_b\" in {a = 1, b = x.a}"),
     );
-    vm.import_resolver_mut().add_source(
-        String::from("cycle_b"),
+    vm.import_resolver_mut().add_string(
+        SourcePath::Path("cycle_b".into()),
         String::from("let x = import \"cycle\" in {a = x.a}"),
     );
 
@@ -144,7 +147,7 @@ fn imports() {
         vm: &mut VirtualMachine<R, CacheImpl>,
     ) -> Result<RichTerm, ImportError>
     where
-        R: ImportResolver,
+        R: ImportCache,
     {
         resolve_imports(
             mk_term::let_in(var, mk_term::import(import), body),
@@ -155,7 +158,7 @@ fn imports() {
 
     // let x = import "does_not_exist" in x
     match mk_import("x", "does_not_exist", mk_term::var("x"), &mut vm).unwrap_err() {
-        ImportError::IOError(_, _, _) => (),
+        ImportError::IOError { .. } => (),
         _ => panic!(),
     };
 

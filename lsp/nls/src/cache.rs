@@ -2,7 +2,7 @@ use codespan::{ByteIndex, FileId};
 use lsp_types::{TextDocumentPositionParams, Url};
 use nickel_lang_core::term::{RichTerm, Term, Traverse};
 use nickel_lang_core::{
-    cache::{Cache, CacheError, CacheOp, EntryState, SourcePath, TermEntry},
+    cache::{Cache, CacheError, CacheOp, EntryState, ImportCache, SourcePath, TermEntry},
     error::{Error, ImportError},
     position::RawPos,
     typecheck::{self},
@@ -97,8 +97,11 @@ impl CacheExt for Cache {
                         _ => None,
                     })
                     .unwrap_or_default();
-                let name: String = self.name(id).to_str().unwrap().into();
-                ImportError::IOError(name, String::from(message), pos)
+                ImportError::IOError {
+                    path: self.name(id).to_owned(),
+                    message: String::from(message),
+                    pos,
+                }
             });
             import_errors.extend(typecheck_import_diagnostics);
 

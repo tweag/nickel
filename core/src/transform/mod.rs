@@ -1,6 +1,6 @@
 //! Various post transformations of nickel code.
 use crate::{
-    cache::ImportResolver,
+    cache::ImportCache,
     term::{RichTerm, Traverse, TraverseOrder},
     typ::UnboundTypeVariableError,
     typecheck::Wildcards,

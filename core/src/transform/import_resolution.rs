@@ -1,11 +1,11 @@
 //! Import resolution. Search for imports in the AST, load the corresponding file in the cache, and
 //! replace the original import node by a resolved import one, which stores the corresponding file
 //! identifier directly.
-use super::ImportResolver;
+use super::ImportCache;
 
 /// Performs import resolution, but return an error if any import terms cannot be resolved.
 pub mod strict {
-    use super::{tolerant, ImportResolver};
+    use super::{tolerant, ImportCache};
     use crate::error::ImportError;
     use crate::term::RichTerm;
     use codespan::FileId;
@@ -45,7 +45,7 @@ pub mod strict {
     /// transformations (including import resolution) on the resolved terms, if needed.
     pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> Result<ResolveResult, ImportError>
     where
-        R: ImportResolver,
+        R: ImportCache,
     {
         let tolerant_result = super::tolerant::resolve_imports(rt, resolver);
         match tolerant_result.import_errors.first() {
@@ -63,7 +63,7 @@ pub mod strict {
         parent: Option<FileId>,
     ) -> Result<RichTerm, ImportError>
     where
-        R: ImportResolver,
+        R: ImportCache,
     {
         let (rt, error) = super::tolerant::transform_one(rt, resolver, parent);
         match error {
@@ -76,7 +76,7 @@ pub mod strict {
 /// Performs import resolution that cannot fail: it accumulates all errors and returns them
 /// together with a (partially) resolved term.
 pub mod tolerant {
-    use super::ImportResolver;
+    use super::ImportCache;
     use crate::error::ImportError;
     use crate::term::{RichTerm, Term, Traverse, TraverseOrder};
     use codespan::FileId;
@@ -96,7 +96,7 @@ pub mod tolerant {
     /// Performs imports resolution in an error tolerant way.
     pub fn resolve_imports<R>(rt: RichTerm, resolver: &mut R) -> ResolveResult
     where
-        R: ImportResolver,
+        R: ImportCache,
     {
         let mut stack = Vec::new();
         let mut import_errors = Vec::new();
@@ -140,13 +140,13 @@ pub mod tolerant {
         parent: Option<FileId>,
     ) -> (RichTerm, Option<ImportError>)
     where
-        R: ImportResolver,
+        R: ImportCache,
     {
         let term = rt.as_ref();
         match term {
             // Only strict imports are resolved at program transformation time
             Term::Import { path, .. } => match resolver.resolve(path, parent, &rt.pos) {
-                Ok((_, file_id)) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
+                Ok(file_id) => (RichTerm::new(Term::ResolvedImport(file_id), rt.pos), None),
                 Err(err) => (rt, Some(err)),
             },
             // For lazy imports we just record the parent file where we encountered it

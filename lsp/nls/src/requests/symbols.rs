@@ -1,6 +1,6 @@
 use lsp_server::{RequestId, Response, ResponseError};
 use lsp_types::{DocumentSymbol, DocumentSymbolParams, SymbolKind};
-use nickel_lang_core::cache::SourcePath;
+use nickel_lang_core::cache::{ImportCache, SourcePath};
 use nickel_lang_core::typ::Type;
 
 use crate::server::Server;

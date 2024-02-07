@@ -77,7 +77,7 @@
 use crate::identifier::Ident;
 use crate::term::string::NickelString;
 use crate::{
-    cache::{Cache as ImportCache, Envs, ImportResolver},
+    cache::{Cache as FullImportCache, Envs, ImportCache},
     closurize::{closurize_rec_record, Closurize},
     environment::Environment as GenericEnvironment,
     error::{Error, EvalError},
@@ -117,7 +117,7 @@ impl AsRef<Vec<StackElem>> for CallStack {
 }
 
 // The current state of the Nickel virtual machine.
-pub struct VirtualMachine<R: ImportResolver, C: Cache> {
+pub struct VirtualMachine<R: ImportCache, C: Cache> {
     // The main stack, storing arguments, cache indices and pending computations.
     stack: Stack<C>,
     // The call stack, for error reporting.
@@ -132,7 +132,7 @@ pub struct VirtualMachine<R: ImportResolver, C: Cache> {
     trace: Box<dyn Write>,
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<R: ImportCache, C: Cache> VirtualMachine<R, C> {
     pub fn new(import_resolver: R, trace: impl Write + 'static) -> Self {
         VirtualMachine {
             import_resolver,
@@ -785,7 +785,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
                 }
                 Term::LazyImport { path, parent } => {
                     match self.import_resolver.resolve(&path, parent, &pos) {
-                        Ok((_, file_id)) => {
+                        Ok(file_id) => {
                             todo!();
                         }
                         Err(err) => return Err(EvalError::ImportError(err)),
@@ -974,7 +974,7 @@ impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
     }
 }
 
-impl<C: Cache> VirtualMachine<ImportCache, C> {
+impl<C: Cache> VirtualMachine<FullImportCache, C> {
     /// Prepare the underlying program for evaluation (load the stdlib, typecheck, transform,
     /// etc.). Sets the initial environment of the virtual machine.
     pub fn prepare_eval(&mut self, main_id: FileId) -> Result<RichTerm, Error> {

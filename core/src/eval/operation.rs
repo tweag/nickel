@@ -9,7 +9,7 @@
 use super::{
     merge::{self, MergeMode},
     stack::StrAccData,
-    subst, Cache, Closure, Environment, ImportResolver, VirtualMachine,
+    subst, Cache, Closure, Environment, ImportCache, VirtualMachine,
 };
 
 #[cfg(feature = "nix-experimental")]
@@ -108,7 +108,7 @@ impl std::fmt::Debug for OperationCont {
     }
 }
 
-impl<R: ImportResolver, C: Cache> VirtualMachine<R, C> {
+impl<R: ImportCache, C: Cache> VirtualMachine<R, C> {
     /// Process to the next step of the evaluation of an operation.
     ///
     /// Depending on the content of the stack, it either starts the evaluation of the first
