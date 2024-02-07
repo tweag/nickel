@@ -5,5 +5,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'Number'
-# found = 'String'
+# inferred = 'String'
 (let { a : Number = b } = { a = "x" } in b) : _

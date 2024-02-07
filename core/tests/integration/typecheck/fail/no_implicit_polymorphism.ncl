@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = '_a -> _b'
-# found = 'Dyn'
+# inferred = 'Dyn'
 (fun id => { a : Number = id 4, b : Bool = id true }) (fun x => x)

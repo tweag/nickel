@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'Bool'
-# found = 'Number'
+# inferred = 'Number'
 { a = 1, b : Bool = a } : { a : Number, b : Bool }

@@ -4,10 +4,10 @@
 # [test.metadata]
 # error = 'TypecheckError::ArrowTypeMismatch'
 #
-# [test.metadata.expectation.sub_error]
+# [test.metadata.expectation.cause]
 # error = 'TypecheckError::VarLevelMismatch'
 #
-# [test.metadata.expectation.sub_error.expectation]
+# [test.metadata.expectation.cause.expectation]
 # type_var = 'b'
 (
   let eval : forall a. (forall b. b -> b) -> a -> a = fun f x => f x

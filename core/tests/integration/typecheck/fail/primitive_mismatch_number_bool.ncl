@@ -6,5 +6,5 @@
 #
 # [test.metadata.expectation]
 # expected = 'Bool'
-# found = 'Number'
+# inferred = 'Number'
 34.5 : Bool

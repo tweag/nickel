@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'Number'
-# found = 'String'
+# inferred = 'String'
 let rec f : Number -> Number =
   fun x => f "hmm"
 in null

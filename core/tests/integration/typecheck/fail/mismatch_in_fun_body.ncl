@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'Number'
-# found = 'Bool'
+# inferred = 'Bool'
 let f : Bool -> Number = 
   fun x => 
     if x then x + 1 else 34 

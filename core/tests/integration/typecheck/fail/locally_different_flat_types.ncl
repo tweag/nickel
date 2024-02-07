@@ -6,7 +6,7 @@
 #
 # [test.metadata.expectation]
 # expected = 'lib.Contract'
-# found = 'lib.Contract'
+# inferred = 'lib.Contract'
 let lib = { Contract = fun label value => value } in
 let foo | lib.Contract = null in
 let lib = { Contract = fun label value => value } in
