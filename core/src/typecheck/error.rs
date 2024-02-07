@@ -255,7 +255,7 @@ pub enum UnifError {
         id: LocIdent,
         /// The type of the new row that conflicts with an existing row.
         row_type: Option<UnifType>,
-        /// The record rows that were checked for row constraints (and thus in the process of being
+        /// The enum rows that were checked for row constraints (and thus in the process of being
         /// extended by unifying their tail with other record rows).
         erows: UnifEnumRows,
         /// The original expected type that led to the row conflict (when unified with the inferred
