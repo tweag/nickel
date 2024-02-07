@@ -9,6 +9,7 @@ behaviour of the program.
 - `integration` contains general purpose integration tests,
 - `examples` contains a runner for samples in the repository's top-level
   `examples` directory.
+- `manual` contains a runner for samples contained in the Nickel manual.
 
 ## Why are the tests split into separate crates?
 
@@ -30,6 +31,7 @@ for more information.
 ## Where are the snapshot tests?
 
 Our current implementation of snapshot tests relies on the Nickel interpreter
-binary. Because of this they were moved to the `nickel-lang-cli` CLI crate when it
-was split out from the core `nickel-lang-core` crate. Eventually, it would be
-nice to reintegrate snapshot tests for error messages into `nickel-lang-core`.
+binary. Because of this they were moved to the `nickel-lang-cli`  CLI crate
+(located in the `cli` directory from the root of this repository) when it was
+split out from the core `nickel-lang-core` crate. Eventually, it would be nice
+to reintegrate snapshot tests for error messages into `nickel-lang-core`.
