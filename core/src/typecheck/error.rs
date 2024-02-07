@@ -27,7 +27,7 @@ pub enum RowUnifError {
     RecordRowMismatch {
         id: LocIdent,
         /// The underlying unification error that caused the mismatch.
-        mismatch: Box<UnifError>,
+        cause: Box<UnifError>,
     },
     /// There were two incompatible definitions for the same enum row.
     ///
@@ -37,7 +37,7 @@ pub enum RowUnifError {
     EnumRowMismatch {
         id: LocIdent,
         /// The underlying unification error that caused the mismatch.
-        mismatch: Option<Box<UnifError>>,
+        cause: Option<Box<UnifError>>,
     },
     /// A [row constraint][super::RowConstr] was violated.
     RecordRowConflict(UnifRecordRow),
@@ -89,23 +89,17 @@ impl RowUnifError {
                 inferred,
             },
             RowUnifError::ExtraDynTail => UnifError::ExtraDynTail { expected, inferred },
-            RowUnifError::RecordRowMismatch {
-                id,
-                mismatch: unif_error,
-            } => UnifError::RecordRowMismatch {
+            RowUnifError::RecordRowMismatch { id, cause } => UnifError::RecordRowMismatch {
                 id,
                 expected,
                 inferred,
-                mismatch: unif_error,
+                cause,
             },
-            RowUnifError::EnumRowMismatch {
-                id,
-                mismatch: unif_error,
-            } => UnifError::EnumRowMismatch {
+            RowUnifError::EnumRowMismatch { id, cause } => UnifError::EnumRowMismatch {
                 id,
                 expected,
                 inferred,
-                mismatch: unif_error,
+                cause,
             },
             RowUnifError::RecordRowConflict(row) => UnifError::RecordRowConflict {
                 row,
@@ -165,7 +159,7 @@ pub enum UnifError {
         /// The uderlying unification error (`expected` and `inferred` should be the record types
         /// that failed to unify, while this error is the specific cause of the mismatch for the
         /// `id` row)
-        mismatch: Box<UnifError>,
+        cause: Box<UnifError>,
     },
     /// There are two incompatible definitions for the same row.
     ///
@@ -176,7 +170,7 @@ pub enum UnifError {
         id: LocIdent,
         expected: UnifType,
         inferred: UnifType,
-        mismatch: Option<Box<UnifError>>,
+        cause: Option<Box<UnifError>>,
     },
     /// Tried to unify two distinct type constants.
     ConstMismatch {
@@ -249,13 +243,13 @@ pub enum UnifError {
     DomainMismatch {
         expected: UnifType,
         inferred: UnifType,
-        mismatch: Box<UnifError>,
+        cause: Box<UnifError>,
     },
     /// An error occurred when unifying the codomains of two arrows.
     CodomainMismatch {
         expected: UnifType,
         inferred: UnifType,
-        mismatch: Box<UnifError>,
+        cause: Box<UnifError>,
     },
     /// Tried to unify a constant with a unification variable with a strictly lower level.
     VarLevelMismatch {
@@ -303,28 +297,24 @@ impl UnifError {
                 id,
                 expected,
                 inferred,
-                mismatch,
+                cause,
             } => TypecheckError::RecordRowMismatch {
                 id,
                 expected: expected.to_type(names_reg, state.table),
                 inferred: inferred.to_type(names_reg, state.table),
-                mismatch: Box::new((*mismatch).into_typecheck_err_(
-                    state,
-                    names_reg,
-                    TermPos::None,
-                )),
+                cause: Box::new((*cause).into_typecheck_err_(state, names_reg, TermPos::None)),
                 pos,
             },
             UnifError::EnumRowMismatch {
                 id,
                 expected,
                 inferred,
-                mismatch,
+                cause,
             } => TypecheckError::EnumRowMismatch {
                 id,
                 expected: expected.to_type(names_reg, state.table),
                 inferred: inferred.to_type(names_reg, state.table),
-                mismatch: mismatch.map(|err| {
+                cause: cause.map(|err| {
                     Box::new((*err).into_typecheck_err_(state, names_reg, TermPos::None))
                 }),
                 pos,
@@ -427,11 +417,7 @@ impl UnifError {
                     expected: expected.to_type(names_reg, state.table),
                     inferred: inferred.to_type(names_reg, state.table),
                     type_path,
-                    mismatch: Box::new(err_final.into_typecheck_err_(
-                        state,
-                        names_reg,
-                        TermPos::None,
-                    )),
+                    cause: Box::new(err_final.into_typecheck_err_(state, names_reg, TermPos::None)),
                     pos,
                 }
             }
@@ -484,7 +470,7 @@ impl UnifError {
                             typ: TypeF::Arrow(_, _),
                             ..
                         },
-                    mismatch,
+                    cause: mismatch,
                 } => {
                     utys = utys.or(Some((expected, inferred)));
                     path.push(ty_path::Elem::Domain);
@@ -504,7 +490,7 @@ impl UnifError {
                             typ: TypeF::Arrow(_, _),
                             ..
                         },
-                    mismatch,
+                    cause: mismatch,
                 } => {
                     utys = utys.or(Some((expected, inferred)));
                     path.push(ty_path::Elem::Codomain);

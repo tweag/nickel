@@ -263,7 +263,7 @@ pub enum TypecheckError {
         id: LocIdent,
         expected: Type,
         inferred: Type,
-        mismatch: Box<TypecheckError>,
+        cause: Box<TypecheckError>,
         pos: TermPos,
     },
     /// Same as [Self::RecordRowMismatch] but for enum types.
@@ -271,7 +271,7 @@ pub enum TypecheckError {
         id: LocIdent,
         expected: Type,
         inferred: Type,
-        mismatch: Option<Box<TypecheckError>>,
+        cause: Option<Box<TypecheckError>>,
         pos: TermPos,
     },
     /// Two incompatible types have been deduced for the same identifier of a row type.
@@ -325,7 +325,7 @@ pub enum TypecheckError {
         inferred: Type,
         /// The path to the incompatible type components
         type_path: ty_path::Path,
-        mismatch: Box<TypecheckError>,
+        cause: Box<TypecheckError>,
         pos: TermPos,
     },
     /// This error should mostly not happen: contracts (flat types) are now properly checked for
@@ -2062,7 +2062,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 id,
                 expected,
                 inferred,
-                mismatch: mut err,
+                cause: mut err,
                 pos,
             } => {
                 // If the unification error is on a nested field, we will have a succession of
@@ -2074,7 +2074,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
 
                 while let TypecheckError::RecordRowMismatch {
                     id: id_next,
-                    mismatch: next,
+                    cause: next,
                     ..
                 } = *err
                 {
@@ -2140,7 +2140,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 id,
                 expected,
                 inferred,
-                mismatch,
+                cause,
                 pos,
             } => {
                 let mk_expected_row_msg = |row| {
@@ -2183,7 +2183,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // We generate a diagnostic for the underlying error if any, but append a prefix to
                 // the error message to make it clear that this is not a separate error but a more
                 // precise description of why the unification of a row failed.
-                if let Some(err) = mismatch {
+                if let Some(err) = cause {
                     diags.extend((*err).into_diagnostics(files, stdlib_ids).into_iter().map(
                         |mut diag| {
                             diag.message =
@@ -2271,7 +2271,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 expected,
                 inferred,
                 type_path,
-                mismatch,
+                cause,
                 pos,
             } => {
                 let PathSpan {
@@ -2300,7 +2300,7 @@ impl IntoDiagnostics<FileId> for TypecheckError {
                 // We generate a diagnostic for the underlying error, but append a prefix to the
                 // error message to make it clear that this is not a separated error but a more
                 // precise description of why the unification of the row failed.
-                match *mismatch {
+                match *cause {
                     // If the underlying error is a type mismatch, printing won't add any useful
                     // information, so we just ignore it.
                     TypecheckError::TypeMismatch { .. } => (),
