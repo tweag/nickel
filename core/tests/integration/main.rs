@@ -168,7 +168,7 @@ enum ErrorExpectation {
     #[serde(rename = "TypecheckError::UnboundTypeVariable")]
     TypecheckUnboundTypeVariable { identifier: String },
     #[serde(rename = "TypecheckError::TypeMismatch")]
-    TypecheckTypeMismatch { expected: String, found: String },
+    TypecheckTypeMismatch { expected: String, inferred: String },
     #[serde(rename = "TypecheckError::ForallParametricityViolation")]
     TypecheckForallParametricityViolation {
         tail: String,
@@ -178,8 +178,10 @@ enum ErrorExpectation {
     TypecheckMissingRow { ident: String },
     #[serde(rename = "TypecheckError::ExtraRow")]
     TypecheckExtraRow { ident: String },
-    #[serde(rename = "TypecheckError::RowConflict")]
-    TypecheckRowConflict { row: String },
+    #[serde(rename = "TypecheckError::RecordRowConflict")]
+    TypecheckRecordRowConflict { row: String },
+    #[serde(rename = "TypecheckError::EnumRowConflict")]
+    TypecheckEnumRowConflict { row: String },
     #[serde(rename = "TypecheckError::RecordRowMismatch")]
     TypecheckRecordRowMismatch,
     #[serde(rename = "TypecheckError::EnumRowMismatch")]
@@ -189,7 +191,7 @@ enum ErrorExpectation {
     #[serde(rename = "TypecheckError::MissingDynTail")]
     TypecheckMissingDynTail,
     #[serde(rename = "TypecheckError::ArrowTypeMismatch")]
-    TypecheckArrowTypeMismatch { sub_error: Box<ErrorExpectation> },
+    TypecheckArrowTypeMismatch { cause: Box<ErrorExpectation> },
     #[serde(rename = "TypecheckError::FlatTypeInTermPosition")]
     TypecheckFlatTypeInTermPosition,
     #[serde(rename = "TypecheckError::VarLevelMismatch")]
@@ -228,17 +230,17 @@ impl PartialEq<Error> for ErrorExpectation {
             | (EvalOther, Error::EvalError(EvalError::Other(..)))
             | (
                 TypecheckRecordRowMismatch,
-                Error::TypecheckError(TypecheckError::RecordRowMismatch(..)),
+                Error::TypecheckError(TypecheckError::RecordRowMismatch { .. }),
             )
             | (
                 TypecheckEnumRowMismatch,
-                Error::TypecheckError(TypecheckError::EnumRowMismatch(..)),
+                Error::TypecheckError(TypecheckError::EnumRowMismatch { .. }),
             )
             | (
                 TypecheckMissingDynTail,
-                Error::TypecheckError(TypecheckError::MissingDynTail(..)),
+                Error::TypecheckError(TypecheckError::MissingDynTail { .. }),
             )
-            | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail(..)))
+            | (TypecheckExtraDynTail, Error::TypecheckError(TypecheckError::ExtraDynTail { .. }))
             | (
                 TypecheckFlatTypeInTermPosition,
                 Error::TypecheckError(TypecheckError::FlatTypeInTermPosition { .. }),
@@ -279,19 +281,27 @@ impl PartialEq<Error> for ErrorExpectation {
             ) => field == id.label(),
             (
                 TypecheckUnboundIdentifier { identifier },
-                Error::TypecheckError(TypecheckError::UnboundIdentifier(ident, ..)),
-            ) => ident.label() == identifier,
+                Error::TypecheckError(TypecheckError::UnboundIdentifier { id, .. }),
+            ) => id.label() == identifier,
             (
                 TypecheckUnboundTypeVariable { identifier },
                 Error::TypecheckError(TypecheckError::UnboundTypeVariable(ident)),
             ) => identifier == ident.label(),
             (
-                TypecheckTypeMismatch { expected, found },
+                TypecheckTypeMismatch { expected, inferred },
                 Error::TypecheckError(
-                    TypecheckError::TypeMismatch(expected1, found1, ..)
-                    | TypecheckError::ArrowTypeMismatch(expected1, found1, ..),
+                    TypecheckError::TypeMismatch {
+                        expected: expected1,
+                        inferred: inferred1,
+                        ..
+                    }
+                    | TypecheckError::ArrowTypeMismatch {
+                        expected: expected1,
+                        inferred: inferred1,
+                        ..
+                    },
                 ),
-            ) if expected == &expected1.to_string() && found == &found1.to_string() => true,
+            ) if expected == &expected1.to_string() && inferred == &inferred1.to_string() => true,
             (
                 TypecheckForallParametricityViolation {
                     tail,
@@ -307,23 +317,20 @@ impl PartialEq<Error> for ErrorExpectation {
             }
             (
                 TypecheckMissingRow { ident },
-                Error::TypecheckError(TypecheckError::MissingRow(row, ..)),
-            ) if ident == row.label() => true,
+                Error::TypecheckError(TypecheckError::MissingRow { id: id1, .. }),
+            ) if ident == id1.label() => true,
             (
                 TypecheckExtraRow { ident },
-                Error::TypecheckError(TypecheckError::ExtraRow(ident1, ..)),
-            ) if ident == ident1.label() => true,
+                Error::TypecheckError(TypecheckError::ExtraRow { id: id1, .. }),
+            ) if ident == id1.label() => true,
             (
-                TypecheckRowConflict { row },
-                Error::TypecheckError(TypecheckError::RowConflict(ident, ..)),
-            ) => row == ident.label(),
+                TypecheckRecordRowConflict { row },
+                Error::TypecheckError(TypecheckError::RecordRowConflict { row: row1, .. }),
+            ) => row == row1.id.label(),
             (
-                TypecheckRowConflict { row },
-                Error::TypecheckError(TypecheckError::ArrowTypeMismatch(_, _, _, boxed_err, ..)),
-            ) => match boxed_err.as_ref() {
-                TypecheckError::RowConflict(ident, ..) => row == ident.label(),
-                _ => false,
-            },
+                TypecheckEnumRowConflict { row },
+                Error::TypecheckError(TypecheckError::EnumRowConflict { row: row1, .. }),
+            ) => row == row1.id.label(),
             (
                 TypecheckVarLevelMismatch { type_var: ident },
                 Error::TypecheckError(TypecheckError::VarLevelMismatch {
@@ -334,11 +341,14 @@ impl PartialEq<Error> for ErrorExpectation {
             // with an ErrorExpectation. Ideally, we would implement `eq` for all error subtypes,
             // and have the eq with `Error` just dispatch to those sub-eq functions.
             (
-                TypecheckArrowTypeMismatch {
-                    sub_error: sub_error1,
-                },
-                Error::TypecheckError(TypecheckError::ArrowTypeMismatch(_, _, _, sub_error2, _)),
-            ) => sub_error1.as_ref() == &Error::TypecheckError((**sub_error2).clone()),
+                TypecheckArrowTypeMismatch { cause },
+                Error::TypecheckError(TypecheckError::ArrowTypeMismatch { cause: cause2, .. }),
+            ) => cause.as_ref() == &Error::TypecheckError((**cause2).clone()),
+            // If nothing else matched up to this point, we allow the expected error to appear wrapped inside an `ArrowTypeMismatch`
+            //
+            (error_exp, Error::TypecheckError(TypecheckError::ArrowTypeMismatch { cause, .. })) => {
+                error_exp == &Error::TypecheckError((**cause).clone())
+            }
             (_, _) => false,
         }
     }
@@ -379,8 +389,8 @@ impl std::fmt::Display for ErrorExpectation {
             TypecheckUnboundTypeVariable { identifier } => {
                 format!("TypecheckError::UnboundTypeVariable({identifier})")
             }
-            TypecheckTypeMismatch { expected, found } => {
-                format!("TypecheckError::TypeMismatch({expected}, {found})")
+            TypecheckTypeMismatch { expected, inferred } => {
+                format!("TypecheckError::TypeMismatch({expected}, {inferred})")
             }
             TypecheckForallParametricityViolation {
                 tail,
@@ -396,17 +406,20 @@ impl std::fmt::Display for ErrorExpectation {
             }
             TypecheckRecordRowMismatch => "TypecheckError::RecordRowMismatch".to_owned(),
             TypecheckEnumRowMismatch => "TypecheckError::EnumRowMismatch".to_owned(),
-            TypecheckRowConflict { row } => {
-                format!("TypecheckError::RowConflict({row})")
+            TypecheckRecordRowConflict { row } => {
+                format!("TypecheckError::RecordRowConflict({row})")
+            }
+            TypecheckEnumRowConflict { row } => {
+                format!("TypecheckError::EnumRowConflict({row})")
             }
             TypecheckExtraDynTail => "TypecheckError::ExtraDynTail".to_owned(),
             TypecheckMissingDynTail => "TypecheckError::MissingDynTail".to_owned(),
-            TypecheckArrowTypeMismatch { sub_error } => {
-                format!("TypecheckError::ArrowTypeMismatch{sub_error})")
+            TypecheckArrowTypeMismatch { cause } => {
+                format!("TypecheckError::ArrowTypeMismatch{cause})")
             }
             TypecheckFlatTypeInTermPosition => "TypecheckError::FlatTypeInTermPosition".to_owned(),
-            TypecheckVarLevelMismatch { type_var: ident } => {
-                format!("TypecheckError::VarLevelMismatch({ident})")
+            TypecheckVarLevelMismatch { type_var } => {
+                format!("TypecheckError::VarLevelMismatch({type_var})")
             }
             SerializeNumberOutOfRange => "ExportError::NumberOutOfRange".to_owned(),
         };
