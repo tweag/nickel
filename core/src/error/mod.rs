@@ -2,9 +2,6 @@
 //!
 //! Define error types for different phases of the execution, together with functions to generate a
 //! [codespan](https://crates.io/crates/codespan-reporting) diagnostic from them.
-use crate::cache::Cache;
-use crate::typ::EnumRowsIteratorItem;
-
 pub use codespan::{FileId, Files};
 pub use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
@@ -13,6 +10,7 @@ use lalrpop_util::ErrorRecovery;
 use malachite::num::conversion::traits::ToSci;
 
 use crate::{
+    cache::Cache,
     eval::callstack::CallStack,
     identifier::LocIdent,
     label::{
@@ -30,7 +28,7 @@ use crate::{
     repl,
     serialize::ExportFormat,
     term::{record::FieldMetadata, Number, RichTerm, Term},
-    typ::{EnumRow, Type, TypeF, VarKindDiscriminant},
+    typ::{EnumRow, EnumRows, EnumRowsIteratorItem, RecordRows, Type, TypeF, VarKindDiscriminant},
 };
 
 pub mod report;
@@ -298,7 +296,7 @@ pub enum TypecheckError {
         /// While the inferred and expected type always refer to the starting point of the unification
         /// failure, this one is more precise and corresponds to the specific record type that failed
         /// to be extended because it already contained a row for `id`.
-        record_type: Type,
+        record_type: RecordRows,
         expected: Type,
         inferred: Type,
         pos: TermPos,
@@ -307,7 +305,7 @@ pub enum TypecheckError {
     EnumRowConflict {
         id: LocIdent,
         row_type: Option<Type>,
-        enum_type: Type,
+        enum_type: EnumRows,
         expected: Type,
         inferred: Type,
         pos: TermPos,
