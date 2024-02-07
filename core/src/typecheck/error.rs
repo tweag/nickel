@@ -319,7 +319,7 @@ impl UnifError {
     }
 
     /// Convert a unification error to a typechecking error, given a populated [name
-    /// registry][reporting::NameReg]. inferred meat of the implementation of
+    /// registry][reporting::NameReg]. Actual meat of the implementation of
     /// [`Self::into_typecheck_err`].
     fn into_typecheck_err_(
         self,
