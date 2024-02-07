@@ -1,0 +1,19 @@
+---
+source: cli/tests/snapshot/main.rs
+expression: err
+---
+error: multiple enum row declarations
+  ┌─ [INPUTS_PATH]/errors/enum_forall_constraints_typecheck.ncl:9:4
+  │
+9 │ (f ('Foo..("hello")) : _)
+  │    ^^^^^^^^^^^^^^^^^ this expression
+  │
+  = Found an expression with the row `'Foo _a`
+  = But this row appears inside another enum type, which already has a diffent declaration for the tag `Foo`
+  = A type cannot have two conflicting declarations for the same row
+
+note: while matching types
+ = Expected type [| ; r |]
+ = With inferred type [| 'Foo _a; _erows_b |]
+
+
