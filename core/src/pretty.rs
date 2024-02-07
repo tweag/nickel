@@ -126,6 +126,31 @@ fn contains_carriage_return<T>(chunks: &[StrChunk<T>]) -> bool {
     })
 }
 
+/// Determines if a type to be printed in type position needs additional parentheses.
+///
+/// Terms in type position don't need to be atoms: for example, we should pretty print `foo |
+/// Contract arg1 arg2` without parentheses instead of `foo | (Contract arg1 arg2)`.
+///
+/// However, some terms (i.e. contracts) in type position still need parentheses in some cases, for
+/// example when said term is a function function. This function precisely determines if the given
+/// type is such a term.
+fn needs_parens_in_type_pos(typ: &Type) -> bool {
+    if let TypeF::Flat(term) = &typ.typ {
+        matches!(
+            term.as_ref(),
+            Term::Fun(..)
+                | Term::FunPattern(..)
+                | Term::Let(..)
+                | Term::LetPattern(..)
+                | Term::Op1(UnaryOp::Ite(), _)
+                | Term::Import(..)
+                | Term::ResolvedImport(..)
+        )
+    } else {
+        false
+    }
+}
+
 pub fn fmt_pretty<'a, T>(value: &T, f: &mut fmt::Formatter) -> fmt::Result
 where
     T: Pretty<'a, pretty::BoxAllocator, ()> + Clone,
@@ -360,6 +385,21 @@ where
     fn atom(&'a self, rt: &RichTerm) -> DocBuilder<'a, Self, A> {
         rt.pretty(self).parens_if(!rt.as_ref().is_atom())
     }
+
+    /// Almost identical to calling `typ.pretty(self)`, but adds parentheses when the type is
+    /// actually a contract that has a top-level form that needs parentheses (let-binding,
+    /// if-then-else, etc.).
+    ///
+    /// Although terms can appear in type position as contracts, the parenthesis rules are slightly
+    /// more restrictive than for a generic term: for example, `{foo | let x = Contract in x}` is
+    /// not valid Nickel. It must be parenthesised as `{foo | (let x = Contract in x)}`.
+    ///
+    /// This method must be used whenever a type is rendered either as component of another type or
+    /// in the position of an annotation. Rendering stand-alone types (for example as part of error
+    /// messages) can avoid those parentheses and directly call to `typ.pretty(allocator)` instead.
+    fn type_part(&'a self, typ: &Type) -> DocBuilder<'a, Self, A> {
+        typ.pretty(self).parens_if(needs_parens_in_type_pos(typ))
+    }
 }
 
 trait NickelDocBuilderExt<'a, D, A> {
@@ -402,7 +442,12 @@ where
         docs![
             allocator,
             if let Some(typ) = &self.typ {
-                docs![allocator, allocator.line(), ": ", &typ.typ]
+                docs![
+                    allocator,
+                    allocator.line(),
+                    ": ",
+                    allocator.type_part(&typ.typ)
+                ]
             } else {
                 allocator.nil()
             },
@@ -414,7 +459,7 @@ where
             allocator.intersperse(
                 self.contracts
                     .iter()
-                    .map(|c| { docs![allocator, "| ", &c.typ] }),
+                    .map(|c| { docs![allocator, "| ", allocator.type_part(&c.typ)] }),
                 allocator.line(),
             )
         ]
@@ -883,6 +928,7 @@ where
                 .text("import ")
                 .append(allocator.as_string(f.to_string_lossy()).double_quotes()),
             ResolvedImport(id) => allocator.text(format!("import <file_id: {id:?}>")),
+            // This type is in term position, so we don't need to add parentheses.
             Type(ty) => ty.pretty(allocator),
             ParseError(_) => allocator.text("%<PARSE ERROR>"),
             RuntimeError(_) => allocator.text("%<RUNTIME ERROR>"),
@@ -976,7 +1022,12 @@ where
     A: Clone + 'a,
 {
     fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
-        docs![allocator, ident_quoted(&self.id), " : ", self.typ.as_ref(),]
+        docs![
+            allocator,
+            ident_quoted(&self.id),
+            " : ",
+            allocator.type_part(self.typ.as_ref()),
+        ]
     }
 }
 
@@ -1029,7 +1080,7 @@ where
                     ),
                     ".",
                     allocator.line(),
-                    curr
+                    allocator.type_part(curr)
                 ]
                 .nest(2)
                 .group()
@@ -1056,7 +1107,7 @@ where
                     DictTypeFlavour::Contract => "|",
                 },
                 " ",
-                ty.as_ref(),
+                allocator.type_part(ty.as_ref()),
             ]
             .nest(2)
             .append(allocator.line())
@@ -1064,13 +1115,14 @@ where
             .group(),
             Arrow(dom, codom) => docs![
                 allocator,
-                dom.pretty(allocator)
+                allocator
+                    .type_part(dom)
                     .parens_if(matches!(dom.typ, Arrow(..) | Forall { .. }))
                     .nest(2),
                 allocator.line(),
                 "-> ",
-                codom
-                    .pretty(allocator)
+                allocator
+                    .type_part(codom)
                     .parens_if(matches!(codom.typ, Forall { .. }))
             ]
             .group(),
