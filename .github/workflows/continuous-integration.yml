@@ -82,4 +82,4 @@ jobs:
           exit $errcode
 
     - name: Typecheck benchmarks
-      run: find benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- -f file typecheck
+      run: find core/benches -type f -name "*.ncl" -print0 | xargs -0 -I file nix run . -- typecheck file
