@@ -786,7 +786,17 @@ impl<R: SourceCache, C: Cache> VirtualMachine<R, C> {
                 Term::LazyImport { path, parent } => {
                     match self.import_resolver.resolve(&path, parent, &pos) {
                         Ok(file_id) => {
-                            todo!();
+                            let initial_ctxt = self.import_resolver.initial_type_ctxt().expect(
+                                "the stdlib should have been loaded before ever getting here",
+                            );
+                            // TODO(vkleen): This is nonsense, the eval loop now needs to be able to return any error
+                            self.import_resolver
+                                .prepare(file_id, &initial_ctxt)
+                                .unwrap();
+                            Closure::atomic_closure(RichTerm::new(
+                                Term::ResolvedImport(file_id),
+                                pos,
+                            ))
                         }
                         Err(err) => return Err(EvalError::ImportError(err)),
                     }

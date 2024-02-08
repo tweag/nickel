@@ -946,7 +946,7 @@ impl Cache {
         // 1. The stdlib is meant to stay relatively light.
         // 2. Typechecking the standard library ought to occur only during development. Once the
         //    stdlib is stable, we won't have typecheck it at every execution.
-        let initial_env = self.mk_type_ctxt().map_err(|err| match err {
+        let initial_env = self.initial_type_ctxt().map_err(|err| match err {
             CacheError::NotParsed => CacheError::NotParsed,
             CacheError::Error(_) => unreachable!(),
         })?;
@@ -982,7 +982,7 @@ impl Cache {
             return Ok(Envs::new());
         }
         self.load_stdlib()?;
-        let type_ctxt = self.mk_type_ctxt().unwrap();
+        let type_ctxt = self.initial_type_ctxt().unwrap();
 
         self.stdlib_ids
             .as_ref()
@@ -1014,25 +1014,6 @@ impl Cache {
             eval_env,
             type_ctxt,
         })
-    }
-
-    /// Generate the initial typing context from the list of `file_ids` corresponding to the
-    /// standard library parts.
-    pub fn mk_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
-        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> =
-            self.stdlib_ids
-                .as_ref()
-                .map_or(Err(CacheError::NotParsed), |ids| {
-                    Ok(ids
-                        .iter()
-                        .map(|(module, file_id)| {
-                            (*module, self.get_owned(*file_id).expect(
-                                "cache::mk_type_env(): can't build environment, stdlib not parsed",
-                            ))
-                        })
-                        .collect())
-                })?;
-        Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
     }
 
     /// Generate the initial evaluation environment from the list of `file_ids` corresponding to the
@@ -1157,6 +1138,10 @@ pub trait SourceCache {
         file_id: FileId,
         initial_ctxt: &typecheck::Context,
     ) -> Result<CacheOp<()>, Error>;
+
+    /// Generate the initial typing context from the list of `file_ids` corresponding to the
+    /// standard library parts.
+    fn initial_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>>;
 }
 
 pub trait SourceCacheExt {
@@ -1402,6 +1387,23 @@ impl SourceCache for Cache {
 
         Ok(result)
     }
+
+    fn initial_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
+        let stdlib_terms_vec: Vec<(StdlibModule, RichTerm)> =
+            self.stdlib_ids
+                .as_ref()
+                .map_or(Err(CacheError::NotParsed), |ids| {
+                    Ok(ids
+                        .iter()
+                        .map(|(module, file_id)| {
+                            (*module, self.get_owned(*file_id).expect(
+                                "cache::mk_type_env(): can't build environment, stdlib not parsed",
+                            ))
+                        })
+                        .collect())
+                })?;
+        Ok(typecheck::mk_initial_ctxt(&stdlib_terms_vec).unwrap())
+    }
 }
 
 /// Normalize the path of a file for unique identification in the cache.
@@ -1516,6 +1518,10 @@ pub mod resolvers {
         ) -> Result<CacheOp<()>, Error> {
             unimplemented!("cache::resolvers: dummy resolver should not have been invoked");
         }
+
+        fn initial_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
+            unimplemented!("cache::resolvers: dummy resolver should not have been invoked");
+        }
     }
 
     /// Resolve imports from a mockup file database. Used to test imports without accessing the
@@ -1606,6 +1612,10 @@ pub mod resolvers {
             _file_id: FileId,
             _initial_ctxt: &typecheck::Context,
         ) -> Result<CacheOp<()>, Error> {
+            unimplemented!("cache::resolvers::SimpleResolver does not implement anything apart from import resolution")
+        }
+
+        fn initial_type_ctxt(&self) -> Result<typecheck::Context, CacheError<Void>> {
             unimplemented!("cache::resolvers::SimpleResolver does not implement anything apart from import resolution")
         }
     }

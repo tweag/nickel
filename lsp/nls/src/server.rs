@@ -23,7 +23,7 @@ use lsp_types::{
 };
 
 use nickel_lang_core::{
-    cache::{Cache, ErrorTolerance},
+    cache::{Cache, ErrorTolerance, SourceCache},
     position::{RawPos, RawSpan, TermPos},
     stdlib::StdlibModule,
     term::{record::FieldMetadata, RichTerm, Term, UnaryOp},
@@ -105,7 +105,7 @@ impl Server {
 
         // We don't recover from failing to load the stdlib for now.
         cache.load_stdlib().unwrap();
-        let initial_ctxt = cache.mk_type_ctxt().unwrap();
+        let initial_ctxt = cache.initial_type_ctxt().unwrap();
         Server {
             connection,
             cache,

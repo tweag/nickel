@@ -438,7 +438,7 @@ impl<EC: EvalCache> Program<EC> {
     pub fn typecheck(&mut self) -> Result<(), Error> {
         self.vm.import_resolver_mut().parse(self.main_id)?;
         self.vm.import_resolver_mut().load_stdlib()?;
-        let initial_env = self.vm.import_resolver().mk_type_ctxt().expect(
+        let initial_env = self.vm.import_resolver().initial_type_ctxt().expect(
             "program::typecheck(): \
             stdlib has been loaded but was not found in cache on mk_type_ctxt()",
         );
