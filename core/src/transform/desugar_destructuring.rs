@@ -44,8 +44,7 @@ use crate::term::pattern::*;
 use crate::term::{
     make::{op1, op2},
     BinaryOp::DynRemove,
-    LetAttrs, RecordOpKind, RichTerm, Term, TypeAnnotation,
-    UnaryOp::StaticAccess,
+    LetAttrs, RecordOpKind, RichTerm, Term, TypeAnnotation, UnaryOp,
 };
 
 /// Entry point of the destructuring desugaring transformation.
@@ -140,6 +139,7 @@ impl Desugar for PatternData {
             // If the pattern is an unconstrained identifier, we just bind it to the value.
             PatternData::Any(id) => Term::Let(id, destr, body, LetAttrs::default()),
             PatternData::Record(pat) => pat.desugar(destr, body),
+            PatternData::EnumVariant(pat) => pat.desugar(destr, body),
         }
     }
 }
@@ -149,7 +149,7 @@ impl Desugar for FieldPattern {
     // destructured. We extract the field from `destr` and desugar the rest of the pattern against
     // `destr.matched_id`.
     fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
-        let extracted = op1(StaticAccess(self.matched_id), destr.clone());
+        let extracted = op1(UnaryOp::StaticAccess(self.matched_id), destr.clone());
         self.pattern.desugar(extracted, body)
     }
 }
@@ -175,6 +175,13 @@ impl Desugar for RecordPattern {
             })
             .term
             .into_owned()
+    }
+}
+
+impl Desugar for EnumVariantPattern {
+    fn desugar(self, destr: RichTerm, body: RichTerm) -> Term {
+        let extracted = op1(UnaryOp::EnumUnwrapVariant(), destr.clone());
+        self.pattern.desugar(extracted, body)
     }
 }
 

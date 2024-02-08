@@ -243,6 +243,9 @@ impl RemoveBindings for PatternData {
             PatternData::Record(record_pat) => {
                 record_pat.remove_bindings(working_set);
             }
+            PatternData::EnumVariant(enum_variant_pat) => {
+                enum_variant_pat.remove_bindings(working_set);
+            }
         }
     }
 }
@@ -272,5 +275,11 @@ impl RemoveBindings for RecordPattern {
         if let RecordPatternTail::Capture(rest) = self.tail {
             working_set.remove(&rest.ident());
         }
+    }
+}
+
+impl RemoveBindings for EnumVariantPattern {
+    fn remove_bindings(&self, working_set: &mut HashSet<Ident>) {
+        self.pattern.remove_bindings(working_set);
     }
 }

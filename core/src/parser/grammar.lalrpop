@@ -521,21 +521,22 @@ LastFieldPat: LastPattern<FieldPattern> = {
 // The right hand side of an `=` inside a destructuring pattern.
 #[inline]
 Pattern: Pattern = {
-    <l: @L> <alias:(<Ident> "@")?> <record_pat: RecordPattern> <r: @R> => {
+    <l: @L> <alias:(<Ident> "@")?> <data: PatternData> <r: @R> => {
         Pattern {
            alias,
-           data: PatternData::Record(record_pat),
+           data,
            span: mk_span(src_id, l, r),
         }
     },
-    Ident => {
-        let span = <>.pos.unwrap();
-
-        Pattern { data: PatternData::Any(<>), alias: None, span }
-    },
 };
 
-// A full pattern at the left-hand side of a destructuring let.
+#[inline]
+PatternData: PatternData = {
+    RecordPattern => PatternData::Record(<>),
+    EnumVariantPattern => PatternData::EnumVariant(<>),
+    Ident => PatternData::Any(<>),
+};
+
 RecordPattern: RecordPattern = {
     <start: @L> "{" <mut field_pats: (<FieldPattern> ",")*> <last: LastFieldPat?> "}" <end: @R> =>? {
         let tail = match last {
@@ -559,7 +560,15 @@ RecordPattern: RecordPattern = {
     },
 };
 
-// A binding `ident = <pattern>` inside a destructuring pattern.
+EnumVariantPattern: EnumVariantPattern =
+    <start: @L> <tag: EnumTag> ".." "(" <pattern: Pattern> ")" <end: @R> =>
+        EnumVariantPattern {
+            tag,
+            pattern: Box::new(pattern),
+            span: mk_span(src_id, start, end),
+        };
+
+// A binding `ident = <pattern>` inside a record pattern.
 FieldPattern: FieldPattern = {
     <l: @L> <matched_id:Ident> <anns: SimpleFieldAnnot<FixedType>?> <default: DefaultAnnot?>
       "=" <pattern: Pattern> <r: @R> => {

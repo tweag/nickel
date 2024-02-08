@@ -226,6 +226,20 @@
             label
         ),
 
+  # Contract for an enum variant with tag `'tag`, that is any value of the form
+  # `'tag exp`.
+  "$enum_variant" = fun tag label value =>
+    if %enum_is_variant% value then
+      let value_tag = %enum_get_tag% value in
+
+      if value_tag == tag then
+        value
+      else
+        let msg = "expected `'%{%to_str% tag}`, got `'%{%to_str% value_tag}`" in
+        %blame% (%label_with_message% "tag mismatch: %{msg}" label)
+    else
+      %blame% (%label_with_message% "expected an enum variant" label),
+
   # Recursive priorities operators
 
   "$rec_force" = fun value => %rec_force% (%force% value),
@@ -237,4 +251,5 @@
   # in an internal value prefixed with `$` makes it accessible from the initial
   # environment and prevents it from being shadowed.
   "$stdlib_contract_equal" = std.contract.Equal,
+
 }

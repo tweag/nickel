@@ -3,11 +3,12 @@ use crate::{
     identifier::LocIdent,
     mk_uty_record_row,
     term::pattern::*,
-    typ::{RecordRowF, RecordRowsF, TypeF},
+    typ::{EnumRowsF, RecordRowsF, TypeF},
 };
 
 use super::{
-    mk_uniftype, Context, State, UnifRecordRow, UnifRecordRows, UnifType, Unify, VarLevelsData,
+    mk_uniftype, Context, State, UnifEnumRow, UnifEnumRows, UnifRecordRow, UnifRecordRows,
+    UnifType, Unify, VarLevelsData,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +149,17 @@ impl PatternTypes for PatternData {
             PatternData::Record(record_pat) => Ok(UnifType::concrete(TypeF::Record(
                 record_pat.pattern_types_inj(bindings, state, ctxt, mode)?,
             ))),
+            PatternData::EnumVariant(enum_pat) => {
+                let row = enum_pat.pattern_types_inj(bindings, state, ctxt, mode)?;
+
+                // This represents the single-row, closed type `[| row |]`
+                Ok(UnifType::concrete(TypeF::Enum(UnifEnumRows::concrete(
+                    EnumRowsF::Extend {
+                        row,
+                        tail: Box::new(UnifEnumRows::concrete(EnumRowsF::Empty)),
+                    },
+                ))))
+            }
         }
     }
 }
@@ -208,9 +220,30 @@ impl PatternTypes for FieldPattern {
                 .pattern_types_inj(bindings, state, ctxt, mode)?,
         };
 
-        Ok(RecordRowF {
+        Ok(UnifRecordRow {
             id: self.matched_id,
             typ: Box::new(ty_row),
+        })
+    }
+}
+
+impl PatternTypes for EnumVariantPattern {
+    type PatType = UnifEnumRow;
+
+    fn pattern_types_inj(
+        &self,
+        bindings: &mut Vec<(LocIdent, UnifType)>,
+        state: &mut State,
+        ctxt: &Context,
+        mode: TypecheckMode,
+    ) -> Result<Self::PatType, TypecheckError> {
+        let typ_arg = self
+            .pattern
+            .pattern_types_inj(bindings, state, ctxt, mode)?;
+
+        Ok(UnifEnumRow {
+            id: self.tag,
+            typ: Some(Box::new(typ_arg)),
         })
     }
 }

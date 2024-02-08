@@ -2,7 +2,9 @@ use std::fmt;
 
 use crate::identifier::LocIdent;
 use crate::parser::lexer::KEYWORDS;
-use crate::term::pattern::{Pattern, PatternData, RecordPattern, RecordPatternTail};
+use crate::term::pattern::{
+    EnumVariantPattern, Pattern, PatternData, RecordPattern, RecordPatternTail,
+};
 use crate::term::record::RecordData;
 use crate::term::{
     record::{Field, FieldMetadata},
@@ -572,7 +574,27 @@ where
         match self {
             PatternData::Any(id) => allocator.as_string(id),
             PatternData::Record(rp) => rp.pretty(allocator),
+            PatternData::EnumVariant(evp) => evp.pretty(allocator),
         }
+    }
+}
+
+impl<'a, D, A> Pretty<'a, D, A> for &EnumVariantPattern
+where
+    D: NickelAllocatorExt<'a, A>,
+    D::Doc: Clone,
+    A: Clone + 'a,
+{
+    fn pretty(self, allocator: &'a D) -> DocBuilder<'a, D, A> {
+        docs![
+            allocator,
+            "'",
+            ident_quoted(&self.tag),
+            //TODO[adts]: replace this with a space once we have a proper syntax
+            "..(",
+            &*self.pattern,
+            ")"
+        ]
     }
 }
 
